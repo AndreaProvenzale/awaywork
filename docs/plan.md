@@ -12,7 +12,8 @@ The shape comes from `design.md`, the facts from `lessons.md`,
   remote is best effort (rotating `auth.json`).
 - **Customization:** which providers and sources to use, an ordered queue
   of rules that map items to skills, per-rule provider, extra skills,
-  instructions and delivery, and quota allocation per provider.
+  instructions and delivery, the branch name template (global, per repo,
+  per rule), and quota allocation per provider.
 - **Out:** vendor cloud schedulers, MCP for workers, GitLab/Jira/Linear,
   web UI, delivery modes other than a draft PR or the report.
 
@@ -102,7 +103,7 @@ interface Item {            // from sources.md, plus the forge link
   comments: { author: string; body: string; at: string }[]
   linkedPrs: PrRef[]; fields: Record<string, unknown>; raw: unknown
 }                           // a PR item links itself
-interface PrRef { repo: string; number: number; url: string; branch: string }
+interface PrRef { repo: string; number: number; url: string; branch: string; ours: boolean }  // ours = night-shift footer
 interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 
 interface Source {
@@ -137,14 +138,14 @@ interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
-  push(dir, branch, opts): Promise<void>         // new branches only, never force
-  draftPr(repo, head, base, bodyFile): Promise<string>   // title = the body's first line
+  push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
+  draftPr(repo, head, base, bodyFile): Promise<string>   // title = the body's first line; adds the footer
 }
 
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
 
 interface Unit {
-  id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch
+  id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch; branch rendered
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
@@ -152,6 +153,7 @@ type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Deliver
 interface Rule {            // a queue entry, normalized: one-or-many fields are lists
   skill: string; source?: string; where: Record<string, WhereValue>
   provider: string[]; skills: string[]; instructions: string[]; deliver?: Deliver
+  branch?: string
 }
 ```
 
@@ -175,8 +177,10 @@ providers:                      # order = routing preference
 sources:
   github: { repos: [acme/*] }
   asana: { workspace: "123", token_env: ASANA_TOKEN }
+branch: night/{key}             # default; {key} is required
 repos:
   acme/api:
+    branch: feat/{key}-{title}
     setup: pnpm install --frozen-lockfile
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
@@ -184,6 +188,7 @@ instructions: [notes/me.md]     # every unit
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
+    branch: fix/{key}
   - skill: implement
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
@@ -210,7 +215,21 @@ Semantics, fixed so every milestone agrees:
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one
   unit, placed at its best-ranked item's rule. The unit works in the
   linked PR's repo, else the item's `repo` field; with neither it is
-  skipped. `id` is the top item's key as a slug; `branch` is `night/<id>`.
+  skipped. `id` is the top item's key as a slug. A unit whose items link
+  an open night-shift PR (`ours`) is skipped as waiting for review; such
+  a PR is never a unit's base.
+- **Branch.** The rule's `branch`, else the repo's, else the global one,
+  rendered per unit. `{key}` is the top item's key in its own case, runs
+  outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
+  `{title}` is the title as a lowercase slug of at most 40 characters.
+  A template without `{key}`, or one that renders an invalid ref, is a
+  config error. The name is cosmetic: the push guardrail is that the
+  branch doesn't exist on the remote.
+- **Conventions.** PR title, body and commit messages have no config.
+  The harness has the model follow the repo's PR template, recent commit
+  style and any rule in the instructions (e.g. "prefix titles with the
+  key"). The publisher appends a footer naming night-shift and the run
+  id; it discloses the author and marks the PR as `ours`.
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
   Against a list-valued field (labels, tags) equals means contains. A
@@ -243,8 +262,8 @@ Semantics, fixed so every milestone agrees:
 
 ## Delivery
 
-- `draft_pr` (default): push a new `night/<key>` branch and open a draft
-  PR, into the developer's branch when the unit has one, else into the
+- `draft_pr` (default): push the unit's new branch and open a draft PR,
+  into the developer's branch when the unit has one, else into the
   default branch.
 - `report`: nothing is pushed; the output goes into the morning report.
 - `push` (after v1): commit onto the developer's own branch, only when
@@ -306,7 +325,8 @@ why a unit is placed where it is.
       from `CLAUDE_CODE_OAUTH_TOKEN` or the local login; `probe` via the
       Haiku one-turn `rate_limit_event` (`lessons.md`).
 - [ ] `harness.md` and the built-in skills, written from the prototype's
-      prompts and the "What the worker had to discover" list.
+      prompts and the "What the worker had to discover" list. The
+      harness points the model at the repo's PR template and commit style.
 - [ ] `worker/workspace.ts`: clone, install skills, write the assembled
       prompt and the context files.
 - [ ] `worker/run.ts`: parse events, kill at the ceiling or at
@@ -316,8 +336,13 @@ why a unit is placed where it is.
       process tree. Research both first and tag what you find.
 
 ### M4 Publisher, report, first real night
+- [ ] Branch template: `branch` in config (global, repo, rule) with the
+      checks above, rendered in the foreman and shown by `plan`. Forge:
+      drop M2's `night/` prefix check (the absent-branch check stays),
+      read PR bodies so `prsFor` sets `ours`.
 - [ ] `draft_pr`: publish only if the model wrote its PR body; commit
-      trailer `Night-shift: <run id>`; skip units whose `night/<…>` exists.
+      trailer `Night-shift: <run id>`; the body footer; skip units with an
+      open night-shift PR; refuse a branch that exists.
 - [ ] `report` delivery and the morning report (markdown in the run dir,
       plus a terminal summary): units done, skipped and why, quota used
       against each ceiling, report-only outputs.
@@ -408,5 +433,9 @@ why a unit is placed where it is.
   (M8) could list the user's real sections or statuses and let them pick
   one per skill, instead of a default queue guessing names. Also consider
   case-insensitive matching for native state names.
+- **PR metadata beyond the branch**: labels, reviewers, ready instead
+  of draft, a base override. None is config until someone asks.
+  Requesting reviewers notifies people through the developer's token, so
+  it needs the same scrutiny as pending reviews.
 - **`where` escape hatch**, such as a `script:` filter, if the declarative
   keys aren't enough in practice.

@@ -9,8 +9,8 @@ Nothing is built yet. This is the shape carried over from the prototype
    them, reads each provider's quota and plans the night.
 2. **Workers**, one per unit. Each runs a provider's stock CLI headless in
    a fresh clone, under a turn cap and the night's ceiling.
-3. **Publisher**, no model call. Pushes `night/<branch>` and opens draft
-   PRs; writes the morning report.
+3. **Publisher**, no model call. Pushes a new branch and opens draft PRs;
+   writes the morning report.
 
 Runs the same locally (launchd, systemd, cron) and remotely (GitHub
 Actions, a VPS, a container).
@@ -43,8 +43,9 @@ issue trackers through thin read-only adapters (`sources.md`).
 ## Guardrails
 
 - The model gets no forge token; context is prefetched into files.
-- Output defaults to a `night/<branch>` draft PR into the developer's
-  branch. Pushing onto the developer's own branch is a per-rule opt-in
+- Output defaults to a draft PR from a new branch into the developer's
+  branch. Safety comes from pushing only branches that don't exist yet,
+  never from the branch name, so the name can follow team conventions. Pushing onto the developer's own branch is a per-rule opt-in
   (after v1). Never someone else's branch, never force, merge or comment.
 - Resource watchdog and descendant kill on every worker.
 
@@ -57,6 +58,11 @@ issue trackers through thin read-only adapters (`sources.md`).
 - Quota allocation is config: a reserve, a cap per night, and a session
   ceiling, per provider.
 - v1 runs locally and in CI only; vendor cloud schedulers are out.
+- Team conventions: night-shift fixes only what code must decide before
+  the model runs, the branch name (a template, default `night/{key}`).
+  PR title, body and commit style are the model's, taken from the repo
+  (PR template, recent history) and the instructions. A footer on the PR
+  body marks night-shift's own PRs.
 
 ## Open decisions
 

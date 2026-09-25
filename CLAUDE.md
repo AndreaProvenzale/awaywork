@@ -14,8 +14,9 @@ subscription quota. Read `README.md`, then `docs/`.
   subscription credential; never store or proxy someone else's.
 - **Guardrails are not negotiable.** Workers never force-push, merge,
   touch someone else's branch, or comment on someone's behalf. By default
-  they push only new `night/<key>` branches; pushing to the developer's
-  own branch is an explicit per-rule opt-in.
+  they push only branches that did not exist (named `night/<key>` unless
+  configured); pushing to the developer's own branch is an explicit
+  per-rule opt-in.
 - **State what you checked, not what you believe.** A finding names its
   evidence; research tags claims [V]/[C]/[I] as in `docs/providers.md`.
 - **No dates in docs.** Git history owns time.
