@@ -23,5 +23,5 @@ export const githubRoutes = (): [RegExp, string][] => [
   [/q=is:issue is:open archived:false assignee:@me/, fixture('search-assigned.json')],
   [/owner=acme -f name=api -F number=1 /, fixture('pr-1.json')],
   [/^gh pr diff 1 -R acme\/api$/, fixture('pr-1.diff')],
-  [/^gh run view -R acme\/api --job 201 --log-failed$/, fixture('job-201.log')],
+  [/^gh run view -R acme\/api --job 201 --log-failed$/, fixture('job-201.txt')],
 ]
