@@ -1,0 +1,6 @@
+diff --git a/src/limit.ts b/src/limit.ts
+--- a/src/limit.ts
++++ b/src/limit.ts
+@@ -1 +1,2 @@
+ export const limit = 10
++export const burst = 20

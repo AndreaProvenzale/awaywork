@@ -1,23 +1,299 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { z } from 'zod'
-import { notImplemented } from '../core/not-implemented.js'
-import type { Source } from '../core/types.js'
+import type { Item, PrRef, Source } from '../core/types.js'
+import { type Exec, exec, graphql } from '../forge/gh.js'
 
 const config = z.strictObject({ repos: z.array(z.string()).min(1) })
+type Config = z.infer<typeof config>
 
-export const github: Source<z.infer<typeof config>> = {
-  id: 'github',
-  configSchema: config,
-  fields: {
-    repo: z.string(),
-    label: z.string(),
-    author: z.string(),
-    mine: z.boolean(),
-    draft: z.boolean(),
-    checks: z.enum(['failing', 'pending', 'passing']),
-    unresolved_threads: z.number().int().min(0),
-    review_requested: z.boolean(),
-  },
-  secrets: () => [],
-  items: async () => notImplemented('github.items', 'M2'),
-  prefetch: async () => notImplemented('github.prefetch', 'M2'),
+const PAGE = 100
+const LOG_TAIL = 200
+
+const common = `
+  id number title body url state
+  repository { nameWithOwner }
+  author { login }
+  assignees(first: 10) { nodes { login } }
+  labels(first: 20) { nodes { name } }
+  comments(last: 50) { nodes { author { login } body createdAt } }`
+
+const searchQuery = `query($q: String!) {
+  search(query: $q, type: ISSUE, first: ${PAGE}) {
+    issueCount
+    nodes {
+      __typename
+      ... on Issue { ${common}
+        closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
+          nodes { number url headRefName repository { nameWithOwner } }
+        }
+      }
+      ... on PullRequest { ${common}
+        isDraft headRefName
+        reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
+        reviewThreads(first: 100) { nodes { isResolved } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+      }
+    }
+  }
+}`
+
+const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviews(last: 50) { nodes { author { login } state body submittedAt } }
+      reviewThreads(first: 100) {
+        nodes {
+          isResolved path line
+          comments(first: 50) { nodes { author { login } body createdAt url } }
+        }
+      }
+      commits(last: 1) {
+        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name conclusion detailsUrl }
+          ... on StatusContext { context state targetUrl description }
+        } } } } }
+      }
+    }
+  }
+}`
+
+type Nodes<T> = { nodes: T[] }
+type Login = { login: string } | null
+type Comment = { author: Login; body: string; createdAt: string }
+type PrLink = {
+  number: number
+  url: string
+  headRefName: string
+  repository: { nameWithOwner: string }
+}
+interface Node extends PrLink {
+  __typename: 'Issue' | 'PullRequest'
+  id: string
+  title: string
+  body: string
+  state: string
+  author: Login
+  assignees: Nodes<{ login: string }>
+  labels: Nodes<{ name: string }>
+  comments: Nodes<Comment>
+  closedByPullRequestsReferences?: Nodes<PrLink>
+  isDraft?: boolean
+  reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
+  reviewThreads?: Nodes<{ isResolved: boolean }>
+  commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
+}
+interface Thread {
+  isResolved: boolean
+  path: string
+  line: number | null
+  comments: Nodes<Comment & { url: string }>
+}
+type Check =
+  | { __typename: 'CheckRun'; name: string; conclusion: string | null; detailsUrl: string }
+  | {
+      __typename: 'StatusContext'
+      context: string
+      state: string
+      targetUrl: string | null
+      description: string | null
+    }
+interface PrDetails {
+  reviews: Nodes<{ author: Login; state: string; body: string; submittedAt: string }>
+  reviewThreads: Nodes<Thread>
+  commits: Nodes<{ commit: { statusCheckRollup: { contexts: Nodes<Check> } | null } }>
+}
+
+const searches: { q: string; fields: Record<string, boolean> }[] = [
+  { q: 'is:pr is:open archived:false author:@me', fields: { mine: true } },
+  { q: 'is:pr is:open archived:false review-requested:@me', fields: { review_requested: true } },
+  { q: 'is:issue is:open archived:false assignee:@me', fields: { mine: true } },
+]
+
+export function githubSource(run: Exec = exec): Source<Config> {
+  return {
+    id: 'github',
+    configSchema: config,
+    fields: {
+      repo: z.string(),
+      label: z.string(),
+      author: z.string(),
+      mine: z.boolean(),
+      draft: z.boolean(),
+      checks: z.enum(['failing', 'pending', 'passing']),
+      unresolved_threads: z.number().int().min(0),
+      review_requested: z.boolean(),
+    },
+    secrets: () => [],
+
+    /** My open PRs, PRs awaiting my review and issues assigned to me, in the configured repos. */
+    async items(cfg, ctx) {
+      const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
+      const byId = new Map<string, Item>()
+      for (const { q, fields } of searches) {
+        const { search } = await graphql<{ search: { issueCount: number; nodes: Node[] } }>(
+          run,
+          searchQuery,
+          { q },
+        )
+        if (search.issueCount > PAGE)
+          ctx.log(`github: "${q}" found ${search.issueCount}, reading the first ${PAGE}`)
+        for (const node of search.nodes) {
+          if (!inScope(node.repository.nameWithOwner)) continue
+          const item = byId.get(node.id) ?? toItem(node)
+          Object.assign(item.fields, fields)
+          byId.set(node.id, item)
+        }
+      }
+      return [...byId.values()]
+    },
+
+    /** Writes pr.md, diff.patch, threads.md and checks.md for a PR; issue.md for an issue. */
+    async prefetch(item, dir) {
+      if (item.type !== 'pr') return writeFile(join(dir, 'issue.md'), itemMarkdown(item))
+      const repo = item.fields.repo as string
+      const [owner = '', name = ''] = repo.split('/')
+      const number = Number(item.key.split('#')[1])
+      const { repository } = await graphql<{ repository: { pullRequest: PrDetails } }>(
+        run,
+        prQuery,
+        { owner, name, number },
+      )
+      const pr = repository.pullRequest
+      const diff = await run('gh', ['pr', 'diff', String(number), '-R', repo])
+      const checks = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []
+      await Promise.all([
+        writeFile(join(dir, 'pr.md'), itemMarkdown(item) + reviewsMarkdown(pr)),
+        writeFile(join(dir, 'diff.patch'), diff),
+        writeFile(join(dir, 'threads.md'), threadsMarkdown(pr.reviewThreads.nodes)),
+        writeFile(join(dir, 'checks.md'), await checksMarkdown(run, repo, checks)),
+      ])
+    },
+  }
+}
+
+export const github = githubSource()
+
+function toItem(node: Node): Item {
+  const repo = node.repository.nameWithOwner
+  const isPr = node.__typename === 'PullRequest'
+  const labels = node.labels.nodes.map((l) => l.name)
+  const fields: Record<string, unknown> = {
+    repo,
+    label: labels,
+    author: node.author?.login,
+    mine: false,
+  }
+  if (isPr) {
+    const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)
+    Object.assign(fields, {
+      draft: node.isDraft,
+      unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
+      review_requested: false,
+      ...(checks && { checks }),
+    })
+  }
+  const links = isPr ? [node] : (node.closedByPullRequestsReferences?.nodes ?? [])
+  return {
+    source: 'github',
+    id: node.id,
+    key: `${repo}#${node.number}`,
+    type: isPr ? 'pr' : 'issue',
+    title: node.title,
+    description: node.body,
+    url: node.url,
+    status: node.state.toLowerCase(),
+    assignee: node.assignees.nodes[0]?.login,
+    reviewers: (node.reviewRequests?.nodes ?? []).flatMap((r) => {
+      const who = r.requestedReviewer?.login ?? r.requestedReviewer?.slug
+      return who ? [who] : []
+    }),
+    labels,
+    comments: node.comments.nodes.map(toComment),
+    linkedPrs: links.map(toPrRef),
+    fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
+    raw: node,
+  }
+}
+
+const toPrRef = (pr: PrLink): PrRef => ({
+  repo: pr.repository.nameWithOwner,
+  number: pr.number,
+  url: pr.url,
+  branch: pr.headRefName,
+})
+
+const toComment = (c: Comment) => ({
+  author: c.author?.login ?? 'ghost',
+  body: c.body,
+  at: c.createdAt,
+})
+
+function checkState(state: string | undefined): string | undefined {
+  if (state === 'SUCCESS') return 'passing'
+  if (state === 'FAILURE' || state === 'ERROR') return 'failing'
+  if (state === 'PENDING' || state === 'EXPECTED') return 'pending'
+}
+
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
+  return new RegExp(`^${escaped}$`, 'i')
+}
+
+function itemMarkdown(item: Item): string {
+  const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  return [
+    `# ${item.title}\n\n${item.url}\n\n${item.description}\n`,
+    ...(comments.length ? ['\n## Comments\n', ...comments] : []),
+  ].join('')
+}
+
+function reviewsMarkdown(pr: PrDetails): string {
+  const reviews = pr.reviews.nodes.filter((r) => r.body.trim())
+  if (!reviews.length) return ''
+  return `\n## Reviews\n${reviews.map((r) => `\n### ${r.author?.login ?? 'ghost'}, ${r.state}, ${r.submittedAt}\n\n${r.body}\n`).join('')}`
+}
+
+/** Unresolved threads grouped by title (a comment's first line), since bot findings repeat per run. */
+function threadsMarkdown(threads: Thread[]): string {
+  const groups = new Map<string, Thread[]>()
+  for (const t of threads.filter((t) => !t.isResolved)) {
+    const title = t.comments.nodes[0]?.body.trim().split('\n')[0] ?? ''
+    groups.set(title, [...(groups.get(title) ?? []), t])
+  }
+  if (!groups.size) return 'No unresolved review threads.\n'
+  return [...groups]
+    .map(([title, copies]) => {
+      const where = copies.map((t) => `- ${t.path}:${t.line ?? '?'} ${t.comments.nodes[0]?.url}`)
+      const discussion = (copies[0] as Thread).comments.nodes.map(
+        (c) => `**${c.author?.login ?? 'ghost'}**, ${c.createdAt}:\n\n${c.body}\n`,
+      )
+      return `## ${title}\n\n${copies.length} unresolved ${copies.length > 1 ? 'copies' : 'copy'}:\n${where.join('\n')}\n\n${discussion.join('\n')}`
+    })
+    .join('\n')
+}
+
+async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {
+  const failed = checks.filter((c) =>
+    c.__typename === 'CheckRun'
+      ? ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(c.conclusion ?? '')
+      : ['FAILURE', 'ERROR'].includes(c.state),
+  )
+  if (!failed.length) return 'No failing checks.\n'
+  const sections = await Promise.all(
+    failed.map(async (c) => {
+      if (c.__typename === 'StatusContext')
+        return `## ${c.context}: ${c.state}\n\n${c.description ?? ''}\n${c.targetUrl ?? ''}\n`
+      const job = c.detailsUrl.match(/\/actions\/runs\/\d+\/job\/(\d+)/)?.[1]
+      const log = job
+        ? await run('gh', ['run', 'view', '-R', repo, '--job', job, '--log-failed']).then(
+            (out) => out.trimEnd().split('\n').slice(-LOG_TAIL).join('\n'),
+            (e: Error) => `log unavailable: ${e.message}`,
+          )
+        : 'not a GitHub Actions job; open the link'
+      return `## ${c.name}: ${c.conclusion}\n\n${c.detailsUrl}\n\n\`\`\`\n${log}\n\`\`\`\n`
+    }),
+  )
+  return sections.join('\n')
 }

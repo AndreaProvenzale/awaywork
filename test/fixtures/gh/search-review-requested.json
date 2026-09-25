@@ -1,0 +1,33 @@
+{
+  "data": {
+    "search": {
+      "issueCount": 1,
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOAAAAAc4AAAA2",
+          "number": 2,
+          "title": "Cache user sessions",
+          "body": "Moves sessions to Redis.",
+          "url": "https://github.com/acme/api/pull/2",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "acme/api" },
+          "author": { "login": "teammate" },
+          "assignees": { "nodes": [] },
+          "labels": { "nodes": [] },
+          "comments": { "nodes": [] },
+          "isDraft": false,
+          "headRefName": "sessions",
+          "reviewRequests": {
+            "nodes": [
+              { "requestedReviewer": { "login": "dev" } },
+              { "requestedReviewer": { "slug": "backend" } }
+            ]
+          },
+          "reviewThreads": { "nodes": [] },
+          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "PENDING" } } }] }
+        }
+      ]
+    }
+  }
+}

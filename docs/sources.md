@@ -171,6 +171,11 @@ YouTrack, Shortcut, Plane.
 - MCP with Bearer key and read-only endpoint [V] https://linear.app/docs/mcp
 
 ### GitHub
+- `@me` works in GraphQL `search` queries (`author:`, `assignee:`,
+  `review-requested:`) [V]; `gh pr list --json` has no review threads, so
+  items come from `gh api graphql` [V].
+- `gh run view --job <id> --log-failed` prints the whole job log, not
+  just the failed step [V].
 - Projects v2 is GraphQL-only; fine-grained PATs reported to fail on it
   [C] https://github.com/orgs/community/discussions/156512
 

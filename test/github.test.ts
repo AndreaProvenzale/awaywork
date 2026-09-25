@@ -1,0 +1,228 @@
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import type { Ctx } from '../src/core/types.js'
+import { githubForge } from '../src/forge/github.js'
+import { githubSource } from '../src/sources/github.js'
+import { fixture, githubRoutes, recorded } from './fakes/gh.js'
+import { fakeItem } from './fakes/items.js'
+
+const log: string[] = []
+const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
+const tmp = () => mkdtemp(join(tmpdir(), 'nightshift-'))
+
+describe('github source', () => {
+  const source = githubSource(recorded(githubRoutes()))
+  const items = () => source.items({ repos: ['acme/*'] }, ctx)
+
+  it('reads my PRs, requested reviews and assigned issues in the configured repos', async () => {
+    const found = await items()
+    expect(found.map((i) => [i.key, i.type])).toEqual([
+      ['acme/api#1', 'pr'],
+      ['acme/web#3', 'pr'],
+      ['acme/api#2', 'pr'],
+      ['acme/api#5', 'issue'],
+      ['acme/web#6', 'issue'],
+    ])
+    const narrow = await source.items({ repos: ['acme/web'] }, ctx)
+    expect(narrow.map((i) => i.key)).toEqual(['acme/web#3', 'acme/web#6'])
+  })
+
+  it('states the facts rules match on', async () => {
+    const [pr1, pr3, pr2, issue5] = await items()
+    expect(pr1?.fields).toEqual({
+      repo: 'acme/api',
+      label: ['backend'],
+      author: 'dev',
+      mine: true,
+      draft: false,
+      checks: 'failing',
+      unresolved_threads: 2,
+      review_requested: false,
+    })
+    expect(pr3?.fields).toMatchObject({ draft: true, mine: true })
+    expect(pr3?.fields).not.toHaveProperty('checks')
+    expect(pr2?.fields).toMatchObject({ mine: false, review_requested: true, checks: 'pending' })
+    expect(pr2?.reviewers).toEqual(['dev', 'backend'])
+    expect(issue5?.fields).toEqual({
+      repo: 'acme/api',
+      label: ['night-shift', 'backend'],
+      author: 'lead',
+      mine: true,
+    })
+    expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
+  })
+
+  it('links a PR to itself and an issue to the PR that closes it', async () => {
+    const [pr1, , , issue5, issue6] = await items()
+    const link = {
+      repo: 'acme/api',
+      number: 1,
+      url: 'https://github.com/acme/api/pull/1',
+      branch: 'rate-limits',
+    }
+    expect(pr1?.linkedPrs).toEqual([link])
+    expect(issue5?.linkedPrs).toEqual([link])
+    expect(issue6?.linkedPrs).toEqual([])
+  })
+
+  it('warns when a search has more results than one page', async () => {
+    const many = fixture('search-assigned.json').replace('"issueCount": 2', '"issueCount": 150')
+    const run = recorded([[/assignee:@me/, many], ...githubRoutes()])
+    log.length = 0
+    await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(log).toEqual([
+      'github: "is:issue is:open archived:false assignee:@me" found 150, reading the first 100',
+    ])
+  })
+
+  it('prefetches a PR: view, diff, deduped threads, failed-check logs', async () => {
+    const [pr1] = await items()
+    const dir = await tmp()
+    await source.prefetch(pr1 as never, dir, ctx)
+    const read = (f: string) => readFile(join(dir, f), 'utf8')
+
+    const pr = await read('pr.md')
+    expect(pr).toContain('# Add rate limits to the public API')
+    expect(pr).toContain('### qa, 2026-01-01T10:00:00Z\n\nStill returns 500 on burst.')
+    expect(pr).toContain('### lead, CHANGES_REQUESTED')
+    expect(pr).not.toContain('review-bot')
+    expect(await read('diff.patch')).toContain('+export const burst = 20')
+
+    const threads = await read('threads.md')
+    expect(threads.match(/^## /gm)).toHaveLength(2)
+    expect(threads).toContain(
+      '## 🛑 Requirement: Reset the bucket on window change\n\n2 unresolved copies:\n' +
+        '- src/limit.ts:12 https://github.com/acme/api/pull/1#discussion_r1\n' +
+        '- src/limit.ts:30 https://github.com/acme/api/pull/1#discussion_r2',
+    )
+    expect(threads).toContain('- src/server.ts:? ')
+    expect(threads).not.toContain('Typo.')
+
+    const checks = await read('checks.md')
+    expect(checks).not.toContain('## lint')
+    expect(checks).toContain('FAIL src/limit.test.ts > refills after the window')
+    expect(checks).not.toContain('line 51\n')
+    expect(checks).toContain('line 52\n')
+    expect(checks).toContain('## sonar: FAILURE\n\nhttps://sonar.example.com/acme-api/1')
+    expect(checks).toContain('not a GitHub Actions job')
+    expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
+  })
+
+  it('prefetches an issue with its comments', async () => {
+    const [, , , issue5] = await items()
+    const dir = await tmp()
+    await source.prefetch(issue5 as never, dir, ctx)
+    expect(await readFile(join(dir, 'issue.md'), 'utf8')).toBe(
+      '# Rate limit the public API\n\nhttps://github.com/acme/api/issues/5\n\n' +
+        'Clients can flood us.\n\n## Comments\n\n### ghost, 2026-01-01T09:00:00Z\n\n+1\n',
+    )
+  })
+})
+
+describe('github forge', () => {
+  it('clones through gh login and leaves no credential helper in the clone', async () => {
+    const run = recorded([[/^git /, '']])
+    await githubForge(run).clone('acme/api', 'rate-limits', '/work/u1')
+    expect(run.calls).toEqual([
+      [
+        'git',
+        '-c',
+        'credential.helper=',
+        '-c',
+        'credential.helper=!gh auth git-credential',
+        'clone',
+        '--branch',
+        'rate-limits',
+        'https://github.com/acme/api.git',
+        '/work/u1',
+      ],
+      ['git', '-C', '/work/u1', 'config', 'credential.helper', ''],
+    ])
+    await githubForge(run).clone('acme/api', '', '/work/u2')
+    expect(run.calls[2]).not.toContain('--branch')
+  })
+
+  it('finds my PRs whose branch or title carries the key', async () => {
+    const authored = fixture('search-authored.json')
+      .replace('"headRefName": "rate-limits"', '"headRefName": "t-12-rate-limits"')
+      .replace('"title": "WIP: new billing page"', '"title": "WIP: billing (T-12)"')
+    const run = recorded([[/author:@me/, authored]])
+    const forge = githubForge(run)
+    const prs = await forge.prsFor(fakeItem({ key: 'T-12' }))
+    expect(prs.map((p) => [p.repo, p.number, p.branch])).toEqual([
+      ['acme/api', 1, 't-12-rate-limits'],
+      ['acme/web', 3, 'billing'],
+    ])
+    expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
+    expect(run.calls).toHaveLength(1)
+  })
+
+  it('checks branch existence by exact name, not prefix', async () => {
+    const run = recorded([
+      [/heads\/night\/acme-api-1$/, fixture('matching-refs-prefix.json')],
+      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
+    ])
+    const forge = githubForge(run)
+    expect(await forge.branchExists('acme/api', 'night/acme-api-1')).toBe(false)
+    expect(await forge.branchExists('acme/api', 'night/acme-api-1-old')).toBe(true)
+  })
+
+  it('pushes only new night/* branches, never forced', async () => {
+    const run = recorded([
+      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
+      [/matching-refs/, '[]'],
+      [/^git /, ''],
+    ])
+    const forge = githubForge(run)
+    await expect(forge.push('/work/u1', 'rate-limits', { repo: 'acme/api' })).rejects.toThrow(
+      'not night/*',
+    )
+    await expect(
+      forge.push('/work/u1', 'night/acme-api-1-old', { repo: 'acme/api' }),
+    ).rejects.toThrow('already exists')
+    await forge.push('/work/u1', 'night/acme-api-1', { repo: 'acme/api' })
+    const push = run.calls.at(-1) ?? []
+    expect(push).toEqual([
+      'git',
+      '-C',
+      '/work/u1',
+      '-c',
+      'credential.helper=',
+      '-c',
+      'credential.helper=!gh auth git-credential',
+      'push',
+      'https://github.com/acme/api.git',
+      'HEAD:refs/heads/night/acme-api-1',
+    ])
+    expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
+  })
+
+  it('opens a draft PR titled by the body file first line', async () => {
+    const dir = await tmp()
+    const body = join(dir, 'PR_BODY.md')
+    await writeFile(body, '# Refill the rate-limit bucket\n\nChecked: src/limit.test.ts passes.\n')
+    const run = recorded([[/^gh pr create/, 'https://github.com/acme/api/pull/10\n']])
+    const url = await githubForge(run).draftPr('acme/api', 'night/acme-api-1', 'rate-limits', body)
+    expect(url).toBe('https://github.com/acme/api/pull/10')
+    expect(run.calls[0]).toEqual([
+      'gh',
+      'pr',
+      'create',
+      '-R',
+      'acme/api',
+      '--draft',
+      '--head',
+      'night/acme-api-1',
+      '--base',
+      'rate-limits',
+      '--title',
+      'Refill the rate-limit bucket',
+      '--body',
+      'Checked: src/limit.test.ts passes.',
+    ])
+    await githubForge(run).draftPr('acme/api', 'night/x', '', body)
+    expect(run.calls[1]).not.toContain('--base')
+  })
+})

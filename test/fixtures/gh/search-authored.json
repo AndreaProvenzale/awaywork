@@ -1,0 +1,78 @@
+{
+  "data": {
+    "search": {
+      "issueCount": 3,
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOAAAAAc4AAAA1",
+          "number": 1,
+          "title": "Add rate limits to the public API",
+          "body": "Adds a token bucket per client.",
+          "url": "https://github.com/acme/api/pull/1",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "acme/api" },
+          "author": { "login": "dev" },
+          "assignees": { "nodes": [{ "login": "dev" }] },
+          "labels": { "nodes": [{ "name": "backend" }] },
+          "comments": {
+            "nodes": [
+              {
+                "author": { "login": "qa" },
+                "body": "Still returns 500 on burst.",
+                "createdAt": "2026-01-01T10:00:00Z"
+              }
+            ]
+          },
+          "isDraft": false,
+          "headRefName": "rate-limits",
+          "reviewRequests": {
+            "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]
+          },
+          "reviewThreads": {
+            "nodes": [{ "isResolved": false }, { "isResolved": false }, { "isResolved": true }]
+          },
+          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOAAAAAc4AAAA3",
+          "number": 3,
+          "title": "WIP: new billing page",
+          "body": "",
+          "url": "https://github.com/acme/web/pull/3",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "acme/web" },
+          "author": { "login": "dev" },
+          "assignees": { "nodes": [] },
+          "labels": { "nodes": [] },
+          "comments": { "nodes": [] },
+          "isDraft": true,
+          "headRefName": "billing",
+          "reviewRequests": { "nodes": [] },
+          "reviewThreads": { "nodes": [] },
+          "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_kwDOAAAAAc4AAAA9",
+          "number": 9,
+          "title": "Fix typo",
+          "body": "",
+          "url": "https://github.com/other/site/pull/9",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "other/site" },
+          "author": { "login": "dev" },
+          "assignees": { "nodes": [] },
+          "labels": { "nodes": [] },
+          "comments": { "nodes": [] },
+          "isDraft": false,
+          "headRefName": "typo",
+          "reviewRequests": { "nodes": [] },
+          "reviewThreads": { "nodes": [] },
+          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviews": {
+          "nodes": [
+            {
+              "author": { "login": "lead" },
+              "state": "CHANGES_REQUESTED",
+              "body": "Needs a test for the burst case.",
+              "submittedAt": "2026-01-01T11:00:00Z"
+            },
+            {
+              "author": { "login": "review-bot" },
+              "state": "COMMENTED",
+              "body": "",
+              "submittedAt": "2026-01-01T11:05:00Z"
+            }
+          ]
+        },
+        "reviewThreads": {
+          "nodes": [
+            {
+              "isResolved": false,
+              "path": "src/limit.ts",
+              "line": 12,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "review-bot" },
+                    "body": "🛑 Requirement: Reset the bucket on window change\n\nThe bucket never refills.",
+                    "createdAt": "2026-01-01T11:05:00Z",
+                    "url": "https://github.com/acme/api/pull/1#discussion_r1"
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "path": "src/limit.ts",
+              "line": 30,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "review-bot" },
+                    "body": "🛑 Requirement: Reset the bucket on window change\n\nThe bucket never refills.",
+                    "createdAt": "2026-01-01T12:05:00Z",
+                    "url": "https://github.com/acme/api/pull/1#discussion_r2"
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "path": "src/server.ts",
+              "line": null,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "lead" },
+                    "body": "Why 429 and not 503?",
+                    "createdAt": "2026-01-01T11:00:00Z",
+                    "url": "https://github.com/acme/api/pull/1#discussion_r3"
+                  },
+                  {
+                    "author": { "login": "dev" },
+                    "body": "429 is the standard for rate limits.",
+                    "createdAt": "2026-01-01T11:30:00Z",
+                    "url": "https://github.com/acme/api/pull/1#discussion_r4"
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": true,
+              "path": "README.md",
+              "line": 3,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "lead" },
+                    "body": "Typo.",
+                    "createdAt": "2026-01-01T11:00:00Z",
+                    "url": "https://github.com/acme/api/pull/1#discussion_r5"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "lint",
+                        "conclusion": "SUCCESS",
+                        "detailsUrl": "https://github.com/acme/api/actions/runs/100/job/200"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "test (ubuntu-latest)",
+                        "conclusion": "FAILURE",
+                        "detailsUrl": "https://github.com/acme/api/actions/runs/100/job/201"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "sonar",
+                        "conclusion": "FAILURE",
+                        "detailsUrl": "https://sonar.example.com/acme-api/1"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "ci/legacy",
+                        "state": "ERROR",
+                        "targetUrl": "https://ci.example.com/1",
+                        "description": "Build errored"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -138,7 +138,7 @@ interface Forge {
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
   push(dir, branch, opts): Promise<void>         // new branches only, never force
-  draftPr(repo, head, base, bodyFile): Promise<string>
+  draftPr(repo, head, base, bodyFile): Promise<string>   // title = the body's first line
 }
 
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
@@ -286,15 +286,20 @@ users will use to debug their customization, so its output has to explain
 why a unit is placed where it is.
 
 ### M2 GitHub source and forge
-- [ ] Items through `gh --json`: my PRs, PRs where my review is
-      requested, assigned issues; fields `repo`, `label`, `author`, `mine`,
-      `draft`, `checks`, `unresolved_threads`, `review_requested`.
-- [ ] Prefetch: PR view, diff, threads (deduped by title, per
-      `lessons.md`), failed-check logs, issue body and comments → files.
-- [ ] Forge: clone with credentials stripped, find PRs by key,
-      `night/<…>` existence check, push that refuses existing branches,
-      draft PR.
-- [ ] Contract suite passes; recorded `gh` fixtures for tests.
+- [x] Items through `gh api graphql` (`--json` lacks review threads): my
+      PRs, PRs where my review is requested, assigned issues; fields
+      `repo`, `label`, `author`, `mine` (my PR or assigned issue), `draft`,
+      `checks` (absent without checks), `unresolved_threads`,
+      `review_requested`. An issue links the open PRs that close it.
+- [x] Prefetch: `pr.md` (view, comments, reviews), `diff.patch`,
+      `threads.md` (unresolved, deduped by title, per `lessons.md`),
+      `checks.md` (last 200 lines of each failed Actions job), or
+      `issue.md` (body and comments). One item per dir.
+- [x] Forge: clone through `gh`'s login with no credential helper left
+      in the clone, find my PRs by key, `night/<…>` existence check, push
+      that refuses existing and non-`night/` branches, draft PR.
+- [x] Contract suite passes; recorded `gh` fixtures for tests. Push and
+      draft PR are tested on fixtures only; M4's burn test runs them.
 
 ### M3 Claude provider, worker, built-in skills
 - [ ] `claude.ts`: `claude -p` with stream-json, `--max-turns`, token

@@ -1,0 +1,50 @@
+{
+  "data": {
+    "search": {
+      "issueCount": 2,
+      "nodes": [
+        {
+          "__typename": "Issue",
+          "id": "I_kwDOAAAAAc4AAAA5",
+          "number": 5,
+          "title": "Rate limit the public API",
+          "body": "Clients can flood us.",
+          "url": "https://github.com/acme/api/issues/5",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "acme/api" },
+          "author": { "login": "lead" },
+          "assignees": { "nodes": [{ "login": "dev" }] },
+          "labels": { "nodes": [{ "name": "night-shift" }, { "name": "backend" }] },
+          "comments": {
+            "nodes": [{ "author": null, "body": "+1", "createdAt": "2026-01-01T09:00:00Z" }]
+          },
+          "closedByPullRequestsReferences": {
+            "nodes": [
+              {
+                "number": 1,
+                "url": "https://github.com/acme/api/pull/1",
+                "headRefName": "rate-limits",
+                "repository": { "nameWithOwner": "acme/api" }
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "Issue",
+          "id": "I_kwDOAAAAAc4AAAA6",
+          "number": 6,
+          "title": "Dark mode",
+          "body": "",
+          "url": "https://github.com/acme/web/issues/6",
+          "state": "OPEN",
+          "repository": { "nameWithOwner": "acme/web" },
+          "author": { "login": "dev" },
+          "assignees": { "nodes": [{ "login": "dev" }] },
+          "labels": { "nodes": [] },
+          "comments": { "nodes": [] },
+          "closedByPullRequestsReferences": { "nodes": [] }
+        }
+      ]
+    }
+  }
+}

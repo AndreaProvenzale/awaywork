@@ -1,6 +1,8 @@
 import type { Source } from '../src/core/types.js'
+import { githubSource } from '../src/sources/github.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { sourceContract } from './contracts/source.contract.js'
+import { githubRoutes, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
@@ -25,3 +27,4 @@ providerContract(fakeProvider(), () => ({
 }))
 
 sourceContract(fakeSource() as Source<unknown>, {})
+sourceContract(githubSource(recorded(githubRoutes())) as Source<unknown>, { repos: ['acme/*'] })
