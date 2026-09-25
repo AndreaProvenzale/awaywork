@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
@@ -25,7 +26,7 @@ const searchQuery = `query($q: String!) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName repository { nameWithOwner } }
+          nodes { number url headRefName body repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
@@ -66,6 +67,7 @@ type PrLink = {
   number: number
   url: string
   headRefName: string
+  body: string
   repository: { nameWithOwner: string }
 }
 interface Node extends PrLink {
@@ -222,6 +224,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   number: pr.number,
   url: pr.url,
   branch: pr.headRefName,
+  ours: isOurs(pr.body),
 })
 
 const toComment = (c: Comment) => ({

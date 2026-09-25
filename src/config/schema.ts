@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { defaultBranch, templateProblem } from '../core/branch.js'
 import type { Rule } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
@@ -11,6 +12,11 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like
 const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
+
+const branch = z.string().superRefine((template, ctx) => {
+  const problem = templateProblem(template)
+  if (problem) ctx.addIssue({ code: 'custom', message: problem })
+})
 
 const fallback = z.strictObject({ units: z.int().positive(), turns: z.int().positive() })
 const budget = z.strictObject({
@@ -62,9 +68,11 @@ const rule: z.ZodType<Rule, unknown> = z.strictObject({
   skills: z.array(z.string()).default([]),
   instructions: oneOrMany.default([]),
   deliver: z.enum(['draft_pr', 'report']).optional(),
+  branch: branch.optional(),
 })
 
 const repo = z.strictObject({
+  branch: branch.optional(),
   setup: z.string().optional(),
   test: z.string().optional(),
   instructions: z.string().optional(),
@@ -78,6 +86,7 @@ export const configSchema = z
     budget: budget.prefault({}),
     providers: z.array(providerEntry).min(1),
     sources: sourcesConfig,
+    branch: branch.default(defaultBranch),
     repos: z
       .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
       .default({}),

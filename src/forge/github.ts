@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises'
+import { footer, isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql } from './gh.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title headRefName repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body headRefName repository { nameWithOwner } } }
   }
 }`
 
@@ -12,6 +13,7 @@ type PrNode = {
   number: number
   url: string
   title: string
+  body: string
   headRefName: string
   repository: { nameWithOwner: string }
 }
@@ -43,6 +45,7 @@ export function githubForge(run: Exec = exec): Forge {
           number: pr.number,
           url: pr.url,
           branch: pr.headRefName,
+          ours: isOurs(pr.body),
         }))
     },
 
@@ -54,7 +57,6 @@ export function githubForge(run: Exec = exec): Forge {
     },
 
     async push(dir, branch, { repo }) {
-      if (!branch.startsWith('night/')) throw new Error(`refusing to push ${branch}: not night/*`)
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)
       await run('git', [
@@ -67,13 +69,14 @@ export function githubForge(run: Exec = exec): Forge {
       ])
     },
 
-    /** The body file's first line is the title; the rest is the body. */
-    async draftPr(repo, head, base, bodyFile) {
+    /** The body file's first line is the title; the rest, plus the footer, is the body. */
+    async draftPr(repo, head, base, bodyFile, runId) {
       const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
       const title = first.replace(/^#+\s*/, '').trim() || head
+      const body = `${rest.join('\n').trim()}\n\n${footer(runId)}`
       const into = base ? ['--base', base] : []
       const args = ['pr', 'create', '-R', repo, '--draft', '--head', head, ...into]
-      const out = await run('gh', [...args, '--title', title, '--body', rest.join('\n').trim()])
+      const out = await run('gh', [...args, '--title', title, '--body', body])
       return out.trim().split('\n').at(-1) ?? ''
     },
   }

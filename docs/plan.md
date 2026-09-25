@@ -139,7 +139,7 @@ interface Forge {
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
   push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
-  draftPr(repo, head, base, bodyFile): Promise<string>   // title = the body's first line; adds the footer
+  draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
@@ -342,19 +342,26 @@ why a unit is placed where it is.
       memory or 2 GB of disk. Findings in `design.md`, "Watchdog".
 
 ### M4 Publisher, report, first real night
-- [ ] Branch template: `branch` in config (global, repo, rule) with the
+- [x] Branch template: `branch` in config (global, repo, rule) with the
       checks above, rendered in the foreman and shown by `plan`. Forge:
       drop M2's `night/` prefix check (the absent-branch check stays),
       read PR bodies so `prsFor` sets `ours`.
-- [ ] `draft_pr`: publish only if the model wrote its PR body; commit
-      trailer `Night-shift: <run id>`; the body footer; skip units with an
-      open night-shift PR; refuse a branch that exists.
-- [ ] `report` delivery and the morning report (markdown in the run dir,
+- [x] `draft_pr`: publish only if the model wrote its PR body; commit
+      trailer `Night-shift: <run id>`, added at publish time since a
+      repo's `core.hooksPath` (husky) bypasses a hook in the clone; the
+      body footer; skip units with an open night-shift PR; refuse a
+      branch that exists, checked before the worker runs and again at
+      push.
+- [x] `report` delivery and the morning report (markdown in the run dir,
       plus a terminal summary): units done, skipped and why, quota used
       against each ceiling, report-only outputs.
-- [ ] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
+- [x] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
       context, report); `nightshift report [id]`.
-- [ ] `nightshift run` end to end, `--dry-run`, `--unit <id>`.
+- [x] `nightshift run` end to end, `--dry-run` (workspaces only, no
+      worker), `--unit <id>`. Units run one at a time; each re-routes on
+      the quota the previous worker saw; a provider at `session_max` is
+      passed over. Without a quota reading the turn cap is
+      `fallback.turns`, otherwise 200.
 - [ ] Burn test on a real repo with Claude, `per_night` included; record
       the results in `lessons.md`.
 

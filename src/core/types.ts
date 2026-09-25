@@ -5,6 +5,8 @@ export interface PrRef {
   number: number
   url: string
   branch: string
+  /** Opened by night-shift: its body carries the footer. */
+  ours: boolean
 }
 
 export interface Item {
@@ -76,7 +78,13 @@ export interface Forge {
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
-  draftPr(repo: string, head: string, base: string, bodyFile: string): Promise<string>
+  draftPr(
+    repo: string,
+    head: string,
+    base: string,
+    bodyFile: string,
+    runId: string,
+  ): Promise<string>
 }
 
 export type Scalar = string | number | boolean
@@ -90,6 +98,7 @@ export interface Rule {
   skills: string[]
   instructions: string[]
   deliver?: Deliver
+  branch?: string
 }
 
 export interface Unit {

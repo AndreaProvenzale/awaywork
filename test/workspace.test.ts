@@ -78,7 +78,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect((await git(dir, 'branch', '--show-current')).stdout).toBe('night/acme-api-1')
     expect(existsSync(join(dir, '.claude/skills/fix-ci/SKILL.md'))).toBe(true)
     expect(existsSync(join(dir, '.claude/skills/house-style/SKILL.md'))).toBe(true)
-    expect(await readFile(join(dir, '.nightshift/context/fake-1/FAKE-1.md'), 'utf8')).toBe(
+    expect(await readFile(join(dir, '.nightshift/context/fake-1/item.md'), 'utf8')).toBe(
       'CI is red',
     )
     expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')

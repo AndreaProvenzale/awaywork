@@ -26,8 +26,10 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
       `${p.unit.skill} (${p.origin ?? 'in-repo?'})`,
       p.provider ?? '-',
       p.unit.deliver,
+      p.unit.branch,
     ])
-    const lines = table([['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver'], ...rows])
+    const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
+    const lines = table([header, ...rows])
     out.push(`  ${lines[0]}`)
     plan.units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)

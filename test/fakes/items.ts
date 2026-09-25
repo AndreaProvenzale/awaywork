@@ -30,7 +30,13 @@ export function githubPr(n: number, fields: Item['fields'] = {}): Item {
     title: `PR ${n}`,
     url: `https://github.com/acme/api/pull/${n}`,
     linkedPrs: [
-      { repo: 'acme/api', number: n, url: `https://github.com/acme/api/pull/${n}`, branch },
+      {
+        repo: 'acme/api',
+        number: n,
+        url: `https://github.com/acme/api/pull/${n}`,
+        branch,
+        ours: false,
+      },
     ],
     fields: { repo: 'acme/api', mine: true, checks: 'passing', unresolved_threads: 0, ...fields },
   })

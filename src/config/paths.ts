@@ -15,3 +15,5 @@ function packageRoot(dir = dirname(fileURLToPath(import.meta.url))): string {
 
 export const harnessPath = join(packageRoot(), 'harness.md')
 export const builtinSkillsDir = join(packageRoot(), 'skills')
+
+export const runsDir = join(homedir(), '.local', 'state', 'night-shift', 'runs')

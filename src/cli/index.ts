@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { configCommand } from './config.js'
 import { planCommand } from './plan.js'
+import { runCommand } from './run.js'
 
 const program = new Command('nightshift')
   .description('Spend idle coding-subscription quota overnight')
@@ -11,5 +12,6 @@ const program = new Command('nightshift')
 
 configCommand(program)
 planCommand(program)
+runCommand(program)
 
 await program.parseAsync()

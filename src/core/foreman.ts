@@ -1,4 +1,5 @@
 import type { Config } from '../config/schema.js'
+import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
 import { defaultQueue, rank } from './queue.js'
@@ -40,12 +41,23 @@ export function planNight(input: {
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
-    const pr = items.flatMap((i) => i.linkedPrs)[0]
+    const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
+    const prs = items.flatMap((i) => i.linkedPrs)
+    const ours = prs.find((p) => p.ours)
+    if (ours) {
+      skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const pr = prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
-      skipped.push(
-        ...items.map((item) => ({ item, reason: 'no repo: no linked PR or repo field' })),
-      )
+      skip('no repo: no linked PR or repo field')
+      continue
+    }
+    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
+    const branch = renderBranch(template, items[0] as Item)
+    if (!isValidRef(branch)) {
+      skip(`branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
     const skill = resolveSkill(rule.skill, input.skills)
@@ -60,7 +72,7 @@ export function planNight(input: {
         items,
         repo,
         base: pr?.branch ?? '',
-        branch: `night/${id}`,
+        branch,
         rule,
         skill: rule.skill,
         skills: rule.skills,

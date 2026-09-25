@@ -2,6 +2,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { footer } from '../src/core/footer.js'
 import type { Ctx } from '../src/core/types.js'
 import { githubForge } from '../src/forge/github.js'
 import { githubSource } from '../src/sources/github.js'
@@ -61,6 +62,7 @@ describe('github source', () => {
       number: 1,
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
+      ours: false,
     }
     expect(pr1?.linkedPrs).toEqual([link])
     expect(issue5?.linkedPrs).toEqual([link])
@@ -144,16 +146,20 @@ describe('github forge', () => {
     expect(run.calls[2]).not.toContain('--branch')
   })
 
-  it('finds my PRs whose branch or title carries the key', async () => {
+  it('finds my PRs whose branch or title carries the key, and marks night-shift ones', async () => {
     const authored = fixture('search-authored.json')
       .replace('"headRefName": "rate-limits"', '"headRefName": "t-12-rate-limits"')
+      .replace(
+        '"body": "Adds a token bucket per client."',
+        `"body": ${JSON.stringify(footer('r0'))}`,
+      )
       .replace('"title": "WIP: new billing page"', '"title": "WIP: billing (T-12)"')
     const run = recorded([[/author:@me/, authored]])
     const forge = githubForge(run)
     const prs = await forge.prsFor(fakeItem({ key: 'T-12' }))
-    expect(prs.map((p) => [p.repo, p.number, p.branch])).toEqual([
-      ['acme/api', 1, 't-12-rate-limits'],
-      ['acme/web', 3, 'billing'],
+    expect(prs.map((p) => [p.repo, p.number, p.branch, p.ours])).toEqual([
+      ['acme/api', 1, 't-12-rate-limits', true],
+      ['acme/web', 3, 'billing', false],
     ])
     expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
     expect(run.calls).toHaveLength(1)
@@ -169,16 +175,13 @@ describe('github forge', () => {
     expect(await forge.branchExists('acme/api', 'night/acme-api-1-old')).toBe(true)
   })
 
-  it('pushes only new night/* branches, never forced', async () => {
+  it('pushes only branches absent on the remote, never forced', async () => {
     const run = recorded([
       [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
       [/matching-refs/, '[]'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
-    await expect(forge.push('/work/u1', 'rate-limits', { repo: 'acme/api' })).rejects.toThrow(
-      'not night/*',
-    )
     await expect(
       forge.push('/work/u1', 'night/acme-api-1-old', { repo: 'acme/api' }),
     ).rejects.toThrow('already exists')
@@ -204,7 +207,13 @@ describe('github forge', () => {
     const body = join(dir, 'PR_BODY.md')
     await writeFile(body, '# Refill the rate-limit bucket\n\nChecked: src/limit.test.ts passes.\n')
     const run = recorded([[/^gh pr create/, 'https://github.com/acme/api/pull/10\n']])
-    const url = await githubForge(run).draftPr('acme/api', 'night/acme-api-1', 'rate-limits', body)
+    const url = await githubForge(run).draftPr(
+      'acme/api',
+      'night/acme-api-1',
+      'rate-limits',
+      body,
+      'r1',
+    )
     expect(url).toBe('https://github.com/acme/api/pull/10')
     expect(run.calls[0]).toEqual([
       'gh',
@@ -220,9 +229,9 @@ describe('github forge', () => {
       '--title',
       'Refill the rate-limit bucket',
       '--body',
-      'Checked: src/limit.test.ts passes.',
+      `Checked: src/limit.test.ts passes.\n\n${footer('r1')}`,
     ])
-    await githubForge(run).draftPr('acme/api', 'night/x', '', body)
+    await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1')
     expect(run.calls[1]).not.toContain('--base')
   })
 })
