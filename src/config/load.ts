@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { parseDocument } from 'yaml'
 import type { z } from 'zod'
 import { defaultConfigPath } from './paths.js'
@@ -14,7 +16,8 @@ export class ConfigError extends Error {
 }
 
 export function configPath(flag?: string): string {
-  return flag ?? process.env.NIGHT_SHIFT_CONFIG ?? defaultConfigPath
+  const path = flag ?? process.env.NIGHT_SHIFT_CONFIG ?? defaultConfigPath
+  return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
 export async function loadConfig(path: string): Promise<Config> {
