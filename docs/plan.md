@@ -386,8 +386,22 @@ why a unit is placed where it is.
 - **In-repo skills in `config check`.** It sees only user and built-in
   skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
   the check. Resolve once M3 clones repos.
-- **Repo for tracker items without a PR.** An Asana task that links no
-  PR has no repo, so `plan` skips it (e.g. the example's rule 4 for a new
-  task). A rule-level `repo`, or a repo per Asana project, would fix it.
+- **Repo for tracker items without a PR.** Any tracker source, not just
+  Asana: an item that links no PR has no repo, so `plan` skips it (e.g.
+  the example's rule 4 for a new task). Symphony avoids the question by
+  binding one tracker scope to one repo per `WORKFLOW.md` and cloning in
+  an `after_create` hook [V]. Likely shape: a shared source option mapping
+  a tracker scope (project, team, board) to a repo that fills the `repo`
+  field, plus a rule-level `repo` override.
+- **Mapping tracker columns to skills.** Section and status names are the
+  user's own, so the default queue's Asana names (`QA`, `In progress`,
+  `Current sprint`) are guesses. Symphony has no mapping layer: config
+  lists provider-native `active_states`/`terminal_states`, compared
+  case-insensitively, and one prompt serves every state [V]
+  (https://github.com/openai/symphony/blob/main/SPEC.md). Our `where` on
+  native names already goes further; what's missing is discovery: `init`
+  (M8) could list the user's real sections or statuses and let them pick
+  one per skill, instead of a default queue guessing names. Also consider
+  case-insensitive matching for native state names.
 - **`where` escape hatch**, such as a `script:` filter, if the declarative
   keys aren't enough in practice.
