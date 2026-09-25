@@ -6,8 +6,8 @@ reviews, plans. Runs locally or remotely, on the vendor's own agent CLIs
 (Claude Code, Codex, Copilot, Cursor, Gemini, …) with the developer's own
 credentials.
 
-Status: **design**. No code yet. Package `nightshift-agent`, command
-`nightshift`.
+Status: **design**, skeleton only (`plan.md` M0). Package
+`nightshift-agent`, command `nightshift`.
 
 | Doc | What |
 |---|---|

@@ -32,6 +32,8 @@ the command is `nightshift`.
 | Config parsing and validation | `yaml`, `zod` (JSON Schema exported for editor autocompletion) |
 | Child processes | `execa` |
 | Tests | `vitest` |
+| Lint and format | `biome` |
+| Package manager | `pnpm` |
 | Build | `tsup` |
 
 Add a dependency only when a milestone needs it.
@@ -100,11 +102,13 @@ interface Item {            // from sources.md, plus the forge link
   comments: { author: string; body: string; at: string }[]
   linkedPrs: PrRef[]; fields: Record<string, unknown>; raw: unknown
 }
+interface PrRef { repo: string; number: number; url: string; branch: string }
+interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 
 interface Source {
   id: string
-  configSchema: ZodType
-  fields: Record<string, ZodType>                // what `where` may match on
+  configSchema: ZodObject                         // strict; the config file nests it
+  fields: Record<string, ZodType>                // what `where` may match on, one scalar each
   secrets(cfg): string[]                         // env var names it reads
   items(cfg, ctx): Promise<Item[]>               // mine, open
   prefetch(item, dir, ctx): Promise<void>        // write context files for the worker
@@ -112,7 +116,7 @@ interface Source {
 
 interface Provider {
   id: string
-  configSchema: ZodType
+  configSchema: ZodObject                         // strict; `budget` is added to it
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
@@ -137,12 +141,18 @@ interface Forge {
   draftPr(repo, head, base, bodyFile): Promise<string>
 }
 
+interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
+
 interface Unit {
   id: string; items: Item[]; repo: string; base: string; branch: string
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
 type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Delivery
+interface Rule {            // a queue entry, normalized: one-or-many fields are lists
+  skill: string; source?: string; where: Record<string, WhereValue>
+  provider: string[]; skills: string[]; instructions: string[]; deliver?: Deliver
+}
 ```
 
 ## Config
@@ -237,11 +247,11 @@ land. Dependencies: M1 needs M0; M2, M3 and M6 need M1; M4 needs M2 and
 M3; M5 and M7 need M4; M8 needs M1; M9 needs everything else.
 
 ### M0 Skeleton
-- [ ] Package, tsconfig, lint, vitest, tsup, CI workflow (lint, typecheck, test).
-- [ ] `src/core/types.ts` with the contracts above.
-- [ ] Config schema, loader and `config schema` / `config check` commands.
-- [ ] Registries for providers and sources; fakes in `test/fakes/`.
-- [ ] Shared contract suites in `test/contracts/`, run against the fakes.
+- [x] Package, tsconfig, lint, vitest, tsup, CI workflow (lint, typecheck, test).
+- [x] `src/core/types.ts` with the contracts above.
+- [x] Config schema, loader and `config schema` / `config check` commands.
+- [x] Registries for providers and sources; fakes in `test/fakes/`.
+- [x] Shared contract suites in `test/contracts/`, run against the fakes.
 
 Done when `nightshift config check` validates the example above and
 reports a clear error for a bad `where` key or an unknown skill.
@@ -361,5 +371,8 @@ why a unit is placed where it is.
   developer's token, even if unsubmitted.
 - **Config path**, and whether a team-shared in-repo `.night-shift.yml`
   can also hold queue rules.
+- **In-repo skills in `config check`.** It sees only user and built-in
+  skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
+  the check. Resolve once M3 clones repos.
 - **`where` escape hatch**, such as a `script:` filter, if the declarative
   keys aren't enough in practice.

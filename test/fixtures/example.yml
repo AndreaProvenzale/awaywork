@@ -1,0 +1,32 @@
+night: { start: "01:00", end: "07:00" }
+budget:                         # defaults; any provider can override
+  reserve: 10%                  # never go past 1 - reserve of any window
+  per_night: 15%                # at most this share of the long window per night
+  session_max: 90%              # stop a worker past this share of the short window
+  fallback: { units: 4, turns: 60 }   # when the quota can't be read
+providers:                      # order = routing preference
+  - claude: {}
+  - codex: { budget: { per_night: 5% } }
+sources:
+  github: { repos: [acme/*] }
+  asana: { workspace: "123", token_env: ASANA_TOKEN }
+repos:
+  acme/api:
+    setup: pnpm install --frozen-lockfile
+    test: pnpm vitest run {files}
+    instructions: notes/acme-api.md
+instructions: [notes/me.md]     # every unit
+queue:                          # first matching rule wins; top = highest priority
+  - skill: fix-ci
+    where: { type: pr, mine: true, checks: failing }
+  - skill: implement
+    source: github
+    where: { type: issue, label: night-shift, repo: acme/api }
+  - skill: review
+    where: { type: pr, review_requested: true }
+  - skill: implement
+    source: asana
+    where: { section: Ready, tags: backend }
+    provider: codex
+    skills: [our-api-conventions]
+    instructions: notes/backend.md
