@@ -362,8 +362,9 @@ why a unit is placed where it is.
       the quota the previous worker saw; a provider at `session_max` is
       passed over. Without a quota reading the turn cap is
       `fallback.turns`, otherwise 200.
-- [ ] Burn test on a real repo with Claude, `per_night` included; record
-      the results in `lessons.md`.
+- [x] Burn test on a real repo with Claude, `per_night` included; record
+      the results in `lessons.md`. The unit stayed below 1% of either
+      window, so stopping at the ceiling is still only tested on fakes.
 
 ### M5 Scheduling and doctor
 - [ ] `schedule install|remove` for launchd, systemd user timers and

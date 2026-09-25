@@ -89,3 +89,28 @@ The prompt should state these per repo instead:
 - A red AI-review check can mean the bot's turn cap, not findings.
 - Device-only verification is flagged in the PR, never blocked on.
 - The PR body states only what was checked; unverified rationale creeps in.
+
+## First run of night-shift itself
+
+The M4 burn test: `nightshift run` locally, Claude Code 2.1.282 on the
+developer's login, one `implement` unit on this repo's issue #1 (expand
+`~/` in the config path), `per_night: 3%`.
+
+- Plan: week 5% used, ceiling 8% set by `per_night` (pacing 26.3%,
+  4 nights to reset); session 6%.
+- The unit took 57 s and 6 turns, made one commit and wrote its PR body.
+  Neither window moved at 1% resolution (5% and 6% after), so the
+  ceiling was never tested; a longer unit has to do that.
+- The publisher pushed `night/AndreaProvenzale-night-shift-1` and opened
+  draft PR #2 into `main`, with the footer and the `Night-shift:` trailer.
+  Planning again skipped the issue as waiting for review: the issue links
+  PR #2 and its body carries the footer.
+- The PR body claimed `pnpm install`, the touched test file (9 passed)
+  and biome; rerunning them on the PR branch gave the same result. The
+  worker log cut each command at 200 characters, so the claims could not
+  be read from it; it now logs whole commands.
+- The local login brings the developer's own Claude Code settings: the
+  commit got their `Co-Authored-By` trailer and the body a "Generated
+  with Claude Code" line.
+- A new issue took a few seconds to show up in GitHub search, so `plan`
+  right after creating one can miss it.

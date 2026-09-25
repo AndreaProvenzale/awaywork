@@ -73,7 +73,7 @@ export function toEvents(line: string): WorkerEvent[] {
       .filter((block: { type: string }) => block.type === 'tool_use')
       .map((block: { name: string; input: Record<string, unknown> }) => {
         const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? ''
-        return { type: 'log', line: `${block.name}: ${String(arg).slice(0, 200)}` }
+        return { type: 'log', line: `${block.name}: ${String(arg)}` }
       })
   if (event?.type === 'result')
     return [
