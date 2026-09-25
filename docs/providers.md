@@ -88,6 +88,16 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Quota: status-line JSON `rate_limits.five_hour` / `seven_day` [V]
   https://code.claude.com/docs/en/statusline; `rate_limit_event` in
   `claude -p --output-format stream-json --verbose` (tested, `lessons.md`).
+- `--max-turns` ends the run itself: with 2, the stream stops after two
+  model messages with a `result` of subtype `error_max_turns` and exit 1
+  (2.1.282). `num_turns` in the result counts more than model messages
+  (3 there). [V, tested]
+- Skills: a `SKILL.md` folder under `.claude/skills/` in the working
+  directory is listed in the `init` event's `skills` and callable by a
+  headless run that allows the `Skill` tool (2.1.282). [V, tested]
+- Headless runs refuse writes under `.claude/` without a grant, even with
+  `Write` allowed (`permission_denied`, `safetyCheck`). [V, tested]
+- An empty `GH_CONFIG_DIR` hides a keyring `gh` login. [V, tested]
 - Routines: cloud, cron (1 h minimum), API `/fire`, GitHub events; plan
   usage plus a daily run cap. [V] https://code.claude.com/docs/en/routines
 

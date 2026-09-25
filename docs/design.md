@@ -49,6 +49,28 @@ issue trackers through thin read-only adapters (`sources.md`).
   (after v1). Never someone else's branch, never force, merge or comment.
 - Resource watchdog and descendant kill on every worker.
 
+## Watchdog
+
+Tags as in `providers.md`.
+
+- Node cannot become a child subreaper: `prctl(PR_SET_CHILD_SUBREAPER)`
+  needs a native addon [I]. A cgroup needs a delegated subtree or root,
+  which a laptop run doesn't have [I]. So both platforms poll instead.
+- Every 2 s the watchdog lists `ps -A -o pid=,ppid=,lstart=` and records
+  each descendant of night-shift by pid and start time; at the end it
+  kills those still alive with the same start time. A detached
+  grandchild whose parent exited is killed this way [V, tested on macOS;
+  the same test runs on Linux in CI]. A process born and orphaned
+  between two polls escapes [I].
+- Claude Code's background tasks stay children of `claude` while it
+  runs, in their own session (`lessons.md`), so a poll sees them before
+  they are orphaned [I].
+- Memory is `process.availableMemory()`. On macOS it matched `vm_stat`
+  free + inactive + speculative (45 GB against 44 GB), while
+  `os.freemem()` counted free pages only (24 GB) [V, tested]. On Linux
+  libuv reads `MemAvailable`, capped by the cgroup limit [C].
+- Disk is `statfs` on the clone's filesystem [V].
+
 ## Decided
 
 - TypeScript on Node, `commander` plus `ink`; YAML config with an ordered

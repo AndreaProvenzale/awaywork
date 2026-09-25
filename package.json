@@ -7,7 +7,9 @@
     "nightshift": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "harness.md",
+    "skills"
   ],
   "engines": {
     "node": ">=22"

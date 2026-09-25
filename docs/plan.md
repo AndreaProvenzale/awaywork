@@ -254,6 +254,12 @@ Semantics, fixed so every milestone agrees:
 - **Prompt**, in order: `harness.md`, the main skill, global
   `instructions`, repo `setup`/`test`/`instructions`, in-repo
   `.night-shift/instructions.md`, the rule's `instructions`.
+- **Workspace.** A unit runs in a fresh clone on its new branch, cut
+  from `base`. Skills go to the provider's `skillsDir`; `.nightshift/`
+  holds `context/<item key slug>/`, `prompt.md` and `out/`, where the
+  model writes `pr.md` (first line the title) or `report.md`. Both are
+  in `.git/info/exclude`, so the model can't commit them. The model's
+  environment has no forge token and a `GH_CONFIG_DIR` without a login.
 - **Deliver**, per rule, else the skill's default (frontmatter `metadata`),
   else `draft_pr`. Built-in `review` and `plan` default to `report`.
 - **Secrets** are only ever env var names in config. Locally they come
@@ -321,19 +327,19 @@ why a unit is placed where it is.
       draft PR are tested on fixtures only; M4's burn test runs them.
 
 ### M3 Claude provider, worker, built-in skills
-- [ ] `claude.ts`: `claude -p` with stream-json, `--max-turns`, token
+- [x] `claude.ts`: `claude -p` with stream-json, `--max-turns`, token
       from `CLAUDE_CODE_OAUTH_TOKEN` or the local login; `probe` via the
       Haiku one-turn `rate_limit_event` (`lessons.md`).
-- [ ] `harness.md` and the built-in skills, written from the prototype's
+- [x] `harness.md` and the built-in skills, written from the prototype's
       prompts and the "What the worker had to discover" list. The
       harness points the model at the repo's PR template and commit style.
-- [ ] `worker/workspace.ts`: clone, install skills, write the assembled
+- [x] `worker/workspace.ts`: clone, install skills, write the assembled
       prompt and the context files.
-- [ ] `worker/run.ts`: parse events, kill at the ceiling or at
-      `session_max`, and kill at the turn cap.
-- [ ] `worker/watchdog.ts`: kill every descendant, stop below 1.5 GB of
-      memory or 2 GB of disk. Linux: subreaper or cgroup. macOS: walk the
-      process tree. Research both first and tag what you find.
+- [x] `worker/run.ts`: parse events, kill at the ceiling or at
+      `session_max`. The provider enforces the turn cap (`--max-turns`
+      ends the run itself, `providers.md`).
+- [x] `worker/watchdog.ts`: kill every descendant, stop below 1.5 GB of
+      memory or 2 GB of disk. Findings in `design.md`, "Watchdog".
 
 ### M4 Publisher, report, first real night
 - [ ] Branch template: `branch` in config (global, repo, rule) with the

@@ -82,7 +82,7 @@ export function planNight(input: {
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
 
-function slug(key: string): string {
+export function slug(key: string): string {
   return key
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')

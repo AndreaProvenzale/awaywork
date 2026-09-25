@@ -1,16 +1,92 @@
+import { execa } from 'execa'
 import { z } from 'zod'
-import { notImplemented } from '../core/not-implemented.js'
-import type { Provider } from '../core/types.js'
+import type { Provider, Quota, WorkerEvent } from '../core/types.js'
+import { workerEnv } from '../worker/workspace.js'
 
-export const claude: Provider = {
-  id: 'claude',
-  configSchema: z.strictObject({}),
-  credential: 'static',
-  quota: 'window',
-  unattended: 'allowed',
-  detect: async () => notImplemented('claude.detect', 'M3'),
-  probe: async () => notImplemented('claude.probe', 'M3'),
-  run: () => notImplemented('claude.run', 'M3'),
-  skillsDir: '.claude/skills',
-  instructionsFile: 'CLAUDE.md',
+const PROBE_MODEL = 'claude-haiku-4-5-20251001'
+const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
+const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day: 'long' }
+const stream = ['--output-format', 'stream-json', '--verbose']
+
+/** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
+export function claudeProvider(bin = 'claude'): Provider {
+  return {
+    id: 'claude',
+    configSchema: z.strictObject({}),
+    credential: 'static',
+    quota: 'window',
+    unattended: 'allowed',
+
+    async detect() {
+      const out = await execa(bin, ['--version']).catch(() => undefined)
+      return out ? { installed: true, version: out.stdout.split(' ')[0] } : { installed: false }
+    },
+
+    /** One Haiku turn; its rate_limit_event carries both windows. */
+    async probe(ctx) {
+      const args = ['-p', 'reply ok', '--model', PROBE_MODEL, '--max-turns', '1', ...stream]
+      const { stdout } = await execa(bin, args, { env: ctx.env, extendEnv: false, reject: false })
+      const quotas = stdout.split('\n').flatMap(toEvents)
+      return quotas.findLast((e) => e.type === 'quota')?.quota ?? null
+    },
+
+    async *run(job, signal) {
+      const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
+      const child = execa(bin, [...args, '--allowedTools', TOOLS], {
+        cwd: job.dir,
+        env: workerEnv(process.env, job.dir),
+        extendEnv: false,
+        cancelSignal: signal,
+        reject: false,
+      })
+      let done: WorkerEvent | undefined
+      for await (const line of child)
+        for (const event of toEvents(line)) {
+          if (event.type === 'done') done = event
+          else yield event
+        }
+      await child
+      yield done && !signal.aborted ? done : { type: 'done', ok: false, turns: 0 }
+    },
+
+    skillsDir: '.claude/skills',
+    instructionsFile: 'CLAUDE.md',
+  }
+}
+
+export const claude = claudeProvider()
+
+/** Worker events in one stream-json line: tool calls as log lines, quota, and the final result. */
+export function toEvents(line: string): WorkerEvent[] {
+  const event = parseJson(line)
+  if (event?.type === 'rate_limit_event') {
+    const unified: Record<string, { utilization: number; resetsAt: number }> =
+      event.rate_limit_info?.unifiedWindows ?? {}
+    const windows = Object.entries(unified).flatMap(([name, w]) => {
+      const span = spans[name]
+      return span ? [{ name, span, used: w.utilization, resetsAt: w.resetsAt }] : []
+    })
+    return windows.length ? [{ type: 'quota', quota: { windows } satisfies Quota }] : []
+  }
+  if (event?.type === 'assistant')
+    return (event.message?.content ?? [])
+      .filter((block: { type: string }) => block.type === 'tool_use')
+      .map((block: { name: string; input: Record<string, unknown> }) => {
+        const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? ''
+        return { type: 'log', line: `${block.name}: ${String(arg).slice(0, 200)}` }
+      })
+  if (event?.type === 'result')
+    return [
+      { type: 'log', line: `result: ${event.subtype}` },
+      { type: 'done', ok: event.subtype === 'success', turns: event.num_turns ?? 0 },
+    ]
+  return []
+}
+
+function parseJson(line: string) {
+  try {
+    return JSON.parse(line)
+  } catch {
+    return undefined
+  }
 }
