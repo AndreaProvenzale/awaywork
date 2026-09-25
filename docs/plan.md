@@ -22,7 +22,8 @@ protects that.
 
 ## Stack
 
-TypeScript on Node ≥ 22, ESM, published to npm (`npx night-shift`).
+TypeScript on Node ≥ 22, ESM, published to npm as `nightshift-agent`;
+the command is `nightshift`.
 
 | Need | Pick |
 |---|---|
@@ -77,7 +78,7 @@ replaces them:
   worker what to do.
 - **Built-in skills** ship as defaults and cover the prototype's kinds:
   `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan`,
-  `implement`, `review`. `night-shift skills eject <name>` copies one into
+  `implement`, `review`. `nightshift skills eject <name>` copies one into
   the user's skills dir to tweak; a user skill shadows a built-in of the
   same name.
 - **The harness wraps every skill.** `harness.md` holds what no skill
@@ -146,7 +147,7 @@ type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Deliver
 
 ## Config
 
-User config, validated by zod. `night-shift config schema` prints the
+User config, validated by zod. `nightshift config schema` prints the
 JSON Schema. The path is provisional; `--config` and `NIGHT_SHIFT_CONFIG`
 override it.
 
@@ -242,7 +243,7 @@ M3; M5 and M7 need M4; M8 needs M1; M9 needs everything else.
 - [ ] Registries for providers and sources; fakes in `test/fakes/`.
 - [ ] Shared contract suites in `test/contracts/`, run against the fakes.
 
-Done when `npx night-shift config check` validates the example above and
+Done when `nightshift config check` validates the example above and
 reports a clear error for a bad `where` key or an unknown skill.
 
 ### M1 Foreman core (pure, no I/O)
@@ -253,7 +254,7 @@ reports a clear error for a bad `where` key or an unknown skill.
 - [ ] `budget.ts`: tonight's ceiling per provider (`reserve`, `per_night`,
       pacing), `session_max`, fallback, routing.
 - [ ] Skill resolution (user, in-repo, built-in) and the prompt order.
-- [ ] `night-shift plan`: collect → match → dedupe → budget, printed as a
+- [ ] `nightshift plan`: collect → match → dedupe → budget, printed as a
       table (unit, rule #, skill, provider, deliver) plus each provider's
       ceiling. No worker runs.
 
@@ -294,8 +295,8 @@ why a unit is placed where it is.
       plus a terminal summary): units done, skipped and why, quota used
       against each ceiling, report-only outputs.
 - [ ] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
-      context, report); `night-shift report [id]`.
-- [ ] `night-shift run` end to end, `--dry-run`, `--unit <id>`.
+      context, report); `nightshift report [id]`.
+- [ ] `nightshift run` end to end, `--dry-run`, `--unit <id>`.
 - [ ] Burn test on a real repo with Claude, `per_night` included; record
       the results in `lessons.md`.
 
@@ -327,11 +328,11 @@ why a unit is placed where it is.
       and in one real night.
 
 ### M8 Customization UX (ink)
-- [ ] `night-shift init`: detect installed binaries and `gh` login, pick
+- [ ] `nightshift init`: detect installed binaries and `gh` login, pick
       providers, sources and a starting queue, write the config.
-- [ ] `night-shift queue`: list rules with tonight's matches, reorder with
+- [ ] `nightshift queue`: list rules with tonight's matches, reorder with
       the keyboard, save the YAML with comments preserved.
-- [ ] `night-shift skills list|eject`: resolved skills and where each
+- [ ] `nightshift skills list|eject`: resolved skills and where each
       comes from; copy a built-in to the user dir.
 
 ### M9 Release
