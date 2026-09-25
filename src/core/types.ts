@@ -20,6 +20,7 @@ export interface Item {
   reviewers: string[]
   labels: string[]
   comments: { author: string; body: string; at: string }[]
+  /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   fields: Record<string, unknown>
   raw: unknown
@@ -41,6 +42,7 @@ export interface Source<C = unknown> {
 }
 
 export interface Quota {
+  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds. */
   windows: { name: string; span: 'short' | 'long'; used: number; resetsAt: number }[]
 }
 
@@ -94,6 +96,7 @@ export interface Unit {
   id: string
   items: Item[]
   repo: string
+  /** The linked PR's branch, or '' for the repo's default branch. */
   base: string
   branch: string
   rule: Rule

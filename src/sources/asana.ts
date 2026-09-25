@@ -17,6 +17,6 @@ export const asana: Source<z.infer<typeof config>> = {
     tags: z.string(),
   },
   secrets: (cfg) => [cfg.token_env],
-  items: () => notImplemented('asana.items', 'M6'),
-  prefetch: () => notImplemented('asana.prefetch', 'M6'),
+  items: async () => notImplemented('asana.items', 'M6'),
+  prefetch: async () => notImplemented('asana.prefetch', 'M6'),
 }

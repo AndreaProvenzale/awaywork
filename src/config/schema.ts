@@ -155,3 +155,4 @@ function unknownKey(key: string, scope: string[]): string {
   const known = scope.map((id) => `${id}: ${Object.keys(sources[id]?.fields ?? {}).join(', ')}`)
   return `unknown key "${key}"; use type or a source field (${known.join('; ')})`
 }
+export type Budget = Config['providers'][number]['budget']

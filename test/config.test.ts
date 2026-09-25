@@ -101,7 +101,7 @@ describe('skills', () => {
   it('accepts built-in and user skills and names unknown ones', async () => {
     const userDir = await mkdtemp(join(tmpdir(), 'nightshift-skills-'))
     const cfg = parseConfig(example)
-    expect(unknownSkills(cfg, userDir)).toEqual([
+    expect(await unknownSkills(cfg, userDir)).toEqual([
       `queue[3]: unknown skill "our-api-conventions" (not built in, not in ${userDir})`,
     ])
     await mkdir(join(userDir, 'our-api-conventions'))
@@ -109,6 +109,6 @@ describe('skills', () => {
       join(userDir, 'our-api-conventions', 'SKILL.md'),
       '---\nname: our-api-conventions\n---\n',
     )
-    expect(unknownSkills(cfg, userDir)).toEqual([])
+    expect(await unknownSkills(cfg, userDir)).toEqual([])
   })
 })

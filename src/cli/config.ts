@@ -20,13 +20,17 @@ export function configCommand(program: Command): void {
     .action(async () => {
       const path = configPath(program.opts().config)
       try {
-        const problems = unknownSkills(await loadConfig(path))
+        const problems = await unknownSkills(await loadConfig(path))
         if (problems.length > 0) throw new ConfigError(path, problems)
         console.log(`${path}: ok`)
       } catch (e) {
-        if (!(e instanceof ConfigError)) throw e
-        console.error(e.message)
-        process.exitCode = 1
+        reportConfigError(e)
       }
     })
+}
+
+export function reportConfigError(e: unknown): void {
+  if (!(e instanceof ConfigError)) throw e
+  console.error(e.message)
+  process.exitCode = 1
 }

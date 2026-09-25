@@ -53,7 +53,7 @@ src/
   cli/            commander entry, one file per command; ink screens in cli/ui/
   config/         schema.ts (zod), load.ts (file + env + flags), paths.ts
   core/           types.ts (the contracts below), queue.ts, dedupe.ts,
-                  budget.ts, foreman.ts, prompt.ts, report.ts
+                  budget.ts, skills.ts, foreman.ts, prompt.ts, report.ts
   providers/      index.ts (registry), claude.ts, codex.ts
   sources/        index.ts (registry), github.ts, asana.ts
   forge/          index.ts, github.ts (clone, find PRs, push, draft PR via gh)
@@ -101,7 +101,7 @@ interface Item {            // from sources.md, plus the forge link
   assignee?: string; reviewers: string[]; labels: string[]
   comments: { author: string; body: string; at: string }[]
   linkedPrs: PrRef[]; fields: Record<string, unknown>; raw: unknown
-}
+}                           // a PR item links itself
 interface PrRef { repo: string; number: number; url: string; branch: string }
 interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 
@@ -127,7 +127,7 @@ interface Provider {
   instructionsFile: string                       // CLAUDE.md, AGENTS.md, …
 }
 
-interface Quota {           // short = 5 h session, long = weekly or monthly
+interface Quota {           // short = 5 h session, long = weekly or monthly; used 0–1, resetsAt unix s
   windows: { name: string; span: 'short' | 'long'; used: number; resetsAt: number }[]
 }
 type WorkerEvent = { type: 'quota'; quota: Quota } | { type: 'log'; line: string }
@@ -144,7 +144,7 @@ interface Forge {
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
 
 interface Unit {
-  id: string; items: Item[]; repo: string; base: string; branch: string
+  id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
@@ -202,16 +202,28 @@ Semantics, fixed so every milestone agrees:
 - **Queue.** An item takes the first rule it matches. Units are ordered by
   that rule's position, then by source order (oldest first). An item that
   matches no rule is skipped. With no `queue`, a built-in default queue
-  reproduces the prototype's order (`design.md`).
+  reproduces the prototype's order (`design.md`), keeping only rules for
+  configured sources: `fix-ci` (GitHub, my PR, checks failing),
+  `qa-feedback` (Asana section `QA`), `address-review` (my PR, unresolved
+  threads), `review` (review requested), `continue` (Asana `In progress`),
+  `plan` (Asana `Current sprint`).
+- **Units.** Items sharing a key or a linked PR (repo + branch) are one
+  unit, placed at its best-ranked item's rule. The unit works in the
+  linked PR's repo, else the item's `repo` field; with neither it is
+  skipped. `id` is the top item's key as a slug; `branch` is `night/<id>`.
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
-  An unknown key is a config error.
+  Against a list-valued field (labels, tags) equals means contains. A
+  missing field equals nothing. An unknown key is a config error.
 - **Routing.** A rule's `provider` (one or a list) is used in that order;
   otherwise the `providers` order. The first provider under its ceiling
-  takes the unit.
+  takes the unit; a provider without a probe takes at most `fallback.units`.
+  `plan` routes with the quota read before the night; the run re-routes
+  as windows fill.
 - **Budget.** Each provider has a ceiling for tonight on its long window:
   the lowest of `used + per_night`, `1 - reserve`, and the paced ceiling
-  in `lessons.md` ("Budgeting a night"). Unset `per_night` leaves only
+  in `lessons.md` ("Budgeting a night"), where nights to reset is the
+  whole days until `resetsAt`, rounded up, at least one. Unset `per_night` leaves only
   the pacing. Workers stop at that ceiling or at `session_max` of the
   short window. For `credits` providers the long window is the month.
   Without a probe, `fallback` caps units and turns per night.
@@ -257,14 +269,14 @@ Done when `nightshift config check` validates the example above and
 reports a clear error for a bad `where` key or an unknown skill.
 
 ### M1 Foreman core (pure, no I/O)
-- [ ] `queue.ts`: rule matching, `where` semantics, ordering, the default
+- [x] `queue.ts`: rule matching, `where` semantics, ordering, the default
       queue.
-- [ ] `dedupe.ts`: one unit per feature (same repo+branch or linked item
+- [x] `dedupe.ts`: one unit per feature (same repo+branch or linked item
       key); the highest-ranked rule wins; items merge.
-- [ ] `budget.ts`: tonight's ceiling per provider (`reserve`, `per_night`,
+- [x] `budget.ts`: tonight's ceiling per provider (`reserve`, `per_night`,
       pacing), `session_max`, fallback, routing.
-- [ ] Skill resolution (user, in-repo, built-in) and the prompt order.
-- [ ] `nightshift plan`: collect → match → dedupe → budget, printed as a
+- [x] Skill resolution (user, in-repo, built-in) and the prompt order.
+- [x] `nightshift plan`: collect → match → dedupe → budget, printed as a
       table (unit, rule #, skill, provider, deliver) plus each provider's
       ceiling. No worker runs.
 
@@ -374,5 +386,8 @@ why a unit is placed where it is.
 - **In-repo skills in `config check`.** It sees only user and built-in
   skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
   the check. Resolve once M3 clones repos.
+- **Repo for tracker items without a PR.** An Asana task that links no
+  PR has no repo, so `plan` skips it (e.g. the example's rule 4 for a new
+  task). A rule-level `repo`, or a repo per Asana project, would fix it.
 - **`where` escape hatch**, such as a `script:` filter, if the declarative
   keys aren't enough in practice.

@@ -18,6 +18,6 @@ export const github: Source<z.infer<typeof config>> = {
     review_requested: z.boolean(),
   },
   secrets: () => [],
-  items: () => notImplemented('github.items', 'M2'),
-  prefetch: () => notImplemented('github.prefetch', 'M2'),
+  items: async () => notImplemented('github.items', 'M2'),
+  prefetch: async () => notImplemented('github.prefetch', 'M2'),
 }
