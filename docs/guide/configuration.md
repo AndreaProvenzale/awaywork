@@ -60,6 +60,7 @@ queue:                          # first matching rule wins; top = highest priori
   - skill: implement
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
+    order: oldest
   - skill: review
     where: { type: pr, review_requested: true }
   - skill: implement
@@ -134,6 +135,7 @@ the repo's PR template, its recent commit style and your instructions
 | `instructions` | One or more instruction files for this rule |
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
+| `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 
 ### `where`
 
@@ -149,6 +151,13 @@ where:
 A missing field equals nothing. An unknown key is a config error that
 lists the keys each source offers. The [field table](./how-it-works.md#items)
 lists them too.
+
+### `order`
+
+Within a rule, units run in the order the source returns items; for
+GitHub that is newest first, so with little quota the oldest can wait
+night after night. `order: oldest` runs them first. Items without the
+timestamp go last.
 
 ## Secrets
 

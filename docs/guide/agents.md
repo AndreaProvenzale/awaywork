@@ -33,9 +33,15 @@ Setting up:
 
 1. `npm install -g nightshift-agent`; check `claude --version`,
    `codex --version`, `gh auth status`.
-2. `nightshift init` needs a terminal. Write
-   `~/.config/night-shift/config.yml` directly instead, from
-   [Configuration](./configuration.md) and the
+2. `nightshift init --yes` writes `~/.config/night-shift/config.yml`
+   without a terminal: the installed providers, `github` when `gh` is
+   logged in (repos `<login>/*`), the default queue and a 01:00-07:00
+   night. Override with `--provider claude codex` (first takes units
+   first), `--source github asana` and `--night 23:00-06:00`. Asana is
+   skipped with a note unless `ASANA_TOKEN` is set; then it takes the
+   first workspace and every project with the user's tasks. It refuses
+   to replace an existing config without `--force`. To go further, edit
+   the file from [Configuration](./configuration.md) and the
    [reference](../reference/config.md). Asana gids come from
    `https://app.asana.com/api/1.0/workspaces` and `/projects` with the
    user's token.
@@ -54,7 +60,8 @@ What each command does:
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
-| `schedule install`, `ci init` | Installs a nightly job or writes a workflow. Ask first. |
+| `schedule install` | Installs a nightly job, or writes a workflow with `--with github-actions`. Ask first. |
+| `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `init`, `queue`, `config edit` | Interactive; need a terminal |
 
 Machine-readable output:
