@@ -11,7 +11,7 @@ import { describeRule } from './format.js'
 import { collectItems } from './plan.js'
 
 export function queueCommand(program: Command): void {
-  program
+  const queue = program
     .command('queue')
     .description('show what each rule matches tonight and reorder the rules with the keyboard')
     .action(async () => {
@@ -35,16 +35,45 @@ export function queueCommand(program: Command): void {
         const order = await reorder(rules, items, header)
         if (!order) console.log('Not saved')
         else if (config.queue && order.every((old, i) => old === i)) console.log('No change')
-        else {
-          const next = withQueueOrder(text, rules, order)
-          parseConfig(next, path)
-          await writeFile(path, next)
-          console.log(`Saved ${path}`)
-        }
+        else await saveOrder(path, text, rules, order)
       } catch (e) {
         reportConfigError(e)
       }
     })
+
+  queue
+    .command('move <from> <to>')
+    .description('move the rule at position <from> to position <to>, as numbered by queue')
+    .action(async (from: string, to: string) => {
+      const path = configPath(program.opts().config)
+      try {
+        const config = await loadConfig(path)
+        const text = await readFile(path, 'utf8')
+        const rules = config.queue ?? defaultRules(Object.keys(config.sources))
+        const order = moveOrder(rules.length, Number(from), Number(to))
+        if (!order) return queue.error(`error: positions go from 1 to ${rules.length}`)
+        if (config.queue && order.every((old, i) => old === i)) console.log('No change')
+        else await saveOrder(path, text, rules, order)
+      } catch (e) {
+        reportConfigError(e)
+      }
+    })
+}
+
+async function saveOrder(path: string, text: string, rules: Rule[], order: number[]) {
+  const next = withQueueOrder(text, rules, order)
+  parseConfig(next, path)
+  await writeFile(path, next)
+  console.log(`Saved ${path}`)
+}
+
+/** The order (old indices) after moving position `from` to `to` (1-based); undefined when out of range. */
+export function moveOrder(length: number, from: number, to: number): number[] | undefined {
+  const valid = (p: number) => Number.isInteger(p) && p >= 1 && p <= length
+  if (!valid(from) || !valid(to)) return undefined
+  const order = Array.from({ length }, (_, i) => i)
+  order.splice(to - 1, 0, ...order.splice(from - 1, 1))
+  return order
 }
 
 /** One block of lines per rule, then the unmatched items; numbers are positions in `rules`. */
