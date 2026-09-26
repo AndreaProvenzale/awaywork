@@ -2,6 +2,15 @@ import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
+/** The plan and warnings as JSON; items drop their raw source payload. */
+export function planJson(plan: NightPlan, warnings: string[] = []): string {
+  return JSON.stringify(
+    { ...plan, warnings },
+    (key, value) => (key === 'raw' ? undefined : value),
+    2,
+  )
+}
+
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
   const out: string[] = []

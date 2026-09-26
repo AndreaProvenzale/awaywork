@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { formatPlan } from '../src/cli/format.js'
+import { formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
@@ -240,5 +240,24 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
+  })
+})
+
+describe('plan --json', () => {
+  it('prints the plan and warnings, without raw source payloads', () => {
+    const result = plan(example, [issue, githubPr(3)], { claude: week(0.36), codex: null })
+    const json = JSON.parse(planJson(result, ['source asana: offline']))
+    expect(Object.keys(json)).toEqual([
+      'queue',
+      'defaultQueue',
+      'units',
+      'skipped',
+      'allowances',
+      'warnings',
+    ])
+    expect(json.warnings).toEqual(['source asana: offline'])
+    expect(json.units[0].unit).toMatchObject({ id: 'acme-api-5', skill: 'implement' })
+    expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
+    expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
 })
