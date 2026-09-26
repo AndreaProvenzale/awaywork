@@ -1,68 +1,126 @@
 # night-shift
 
-Spend the coding-agent quota you didn't use today on your leftovers
-overnight. night-shift is a CLI that runs Claude Code and Codex headless,
-with your own login, on red CI, review threads, QA feedback, requested
-reviews and plans. In the morning you find draft PRs and a report.
+> Your AI coding subscription resets every week, used or not.
+> night-shift puts Claude Code, Codex and friends to work while you sleep.
+
+You log off with red CI, 11 PR comments and a QA ticket that just says
+"broken on Safari". Your coding agent logs off with 60% of its weekly quota
+unused. Both are a waste.
+
+night-shift is a CLI that clocks in when you clock out. It pulls your
+leftovers from your forge and task tracker and runs your agents' stock
+CLIs on them headless, logged in as you. It paces itself so you still have
+quota left in the morning. You wake up to draft PRs and a report. Nothing
+gets merged or force-pushed, and nobody gets a comment "from you".
+
+## Quick start
 
 ```sh
-npm install -g nightshift-agent
-nightshift init            # pick agents, sources and a queue
-nightshift plan            # what tonight would do, no agent runs
-nightshift schedule install
+npm i -g nightshift-agent
+nightshift init     # finds your agents and forge login, asks the rest
+nightshift plan     # a dry look at tonight, zero tokens spent
+```
+
+```
+$ nightshift plan
+Queue
+  #1  fix-ci     type=pr mine=true checks=failing
+  #2  review     type=pr review_requested=true
+
+Providers
+  claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
+
+Units
+     unit        repo      rule  skill             provider  deliver   branch
+  1  acme-api-1  acme/api  #1    fix-ci (builtin)  claude    draft_pr  night/acme-api-1
+     github acme/api#1: Add rate limits
+  2  acme-api-2  acme/api  #2    review (builtin)  claude    report    night/acme-api-2
+     github acme/api#2: Cache invalidation
+```
+
+Looks sane? Run one unit for real, then hand over the night:
+
+```sh
+nightshift run --unit acme-api-1
+nightshift schedule install    # launchd, systemd or cron; `ci init` for GitHub Actions
+```
+
+Next morning:
+
+```
+$ nightshift report
+| # | Unit       | Skill  | Provider | Status        | Result                                  |
+|---|------------|--------|----------|---------------|-----------------------------------------|
+| 1 | acme-api-1 | fix-ci | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
+| 2 | acme-api-2 | review | claude   | done          | report below                            |
+
+- claude: seven_day 36% to 45%, ceiling 51%; session 10% to 10%, stop at 90%
 ```
 
 **Docs:** https://andreaprovenzale.github.io/night-shift/ ·
-**For AI agents:** [`llms.txt`](https://andreaprovenzale.github.io/night-shift/llms.txt)
+**Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/night-shift/llms.txt).
 
-## What a night looks like
+## What it picks up
 
-1. **Plan**, no model call. Reads your open PRs, requested reviews,
-   assigned issues and tracker tasks; an ordered queue of rules turns
-   them into units of work; each agent's remaining quota sets tonight's
-   ceiling.
-2. **Work.** One unit at a time, the vendor's own CLI runs headless in a
-   fresh clone, with the context prefetched into files and a skill that
-   says what to do. A worker stops at the ceiling.
-3. **Publish**, no model call. A new branch and a draft PR per unit, or a
-   report for reviews and plans. `nightshift report` shows the night.
+The queue works top-down and the first rule that matches wins. These are the
+defaults:
 
-| Rule, by default | Skill | Delivers |
+| When | Skill | You get |
 |---|---|---|
-| My PR, checks failing | `fix-ci` | draft PR |
-| Asana task in `QA` | `qa-feedback` | draft PR |
-| My PR, unresolved threads | `address-review` | draft PR |
-| My review requested | `review` | report |
-| Asana task in `In progress` | `continue` | draft PR |
-| Asana task in `Current sprint` | `plan` | report |
+| your PR has red checks | `fix-ci` | draft PR |
+| a task lands in `QA` | `qa-feedback` | draft PR |
+| your PR has unresolved threads | `address-review` | draft PR |
+| someone requested your review | `review` | report |
+| a task is `In progress` | `continue` | draft PR |
+| a task is in `Current sprint` | `plan` | report |
 
-Rules, skills, providers per rule, branch names and budgets are all
-config. `nightshift queue` reorders rules with the keyboard.
+Adding a rule takes a few lines of YAML:
 
-## Safety
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    provider: codex
+```
 
-- The model gets no GitHub or tracker token. Context is prefetched into
-  files; night-shift pushes and opens the PR itself.
-- Only branches that don't exist yet are pushed. Never force, merge,
-  comment, or touch someone else's branch.
-- Only the vendor's unmodified binary, with your own credentials. No
-  backing API calls with a subscription token, no credential proxying.
-- A watchdog kills every process a worker left behind and stops a unit
-  that runs out of memory or disk.
+`nightshift queue` reorders rules from the keyboard. Skills are plain
+markdown: `nightshift skills eject fix-ci` and hack away.
 
-Details in [Safety](docs/guide/safety.md).
+## How much quota it burns
+
+Tonight's ceiling on the weekly window:
+
+```
+ceiling = used + (1 - reserve - used) / nights_until_reset
+```
+
+Early in the week that's a small slice, and it gets greedier as the reset
+gets closer. Every worker reads the live rate-limit events from its own
+stream and stops at the ceiling, or when the short session window passes
+90%. There's no token estimation and no guessing.
+
+## The paranoid bit
+
+- **The model never sees a forge token.** PR diffs, threads and CI logs are
+  prefetched into files. night-shift itself does the push.
+- **It only pushes branches it creates** (`night/<key>`). No force pushes,
+  merges or comments, and it never touches anyone else's branch.
+- **It runs the vendor's own binary with your login.** It never calls the
+  backing API with a subscription token and never proxies credentials.
+- **A watchdog cleans up** after every worker and kills units that eat all
+  the RAM or disk.
+
+More in [Safety](docs/guide/safety.md).
 
 ## Supported
 
-| | v1 |
-|---|---|
-| Agents | Claude Code, Codex |
-| Sources | GitHub (also the forge), Asana |
-| Runs on | launchd, systemd, cron, GitHub Actions |
+| Agents | Sources | Runs on |
+|---|---|---|
+| Claude Code, Codex | GitHub, Asana | launchd, systemd, cron, GitHub Actions |
 
-Requires Node 22+, `git`, and `gh` logged in. [Providers](docs/providers.md)
-and [sources](docs/sources.md) hold the research on what else could be
-added and on what terms.
+More agents and task trackers are on the way, or bring your own:
+[add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md).
+Needs Node 22+, `git`, and `gh auth login`.
 
 ## Docs
 
@@ -78,7 +136,8 @@ added and on what terms.
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 
-Research and design notes: [design](docs/design.md), [plan](docs/plan.md),
+Research and design notes: [providers](docs/providers.md),
+[sources](docs/sources.md), [design](docs/design.md), [plan](docs/plan.md),
 [lessons](docs/lessons.md), [e2e](docs/e2e.md).
 
 ## License
