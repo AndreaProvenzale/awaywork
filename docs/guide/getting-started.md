@@ -70,7 +70,9 @@ Queue
   #2  review     type=pr review_requested=true
 
 Providers
-  claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
+  provider  window     used  ceiling  set by     resets in  session / stop at
+  claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+    other limits: reserve cap 90%, pacing 54%
 
 Units
      unit        repo      rule  skill             provider  deliver   branch

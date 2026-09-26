@@ -21,7 +21,7 @@ export function planCommand(program: Command): void {
       try {
         const config = await loadConfig(configPath(program.opts().config))
         const { plan, warnings } = await planTonight(config)
-        console.log(formatPlan(plan, warnings))
+        console.log(formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
       }
