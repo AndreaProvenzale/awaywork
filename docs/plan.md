@@ -248,7 +248,8 @@ Semantics, fixed so every milestone agrees:
   in `lessons.md` ("Budgeting a night"), where nights to reset is the
   whole days until `resetsAt`, rounded up, at least one. Unset `per_night` leaves only
   the pacing. Workers stop at that ceiling or at `session_max` of the
-  short window. For `credits` providers the long window is the month.
+  short window, as soon as the provider reports quota: mid-run for
+  Claude, after the run for Codex. For `credits` providers the long window is the month.
   Without a probe, `fallback` caps units and turns per night.
 - **Skills.** `skill` is the main skill, and `skills` are extras available
   to the worker. A name is looked up in `~/.config/night-shift/skills/`,
@@ -408,10 +409,11 @@ why a unit is placed where it is.
       refreshed file, so Codex remote stays best effort.
 - [x] `probe` via `account/rateLimits/read` through `codex app-server`,
       burn-tested and recorded in `providers.md` [V]; a failed read falls
-      back to a fixed budget. `exec` carries no quota, so a run re-reads
-      it every 10 tool calls and after it ends.
-- [ ] Contract suite; routing with two providers exercised in `plan`
-      and in one real night.
+      back to a fixed budget. `exec` carries no quota and a second Codex
+      process could race the token refresh, so a run reads it once it
+      ends: Codex workers stop at the ceiling between units, not mid-run.
+- [x] Contract suite; routing with two providers exercised in `plan`
+      (tests, and `plan` on this repo) and in one real night (`lessons.md`).
 
 ### M8 Customization UX (ink)
 - [ ] `nightshift init`: detect installed binaries and `gh` login, pick
