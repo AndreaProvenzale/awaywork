@@ -209,6 +209,7 @@ Commands:
                      after night.end
   remove             remove the nightly job, and
                      .github/workflows/night-shift.yml in the current repo
+  status             show the installed nightly job
   help [command]     display help for command
 ```
 
@@ -232,6 +233,17 @@ Usage: nightshift schedule remove [options]
 
 remove the nightly job, and .github/workflows/night-shift.yml in the current
 repo
+
+Options:
+  -h, --help  display help for command
+```
+
+## nightshift schedule status
+
+```text
+Usage: nightshift schedule status [options]
+
+show the installed nightly job
 
 Options:
   -h, --help  display help for command
