@@ -1,0 +1,163 @@
+---
+description: The night-shift config file by example, covering the night window, budgets, providers, sources, per-repo settings, branch names, instructions and queue rules with where matching.
+---
+
+# Configuration
+
+One YAML file, `~/.config/night-shift/config.yml` by default;
+`--config <path>` or `NIGHT_SHIFT_CONFIG` point elsewhere. Every key is
+listed in the [reference](../reference/config.md).
+
+## Editing safely
+
+```sh
+nightshift config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
+nightshift config check   # validate, including skill names
+nightshift plan           # see what the change does tonight
+```
+
+For autocompletion and hover docs in editors with the YAML language
+server (VS Code's YAML extension, JetBrains, Neovim), put this first line
+in the file:
+
+```yaml
+# yaml-language-server: $schema=https://andreaprovenzale.github.io/night-shift/config.schema.json
+```
+
+`nightshift config schema` prints the same JSON Schema for the installed
+version.
+
+## A full example
+
+```yaml
+night: { start: "01:00", end: "07:00" }
+budget:                         # defaults; any provider can override
+  reserve: 10%                  # never go past 1 - reserve of any window
+  per_night: 15%                # at most this share of the long window per night
+  session_max: 90%              # stop a worker past this share of the short window
+  fallback: { units: 4, turns: 60 }   # when the quota can't be read
+providers:                      # order = routing preference
+  - claude
+  - codex: { budget: { per_night: 5% } }
+sources:
+  github: { repos: [acme/*] }
+  asana:
+    workspace: "123"
+    token_env: ASANA_TOKEN
+    project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+branch: night/{key}             # default; {key} is required
+repos:
+  acme/api:
+    branch: feat/{key}-{title}
+    setup: pnpm install --frozen-lockfile
+    test: pnpm vitest run {files}
+    instructions: notes/acme-api.md
+instructions: [notes/me.md]     # every unit
+queue:                          # first matching rule wins; top = highest priority
+  - skill: fix-ci
+    where: { type: pr, mine: true, checks: failing }
+    branch: fix/{key}
+  - skill: implement
+    source: github
+    where: { type: issue, label: night-shift, repo: acme/api }
+  - skill: review
+    where: { type: pr, review_requested: true }
+  - skill: implement
+    source: asana
+    where: { section: Ready, tags: backend }
+    provider: codex
+    skills: [our-api-conventions]
+    instructions: notes/backend.md
+```
+
+## Night and budget
+
+`night.start` is when a scheduled run begins; no unit starts after
+`night.end`. Times are local to the machine, or to the workflow's
+`timezone` in GitHub Actions.
+
+Budgets are shares of each provider's quota windows; see
+[How it works](./how-it-works.md#budget) for how they combine. Start low:
+`per_night: 5%` for a week shows what a unit costs you before you raise it.
+
+## Providers
+
+A list, in routing order. A bare name uses the defaults; a map overrides
+the budget for that provider.
+
+## Sources
+
+| Source | Keys |
+|---|---|
+| `github` | `repos`: `owner/name` globs such as `acme/*` |
+| `asana` | `workspace` gid, optional `projects` (gids), `project_repos` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
+
+Asana has no read-only personal token: the token can do anything you can.
+night-shift only reads with it and never hands it to the agent. Create
+one just for night-shift so you can revoke it alone.
+
+## Branch names
+
+`branch` is a template rendered per unit, set globally, per repo or per
+rule (the most specific wins). `{key}` is required; `{title}` is the
+item's title as a slug of at most 40 characters.
+
+| Item | `{key}` |
+|---|---|
+| GitHub PR or issue `acme/api#12` | `acme-api-12` |
+| Asana task with custom ID `ENG-12` | `ENG-12` |
+
+The name is cosmetic. The guardrail is that night-shift only pushes a
+branch that doesn't exist on the remote yet.
+
+## Repos and instructions
+
+`repos.<owner/name>` holds the `setup` and `test` commands the agent
+should use there, plus an instructions file. `instructions` at the top
+level, per repo and per rule are **file paths**, relative to the config
+file. A repo can also carry `.night-shift/instructions.md`, read from the
+clone.
+
+PR titles, bodies and commit messages have no config: the agent follows
+the repo's PR template, its recent commit style and your instructions
+(e.g. "prefix PR titles with the task key").
+
+## Queue rules
+
+| Key | Meaning |
+|---|---|
+| `skill` | The skill that does the work (`nightshift skills list`) |
+| `source` | Only items from this source |
+| `where` | Conditions on `type` and the source's fields |
+| `provider` | One or a list; overrides the global order for this rule |
+| `skills` | Extra skills the agent may use |
+| `instructions` | One or more instruction files for this rule |
+| `deliver` | `draft_pr` or `report`; default from the skill |
+| `branch` | Branch template for this rule |
+
+### `where`
+
+```yaml
+where:
+  type: pr                          # equals
+  checks: [failing, pending]        # any of
+  unresolved_threads: { not: 0 }    # not
+  label: night-shift                # on a list field: contains
+  "fields.Priority": High           # an Asana custom field
+```
+
+A missing field equals nothing. An unknown key is a config error that
+lists the keys each source offers. The [field table](./how-it-works.md#items)
+lists them too.
+
+## Secrets
+
+The config holds env var **names** only. Values come from the environment
+or `~/.config/night-shift/env` (the environment wins).
+
+| Variable | Used by |
+|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`) |
+| `CODEX_AUTH_JSON` | Codex on a runner: seeds `auth.json` when missing |
+| `ASANA_TOKEN` (or your `token_env`) | Asana |
+| `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |

@@ -1,3 +1,7 @@
+---
+description: Research on which coding subscriptions can run headless and remotely, how their quota can be read, and what their terms allow, with claims tagged by evidence.
+---
+
 # Providers
 
 Can each coding subscription's quota be spent headlessly, on a machine

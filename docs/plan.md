@@ -1,3 +1,7 @@
+---
+description: "How v1 is built: scope, stack, architecture, the contracts between modules, config semantics and milestones."
+---
+
 # Plan: first release
 
 How v1 gets built, in milestones an agent can pick up in a fresh session.
@@ -37,6 +41,7 @@ the command is `nightshift`.
 | Lint and format | `biome` |
 | Package manager | `pnpm` |
 | Build | `tsup` |
+| Docs site | `vitepress` on GitHub Pages |
 
 Add a dependency only when a milestone needs it.
 
@@ -458,9 +463,15 @@ Schema for autocompletion and `config edit` as the safety net.
 
 ### M9 Release
 - [ ] The end-to-end pass in `e2e.md`, results recorded in `lessons.md`.
-- [ ] README usage, a configuration reference generated from the schema,
-      and guides for adding a provider, a source and a skill.
-- [ ] npm publish workflow, versioning, NOTICE (Symphony credit).
+- [x] README usage, a configuration reference generated from the schema,
+      and guides for adding a provider, a source and a skill. User docs in
+      `docs/guide/` and `docs/extend/`, published to GitHub Pages with
+      VitePress, plus `llms.txt`, `llms-full.txt` and each page as Markdown.
+      `pnpm docs:gen` writes the CLI and config references and the JSON
+      Schema from the built CLI; CI fails when they are stale.
+- [x] npm publish workflow (a `v*` tag, trusted publishing, `next` for
+      pre-releases), versioning in `CONTRIBUTING.md`, Apache-2.0 LICENSE
+      and NOTICE (Symphony credit). Neither workflow has run yet.
 
 ## Rules for agents picking this up
 

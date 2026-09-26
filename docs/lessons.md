@@ -1,3 +1,7 @@
+---
+description: "What real runs verified: Claude Code on runners, reading quota, budgeting a night, guardrails that held, and the burn tests of night-shift itself."
+---
+
 # Lessons from the prototype
 
 night-shift started as a private prototype: scheduled GitHub Actions running

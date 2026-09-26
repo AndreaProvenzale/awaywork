@@ -1,0 +1,45 @@
+# Contributing
+
+Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and
+coding agents alike. [docs/plan.md](docs/plan.md) has the contracts and
+config semantics every change keeps to.
+
+## Setup
+
+```sh
+pnpm install
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm docs:gen    # after a CLI or config schema change; CI fails on stale output
+pnpm docs:dev    # the site at http://localhost:5173/night-shift/
+```
+
+Tests run against fakes and recorded fixtures. Tests that spend a real
+subscription (`test/real-*.test.ts`) are skipped unless
+`NIGHTSHIFT_REAL=1` or the source's token is set.
+
+## Adding things
+
+- A provider: [docs/extend/providers.md](docs/extend/providers.md).
+- A source: [docs/extend/sources.md](docs/extend/sources.md).
+- A built-in skill: a folder in `skills/` with a `SKILL.md`; see
+  [docs/guide/skills.md](docs/guide/skills.md).
+
+A new provider or source claim tagged [C] or [I] needs a burn test before
+code depends on it.
+
+## Releasing
+
+Versions follow SemVer; while on 0.x a minor version may change the
+config. A tag `vX.Y.Z` publishes to npm as `latest`, `vX.Y.Z-rc.N` as
+`next`, and both create a GitHub release with generated notes
+(`.github/workflows/release.yml`).
+
+```sh
+npm version 0.1.0-rc.1    # bumps package.json, commits, tags
+git push --follow-tags
+```
+
+npm publishes through trusted publishing, without a token. It can only be
+configured for a package that exists, so the very first version goes out
+by hand: `pnpm build && npm publish --tag next`, then on npmjs.com add
+the trusted publisher (this repo, workflow `release.yml`).

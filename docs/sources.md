@@ -1,3 +1,7 @@
+---
+description: Research on which task trackers a script can read headless, their tokens and limits, and why night-shift uses thin adapters instead of MCP.
+---
+
 # Sources
 
 Where work units come from besides the forge: the developer's task

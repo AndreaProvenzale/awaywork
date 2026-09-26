@@ -1,7 +1,11 @@
-# Design (draft)
+---
+description: "The shape of night-shift: foreman, workers and publisher, the provider adapter, work units, guardrails and the watchdog findings."
+---
 
-Nothing is built yet. This is the shape carried over from the prototype
-(`lessons.md`) and the provider research (`providers.md`).
+# Design
+
+The shape carried over from the prototype (`lessons.md`) and the
+provider research (`providers.md`); `plan.md` has the details.
 
 ## Shape
 
