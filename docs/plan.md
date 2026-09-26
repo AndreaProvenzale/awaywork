@@ -431,8 +431,9 @@ why a unit is placed where it is.
 - [x] `probe` via `account/rateLimits/read` through `codex app-server`,
       burn-tested and recorded in `providers.md` [V]; a failed read falls
       back to a fixed budget. `exec` carries no quota and a second Codex
-      process could race the token refresh, so a run reads it once it
-      ends: Codex workers stop at the ceiling between units, not mid-run.
+      process could race the token refresh, so a run reads it after each
+      tool call only while `auth.json` is under 7 days old, else once it
+      ends.
 - [x] Contract suite; routing with two providers exercised in `plan`
       (tests, and `plan` on this repo) and in one real night (`lessons.md`).
 

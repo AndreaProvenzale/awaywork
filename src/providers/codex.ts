@@ -21,6 +21,8 @@ const EXEC = [
 ]
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
+/** Codex refreshes a token 8 days after `last_refresh`; a day's margin covers a long run. */
+const FRESH_MS = 7 * DAY_MINS * 60_000
 
 /**
  * The stock `codex` binary on the local login in `$CODEX_HOME/auth.json`, which Codex rotates in place.
@@ -116,9 +118,13 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
             if (e.type === 'done') done = e
             else yield e
           }
+          // The stream carries no quota; an app server beside `exec` is safe only while it won't refresh auth.json.
+          if (tool && (await authFresh(process.env))) {
+            const quota = await probe(process.env).catch(() => null)
+            if (quota) yield { type: 'quota', quota }
+          }
         }
         const { exitCode } = await child
-        // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
           if (quota) yield { type: 'quota', quota }
@@ -189,6 +195,12 @@ export function toQuota(
 
 function codexHome(env: NodeJS.ProcessEnv): string {
   return env.CODEX_HOME ?? join(env.HOME ?? homedir(), '.codex')
+}
+
+/** Whether auth.json was refreshed recently enough that no Codex process refreshes it again. */
+export async function authFresh(env: NodeJS.ProcessEnv, now = Date.now()): Promise<boolean> {
+  const auth = parseJson(await readFile(join(codexHome(env), 'auth.json'), 'utf8').catch(() => ''))
+  return now - Date.parse(auth?.last_refresh) < FRESH_MS
 }
 
 /** Writes CODEX_AUTH_JSON only when auth.json is missing, so a token Codex refreshed is never overwritten. */

@@ -78,9 +78,9 @@ Claude, the week or month for Codex). The ceiling is the lowest of:
 
 A worker stops once the provider reports its long window past the ceiling
 or its short (5 h) window past `session_max` (default 90%). Claude reports
-quota during the run, so it stops mid-run; Codex is read after each run,
-so it stops between units. A provider whose quota can't be read gets a
-fixed `fallback` of units and turns per night.
+quota during the run; Codex is read after each tool call while its login
+is under 7 days old, else after the run. A provider whose quota can't be
+read gets a fixed `fallback` of units and turns per night.
 
 ## Routing
 

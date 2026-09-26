@@ -140,10 +140,12 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   exit 1. No quota and no turn count in the stream. [V, tested 0.149.1]
 - `exec` has no turn cap flag [V, `codex exec --help`]; night-shift
   counts tool calls (commands, edits, MCP calls, web searches) as turns
-  and kills the binary past the cap. The quota is read after the run,
-  once `exec` has exited: an app server started beside a running `exec`
-  would share `auth.json` and could race a token refresh [I]. So a Codex
-  worker stops at its ceiling only between units, never mid-run.
+  and kills the binary past the cap. An app server started beside a
+  running `exec` shares `auth.json` and could race a token refresh [I], so
+  the quota is read after each tool call only while `last_refresh` is
+  under 7 days old, a day inside Codex's ~8-day refresh [I]; otherwise
+  only after the run. Reading every 10 tool calls let a free-plan worker
+  reach 20% against an 11.7% ceiling. [V, tested]
 - The `workspace-write` sandbox refuses `.git/index.lock`, so the model
   cannot commit; workers run `--sandbox danger-full-access`, like Claude's
   unsandboxed Bash. [V, tested]
@@ -222,6 +224,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Factory: `droid exec` shares the interactive pool.
 - Devin: personal-plan CLI billing.
 - Codex: Plus/Pro window shape; whether an app server beside a running
-  `exec` can share one `auth.json` safely, which a mid-run quota read needs.
+  `exec` leaves a fresh `auth.json` alone, which the mid-run quota read
+  relies on.
 - Codex remote: an ephemeral runner seeds `auth.json` from the secret
   every run, so after a refresh the secret's refresh token goes stale.
