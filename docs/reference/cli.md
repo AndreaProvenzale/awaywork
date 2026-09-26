@@ -131,7 +131,6 @@ Options:
 Commands:
   move <from> <to>  move the rule at position <from> to position <to>, as
                     numbered by queue
-  help [command]    display help for command
 ```
 
 ## nightshift queue move
