@@ -4,13 +4,17 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
 import type { Ctx, Item, Source } from '../core/types.js'
 
-const config = z.strictObject({
-  workspace: z.string(),
-  projects: z.array(z.string()).optional(),
-  /** Project gid -> `owner/repo` where its tasks' code lives. */
-  project_repos: z.record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/)).optional(),
-  token_env: z.string().default('ASANA_TOKEN'),
-})
+const config = z
+  .strictObject({
+    workspace: z.string().describe('Workspace gid'),
+    projects: z.array(z.string()).optional().describe('Only tasks in these project gids'),
+    project_repos: z
+      .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
+      .optional()
+      .describe("Project gid -> owner/repo where its tasks' code lives"),
+    token_env: z.string().default('ASANA_TOKEN').describe('Env var holding the Asana token'),
+  })
+  .describe('My incomplete Asana tasks')
 type Config = z.infer<typeof config>
 
 const API = 'https://app.asana.com/api/1.0'

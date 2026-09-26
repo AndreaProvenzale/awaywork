@@ -1,0 +1,10 @@
+night-shift
+Copyright Andrea Provenzale and night-shift contributors
+
+This product is licensed under the Apache License, Version 2.0 (LICENSE).
+
+The source adapter interface (an opaque id plus a human key, provider-native
+state names, a raw payload escape hatch, adapters declaring their config and
+secret names) follows the specification of OpenAI Symphony
+(https://github.com/openai/symphony), licensed under the Apache License,
+Version 2.0.

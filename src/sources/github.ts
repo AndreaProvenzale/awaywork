@@ -5,7 +5,11 @@ import { isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
-const config = z.strictObject({ repos: z.array(z.string()).min(1) })
+const config = z
+  .strictObject({
+    repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
+  })
+  .describe('My PRs, PRs awaiting my review and issues assigned to me; also the forge')
 type Config = z.infer<typeof config>
 
 const PAGE = 100

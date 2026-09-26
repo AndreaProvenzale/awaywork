@@ -1,3 +1,7 @@
+---
+description: What unit and burn tests have not run for real yet, and the end-to-end pass before the first release.
+---
+
 # End-to-end pass before v1
 
 What the unit tests and burn tests have not yet run for real, and the
@@ -118,6 +122,6 @@ Record it in `lessons.md` like the earlier burn tests, and retag the
 
 ## Then
 
-M9 in `plan.md`: README, the configuration reference, the provider,
-source and skill guides, the publish workflow and NOTICE. Publish a
-release candidate first so step 5 installs from npm.
+Publish a release candidate first (`CONTRIBUTING.md`, "Releasing") so
+step 5 installs from npm, and check the docs site against what the pass
+found: every guide claim it settled or contradicted.

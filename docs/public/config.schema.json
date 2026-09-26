@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "night": {
+      "default": {
+        "start": "01:00",
+        "end": "07:00"
+      },
+      "description": "Local hours a scheduled run may start units in",
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "When a scheduled run starts, local time"
+        },
+        "end": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "No unit starts after this"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "reserve": {
+          "description": "Never go past 1 - reserve of any window",
+          "default": "10%",
+          "type": "string",
+          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+        },
+        "per_night": {
+          "description": "At most this share of the long window per night",
+          "type": "string",
+          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+        },
+        "session_max": {
+          "description": "Stop a worker past this share of the short window",
+          "default": "90%",
+          "type": "string",
+          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+        },
+        "fallback": {
+          "default": {
+            "units": 4,
+            "turns": 60
+          },
+          "type": "object",
+          "properties": {
+            "units": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "description": "Units per night"
+            },
+            "turns": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "description": "Turns per unit"
+            }
+          },
+          "required": [
+            "units",
+            "turns"
+          ],
+          "additionalProperties": false,
+          "description": "Caps when the provider's quota can't be read"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Quota allocation defaults; any provider can override them"
+    },
+    "providers": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "claude": {
+                "description": "claude settings",
+                "type": "object",
+                "properties": {
+                  "budget": {
+                    "type": "object",
+                    "properties": {
+                      "reserve": {
+                        "description": "Never go past 1 - reserve of any window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "per_night": {
+                        "description": "At most this share of the long window per night",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "session_max": {
+                        "description": "Stop a worker past this share of the short window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "fallback": {
+                        "type": "object",
+                        "properties": {
+                          "units": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Units per night"
+                          },
+                          "turns": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Turns per unit"
+                          }
+                        },
+                        "required": [
+                          "units",
+                          "turns"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Caps when the provider's quota can't be read"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Overrides the top-level budget for this provider"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "codex": {
+                "description": "codex settings",
+                "type": "object",
+                "properties": {
+                  "budget": {
+                    "type": "object",
+                    "properties": {
+                      "reserve": {
+                        "description": "Never go past 1 - reserve of any window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "per_night": {
+                        "description": "At most this share of the long window per night",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "session_max": {
+                        "description": "Stop a worker past this share of the short window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "fallback": {
+                        "type": "object",
+                        "properties": {
+                          "units": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Units per night"
+                          },
+                          "turns": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Turns per unit"
+                          }
+                        },
+                        "required": [
+                          "units",
+                          "turns"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Caps when the provider's quota can't be read"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Overrides the top-level budget for this provider"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "description": "Providers to use, a name or a map to override; order = routing preference"
+    },
+    "sources": {
+      "type": "object",
+      "properties": {
+        "github": {
+          "type": "object",
+          "properties": {
+            "repos": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Repos to read, owner/name; * globs, e.g. acme/*"
+            }
+          },
+          "required": [
+            "repos"
+          ],
+          "additionalProperties": false,
+          "description": "My PRs, PRs awaiting my review and issues assigned to me; also the forge"
+        },
+        "asana": {
+          "type": "object",
+          "properties": {
+            "workspace": {
+              "type": "string",
+              "description": "Workspace gid"
+            },
+            "projects": {
+              "description": "Only tasks in these project gids",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "project_repos": {
+              "description": "Project gid -> owner/repo where its tasks' code lives",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+              }
+            },
+            "token_env": {
+              "default": "ASANA_TOKEN",
+              "description": "Env var holding the Asana token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace"
+          ],
+          "additionalProperties": false,
+          "description": "My incomplete Asana tasks"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Where work comes from; configure at least one"
+    },
+    "branch": {
+      "default": "night/{key}",
+      "description": "Branch name template; {key} is required, {title} optional",
+      "type": "string"
+    },
+    "repos": {
+      "default": {},
+      "description": "Per-repo settings, keyed by owner/name",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[^/\\s]+\\/[^/\\s]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "description": "Branch name template for this repo",
+            "type": "string"
+          },
+          "setup": {
+            "description": "Setup command, given to the worker in its prompt",
+            "type": "string"
+          },
+          "test": {
+            "description": "Targeted test command, given to the worker in its prompt",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "Instruction file for units in this repo",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "instructions": {
+      "description": "Instruction files added to every unit",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "queue": {
+      "description": "Rules mapping items to skills; default the built-in queue",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The skill that does the work"
+          },
+          "source": {
+            "description": "Match only items from this source",
+            "type": "string",
+            "enum": [
+              "github",
+              "asana"
+            ]
+          },
+          "where": {
+            "default": {},
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        },
+                        {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "not"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Matches items whose field has none of these values"
+                }
+              ]
+            }
+          },
+          "provider": {
+            "description": "Providers for this rule, in order; default the providers order",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "skills": {
+            "default": [],
+            "description": "Extra skills available to the worker",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "instructions": {
+            "description": "Instruction files added for this rule",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "deliver": {
+            "description": "Output: a draft PR or the morning report; default the skill's",
+            "type": "string",
+            "enum": [
+              "draft_pr",
+              "report"
+            ]
+          },
+          "branch": {
+            "description": "Branch name template for this rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill"
+        ],
+        "additionalProperties": false,
+        "description": "First matching rule wins; top = highest priority"
+      }
+    }
+  },
+  "required": [
+    "providers",
+    "sources"
+  ],
+  "additionalProperties": false
+}
