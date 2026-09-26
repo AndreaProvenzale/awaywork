@@ -32,8 +32,8 @@ Commands:
   run [options]        plan tonight, run a worker per unit and publish draft PRs
                        and reports
   report [id]          print a run's morning report; the latest by default
-  schedule             run night-shift every night on this machine
-  ci                   run night-shift in GitHub Actions
+  schedule             run night-shift every night on this machine or in GitHub
+                       Actions
   doctor               check binaries, credentials, quota and sources before a
                        night
   help [command]       display help for command
@@ -194,7 +194,7 @@ Options:
 ```text
 Usage: nightshift schedule [options] [command]
 
-run night-shift every night on this machine
+run night-shift every night on this machine or in GitHub Actions
 
 Options:
   -h, --help         display help for command
@@ -202,7 +202,8 @@ Options:
 Commands:
   install [options]  start `nightshift run` at night.start; it starts no unit
                      after night.end
-  remove             remove the nightly job
+  remove             remove the nightly job, and
+                     .github/workflows/night-shift.yml in the current repo
   help [command]     display help for command
 ```
 
@@ -214,8 +215,8 @@ Usage: nightshift schedule install [options]
 start `nightshift run` at night.start; it starts no unit after night.end
 
 Options:
-  --with <scheduler>  launchd, systemd, cron (default: launchd on macOS, else
-                      systemd if it runs, else cron)
+  --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd
+                      on macOS, else systemd if it runs, else cron)
   -h, --help          display help for command
 ```
 
@@ -224,35 +225,8 @@ Options:
 ```text
 Usage: nightshift schedule remove [options]
 
-remove the nightly job
-
-Options:
-  -h, --help  display help for command
-```
-
-## nightshift ci
-
-```text
-Usage: nightshift ci [options] [command]
-
-run night-shift in GitHub Actions
-
-Options:
-  -h, --help      display help for command
-
-Commands:
-  init            write .github/workflows/night-shift.yml in this repo, reading
-                  the config from .night-shift/config.yml
-  help [command]  display help for command
-```
-
-## nightshift ci init
-
-```text
-Usage: nightshift ci init [options]
-
-write .github/workflows/night-shift.yml in this repo, reading the config from
-.night-shift/config.yml
+remove the nightly job, and .github/workflows/night-shift.yml in the current
+repo
 
 Options:
   -h, --help  display help for command
