@@ -214,7 +214,8 @@ Usage: nightshift schedule install [options]
 start `nightshift run` at night.start; it starts no unit after night.end
 
 Options:
-  --with <scheduler>  launchd, systemd, cron (default: launchd)
+  --with <scheduler>  launchd, systemd, cron (default: launchd on macOS, else
+                      systemd if it runs, else cron)
   -h, --help          display help for command
 ```
 
