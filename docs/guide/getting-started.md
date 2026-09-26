@@ -83,7 +83,7 @@ Units
      github acme/api#2: Cache invalidation
 
 Skipped
-  github acme/api#3: matched no rule
+  github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
 ```
 
 `nightshift queue` shows the same rules with tonight's matches and lets

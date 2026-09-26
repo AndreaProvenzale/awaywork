@@ -81,7 +81,7 @@ describe('plan', () => {
            github acme/api#2: PR 2
 
       Skipped
-        github acme/api#3: matched no rule
+        github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
         asana T-8: no repo: no linked PR or repo field"
     `)
   })

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { matches, rank, ruleMatches } from '../src/core/queue.js'
+
+import { closestRule, failedKeys, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
+
 import { asanaTask, githubPr } from './fakes/items.js'
 
 const rule = (where: Rule['where'], source?: string): Rule => ({
@@ -58,6 +60,24 @@ describe('rank', () => {
       ['T-2', 1],
     ])
     expect(unmatched.map((i) => i.key)).toEqual(['acme/api#1'])
+  })
+})
+
+describe('closestRule', () => {
+  it('names the keys an item fails', () => {
+    const where = { type: 'pr', checks: 'failing', mine: true } as const
+    expect(failedKeys(rule(where), githubPr(1, { mine: false }))).toEqual(['checks', 'mine'])
+  })
+
+  it('picks the rule with the fewest failed keys, the earlier on a tie, for the item source', () => {
+    const queue = [
+      rule({}, 'asana'),
+      rule({ checks: 'failing', mine: false }),
+      rule({ checks: 'failing' }, 'github'),
+      rule({ review_requested: true }),
+    ]
+    expect(closestRule(githubPr(1), queue)).toEqual({ rule: 2, failed: ['checks'] })
+    expect(closestRule(githubPr(1), [rule({}, 'asana')])).toBeUndefined()
   })
 })
 
