@@ -17,6 +17,10 @@ import { githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
 
+// publish amends commits, which needs a committer identity even on a bare CI runner
+process.env.GIT_COMMITTER_NAME ??= 't'
+process.env.GIT_COMMITTER_EMAIL ??= 't@t'
+
 const git = (dir: string, ...args: string[]) =>
   execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
