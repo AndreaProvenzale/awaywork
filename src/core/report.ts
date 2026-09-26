@@ -74,6 +74,19 @@ export function summarize(r: NightReport, reportPath: string): string {
   return [head, ...rows, `Report: ${reportPath}`].join('\n')
 }
 
+/** One line per run for `report --list`, counted from the units table of its report.md. */
+export function runLine(runId: string, report: string | undefined): string {
+  if (report === undefined) return `${runId}  no report`
+  const results = report
+    .split('\n')
+    .filter((line) => /^\| \d+ \|/.test(line))
+    .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
+  const prs = results.filter((r) => /^https:\/\/\S+ \(\d+ commits\)$/.test(r)).length
+  const reports = results.filter((r) => r === 'report below').length
+  const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
+  return `${runId}  ${results.length} units, ${prs} draft PRs, ${reports} reports${dry}`
+}
+
 function status(u: UnitResult): string {
   const turns = u.turns ? `, ${u.turns} turns` : ''
   return `${u.status}${turns}${u.reason && u.status !== 'skipped' ? ` (${u.reason})` : ''}`
