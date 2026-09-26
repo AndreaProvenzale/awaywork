@@ -8,7 +8,7 @@ import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
-import { formatReport, summarize } from '../src/core/report.js'
+import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Quota, Source } from '../src/core/types.js'
 import { runNight } from '../src/worker/night.js'
@@ -127,6 +127,8 @@ queue:
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
     'Run 20260925-010000: 1 draft PRs, 1 reports, 3 units',
   )
+  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PRs, 1 reports')
+  expect(runLine('20260925-020000', undefined)).toBe('20260925-020000  no report')
 })
 
 it('prepares workspaces without running a worker on a dry run, for one unit', async () => {
@@ -165,6 +167,10 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     ['acme-api-2', 'prepared'],
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.nightshift/prompt.md'))).toBe(true)
+  for (const only of ['acme/api#2', 'ACME-API-2']) {
+    const byKey = await runNight({ ...input, only })
+    expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
+  }
   await expect(runNight({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
 
   const ended = await runNight({ ...input, until: new Date(0) })

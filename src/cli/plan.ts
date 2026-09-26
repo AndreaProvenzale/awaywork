@@ -11,17 +11,18 @@ import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { reportConfigError } from './config.js'
-import { formatPlan } from './format.js'
+import { formatPlan, planJson } from './format.js'
 
 export function planCommand(program: Command): void {
   program
     .command('plan')
     .description("show tonight's units in order, with each provider's ceiling; runs no worker")
-    .action(async () => {
+    .option('--json', 'print the plan and warnings as JSON')
+    .action(async (opts: { json?: boolean }) => {
       try {
         const config = await loadConfig(configPath(program.opts().config))
         const { plan, warnings } = await planTonight(config)
-        console.log(formatPlan(plan, warnings, true))
+        console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
       }

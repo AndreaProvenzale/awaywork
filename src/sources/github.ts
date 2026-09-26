@@ -16,7 +16,7 @@ const PAGE = 100
 const LOG_TAIL = 200
 
 const common = `
-  id number title body url state
+  id number title body url state createdAt updatedAt
   repository { nameWithOwner }
   author { login }
   assignees(first: 10) { nodes { login } }
@@ -80,6 +80,8 @@ interface Node extends PrLink {
   title: string
   body: string
   state: string
+  createdAt: string
+  updatedAt: string
   author: Login
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
@@ -130,6 +132,8 @@ export function githubSource(run: Exec = exec): Source<Config> {
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
       review_requested: z.boolean(),
+      created: z.iso.datetime(),
+      updated: z.iso.datetime(),
     },
     secrets: () => [],
 
@@ -208,6 +212,8 @@ function toItem(node: Node): Item {
     label: labels,
     author: node.author?.login,
     mine: false,
+    created: node.createdAt,
+    updated: node.updatedAt,
   }
   if (isPr) {
     const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)

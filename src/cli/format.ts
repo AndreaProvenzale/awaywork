@@ -3,6 +3,15 @@ import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
+/** The plan and warnings as JSON; items drop their raw source payload. */
+export function planJson(plan: NightPlan, warnings: string[] = []): string {
+  return JSON.stringify(
+    { ...plan, warnings },
+    (key, value) => (key === 'raw' ? undefined : value),
+    2,
+  )
+}
+
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = false): string {
   const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
@@ -39,7 +48,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       p.unit.id,
       p.unit.repo,
       `#${p.rule + 1}`,
-      `${p.unit.skill} (${p.origin ?? 'in-repo?'})`,
+      `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
       p.unit.deliver,
       p.unit.branch,
@@ -74,6 +83,7 @@ export function describeRule(r: Rule): string {
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
+    r.order && `order=${r.order}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||
