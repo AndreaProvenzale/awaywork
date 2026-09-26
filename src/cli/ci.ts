@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
+import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { workflow } from '../scheduler/github-actions.js'
 import { sources } from '../sources/index.js'
@@ -17,7 +18,14 @@ export function ciCommand(program: Command): void {
   ci.command('init')
     .description(`write ${WORKFLOW} in this repo, reading the config from ${REPO_CONFIG}`)
     .action(async () => {
-      if (existsSync(WORKFLOW)) {
+      const root = await exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+      if (!root) {
+        console.error('not inside a git repository')
+        process.exitCode = 1
+        return
+      }
+      const file = join(root, WORKFLOW)
+      if (existsSync(file)) {
         console.error(`${WORKFLOW} already exists; delete it to write a new one`)
         process.exitCode = 1
         return
@@ -30,9 +38,9 @@ export function ciCommand(program: Command): void {
           ...used.flatMap((p) => p.secrets),
           ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
         ])
-        await mkdir(dirname(WORKFLOW), { recursive: true })
+        await mkdir(dirname(file), { recursive: true })
         await writeFile(
-          WORKFLOW,
+          file,
           workflow({
             start: config.night.start,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,

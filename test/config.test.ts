@@ -92,6 +92,12 @@ describe('config', () => {
     ])
   })
 
+  it('rejects a night window that starts when it ends', () => {
+    expect(problems(`${minimal}night: { start: '01:00', end: '01:00' }`)).toEqual([
+      'night: start and end must differ',
+    ])
+  })
+
   it('reports YAML syntax errors', () => {
     expect(problems('providers: [claude: {}')[0]).toMatch(/flow sequence/i)
   })

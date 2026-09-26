@@ -2,22 +2,33 @@ import { existsSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
+import { setTimeout } from 'node:timers/promises'
 import type { Exec } from '../forge/gh.js'
 import type { Schedule, Scheduler } from './index.js'
 
 const LABEL = 'nightshift'
 
 /** A user LaunchAgent; launchd starts a run missed during sleep at the next wake. */
-export function launchd(home: string, run: Exec, uid = userInfo().uid): Scheduler {
+export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs = 300): Scheduler {
   const file = join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`)
   const bootout = () => run('launchctl', ['bootout', `gui/${uid}/${LABEL}`]).catch(() => '')
+  // bootout returns before the old job is gone, and bootstrap fails with EIO until it is.
+  const bootstrap = async (tries = 10): Promise<void> => {
+    try {
+      await run('launchctl', ['bootstrap', `gui/${uid}`, file])
+    } catch (e) {
+      if (tries <= 1) throw e
+      await setTimeout(retryMs)
+      await bootstrap(tries - 1)
+    }
+  }
   return {
     id: 'launchd',
     async install(s) {
       await mkdir(dirname(file), { recursive: true })
       await writeFile(file, plist(s))
       await bootout()
-      await run('launchctl', ['bootstrap', `gui/${uid}`, file])
+      await bootstrap()
       return file
     },
     async remove() {

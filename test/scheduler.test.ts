@@ -57,6 +57,26 @@ it('writes a LaunchAgent that starts at the night start and logs to the state di
   expect(await scheduler.remove()).toBe(false)
 })
 
+it('retries bootstrap while launchd still holds the old job', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const { run, calls } = recorder()
+  let busy = 2
+  const flaky: Exec = async (cmd, args) => {
+    if (args[0] === 'bootstrap' && busy-- > 0) {
+      calls.push('failed')
+      throw new Error('Bootstrap failed: 5: Input/output error')
+    }
+    return run(cmd, args)
+  }
+  const file = await launchd(home, flaky, 501, 0).install(schedule)
+  expect(calls).toEqual([
+    'launchctl bootout gui/501/nightshift',
+    'failed',
+    'failed',
+    `launchctl bootstrap gui/501 ${file}`,
+  ])
+})
+
 it('writes a persistent systemd user timer and its service', async () => {
   const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
   const { run, calls } = recorder()
@@ -74,16 +94,16 @@ it('writes a persistent systemd user timer and its service', async () => {
 })
 
 it("adds one tagged crontab line, keeps the user's own and removes only its line", async () => {
-  const cronTab = recorder('MAILTO=me\n0 9 * * * backup\n')
+  const cronTab = recorder('MAILTO=me\n\n0 9 * * * backup\n')
   const scheduler = cron(cronTab.run)
   await scheduler.install(schedule)
   await scheduler.install(schedule)
   expect(cronLine(schedule)).toBe(
     `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/night shift/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # night-shift`,
   )
-  expect(cronTab.crontab()).toBe(`MAILTO=me\n0 9 * * * backup\n${cronLine(schedule)}\n`)
+  expect(cronTab.crontab()).toBe(`MAILTO=me\n\n0 9 * * * backup\n${cronLine(schedule)}\n`)
   expect(await scheduler.remove()).toBe(true)
-  expect(cronTab.crontab()).toBe('MAILTO=me\n0 9 * * * backup\n')
+  expect(cronTab.crontab()).toBe('MAILTO=me\n\n0 9 * * * backup\n')
   expect(await scheduler.remove()).toBe(false)
 })
 

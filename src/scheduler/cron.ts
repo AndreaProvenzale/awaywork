@@ -18,7 +18,8 @@ export function cron(run: Exec): Scheduler {
       await rm(dir, { recursive: true, force: true })
     }
   }
-  const others = (text: string) => text.split('\n').filter((l) => l && !l.endsWith(TAG))
+  const lines = (text: string) => (text ? text.replace(/\n+$/, '').split('\n') : [])
+  const others = (text: string) => lines(text).filter((l) => !l.endsWith(TAG))
   return {
     id: 'cron',
     async install(s) {
@@ -28,7 +29,7 @@ export function cron(run: Exec): Scheduler {
     async remove() {
       const text = await read()
       const kept = others(text)
-      if (kept.length === text.split('\n').filter(Boolean).length) return false
+      if (kept.length === lines(text).length) return false
       await write(kept)
       return true
     },

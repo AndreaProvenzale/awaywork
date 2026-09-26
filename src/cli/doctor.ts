@@ -35,7 +35,8 @@ export function doctorCommand(program: Command): void {
       )
       if (existsSync(envFile)) {
         const mode = statSync(envFile).mode & 0o777
-        report(mode === 0o600 ? 'ok' : 'warn', envFile, `mode ${mode.toString(8)}, want 600`)
+        if (mode === 0o600) report('ok', envFile, 'mode 600')
+        else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
       }
 
       let config: Config

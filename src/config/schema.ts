@@ -82,7 +82,10 @@ const itemType = z.enum(['pr', 'issue', 'task'])
 
 export const configSchema = z
   .strictObject({
-    night: z.strictObject({ start: time, end: time }).default({ start: '01:00', end: '07:00' }),
+    night: z
+      .strictObject({ start: time, end: time })
+      .refine((n) => n.start !== n.end, 'start and end must differ')
+      .default({ start: '01:00', end: '07:00' }),
     budget: budget.prefault({}),
     providers: z.array(providerEntry).min(1),
     sources: sourcesConfig,
