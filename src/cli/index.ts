@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { Command } from 'commander'
-import { envFile } from '../config/paths.js'
+import { envFile, packageVersion } from '../config/paths.js'
 import { ciCommand } from './ci.js'
 import { configCommand } from './config.js'
 import { doctorCommand } from './doctor.js'
@@ -16,6 +16,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const program = new Command('nightshift')
   .description('Spend idle coding-subscription quota overnight')
+  .version(packageVersion)
   .option(
     '-c, --config <path>',
     'config file (default: $NIGHT_SHIFT_CONFIG or ~/.config/night-shift/config.yml)',

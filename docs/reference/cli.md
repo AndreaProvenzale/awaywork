@@ -16,6 +16,7 @@ Usage: nightshift [options] [command]
 Spend idle coding-subscription quota overnight
 
 Options:
+  -V, --version        output the version number
   -c, --config <path>  config file (default: $NIGHT_SHIFT_CONFIG or
                        ~/.config/night-shift/config.yml)
   -h, --help           display help for command
