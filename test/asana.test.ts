@@ -76,6 +76,14 @@ describe('asana source', () => {
     expect(found.map((i) => i.key)).toEqual(['ENG-14'])
   })
 
+  it("states the repo mapped to a task's first mapped project", async () => {
+    const found = await source.items(
+      { ...cfg, project_repos: { '13': 'acme/web', '11': 'acme/api' } },
+      ctx,
+    )
+    expect(found.map((i) => i.fields.repo)).toEqual(['acme/api', undefined, 'acme/api'])
+  })
+
   it('names the missing token and the API error', async () => {
     await expect(source.items(cfg, { ...ctx, env: {} })).rejects.toThrow('ASANA_TOKEN is not set')
     const denied = JSON.stringify({ errors: [{ message: 'Not Authorized' }] })
@@ -115,6 +123,14 @@ describe('asana config and linking', () => {
     expect(() => parseConfig(yaml('{ section: QA, "fields.Priority": High }'))).not.toThrow()
     expect(() => parseConfig(yaml('{ "fields.Estimate": 3 }'))).not.toThrow()
     expect(() => parseConfig(yaml('{ fields: High }'))).toThrow('unknown key "fields"')
+  })
+
+  it('maps projects to repos written as owner/repo', () => {
+    const mapped = (repo: string) =>
+      `providers: [claude]\nsources: { asana: { workspace: "100", project_repos: { "11": ${repo} } } }`
+    expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
+    expect(() => parseConfig(mapped('api'))).toThrow('project_repos')
+    expect(() => parseConfig(yaml('{ repo: acme/api }'))).not.toThrow()
   })
 
   it('links a task to my PRs carrying its key, leaving other items alone', async () => {

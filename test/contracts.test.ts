@@ -46,5 +46,6 @@ sourceContract(
     scriptedAsk([
       [/^Asana workspace/, '100'],
       [/^Asana projects/, ['300']],
+      [/^GitHub repo for tasks/, 'acme/api'],
     ]),
 )

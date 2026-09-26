@@ -16,3 +16,4 @@ Status: **design**, skeleton only (`plan.md` M0). Package
 | `docs/lessons.md` | What the Claude Code prototype verified |
 | `docs/design.md` | The intended shape and open decisions |
 | `docs/plan.md` | How v1 gets built: contracts, config, milestones |
+| `docs/e2e.md` | What still needs a real run, and the end-to-end pass before v1 |

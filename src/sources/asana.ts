@@ -7,6 +7,8 @@ import type { Ctx, Item, Source } from '../core/types.js'
 const config = z.strictObject({
   workspace: z.string(),
   projects: z.array(z.string()).optional(),
+  /** Project gid -> `owner/repo` where its tasks' code lives. */
+  project_repos: z.record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/)).optional(),
   token_env: z.string().default('ASANA_TOKEN'),
 })
 type Config = z.infer<typeof config>
@@ -89,6 +91,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     fields: {
       project: z.string(),
       section: z.string(),
+      repo: z.string(),
       tags: z.string(),
       'fields.*': z.union([z.string(), z.number()]),
     },
@@ -116,7 +119,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           { resource_subtype: 'comment_added', opt_fields: 'created_at,created_by.name,text' },
           token,
         )
-        items.push(toItem(task, stories))
+        items.push(toItem(task, stories, cfg.project_repos))
       }
       return items
     },
@@ -152,6 +155,12 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
         'Asana projects to watch (none: every project with my tasks)',
         projects.map((p) => ({ value: p.gid, label: p.name })),
       )
+      const repos: Record<string, string> = {}
+      for (const gid of picked) {
+        const name = projects.find((p) => p.gid === gid)?.name
+        const repo = await ask.text(`GitHub repo for tasks in ${name} (owner/repo, blank: none)`)
+        if (repo.trim()) repos[gid] = repo.trim()
+      }
       const sections =
         picked.length > 0
           ? await Promise.all(
@@ -172,7 +181,11 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
               )
             ).map((t) => t.memberships.flatMap((m) => (m.section ? [m.section] : [])))
       return {
-        config: { workspace, ...(picked.length > 0 && { projects: picked }) },
+        config: {
+          workspace,
+          ...(picked.length > 0 && { projects: picked }),
+          ...(Object.keys(repos).length > 0 && { project_repos: repos }),
+        },
         values: { section: [...new Set(sections.flat().map((s) => s.name))] },
       }
     },
@@ -187,13 +200,14 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
   return token
 }
 
-function toItem(task: Task, stories: Story[]): Item {
+function toItem(task: Task, stories: Story[], projectRepos: Config['project_repos'] = {}): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
   const tags = task.tags.map((t) => t.name)
   const custom = task.custom_fields.flatMap((f) => {
     const value = fieldValue(f)
     return value === undefined ? [] : [[`fields.${f.name}`, value] as const]
   })
+  const repo = task.memberships.map((m) => projectRepos[m.project.gid]).find(Boolean)
   const customId = task.custom_fields.find((f) => f.representation_type === 'custom_id')
   return {
     source: 'asana',
@@ -216,6 +230,7 @@ function toItem(task: Task, stories: Story[]): Item {
     fields: {
       project: task.memberships.map((m) => m.project.name),
       section: sections,
+      ...(repo && { repo }),
       tags,
       ...Object.fromEntries(custom),
     },

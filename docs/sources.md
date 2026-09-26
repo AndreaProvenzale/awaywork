@@ -190,6 +190,9 @@ YouTrack, Shortcut, Plane.
   so it may not show in `/attachments` at all [I]. night-shift links
   tasks through the forge instead: my PRs whose branch or title carries
   the task key.
+- **Repo for a task.** Asana has no notion of a repo, so a task with no
+  linked PR takes its repo from `project_repos` (project gid to
+  `owner/repo`) in the source config.
 
 ### Trello
 - Key + token, `read` scope, expiry up to `never` [V]
