@@ -35,6 +35,7 @@ Asana it lists your workspaces, projects and real section names, and asks
 which repo each project's code lives in. It writes
 `~/.config/night-shift/config.yml`; a token you type is saved to
 `~/.config/night-shift/env` (mode 600), never to the config.
+`nightshift init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
 

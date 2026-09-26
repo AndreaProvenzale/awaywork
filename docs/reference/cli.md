@@ -21,7 +21,7 @@ Options:
   -h, --help           display help for command
 
 Commands:
-  init                 detect installed agents, pick providers, sources and a
+  init [options]       detect installed agents, pick providers, sources and a
                        starting queue
   config               inspect and validate the config
   plan                 show tonight's units in order, with each provider's
@@ -47,7 +47,12 @@ Usage: nightshift init [options]
 detect installed agents, pick providers, sources and a starting queue
 
 Options:
-  -h, --help  display help for command
+  -y, --yes            answer every question with its default; needs no terminal
+  --provider <id...>   with --yes: providers, first takes units first
+  --source <id...>     with --yes: sources to take work from
+  --night <start-end>  with --yes: night window, e.g. 01:00-07:00
+  --force              replace an existing config without asking
+  -h, --help           display help for command
 ```
 
 ## nightshift config

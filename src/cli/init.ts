@@ -21,7 +21,7 @@ export function initCommand(program: Command): void {
   program
     .command('init')
     .description('detect installed agents, pick providers, sources and a starting queue')
-    .option('-y, --yes', 'answer every question with its default, without a terminal')
+    .option('-y, --yes', 'answer every question with its default; needs no terminal')
     .option('--provider <id...>', 'with --yes: providers, first takes units first')
     .option('--source <id...>', 'with --yes: sources to take work from')
     .option('--night <start-end>', 'with --yes: night window, e.g. 01:00-07:00', parseNight)
