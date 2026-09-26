@@ -66,7 +66,7 @@ shows a rotating credential and a per-machine lock.
 export const providers: Record<string, Provider> = { claude, codex, mine }
 ```
 
-The config schema, `init`, `doctor`, `plan` and `ci init` pick it up from
+The config schema, `init`, `doctor`, `plan` and `schedule install --with github-actions` pick it up from
 the registry.
 
 ## Test it
