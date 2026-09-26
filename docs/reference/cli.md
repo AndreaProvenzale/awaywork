@@ -115,9 +115,25 @@ Options:
 ## nightshift queue
 
 ```text
-Usage: nightshift queue [options]
+Usage: nightshift queue [options] [command]
 
 show what each rule matches tonight and reorder the rules with the keyboard
+
+Options:
+  -h, --help        display help for command
+
+Commands:
+  move <from> <to>  move the rule at position <from> to position <to>, as
+                    numbered by queue
+  help [command]    display help for command
+```
+
+## nightshift queue move
+
+```text
+Usage: nightshift queue move [options] <from> <to>
+
+move the rule at position <from> to position <to>, as numbered by queue
 
 Options:
   -h, --help  display help for command
