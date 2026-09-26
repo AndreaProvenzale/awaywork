@@ -34,7 +34,10 @@ providers and sources to use and which rules to start the queue with. For
 Asana it lists your workspaces, projects and real section names, and asks
 which repo each project's code lives in. It writes
 `~/.config/night-shift/config.yml`; a token you type is saved to
-`~/.config/night-shift/env` (mode 600), never to the config.
+`~/.config/night-shift/env` (mode 600), never to the config. Last, it
+asks where to run every night: this machine, GitHub Actions or later, and
+hands off to [`schedule install`](#every-night).
+`nightshift init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
 
@@ -94,6 +97,9 @@ nightshift run --unit acme-api-1 # one real unit
 nightshift report                # the morning report of the last run
 ```
 
+`--unit` takes the unit id from `plan` or an item key such as
+`acme/api#1`, in any case.
+
 The run directory, `~/.local/state/night-shift/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report.
 
@@ -104,5 +110,5 @@ nightshift schedule install      # launchd; --with systemd or cron on Linux
 ```
 
 The job starts at `night.start` (default `01:00`) and starts no unit after
-`night.end` (`07:00`). To run in GitHub Actions instead, see
-[Scheduling](./scheduling.md).
+`night.end` (`07:00`). To run in GitHub Actions instead, add
+`--with github-actions`; see [Scheduling](./scheduling.md).

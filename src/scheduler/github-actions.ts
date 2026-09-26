@@ -1,4 +1,10 @@
+import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { clock } from '../core/window.js'
+
+export const WORKFLOW = '.github/workflows/night-shift.yml'
+export const REPO_CONFIG = '.night-shift/config.yml'
 
 export interface Workflow {
   start: string
@@ -59,4 +65,12 @@ ${env.map((line) => `      ${line}`).join('\n')}
         if: always()
         run: nightshift report >> "$GITHUB_STEP_SUMMARY" || true
 `
+}
+
+/** Deletes the workflow under a repo root; false when there was none. */
+export async function removeWorkflow(root: string): Promise<boolean> {
+  const file = join(root, WORKFLOW)
+  if (!existsSync(file)) return false
+  await rm(file)
+  return true
 }

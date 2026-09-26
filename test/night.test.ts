@@ -165,6 +165,10 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     ['acme-api-2', 'prepared'],
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.nightshift/prompt.md'))).toBe(true)
+  for (const only of ['acme/api#2', 'ACME-API-2']) {
+    const byKey = await runNight({ ...input, only })
+    expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
+  }
   await expect(runNight({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
 
   const ended = await runNight({ ...input, until: new Date(0) })

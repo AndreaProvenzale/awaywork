@@ -41,6 +41,8 @@ describe('github source', () => {
       checks: 'failing',
       unresolved_threads: 2,
       review_requested: false,
+      created: '2026-01-03T08:00:00Z',
+      updated: '2026-02-03T08:00:00Z',
     })
     expect(pr3?.fields).toMatchObject({ draft: true, mine: true })
     expect(pr3?.fields).not.toHaveProperty('checks')
@@ -51,6 +53,8 @@ describe('github source', () => {
       label: ['night-shift', 'backend'],
       author: 'lead',
       mine: true,
+      created: '2026-01-01T08:00:00Z',
+      updated: '2026-02-01T08:00:00Z',
     })
     expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
   })

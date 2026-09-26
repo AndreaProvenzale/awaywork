@@ -53,7 +53,7 @@ nightshift schedule install    # launchd, systemd or cron
 Or on GitHub Actions, from a repo of your own:
 
 ```sh
-nightshift ci init    # nightly workflow; add the secrets it lists
+nightshift schedule install --with github-actions    # add the secrets it lists
 ```
 
 Next morning:
