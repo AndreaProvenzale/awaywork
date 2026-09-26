@@ -18,7 +18,7 @@ export function runCommand(program: Command): void {
     .command('run')
     .description('plan tonight, run a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
-    .option('--unit <id>', 'run only this unit')
+    .option('--unit <id>', 'run only this unit, by id or item key')
     .option('--scheduled', 'run only inside the night window and start no unit after it ends')
     .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
       try {

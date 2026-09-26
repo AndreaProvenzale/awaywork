@@ -449,6 +449,15 @@
           "branch": {
             "description": "Branch name template for this rule",
             "type": "string"
+          },
+          "order": {
+            "description": "Which item goes first: oldest, newest or last updated; default the source order",
+            "type": "string",
+            "enum": [
+              "oldest",
+              "newest",
+              "updated"
+            ]
           }
         },
         "required": [
