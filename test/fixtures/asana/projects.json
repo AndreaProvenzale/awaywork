@@ -1,0 +1,7 @@
+{
+  "data": [
+    { "gid": "300", "resource_type": "project", "name": "Platform" },
+    { "gid": "301", "resource_type": "project", "name": "Mobile" }
+  ],
+  "next_page": null
+}

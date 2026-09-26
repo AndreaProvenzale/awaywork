@@ -5,7 +5,7 @@ budget:                         # defaults; any provider can override
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: {}
+  - claude
   - codex: { budget: { per_night: 5% } }
 sources:
   github: { repos: [acme/*] }

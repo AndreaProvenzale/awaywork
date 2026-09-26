@@ -35,16 +35,7 @@ export async function planTonight(
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
 
-  const items: Item[] = []
-  for (const [id, cfg] of Object.entries(config.sources)) {
-    const source = sources[id]
-    if (!source) continue
-    await source.items(cfg, ctx).then(
-      (found) => items.push(...found),
-      (e: Error) => warnings.push(`source ${id}: ${e.message}`),
-    )
-  }
-  await linkTasks(items, githubForge(), ctx)
+  const items = await collectItems(config, ctx)
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
@@ -58,6 +49,21 @@ export async function planTonight(
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   return { plan: planNight({ config, items, allowances, skills }), warnings, ctx }
+}
+
+/** Items from every configured source, tasks linked to their PRs; a failing source is logged. */
+export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
+  const items: Item[] = []
+  for (const [id, cfg] of Object.entries(config.sources)) {
+    const source = sources[id]
+    if (!source) continue
+    await source.items(cfg, ctx).then(
+      (found) => items.push(...found),
+      (e: Error) => ctx.log(`source ${id}: ${e.message}`),
+    )
+  }
+  await linkTasks(items, githubForge(), ctx)
+  return items
 }
 
 /** Tracker tasks link no PR natively, so the forge finds my PRs carrying the task key. */

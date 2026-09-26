@@ -33,6 +33,30 @@ export interface Ctx {
   log(line: string): void
 }
 
+export interface Choice<T extends string = string> {
+  value: T
+  label?: string
+  hint?: string
+}
+
+/** Questions `nightshift init` asks in the terminal; tests answer them from a script. */
+export interface Ask {
+  text(message: string, opts?: { initial?: string; placeholder?: string }): Promise<string>
+  select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
+  multiselect<T extends string>(message: string, choices: Choice<T>[], initial?: T[]): Promise<T[]>
+  confirm(message: string, initial?: boolean): Promise<boolean>
+  /** Prompts for an unset secret and saves it to the env file; '' when skipped. */
+  secret(name: string, message: string): Promise<string>
+  note(message: string): void
+}
+
+export interface SourceSetup {
+  /** The config as a user writes it. */
+  config: Record<string, unknown>
+  /** Values found for `where` fields, e.g. the user's real section names. */
+  values?: Record<string, string[]>
+}
+
 export interface Source<C = unknown> {
   id: string
   configSchema: z.ZodObject
@@ -41,6 +65,8 @@ export interface Source<C = unknown> {
   secrets(cfg: C): string[]
   items(cfg: C, ctx: Ctx): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
+  /** Asks what `nightshift init` needs to configure this source. */
+  init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
 }
 
 export interface Quota {

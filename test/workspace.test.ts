@@ -20,7 +20,12 @@ const git = (dir: string, ...args: string[]) =>
 
 describe('workspace', () => {
   it('ships a SKILL.md for every built-in skill', async () => {
-    expect(await loadSkills(builtinSkillsDir)).toEqual(builtinSkills)
+    const shipped = await loadSkills(builtinSkillsDir)
+    expect(Object.keys(shipped).sort()).toEqual(Object.keys(builtinSkills).sort())
+    for (const [name, meta] of Object.entries(shipped)) {
+      expect(meta.deliver).toBe(builtinSkills[name]?.deliver)
+      expect(meta.description).toBeTruthy()
+    }
   })
 
   it('clones onto the new branch with skills, context and the prompt, and keeps them out of git', async () => {

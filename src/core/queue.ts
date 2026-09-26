@@ -19,6 +19,10 @@ export const defaultQueue: Rule[] = [
   rule('plan', 'asana', { section: 'Current sprint' }),
 ]
 
+export function defaultRules(sourceIds: string[]): Rule[] {
+  return defaultQueue.filter((r) => r.source && sourceIds.includes(r.source))
+}
+
 export interface Ranked {
   item: Item
   rule: number
@@ -48,4 +52,22 @@ function matchesValue(want: WhereValue, actual: unknown): boolean {
   const wanted: Scalar[] = [want].flat()
   const values = Array.isArray(actual) ? actual : [actual]
   return values.some((v) => wanted.includes(v))
+}
+
+export interface RuleMatches {
+  taken: Item[]
+  /** Items this rule matches that an earlier rule took, with that rule's index. */
+  shadowed: { item: Item; by: number }[]
+}
+
+/** What each rule takes tonight, and what earlier rules take from it. */
+export function ruleMatches(items: Item[], queue: Rule[]): RuleMatches[] {
+  const result: RuleMatches[] = queue.map(() => ({ taken: [], shadowed: [] }))
+  for (const item of items) {
+    const [first, ...rest] = queue.flatMap((r, i) => (matches(r, item) ? [i] : []))
+    if (first === undefined) continue
+    result[first]?.taken.push(item)
+    for (const i of rest) result[i]?.shadowed.push({ item, by: first })
+  }
+  return result
 }

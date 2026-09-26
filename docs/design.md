@@ -73,8 +73,8 @@ Tags as in `providers.md`.
 
 ## Decided
 
-- TypeScript on Node, `commander` plus `ink`; YAML config with an ordered
-  queue of rules. Details and milestones in `plan.md`.
+- TypeScript on Node, `commander` plus `@clack/prompts`; YAML config
+  with an ordered queue of rules. Details and milestones in `plan.md`.
 - Routing: a rule's provider list, else the configured provider order;
   the first under its ceiling takes the unit.
 - Quota allocation is config: a reserve, a cap per night, and a session

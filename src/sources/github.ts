@@ -172,6 +172,24 @@ export function githubSource(run: Exec = exec): Source<Config> {
         writeFile(join(dir, 'checks.md'), await checksMarkdown(run, repo, checks)),
       ])
     },
+
+    /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
+    async init(ask) {
+      const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()
+      const orgs = (await run('gh', ['api', 'user/orgs', '--jq', '.[].login']))
+        .split('\n')
+        .filter(Boolean)
+      const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''
+      const answer = await ask.text(
+        `GitHub repos to watch, comma-separated (owner/name or owner/*${hint})`,
+        { initial: `${login}/*` },
+      )
+      const repos = answer
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean)
+      return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
+    },
   }
 }
 
