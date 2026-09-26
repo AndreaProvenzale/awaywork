@@ -58,6 +58,7 @@ export function describeRule(r: Rule): string {
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
+    r.order && `order=${r.order}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||
