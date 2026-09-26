@@ -64,5 +64,14 @@ What each command does:
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `init`, `queue`, `config edit` | Interactive; need a terminal |
 
+Machine-readable output:
+
+- `nightshift plan --json` prints the plan as one object: `queue`,
+  `defaultQueue`, `allowances` (per provider), `units`, `skipped` and
+  `warnings`. Items leave out their raw source payload.
+- `nightshift doctor --json` prints the checks as an array of
+  `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`. It
+  exits 1 when any check is `FAIL`, as without `--json`.
+
 `nightshift <command> --help` and the [CLI reference](../reference/cli.md)
 list every option.
