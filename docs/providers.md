@@ -121,8 +121,11 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   primary and a weekly secondary. [C]
 - Free-plan cost: one trivial `exec` (two shell calls, one edit) moved the
   month 0% → 2%; a small `implement` unit (a typo, a commit, the PR body)
-  4% → 9%. So the paced ceiling (~3% a night on a 30-day window) is below
-  one unit. [V, tested]
+  4% → 9%; ten tool calls of a `review` that read a 1,000-line diff
+  9% → 20%. So the paced ceiling (~3% a night on a 30-day window) is
+  below one unit. [V, tested]
+- The access token lasts 10 days (`exp - iat` of the JWT) and `auth.json`
+  says when it was last refreshed. [V, tested]
 - The first probe refreshed a 12-day-old `auth.json` in place
   (`last_refresh` moved, login still valid). So probes rotate the file
   too and share the per-machine lock with runs. [V, tested]
@@ -133,8 +136,10 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   exit 1. No quota and no turn count in the stream. [V, tested 0.149.1]
 - `exec` has no turn cap flag [V, `codex exec --help`]; night-shift
   counts tool calls (commands, edits, MCP calls, web searches) as turns
-  and kills the binary past the cap, and re-reads the quota every 10
-  tool calls and after the run so a worker stops at its ceiling.
+  and kills the binary past the cap. The quota is read after the run,
+  once `exec` has exited: an app server started beside a running `exec`
+  would share `auth.json` and could race a token refresh [I]. So a Codex
+  worker stops at its ceiling only between units, never mid-run.
 - The `workspace-write` sandbox refuses `.git/index.lock`, so the model
   cannot commit; workers run `--sandbox danger-full-access`, like Claude's
   unsandboxed Bash. [V, tested]
@@ -212,7 +217,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Kiro: API-key runs draw plan credits.
 - Factory: `droid exec` shares the interactive pool.
 - Devin: personal-plan CLI billing.
-- Codex: Plus/Pro window shape; an app server running beside `exec`
-  (the mid-run probe) sharing one `auth.json` safely during a refresh.
+- Codex: Plus/Pro window shape; whether an app server beside a running
+  `exec` can share one `auth.json` safely, which a mid-run quota read needs.
 - Codex remote: an ephemeral runner seeds `auth.json` from the secret
   every run, so after a refresh the secret's refresh token goes stale.

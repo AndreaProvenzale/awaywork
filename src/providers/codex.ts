@@ -20,8 +20,6 @@ const EXEC = [
   'danger-full-access',
 ]
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
-/** `codex exec --json` carries no quota, so a run re-reads it every this many tool calls. */
-const PROBE_EVERY = 10
 const DAY_MINS = 24 * 60
 
 /**
@@ -108,16 +106,11 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         for await (const line of child) {
           if (signal.aborted) break
           const event = parseJson(line)
-          if (event?.type === 'item.completed' && TOOL_ITEMS.includes(event.item?.type)) {
-            if (++turns > job.maxTurns) {
-              yield { type: 'log', line: `result: max_turns (${job.maxTurns})` }
-              capped.abort()
-              break
-            }
-            if (turns % PROBE_EVERY === 0) {
-              const quota = await probe(process.env).catch(() => null)
-              if (quota) yield { type: 'quota', quota }
-            }
+          const tool = event?.type === 'item.completed' && TOOL_ITEMS.includes(event.item?.type)
+          if (tool && ++turns > job.maxTurns) {
+            yield { type: 'log', line: `result: max_turns (${job.maxTurns})` }
+            capped.abort()
+            break
           }
           for (const e of toEvents(event)) {
             if (e.type === 'done') done = e
@@ -125,6 +118,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           }
         }
         const { exitCode } = await child
+        // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
           if (quota) yield { type: 'quota', quota }
