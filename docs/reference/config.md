@@ -163,6 +163,7 @@ First matching rule wins; top = highest priority.
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
+| `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 
 ## `queue[].where.<key>`
 

@@ -129,7 +129,11 @@ export interface Rule {
   instructions: string[]
   deliver?: Deliver
   branch?: string
+  order?: Order
 }
+
+/** Which of a rule's items goes first; unset keeps the source's order. */
+export type Order = 'oldest' | 'newest' | 'updated'
 
 export interface Unit {
   id: string
