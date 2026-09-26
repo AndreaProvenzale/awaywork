@@ -125,6 +125,57 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     async prefetch(item, dir) {
       await writeFile(join(dir, 'task.md'), taskMarkdown(item))
     },
+
+    /** Picks a workspace and projects from the account and lists their real section names. */
+    async init(ask, ctx) {
+      const token =
+        ctx.env.ASANA_TOKEN ||
+        (await ask.secret('ASANA_TOKEN', 'Asana personal access token (Settings > Apps)'))
+      if (!token) return { config: { workspace: await ask.text('Asana workspace gid') } }
+
+      const workspaces = await getAll<Named>('/workspaces', { opt_fields: 'name' }, token)
+      const [only] = workspaces
+      if (!only) throw new Error('this token sees no workspace')
+      const workspace =
+        workspaces.length === 1
+          ? only.gid
+          : await ask.select(
+              'Asana workspace',
+              workspaces.map((w) => ({ value: w.gid, label: w.name })),
+            )
+      const projects = await getAll<Named>(
+        '/projects',
+        { workspace, archived: 'false', opt_fields: 'name' },
+        token,
+      )
+      const picked = await ask.multiselect(
+        'Asana projects to watch (none: every project with my tasks)',
+        projects.map((p) => ({ value: p.gid, label: p.name })),
+      )
+      const sections =
+        picked.length > 0
+          ? await Promise.all(
+              picked.map((p) =>
+                getAll<Named>(`/projects/${p}/sections`, { opt_fields: 'name' }, token),
+              ),
+            )
+          : (
+              await getAll<Task>(
+                '/tasks',
+                {
+                  assignee: 'me',
+                  workspace,
+                  completed_since: new Date().toISOString(),
+                  opt_fields: 'memberships.section.name',
+                },
+                token,
+              )
+            ).map((t) => t.memberships.flatMap((m) => (m.section ? [m.section] : [])))
+      return {
+        config: { workspace, ...(picked.length > 0 && { projects: picked }) },
+        values: { section: [...new Set(sections.flat().map((s) => s.name))] },
+      }
+    },
   }
 }
 

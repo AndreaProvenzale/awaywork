@@ -1,0 +1,7 @@
+{
+  "data": [
+    { "gid": "100", "resource_type": "workspace", "name": "Acme" },
+    { "gid": "200", "resource_type": "workspace", "name": "Personal" }
+  ],
+  "next_page": null
+}

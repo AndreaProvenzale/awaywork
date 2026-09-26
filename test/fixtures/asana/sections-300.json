@@ -1,0 +1,9 @@
+{
+  "data": [
+    { "gid": "310", "resource_type": "section", "name": "Backlog" },
+    { "gid": "311", "resource_type": "section", "name": "Sprint" },
+    { "gid": "312", "resource_type": "section", "name": "Doing" },
+    { "gid": "313", "resource_type": "section", "name": "QA" }
+  ],
+  "next_page": null
+}

@@ -3,6 +3,7 @@ import type { Deliver } from './types.js'
 
 export interface SkillMeta {
   deliver?: Deliver
+  description?: string
 }
 export type Origin = 'user' | 'repo' | 'builtin'
 export type SkillCatalog = Partial<Record<Origin, Record<string, SkillMeta>>>
@@ -30,9 +31,13 @@ export function resolveSkill(
   }
 }
 
-/** Reads `metadata.deliver` from a SKILL.md frontmatter. */
+/** Reads `description` and `metadata.deliver` from a SKILL.md frontmatter. */
 export function parseSkill(text: string): SkillMeta {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
-  const deliver = frontmatter ? parse(frontmatter)?.metadata?.deliver : undefined
-  return deliver === 'draft_pr' || deliver === 'report' ? { deliver } : {}
+  const { description, metadata } = (frontmatter && parse(frontmatter)) || {}
+  const deliver = metadata?.deliver
+  return {
+    ...((deliver === 'draft_pr' || deliver === 'report') && { deliver }),
+    ...(typeof description === 'string' && { description }),
+  }
 }

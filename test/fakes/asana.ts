@@ -22,6 +22,9 @@ export function recordedFetch(
 }
 
 export const asanaRoutes = (): [RegExp, Reply][] => [
+  [/\/workspaces\?/, asanaFixture('workspaces.json')],
+  [/\/projects\?/, asanaFixture('projects.json')],
+  [/\/projects\/300\/sections\?/, asanaFixture('sections-300.json')],
   [/\/tasks\?.*offset=eyJwYWdlIjoyfQ/, asanaFixture('tasks-2.json')],
   [/\/tasks\?/, asanaFixture('tasks-1.json')],
   [/\/tasks\/1201\/stories\?/, asanaFixture('stories-1201.json')],

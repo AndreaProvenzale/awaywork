@@ -8,7 +8,7 @@ const percent = z
   .string()
   .regex(/^(100|\d{1,2}(\.\d+)?)%$/, 'expected a percentage like "10%"')
   .transform((s) => Number.parseFloat(s) / 100)
-const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
+export const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
 const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
@@ -36,7 +36,10 @@ const budgetOverride = z
 
 type ProviderConfig = { budget?: z.output<typeof budgetOverride> } & Record<string, unknown>
 
-const providerEntry = z
+const providerName = z
+  .enum(Object.keys(providers))
+  .transform((id): Record<string, ProviderConfig> => ({ [id]: {} }))
+const providerOverride = z
   .strictObject(
     Object.fromEntries(
       Object.values(providers).map((p) => [
@@ -49,6 +52,10 @@ const providerEntry = z
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
   })
+const providerEntry = z.union([providerName, providerOverride], {
+  error: (issue) =>
+    typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
+})
 
 const sourcesConfig = z
   .strictObject(

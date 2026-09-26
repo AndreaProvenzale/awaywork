@@ -53,7 +53,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
   return out.join('\n')
 }
 
-function describeRule(r: Rule): string {
+export function describeRule(r: Rule): string {
   const where = Object.entries(r.where).map(([k, v]) => describeWhere(k, v))
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,

@@ -4,6 +4,7 @@ import { githubSource } from '../src/sources/github.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { sourceContract } from './contracts/source.contract.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
+import { initial, scriptedAsk } from './fakes/ask.js'
 import { githubRoutes, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -29,9 +30,21 @@ providerContract(fakeProvider(), () => ({
 }))
 
 sourceContract(fakeSource() as Source<unknown>, {})
-sourceContract(githubSource(recorded(githubRoutes())) as Source<unknown>, { repos: ['acme/*'] })
+sourceContract(
+  githubSource(
+    recorded([[/^gh api user --jq/, 'octo'], [/^gh api user\/orgs/, ''], ...githubRoutes()]),
+  ) as Source<unknown>,
+  { repos: ['acme/*'] },
+  {},
+  () => scriptedAsk([[/^GitHub repos/, initial]]),
+)
 sourceContract(
   asanaSource(recordedFetch(asanaRoutes())) as Source<unknown>,
   { workspace: '100' },
   { ASANA_TOKEN: 'pat' },
+  () =>
+    scriptedAsk([
+      [/^Asana workspace/, '100'],
+      [/^Asana projects/, ['300']],
+    ]),
 )

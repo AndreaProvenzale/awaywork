@@ -29,7 +29,8 @@ the command is `nightshift`.
 | Need | Pick |
 |---|---|
 | CLI commands | `commander` |
-| Interactive screens (queue reordering, init wizard, live run) | `ink` |
+| Interactive prompts (init) | `@clack/prompts` |
+| Queue reordering screen | `node:readline` keypress events |
 | Config parsing and validation | `yaml`, `zod` (JSON Schema exported for editor autocompletion) |
 | Child processes | `execa` |
 | Tests | `vitest` |
@@ -51,7 +52,7 @@ collect ──> match ──> dedupe ──> budget ──> dispatch ──> pub
 
 ```
 src/
-  cli/            commander entry, one file per command; ink screens in cli/ui/
+  cli/            commander entry, one file per command, ask.ts (prompts)
   config/         schema.ts (zod), load.ts (file + env + flags), paths.ts
   core/           types.ts (the contracts below), queue.ts, dedupe.ts,
                   budget.ts, skills.ts, foreman.ts, prompt.ts, report.ts
@@ -114,6 +115,14 @@ interface Source {
   secrets(cfg): string[]                         // env var names it reads
   items(cfg, ctx): Promise<Item[]>               // mine, open
   prefetch(item, dir, ctx): Promise<void>        // write context files for the worker
+  init?(ask: Ask, ctx): Promise<SourceSetup>     // its own `nightshift init` questions
+}
+interface SourceSetup {     // config as written; values found for `where` fields (real sections)
+  config: Record<string, unknown>; values?: Record<string, string[]>
+}
+interface Ask {             // terminal prompts in the CLI, a script in tests
+  text; select; multiselect; confirm; note
+  secret(name, message): Promise<string>         // prompts, saves to the env file; '' = skipped
 }
 
 interface Provider {
@@ -175,7 +184,7 @@ budget:                         # defaults; any provider can override
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: {}
+  - claude                      # a name, or a map to override
   - codex: { budget: { per_night: 5% } }
 sources:
   github: { repos: [acme/*] }
@@ -415,13 +424,30 @@ why a unit is placed where it is.
 - [x] Contract suite; routing with two providers exercised in `plan`
       (tests, and `plan` on this repo) and in one real night (`lessons.md`).
 
-### M8 Customization UX (ink)
-- [ ] `nightshift init`: detect installed binaries and `gh` login, pick
-      providers, sources and a starting queue, write the config.
-- [ ] `nightshift queue`: list rules with tonight's matches, reorder with
-      the keyboard, save the YAML with comments preserved.
-- [ ] `nightshift skills list|eject`: resolved skills and where each
+### M8 Customization UX
+Screens only where an editor can't help: discovery (`init`) and live
+feedback (`queue`). Every other setting is edited as YAML, with the JSON
+Schema for autocompletion and `config edit` as the safety net.
+
+- [x] `nightshift init`: detect installed binaries and `gh` login, pick
+      providers, sources and a starting queue, write the config. Each
+      source asks its own questions (`Source.init`); Asana lists
+      workspaces, projects and the real section names, and each default
+      Asana rule picks its section from them. An unset token is prompted
+      for and saved to the env file. The queue is written out, not left
+      to the hidden default.
+- [x] `nightshift queue`: list rules with tonight's matches and the items
+      an earlier rule took, reorder with the keyboard (counts update as
+      rules move), save the YAML with comments preserved: rules move as
+      source text with the comments above them, the rest of the file is
+      unchanged. No queue in the config: saving writes the default one.
+      Items are fetched once; no provider is probed.
+- [x] `nightshift skills list|eject`: resolved skills and where each
       comes from; copy a built-in to the user dir.
+- [x] `nightshift config edit`: `$VISUAL`/`$EDITOR` on a draft copy,
+      written over the config only once it validates; a scheduled run
+      never sees a broken config.
+- [x] Providers take a bare name (`- claude`) next to the override map.
 
 ### M9 Release
 - [ ] README usage, a configuration reference generated from the schema,
@@ -465,10 +491,10 @@ why a unit is placed where it is.
   lists provider-native `active_states`/`terminal_states`, compared
   case-insensitively, and one prompt serves every state [V]
   (https://github.com/openai/symphony/blob/main/SPEC.md). Our `where` on
-  native names already goes further; what's missing is discovery: `init`
-  (M8) could list the user's real sections or statuses and let them pick
-  one per skill, instead of a default queue guessing names. Also consider
-  case-insensitive matching for native state names.
+  native names already goes further, and `init` picks each rule's section
+  from the user's real ones (M8). Still open: the default queue guesses
+  names when a config has no queue, and case-insensitive matching for
+  native state names.
 - **PR metadata beyond the branch**: labels, reviewers, ready instead
   of draft, a base override. None is config until someone asks.
   Requesting reviewers notifies people through the developer's token, so

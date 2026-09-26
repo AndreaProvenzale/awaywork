@@ -2,14 +2,18 @@ import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Ctx, Source } from '../../src/core/types.js'
+import type { Ask, Ctx, Source } from '../../src/core/types.js'
 import { sourceField } from '../../src/sources/index.js'
 
-/** Every source adapter must pass this suite; `rawConfig` is its config as a user writes it. */
+/**
+ * Every source adapter must pass this suite; `rawConfig` is its config as a
+ * user writes it, and `ask` answers its `init` questions when it has one.
+ */
 export function sourceContract(
   source: Source<unknown>,
   rawConfig: unknown,
   env: Ctx['env'] = {},
+  ask?: () => Ask,
 ): void {
   const ctx: Ctx = { env, log: () => {} }
   describe(`source contract: ${source.id}`, () => {
@@ -42,5 +46,16 @@ export function sourceContract(
       if (item) await source.prefetch(item, dir, ctx)
       expect((await readdir(dir)).length).toBeGreaterThan(0)
     })
+
+    it.runIf(source.init)(
+      'sets up a config its schema accepts, with values for declared fields',
+      async () => {
+        expect(ask, 'a source with init needs scripted answers').toBeDefined()
+        const setup = await source.init?.(ask?.() as Ask, ctx)
+        expect(source.configSchema.safeParse(setup?.config).success).toBe(true)
+        for (const key of Object.keys(setup?.values ?? {}))
+          expect(sourceField(source.fields, key), `undeclared field "${key}"`).toBeDefined()
+      },
+    )
   })
 }

@@ -84,11 +84,24 @@ describe('config', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
       expect.stringContaining('providers[0]: Unrecognized key: "gemini"'),
     ])
+    expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
+      'providers[0]: unknown provider "gemini"',
+    ])
     expect(
       problems(`${minimal}queue: [{ skill: fix-ci, provider: codex, source: asana }]`),
     ).toEqual([
       'queue[0].source: source "asana" is not configured',
       'queue[0].provider: provider "codex" is not configured',
+    ])
+  })
+
+  it('takes bare provider names next to overrides', () => {
+    const cfg = parseConfig(
+      minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),
+    )
+    expect(cfg.providers.map((p) => [p.id, p.budget.per_night])).toEqual([
+      ['claude', undefined],
+      ['codex', 0.05],
     ])
   })
 

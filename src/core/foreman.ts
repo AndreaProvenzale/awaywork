@@ -2,7 +2,7 @@ import type { Config } from '../config/schema.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { defaultQueue, rank } from './queue.js'
+import { defaultRules, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import type { Item, Rule, Unit } from './types.js'
 
@@ -31,7 +31,7 @@ export function planNight(input: {
   skills: SkillCatalog
 }): NightPlan {
   const { config, allowances } = input
-  const queue = config.queue ?? defaultQueue.filter((r) => r.source && r.source in config.sources)
+  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
   const skipped = unmatched.map((item) => ({ item, reason: 'matched no rule' }))
   const units: PlannedUnit[] = []
