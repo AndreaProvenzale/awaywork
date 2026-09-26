@@ -57,5 +57,14 @@ What each command does:
 | `schedule install`, `ci init` | Installs a nightly job or writes a workflow. Ask first. |
 | `init`, `queue`, `config edit` | Interactive; need a terminal |
 
+Machine-readable output:
+
+- `nightshift plan --json` prints the plan as one object: `queue`,
+  `defaultQueue`, `allowances` (per provider), `units`, `skipped` and
+  `warnings`. Items leave out their raw source payload.
+- `nightshift doctor --json` prints the checks as an array of
+  `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`. It
+  exits 1 when any check is `FAIL`, as without `--json`.
+
 `nightshift <command> --help` and the [CLI reference](../reference/cli.md)
 list every option.

@@ -109,6 +109,7 @@ Usage: nightshift plan [options]
 show tonight's units in order, with each provider's ceiling; runs no worker
 
 Options:
+  --json      print the plan and warnings as JSON
   -h, --help  display help for command
 ```
 
@@ -266,5 +267,6 @@ Usage: nightshift doctor [options]
 check binaries, credentials, quota and sources before a night
 
 Options:
+  --json      print the checks as a JSON array of { status, what, detail }
   -h, --help  display help for command
 ```
