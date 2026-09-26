@@ -16,6 +16,7 @@ import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { Cancelled, terminalAsk } from './ask.js'
 import { describeRule } from './format.js'
+import { installSchedule } from './schedule.js'
 
 export function initCommand(program: Command): void {
   program
@@ -60,9 +61,13 @@ export function initCommand(program: Command): void {
         parseConfig(text, path)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, text)
-        outro(
-          `Wrote ${path}. Next: nightshift doctor, nightshift plan, nightshift schedule install`,
-        )
+        const scheduler = await whereToRun(terminalAsk).catch(() => 'later')
+        if (scheduler === 'later')
+          return outro(
+            `Wrote ${path}. Next: nightshift doctor, nightshift plan, nightshift schedule install`,
+          )
+        outro(`Wrote ${path}. Next: nightshift doctor, nightshift plan`)
+        await installSchedule(program.opts().config, scheduler || undefined)
       } catch (e) {
         if (e instanceof Cancelled) {
           cancel('Nothing written')
@@ -74,6 +79,18 @@ export function initCommand(program: Command): void {
       }
     })
 }
+
+/** The `schedule install --with` value: '' for this machine's default, or 'later'. */
+const whereToRun = (ask: Ask) =>
+  ask.select(
+    'Where does it run every night?',
+    [
+      { value: '', label: 'this machine' },
+      { value: 'github-actions', label: 'GitHub Actions, from the repo in this directory' },
+      { value: 'later', label: 'later, with nightshift schedule install' },
+    ],
+    '',
+  )
 
 export interface InitInput {
   ask: Ask
