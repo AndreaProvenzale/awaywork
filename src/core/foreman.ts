@@ -2,9 +2,9 @@ import type { Config } from '../config/schema.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { defaultRules, rank } from './queue.js'
+import { closestRule, defaultRules, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
-import type { Item, Rule, Unit } from './types.js'
+import type { Item, Rule, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -33,7 +33,7 @@ export function planNight(input: {
   const { config, allowances } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
-  const skipped = unmatched.map((item) => ({ item, reason: 'matched no rule' }))
+  const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
 
@@ -92,6 +92,28 @@ export function planNight(input: {
     })
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
+function noRuleReason(item: Item, queue: Rule[]): string {
+  const closest = closestRule(item, queue)
+  if (!closest) return 'matched no rule'
+  const rule = queue[closest.rule] as Rule
+  const failed = closest.failed.map((key) => {
+    const want = rule.where[key] as WhereValue
+    return `${key} is ${describeValue(fieldValue(item, key))}, wants ${describeWant(want)}`
+  })
+  return `matched no rule; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
+}
+
+function describeWant(want: WhereValue): string {
+  if (typeof want === 'object' && !Array.isArray(want)) return `not ${describeWant(want.not)}`
+  return [want].flat().join('|')
+}
+
+function describeValue(value: unknown): string {
+  if (value === undefined || value === null) return 'unset'
+  return Array.isArray(value) ? value.join('|') || 'empty' : String(value)
 }
 
 export function slug(key: string): string {

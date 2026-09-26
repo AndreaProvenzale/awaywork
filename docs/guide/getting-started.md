@@ -34,7 +34,10 @@ providers and sources to use and which rules to start the queue with. For
 Asana it lists your workspaces, projects and real section names, and asks
 which repo each project's code lives in. It writes
 `~/.config/night-shift/config.yml`; a token you type is saved to
-`~/.config/night-shift/env` (mode 600), never to the config.
+`~/.config/night-shift/env` (mode 600), never to the config. Last, it
+asks where to run every night: this machine, GitHub Actions or later, and
+hands off to [`schedule install`](#every-night).
+`nightshift init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
 
@@ -73,14 +76,14 @@ Providers
   claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
 
 Units
-     unit        repo      rule  skill             provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (builtin)  claude    draft_pr  night/acme-api-1
+     unit        repo      rule  skill              provider  deliver   branch
+  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  night/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (builtin)  claude    report    night/acme-api-2
+  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    night/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
-  github acme/api#3: matched no rule
+  github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
 ```
 
 `nightshift queue` shows the same rules with tonight's matches and lets
@@ -93,7 +96,11 @@ rule #3 to the top without one.
 nightshift run --dry-run         # clone, context and prompt, no agent
 nightshift run --unit acme-api-1 # one real unit
 nightshift report                # the morning report of the last run
+nightshift report --list         # recent runs, to pick an id for report <id>
 ```
+
+`--unit` takes the unit id from `plan` or an item key such as
+`acme/api#1`, in any case.
 
 The run directory, `~/.local/state/night-shift/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report.
@@ -105,5 +112,5 @@ nightshift schedule install      # launchd; --with systemd or cron on Linux
 ```
 
 The job starts at `night.start` (default `01:00`) and starts no unit after
-`night.end` (`07:00`). To run in GitHub Actions instead, see
-[Scheduling](./scheduling.md).
+`night.end` (`07:00`). To run in GitHub Actions instead, add
+`--with github-actions`; see [Scheduling](./scheduling.md).

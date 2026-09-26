@@ -33,6 +33,10 @@ export function cron(run: Exec): Scheduler {
       await write(kept)
       return true
     },
+    async read() {
+      const line = lines(await read()).find((l) => l.endsWith(TAG))
+      return line ? parseCronLine(line) : undefined
+    },
   }
 }
 
@@ -40,4 +44,18 @@ export function cronLine(s: Schedule): string {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
   const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} >> ${q(s.log)} 2>&1`
   return `${s.minute} ${s.hour} * * * ${command} ${TAG}`
+}
+
+export function parseCronLine(line: string): Schedule {
+  const [minute, hour] = line.split(' ')
+  const words = [...line.replace(/\\%/g, '%').matchAll(/'((?:[^']|'\\'')*)'/g)].map((m) =>
+    (m[1] ?? '').replace(/'\\''/g, "'"),
+  )
+  return {
+    command: words.slice(1, -1),
+    hour: Number(hour),
+    minute: Number(minute),
+    path: words[0] ?? '',
+    log: words.at(-1) ?? '',
+  }
 }
