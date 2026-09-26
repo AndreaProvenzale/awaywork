@@ -8,9 +8,7 @@ import type { Ctx } from '../core/types.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { describeAllowance } from './format.js'
-
-type Status = 'ok' | 'warn' | 'FAIL'
+import { describeAllowance, type Status, statusMarker } from './format.js'
 
 export interface Check {
   status: Status
@@ -24,9 +22,10 @@ export function doctorCommand(program: Command): void {
     .description('check binaries, credentials, quota and sources before a night')
     .option('--json', 'print the checks as a JSON array of { status, what, detail }')
     .action(async (opts: { json?: boolean }) => {
+      const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
       const checks = await runChecks(configPath(program.opts().config), (c) => {
         if (!opts.json)
-          console.log(`${c.status.padEnd(4)}  ${c.what}${c.detail && `: ${c.detail}`}`)
+          console.log(`${statusMarker(c.status, color)}  ${c.what}${c.detail && `: ${c.detail}`}`)
       })
       if (opts.json) console.log(JSON.stringify(checks, null, 2))
       if (checks.some((c) => c.status === 'FAIL')) process.exitCode = 1
