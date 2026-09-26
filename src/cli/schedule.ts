@@ -71,4 +71,23 @@ export function scheduleCommand(program: Command): void {
         removed.length ? `Removed the ${removed.join(', ')} job` : 'No nightly job installed',
       )
     })
+
+  schedule
+    .command('status')
+    .description('show the installed nightly job')
+    .action(async () => {
+      let found = false
+      for (const scheduler of Object.values(all)) {
+        const job = await scheduler.read()
+        if (!job) continue
+        found = true
+        const at = [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
+        const flag = job.command.indexOf('--config')
+        const config = flag >= 0 ? job.command[flag + 1] : 'the default'
+        console.log(`Scheduled with ${scheduler.id} at ${at}`)
+        console.log(`Config: ${config}`)
+        console.log(`Log: ${job.log}`)
+      }
+      if (!found) console.log('No nightly job installed')
+    })
 }

@@ -203,6 +203,7 @@ Commands:
   install [options]  start `nightshift run` at night.start; it starts no unit
                      after night.end
   remove             remove the nightly job
+  status             show the installed nightly job
   help [command]     display help for command
 ```
 
@@ -225,6 +226,17 @@ Options:
 Usage: nightshift schedule remove [options]
 
 remove the nightly job
+
+Options:
+  -h, --help  display help for command
+```
+
+## nightshift schedule status
+
+```text
+Usage: nightshift schedule status [options]
+
+show the installed nightly job
 
 Options:
   -h, --help  display help for command

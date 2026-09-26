@@ -13,6 +13,7 @@ the `night` window and starts no unit after `night.end`.
 nightshift schedule install                 # macOS: launchd
 nightshift schedule install --with systemd  # Linux: a user timer
 nightshift schedule install --with cron
+nightshift schedule status                  # scheduler, time, config and log
 nightshift schedule remove
 ```
 
