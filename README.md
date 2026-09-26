@@ -38,11 +38,22 @@ Units
      github acme/api#2: Cache invalidation
 ```
 
-Looks sane? Run one unit for real, then hand over the night:
+Looks sane? Run one unit for real:
 
 ```sh
 nightshift run --unit acme-api-1
-nightshift schedule install    # launchd, systemd or cron; `ci init` for GitHub Actions
+```
+
+Then hand over the night, on your machine:
+
+```sh
+nightshift schedule install    # launchd, systemd or cron
+```
+
+Or on GitHub Actions, from a repo of your own:
+
+```sh
+nightshift ci init    # nightly workflow; add the secrets it lists
 ```
 
 Next morning:
