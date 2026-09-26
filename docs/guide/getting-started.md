@@ -76,7 +76,7 @@ Units
      unit        repo      rule  skill              provider  deliver   branch
   1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  night/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)   claude    report    night/acme-api-2
+  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    night/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
