@@ -37,6 +37,7 @@ which repo each project's code lives in. It writes
 `~/.config/night-shift/env` (mode 600), never to the config. Last, it
 asks where to run every night: this machine, GitHub Actions or later, and
 hands off to [`schedule install`](#every-night).
+`nightshift init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
 

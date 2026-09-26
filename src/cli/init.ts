@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { cancel, intro, log, outro, spinner } from '@clack/prompts'
-import type { Command } from 'commander'
+import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
 import { builtinSkillsDir, userSkillsDir } from '../config/paths.js'
@@ -14,7 +14,7 @@ import type { Ask, Ctx, Provider, Rule, Source } from '../core/types.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { Cancelled, terminalAsk } from './ask.js'
+import { Cancelled, defaultAsk, terminalAsk } from './ask.js'
 import { describeRule } from './format.js'
 import { installSchedule } from './schedule.js'
 
@@ -22,19 +22,32 @@ export function initCommand(program: Command): void {
   program
     .command('init')
     .description('detect installed agents, pick providers, sources and a starting queue')
-    .action(async () => {
+    .option('-y, --yes', 'answer every question with its default; needs no terminal')
+    .option('--provider <id...>', 'with --yes: providers, first takes units first')
+    .option('--source <id...>', 'with --yes: sources to take work from')
+    .option('--night <start-end>', 'with --yes: night window, e.g. 01:00-07:00', parseNight)
+    .option('--force', 'replace an existing config without asking')
+    .action(async (opts: InitOptions) => {
       const path = configPath(program.opts().config)
-      if (!process.stdin.isTTY) {
+      if (!opts.yes && !process.stdin.isTTY) {
         console.error(
-          'init asks questions in a terminal; without one, write the config by hand (`nightshift config schema` describes it) and run `nightshift config check`',
+          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`nightshift config schema` describes it) and run `nightshift config check`',
         )
         process.exitCode = 1
         return
       }
+      const ask = opts.yes ? defaultAsk(presets(opts), (line) => log.info(line)) : terminalAsk
       intro('night-shift init')
       try {
-        if (existsSync(path) && !(await terminalAsk.confirm(`Replace ${path}?`, false)))
-          return outro('Kept the existing config')
+        if (existsSync(path) && !opts.force) {
+          if (opts.yes) {
+            cancel(`${path} exists; --force replaces it`)
+            process.exitCode = 1
+            return
+          }
+          if (!(await ask.confirm(`Replace ${path}?`, false)))
+            return outro('Kept the existing config')
+        }
 
         const found = spinner()
         found.start('Looking for agents and a gh login')
@@ -57,11 +70,11 @@ export function initCommand(program: Command): void {
           ...(await loadSkills(userSkillsDir)),
         }
         const ctx: Ctx = { env: process.env, log: (line) => log.warn(line) }
-        const text = await initConfig({ ask: terminalAsk, ctx, installed, ghLogin, skills })
+        const text = await initConfig({ ask, ctx, installed, ghLogin, skills })
         parseConfig(text, path)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, text)
-        const scheduler = await whereToRun(terminalAsk).catch(() => 'later')
+        const scheduler = opts.yes ? 'later' : await whereToRun(terminalAsk).catch(() => 'later')
         if (scheduler === 'later')
           return outro(
             `Wrote ${path}. Next: nightshift doctor, nightshift plan, nightshift schedule install`,
@@ -70,7 +83,7 @@ export function initCommand(program: Command): void {
         await installSchedule(program.opts().config, scheduler || undefined)
       } catch (e) {
         if (e instanceof Cancelled) {
-          cancel('Nothing written')
+          cancel(opts.yes ? `Nothing written: ${e.message}` : 'Nothing written')
           process.exitCode = 1
         } else if (e instanceof ConfigError) {
           cancel(`Nothing written, the answers make an invalid config:\n${e.message}`)
@@ -78,6 +91,30 @@ export function initCommand(program: Command): void {
         } else throw e
       }
     })
+}
+
+interface InitOptions {
+  yes?: boolean
+  provider?: string[]
+  source?: string[]
+  night?: [string, string]
+  force?: boolean
+}
+
+function parseNight(value: string): [string, string] {
+  const [start = '', end = '', ...rest] = value.split('-')
+  if (rest.length > 0 || !time.safeParse(start).success || !time.safeParse(end).success)
+    throw new InvalidArgumentError('expected HH:MM-HH:MM, e.g. 01:00-07:00')
+  return [start, end]
+}
+
+/** The --yes answers the flags give, keyed by the prompts of initConfig. */
+function presets({ provider, source, night }: InitOptions): [RegExp, unknown][] {
+  const presets: [RegExp, unknown][] = []
+  if (provider) presets.push([/^Providers/, provider])
+  if (source) presets.push([/^Where does the work come from/, source])
+  if (night) presets.push([/^Night starts/, night[0]], [/^Night ends/, night[1]])
+  return presets
 }
 
 /** The `schedule install --with` value: '' for this machine's default, or 'later'. */

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { saveSecret } from '../src/cli/ask.js'
+import { Cancelled, defaultAsk, saveSecret } from '../src/cli/ask.js'
 import { initConfig } from '../src/cli/init.js'
 import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
@@ -167,6 +167,44 @@ describe('init', () => {
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...setup })
     expect(ask.notes).toEqual([expect.stringMatching(/^Skipping github: no recorded output/)])
     expect(parseConfig(text).night.start).toBe('02:00')
+  })
+})
+
+describe('init --yes', () => {
+  it('takes the installed providers, github when gh is logged in and the default queue', async () => {
+    const ask = defaultAsk([], () => {})
+    const text = await initConfig({ ask, installed: ['codex'], ghLogin: true, ...registry() })
+    const cfg = parseConfig(text)
+    expect(cfg.providers.map((p) => p.id)).toEqual(['codex'])
+    expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] } })
+    expect(cfg.queue?.map((r) => r.skill)).toEqual(['fix-ci', 'address-review', 'review'])
+    expect(cfg.night).toEqual({ start: '01:00', end: '07:00' })
+  })
+
+  it('answers from the presets and skips a source whose secret is unset', async () => {
+    const notes: string[] = []
+    const ask = defaultAsk(
+      [
+        [/^Providers/, ['codex', 'claude']],
+        [/^Where does the work come from/, ['asana', 'github']],
+        [/^Night starts/, '22:00'],
+        [/^Night ends/, '06:00'],
+      ],
+      (note) => void notes.push(note),
+    )
+    const text = await initConfig({ ask, installed: [], ghLogin: false, ...registry({}) })
+    const cfg = parseConfig(text)
+    expect(cfg.providers.map((p) => p.id)).toEqual(['codex', 'claude'])
+    expect(Object.keys(cfg.sources)).toEqual(['github'])
+    expect(cfg.night).toEqual({ start: '22:00', end: '06:00' })
+    expect(notes).toEqual(['Skipping asana: ASANA_TOKEN is not set'])
+  })
+
+  it('fails instead of asking again when a default is not enough', async () => {
+    const ask = defaultAsk([], () => {})
+    await expect(initConfig({ ask, installed: [], ghLogin: true, ...registry() })).rejects.toThrow(
+      new Cancelled('no default for "Providers (pick at least one)"'),
+    )
   })
 })
 
