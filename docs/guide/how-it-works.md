@@ -22,8 +22,8 @@ A source returns your open items with facts about each: a `type` (`pr`,
 
 | Source | Items | Fields a rule can match |
 |---|---|---|
-| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested` |
-| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>` |
+| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
+| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
 
 ## The queue
 
@@ -38,6 +38,9 @@ queue:
   - skill: implement
     where: { type: issue, label: night-shift }
 ```
+
+Within a rule, items come in the source's order (GitHub: newest first)
+unless the rule sets `order`.
 
 With no `queue` in the config, the default one applies, keeping only the
 rules whose source is configured:
@@ -121,4 +124,8 @@ night-shift and the run, which is how the next plan recognises it.
 
 `nightshift report` prints the last run: units done and skipped with the
 reason, each provider's windows before and after against the ceiling, and
-the report-only outputs. In GitHub Actions it lands in the job summary.
+the report-only outputs. On a terminal its tables are aligned and statuses
+coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
+in the job summary.
+`nightshift report --list` lists recent runs with their units, draft PRs
+and reports; `nightshift report <id>` prints one of them.

@@ -19,6 +19,8 @@ export interface Scheduler {
   install(s: Schedule): Promise<string>
   /** Removes the job; false when none was installed. */
   remove(): Promise<boolean>
+  /** The installed job, or undefined when none is. */
+  read(): Promise<Schedule | undefined>
 }
 
 export const schedulers = (home: string, run: Exec): Record<string, Scheduler> => ({

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
@@ -37,6 +37,25 @@ export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs =
       await rm(file)
       return true
     },
+    async read() {
+      return existsSync(file) ? parsePlist(await readFile(file, 'utf8')) : undefined
+    },
+  }
+}
+
+export function parsePlist(text: string): Schedule {
+  const after = (key: string) => text.split(`<key>${key}</key>`)[1] ?? ''
+  const strings = (xml: string) =>
+    [...xml.matchAll(/<string>(.*?)<\/string>/g)].map((m) =>
+      (m[1] ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'),
+    )
+  const integer = (key: string) => Number(after(key).match(/^<integer>(\d+)/)?.[1])
+  return {
+    command: strings(after('ProgramArguments').split('</array>')[0] ?? ''),
+    hour: integer('Hour'),
+    minute: integer('Minute'),
+    path: strings(after('PATH'))[0] ?? '',
+    log: strings(after('StandardOutPath'))[0] ?? '',
   }
 }
 

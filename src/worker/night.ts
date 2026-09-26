@@ -3,7 +3,7 @@ import { cp, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
-import type { NightPlan } from '../core/foreman.js'
+import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Provider, Quota, Source } from '../core/types.js'
 import { publish } from './publish.js'
@@ -19,7 +19,7 @@ export interface NightInput {
   runId: string
   runDir: string
   dryRun: boolean
-  /** Run only this unit. */
+  /** Run only this unit, named by its id or an item key, in any case. */
   only?: string
   /** Start no unit from this time on. */
   until?: Date
@@ -42,7 +42,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const planned = n.plan.units.filter((p) => !n.only || p.unit.id === n.only)
+  const only = n.only && slug(n.only)
+  const planned = n.plan.units.filter(
+    (p) => !only || p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only),
+  )
   if (n.only && planned.length === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
 
   for (const p of planned) {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { editUntilValid } from '../src/cli/config.js'
-import { type Cursor, formatQueue, press } from '../src/cli/queue.js'
+import { type Cursor, formatQueue, moveOrder, press } from '../src/cli/queue.js'
 import { ejectSkill, listSkills } from '../src/cli/skills.js'
 import { queueYaml, withQueueOrder } from '../src/config/edit.js'
 import { parseConfig } from '../src/config/load.js'
@@ -118,6 +118,19 @@ describe('queue screen', () => {
     expect(press(state, 'return')).toBe('save')
     expect(press(state, 'q')).toBe('quit')
     expect(press(state, 'x')).toBe(state)
+  })
+
+  it('moves a rule by position, up or down, and refuses positions out of range', () => {
+    expect(moveOrder(4, 3, 1)).toEqual([2, 0, 1, 3])
+    expect(moveOrder(4, 1, 3)).toEqual([1, 2, 0, 3])
+    expect(moveOrder(4, 2, 2)).toEqual([0, 1, 2, 3])
+    expect(parseConfig(withQueueOrder(example, [], moveOrder(4, 3, 1) ?? [])).queue).toEqual(
+      [2, 0, 1, 3].map((i) => queue[i]),
+    )
+    for (const bad of [0, 5, 1.5, Number.NaN]) {
+      expect(moveOrder(4, bad, 1)).toBeUndefined()
+      expect(moveOrder(4, 1, bad)).toBeUndefined()
+    }
   })
 })
 

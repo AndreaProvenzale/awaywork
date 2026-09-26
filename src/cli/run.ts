@@ -3,14 +3,14 @@ import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
-import { formatReport, summarize } from '../core/report.js'
+import { formatReport, runLine, summarize } from '../core/report.js'
 import { nightEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { runNight } from '../worker/night.js'
 import { reportConfigError } from './config.js'
-import { formatPlan } from './format.js'
+import { formatPlan, formatReportForTerminal } from './format.js'
 import { planTonight } from './plan.js'
 
 export function runCommand(program: Command): void {
@@ -18,7 +18,7 @@ export function runCommand(program: Command): void {
     .command('run')
     .description('plan tonight, run a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
-    .option('--unit <id>', 'run only this unit')
+    .option('--unit <id>', 'run only this unit, by id or item key')
     .option('--scheduled', 'run only inside the night window and start no unit after it ends')
     .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
       try {
@@ -66,8 +66,19 @@ export function runCommand(program: Command): void {
   program
     .command('report [id]')
     .description("print a run's morning report; the latest by default")
-    .action(async (id?: string) => {
+    .option('--list', 'list the last 20 runs: units, draft PRs and reports')
+    .action(async (id: string | undefined, opts: { list?: boolean }) => {
       const runs = (await readdir(runsDir).catch(() => [])).sort()
+      if (opts.list) {
+        if (runs.length === 0) console.log(`no runs in ${runsDir}`)
+        for (const run of runs.slice(-20).reverse()) {
+          const text = await readFile(join(runsDir, run, 'report.md'), 'utf8').catch(
+            () => undefined,
+          )
+          console.log(runLine(run, text))
+        }
+        return
+      }
       const run = id ?? runs.at(-1)
       if (!run) {
         console.error(`no runs in ${runsDir}`)
@@ -78,6 +89,6 @@ export function runCommand(program: Command): void {
       if (text === undefined) {
         console.error(`no report for run ${run} in ${runsDir}`)
         process.exitCode = 1
-      } else console.log(text)
+      } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
     })
 }
