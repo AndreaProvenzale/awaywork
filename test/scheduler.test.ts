@@ -6,11 +6,11 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse } from 'yaml'
 import type { Exec } from '../src/forge/gh.js'
-import { cron, cronLine } from '../src/scheduler/cron.js'
+import { cron, cronLine, parseCronLine } from '../src/scheduler/cron.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import type { Schedule } from '../src/scheduler/index.js'
-import { launchd, plist } from '../src/scheduler/launchd.js'
-import { service, systemd, timer } from '../src/scheduler/systemd.js'
+import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
+import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
 
 const schedule: Schedule = {
   command: [
@@ -25,6 +25,14 @@ const schedule: Schedule = {
   minute: 5,
   path: '/opt/bin:/usr/bin',
   log: '/h/state/schedule.log',
+}
+
+/** Characters each scheduler has to escape. */
+const awkward: Schedule = {
+  ...schedule,
+  command: ['/opt/node', '/opt/a&b<c>/"x"\\y', "it's 100%", '--config', '/h/c.yml'],
+  path: "/opt/it's 50%:/usr/bin",
+  log: '/h/log & more.log',
 }
 
 function recorder(crontab = '') {
@@ -52,9 +60,11 @@ it('writes a LaunchAgent that starts at the night start and logs to the state di
     'launchctl bootout gui/501/nightshift',
     `launchctl bootstrap gui/501 ${file}`,
   ])
+  expect(await scheduler.read()).toEqual(schedule)
   expect(await scheduler.remove()).toBe(true)
   expect(existsSync(file)).toBe(false)
   expect(await scheduler.remove()).toBe(false)
+  expect(await scheduler.read()).toBeUndefined()
 })
 
 it('retries bootstrap while launchd still holds the old job', async () => {
@@ -89,8 +99,10 @@ it('writes a persistent systemd user timer and its service', async () => {
     'systemctl --user daemon-reload',
     'systemctl --user enable --now nightshift.timer',
   ])
+  expect(await systemd(home, run).read()).toEqual(schedule)
   expect(await systemd(home, run).remove()).toBe(true)
   expect(existsSync(join(home, '.config/systemd/user/nightshift.service'))).toBe(false)
+  expect(await systemd(home, run).read()).toBeUndefined()
 })
 
 it("adds one tagged crontab line, keeps the user's own and removes only its line", async () => {
@@ -102,9 +114,17 @@ it("adds one tagged crontab line, keeps the user's own and removes only its line
     `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/night shift/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # night-shift`,
   )
   expect(cronTab.crontab()).toBe(`MAILTO=me\n\n0 9 * * * backup\n${cronLine(schedule)}\n`)
+  expect(await scheduler.read()).toEqual(schedule)
   expect(await scheduler.remove()).toBe(true)
   expect(cronTab.crontab()).toBe('MAILTO=me\n\n0 9 * * * backup\n')
   expect(await scheduler.remove()).toBe(false)
+  expect(await scheduler.read()).toBeUndefined()
+})
+
+it('reads back a job whose paths need escaping', () => {
+  expect(parsePlist(plist(awkward))).toEqual(awkward)
+  expect(parseUnits(service(awkward), timer(awkward))).toEqual(awkward)
+  expect(parseCronLine(cronLine(awkward))).toEqual(awkward)
 })
 
 it('writes a workflow with a local-time cron, disk cleanup and secrets by name only', () => {
