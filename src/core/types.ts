@@ -66,6 +66,10 @@ export interface Provider {
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
+  /** The npm package that installs the binary on a runner. */
+  package: string
+  /** Env var names it reads unattended; locally a login may stand in. */
+  secrets: string[]
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>

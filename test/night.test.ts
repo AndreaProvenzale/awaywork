@@ -162,4 +162,10 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.nightshift/prompt.md'))).toBe(true)
   await expect(runNight({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
+
+  const ended = await runNight({ ...input, until: new Date(0) })
+  expect(ended.results.map((u) => u.reason)).toEqual([
+    'the night window ended',
+    'the night window ended',
+  ])
 })

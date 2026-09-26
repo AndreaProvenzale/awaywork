@@ -8,6 +8,8 @@ export const codex: Provider = {
   credential: 'rotating',
   quota: 'window',
   unattended: 'grey',
+  package: '@openai/codex',
+  secrets: [],
   detect: async () => notImplemented('codex.detect', 'M7'),
   probe: async () => notImplemented('codex.probe', 'M7'),
   run: () => notImplemented('codex.run', 'M7'),

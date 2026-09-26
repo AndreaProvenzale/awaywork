@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 export const configDir = join(homedir(), '.config', 'night-shift')
 export const defaultConfigPath = join(configDir, 'config.yml')
 export const userSkillsDir = join(configDir, 'skills')
+export const envFile = join(configDir, 'env')
 
 /** The installed package's root, from src/ in development or dist/ once bundled. */
 function packageRoot(dir = dirname(fileURLToPath(import.meta.url))): string {
@@ -16,4 +17,5 @@ function packageRoot(dir = dirname(fileURLToPath(import.meta.url))): string {
 export const harnessPath = join(packageRoot(), 'harness.md')
 export const builtinSkillsDir = join(packageRoot(), 'skills')
 
-export const runsDir = join(homedir(), '.local', 'state', 'night-shift', 'runs')
+export const stateDir = join(homedir(), '.local', 'state', 'night-shift')
+export const runsDir = join(stateDir, 'runs')

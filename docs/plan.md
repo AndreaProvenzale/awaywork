@@ -121,6 +121,8 @@ interface Provider {
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
+  package: string                                // npm package with the binary, for runners
+  secrets: string[]                              // env var names it reads unattended
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>              // null = fixed budget
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
@@ -263,8 +265,9 @@ Semantics, fixed so every milestone agrees:
 - **Deliver**, per rule, else the skill's default (frontmatter `metadata`),
   else `draft_pr`. Built-in `review` and `plan` default to `report`.
 - **Secrets** are only ever env var names in config. Locally they come
-  from the environment or `~/.config/night-shift/env` (mode 600); in
-  Actions they come from repository secrets.
+  from the environment or `~/.config/night-shift/env` (mode 600; the
+  environment wins); in Actions they come from repository secrets, with
+  `GH_TOKEN` for the forge and the config at `.night-shift/config.yml`.
 
 ## Delivery
 
@@ -367,11 +370,15 @@ why a unit is placed where it is.
       window, so stopping at the ceiling is still only tested on fakes.
 
 ### M5 Scheduling and doctor
-- [ ] `schedule install|remove` for launchd, systemd user timers and
-      cron, using the `night` window.
-- [ ] `ci init`: writes a GitHub Actions workflow (cron, disk cleanup from
-      `lessons.md`, secrets by name only).
-- [ ] `doctor`: binaries, versions, credentials present, one probe per
+- [x] `schedule install|remove` for launchd, systemd user timers and
+      cron, using the `night` window: the job starts
+      `run --scheduled` at `night.start` with the installing shell's
+      PATH; a scheduled run outside the window does nothing and starts
+      no unit after `night.end`.
+- [x] `ci init`: writes a GitHub Actions workflow (cron, disk cleanup from
+      `lessons.md`, secrets by name only). The schedule's `timezone` is
+      [C] (GitHub changelog, not yet seen firing on a runner).
+- [x] `doctor`: binaries, versions, credentials present, one probe per
       provider with tonight's ceiling, source reachability, the ToS
       `unattended` flag shown for each provider.
 

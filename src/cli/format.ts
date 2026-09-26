@@ -71,7 +71,7 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-function describeAllowance(a: Allowance): string {
+export function describeAllowance(a: Allowance): string {
   if (a.kind === 'fallback')
     return `fallback: ${a.units} units, ${a.turns} turns each (${a.reason})`
   const binding = a.limits.find((l) => l.value === a.ceiling)?.name

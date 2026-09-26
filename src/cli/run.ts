@@ -4,6 +4,7 @@ import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
 import { formatReport, summarize } from '../core/report.js'
+import { nightEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
@@ -18,10 +19,18 @@ export function runCommand(program: Command): void {
     .description('plan tonight, run a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit')
-    .action(async (opts: { dryRun?: boolean; unit?: string }) => {
+    .option('--scheduled', 'run only inside the night window and start no unit after it ends')
+    .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
+        const until = opts.scheduled ? nightEnd(config.night, new Date()) : undefined
+        if (opts.scheduled && !until) {
+          console.log(
+            `Outside the night window (${config.night.start}-${config.night.end}), nothing to do`,
+          )
+          return
+        }
         const { plan, warnings, ctx } = await planTonight(config)
         const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
         const runDir = join(runsDir, runId)
@@ -39,6 +48,7 @@ export function runCommand(program: Command): void {
           runDir,
           dryRun: !!opts.dryRun,
           only: opts.unit,
+          until,
           providers,
           sources,
           forge: githubForge(),

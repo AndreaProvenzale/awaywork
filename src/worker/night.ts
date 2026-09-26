@@ -21,6 +21,8 @@ export interface NightInput {
   dryRun: boolean
   /** Run only this unit. */
   only?: string
+  /** Start no unit from this time on. */
+  until?: Date
   providers: Record<string, Provider>
   sources: Record<string, Source>
   forge: Forge
@@ -48,6 +50,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const skip = (reason: string) => results.push({ planned: p, status: 'skipped', reason })
     if (n.signal?.aborted) {
       skip('interrupted')
+      continue
+    }
+    if (n.until && new Date() >= n.until) {
+      skip('the night window ended')
       continue
     }
     const { provider: id, passed } = route(unit.providers, allowances, routed)

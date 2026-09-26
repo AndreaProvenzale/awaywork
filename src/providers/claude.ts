@@ -16,6 +16,8 @@ export function claudeProvider(bin = 'claude'): Provider {
     credential: 'static',
     quota: 'window',
     unattended: 'allowed',
+    package: '@anthropic-ai/claude-code',
+    secrets: ['CLAUDE_CODE_OAUTH_TOKEN'],
 
     async detect() {
       const out = await execa(bin, ['--version']).catch(() => undefined)
