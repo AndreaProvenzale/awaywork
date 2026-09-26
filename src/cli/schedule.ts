@@ -19,7 +19,10 @@ export function scheduleCommand(program: Command): void {
   schedule
     .command('install')
     .description('start `nightshift run` at night.start; it starts no unit after night.end')
-    .option('--with <scheduler>', `${Object.keys(all).join(', ')} (default: ${defaultScheduler()})`)
+    .option(
+      '--with <scheduler>',
+      `${Object.keys(all).join(', ')} (default: launchd on macOS, else systemd if it runs, else cron)`,
+    )
     .action(async (opts: { with?: string }) => {
       const scheduler = all[opts.with ?? defaultScheduler()]
       if (!scheduler) {
