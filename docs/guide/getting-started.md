@@ -87,7 +87,8 @@ Skipped
 ```
 
 `nightshift queue` shows the same rules with tonight's matches and lets
-you reorder them with the keyboard.
+you reorder them with the keyboard; `nightshift queue move 3 1` moves
+rule #3 to the top without one.
 
 ## Run one unit
 
