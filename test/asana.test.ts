@@ -42,6 +42,8 @@ describe('asana source', () => {
       project: ['Backend'],
       section: ['QA'],
       tags: ['backend'],
+      created: '2026-01-01T08:00:00.000Z',
+      updated: '2026-01-03T08:00:00.000Z',
       'fields.ID': 'ENG-12',
       'fields.Priority': 'High',
       'fields.Estimate': 3,

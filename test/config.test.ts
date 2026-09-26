@@ -80,6 +80,12 @@ describe('config', () => {
     ])
   })
 
+  it('takes a rule order', () => {
+    const rule = (order: string) => `${minimal}queue: [{ skill: implement, order: ${order} }]`
+    expect(parseConfig(rule('oldest')).queue?.[0]?.order).toBe('oldest')
+    expect(problems(rule('random'))).toEqual([expect.stringContaining('queue[0].order')])
+  })
+
   it('rejects unknown and unconfigured providers and sources', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
       expect.stringContaining('providers[0]: Unrecognized key: "gemini"'),
