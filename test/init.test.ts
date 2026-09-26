@@ -91,6 +91,7 @@ describe('init', () => {
       [/^Where does the work come from/, ['asana']],
       [/^Asana workspace/, '100'],
       [/^Asana projects/, ['300']],
+      [/^GitHub repo for tasks in Platform/, 'acme/api'],
       [/^Starting queue/, initial],
       [/^Which section holds the items for qa-feedback\? Fix the issues QA/, initial],
       [/^Which section holds the items for continue/, 'Doing'],
@@ -101,7 +102,12 @@ describe('init', () => {
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry() })
     const cfg = parseConfig(text)
     expect(cfg.sources).toEqual({
-      asana: { workspace: '100', projects: ['300'], token_env: 'ASANA_TOKEN' },
+      asana: {
+        workspace: '100',
+        projects: ['300'],
+        project_repos: { '300': 'acme/api' },
+        token_env: 'ASANA_TOKEN',
+      },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
       ['qa-feedback', { section: 'QA' }],

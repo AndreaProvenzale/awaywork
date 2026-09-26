@@ -188,7 +188,10 @@ providers:                      # order = routing preference
   - codex: { budget: { per_night: 5% } }
 sources:
   github: { repos: [acme/*] }
-  asana: { workspace: "123", token_env: ASANA_TOKEN }
+  asana:
+    workspace: "123"
+    token_env: ASANA_TOKEN
+    project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
 branch: night/{key}             # default; {key} is required
 repos:
   acme/api:
@@ -227,7 +230,8 @@ Semantics, fixed so every milestone agrees:
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one
   unit, placed at its best-ranked item's rule. The unit works in the
   linked PR's repo, else the item's `repo` field; with neither it is
-  skipped. `id` is the top item's key as a slug. A unit whose items link
+  skipped. A tracker source fills `repo` from its own mapping, e.g.
+  Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
   an open night-shift PR (`ours`) is skipped as waiting for review; such
   a PR is never a unit's base.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
@@ -403,6 +407,9 @@ why a unit is placed where it is.
       links no PR before planning. The attachments path stays unverified
       and unused (`sources.md`).
 - [x] Docs: token scope (Asana has no read-only PAT, so say so).
+- [x] `project_repos` maps a project gid to a repo, filling the `repo`
+      field so a task with no PR still gets a unit; `init` asks for one
+      per picked project.
 - [x] Contract suite passes on fixtures shaped from Asana's documented
       responses; `test/real-asana.test.ts` reads a real workspace when
       `ASANA_TOKEN` and `NIGHTSHIFT_ASANA_WORKSPACE` are set. Not yet
@@ -450,6 +457,7 @@ Schema for autocompletion and `config edit` as the safety net.
 - [x] Providers take a bare name (`- claude`) next to the override map.
 
 ### M9 Release
+- [ ] The end-to-end pass in `e2e.md`, results recorded in `lessons.md`.
 - [ ] README usage, a configuration reference generated from the schema,
       and guides for adding a provider, a source and a skill.
 - [ ] npm publish workflow, versioning, NOTICE (Symphony credit).
@@ -478,13 +486,6 @@ Schema for autocompletion and `config edit` as the safety net.
 - **In-repo skills in `config check`.** It sees only user and built-in
   skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
   the check. Resolve once M3 clones repos.
-- **Repo for tracker items without a PR.** Any tracker source, not just
-  Asana: an item that links no PR has no repo, so `plan` skips it (e.g.
-  the example's rule 4 for a new task). Symphony avoids the question by
-  binding one tracker scope to one repo per `WORKFLOW.md` and cloning in
-  an `after_create` hook [V]. Likely shape: a shared source option mapping
-  a tracker scope (project, team, board) to a repo that fills the `repo`
-  field, plus a rule-level `repo` override.
 - **Mapping tracker columns to skills.** Section and status names are the
   user's own, so the default queue's Asana names (`QA`, `In progress`,
   `Current sprint`) are guesses. Symphony has no mapping layer: config
