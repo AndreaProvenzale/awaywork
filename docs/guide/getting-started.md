@@ -95,6 +95,7 @@ you reorder them with the keyboard.
 nightshift run --dry-run         # clone, context and prompt, no agent
 nightshift run --unit acme-api-1 # one real unit
 nightshift report                # the morning report of the last run
+nightshift report --list         # recent runs, to pick an id for report <id>
 ```
 
 `--unit` takes the unit id from `plan` or an item key such as

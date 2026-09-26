@@ -16,27 +16,27 @@ Usage: nightshift [options] [command]
 Spend idle coding-subscription quota overnight
 
 Options:
-  -c, --config <path>  config file (default: $NIGHT_SHIFT_CONFIG or
-                       ~/.config/night-shift/config.yml)
-  -h, --help           display help for command
+  -c, --config <path>    config file (default: $NIGHT_SHIFT_CONFIG or
+                         ~/.config/night-shift/config.yml)
+  -h, --help             display help for command
 
 Commands:
-  init [options]       detect installed agents, pick providers, sources and a
-                       starting queue
-  config               inspect and validate the config
-  plan                 show tonight's units in order, with each provider's
-                       ceiling; runs no worker
-  queue                show what each rule matches tonight and reorder the rules
-                       with the keyboard
-  skills               list skills and eject built-ins to tweak
-  run [options]        plan tonight, run a worker per unit and publish draft PRs
-                       and reports
-  report [id]          print a run's morning report; the latest by default
-  schedule             run night-shift every night on this machine or in GitHub
-                       Actions
-  doctor               check binaries, credentials, quota and sources before a
-                       night
-  help [command]       display help for command
+  init [options]         detect installed agents, pick providers, sources and a
+                         starting queue
+  config                 inspect and validate the config
+  plan                   show tonight's units in order, with each provider's
+                         ceiling; runs no worker
+  queue                  show what each rule matches tonight and reorder the
+                         rules with the keyboard
+  skills                 list skills and eject built-ins to tweak
+  run [options]          plan tonight, run a worker per unit and publish draft
+                         PRs and reports
+  report [options] [id]  print a run's morning report; the latest by default
+  schedule               run night-shift every night on this machine or in
+                         GitHub Actions
+  doctor                 check binaries, credentials, quota and sources before a
+                         night
+  help [command]         display help for command
 ```
 
 ## nightshift init
@@ -191,6 +191,7 @@ Usage: nightshift report [options] [id]
 print a run's morning report; the latest by default
 
 Options:
+  --list      list the last 20 runs: units, draft PRs and reports
   -h, --help  display help for command
 ```
 
