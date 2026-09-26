@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
+import { formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
@@ -124,6 +125,17 @@ queue:
   expect(text).toContain(
     '### acme-api-2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.',
   )
+  const shown = formatReportForTerminal(text)
+  expect(shown).toContain(
+    [
+      '#  Unit        Skill   Provider  Status         Result',
+      '1  acme-api-1  fix-ci  claude    done, 5 turns  https://example.com/acme/api/pull/night/acme-api-1 (1 commits)',
+      '2  acme-api-3  fix-ci  -         skipped        night/acme-api-3 already exists on acme/api',
+    ].join('\n'),
+  )
+  expect(shown).not.toContain('|')
+  expect(shown.startsWith(text.slice(0, text.indexOf('| #')))).toBe(true)
+  expect(shown.endsWith(text.slice(text.indexOf('\n## Quota')))).toBe(true)
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
     'Run 20260925-010000: 1 draft PRs, 1 reports, 3 units',
   )

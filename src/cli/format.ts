@@ -142,11 +142,42 @@ function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-function table(rows: string[][]): string[] {
+/** The markdown morning report for a terminal: pipe tables aligned, statuses styled. */
+export function formatReportForTerminal(markdown: string): string {
+  const lines = markdown.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; ) {
+    const rows: string[][] = []
+    for (let line = lines[i]; line?.startsWith('|'); line = lines[++i])
+      if (!/^\|[-| ]+\|$/.test(line)) rows.push(line.slice(2, -2).split(' | '))
+    if (rows.length === 0) out.push(lines[i++] ?? '')
+    else {
+      const statusCol = rows[0]?.indexOf('Status') ?? -1
+      out.push(
+        ...table(rows, (cell, r, c) =>
+          r > 0 && c === statusCol ? styleText(statusStyle(cell), cell) : cell,
+        ),
+      )
+    }
+  }
+  return out.join('\n')
+}
+
+function statusStyle(status: string): 'green' | 'red' | 'yellow' | 'dim' {
+  if (status.startsWith('done')) return 'green'
+  if (status.startsWith('failed') || status.startsWith('error')) return 'red'
+  if (status.startsWith('stopped')) return 'yellow'
+  return 'dim'
+}
+
+function table(
+  rows: string[][],
+  style: (cell: string, r: number, c: number) => string = (cell) => cell,
+): string[] {
   const widths = rows[0]?.map((_, c) => Math.max(...rows.map((r) => r[c]?.length ?? 0))) ?? []
-  return rows.map((r) =>
-    r
-      .map((cell, c) => cell.padEnd(widths[c] ?? 0))
+  return rows.map((row, r) =>
+    row
+      .map((cell, c) => style(cell.padEnd(widths[c] ?? 0), r, c))
       .join('  ')
       .trimEnd(),
   )

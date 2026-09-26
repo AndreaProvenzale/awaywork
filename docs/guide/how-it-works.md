@@ -124,6 +124,8 @@ night-shift and the run, which is how the next plan recognises it.
 
 `nightshift report` prints the last run: units done and skipped with the
 reason, each provider's windows before and after against the ceiling, and
-the report-only outputs. In GitHub Actions it lands in the job summary.
+the report-only outputs. On a terminal its tables are aligned and statuses
+coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
+in the job summary.
 `nightshift report --list` lists recent runs with their units, draft PRs
 and reports; `nightshift report <id>` prints one of them.
