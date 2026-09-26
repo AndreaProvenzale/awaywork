@@ -10,7 +10,7 @@ import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { runNight } from '../worker/night.js'
 import { reportConfigError } from './config.js'
-import { formatPlan } from './format.js'
+import { formatPlan, formatReportForTerminal } from './format.js'
 import { planTonight } from './plan.js'
 
 export function runCommand(program: Command): void {
@@ -78,6 +78,6 @@ export function runCommand(program: Command): void {
       if (text === undefined) {
         console.error(`no report for run ${run} in ${runsDir}`)
         process.exitCode = 1
-      } else console.log(text)
+      } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
     })
 }
