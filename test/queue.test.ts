@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-<<<<<<< HEAD
-
-import { closestRule, failedKeys, matches, rank } from '../src/core/queue.js'
-import type { Rule } from '../src/core/types.js'
-
-=======
-
-import { matches, rank, ruleMatches } from '../src/core/queue.js'
+import { closestRule, failedKeys, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
-
->>>>>>> origin/main
 
 import { asanaTask, githubPr } from './fakes/items.js'
 
@@ -72,7 +63,6 @@ describe('rank', () => {
   })
 })
 
-<<<<<<< HEAD
 describe('closestRule', () => {
   it('names the keys an item fails', () => {
     const where = { type: 'pr', checks: 'failing', mine: true } as const
@@ -88,7 +78,9 @@ describe('closestRule', () => {
     ]
     expect(closestRule(githubPr(1), queue)).toEqual({ rule: 2, failed: ['checks'] })
     expect(closestRule(githubPr(1), [rule({}, 'asana')])).toBeUndefined()
-=======
+  })
+})
+
 describe('order', () => {
   const pr = (n: number, created?: string, updated?: string) =>
     githubPr(n, { ...(created && { created }), ...(updated && { updated }) })
@@ -119,6 +111,5 @@ describe('order', () => {
   it('orders what each rule takes', () => {
     const [taken] = ruleMatches(items, [{ ...rule({}), order: 'newest' }])
     expect(taken?.taken.map((i) => i.id)).toEqual(['1', '4', '3', '2'])
->>>>>>> origin/main
   })
 })
