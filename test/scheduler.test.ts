@@ -1,13 +1,13 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub Actions expressions
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse } from 'yaml'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLine, parseCronLine } from '../src/scheduler/cron.js'
-import { workflow } from '../src/scheduler/github-actions.js'
+import { removeWorkflow, WORKFLOW, workflow } from '../src/scheduler/github-actions.js'
 import type { Schedule } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
@@ -149,4 +149,15 @@ it('writes a workflow with a local-time cron, disk cleanup and secrets by name o
   expect(runs).toContain(
     "nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
   )
+})
+
+it('removes only its own workflow from a repo', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  await mkdir(join(root, '.github/workflows'), { recursive: true })
+  await writeFile(join(root, WORKFLOW), 'name: night-shift\n')
+  await writeFile(join(root, '.github/workflows/ci.yml'), 'name: ci\n')
+  expect(await removeWorkflow(root)).toBe(true)
+  expect(existsSync(join(root, WORKFLOW))).toBe(false)
+  expect(existsSync(join(root, '.github/workflows/ci.yml'))).toBe(true)
+  expect(await removeWorkflow(root)).toBe(false)
 })
