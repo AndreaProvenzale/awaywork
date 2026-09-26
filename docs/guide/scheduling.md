@@ -13,6 +13,7 @@ the `night` window and starts no unit after `night.end`.
 nightshift schedule install                 # macOS: launchd
 nightshift schedule install --with systemd  # Linux: a user timer
 nightshift schedule install --with cron
+nightshift schedule status                  # scheduler, time, config and log
 nightshift schedule remove
 ```
 
@@ -43,15 +44,15 @@ Run it on a hosted runner instead, from a repo of your own (a private
 
 ```sh
 cd my-night-shift-repo
-nightshift ci init
+nightshift schedule install --with github-actions
 ```
 
 This writes `.github/workflows/night-shift.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
-manual run. Then:
+manual run; `nightshift schedule remove` deletes it. Then:
 
 1. Commit your config as `.night-shift/config.yml`.
-2. Add the repository secrets `ci init` lists, e.g. `GH_TOKEN`,
+2. Add the repository secrets it lists, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`.
 3. Run it once by hand from the Actions tab.
 
