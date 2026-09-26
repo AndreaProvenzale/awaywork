@@ -6,7 +6,8 @@ import { loadSkills } from '../config/skills.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { type NightPlan, planNight } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
-import type { Ctx, Item } from '../core/types.js'
+import type { Ctx, Forge, Item } from '../core/types.js'
+import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { reportConfigError } from './config.js'
@@ -43,6 +44,7 @@ export async function planTonight(
       (e: Error) => warnings.push(`source ${id}: ${e.message}`),
     )
   }
+  await linkTasks(items, githubForge(), ctx)
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
@@ -56,4 +58,13 @@ export async function planTonight(
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   return { plan: planNight({ config, items, allowances, skills }), warnings, ctx }
+}
+
+/** Tracker tasks link no PR natively, so the forge finds my PRs carrying the task key. */
+export async function linkTasks(items: Item[], forge: Forge, ctx: Ctx): Promise<void> {
+  for (const item of items.filter((i) => i.type === 'task' && i.linkedPrs.length === 0))
+    item.linkedPrs = await forge.prsFor(item).catch((e: Error) => {
+      ctx.log(`linking ${item.key} to PRs: ${e.message}`)
+      return []
+    })
 }

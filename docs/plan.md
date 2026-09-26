@@ -109,7 +109,8 @@ interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 interface Source {
   id: string
   configSchema: ZodObject                         // strict; the config file nests it
-  fields: Record<string, ZodType>                // what `where` may match on, one scalar each
+  fields: Record<string, ZodType>                // what `where` may match on, one scalar each;
+                                                 // `prefix.*` declares every `prefix.<name>`
   secrets(cfg): string[]                         // env var names it reads
   items(cfg, ctx): Promise<Item[]>               // mine, open
   prefetch(item, dir, ctx): Promise<void>        // write context files for the worker
@@ -235,7 +236,8 @@ Semantics, fixed so every milestone agrees:
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
   Against a list-valued field (labels, tags) equals means contains. A
-  missing field equals nothing. An unknown key is a config error.
+  missing field equals nothing. An unknown key is a config error. Asana
+  custom fields match as `fields.<name>`, e.g. `"fields.Priority": High`.
 - **Routing.** A rule's `provider` (one or a list) is used in that order;
   otherwise the `providers` order. The first provider under its ceiling
   takes the unit; a provider without a probe takes at most `fallback.units`.
@@ -383,12 +385,18 @@ why a unit is placed where it is.
       `unattended` flag shown for each provider.
 
 ### M6 Asana source
-- [ ] Items: `/tasks?assignee=me` in the configured workspace/projects;
+- [x] Items: `/tasks?assignee=me` in the configured workspace/projects;
       comments from `stories`; fields `project`, `section`, `tags`,
-      `fields.*` (custom fields).
-- [ ] PR link: the forge fallback by task key; check the attachments path
-      (`sources.md`, unverified).
-- [ ] Docs: token scope (Asana has no read-only PAT, so say so).
+      `fields.*` (custom fields). The key is the task's custom ID
+      (`ENG-12`) when it has one, else its gid. Prefetch writes `task.md`.
+- [x] PR link: the forge fallback by task key, run on every task that
+      links no PR before planning. The attachments path stays unverified
+      and unused (`sources.md`).
+- [x] Docs: token scope (Asana has no read-only PAT, so say so).
+- [x] Contract suite passes on fixtures shaped from Asana's documented
+      responses; `test/real-asana.test.ts` reads a real workspace when
+      `ASANA_TOKEN` and `NIGHTSHIFT_ASANA_WORKSPACE` are set. Not yet
+      run against a live workspace.
 
 ### M7 Codex provider
 - [ ] `codex exec` headless run and its event stream; the rotating
