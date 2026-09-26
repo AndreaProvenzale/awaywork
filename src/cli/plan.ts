@@ -22,7 +22,7 @@ export function planCommand(program: Command): void {
       try {
         const config = await loadConfig(configPath(program.opts().config))
         const { plan, warnings } = await planTonight(config)
-        console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings))
+        console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
       }

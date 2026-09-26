@@ -1,3 +1,4 @@
+import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
 import type { Rule, WhereValue } from '../core/types.js'
@@ -12,19 +13,34 @@ export function planJson(plan: NightPlan, warnings: string[] = []): string {
 }
 
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
-export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
+export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = false): string {
+  const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
   const out: string[] = []
-  if (warnings.length > 0) out.push('Warnings', ...warnings.map((w) => `  ${w}`), '')
+  if (warnings.length > 0) out.push(style('bold', 'Warnings'), ...warnings.map((w) => `  ${w}`), '')
 
-  out.push(plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue')
+  out.push(style('bold', plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue'))
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])
   out.push(...indent(table(rules)))
 
-  out.push('', 'Providers')
-  const ceilings = Object.entries(plan.allowances).map(([id, a]) => [id, describeAllowance(a)])
-  out.push(...indent(table(ceilings)))
+  out.push('', style('bold', 'Providers'))
+  const allowances = Object.entries(plan.allowances)
+  const providerHeader = [
+    'provider',
+    'window',
+    'used',
+    'ceiling',
+    'set by',
+    'resets in',
+    'session / stop at',
+  ]
+  const providerLines = table([providerHeader, ...allowances.map(([id, a]) => allowanceRow(id, a))])
+  out.push(`  ${style('bold', providerLines[0] ?? '')}`)
+  allowances.forEach(([, a], i) => {
+    out.push(`  ${providerLines[i + 1]}`)
+    out.push(style('dim', `    ${allowanceNote(a)}`))
+  })
 
-  out.push('', 'Units')
+  out.push('', style('bold', 'Units'))
   if (plan.units.length === 0) out.push('  none')
   else {
     const rows = plan.units.map((p, i) => [
@@ -39,7 +55,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
     ])
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
     const lines = table([header, ...rows])
-    out.push(`  ${lines[0]}`)
+    out.push(`  ${style('bold', lines[0] ?? '')}`)
     plan.units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
       const [top, ...merged] = p.unit.items
@@ -56,7 +72,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
   }
 
   if (plan.skipped.length > 0) {
-    out.push('', 'Skipped')
+    out.push('', style('bold', 'Skipped'))
     for (const s of plan.skipped) out.push(`  ${s.item.source} ${s.item.key}: ${s.reason}`)
   }
   return out.join('\n')
@@ -82,19 +98,45 @@ function describeWhere(key: string, value: WhereValue): string {
 }
 
 export function describeAllowance(a: Allowance): string {
-  if (a.kind === 'fallback')
-    return `fallback: ${a.units} units, ${a.turns} turns each (${a.reason})`
-  const binding = a.limits.find((l) => l.value === a.ceiling)?.name
-  const others = a.limits
-    .filter((l) => l.name !== binding)
-    .map((l) => `${l.name} ${pct(l.value)}`)
-    .join(', ')
+  if (a.kind === 'fallback') return `fallback: ${describeFallback(a)}`
   const session = a.session
     ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
     : ''
-  const nights = `${a.nights} night${a.nights === 1 ? '' : 's'} to reset`
-  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${binding} (${others}; ${nights})${session}`
+  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${nights(a.nights)})${session}`
 }
+
+type QuotaAllowance = Extract<Allowance, { kind: 'quota' }>
+type FallbackAllowance = Extract<Allowance, { kind: 'fallback' }>
+
+function allowanceRow(id: string, a: Allowance): string[] {
+  if (a.kind === 'fallback') return [id, 'fallback']
+  const session = a.session ? `${pct(a.session.used)} / ${pct(a.session.stopAt)}` : '-'
+  return [id, a.window, pct(a.used), pct(a.ceiling), bindingLimit(a), nights(a.nights), session]
+}
+
+function allowanceNote(a: Allowance): string {
+  return a.kind === 'fallback' ? describeFallback(a) : `other limits: ${otherLimits(a)}`
+}
+
+function describeFallback(a: FallbackAllowance): string {
+  return `${a.units} units, ${a.turns} turns each (${a.reason})`
+}
+
+// `reserve` is the share kept back; its limit is the cap that leaves it.
+const limitName = (name: string) => (name === 'reserve' ? 'reserve cap' : name)
+
+const binding = (a: QuotaAllowance) => a.limits.find((l) => l.value === a.ceiling)
+
+const bindingLimit = (a: QuotaAllowance) => limitName(binding(a)?.name ?? '-')
+
+function otherLimits(a: QuotaAllowance): string {
+  return a.limits
+    .filter((l) => l !== binding(a))
+    .map((l) => `${limitName(l.name)} ${pct(l.value)}`)
+    .join(', ')
+}
+
+const nights = (n: number) => `${n} night${n === 1 ? '' : 's'}`
 
 function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
