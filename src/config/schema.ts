@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import type { Rule } from '../core/types.js'
 import { providers } from '../providers/index.js'
-import { sources } from '../sources/index.js'
+import { sourceField, sources } from '../sources/index.js'
 
 const percent = z
   .string()
@@ -158,7 +158,7 @@ export const configSchema = z
 export type Config = z.output<typeof configSchema>
 
 function fieldFor(scope: string[], key: string): z.ZodType | undefined {
-  const matches = scope.flatMap((id) => sources[id]?.fields[key] ?? [])
+  const matches = scope.flatMap((id) => sourceField(sources[id]?.fields ?? {}, key) ?? [])
   if (matches.length === 0) return undefined
   return matches.length === 1 ? matches[0] : z.union(matches)
 }

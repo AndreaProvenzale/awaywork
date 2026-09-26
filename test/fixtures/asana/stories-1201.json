@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "gid": "5001",
+      "resource_type": "story",
+      "resource_subtype": "comment_added",
+      "created_at": "2026-01-01T10:00:00.000Z",
+      "created_by": { "gid": "901", "resource_type": "user", "name": "QA" },
+      "text": "Still returns 500 on burst."
+    },
+    {
+      "gid": "5002",
+      "resource_type": "story",
+      "resource_subtype": "comment_added",
+      "created_at": "2026-01-02T09:00:00.000Z",
+      "created_by": null,
+      "text": "Repro: 30 requests in one second."
+    }
+  ],
+  "next_page": null
+}
