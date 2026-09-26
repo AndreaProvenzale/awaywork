@@ -1,3 +1,4 @@
+import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
 import type { Rule, WhereValue } from '../core/types.js'
@@ -98,4 +99,15 @@ function table(rows: string[][]): string[] {
       .join('  ')
       .trimEnd(),
   )
+}
+
+export type Status = 'ok' | 'warn' | 'FAIL'
+
+const markers = { ok: ['✔', 'green'], warn: ['⚠', 'yellow'], FAIL: ['✖', 'red'] } as const
+
+/** A colored glyph for a terminal, the plain word everywhere else. */
+export function statusMarker(status: Status, color: boolean): string {
+  if (!color) return status.padEnd(4)
+  const [glyph, style] = markers[status]
+  return styleText(style, glyph, { validateStream: false })
 }

@@ -8,9 +8,7 @@ import type { Ctx } from '../core/types.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { describeAllowance } from './format.js'
-
-type Status = 'ok' | 'warn' | 'FAIL'
+import { describeAllowance, type Status, statusMarker } from './format.js'
 
 export function doctorCommand(program: Command): void {
   program
@@ -18,9 +16,10 @@ export function doctorCommand(program: Command): void {
     .description('check binaries, credentials, quota and sources before a night')
     .action(async () => {
       let failed = false
+      const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
       const report = (status: Status, what: string, detail = '') => {
         failed ||= status === 'FAIL'
-        console.log(`${status.padEnd(4)}  ${what}${detail && `: ${detail}`}`)
+        console.log(`${statusMarker(status, color)}  ${what}${detail && `: ${detail}`}`)
       }
       const ctx: Ctx = { env: process.env, log: (line) => report('warn', line) }
       const secret = (name: string) => (process.env[name] ? `${name} set` : `${name} unset`)
