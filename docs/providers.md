@@ -11,7 +11,7 @@ Claude one in `lessons.md`.
 | Provider | Headless credential | Remote | Bills | Quota model | Quota readable | Automation ToS |
 |---|---|---|---|---|---|---|
 | Claude Code | `claude setup-token`, 1 year, static | Yes, documented for CI [V] | Subscription [V, burn-tested] | 5 h + weekly windows | `rate_limit_event` in stream-json [V, tested] | Stock binary only [V] |
-| Codex (ChatGPT plan) | `~/.codex/auth.json`, rotates ~8 days | Yes, "advanced" [V] | Subscription | 5 h + weekly windows | App-server `account/rateLimits/read` [C] | Own login, no sharing [I] |
+| Codex (ChatGPT plan) | `~/.codex/auth.json`, rotates ~8 days | Yes, "advanced" [V] | Subscription | 5 h + weekly windows; free plan one 30-day window [V, tested] | App-server `account/rateLimits/read` [V, tested] | Own login, no sharing [I] |
 | GitHub Copilot CLI | Fine-grained PAT or Actions `GITHUB_TOKEN` | Yes, documented [V] | AI Credits, monthly allowance [V] | Monthly credits | Billing and usage APIs [V] | Low [I] |
 | Cursor CLI | `CURSOR_API_KEY` | Yes, documented [V] | Plan pool, then on-demand [C] | Monthly usage | Admin API, Teams only [V] | Low [I] |
 | Gemini CLI (AI Pro/Ultra) | Cached OAuth `~/.gemini/oauth_creds.json` | Works, not sanctioned [C] | Subscription only via OAuth [V] | Daily requests | `/stats`, interactive only [V] | **High** [V] |
@@ -109,8 +109,44 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   across concurrent jobs or multiple machines". Persist the refreshed file;
   seed only when missing. [V] https://developers.openai.com/codex/auth/ci-cd-auth
 - `openai/codex-action` takes API keys only. [V] https://github.com/openai/codex-action
-- Quota: app-server `account/rateLimits/read` returns `usedPercent`,
-  `windowDurationMins`, `resetsAt`. [C]
+- Quota: `codex app-server` (stdio JSON-RPC: `initialize`, `initialized`,
+  then `account/rateLimits/read`) returns `rateLimits.primary` and
+  `.secondary`, each `usedPercent` (0–100), `windowDurationMins`,
+  `resetsAt` (unix s), plus `planType`. The server does not exit on its
+  own. [V, tested 0.149.1] The request names its client: the user agent
+  reads `night-shift/<codex version>`. [V, tested]
+- On the free plan the only window is `primary`, 43200 min (30 days),
+  `secondary` null. Before any use `resetsAt` was now + 30 days; the
+  window started at the first run. [V, tested] Plus/Pro show a 5 h
+  primary and a weekly secondary. [C]
+- Free-plan cost: one trivial `exec` (two shell calls, one edit) moved the
+  month 0% → 2%; a small `implement` unit (a typo, a commit, the PR body)
+  4% → 9%. So the paced ceiling (~3% a night on a 30-day window) is below
+  one unit. [V, tested]
+- The first probe refreshed a 12-day-old `auth.json` in place
+  (`last_refresh` moved, login still valid). So probes rotate the file
+  too and share the per-machine lock with runs. [V, tested]
+- `codex exec --json` prints JSONL: `thread.started`, `turn.started`,
+  `item.started` / `item.completed` (`agent_message`,
+  `command_execution` with `exit_code`, `file_change`, `error`), then
+  `turn.completed` with token usage, or `error` and `turn.failed` with
+  exit 1. No quota and no turn count in the stream. [V, tested 0.149.1]
+- `exec` has no turn cap flag [V, `codex exec --help`]; night-shift
+  counts tool calls (commands, edits, MCP calls, web searches) as turns
+  and kills the binary past the cap, and re-reads the quota every 10
+  tool calls and after the run so a worker stops at its ceiling.
+- The `workspace-write` sandbox refuses `.git/index.lock`, so the model
+  cannot commit; workers run `--sandbox danger-full-access`, like Claude's
+  unsandboxed Bash. [V, tested]
+- `--ignore-user-config` skips `config.toml` (MCP servers, notify hooks,
+  plugins) while auth still comes from `CODEX_HOME` [V, `--help`; tested];
+  `--ephemeral` saves no session. A prompt argument plus piped stdin
+  appends stdin, so the prompt goes in on stdin as `-`. [V, `--help`]
+- Skills: `.agents/skills` in every directory from the working directory
+  up to the repo root [V] https://learn.chatgpt.com/docs/build-skills; a
+  `SKILL.md` there was found and followed by a headless `exec`. [V, tested]
+  Instructions: `AGENTS.md`, root down to the working directory [V]
+  https://learn.chatgpt.com/docs/agent-configuration/agents-md
 - Scheduled tasks run in the cloud from web or mobile; desktop tasks on
   local projects need the app running. [V] https://learn.chatgpt.com/docs/automations
 
@@ -176,4 +212,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Kiro: API-key runs draw plan credits.
 - Factory: `droid exec` shares the interactive pool.
 - Devin: personal-plan CLI billing.
-- Codex: `account/rateLimits/read` shape and availability headless.
+- Codex: Plus/Pro window shape; an app server running beside `exec`
+  (the mid-run probe) sharing one `auth.json` safely during a refresh.
+- Codex remote: an ephemeral runner seeds `auth.json` from the secret
+  every run, so after a refresh the secret's refresh token goes stale.

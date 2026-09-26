@@ -128,6 +128,29 @@ queue:
     )
   })
 
+  it('routes between claude and codex on their own windows', () => {
+    const yaml = `
+providers: [claude: {}, codex: { budget: { per_night: 5% } }]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: fix-ci, where: { checks: failing } }
+  - { skill: review, provider: [codex, claude], where: { review_requested: true } }
+`
+    const items = [githubPr(1, { checks: 'failing' }), githubPr(2, { review_requested: true })]
+    const month: Quota = {
+      windows: [{ name: '30d', span: 'long', used: 0.04, resetsAt: now / 1000 + 30 * 86400 }],
+    }
+    const result = plan(yaml, items, { claude: week(0.36), codex: month })
+    expect(rows(result).map((r) => r[3])).toEqual(['claude', 'codex'])
+    expect(formatPlan(result)).toContain(
+      'codex   30d 4% used, ceiling 6.9% set by pacing (per_night 9%, reserve 90%; 30 nights to reset)',
+    )
+
+    const full = plan(yaml, items, { claude: week(0.95), codex: month })
+    expect(rows(full).map((r) => r[3])).toEqual(['codex', 'codex'])
+    expect(full.units[0]?.passed).toEqual(['claude at its ceiling (95% of 90%)'])
+  })
+
   it('resolves skills and delivery: rule, then skill default, then draft_pr', () => {
     const yaml = `
 providers: [claude: {}]

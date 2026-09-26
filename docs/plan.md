@@ -399,12 +399,17 @@ why a unit is placed where it is.
       run against a live workspace.
 
 ### M7 Codex provider
-- [ ] `codex exec` headless run and its event stream; the rotating
-      `auth.json` is seeded only when missing and written back after each
-      run; runs are serialized per machine.
-- [ ] `probe` via `account/rateLimits/read`. It is [C] now, so burn-test
-      it and record the result in `providers.md`; fall back to a fixed
-      budget.
+- [x] `codex exec --json` headless run and its event stream; the turn
+      cap counts tool calls, since `exec` has none. The rotating
+      `auth.json` in `$CODEX_HOME` is seeded from `CODEX_AUTH_JSON` only
+      when missing; Codex writes the refreshed file back in place, and
+      night-shift never rewrites an existing one. Runs and probes hold a
+      per-machine lock. An ephemeral runner has nowhere to persist the
+      refreshed file, so Codex remote stays best effort.
+- [x] `probe` via `account/rateLimits/read` through `codex app-server`,
+      burn-tested and recorded in `providers.md` [V]; a failed read falls
+      back to a fixed budget. `exec` carries no quota, so a run re-reads
+      it every 10 tool calls and after it ends.
 - [ ] Contract suite; routing with two providers exercised in `plan`
       and in one real night.
 
