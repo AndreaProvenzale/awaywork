@@ -31,10 +31,10 @@ Providers
   claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
 
 Units
-     unit        repo      rule  skill             provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (builtin)  claude    draft_pr  night/acme-api-1
+     unit        repo      rule  skill              provider  deliver   branch
+  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  night/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (builtin)  claude    report    night/acme-api-2
+  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    night/acme-api-2
      github acme/api#2: Cache invalidation
 ```
 
@@ -53,7 +53,7 @@ nightshift schedule install    # launchd, systemd or cron
 Or on GitHub Actions, from a repo of your own:
 
 ```sh
-nightshift ci init    # nightly workflow; add the secrets it lists
+nightshift schedule install --with github-actions    # add the secrets it lists
 ```
 
 Next morning:

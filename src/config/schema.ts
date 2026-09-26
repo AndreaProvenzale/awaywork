@@ -103,6 +103,10 @@ const rule: z.ZodType<Rule, unknown> = z
       .optional()
       .describe("Output: a draft PR or the morning report; default the skill's"),
     branch: branch.optional().describe('Branch name template for this rule'),
+    order: z
+      .enum(['oldest', 'newest', 'updated'])
+      .optional()
+      .describe('Which item goes first: oldest, newest or last updated; default the source order'),
   })
   .describe('First matching rule wins; top = highest priority')
 

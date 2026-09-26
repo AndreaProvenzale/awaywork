@@ -16,28 +16,28 @@ Usage: nightshift [options] [command]
 Spend idle coding-subscription quota overnight
 
 Options:
-  -V, --version        output the version number
-  -c, --config <path>  config file (default: $NIGHT_SHIFT_CONFIG or
-                       ~/.config/night-shift/config.yml)
-  -h, --help           display help for command
+  -V, --version          output the version number
+  -c, --config <path>    config file (default: $NIGHT_SHIFT_CONFIG or
+                         ~/.config/night-shift/config.yml)
+  -h, --help             display help for command
 
 Commands:
-  init                 detect installed agents, pick providers, sources and a
-                       starting queue
-  config               inspect and validate the config
-  plan                 show tonight's units in order, with each provider's
-                       ceiling; runs no worker
-  queue                show what each rule matches tonight and reorder the rules
-                       with the keyboard
-  skills               list skills and eject built-ins to tweak
-  run [options]        plan tonight, run a worker per unit and publish draft PRs
-                       and reports
-  report [id]          print a run's morning report; the latest by default
-  schedule             run night-shift every night on this machine
-  ci                   run night-shift in GitHub Actions
-  doctor               check binaries, credentials, quota and sources before a
-                       night
-  help [command]       display help for command
+  init [options]         detect installed agents, pick providers, sources and a
+                         starting queue
+  config                 inspect and validate the config
+  plan                   show tonight's units in order, with each provider's
+                         ceiling; runs no worker
+  queue                  show what each rule matches tonight and reorder the
+                         rules with the keyboard
+  skills                 list skills and eject built-ins to tweak
+  run [options]          plan tonight, run a worker per unit and publish draft
+                         PRs and reports
+  report [options] [id]  print a run's morning report; the latest by default
+  schedule               run night-shift every night on this machine or in
+                         GitHub Actions
+  doctor                 check binaries, credentials, quota and sources before a
+                         night
+  help [command]         display help for command
 ```
 
 ## nightshift init
@@ -48,7 +48,12 @@ Usage: nightshift init [options]
 detect installed agents, pick providers, sources and a starting queue
 
 Options:
-  -h, --help  display help for command
+  -y, --yes            answer every question with its default; needs no terminal
+  --provider <id...>   with --yes: providers, first takes units first
+  --source <id...>     with --yes: sources to take work from
+  --night <start-end>  with --yes: night window, e.g. 01:00-07:00
+  --force              replace an existing config without asking
+  -h, --help           display help for command
 ```
 
 ## nightshift config
@@ -174,7 +179,7 @@ plan tonight, run a worker per unit and publish draft PRs and reports
 
 Options:
   --dry-run    prepare each workspace (clone, context, prompt) but run no worker
-  --unit <id>  run only this unit
+  --unit <id>  run only this unit, by id or item key
   --scheduled  run only inside the night window and start no unit after it ends
   -h, --help   display help for command
 ```
@@ -187,6 +192,7 @@ Usage: nightshift report [options] [id]
 print a run's morning report; the latest by default
 
 Options:
+  --list      list the last 20 runs: units, draft PRs and reports
   -h, --help  display help for command
 ```
 
@@ -195,7 +201,7 @@ Options:
 ```text
 Usage: nightshift schedule [options] [command]
 
-run night-shift every night on this machine
+run night-shift every night on this machine or in GitHub Actions
 
 Options:
   -h, --help         display help for command
@@ -203,7 +209,9 @@ Options:
 Commands:
   install [options]  start `nightshift run` at night.start; it starts no unit
                      after night.end
-  remove             remove the nightly job
+  remove             remove the nightly job, and
+                     .github/workflows/night-shift.yml in the current repo
+  status             show the installed nightly job
   help [command]     display help for command
 ```
 
@@ -215,8 +223,8 @@ Usage: nightshift schedule install [options]
 start `nightshift run` at night.start; it starts no unit after night.end
 
 Options:
-  --with <scheduler>  launchd, systemd, cron (default: launchd on macOS, else
-                      systemd if it runs, else cron)
+  --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd
+                      on macOS, else systemd if it runs, else cron)
   -h, --help          display help for command
 ```
 
@@ -225,35 +233,19 @@ Options:
 ```text
 Usage: nightshift schedule remove [options]
 
-remove the nightly job
+remove the nightly job, and .github/workflows/night-shift.yml in the current
+repo
 
 Options:
   -h, --help  display help for command
 ```
 
-## nightshift ci
+## nightshift schedule status
 
 ```text
-Usage: nightshift ci [options] [command]
+Usage: nightshift schedule status [options]
 
-run night-shift in GitHub Actions
-
-Options:
-  -h, --help      display help for command
-
-Commands:
-  init            write .github/workflows/night-shift.yml in this repo, reading
-                  the config from .night-shift/config.yml
-  help [command]  display help for command
-```
-
-## nightshift ci init
-
-```text
-Usage: nightshift ci init [options]
-
-write .github/workflows/night-shift.yml in this repo, reading the config from
-.night-shift/config.yml
+show the installed nightly job
 
 Options:
   -h, --help  display help for command

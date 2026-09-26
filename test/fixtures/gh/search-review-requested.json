@@ -11,6 +11,8 @@
           "body": "Moves sessions to Redis.",
           "url": "https://github.com/acme/api/pull/2",
           "state": "OPEN",
+          "createdAt": "2026-01-06T08:00:00Z",
+          "updatedAt": "2026-02-06T08:00:00Z",
           "repository": { "nameWithOwner": "acme/api" },
           "author": { "login": "teammate" },
           "assignees": { "nodes": [] },
