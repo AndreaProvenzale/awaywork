@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { Command } from 'commander'
 import { envFile } from '../config/paths.js'
-import { ciCommand } from './ci.js'
 import { configCommand } from './config.js'
 import { doctorCommand } from './doctor.js'
 import { initCommand } from './init.js'
@@ -28,7 +27,6 @@ queueCommand(program)
 skillsCommand(program)
 runCommand(program)
 scheduleCommand(program)
-ciCommand(program)
 doctorCommand(program)
 
 await program.parseAsync()

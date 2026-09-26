@@ -60,7 +60,7 @@ What each command does:
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
-| `schedule install`, `ci init` | Installs a nightly job or writes a workflow. Ask first. |
+| `schedule install` | Installs a nightly job, or writes a workflow with `--with github-actions`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `init`, `queue`, `config edit` | Interactive; need a terminal |
 
