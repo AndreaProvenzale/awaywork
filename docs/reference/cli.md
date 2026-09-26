@@ -25,7 +25,7 @@ Commands:
   init [options]         detect installed agents, pick providers, sources and a
                          starting queue
   config                 inspect and validate the config
-  plan                   show tonight's units in order, with each provider's
+  plan [options]         show tonight's units in order, with each provider's
                          ceiling; runs no worker
   queue                  show what each rule matches tonight and reorder the
                          rules with the keyboard
@@ -35,7 +35,7 @@ Commands:
   report [options] [id]  print a run's morning report; the latest by default
   schedule               run night-shift every night on this machine or in
                          GitHub Actions
-  doctor                 check binaries, credentials, quota and sources before a
+  doctor [options]       check binaries, credentials, quota and sources before a
                          night
   help [command]         display help for command
 ```
