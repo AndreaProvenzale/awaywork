@@ -97,6 +97,9 @@ nightshift run --unit acme-api-1 # one real unit
 nightshift report                # the morning report of the last run
 ```
 
+`--unit` takes the unit id from `plan` or an item key such as
+`acme/api#1`, in any case.
+
 The run directory, `~/.local/state/night-shift/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report.
 

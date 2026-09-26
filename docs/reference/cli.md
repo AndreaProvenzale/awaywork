@@ -178,7 +178,7 @@ plan tonight, run a worker per unit and publish draft PRs and reports
 
 Options:
   --dry-run    prepare each workspace (clone, context, prompt) but run no worker
-  --unit <id>  run only this unit
+  --unit <id>  run only this unit, by id or item key
   --scheduled  run only inside the night window and start no unit after it ends
   -h, --help   display help for command
 ```
