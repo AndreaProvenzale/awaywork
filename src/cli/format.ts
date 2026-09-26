@@ -23,7 +23,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
       p.unit.id,
       p.unit.repo,
       `#${p.rule + 1}`,
-      `${p.unit.skill} (${p.origin ?? 'in-repo?'})`,
+      `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
       p.unit.deliver,
       p.unit.branch,
