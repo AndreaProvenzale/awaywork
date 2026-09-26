@@ -25,7 +25,7 @@ From `lessons.md`:
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
 | Claude ceiling | Never stopped mid-run: real units stayed below 1% of either window. |
-| Scheduling | `schedule install` never fired a night; `ci init`'s workflow never ran on a runner (`timezone` is [C]). |
+| Scheduling | `schedule install` never fired a night; the `github-actions` workflow never ran on a runner (`timezone` is [C]). |
 | Codex remote | Best effort by design (rotating `auth.json`). |
 | Setup UX | `init`, `queue` and `config edit` never ran against real accounts. |
 | Packaging | Never installed from a packed tarball; `harness.md` and `skills/` resolve from the package root (`src/config/paths.ts`). |
@@ -35,8 +35,8 @@ From `lessons.md`:
 - `review_requested` needs a second GitHub account: nobody can request
   their own review. `address-review` can use review comments left on
   one's own PR.
-- The workflow from `ci init` runs `npm install -g nightshift-agent`,
-  which is not on npm yet: publish a release candidate first, or point
+- The workflow from `schedule install --with github-actions` runs
+  `npm install -g nightshift-agent`, which is not on npm yet: publish a release candidate first, or point
   the install line at a tarball or git ref in the test repo.
 - A scheduled job runs the `claude` binary on `PATH`, with whichever
   login is active then, not a shell function or alias wrapping it.
@@ -108,8 +108,8 @@ For each unit, check:
   the window does nothing.
 - systemd and cron on a Linux VM or container, or ship them marked
   untested.
-- `ci init` in the sandbox, `workflow_dispatch`, then one scheduled
-  night: `timezone`, disk cleanup, commit identity, the report in the
+- `schedule install --with github-actions` in the sandbox,
+  `workflow_dispatch`, then one scheduled night: `timezone`, disk cleanup, commit identity, the report in the
   step summary.
 - Codex in Actions twice, recording what the rotated `auth.json` does
   to the second run.

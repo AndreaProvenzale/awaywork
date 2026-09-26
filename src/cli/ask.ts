@@ -46,6 +46,31 @@ export const terminalAsk: Ask = {
   note: (message) => log.info(message),
 }
 
+/**
+ * Answers each prompt with the first matching preset, else its default; a secret it cannot
+ * prompt for fails the source asking, and a prompt asked again fails the whole run.
+ */
+export function defaultAsk(presets: [RegExp, unknown][], note: (message: string) => void): Ask {
+  const asked = new Set<string>()
+  const answer = <T>(message: string, fallback: T): T => {
+    if (asked.has(message)) throw new Cancelled(`no default for "${message}"`)
+    asked.add(message)
+    const preset = presets.find(([pattern]) => pattern.test(message))
+    return preset ? (preset[1] as T) : fallback
+  }
+  return {
+    text: async (message, opts = {}) => answer(message, opts.initial ?? ''),
+    select: async (message, choices, initial) =>
+      answer(message, initial ?? (choices[0]?.value as never)),
+    multiselect: async (message, _, initial) => answer(message, initial ?? []),
+    confirm: async (message, initial = true) => answer(message, initial),
+    secret: async (name) => {
+      throw new Error(`${name} is not set`)
+    },
+    note,
+  }
+}
+
 /** Appends to the env file, created with mode 600. */
 export async function saveSecret(name: string, value: string, file = envFile): Promise<void> {
   await mkdir(dirname(file), { recursive: true })

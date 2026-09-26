@@ -71,13 +71,13 @@ describe('plan', () => {
         codex   fallback: 4 units, 60 turns each (no quota reading)
 
       Units
-           unit        repo      rule  skill                provider  deliver   branch
-        1  acme-api-1  acme/api  #1    fix-ci (builtin)     claude    draft_pr  night/acme-api-1
+           unit        repo      rule  skill                 provider  deliver   branch
+        1  acme-api-1  acme/api  #1    fix-ci (built-in)     claude    draft_pr  night/acme-api-1
            github acme/api#1: PR 1
            + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (builtin)  claude    draft_pr  night/acme-api-5
+        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  night/acme-api-5
            github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (builtin)     claude    report    night/acme-api-2
+        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    night/acme-api-2
            github acme/api#2: PR 2
 
       Skipped

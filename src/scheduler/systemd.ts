@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
 import type { Schedule, Scheduler } from './index.js'
@@ -26,10 +26,31 @@ export function systemd(home: string, run: Exec): Scheduler {
       await systemctl('daemon-reload')
       return true
     },
+    async read() {
+      if (!existsSync(files[1])) return undefined
+      return parseUnits(await readFile(files[0], 'utf8'), await readFile(files[1], 'utf8'))
+    },
   }
 }
 
 const quote = (v: string) => `"${v.replace(/[\\"]/g, '\\$&').replace(/%/g, '%%')}"`
+
+export function parseUnits(serviceText: string, timerText: string): Schedule {
+  const value = (text: string, key: string) =>
+    text.match(new RegExp(`^${key}=(.*)$`, 'm'))?.[1] ?? ''
+  const unquote = (line: string) =>
+    [...line.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
+      (m[1] ?? '').replace(/\\(.)/g, '$1').replace(/%%/g, '%'),
+    )
+  const [, hour, minute] = value(timerText, 'OnCalendar').match(/(\d+):(\d+)/) ?? []
+  return {
+    command: unquote(value(serviceText, 'ExecStart')),
+    hour: Number(hour),
+    minute: Number(minute),
+    path: (unquote(value(serviceText, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
+    log: value(serviceText, 'StandardOutput').replace(/^append:/, ''),
+  }
+}
 
 export function service(s: Schedule): string {
   return `[Unit]
