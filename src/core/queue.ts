@@ -42,9 +42,32 @@ export function rank(items: Item[], queue: Rule[]): { ranked: Ranked[]; unmatche
 
 export function matches(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
-  return Object.entries(rule.where).every(([key, want]) =>
-    matchesValue(want, key === 'type' ? item.type : item.fields[key]),
+  return failedKeys(rule, item).length === 0
+}
+
+/** The `where` keys the item fails; the rule's source is not checked. */
+export function failedKeys(rule: Rule, item: Item): string[] {
+  return Object.keys(rule.where).filter(
+    (key) => !matchesValue(rule.where[key] as WhereValue, fieldValue(item, key)),
   )
+}
+
+export function fieldValue(item: Item, key: string): unknown {
+  return key === 'type' ? item.type : item.fields[key]
+}
+
+/** Among rules for the item's source, the one it misses by the fewest keys; the earlier on a tie. */
+export function closestRule(
+  item: Item,
+  queue: Rule[],
+): { rule: number; failed: string[] } | undefined {
+  let best: { rule: number; failed: string[] } | undefined
+  queue.forEach((r, i) => {
+    if (r.source && r.source !== item.source) return
+    const failed = failedKeys(r, item)
+    if (!best || failed.length < best.failed.length) best = { rule: i, failed }
+  })
+  return best
 }
 
 function matchesValue(want: WhereValue, actual: unknown): boolean {
