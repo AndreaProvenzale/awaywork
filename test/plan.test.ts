@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { formatPlan } from '../src/cli/format.js'
+import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
@@ -67,23 +67,27 @@ describe('plan', () => {
         #4  implement  source=asana section=Ready tags=backend provider=codex
 
       Providers
-        claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
-        codex   fallback: 4 units, 60 turns each (no quota reading)
+        provider  window     used  ceiling  set by     resets in  session / stop at
+        claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+          other limits: reserve cap 90%, pacing 54%
+        codex     fallback
+          4 units, 60 turns each (no quota reading)
 
       Units
-           unit        repo      rule  skill                provider  deliver   branch
-        1  acme-api-1  acme/api  #1    fix-ci (builtin)     claude    draft_pr  night/acme-api-1
+           unit        repo      rule  skill                 provider  deliver   branch
+        1  acme-api-1  acme/api  #1    fix-ci (built-in)     claude    draft_pr  night/acme-api-1
            github acme/api#1: PR 1
            + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (builtin)  claude    draft_pr  night/acme-api-5
+        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  night/acme-api-5
            github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (builtin)     claude    report    night/acme-api-2
+        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    night/acme-api-2
            github acme/api#2: PR 2
 
       Skipped
-        github acme/api#3: matched no rule
+        github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
         asana T-8: no repo: no linked PR or repo field"
     `)
+    expect(formatPlan(result, [], true)).toBe(formatPlan(result))
   })
 
   it('uses the default queue for configured sources only', () => {
@@ -143,7 +147,13 @@ queue:
     const result = plan(yaml, items, { claude: week(0.36), codex: month })
     expect(rows(result).map((r) => r[3])).toEqual(['claude', 'codex'])
     expect(formatPlan(result)).toContain(
-      'codex   30d 4% used, ceiling 6.9% set by pacing (per_night 9%, reserve 90%; 30 nights to reset)',
+      [
+        '  codex     30d        4%    6.9%     pacing  30 nights  -',
+        '    other limits: per_night 9%, reserve cap 90%',
+      ].join('\n'),
+    )
+    expect(describeAllowance(result.allowances.codex as Allowance)).toBe(
+      '30d 4% used, ceiling 6.9% set by pacing (per_night 9%, reserve cap 90%; resets in 30 nights)',
     )
 
     const full = plan(yaml, items, { claude: week(0.95), codex: month })
@@ -240,5 +250,24 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
+  })
+})
+
+describe('plan --json', () => {
+  it('prints the plan and warnings, without raw source payloads', () => {
+    const result = plan(example, [issue, githubPr(3)], { claude: week(0.36), codex: null })
+    const json = JSON.parse(planJson(result, ['source asana: offline']))
+    expect(Object.keys(json)).toEqual([
+      'queue',
+      'defaultQueue',
+      'units',
+      'skipped',
+      'allowances',
+      'warnings',
+    ])
+    expect(json.warnings).toEqual(['source asana: offline'])
+    expect(json.units[0].unit).toMatchObject({ id: 'acme-api-5', skill: 'implement' })
+    expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
+    expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
 })

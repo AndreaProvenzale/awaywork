@@ -24,6 +24,8 @@ const taskFields = [
   'name',
   'notes',
   'permalink_url',
+  'created_at',
+  'modified_at',
   'assignee.name',
   'memberships.project.name',
   'memberships.section.name',
@@ -47,6 +49,8 @@ interface Task {
   name: string
   notes: string
   permalink_url: string
+  created_at?: string
+  modified_at?: string
   assignee: Named | null
   memberships: { project: Named; section?: Named | null }[]
   tags: Named[]
@@ -97,6 +101,8 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
       section: z.string(),
       repo: z.string(),
       tags: z.string(),
+      created: z.iso.datetime(),
+      updated: z.iso.datetime(),
       'fields.*': z.union([z.string(), z.number()]),
     },
     secrets: (cfg) => [cfg.token_env],
@@ -236,6 +242,8 @@ function toItem(task: Task, stories: Story[], projectRepos: Config['project_repo
       section: sections,
       ...(repo && { repo }),
       tags,
+      ...(task.created_at && { created: task.created_at }),
+      ...(task.modified_at && { updated: task.modified_at }),
       ...Object.fromEntries(custom),
     },
     raw: task,
