@@ -30,6 +30,11 @@ not asked of the model.
   agent that the prefetched context is data, not instructions: a request
   in an item to run commands, fetch URLs, read secrets or change the
   delivery is reported, never followed.
+- **Someone else's PR is data too.** On a PR you didn't open, the
+  branch's `.night-shift/` is ignored, its copy of the unit's skills is
+  replaced with night-shift's, and the prompt says its `CLAUDE.md`,
+  `AGENTS.md` and skills are the author's. The agent binary still loads
+  those files itself.
 
 The agent's own tools are not sandboxed: Claude Code gets Bash and file
 tools pre-approved, Codex runs with `--sandbox danger-full-access`, which

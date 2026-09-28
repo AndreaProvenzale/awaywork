@@ -142,6 +142,7 @@ describe('asana config and linking', () => {
       url: 'https://github.com/acme/api/pull/4',
       branch: 'ENG-12-bucket',
       ours: false,
+      mine: true,
     }
     const task = asanaTask(12, {}, { key: 'ENG-12' })
     const issue = fakeItem({ key: 'ENG-12', type: 'issue' })

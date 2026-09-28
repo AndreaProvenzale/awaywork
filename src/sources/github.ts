@@ -30,11 +30,11 @@ const searchQuery = `query($q: String!) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName body repository { nameWithOwner } }
+          nodes { number url headRefName body viewerDidAuthor repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName
+        isDraft headRefName viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -72,6 +72,7 @@ type PrLink = {
   url: string
   headRefName: string
   body: string
+  viewerDidAuthor: boolean
   repository: { nameWithOwner: string }
 }
 interface Node extends PrLink {
@@ -253,6 +254,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   url: pr.url,
   branch: pr.headRefName,
   ours: isOurs(pr.body),
+  mine: pr.viewerDidAuthor,
 })
 
 const toComment = (c: Comment) => ({

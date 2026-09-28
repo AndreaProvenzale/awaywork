@@ -7,6 +7,8 @@ export interface PrRef {
   branch: string
   /** Opened by night-shift: its body carries the footer. */
   ours: boolean
+  /** Opened by the developer, by hand or through night-shift. */
+  mine: boolean
 }
 
 export interface Item {

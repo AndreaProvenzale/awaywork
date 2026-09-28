@@ -120,7 +120,7 @@ branch that doesn't exist on the remote yet.
 should use there, plus an instructions file. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
-clone.
+clone unless the unit is on a PR someone else opened.
 
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions
