@@ -47,7 +47,7 @@ interface Provider {
 
 - `run` spawns the binary in `job.dir` with `job.prompt`, under
   `job.maxTurns`, with the environment from `workerEnv()` (forge tokens
-  removed). It yields `log` lines, `quota` whenever the stream reports
+  and `job.withheld`, the other providers' and sources' secrets, removed). It yields `log` lines, `quota` whenever the stream reports
   one, and exactly one `done`. It stops when `signal` aborts.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h
   session and `long` for the week or month. Return `null` when the quota

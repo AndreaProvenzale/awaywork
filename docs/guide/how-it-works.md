@@ -104,7 +104,8 @@ PR's branch when it has one, else the default branch).
 - The prompt is, in order: the fixed [harness](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md),
   the skill, then your instructions (global, per repo, in-repo
   `.night-shift/instructions.md`, per rule).
-- The agent has no forge token and a `gh` config without a login.
+- The agent has no forge token, no source's or other provider's secret,
+  and a `gh` config without a login.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota
   reading) and a watchdog stops it below 1.5 GB of free memory or 2 GB of
   disk, then kills every process it left behind.

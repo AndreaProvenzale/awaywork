@@ -13,6 +13,13 @@ not asked of the model.
 - **No forge or tracker token.** Sources prefetch the context into files
   before the agent starts. The agent's environment has `GH_TOKEN` and
   similar variables removed and a `gh` config without a login.
+- **Only its own agent's secret.** Every secret a configured source
+  declares (`ASANA_TOKEN`, or your `token_env`) and every other
+  provider's (`CODEX_AUTH_JSON` for a Claude worker) is removed too. A
+  Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
+  Codex reads `auth.json` and gets no secret. The rest of your
+  environment stays so repo tooling runs, including any variable you
+  added to the env file that nothing declares.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
   output) is excluded from git, so it can't be committed.
