@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { ConfigError, parseConfig } from '../src/config/load.js'
+import { describe, expect, it, vi } from 'vitest'
+import { ConfigError, configPath, parseConfig } from '../src/config/load.js'
 import { unknownSkills } from '../src/config/skills.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
@@ -99,6 +99,15 @@ describe('config', () => {
       'queue[0].source: source "asana" is not configured',
       'queue[0].provider: provider "codex" is not configured',
     ])
+  })
+
+  it('expands a leading ~/ in the config path', () => {
+    expect(configPath('~/night.yml')).toBe(join(homedir(), 'night.yml'))
+    expect(configPath('/etc/~/night.yml')).toBe('/etc/~/night.yml')
+    expect(configPath('~other/night.yml')).toBe('~other/night.yml')
+    vi.stubEnv('NIGHT_SHIFT_CONFIG', '~/env.yml')
+    expect(configPath()).toBe(join(homedir(), 'env.yml'))
+    vi.unstubAllEnvs()
   })
 
   it('takes a model per provider and per rule', () => {
