@@ -15,6 +15,7 @@
           "updatedAt": "2026-02-03T08:00:00Z",
           "repository": { "nameWithOwner": "acme/api" },
           "author": { "login": "dev" },
+          "authorAssociation": "OWNER",
           "assignees": { "nodes": [{ "login": "dev" }] },
           "labels": { "nodes": [{ "name": "backend" }] },
           "comments": {
@@ -49,6 +50,7 @@
           "updatedAt": "2026-02-04T08:00:00Z",
           "repository": { "nameWithOwner": "acme/web" },
           "author": { "login": "dev" },
+          "authorAssociation": "OWNER",
           "assignees": { "nodes": [] },
           "labels": { "nodes": [] },
           "comments": { "nodes": [] },
@@ -71,6 +73,7 @@
           "updatedAt": "2026-02-05T08:00:00Z",
           "repository": { "nameWithOwner": "other/site" },
           "author": { "login": "dev" },
+          "authorAssociation": "OWNER",
           "assignees": { "nodes": [] },
           "labels": { "nodes": [] },
           "comments": { "nodes": [] },

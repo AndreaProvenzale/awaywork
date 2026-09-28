@@ -14,11 +14,13 @@ type Config = z.infer<typeof config>
 
 const PAGE = 100
 const LOG_TAIL = 200
+/** Author associations with write access or org membership; the rest can be anyone. */
+const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
 
 const common = `
   id number title body url state createdAt updatedAt
   repository { nameWithOwner }
-  author { login }
+  author { login } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
   comments(last: 50) { nodes { author { login } body createdAt } }`
@@ -84,6 +86,7 @@ interface Node extends PrLink {
   createdAt: string
   updatedAt: string
   author: Login
+  authorAssociation: string
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
   comments: Nodes<Comment>
@@ -128,6 +131,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
       repo: z.string(),
       label: z.string(),
       author: z.string(),
+      trusted: z.boolean(),
       mine: z.boolean(),
       draft: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
@@ -212,6 +216,7 @@ function toItem(node: Node): Item {
     repo,
     label: labels,
     author: node.author?.login,
+    trusted: TRUSTED.includes(node.authorAssociation),
     mine: false,
     created: node.createdAt,
     updated: node.updatedAt,
