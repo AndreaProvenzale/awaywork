@@ -98,9 +98,10 @@ describe('plan', () => {
   it('uses the default queue for configured sources only', () => {
     const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
     const items = [
-      githubPr(1, { mine: false, review_requested: true }),
+      githubPr(1, { mine: false, review_requested: true, trusted: true }),
       githubPr(2, { unresolved_threads: 4 }),
       githubPr(3, { checks: 'failing', unresolved_threads: 2 }),
+      githubPr(4, { mine: false, review_requested: true, trusted: false }),
     ]
     const result = plan(yaml, items, { claude: week(0.1) })
     expect(result.defaultQueue).toBe(true)
@@ -110,6 +111,7 @@ describe('plan', () => {
       ['acme-api-2', 'address-review'],
       ['acme-api-1', 'review'],
     ])
+    expect(result.skipped.map((s) => s.item.key)).toEqual(['acme/api#4'])
   })
 
   it('routes past a provider at its ceiling and caps fallback units', () => {

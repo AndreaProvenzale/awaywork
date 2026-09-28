@@ -62,7 +62,7 @@ queue:                          # first matching rule wins; top = highest priori
     where: { type: issue, label: night-shift, repo: acme/api }
     order: oldest
   - skill: review
-    where: { type: pr, review_requested: true }
+    where: { type: pr, review_requested: true, trusted: true }
     model: { claude: sonnet }
   - skill: implement
     source: asana

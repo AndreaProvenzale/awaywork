@@ -14,7 +14,7 @@ export const defaultQueue: Rule[] = [
   rule('fix-ci', 'github', { type: 'pr', mine: true, checks: 'failing' }),
   rule('qa-feedback', 'asana', { section: 'QA' }),
   rule('address-review', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
-  rule('review', 'github', { type: 'pr', review_requested: true }),
+  rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('continue', 'asana', { section: 'In progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
 ]

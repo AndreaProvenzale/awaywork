@@ -36,6 +36,11 @@ not asked of the model.
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
   skills); Codex still loads `AGENTS.md` and its skills itself.
+- **Only trusted authors' code runs by default.** Reviewing a PR means
+  running its tests, with your agent's login in the environment. The
+  default `review` rule matches `trusted: true` only: PRs whose author
+  is an owner, member or collaborator of the repo. A rule without it
+  reviews anyone's PR.
 - **Not your agent's config.** Workers skip your user-level agent
   config: `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`,
   skills and auto-memory for Claude Code, `config.toml` for Codex. The
