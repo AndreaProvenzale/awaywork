@@ -72,6 +72,7 @@ export function planNight(input: {
         items,
         repo,
         base: pr?.branch ?? '',
+        foreign: pr ? !pr.mine : false,
         branch,
         rule,
         skill: rule.skill,

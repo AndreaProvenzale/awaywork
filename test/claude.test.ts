@@ -22,6 +22,7 @@ const job = (): Job => ({
     items: [fakeItem()],
     repo: 'acme/api',
     base: '',
+    foreign: false,
     branch: 'night/fake-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
@@ -117,7 +118,12 @@ describe('claude provider', () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const argv = async (mine: boolean) => {
       const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
-      const unit = { ...job().unit, base: 'sessions', items: [fakeItem({ linkedPrs: [pr] })] }
+      const unit = {
+        ...job().unit,
+        base: 'sessions',
+        foreign: !mine,
+        items: [fakeItem({ linkedPrs: [pr] })],
+      }
       await collect(provider.run({ ...job(), unit }, new AbortController().signal))
       return JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
     }

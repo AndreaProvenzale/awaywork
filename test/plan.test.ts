@@ -58,7 +58,12 @@ describe('plan', () => {
       ['acme-api-5', 2, 'implement', 'claude', 'draft_pr'],
       ['acme-api-2', 3, 'review', 'claude', 'report'],
     ])
-    expect(result.units[0]?.unit).toMatchObject({ base: 'feature-1', branch: 'night/acme-api-1' })
+    expect(result.units[0]?.unit).toMatchObject({
+      base: 'feature-1',
+      foreign: false,
+      branch: 'night/acme-api-1',
+    })
+    expect(result.units[2]?.unit).toMatchObject({ base: 'feature-2', foreign: true })
     expect(formatPlan(result)).toMatchInlineSnapshot(`
       "Queue
         #1  fix-ci     type=pr mine=true checks=failing

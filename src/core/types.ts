@@ -147,6 +147,8 @@ export interface Unit {
   repo: string
   /** The linked PR's branch, or '' for the repo's default branch. */
   base: string
+  /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
+  foreign: boolean
   branch: string
   rule: Rule
   skill: string

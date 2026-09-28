@@ -36,7 +36,7 @@ export function githubPr(n: number, fields: Item['fields'] = {}): Item {
         url: `https://github.com/acme/api/pull/${n}`,
         branch,
         ours: false,
-        mine: true,
+        mine: fields.mine !== false,
       },
     ],
     fields: { repo: 'acme/api', mine: true, checks: 'passing', unresolved_threads: 0, ...fields },

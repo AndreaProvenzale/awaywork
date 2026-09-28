@@ -1,7 +1,6 @@
 import { execa } from 'execa'
 import { z } from 'zod'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
-import { onForeignPr } from '../worker/workspace.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -45,7 +44,7 @@ export function claudeProvider(bin = 'claude'): Provider {
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      args.push(...(onForeignPr(job.unit) ? isolated : repoOnly))
+      args.push(...(job.unit.foreign ? isolated : repoOnly))
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
         env: job.env,
