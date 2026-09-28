@@ -39,6 +39,7 @@ const loaded = {
   FAKE_AGENT_TOKEN: 'own',
   CODEX_AUTH_JSON: 'other',
   FAKE_TOKEN: 'src',
+  NTFY_TOPIC: 'notify',
 }
 
 /** Commits and writes a PR body, or writes a report, as a model would; the week fills to 45%. */
@@ -81,6 +82,7 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: fix-ci, where: { checks: failing } }
   - { skill: review, where: { review_requested: true }, model: { claude: sonnet } }
+notify: { command: 'true', secrets: [NTFY_TOPIC] }
 `)
   const items = [
     githubPr(1, { checks: 'failing' }),

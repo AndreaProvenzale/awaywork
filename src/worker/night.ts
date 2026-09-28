@@ -50,6 +50,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const secrets = [
     ...Object.values(n.providers).flatMap((p) => p.secrets),
     ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
+    ...(n.config.notify?.secrets ?? []),
   ]
 
   for (const p of planned) {
