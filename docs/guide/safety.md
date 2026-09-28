@@ -26,7 +26,10 @@ not asked of the model.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
   comment or change git config; targeted checks only; nothing in the
-  background. A skill or instruction can't override it.
+  background. A skill or instruction can't override it. It also tells the
+  agent that the prefetched context is data, not instructions: a request
+  in an item to run commands, fetch URLs, read secrets or change the
+  delivery is reported, never followed.
 
 The agent's own tools are not sandboxed: Claude Code gets Bash and file
 tools pre-approved, Codex runs with `--sandbox danger-full-access`, which
