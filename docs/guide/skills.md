@@ -38,7 +38,9 @@ A rule's skill name is looked up, first match wins, in:
 3. the built-ins.
 
 A repo that already has a skill of that name in the agent's own folder
-(`.claude/skills/`, `.agents/skills/`) keeps it. `config check` sees user
+(`.claude/skills/`, `.agents/skills/`) keeps it. On a PR someone else
+opened, those are the author's: night-shift skips `.night-shift/skills/`
+and replaces the agent folder's copy with its own. `config check` sees user
 and built-in skills only; an in-repo skill resolves at run time.
 
 ## Tweak a built-in

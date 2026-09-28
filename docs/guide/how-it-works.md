@@ -103,7 +103,8 @@ PR's branch when it has one, else the default branch).
   `.agents/skills/`).
 - The prompt is, in order: the fixed [harness](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md),
   the skill, then your instructions (global, per repo, in-repo
-  `.night-shift/instructions.md`, per rule).
+  `.night-shift/instructions.md` unless someone else opened the PR, per
+  rule).
 - The agent has no forge token, no source's or other provider's secret,
   and a `gh` config without a login.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota

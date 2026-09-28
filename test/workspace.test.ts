@@ -100,4 +100,71 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(parts.slice(2)).toEqual(['GLOBAL NOTE', 'Setup: `pnpm install`', 'REPO NOTE'])
     expect(await readFile(join(dir, '.nightshift/prompt.md'), 'utf8')).toBe(prompt)
   })
+
+  describe('on a PR whose branch carries its own instructions and review skill', () => {
+    const review = async (mine: boolean) => {
+      const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+      const dir = join(root, 'clone')
+      const forge = {
+        ...fakeForge(),
+        async clone(_repo: string, _branch: string, into: string) {
+          await mkdir(join(into, '.night-shift/skills/review'), { recursive: true })
+          await mkdir(join(into, '.claude/skills/review'), { recursive: true })
+          await execa('git', ['init', '-q', '-b', 'sessions', into])
+          await writeFile(join(into, '.night-shift/instructions.md'), 'AUTHOR NOTE')
+          await writeFile(join(into, '.night-shift/skills/review/SKILL.md'), 'AUTHOR SKILL')
+          await writeFile(join(into, '.claude/skills/review/SKILL.md'), 'AUTHOR SKILL')
+          await writeFile(join(into, '.claude/skills/review/extra.md'), 'AUTHOR EXTRA')
+          await git(into, 'add', '.')
+          await git(into, 'commit', '-qm', 'init')
+        },
+      }
+      const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
+      const prompt = await prepareWorkspace({
+        unit: {
+          id: 'acme-api-2',
+          items: [fakeItem({ linkedPrs: [pr] })],
+          repo: 'acme/api',
+          base: 'sessions',
+          branch: 'night/acme-api-2',
+          rule: { skill: 'review', where: {}, provider: [], skills: [], instructions: [] },
+          skill: 'review',
+          skills: [],
+          providers: ['claude'],
+          instructions: [],
+          deliver: 'report',
+        },
+        dir,
+        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        configDir: root,
+        forge,
+        sources: { fake: fakeSource() as Source },
+        provider: claude,
+        ctx: { env: {}, log: () => {} },
+        skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
+      })
+      return { dir, prompt }
+    }
+
+    it("ignores them when someone else opened it and says the branch's files are the author's", async () => {
+      const { dir, prompt } = await review(false)
+      expect(prompt).not.toContain('AUTHOR')
+      expect(prompt).toContain('`sessions` is a pull request someone else opened')
+      expect(await readFile(join(dir, '.claude/skills/review/SKILL.md'), 'utf8')).toBe(
+        await readFile(join(builtinSkillsDir, 'review/SKILL.md'), 'utf8'),
+      )
+      expect(existsSync(join(dir, '.claude/skills/review/extra.md'))).toBe(false)
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it("keeps them on the developer's own PR", async () => {
+      const { dir, prompt } = await review(true)
+      expect(prompt).toContain('AUTHOR NOTE')
+      expect(prompt).toContain('AUTHOR SKILL')
+      expect(prompt).not.toContain('someone else opened')
+      expect(await readFile(join(dir, '.claude/skills/review/SKILL.md'), 'utf8')).toBe(
+        'AUTHOR SKILL',
+      )
+    })
+  })
 })
