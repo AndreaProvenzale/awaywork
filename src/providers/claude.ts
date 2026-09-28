@@ -1,11 +1,18 @@
 import { execa } from 'execa'
 import { z } from 'zod'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
+import { onForeignPr } from '../worker/workspace.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
 const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day: 'long' }
 const stream = ['--output-format', 'stream-json', '--verbose']
+/** Auto-memory lives under ~/.claude whatever the setting sources. */
+const noMemory = ['--settings', '{"autoMemoryEnabled":false}']
+/** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
+const repoOnly = ['--setting-sources', 'project,local', ...noMemory]
+/** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
+const isolated = ['--setting-sources', '', '--strict-mcp-config', ...noMemory]
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(bin = 'claude'): Provider {
@@ -26,7 +33,11 @@ export function claudeProvider(bin = 'claude'): Provider {
     /** One Haiku turn; its rate_limit_event carries both windows. */
     async probe(ctx) {
       const args = ['-p', 'reply ok', '--model', PROBE_MODEL, '--max-turns', '1', ...stream]
-      const { stdout } = await execa(bin, args, { env: ctx.env, extendEnv: false, reject: false })
+      const { stdout } = await execa(bin, [...args, ...isolated], {
+        env: ctx.env,
+        extendEnv: false,
+        reject: false,
+      })
       const quotas = stdout.split('\n').flatMap(toEvents)
       return quotas.findLast((e) => e.type === 'quota')?.quota ?? null
     },
@@ -34,6 +45,7 @@ export function claudeProvider(bin = 'claude'): Provider {
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
+      args.push(...(onForeignPr(job.unit) ? isolated : repoOnly))
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
         env: job.env,

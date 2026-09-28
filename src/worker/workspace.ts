@@ -104,7 +104,7 @@ export function workerEnv(
 }
 
 /** The unit's base is a PR the developer didn't open. */
-function onForeignPr(unit: Unit): boolean {
+export function onForeignPr(unit: Unit): boolean {
   return unit.items.some((item) =>
     item.linkedPrs.some((pr) => pr.repo === unit.repo && pr.branch === unit.base && !pr.mine),
   )
