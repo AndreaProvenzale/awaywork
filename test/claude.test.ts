@@ -22,6 +22,7 @@ const job = (): Job => ({
     items: [fakeItem()],
     repo: 'acme/api',
     base: '',
+    foreign: false,
     branch: 'night/fake-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
@@ -108,6 +109,36 @@ describe('claude provider', () => {
     try {
       expect((await argv('opus')).join(' ')).toContain('--model opus')
       expect(await argv()).not.toContain('--model')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("loads the repo's config but not ~/.claude; neither on someone else's PR or a probe", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const argv = async (mine: boolean) => {
+      const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
+      const unit = {
+        ...job().unit,
+        base: 'sessions',
+        foreign: !mine,
+        items: [fakeItem({ linkedPrs: [pr] })],
+      }
+      await collect(provider.run({ ...job(), unit }, new AbortController().signal))
+      return JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+    }
+    const flag = (args: string[], name: string) => args[args.indexOf(name) + 1]
+    try {
+      const own = await argv(true)
+      expect(flag(own, '--setting-sources')).toBe('project,local')
+      expect(flag(own, '--settings')).toBe('{"autoMemoryEnabled":false}')
+      expect(own).not.toContain('--strict-mcp-config')
+      const foreign = await argv(false)
+      expect(flag(foreign, '--setting-sources')).toBe('')
+      expect(foreign).toContain('--strict-mcp-config')
+      await provider.probe({ env: process.env, log: () => {} })
+      const probe = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      expect(flag(probe, '--setting-sources')).toBe('')
     } finally {
       delete process.env.FAKE_ARGV
     }

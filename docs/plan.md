@@ -163,6 +163,7 @@ interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number; model
 
 interface Unit {
   id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch; branch rendered
+  foreign: boolean                               // base is a PR someone else opened
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }

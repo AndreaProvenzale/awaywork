@@ -33,8 +33,15 @@ not asked of the model.
 - **Someone else's PR is data too.** On a PR you didn't open, the
   branch's `.night-shift/` is ignored, its copy of the unit's skills is
   replaced with night-shift's, and the prompt says its `CLAUDE.md`,
-  `AGENTS.md` and skills are the author's. The agent binary still loads
-  those files itself.
+  `AGENTS.md` and skills are the author's. Claude Code loads none of the
+  clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
+  skills); Codex still loads `AGENTS.md` and its skills itself.
+- **Not your agent's config.** Workers skip your user-level agent
+  config: `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`,
+  skills and auto-memory for Claude Code, `config.toml` for Codex. The
+  repo's own config still applies. Put variables such as
+  `ANTHROPIC_BASE_URL` in the environment, not in
+  `~/.claude/settings.json`.
 
 The agent's own tools are not sandboxed: Claude Code gets Bash and file
 tools pre-approved, Codex runs with `--sandbox danger-full-access`, which

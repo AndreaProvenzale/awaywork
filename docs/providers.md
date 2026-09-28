@@ -99,6 +99,22 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Skills: a `SKILL.md` folder under `.claude/skills/` in the working
   directory is listed in the `init` event's `skills` and callable by a
   headless run that allows the `Skill` tool (2.1.282). [V, tested]
+- What `claude -p` loads, checked offline with a fake `HOME` and a stub
+  API (2.1.284). With no flag: user and project `CLAUDE.md`, user and
+  project skills, `SessionStart` hooks from `~/.claude/settings.json`,
+  `.claude/settings.json` and `.claude/settings.local.json`, MCP servers
+  from `~/.claude.json` and an unapproved `.mcp.json` (both started), and
+  auto-memory under `~/.claude/projects/`. `--setting-sources
+  project,local` drops every user-scope item but auto-memory;
+  `--setting-sources ''` drops the project ones too except `.mcp.json`,
+  which only `--strict-mcp-config` drops; `--settings
+  '{"autoMemoryEnabled":false}'` drops auto-memory. `--add-dir` loads no
+  skills under `--setting-sources ''`. [V, tested] User plugins are
+  enabled from user settings, so they go with them. [I] Workers run
+  `project,local` on the developer's own branches and `''` with
+  `--strict-mcp-config` on someone else's PR and in the probe, all
+  without auto-memory; a rule's extra skills are then not callable on
+  someone else's PR (the unit's skill is in the prompt).
 - Headless runs refuse writes under `.claude/` without a grant, even with
   `Write` allowed (`permission_denied`, `safetyCheck`). [V, tested]
 - An empty `GH_CONFIG_DIR` hides a keyring `gh` login. [V, tested]
