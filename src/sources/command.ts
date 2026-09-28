@@ -67,13 +67,17 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     secrets: (c) => c.secrets,
 
     async items(c, ctx) {
-      const { stdout } = await execa(c.command, {
+      const subprocess = execa(c.command, {
         shell: true,
         cwd: c.dir,
         env: ctx.env,
         extendEnv: false,
         timeout: TIMEOUT_MS,
+        detached: true,
       })
+      // A timeout kills only the shell; kill its process group so no child keeps stdout open.
+      subprocess.nodeChildProcess.on('exit', () => killGroup(subprocess.pid))
+      const { stdout } = await subprocess
       let json: unknown
       try {
         json = JSON.parse(stdout)
@@ -93,6 +97,15 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     async prefetch(item, dir) {
       await writeFile(join(dir, 'item.md'), itemMarkdown(item))
     },
+  }
+}
+
+function killGroup(pid: number | undefined): void {
+  if (pid === undefined) return
+  try {
+    process.kill(-pid, 'SIGKILL')
+  } catch {
+    // The group already exited.
   }
 }
 
