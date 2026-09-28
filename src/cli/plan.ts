@@ -11,7 +11,7 @@ import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item } from '../core/types.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
-import { sources } from '../sources/index.js'
+import { sourceFor } from '../sources/index.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, planJson } from './format.js'
 
@@ -61,7 +61,7 @@ export async function planTonight(
 export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
   const items: Item[] = []
   for (const [id, cfg] of Object.entries(config.sources)) {
-    const source = sources[id]
+    const source = sourceFor(id, cfg)
     if (!source) continue
     await source.items(cfg, ctx).then(
       (found) => items.push(...found),

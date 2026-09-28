@@ -26,7 +26,7 @@ with:
 | `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in, and how many |
 | `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
-| `sources` (required) | object |  | Where work comes from; configure at least one |
+| `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"night/{key}"` | Branch name template; {key} is required, {title} optional |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
@@ -124,7 +124,7 @@ Same keys as `providers[].claude.budget.fallback`.
 
 ## `sources`
 
-Where work comes from; configure at least one.
+Where work comes from: built-in sources or your own commands; at least one.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -174,6 +174,17 @@ My unresolved Jira Cloud issues.
 | `project_repos` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
 
+## `sources.<key>`
+
+A custom source: any command that prints your open items as JSON.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command printing the items as a JSON array; runs in the config file's folder |
+| `fields` | string[] | `[]` | Item fields rules may match on |
+| `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
+| `setup` | string |  | Runs in the config file's folder before night-shift on GitHub Actions |
+
 ## `repos.<key>`
 
 | Key | Type | Default | Description |
@@ -192,7 +203,7 @@ First matching rule wins; top = highest priority.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
-| `source` | "github" \| "asana" \| "linear" \| "jira" |  | Match only items from this source |
+| `source` | string |  | Match only items from this source |
 | `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |

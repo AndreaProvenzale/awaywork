@@ -8,7 +8,8 @@ import type { Ctx } from '../core/types.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { staleWorkflow } from '../scheduler/github-actions.js'
-import { sources } from '../sources/index.js'
+import { isCommand } from '../sources/command.js'
+import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
 import { gitRoot, staleSchedules } from './schedule.js'
 
@@ -97,13 +98,15 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   }
 
   for (const [id, cfg] of Object.entries(config.sources)) {
-    const source = sources[id]
+    const source = sourceFor(id, cfg)
     if (!source) continue
     const secrets = source.secrets(cfg).map(secret)
     await source.items(cfg, ctx).then(
       (items) => report('ok', id, [`${items.length} open items`, ...secrets].join(', ')),
       (e: Error) => report('FAIL', id, [e.message, ...secrets].join(', ')),
     )
+    if (isCommand(cfg) && /(^|\s)(~|\$HOME)\//.test(cfg.command))
+      report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
   return checks
 }

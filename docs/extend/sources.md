@@ -9,6 +9,10 @@ file in `src/sources/`, a line in the registry and a passing contract
 suite. [Sources](../sources.md) holds the research on which trackers can
 be read headless and how.
 
+For a private tracker, or one you don't want to maintain in here, a
+[custom source](../guide/custom-sources.md) needs no code change: any
+command that prints your items as JSON.
+
 ## Rules for a source
 
 - **Read only.** A source never writes back to the tracker.

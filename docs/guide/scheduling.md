@@ -61,8 +61,8 @@ are never printed. Then:
 
 1. Commit the workflow and `.night-shift/config.yml`.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets` and
-   your repos' `secrets`.
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your
+   repos' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
@@ -78,7 +78,9 @@ die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
 `v1`; to upgrade night-shift itself, raise `version` in the workflow.
 The action gets the job's env, secrets included: if you'd rather not
-follow `v1`, pin it to a commit SHA of this repo instead.
+follow `v1`, pin it to a commit SHA of this repo instead. A
+[custom source](./custom-sources.md)'s `setup` runs as a step of its own
+before the action, in the config's folder.
 
 The workflow works once night-shift has a stable release on npm, which
 also creates the `v1` tag.

@@ -3,7 +3,8 @@ import { defaultBranch, templateProblem } from '../core/branch.js'
 import { bounds, isAge, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
-import { sourceField, sources } from '../sources/index.js'
+import { commandConfig } from '../sources/command.js'
+import { sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
   .string()
@@ -86,11 +87,10 @@ const providerEntry = z.union([providerName, providerOverride], {
 })
 
 const sourcesConfig = z
-  .strictObject(
-    Object.fromEntries(Object.values(sources).map((s) => [s.id, s.configSchema.optional()])),
-  )
+  .object(Object.fromEntries(Object.values(sources).map((s) => [s.id, s.configSchema.optional()])))
+  .catchall(commandConfig)
   .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
-  .describe('Where work comes from; configure at least one')
+  .describe('Where work comes from: built-in sources or your own commands; at least one')
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const scalars = z.union([scalar, z.array(scalar).min(1)])
@@ -150,7 +150,7 @@ const step = z
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
     skill,
-    source: z.enum(Object.keys(sources)).optional().describe('Match only items from this source'),
+    source: z.string().min(1).optional().describe('Match only items from this source'),
     where: z
       .record(z.string(), whereValue)
       .default({})
@@ -283,12 +283,12 @@ export const configSchema = z
       })
       const scope = r.source ? [r.source] : sourceIds
       for (const [key, value] of Object.entries(r.where)) {
-        const field = key === 'type' ? itemType : fieldFor(scope, key)
+        const field = key === 'type' ? itemType : fieldFor(cfg.sources, scope, key)
         if (!field) {
           ctx.addIssue({
             code: 'custom',
             path: [...at, 'where', key],
-            message: unknownKey(key, scope),
+            message: unknownKey(cfg.sources, scope, key),
           })
           continue
         }
@@ -327,8 +327,12 @@ export const configSchema = z
 
 export type Config = z.output<typeof configSchema>
 
-function fieldFor(scope: string[], key: string): z.ZodType | undefined {
-  const matches = scope.flatMap((id) => sourceField(sources[id]?.fields ?? {}, key) ?? [])
+type Sources = Record<string, unknown>
+
+const fieldsOf = (configured: Sources, id: string) => sourceFor(id, configured[id])?.fields ?? {}
+
+function fieldFor(configured: Sources, scope: string[], key: string): z.ZodType | undefined {
+  const matches = scope.flatMap((id) => sourceField(fieldsOf(configured, id), key) ?? [])
   if (matches.length === 0) return undefined
   return matches.length === 1 ? matches[0] : z.union(matches)
 }
@@ -339,8 +343,8 @@ function whereValues(value: WhereValue): Scalar[] {
   return isAge(value) ? [] : bounds(value).map(([, bound]) => bound)
 }
 
-function unknownKey(key: string, scope: string[]): string {
-  const known = scope.map((id) => `${id}: ${Object.keys(sources[id]?.fields ?? {}).join(', ')}`)
+function unknownKey(configured: Sources, scope: string[], key: string): string {
+  const known = scope.map((id) => `${id}: ${Object.keys(fieldsOf(configured, id)).join(', ')}`)
   return `unknown key "${key}"; use type or a source field (${known.join('; ')})`
 }
 export type Budget = Config['providers'][number]['budget']

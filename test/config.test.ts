@@ -168,6 +168,31 @@ describe('config', () => {
     ).toEqual(['queue[0].then: Unrecognized key: "units"'])
   })
 
+  it('takes a custom source with a command and matches rules on its declared fields', () => {
+    const cfg = minimal.replace(
+      'sources: { github: { repos: [acme/api] } }',
+      'sources: { tracker: { command: ./tracker, fields: [column] } }',
+    )
+    const rule = (where: string) =>
+      `${cfg}queue: [{ skill: plan, source: tracker, where: ${where} }]`
+    expect(parseConfig(cfg).sources.tracker).toEqual({
+      command: './tracker',
+      fields: ['column'],
+      secrets: [],
+    })
+    expect(problems(rule('{ column: Ready, repo: acme/api }'))).toEqual([])
+    expect(problems(rule('{ colour: red }'))).toEqual([
+      expect.stringMatching(/unknown key "colour"; .*tracker: repo, created, updated, column/),
+    ])
+  })
+
+  it('rejects an unknown source that has no command', () => {
+    expect(problems(minimal.replace('github:', 'githb:'))).toEqual([
+      'sources.githb.command: not a built-in source; a custom source needs a `command`',
+      expect.stringContaining('sources.githb: Unrecognized key: "repos"'),
+    ])
+  })
+
   it('takes bare provider names next to overrides', () => {
     const cfg = parseConfig(
       minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),
