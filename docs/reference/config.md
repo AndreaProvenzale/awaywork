@@ -74,6 +74,7 @@ claude settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
 ## `providers[].claude.budget`
@@ -102,6 +103,7 @@ codex settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
 ## `providers[].codex.budget`
@@ -159,6 +161,7 @@ First matching rule wins; top = highest priority.
 | `source` | "github" \| "asana" |  | Match only items from this source |
 | `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
+| `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |

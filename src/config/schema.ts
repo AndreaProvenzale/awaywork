@@ -45,7 +45,15 @@ const budgetOverride = z
   .partial()
   .describe('Overrides the top-level budget for this provider')
 
-type ProviderConfig = { budget?: z.output<typeof budgetOverride> } & Record<string, unknown>
+const model = z
+  .string()
+  .min(1)
+  .describe("Model passed to the provider's binary; default the binary's")
+
+type ProviderConfig = {
+  model?: string
+  budget?: z.output<typeof budgetOverride>
+} & Record<string, unknown>
 
 const providerName = z
   .enum(Object.keys(providers))
@@ -56,7 +64,7 @@ const providerOverride = z
       Object.values(providers).map((p) => [
         p.id,
         p.configSchema
-          .extend({ budget: budgetOverride.optional() })
+          .extend({ model: model.optional(), budget: budgetOverride.optional() })
           .optional()
           .describe(`${p.id} settings`),
       ]),
@@ -96,6 +104,12 @@ const rule: z.ZodType<Rule, unknown> = z
     provider: oneOrMany
       .default([])
       .describe('Providers for this rule, in order; default the providers order'),
+    model: z
+      .record(z.string(), model)
+      .optional()
+      .describe(
+        "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+      ),
     skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
     instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
     deliver: z
@@ -170,6 +184,13 @@ export const configSchema = z
             path: [...at, 'provider'],
             message: `provider "${p}" is not configured`,
           })
+      for (const p of Object.keys(r.model ?? {}))
+        if (!providerIds.includes(p))
+          ctx.addIssue({
+            code: 'custom',
+            path: [...at, 'model', p],
+            message: `provider "${p}" is not configured`,
+          })
       const scope = r.source ? [r.source] : sourceIds
       for (const [key, value] of Object.entries(r.where)) {
         const field = key === 'type' ? itemType : fieldFor(scope, key)
@@ -198,9 +219,10 @@ export const configSchema = z
     ...cfg,
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
-        ([id, { budget: override, ...config }]) => ({
+        ([id, { model, budget: override, ...config }]) => ({
           id,
           config,
+          model,
           budget: { ...cfg.budget, ...override },
         }),
       ),

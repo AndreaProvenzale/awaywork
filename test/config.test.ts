@@ -101,6 +101,20 @@ describe('config', () => {
     ])
   })
 
+  it('takes a model per provider and per rule', () => {
+    const cfg = parseConfig(
+      `${minimal.replace('[claude: {}]', '[claude: { model: opus }, codex]')}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`,
+    )
+    expect(cfg.providers.map((p) => [p.id, p.model])).toEqual([
+      ['claude', 'opus'],
+      ['codex', undefined],
+    ])
+    expect(cfg.queue?.[0]?.model).toEqual({ codex: 'gpt-5-codex' })
+    expect(problems(`${minimal}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`)).toEqual(
+      ['queue[0].model.codex: provider "codex" is not configured'],
+    )
+  })
+
   it('takes bare provider names next to overrides', () => {
     const cfg = parseConfig(
       minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),

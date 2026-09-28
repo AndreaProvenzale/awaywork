@@ -70,7 +70,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     routed[id] = (routed[id] ?? 0) + 1
-    n.ctx.log(`${unit.id}: ${unit.skill} on ${id}`)
+    const model = unit.rule.model?.[id] ?? n.config.providers.find((c) => c.id === id)?.model
+    n.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
     const unitDir = join(n.runDir, 'units', unit.id)
     const dir = join(n.runDir, 'work', unit.id)
@@ -86,7 +87,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const a = allowances[id]
       if (!a) continue
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
-      const job = { unit, dir, prompt, maxTurns }
+      const job = { unit, dir, prompt, maxTurns, model }
       const worker = await runWorker(provider, job, a, { log, signal: n.signal, watch: n.watch })
       Object.assign(result, worker)
       if (worker.quota) {

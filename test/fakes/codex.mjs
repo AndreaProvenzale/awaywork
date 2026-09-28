@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stands in for the `codex` binary: replays a recorded exec run or answers the app server's rate-limit read.
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const args = process.argv.slice(2)
@@ -17,6 +17,7 @@ if (args.includes('--version')) {
     if (id === 2) console.log(limits)
   }
 } else {
+  if (process.env.FAKE_ARGV) writeFileSync(process.env.FAKE_ARGV, JSON.stringify(args))
   process.stdin.resume()
   process.stdout.write(recorded(process.env.FAKE_CODEX_RUN ?? 'exec'))
   if (process.env.FAKE_CODEX_HANG) setTimeout(() => {}, 60_000)
