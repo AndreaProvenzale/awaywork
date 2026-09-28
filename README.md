@@ -130,7 +130,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 |---|---|---|
-| Claude Code, Codex | GitHub, Asana | launchd, systemd, cron, GitHub Actions |
+| Claude Code, Codex | GitHub, Asana, Linear | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own:
 [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md).
