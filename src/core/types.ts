@@ -123,7 +123,8 @@ export interface Forge {
 }
 
 export type Scalar = string | number | boolean
-export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] }
+export type Comparison = Partial<Record<'gt' | 'gte' | 'lt' | 'lte', number>>
+export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison
 
 export interface Rule {
   skill: string
