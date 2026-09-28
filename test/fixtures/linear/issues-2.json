@@ -1,0 +1,26 @@
+{
+  "data": {
+    "viewer": {
+      "assignedIssues": {
+        "nodes": [
+          {
+            "id": "a1b2c3d4-0000-4000-8000-000000000007",
+            "identifier": "WEB-7",
+            "title": "Plan the billing export",
+            "description": null,
+            "url": "https://linear.app/acme/issue/WEB-7/plan-the-billing-export",
+            "priorityLabel": "No priority",
+            "createdAt": "2026-01-02T08:00:00.000Z",
+            "updatedAt": "2026-01-02T09:00:00.000Z",
+            "assignee": { "name": "Dev" },
+            "state": { "name": "Todo" },
+            "team": { "key": "WEB" },
+            "project": null,
+            "labels": { "nodes": [] }
+          }
+        ],
+        "pageInfo": { "hasNextPage": false, "endCursor": "cursor-2" }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "data": {
+    "issue": {
+      "comments": {
+        "nodes": [
+          {
+            "body": "Repro: 30 requests in one second.",
+            "createdAt": "2026-01-02T09:00:00.000Z",
+            "user": null
+          },
+          {
+            "body": "Still returns 500 on burst.",
+            "createdAt": "2026-01-01T10:00:00.000Z",
+            "user": { "name": "QA" }
+          }
+        ],
+        "pageInfo": { "hasNextPage": false, "endCursor": null }
+      }
+    }
+  }
+}

@@ -2,9 +2,10 @@ import type { z } from 'zod'
 import type { Source } from '../core/types.js'
 import { asana } from './asana.js'
 import { github } from './github.js'
+import { linear } from './linear.js'
 
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
-export const sources: Record<string, Source<any>> = { github, asana }
+export const sources: Record<string, Source<any>> = { github, asana, linear }
 
 /** The schema a `where` key matches against; a `prefix.*` field declares every `prefix.<name>`. */
 export function sourceField(fields: Source['fields'], key: string): z.ZodType | undefined {

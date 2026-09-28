@@ -10,9 +10,11 @@ import { loadSkills } from '../src/config/skills.js'
 import type { Ctx } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
 import { githubSource } from '../src/sources/github.js'
+import { linearSource } from '../src/sources/linear.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 import { recorded } from './fakes/gh.js'
+import { linearFetch } from './fakes/linear.js'
 import { fakeProvider } from './fakes/provider.js'
 
 const skills = await loadSkills(builtinSkillsDir)
@@ -24,7 +26,11 @@ const gh = () =>
 const registry = (env: Ctx['env'] = { ASANA_TOKEN: 'pat' }) => ({
   ctx: { env, log: () => {} },
   providers: { claude: fakeProvider('claude'), codex: fakeProvider('codex') },
-  sources: { github: githubSource(gh()), asana: asanaSource(recordedFetch(asanaRoutes())) },
+  sources: {
+    github: githubSource(gh()),
+    asana: asanaSource(recordedFetch(asanaRoutes())),
+    linear: linearSource(linearFetch()),
+  },
   skills,
 })
 
@@ -112,6 +118,32 @@ describe('init', () => {
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
       ['qa-feedback', { section: 'QA' }],
       ['continue', { section: 'Doing' }],
+    ])
+  })
+
+  it("maps Linear teams to repos and rules onto the teams' real states", async () => {
+    const ask = scriptedAsk([
+      [/^Providers/, initial],
+      [/^Where does the work come from/, ['linear']],
+      [/^Linear teams/, ['ENG', 'WEB']],
+      [/^GitHub repo for issues in ENG/, 'acme/api'],
+      [/^GitHub repo for issues in WEB/, ''],
+      [/^Starting queue/, initial],
+      [/^Which state holds the items for qa-feedback/, initial],
+      [/^Which state holds the items for continue/, initial],
+      [/^Which state holds the items for plan/, ''],
+      [/^Night starts/, initial],
+      [/^Night ends/, initial],
+    ])
+    const env = { LINEAR_API_KEY: 'lin_api_key' }
+    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry(env) })
+    const cfg = parseConfig(text)
+    expect(cfg.sources).toEqual({
+      linear: { team_repos: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
+    })
+    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
+      ['qa-feedback', { state: 'QA' }],
+      ['continue', { state: 'In Progress' }],
     ])
   })
 

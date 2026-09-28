@@ -1,0 +1,26 @@
+{
+  "data": {
+    "teams": {
+      "nodes": [
+        {
+          "key": "ENG",
+          "name": "Engineering",
+          "states": {
+            "nodes": [
+              { "name": "Todo" },
+              { "name": "In Progress" },
+              { "name": "QA" },
+              { "name": "Done" }
+            ]
+          }
+        },
+        {
+          "key": "WEB",
+          "name": "Web",
+          "states": { "nodes": [{ "name": "Todo" }, { "name": "In Progress" }, { "name": "Done" }] }
+        }
+      ],
+      "pageInfo": { "hasNextPage": false, "endCursor": "cursor-t" }
+    }
+  }
+}

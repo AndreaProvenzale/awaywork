@@ -257,7 +257,8 @@ function fieldValue(f: CustomField): string | number | string[] | undefined {
   return f.display_value ?? undefined
 }
 
-function taskMarkdown(item: Item): string {
+/** An item as Markdown: title, url, fields, description and comments. */
+export function taskMarkdown(item: Item): string {
   const facts = Object.entries(item.fields).map(
     ([k, v]) => `- ${k}: ${[v].flat().join(', ') || '(none)'}`,
   )

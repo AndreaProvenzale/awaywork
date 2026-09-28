@@ -13,10 +13,13 @@ const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
 export const defaultQueue: Rule[] = [
   rule('fix-ci', 'github', { type: 'pr', mine: true, checks: 'failing' }),
   rule('qa-feedback', 'asana', { section: 'QA' }),
+  rule('qa-feedback', 'linear', { state: 'QA' }),
   rule('address-review', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
   rule('review', 'github', { type: 'pr', review_requested: true }),
   rule('continue', 'asana', { section: 'In progress' }),
+  rule('continue', 'linear', { state: 'In Progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
+  rule('plan', 'linear', { state: 'Todo' }),
 ]
 
 export function defaultRules(sourceIds: string[]): Rule[] {
