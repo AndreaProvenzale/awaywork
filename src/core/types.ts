@@ -5,6 +5,8 @@ export interface PrRef {
   number: number
   url: string
   branch: string
+  /** Opened by night-shift: its body carries the footer. */
+  ours: boolean
 }
 
 export interface Item {
@@ -31,6 +33,30 @@ export interface Ctx {
   log(line: string): void
 }
 
+export interface Choice<T extends string = string> {
+  value: T
+  label?: string
+  hint?: string
+}
+
+/** Questions `nightshift init` asks in the terminal; tests answer them from a script. */
+export interface Ask {
+  text(message: string, opts?: { initial?: string; placeholder?: string }): Promise<string>
+  select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
+  multiselect<T extends string>(message: string, choices: Choice<T>[], initial?: T[]): Promise<T[]>
+  confirm(message: string, initial?: boolean): Promise<boolean>
+  /** Prompts for an unset secret and saves it to the env file; '' when skipped. */
+  secret(name: string, message: string): Promise<string>
+  note(message: string): void
+}
+
+export interface SourceSetup {
+  /** The config as a user writes it. */
+  config: Record<string, unknown>
+  /** Values found for `where` fields, e.g. the user's real section names. */
+  values?: Record<string, string[]>
+}
+
 export interface Source<C = unknown> {
   id: string
   configSchema: z.ZodObject
@@ -39,6 +65,8 @@ export interface Source<C = unknown> {
   secrets(cfg: C): string[]
   items(cfg: C, ctx: Ctx): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
+  /** Asks what `nightshift init` needs to configure this source. */
+  init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
 }
 
 export interface Quota {
@@ -56,6 +84,7 @@ export interface Job {
   dir: string
   prompt: string
   maxTurns: number
+  model?: string
 }
 
 export interface Provider {
@@ -64,6 +93,10 @@ export interface Provider {
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
+  /** The npm package that installs the binary on a runner. */
+  package: string
+  /** Env var names it reads unattended; locally a login may stand in. */
+  secrets: string[]
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
@@ -76,7 +109,13 @@ export interface Forge {
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
-  draftPr(repo: string, head: string, base: string, bodyFile: string): Promise<string>
+  draftPr(
+    repo: string,
+    head: string,
+    base: string,
+    bodyFile: string,
+    runId: string,
+  ): Promise<string>
 }
 
 export type Scalar = string | number | boolean
@@ -87,10 +126,16 @@ export interface Rule {
   source?: string
   where: Record<string, WhereValue>
   provider: string[]
+  model?: Record<string, string>
   skills: string[]
   instructions: string[]
   deliver?: Deliver
+  branch?: string
+  order?: Order
 }
+
+/** Which of a rule's items goes first; unset keeps the source's order. */
+export type Order = 'oldest' | 'newest' | 'updated'
 
 export interface Unit {
   id: string

@@ -1,21 +1,46 @@
+import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
-/** The plan as text: every unit names its rule, skill origin and why it got its provider. */
-export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
-  const out: string[] = []
-  if (warnings.length > 0) out.push('Warnings', ...warnings.map((w) => `  ${w}`), '')
+/** The plan and warnings as JSON; items drop their raw source payload. */
+export function planJson(plan: NightPlan, warnings: string[] = []): string {
+  return JSON.stringify(
+    { ...plan, warnings },
+    (key, value) => (key === 'raw' ? undefined : value),
+    2,
+  )
+}
 
-  out.push(plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue')
+/** The plan as text: every unit names its rule, skill origin and why it got its provider. */
+export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = false): string {
+  const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
+  const out: string[] = []
+  if (warnings.length > 0) out.push(style('bold', 'Warnings'), ...warnings.map((w) => `  ${w}`), '')
+
+  out.push(style('bold', plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue'))
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])
   out.push(...indent(table(rules)))
 
-  out.push('', 'Providers')
-  const ceilings = Object.entries(plan.allowances).map(([id, a]) => [id, describeAllowance(a)])
-  out.push(...indent(table(ceilings)))
+  out.push('', style('bold', 'Providers'))
+  const allowances = Object.entries(plan.allowances)
+  const providerHeader = [
+    'provider',
+    'window',
+    'used',
+    'ceiling',
+    'set by',
+    'resets in',
+    'session / stop at',
+  ]
+  const providerLines = table([providerHeader, ...allowances.map(([id, a]) => allowanceRow(id, a))])
+  out.push(`  ${style('bold', providerLines[0] ?? '')}`)
+  allowances.forEach(([, a], i) => {
+    out.push(`  ${providerLines[i + 1]}`)
+    out.push(style('dim', `    ${allowanceNote(a)}`))
+  })
 
-  out.push('', 'Units')
+  out.push('', style('bold', 'Units'))
   if (plan.units.length === 0) out.push('  none')
   else {
     const rows = plan.units.map((p, i) => [
@@ -23,12 +48,14 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
       p.unit.id,
       p.unit.repo,
       `#${p.rule + 1}`,
-      `${p.unit.skill} (${p.origin ?? 'in-repo?'})`,
+      `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
       p.unit.deliver,
+      p.unit.branch,
     ])
-    const lines = table([['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver'], ...rows])
-    out.push(`  ${lines[0]}`)
+    const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
+    const lines = table([header, ...rows])
+    out.push(`  ${style('bold', lines[0] ?? '')}`)
     plan.units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
       const [top, ...merged] = p.unit.items
@@ -45,17 +72,22 @@ export function formatPlan(plan: NightPlan, warnings: string[] = []): string {
   }
 
   if (plan.skipped.length > 0) {
-    out.push('', 'Skipped')
+    out.push('', style('bold', 'Skipped'))
     for (const s of plan.skipped) out.push(`  ${s.item.source} ${s.item.key}: ${s.reason}`)
   }
   return out.join('\n')
 }
 
-function describeRule(r: Rule): string {
+export function describeRule(r: Rule): string {
   const where = Object.entries(r.where).map(([k, v]) => describeWhere(k, v))
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
+    r.model &&
+      `model=${Object.entries(r.model)
+        .map(([p, m]) => `${p}:${m}`)
+        .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
+    r.order && `order=${r.order}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||
@@ -69,31 +101,99 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-function describeAllowance(a: Allowance): string {
-  if (a.kind === 'fallback')
-    return `fallback: ${a.units} units, ${a.turns} turns each (${a.reason})`
-  const binding = a.limits.find((l) => l.value === a.ceiling)?.name
-  const others = a.limits
-    .filter((l) => l.name !== binding)
-    .map((l) => `${l.name} ${pct(l.value)}`)
-    .join(', ')
+export function describeAllowance(a: Allowance): string {
+  if (a.kind === 'fallback') return `fallback: ${describeFallback(a)}`
   const session = a.session
     ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
     : ''
-  const nights = `${a.nights} night${a.nights === 1 ? '' : 's'} to reset`
-  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${binding} (${others}; ${nights})${session}`
+  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${nights(a.nights)})${session}`
 }
+
+type QuotaAllowance = Extract<Allowance, { kind: 'quota' }>
+type FallbackAllowance = Extract<Allowance, { kind: 'fallback' }>
+
+function allowanceRow(id: string, a: Allowance): string[] {
+  if (a.kind === 'fallback') return [id, 'fallback']
+  const session = a.session ? `${pct(a.session.used)} / ${pct(a.session.stopAt)}` : '-'
+  return [id, a.window, pct(a.used), pct(a.ceiling), bindingLimit(a), nights(a.nights), session]
+}
+
+function allowanceNote(a: Allowance): string {
+  return a.kind === 'fallback' ? describeFallback(a) : `other limits: ${otherLimits(a)}`
+}
+
+function describeFallback(a: FallbackAllowance): string {
+  return `${a.units} units, ${a.turns} turns each (${a.reason})`
+}
+
+// `reserve` is the share kept back; its limit is the cap that leaves it.
+const limitName = (name: string) => (name === 'reserve' ? 'reserve cap' : name)
+
+const binding = (a: QuotaAllowance) => a.limits.find((l) => l.value === a.ceiling)
+
+const bindingLimit = (a: QuotaAllowance) => limitName(binding(a)?.name ?? '-')
+
+function otherLimits(a: QuotaAllowance): string {
+  return a.limits
+    .filter((l) => l !== binding(a))
+    .map((l) => `${limitName(l.name)} ${pct(l.value)}`)
+    .join(', ')
+}
+
+const nights = (n: number) => `${n} night${n === 1 ? '' : 's'}`
 
 function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-function table(rows: string[][]): string[] {
+/** The markdown morning report for a terminal: pipe tables aligned, statuses styled. */
+export function formatReportForTerminal(markdown: string): string {
+  const lines = markdown.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; ) {
+    const rows: string[][] = []
+    for (let line = lines[i]; line?.startsWith('|'); line = lines[++i])
+      if (!/^\|[-| ]+\|$/.test(line)) rows.push(line.slice(2, -2).split(' | '))
+    if (rows.length === 0) out.push(lines[i++] ?? '')
+    else {
+      const statusCol = rows[0]?.indexOf('Status') ?? -1
+      out.push(
+        ...table(rows, (cell, r, c) =>
+          r > 0 && c === statusCol ? styleText(statusStyle(cell), cell) : cell,
+        ),
+      )
+    }
+  }
+  return out.join('\n')
+}
+
+function statusStyle(status: string): 'green' | 'red' | 'yellow' | 'dim' {
+  if (status.startsWith('done')) return 'green'
+  if (status.startsWith('failed') || status.startsWith('error')) return 'red'
+  if (status.startsWith('stopped')) return 'yellow'
+  return 'dim'
+}
+
+function table(
+  rows: string[][],
+  style: (cell: string, r: number, c: number) => string = (cell) => cell,
+): string[] {
   const widths = rows[0]?.map((_, c) => Math.max(...rows.map((r) => r[c]?.length ?? 0))) ?? []
-  return rows.map((r) =>
-    r
-      .map((cell, c) => cell.padEnd(widths[c] ?? 0))
+  return rows.map((row, r) =>
+    row
+      .map((cell, c) => style(cell.padEnd(widths[c] ?? 0), r, c))
       .join('  ')
       .trimEnd(),
   )
+}
+
+export type Status = 'ok' | 'warn' | 'FAIL'
+
+const markers = { ok: ['✔', 'green'], warn: ['⚠', 'yellow'], FAIL: ['✖', 'red'] } as const
+
+/** A colored glyph for a terminal, the plain word everywhere else. */
+export function statusMarker(status: Status, color: boolean): string {
+  if (!color) return status.padEnd(4)
+  const [glyph, style] = markers[status]
+  return styleText(style, glyph, { validateStream: false })
 }

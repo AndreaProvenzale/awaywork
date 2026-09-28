@@ -80,9 +80,18 @@ describe('config', () => {
     ])
   })
 
+  it('takes a rule order', () => {
+    const rule = (order: string) => `${minimal}queue: [{ skill: implement, order: ${order} }]`
+    expect(parseConfig(rule('oldest')).queue?.[0]?.order).toBe('oldest')
+    expect(problems(rule('random'))).toEqual([expect.stringContaining('queue[0].order')])
+  })
+
   it('rejects unknown and unconfigured providers and sources', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
       expect.stringContaining('providers[0]: Unrecognized key: "gemini"'),
+    ])
+    expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
+      'providers[0]: unknown provider "gemini"',
     ])
     expect(
       problems(`${minimal}queue: [{ skill: fix-ci, provider: codex, source: asana }]`),
@@ -99,6 +108,36 @@ describe('config', () => {
     vi.stubEnv('NIGHT_SHIFT_CONFIG', '~/env.yml')
     expect(configPath()).toBe(join(homedir(), 'env.yml'))
     vi.unstubAllEnvs()
+  })
+
+  it('takes a model per provider and per rule', () => {
+    const cfg = parseConfig(
+      `${minimal.replace('[claude: {}]', '[claude: { model: opus }, codex]')}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`,
+    )
+    expect(cfg.providers.map((p) => [p.id, p.model])).toEqual([
+      ['claude', 'opus'],
+      ['codex', undefined],
+    ])
+    expect(cfg.queue?.[0]?.model).toEqual({ codex: 'gpt-5-codex' })
+    expect(problems(`${minimal}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`)).toEqual(
+      ['queue[0].model.codex: provider "codex" is not configured'],
+    )
+  })
+
+  it('takes bare provider names next to overrides', () => {
+    const cfg = parseConfig(
+      minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),
+    )
+    expect(cfg.providers.map((p) => [p.id, p.budget.per_night])).toEqual([
+      ['claude', undefined],
+      ['codex', 0.05],
+    ])
+  })
+
+  it('rejects a night window that starts when it ends', () => {
+    expect(problems(`${minimal}night: { start: '01:00', end: '01:00' }`)).toEqual([
+      'night: start and end must differ',
+    ])
   })
 
   it('reports YAML syntax errors', () => {

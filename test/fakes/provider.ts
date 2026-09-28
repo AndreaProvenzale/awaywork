@@ -15,6 +15,8 @@ export function fakeProvider(id = 'fake'): Provider {
     credential: 'static',
     quota: 'window',
     unattended: 'allowed',
+    package: 'fake-agent',
+    secrets: ['FAKE_AGENT_TOKEN'],
     detect: async () => ({ installed: true, version: '1.0.0' }),
     probe: async () => quota,
     async *run(job, signal): AsyncIterable<WorkerEvent> {

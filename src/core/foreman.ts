@@ -1,9 +1,10 @@
 import type { Config } from '../config/schema.js'
+import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { defaultQueue, rank } from './queue.js'
+import { closestRule, defaultRules, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
-import type { Item, Rule, Unit } from './types.js'
+import type { Item, Rule, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -30,9 +31,9 @@ export function planNight(input: {
   skills: SkillCatalog
 }): NightPlan {
   const { config, allowances } = input
-  const queue = config.queue ?? defaultQueue.filter((r) => r.source && r.source in config.sources)
+  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
-  const skipped = unmatched.map((item) => ({ item, reason: 'matched no rule' }))
+  const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
 
@@ -40,12 +41,23 @@ export function planNight(input: {
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
-    const pr = items.flatMap((i) => i.linkedPrs)[0]
+    const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
+    const prs = items.flatMap((i) => i.linkedPrs)
+    const ours = prs.find((p) => p.ours)
+    if (ours) {
+      skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const pr = prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
-      skipped.push(
-        ...items.map((item) => ({ item, reason: 'no repo: no linked PR or repo field' })),
-      )
+      skip('no repo: no linked PR or repo field')
+      continue
+    }
+    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
+    const branch = renderBranch(template, items[0] as Item)
+    if (!isValidRef(branch)) {
+      skip(`branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
     const skill = resolveSkill(rule.skill, input.skills)
@@ -60,7 +72,7 @@ export function planNight(input: {
         items,
         repo,
         base: pr?.branch ?? '',
-        branch: `night/${id}`,
+        branch,
         rule,
         skill: rule.skill,
         skills: rule.skills,
@@ -82,7 +94,29 @@ export function planNight(input: {
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
 
-function slug(key: string): string {
+/** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
+function noRuleReason(item: Item, queue: Rule[]): string {
+  const closest = closestRule(item, queue)
+  if (!closest) return 'matched no rule'
+  const rule = queue[closest.rule] as Rule
+  const failed = closest.failed.map((key) => {
+    const want = rule.where[key] as WhereValue
+    return `${key} is ${describeValue(fieldValue(item, key))}, wants ${describeWant(want)}`
+  })
+  return `matched no rule; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
+}
+
+function describeWant(want: WhereValue): string {
+  if (typeof want === 'object' && !Array.isArray(want)) return `not ${describeWant(want.not)}`
+  return [want].flat().join('|')
+}
+
+function describeValue(value: unknown): string {
+  if (value === undefined || value === null) return 'unset'
+  return Array.isArray(value) ? value.join('|') || 'empty' : String(value)
+}
+
+export function slug(key: string): string {
   return key
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')

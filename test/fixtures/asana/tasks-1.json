@@ -1,0 +1,89 @@
+{
+  "data": [
+    {
+      "gid": "1201",
+      "resource_type": "task",
+      "name": "Refill the rate-limit bucket",
+      "notes": "Bursts still return 500.",
+      "permalink_url": "https://app.asana.com/1/100/project/11/task/1201",
+      "created_at": "2026-01-01T08:00:00.000Z",
+      "modified_at": "2026-01-03T08:00:00.000Z",
+      "assignee": { "gid": "900", "resource_type": "user", "name": "Dev" },
+      "memberships": [
+        {
+          "project": { "gid": "11", "resource_type": "project", "name": "Backend" },
+          "section": { "gid": "21", "resource_type": "section", "name": "QA" }
+        }
+      ],
+      "tags": [{ "gid": "31", "resource_type": "tag", "name": "backend" }],
+      "custom_fields": [
+        {
+          "gid": "41",
+          "resource_type": "custom_field",
+          "name": "ID",
+          "representation_type": "custom_id",
+          "id_prefix": "ENG",
+          "display_value": "ENG-12"
+        },
+        {
+          "gid": "42",
+          "resource_type": "custom_field",
+          "name": "Priority",
+          "resource_subtype": "enum",
+          "representation_type": "enum",
+          "display_value": "High"
+        },
+        {
+          "gid": "43",
+          "resource_type": "custom_field",
+          "name": "Estimate",
+          "resource_subtype": "number",
+          "representation_type": "number",
+          "number_value": 3,
+          "display_value": "3"
+        },
+        {
+          "gid": "44",
+          "resource_type": "custom_field",
+          "name": "Platforms",
+          "resource_subtype": "multi_enum",
+          "representation_type": "multi_enum",
+          "multi_enum_values": [
+            { "gid": "441", "resource_type": "enum_option", "name": "API" },
+            { "gid": "442", "resource_type": "enum_option", "name": "Web" }
+          ],
+          "display_value": "API, Web"
+        },
+        {
+          "gid": "45",
+          "resource_type": "custom_field",
+          "name": "Notes",
+          "resource_subtype": "text",
+          "representation_type": "text",
+          "display_value": null
+        }
+      ]
+    },
+    {
+      "gid": "1202",
+      "resource_type": "task",
+      "name": "Offline mode for the app",
+      "notes": "",
+      "permalink_url": "https://app.asana.com/1/100/project/12/task/1202",
+      "assignee": { "gid": "900", "resource_type": "user", "name": "Dev" },
+      "memberships": [
+        {
+          "project": { "gid": "12", "resource_type": "project", "name": "Mobile" },
+          "section": { "gid": "22", "resource_type": "section", "name": "In progress" }
+        }
+      ],
+      "tags": [],
+      "custom_fields": []
+    }
+  ],
+  "next_page": {
+    "offset": "eyJwYWdlIjoyfQ",
+    "path": "/tasks?assignee=me&workspace=100&limit=100&offset=eyJwYWdlIjoyfQ",
+    "uri": "https://app.asana.com/api/1.0/tasks?assignee=me&workspace=100&limit=100&offset=eyJwYWdlIjoyfQ"
+  }
+}

@@ -1,41 +1,72 @@
 import { z } from 'zod'
+import { defaultBranch, templateProblem } from '../core/branch.js'
 import type { Rule } from '../core/types.js'
 import { providers } from '../providers/index.js'
-import { sources } from '../sources/index.js'
+import { sourceField, sources } from '../sources/index.js'
 
 const percent = z
   .string()
   .regex(/^(100|\d{1,2}(\.\d+)?)%$/, 'expected a percentage like "10%"')
   .transform((s) => Number.parseFloat(s) / 100)
-const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
+export const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
 const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
-const fallback = z.strictObject({ units: z.int().positive(), turns: z.int().positive() })
-const budget = z.strictObject({
-  reserve: percent.default(0.1),
-  per_night: percent.optional(),
-  session_max: percent.default(0.9),
-  fallback: fallback.default({ units: 4, turns: 60 }),
+const branch = z.string().superRefine((template, ctx) => {
+  const problem = templateProblem(template)
+  if (problem) ctx.addIssue({ code: 'custom', message: problem })
 })
+
+const fallback = z
+  .strictObject({
+    units: z.int().positive().describe('Units per night'),
+    turns: z.int().positive().describe('Turns per unit'),
+  })
+  .describe("Caps when the provider's quota can't be read")
+const reserve = 'Never go past 1 - reserve of any window'
+const perNight = 'At most this share of the long window per night'
+const sessionMax = 'Stop a worker past this share of the short window'
+const budget = z
+  .strictObject({
+    reserve: percent.prefault('10%').describe(reserve),
+    per_night: percent.optional().describe(perNight),
+    session_max: percent.prefault('90%').describe(sessionMax),
+    fallback: fallback.default({ units: 4, turns: 60 }),
+  })
+  .describe('Quota allocation defaults; any provider can override them')
 const budgetOverride = z
   .strictObject({
-    reserve: percent,
-    per_night: percent,
-    session_max: percent,
+    reserve: percent.describe(reserve),
+    per_night: percent.describe(perNight),
+    session_max: percent.describe(sessionMax),
     fallback,
   })
   .partial()
+  .describe('Overrides the top-level budget for this provider')
 
-type ProviderConfig = { budget?: z.output<typeof budgetOverride> } & Record<string, unknown>
+const model = z
+  .string()
+  .min(1)
+  .describe("Model passed to the provider's binary; default the binary's")
 
-const providerEntry = z
+type ProviderConfig = {
+  model?: string
+  budget?: z.output<typeof budgetOverride>
+} & Record<string, unknown>
+
+const providerName = z
+  .enum(Object.keys(providers))
+  .transform((id): Record<string, ProviderConfig> => ({ [id]: {} }))
+const providerOverride = z
   .strictObject(
     Object.fromEntries(
       Object.values(providers).map((p) => [
         p.id,
-        p.configSchema.extend({ budget: budgetOverride.optional() }).optional(),
+        p.configSchema
+          .extend({ model: model.optional(), budget: budgetOverride.optional() })
+          .optional()
+          .describe(`${p.id} settings`),
       ]),
     ),
   )
@@ -43,46 +74,93 @@ const providerEntry = z
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
   })
+const providerEntry = z.union([providerName, providerOverride], {
+  error: (issue) =>
+    typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
+})
 
 const sourcesConfig = z
   .strictObject(
     Object.fromEntries(Object.values(sources).map((s) => [s.id, s.configSchema.optional()])),
   )
   .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
+  .describe('Where work comes from; configure at least one')
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const scalars = z.union([scalar, z.array(scalar).min(1)])
-const whereValue = z.union([scalars, z.strictObject({ not: scalars })])
+const whereValue = z.union([
+  scalars,
+  z.strictObject({ not: scalars }).describe('Matches items whose field has none of these values'),
+])
 
-const rule: z.ZodType<Rule, unknown> = z.strictObject({
-  skill: z.string().min(1),
-  source: z.enum(Object.keys(sources)).optional(),
-  where: z.record(z.string(), whereValue).default({}),
-  provider: oneOrMany.default([]),
-  skills: z.array(z.string()).default([]),
-  instructions: oneOrMany.default([]),
-  deliver: z.enum(['draft_pr', 'report']).optional(),
-})
+const rule: z.ZodType<Rule, unknown> = z
+  .strictObject({
+    skill: z.string().min(1).describe('The skill that does the work'),
+    source: z.enum(Object.keys(sources)).optional().describe('Match only items from this source'),
+    where: z
+      .record(z.string(), whereValue)
+      .default({})
+      .describe('Item facts to match: type or a source field; a list means any of, {not} negates'),
+    provider: oneOrMany
+      .default([])
+      .describe('Providers for this rule, in order; default the providers order'),
+    model: z
+      .record(z.string(), model)
+      .optional()
+      .describe(
+        "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+      ),
+    skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
+    instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
+    deliver: z
+      .enum(['draft_pr', 'report'])
+      .optional()
+      .describe("Output: a draft PR or the morning report; default the skill's"),
+    branch: branch.optional().describe('Branch name template for this rule'),
+    order: z
+      .enum(['oldest', 'newest', 'updated'])
+      .optional()
+      .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+  })
+  .describe('First matching rule wins; top = highest priority')
 
 const repo = z.strictObject({
-  setup: z.string().optional(),
-  test: z.string().optional(),
-  instructions: z.string().optional(),
+  branch: branch.optional().describe('Branch name template for this repo'),
+  setup: z.string().optional().describe('Setup command, given to the worker in its prompt'),
+  test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
+  instructions: z.string().optional().describe('Instruction file for units in this repo'),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])
 
 export const configSchema = z
   .strictObject({
-    night: z.strictObject({ start: time, end: time }).default({ start: '01:00', end: '07:00' }),
+    night: z
+      .strictObject({
+        start: time.describe('When a scheduled run starts, local time'),
+        end: time.describe('No unit starts after this'),
+      })
+      .refine((n) => n.start !== n.end, 'start and end must differ')
+      .default({ start: '01:00', end: '07:00' })
+      .describe('Local hours a scheduled run may start units in'),
     budget: budget.prefault({}),
-    providers: z.array(providerEntry).min(1),
+    providers: z
+      .array(providerEntry)
+      .min(1)
+      .describe('Providers to use, a name or a map to override; order = routing preference'),
     sources: sourcesConfig,
+    branch: branch
+      .default(defaultBranch)
+      .describe('Branch name template; {key} is required, {title} optional'),
     repos: z
       .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
-      .default({}),
-    instructions: oneOrMany.default([]),
-    queue: z.array(rule).optional(),
+      .default({})
+      .describe('Per-repo settings, keyed by owner/name'),
+    instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+    queue: z
+      .array(rule)
+      .optional()
+      .describe('Rules mapping items to skills; default the built-in queue'),
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)
@@ -104,6 +182,13 @@ export const configSchema = z
           ctx.addIssue({
             code: 'custom',
             path: [...at, 'provider'],
+            message: `provider "${p}" is not configured`,
+          })
+      for (const p of Object.keys(r.model ?? {}))
+        if (!providerIds.includes(p))
+          ctx.addIssue({
+            code: 'custom',
+            path: [...at, 'model', p],
             message: `provider "${p}" is not configured`,
           })
       const scope = r.source ? [r.source] : sourceIds
@@ -134,9 +219,10 @@ export const configSchema = z
     ...cfg,
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
-        ([id, { budget: override, ...config }]) => ({
+        ([id, { model, budget: override, ...config }]) => ({
           id,
           config,
+          model,
           budget: { ...cfg.budget, ...override },
         }),
       ),
@@ -146,7 +232,7 @@ export const configSchema = z
 export type Config = z.output<typeof configSchema>
 
 function fieldFor(scope: string[], key: string): z.ZodType | undefined {
-  const matches = scope.flatMap((id) => sources[id]?.fields[key] ?? [])
+  const matches = scope.flatMap((id) => sourceField(sources[id]?.fields ?? {}, key) ?? [])
   if (matches.length === 0) return undefined
   return matches.length === 1 ? matches[0] : z.union(matches)
 }

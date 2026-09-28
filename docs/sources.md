@@ -1,3 +1,7 @@
+---
+description: Research on which task trackers a script can read headless, their tokens and limits, and why night-shift uses thin adapters instead of MCP.
+---
+
 # Sources
 
 Where work units come from besides the forge: the developer's task
@@ -155,8 +159,44 @@ YouTrack, Shortcut, Plane.
 ### Asana
 - PAT has the user's full access; read scopes exist for OAuth apps only
   [V] https://developers.asana.com/docs/oauth-scopes
-- Status is a section or custom field; comments are `stories` with
-  `type=comment` [I].
+- **Token for night-shift.** There is no read-only PAT: the token in
+  `token_env` can do anything the user can [V, above]. Service accounts
+  need "Full Permissions" for the task endpoints [V]. night-shift only
+  sends `GET`s and never hands the token to the worker. Make a PAT for
+  night-shift alone so it can be revoked on its own.
+  https://developers.asana.com/docs/personal-access-token
+- `GET /tasks` needs `workspace` with `assignee`; `completed_since`
+  keeps incomplete tasks plus ones completed after it; pages of up to
+  100 follow `next_page.offset` [V]
+  https://developers.asana.com/reference/gettasks
+  https://developers.asana.com/docs/pagination
+- A user id may be `"me"`, an email or a gid [V]
+  https://developers.asana.com/reference/getuser
+- Status is a section (per project membership) or a custom field [I].
+  Comments are stories filtered by `resource_subtype=comment_added` [V]
+  https://developers.asana.com/reference/getstoriesfortask
+- Custom IDs (`EX-1`) are a custom field with `representation_type`
+  `custom_id`, and a task can be fetched by one [V]; that its
+  `display_value` holds the `EX-1` string is [I].
+  https://developers.asana.com/reference/gettaskforcustomid
+- Rate limits: 150/min free, 1,500 paid, 50 concurrent `GET`s, a lower
+  60/min on search; every limiter answers `429` with `Retry-After` [V]
+  https://developers.asana.com/docs/rate-limits
+- **PR links.** `GET /attachments?parent=<task>` lists a task's
+  attachments, including `external` ones with a `view_url` [V]
+  https://developers.asana.com/reference/getattachmentsforobject.
+  Asana's GitHub Action "creates an attachment" for a PR whose
+  description carries the task URL, through an Asana-hosted service [V]
+  https://github.com/Asana/create-app-attachment-github-action; the
+  attachment's subtype and URL fields are not documented [I]. The
+  in-task GitHub widget is an app component whose resource lives on the
+  app's server [V] https://developers.asana.com/reference/attachresource,
+  so it may not show in `/attachments` at all [I]. night-shift links
+  tasks through the forge instead: my PRs whose branch or title carries
+  the task key.
+- **Repo for a task.** Asana has no notion of a repo, so a task with no
+  linked PR takes its repo from `project_repos` (project gid to
+  `owner/repo`) in the source config.
 
 ### Trello
 - Key + token, `read` scope, expiry up to `never` [V]
@@ -202,7 +242,9 @@ YouTrack, Shortcut, Plane.
 ## Unverified, check before relying on it
 
 - Linear: PRs from the GitHub integration appear in `issue.attachments`.
-- Asana: GitHub integration attachments readable via `/attachments`.
+- Asana: GitHub integration attachments readable via `/attachments`,
+  and in which field the PR URL sits.
+- Asana: the whole source against a live workspace (`real-asana.test.ts`).
 - Plane: filtering by assignee and state, PR links.
 - ClickUp, Monday: any PR link in the API.
 - YouTrack: rate limits.

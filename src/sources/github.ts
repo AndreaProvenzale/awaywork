@@ -1,17 +1,22 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
-const config = z.strictObject({ repos: z.array(z.string()).min(1) })
+const config = z
+  .strictObject({
+    repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
+  })
+  .describe('My PRs, PRs awaiting my review and issues assigned to me; also the forge')
 type Config = z.infer<typeof config>
 
 const PAGE = 100
 const LOG_TAIL = 200
 
 const common = `
-  id number title body url state
+  id number title body url state createdAt updatedAt
   repository { nameWithOwner }
   author { login }
   assignees(first: 10) { nodes { login } }
@@ -25,7 +30,7 @@ const searchQuery = `query($q: String!) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName repository { nameWithOwner } }
+          nodes { number url headRefName body repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
@@ -66,6 +71,7 @@ type PrLink = {
   number: number
   url: string
   headRefName: string
+  body: string
   repository: { nameWithOwner: string }
 }
 interface Node extends PrLink {
@@ -74,6 +80,8 @@ interface Node extends PrLink {
   title: string
   body: string
   state: string
+  createdAt: string
+  updatedAt: string
   author: Login
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
@@ -124,6 +132,8 @@ export function githubSource(run: Exec = exec): Source<Config> {
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
       review_requested: z.boolean(),
+      created: z.iso.datetime(),
+      updated: z.iso.datetime(),
     },
     secrets: () => [],
 
@@ -170,6 +180,24 @@ export function githubSource(run: Exec = exec): Source<Config> {
         writeFile(join(dir, 'checks.md'), await checksMarkdown(run, repo, checks)),
       ])
     },
+
+    /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
+    async init(ask) {
+      const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()
+      const orgs = (await run('gh', ['api', 'user/orgs', '--jq', '.[].login']))
+        .split('\n')
+        .filter(Boolean)
+      const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''
+      const answer = await ask.text(
+        `GitHub repos to watch, comma-separated (owner/name or owner/*${hint})`,
+        { initial: `${login}/*` },
+      )
+      const repos = answer
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean)
+      return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
+    },
   }
 }
 
@@ -184,6 +212,8 @@ function toItem(node: Node): Item {
     label: labels,
     author: node.author?.login,
     mine: false,
+    created: node.createdAt,
+    updated: node.updatedAt,
   }
   if (isPr) {
     const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)
@@ -222,6 +252,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   number: pr.number,
   url: pr.url,
   branch: pr.headRefName,
+  ours: isOurs(pr.body),
 })
 
 const toComment = (c: Comment) => ({

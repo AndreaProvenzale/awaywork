@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "gid": "1203",
+      "resource_type": "task",
+      "name": "Plan the billing export",
+      "notes": "CSV first, then the API.",
+      "permalink_url": "https://app.asana.com/1/100/project/11/task/1203",
+      "assignee": { "gid": "900", "resource_type": "user", "name": "Dev" },
+      "memberships": [
+        {
+          "project": { "gid": "11", "resource_type": "project", "name": "Backend" },
+          "section": { "gid": "23", "resource_type": "section", "name": "Current sprint" }
+        },
+        {
+          "project": { "gid": "13", "resource_type": "project", "name": "Roadmap" },
+          "section": { "gid": "24", "resource_type": "section", "name": "Q3" }
+        }
+      ],
+      "tags": [
+        { "gid": "31", "resource_type": "tag", "name": "backend" },
+        { "gid": "32", "resource_type": "tag", "name": "billing" }
+      ],
+      "custom_fields": [
+        {
+          "gid": "41",
+          "resource_type": "custom_field",
+          "name": "ID",
+          "representation_type": "custom_id",
+          "id_prefix": "ENG",
+          "display_value": "ENG-14"
+        }
+      ]
+    }
+  ],
+  "next_page": null
+}

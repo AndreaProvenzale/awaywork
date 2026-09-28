@@ -1,3 +1,7 @@
+---
+description: "What real runs verified: Claude Code on runners, reading quota, budgeting a night, guardrails that held, and the burn tests of night-shift itself."
+---
+
 # Lessons from the prototype
 
 night-shift started as a private prototype: scheduled GitHub Actions running
@@ -89,3 +93,56 @@ The prompt should state these per repo instead:
 - A red AI-review check can mean the bot's turn cap, not findings.
 - Device-only verification is flagged in the PR, never blocked on.
 - The PR body states only what was checked; unverified rationale creeps in.
+
+## First run of night-shift itself
+
+The M4 burn test: `nightshift run` locally, Claude Code 2.1.282 on the
+developer's login, one `implement` unit on this repo's issue #1 (expand
+`~/` in the config path), `per_night: 3%`.
+
+- Plan: week 5% used, ceiling 8% set by `per_night` (pacing 26.3%,
+  4 nights to reset); session 6%.
+- The unit took 57 s and 6 turns, made one commit and wrote its PR body.
+  Neither window moved at 1% resolution (5% and 6% after), so the
+  ceiling was never tested; a longer unit has to do that.
+- The publisher pushed `night/AndreaProvenzale-night-shift-1` and opened
+  draft PR #2 into `main`, with the footer and the `Night-shift:` trailer.
+  Planning again skipped the issue as waiting for review: the issue links
+  PR #2 and its body carries the footer.
+- The PR body claimed `pnpm install`, the touched test file (9 passed)
+  and biome; rerunning them on the PR branch gave the same result. The
+  worker log cut each command at 200 characters, so the claims could not
+  be read from it; it now logs whole commands.
+- The local login brings the developer's own Claude Code settings: the
+  commit got their `Co-Authored-By` trailer and the body a "Generated
+  with Claude Code" line.
+- A new issue took a few seconds to show up in GitHub search, so `plan`
+  right after creating one can miss it.
+
+## First night with two providers
+
+The M7 burn test: `nightshift run` locally with `providers: [codex,
+claude]` (Codex 0.149.1 on a free ChatGPT plan, Claude Code 2.1.283),
+`per_night: 3%`, one rule sending this repo's open PRs of mine to the
+`review` skill with `deliver: report`, so nothing was pushed.
+
+- Plan: two units, #4 (this milestone's PR) and #3 (M6), both on Codex,
+  the preferred provider: its 30-day window at 9%, ceiling 11.7% set by
+  pacing. Claude's week at 7%, ceiling 10% set by `per_night`.
+- Codex took #4. That build read the quota every 10 tool calls: at the
+  tenth the month stood at 20%, past the ceiling, and the worker was
+  stopped after 1 min 30 s; the report it had already written was kept.
+- #3 was re-routed to Claude, which read the diff, ran the touched tests
+  and biome, and finished in 28 turns; its session window went 9% → 11%,
+  the week stayed at 7%.
+- The morning report showed both providers, each unit's provider and
+  status, and each window before and after.
+- Codex's review of #4 found a real problem: the mid-run quota read
+  started an app server beside the running `exec`, outside the lock that
+  keeps one Codex process on `auth.json` at a time. The read now happens
+  after the run, so Codex workers stop at the ceiling between units only.
+- `auth.json` was backed up before the tests. The first probe refreshed it
+  (it was 12 days old); the login stayed valid through every run.
+- On the free plan one real unit costs 5–11% of the month, more than a
+  night's paced share, so Codex free takes about one unit every few
+  nights.

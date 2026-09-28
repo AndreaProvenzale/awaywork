@@ -1,3 +1,7 @@
+---
+description: "How v1 is built: scope, stack, architecture, the contracts between modules, config semantics and milestones."
+---
+
 # Plan: first release
 
 How v1 gets built, in milestones an agent can pick up in a fresh session.
@@ -12,7 +16,8 @@ The shape comes from `design.md`, the facts from `lessons.md`,
   remote is best effort (rotating `auth.json`).
 - **Customization:** which providers and sources to use, an ordered queue
   of rules that map items to skills, per-rule provider, extra skills,
-  instructions and delivery, and quota allocation per provider.
+  instructions and delivery, the branch name template (global, per repo,
+  per rule), and quota allocation per provider.
 - **Out:** vendor cloud schedulers, MCP for workers, GitLab/Jira/Linear,
   web UI, delivery modes other than a draft PR or the report.
 
@@ -28,13 +33,15 @@ the command is `nightshift`.
 | Need | Pick |
 |---|---|
 | CLI commands | `commander` |
-| Interactive screens (queue reordering, init wizard, live run) | `ink` |
+| Interactive prompts (init) | `@clack/prompts` |
+| Queue reordering screen | `node:readline` keypress events |
 | Config parsing and validation | `yaml`, `zod` (JSON Schema exported for editor autocompletion) |
 | Child processes | `execa` |
 | Tests | `vitest` |
 | Lint and format | `biome` |
 | Package manager | `pnpm` |
 | Build | `tsup` |
+| Docs site | `vitepress` on GitHub Pages |
 
 Add a dependency only when a milestone needs it.
 
@@ -50,7 +57,7 @@ collect ──> match ──> dedupe ──> budget ──> dispatch ──> pub
 
 ```
 src/
-  cli/            commander entry, one file per command; ink screens in cli/ui/
+  cli/            commander entry, one file per command, ask.ts (prompts)
   config/         schema.ts (zod), load.ts (file + env + flags), paths.ts
   core/           types.ts (the contracts below), queue.ts, dedupe.ts,
                   budget.ts, skills.ts, foreman.ts, prompt.ts, report.ts
@@ -102,16 +109,25 @@ interface Item {            // from sources.md, plus the forge link
   comments: { author: string; body: string; at: string }[]
   linkedPrs: PrRef[]; fields: Record<string, unknown>; raw: unknown
 }                           // a PR item links itself
-interface PrRef { repo: string; number: number; url: string; branch: string }
+interface PrRef { repo: string; number: number; url: string; branch: string; ours: boolean }  // ours = night-shift footer
 interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 
 interface Source {
   id: string
   configSchema: ZodObject                         // strict; the config file nests it
-  fields: Record<string, ZodType>                // what `where` may match on, one scalar each
+  fields: Record<string, ZodType>                // what `where` may match on, one scalar each;
+                                                 // `prefix.*` declares every `prefix.<name>`
   secrets(cfg): string[]                         // env var names it reads
   items(cfg, ctx): Promise<Item[]>               // mine, open
   prefetch(item, dir, ctx): Promise<void>        // write context files for the worker
+  init?(ask: Ask, ctx): Promise<SourceSetup>     // its own `nightshift init` questions
+}
+interface SourceSetup {     // config as written; values found for `where` fields (real sections)
+  config: Record<string, unknown>; values?: Record<string, string[]>
+}
+interface Ask {             // terminal prompts in the CLI, a script in tests
+  text; select; multiselect; confirm; note
+  secret(name, message): Promise<string>         // prompts, saves to the env file; '' = skipped
 }
 
 interface Provider {
@@ -120,6 +136,8 @@ interface Provider {
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
+  package: string                                // npm package with the binary, for runners
+  secrets: string[]                              // env var names it reads unattended
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>              // null = fixed budget
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
@@ -137,14 +155,14 @@ interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
-  push(dir, branch, opts): Promise<void>         // new branches only, never force
-  draftPr(repo, head, base, bodyFile): Promise<string>   // title = the body's first line
+  push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
+  draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
 
 interface Unit {
-  id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch
+  id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch; branch rendered
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
@@ -152,6 +170,7 @@ type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Deliver
 interface Rule {            // a queue entry, normalized: one-or-many fields are lists
   skill: string; source?: string; where: Record<string, WhereValue>
   provider: string[]; skills: string[]; instructions: string[]; deliver?: Deliver
+  branch?: string
 }
 ```
 
@@ -170,13 +189,18 @@ budget:                         # defaults; any provider can override
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: {}
+  - claude                      # a name, or a map to override
   - codex: { budget: { per_night: 5% } }
 sources:
   github: { repos: [acme/*] }
-  asana: { workspace: "123", token_env: ASANA_TOKEN }
+  asana:
+    workspace: "123"
+    token_env: ASANA_TOKEN
+    project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+branch: night/{key}             # default; {key} is required
 repos:
   acme/api:
+    branch: feat/{key}-{title}
     setup: pnpm install --frozen-lockfile
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
@@ -184,6 +208,7 @@ instructions: [notes/me.md]     # every unit
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
+    branch: fix/{key}
   - skill: implement
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
@@ -210,11 +235,27 @@ Semantics, fixed so every milestone agrees:
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one
   unit, placed at its best-ranked item's rule. The unit works in the
   linked PR's repo, else the item's `repo` field; with neither it is
-  skipped. `id` is the top item's key as a slug; `branch` is `night/<id>`.
+  skipped. A tracker source fills `repo` from its own mapping, e.g.
+  Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
+  an open night-shift PR (`ours`) is skipped as waiting for review; such
+  a PR is never a unit's base.
+- **Branch.** The rule's `branch`, else the repo's, else the global one,
+  rendered per unit. `{key}` is the top item's key in its own case, runs
+  outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
+  `{title}` is the title as a lowercase slug of at most 40 characters.
+  A template without `{key}`, or one that renders an invalid ref, is a
+  config error. The name is cosmetic: the push guardrail is that the
+  branch doesn't exist on the remote.
+- **Conventions.** PR title, body and commit messages have no config.
+  The harness has the model follow the repo's PR template, recent commit
+  style and any rule in the instructions (e.g. "prefix titles with the
+  key"). The publisher appends a footer naming night-shift and the run
+  id; it discloses the author and marks the PR as `ours`.
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
   Against a list-valued field (labels, tags) equals means contains. A
-  missing field equals nothing. An unknown key is a config error.
+  missing field equals nothing. An unknown key is a config error. Asana
+  custom fields match as `fields.<name>`, e.g. `"fields.Priority": High`.
 - **Routing.** A rule's `provider` (one or a list) is used in that order;
   otherwise the `providers` order. The first provider under its ceiling
   takes the unit; a provider without a probe takes at most `fallback.units`.
@@ -225,7 +266,8 @@ Semantics, fixed so every milestone agrees:
   in `lessons.md` ("Budgeting a night"), where nights to reset is the
   whole days until `resetsAt`, rounded up, at least one. Unset `per_night` leaves only
   the pacing. Workers stop at that ceiling or at `session_max` of the
-  short window. For `credits` providers the long window is the month.
+  short window, as soon as the provider reports quota: mid-run for
+  Claude, after the run for Codex. For `credits` providers the long window is the month.
   Without a probe, `fallback` caps units and turns per night.
 - **Skills.** `skill` is the main skill, and `skills` are extras available
   to the worker. A name is looked up in `~/.config/night-shift/skills/`,
@@ -235,16 +277,23 @@ Semantics, fixed so every milestone agrees:
 - **Prompt**, in order: `harness.md`, the main skill, global
   `instructions`, repo `setup`/`test`/`instructions`, in-repo
   `.night-shift/instructions.md`, the rule's `instructions`.
+- **Workspace.** A unit runs in a fresh clone on its new branch, cut
+  from `base`. Skills go to the provider's `skillsDir`; `.nightshift/`
+  holds `context/<item key slug>/`, `prompt.md` and `out/`, where the
+  model writes `pr.md` (first line the title) or `report.md`. Both are
+  in `.git/info/exclude`, so the model can't commit them. The model's
+  environment has no forge token and a `GH_CONFIG_DIR` without a login.
 - **Deliver**, per rule, else the skill's default (frontmatter `metadata`),
   else `draft_pr`. Built-in `review` and `plan` default to `report`.
 - **Secrets** are only ever env var names in config. Locally they come
-  from the environment or `~/.config/night-shift/env` (mode 600); in
-  Actions they come from repository secrets.
+  from the environment or `~/.config/night-shift/env` (mode 600; the
+  environment wins); in Actions they come from repository secrets, with
+  `GH_TOKEN` for the forge and the config at `.night-shift/config.yml`.
 
 ## Delivery
 
-- `draft_pr` (default): push a new `night/<key>` branch and open a draft
-  PR, into the developer's branch when the unit has one, else into the
+- `draft_pr` (default): push the unit's new branch and open a draft PR,
+  into the developer's branch when the unit has one, else into the
   default branch.
 - `report`: nothing is pushed; the output goes into the morning report.
 - `push` (after v1): commit onto the developer's own branch, only when
@@ -302,70 +351,127 @@ why a unit is placed where it is.
       draft PR are tested on fixtures only; M4's burn test runs them.
 
 ### M3 Claude provider, worker, built-in skills
-- [ ] `claude.ts`: `claude -p` with stream-json, `--max-turns`, token
+- [x] `claude.ts`: `claude -p` with stream-json, `--max-turns`, token
       from `CLAUDE_CODE_OAUTH_TOKEN` or the local login; `probe` via the
       Haiku one-turn `rate_limit_event` (`lessons.md`).
-- [ ] `harness.md` and the built-in skills, written from the prototype's
-      prompts and the "What the worker had to discover" list.
-- [ ] `worker/workspace.ts`: clone, install skills, write the assembled
+- [x] `harness.md` and the built-in skills, written from the prototype's
+      prompts and the "What the worker had to discover" list. The
+      harness points the model at the repo's PR template and commit style.
+- [x] `worker/workspace.ts`: clone, install skills, write the assembled
       prompt and the context files.
-- [ ] `worker/run.ts`: parse events, kill at the ceiling or at
-      `session_max`, and kill at the turn cap.
-- [ ] `worker/watchdog.ts`: kill every descendant, stop below 1.5 GB of
-      memory or 2 GB of disk. Linux: subreaper or cgroup. macOS: walk the
-      process tree. Research both first and tag what you find.
+- [x] `worker/run.ts`: parse events, kill at the ceiling or at
+      `session_max`. The provider enforces the turn cap (`--max-turns`
+      ends the run itself, `providers.md`).
+- [x] `worker/watchdog.ts`: kill every descendant, stop below 1.5 GB of
+      memory or 2 GB of disk. Findings in `design.md`, "Watchdog".
 
 ### M4 Publisher, report, first real night
-- [ ] `draft_pr`: publish only if the model wrote its PR body; commit
-      trailer `Night-shift: <run id>`; skip units whose `night/<…>` exists.
-- [ ] `report` delivery and the morning report (markdown in the run dir,
+- [x] Branch template: `branch` in config (global, repo, rule) with the
+      checks above, rendered in the foreman and shown by `plan`. Forge:
+      drop M2's `night/` prefix check (the absent-branch check stays),
+      read PR bodies so `prsFor` sets `ours`.
+- [x] `draft_pr`: publish only if the model wrote its PR body; commit
+      trailer `Night-shift: <run id>`, added at publish time since a
+      repo's `core.hooksPath` (husky) bypasses a hook in the clone; the
+      body footer; skip units with an open night-shift PR; refuse a
+      branch that exists, checked before the worker runs and again at
+      push.
+- [x] `report` delivery and the morning report (markdown in the run dir,
       plus a terminal summary): units done, skipped and why, quota used
       against each ceiling, report-only outputs.
-- [ ] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
+- [x] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
       context, report); `nightshift report [id]`.
-- [ ] `nightshift run` end to end, `--dry-run`, `--unit <id>`.
-- [ ] Burn test on a real repo with Claude, `per_night` included; record
-      the results in `lessons.md`.
+- [x] `nightshift run` end to end, `--dry-run` (workspaces only, no
+      worker), `--unit <id>`. Units run one at a time; each re-routes on
+      the quota the previous worker saw; a provider at `session_max` is
+      passed over. Without a quota reading the turn cap is
+      `fallback.turns`, otherwise 200.
+- [x] Burn test on a real repo with Claude, `per_night` included; record
+      the results in `lessons.md`. The unit stayed below 1% of either
+      window, so stopping at the ceiling is still only tested on fakes.
 
 ### M5 Scheduling and doctor
-- [ ] `schedule install|remove` for launchd, systemd user timers and
-      cron, using the `night` window.
-- [ ] `ci init`: writes a GitHub Actions workflow (cron, disk cleanup from
-      `lessons.md`, secrets by name only).
-- [ ] `doctor`: binaries, versions, credentials present, one probe per
+- [x] `schedule install|remove` for launchd, systemd user timers and
+      cron, using the `night` window: the job starts
+      `run --scheduled` at `night.start` with the installing shell's
+      PATH; a scheduled run outside the window does nothing and starts
+      no unit after `night.end`.
+- [x] `ci init`: writes a GitHub Actions workflow (cron, disk cleanup from
+      `lessons.md`, secrets by name only). The schedule's `timezone` is
+      [C] (GitHub changelog, not yet seen firing on a runner).
+- [x] `doctor`: binaries, versions, credentials present, one probe per
       provider with tonight's ceiling, source reachability, the ToS
       `unattended` flag shown for each provider.
 
 ### M6 Asana source
-- [ ] Items: `/tasks?assignee=me` in the configured workspace/projects;
+- [x] Items: `/tasks?assignee=me` in the configured workspace/projects;
       comments from `stories`; fields `project`, `section`, `tags`,
-      `fields.*` (custom fields).
-- [ ] PR link: the forge fallback by task key; check the attachments path
-      (`sources.md`, unverified).
-- [ ] Docs: token scope (Asana has no read-only PAT, so say so).
+      `fields.*` (custom fields). The key is the task's custom ID
+      (`ENG-12`) when it has one, else its gid. Prefetch writes `task.md`.
+- [x] PR link: the forge fallback by task key, run on every task that
+      links no PR before planning. The attachments path stays unverified
+      and unused (`sources.md`).
+- [x] Docs: token scope (Asana has no read-only PAT, so say so).
+- [x] `project_repos` maps a project gid to a repo, filling the `repo`
+      field so a task with no PR still gets a unit; `init` asks for one
+      per picked project.
+- [x] Contract suite passes on fixtures shaped from Asana's documented
+      responses; `test/real-asana.test.ts` reads a real workspace when
+      `ASANA_TOKEN` and `NIGHTSHIFT_ASANA_WORKSPACE` are set. Not yet
+      run against a live workspace.
 
 ### M7 Codex provider
-- [ ] `codex exec` headless run and its event stream; the rotating
-      `auth.json` is seeded only when missing and written back after each
-      run; runs are serialized per machine.
-- [ ] `probe` via `account/rateLimits/read`. It is [C] now, so burn-test
-      it and record the result in `providers.md`; fall back to a fixed
-      budget.
-- [ ] Contract suite; routing with two providers exercised in `plan`
-      and in one real night.
+- [x] `codex exec --json` headless run and its event stream; the turn
+      cap counts tool calls, since `exec` has none. The rotating
+      `auth.json` in `$CODEX_HOME` is seeded from `CODEX_AUTH_JSON` only
+      when missing; Codex writes the refreshed file back in place, and
+      night-shift never rewrites an existing one. Runs and probes hold a
+      per-machine lock. An ephemeral runner has nowhere to persist the
+      refreshed file, so Codex remote stays best effort.
+- [x] `probe` via `account/rateLimits/read` through `codex app-server`,
+      burn-tested and recorded in `providers.md` [V]; a failed read falls
+      back to a fixed budget. `exec` carries no quota and a second Codex
+      process could race the token refresh, so a run reads it once it
+      ends: Codex workers stop at the ceiling between units, not mid-run.
+- [x] Contract suite; routing with two providers exercised in `plan`
+      (tests, and `plan` on this repo) and in one real night (`lessons.md`).
 
-### M8 Customization UX (ink)
-- [ ] `nightshift init`: detect installed binaries and `gh` login, pick
-      providers, sources and a starting queue, write the config.
-- [ ] `nightshift queue`: list rules with tonight's matches, reorder with
-      the keyboard, save the YAML with comments preserved.
-- [ ] `nightshift skills list|eject`: resolved skills and where each
+### M8 Customization UX
+Screens only where an editor can't help: discovery (`init`) and live
+feedback (`queue`). Every other setting is edited as YAML, with the JSON
+Schema for autocompletion and `config edit` as the safety net.
+
+- [x] `nightshift init`: detect installed binaries and `gh` login, pick
+      providers, sources and a starting queue, write the config. Each
+      source asks its own questions (`Source.init`); Asana lists
+      workspaces, projects and the real section names, and each default
+      Asana rule picks its section from them. An unset token is prompted
+      for and saved to the env file. The queue is written out, not left
+      to the hidden default.
+- [x] `nightshift queue`: list rules with tonight's matches and the items
+      an earlier rule took, reorder with the keyboard (counts update as
+      rules move), save the YAML with comments preserved: rules move as
+      source text with the comments above them, the rest of the file is
+      unchanged. No queue in the config: saving writes the default one.
+      Items are fetched once; no provider is probed.
+- [x] `nightshift skills list|eject`: resolved skills and where each
       comes from; copy a built-in to the user dir.
+- [x] `nightshift config edit`: `$VISUAL`/`$EDITOR` on a draft copy,
+      written over the config only once it validates; a scheduled run
+      never sees a broken config.
+- [x] Providers take a bare name (`- claude`) next to the override map.
 
 ### M9 Release
-- [ ] README usage, a configuration reference generated from the schema,
-      and guides for adding a provider, a source and a skill.
-- [ ] npm publish workflow, versioning, NOTICE (Symphony credit).
+- [ ] The end-to-end pass in `e2e.md`, results recorded in `lessons.md`.
+- [x] README usage, a configuration reference generated from the schema,
+      and guides for adding a provider, a source and a skill. User docs in
+      `docs/guide/` and `docs/extend/`, published to GitHub Pages with
+      VitePress, plus `llms.txt`, `llms-full.txt` and each page as Markdown.
+      `pnpm docs:gen` writes the CLI and config references and the JSON
+      Schema from the built CLI; CI fails when they are stale.
+- [x] npm publish workflow (a `v*` tag, trusted publishing, `next` for
+      pre-releases), versioning in `CONTRIBUTING.md`, Apache-2.0 LICENSE
+      and NOTICE (Symphony credit). Neither workflow has run yet.
 
 ## Rules for agents picking this up
 
@@ -391,22 +497,19 @@ why a unit is placed where it is.
 - **In-repo skills in `config check`.** It sees only user and built-in
   skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
   the check. Resolve once M3 clones repos.
-- **Repo for tracker items without a PR.** Any tracker source, not just
-  Asana: an item that links no PR has no repo, so `plan` skips it (e.g.
-  the example's rule 4 for a new task). Symphony avoids the question by
-  binding one tracker scope to one repo per `WORKFLOW.md` and cloning in
-  an `after_create` hook [V]. Likely shape: a shared source option mapping
-  a tracker scope (project, team, board) to a repo that fills the `repo`
-  field, plus a rule-level `repo` override.
 - **Mapping tracker columns to skills.** Section and status names are the
   user's own, so the default queue's Asana names (`QA`, `In progress`,
   `Current sprint`) are guesses. Symphony has no mapping layer: config
   lists provider-native `active_states`/`terminal_states`, compared
   case-insensitively, and one prompt serves every state [V]
   (https://github.com/openai/symphony/blob/main/SPEC.md). Our `where` on
-  native names already goes further; what's missing is discovery: `init`
-  (M8) could list the user's real sections or statuses and let them pick
-  one per skill, instead of a default queue guessing names. Also consider
-  case-insensitive matching for native state names.
+  native names already goes further, and `init` picks each rule's section
+  from the user's real ones (M8). Still open: the default queue guesses
+  names when a config has no queue, and case-insensitive matching for
+  native state names.
+- **PR metadata beyond the branch**: labels, reviewers, ready instead
+  of draft, a base override. None is config until someone asks.
+  Requesting reviewers notifies people through the developer's token, so
+  it needs the same scrutiny as pending reviews.
 - **`where` escape hatch**, such as a `script:` filter, if the declarative
   keys aren't enough in practice.

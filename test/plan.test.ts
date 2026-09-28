@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { formatPlan } from '../src/cli/format.js'
+import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
+import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
-import type { Item, Quota } from '../src/core/types.js'
+import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
@@ -66,23 +67,27 @@ describe('plan', () => {
         #4  implement  source=asana section=Ready tags=backend provider=codex
 
       Providers
-        claude  seven_day 36% used, ceiling 51% set by per_night (reserve 90%, pacing 54%; 3 nights to reset); session 2%, workers stop at 90%
-        codex   fallback: 4 units, 60 turns each (no quota reading)
+        provider  window     used  ceiling  set by     resets in  session / stop at
+        claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+          other limits: reserve cap 90%, pacing 54%
+        codex     fallback
+          4 units, 60 turns each (no quota reading)
 
       Units
-           unit        repo      rule  skill                provider  deliver
-        1  acme-api-1  acme/api  #1    fix-ci (builtin)     claude    draft_pr
+           unit        repo      rule  skill                 provider  deliver   branch
+        1  acme-api-1  acme/api  #1    fix-ci (built-in)     claude    draft_pr  night/acme-api-1
            github acme/api#1: PR 1
            + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (builtin)  claude    draft_pr
+        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  night/acme-api-5
            github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (builtin)     claude    report
+        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    night/acme-api-2
            github acme/api#2: PR 2
 
       Skipped
-        github acme/api#3: matched no rule
+        github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
         asana T-8: no repo: no linked PR or repo field"
     `)
+    expect(formatPlan(result, [], true)).toBe(formatPlan(result))
   })
 
   it('uses the default queue for configured sources only', () => {
@@ -127,6 +132,35 @@ queue:
     )
   })
 
+  it('routes between claude and codex on their own windows', () => {
+    const yaml = `
+providers: [claude: {}, codex: { budget: { per_night: 5% } }]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: fix-ci, where: { checks: failing } }
+  - { skill: review, provider: [codex, claude], where: { review_requested: true } }
+`
+    const items = [githubPr(1, { checks: 'failing' }), githubPr(2, { review_requested: true })]
+    const month: Quota = {
+      windows: [{ name: '30d', span: 'long', used: 0.04, resetsAt: now / 1000 + 30 * 86400 }],
+    }
+    const result = plan(yaml, items, { claude: week(0.36), codex: month })
+    expect(rows(result).map((r) => r[3])).toEqual(['claude', 'codex'])
+    expect(formatPlan(result)).toContain(
+      [
+        '  codex     30d        4%    6.9%     pacing  30 nights  -',
+        '    other limits: per_night 9%, reserve cap 90%',
+      ].join('\n'),
+    )
+    expect(describeAllowance(result.allowances.codex as Allowance)).toBe(
+      '30d 4% used, ceiling 6.9% set by pacing (per_night 9%, reserve cap 90%; resets in 30 nights)',
+    )
+
+    const full = plan(yaml, items, { claude: week(0.95), codex: month })
+    expect(rows(full).map((r) => r[3])).toEqual(['codex', 'codex'])
+    expect(full.units[0]?.passed).toEqual(['claude at its ceiling (95% of 90%)'])
+  })
+
   it('resolves skills and delivery: rule, then skill default, then draft_pr', () => {
     const yaml = `
 providers: [claude: {}]
@@ -153,5 +187,87 @@ queue:
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
+  })
+})
+
+describe('branch', () => {
+  it('renders the key in its own case and the title as a short slug', () => {
+    const item = {
+      key: 'ABC-123',
+      title: 'Fix: the Login page (again) on Safari & Firefox, finally!',
+    }
+    expect(renderBranch('night/{key}', { ...item, key: 'acme/api#12' })).toBe('night/acme-api-12')
+    expect(renderBranch('feat/{key}-{title}', item)).toBe(
+      'feat/ABC-123-fix-the-login-page-again-on-safari-firef',
+    )
+  })
+
+  it('rejects templates that cannot make a branch name', () => {
+    expect(templateProblem('night/{key}')).toBeUndefined()
+    expect(templateProblem('night/{title}')).toBe('must contain {key}')
+    expect(templateProblem('night/{key}/{user}')).toBe('unknown placeholder {user}')
+    expect(templateProblem('night..{key}')).toMatch(/invalid branch name/)
+    expect(templateProblem('{key}.lock')).toMatch(/invalid branch name/)
+    expect(() =>
+      parseConfig(
+        'providers: [claude: {}]\nsources: { github: { repos: [a/b] } }\nbranch: x y {key}',
+      ),
+    ).toThrow('branch: renders an invalid branch name')
+  })
+
+  it('takes the rule template, then the repo, then the global one', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+branch: bot/{key}
+repos: { acme/api: { branch: 'feat/{key}-{title}' } }
+queue:
+  - { skill: fix-ci, where: { checks: failing }, branch: 'fix/{key}' }
+  - { skill: review, where: { review_requested: true } }
+  - { skill: implement, where: { type: issue } }
+`
+    const items = [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { review_requested: true }),
+      fakeItem({ ...issue, key: 'acme/web#5', fields: { repo: 'acme/web' } }),
+    ]
+    expect(plan(yaml, items, {}).units.map((u) => u.unit.branch)).toEqual([
+      'fix/acme-api-1',
+      'feat/acme-api-2-pr-2',
+      'bot/acme-web-5',
+    ])
+  })
+
+  it('skips a feature whose night-shift PR waits for review, whatever item links it', () => {
+    const ours = githubPr(9, { checks: 'failing' })
+    const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
+    const task = asanaTask(4, {}, { linkedPrs: [pr] })
+    const yaml =
+      'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix-ci }]'
+    const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }, task], {})
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
+      'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
+    ])
+  })
+})
+
+describe('plan --json', () => {
+  it('prints the plan and warnings, without raw source payloads', () => {
+    const result = plan(example, [issue, githubPr(3)], { claude: week(0.36), codex: null })
+    const json = JSON.parse(planJson(result, ['source asana: offline']))
+    expect(Object.keys(json)).toEqual([
+      'queue',
+      'defaultQueue',
+      'units',
+      'skipped',
+      'allowances',
+      'warnings',
+    ])
+    expect(json.warnings).toEqual(['source asana: offline'])
+    expect(json.units[0].unit).toMatchObject({ id: 'acme-api-5', skill: 'implement' })
+    expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
+    expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
 })

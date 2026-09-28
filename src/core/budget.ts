@@ -53,6 +53,10 @@ export function route(
   for (const id of candidates) {
     const a = allowances[id]
     if (!a) continue
+    if (a.kind === 'quota' && a.session && a.session.used >= a.session.stopAt) {
+      passed.push(`${id} at session_max (${pct(a.session.used)} of ${pct(a.session.stopAt)})`)
+      continue
+    }
     if (a.kind === 'quota' && a.used < a.ceiling) return { provider: id, passed }
     if (a.kind === 'fallback' && (routed[id] ?? 0) < a.units) return { provider: id, passed }
     passed.push(
@@ -65,3 +69,12 @@ export function route(
 }
 
 export const pct = (share: number) => `${Math.round(share * 1000) / 10}%`
+
+/** The same ceiling with usage moved to what a worker last saw. */
+export function withQuota(a: Allowance, quota: Quota): Allowance {
+  if (a.kind !== 'quota') return a
+  const long = quota.windows.find((w) => w.name === a.window)
+  const short = quota.windows.find((w) => w.span === 'short')
+  const session = a.session && short ? { ...a.session, used: short.used } : a.session
+  return { ...a, used: long?.used ?? a.used, session }
+}

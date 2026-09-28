@@ -2,23 +2,53 @@
   "name": "nightshift-agent",
   "version": "0.0.0",
   "description": "Schedule headless coding agents to spend idle subscription quota",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "coding-agent",
+    "ai-agent",
+    "automation",
+    "cli",
+    "github",
+    "pull-requests",
+    "scheduler",
+    "asana"
+  ],
+  "homepage": "https://andreaprovenzale.github.io/night-shift/",
+  "bugs": "https://github.com/AndreaProvenzale/night-shift/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndreaProvenzale/night-shift.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Andrea Provenzale",
   "type": "module",
   "bin": {
     "nightshift": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "harness.md",
+    "skills",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "docs:gen": "node scripts/gen-docs.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs"
   },
   "dependencies": {
+    "@clack/prompts": "^1.8.1",
     "commander": "^15.0.0",
     "execa": "^10.0.1",
     "yaml": "^2.9.1",
@@ -29,6 +59,7 @@
     "@types/node": "^22.20.4",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
+    "vitepress": "^1.6.4",
     "vitest": "^5.0.2"
   },
   "packageManager": "pnpm@11.3.0"
