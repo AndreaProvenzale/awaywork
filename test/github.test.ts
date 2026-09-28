@@ -60,17 +60,19 @@ describe('github source', () => {
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
-    const [pr1, , , issue5, issue6] = await items()
+    const [pr1, , pr2, issue5, issue6] = await items()
     const link = {
       repo: 'acme/api',
       number: 1,
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
       ours: false,
+      mine: true,
     }
     expect(pr1?.linkedPrs).toEqual([link])
     expect(issue5?.linkedPrs).toEqual([link])
     expect(issue6?.linkedPrs).toEqual([])
+    expect(pr2?.linkedPrs[0]?.mine).toBe(false)
   })
 
   it('warns when a search has more results than one page', async () => {
@@ -161,9 +163,9 @@ describe('github forge', () => {
     const run = recorded([[/author:@me/, authored]])
     const forge = githubForge(run)
     const prs = await forge.prsFor(fakeItem({ key: 'T-12' }))
-    expect(prs.map((p) => [p.repo, p.number, p.branch, p.ours])).toEqual([
-      ['acme/api', 1, 't-12-rate-limits', true],
-      ['acme/web', 3, 'billing', false],
+    expect(prs.map((p) => [p.repo, p.number, p.branch, p.ours, p.mine])).toEqual([
+      ['acme/api', 1, 't-12-rate-limits', true, true],
+      ['acme/web', 3, 'billing', false, true],
     ])
     expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
     expect(run.calls).toHaveLength(1)

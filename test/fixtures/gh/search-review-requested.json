@@ -20,6 +20,7 @@
           "comments": { "nodes": [] },
           "isDraft": false,
           "headRefName": "sessions",
+          "viewerDidAuthor": false,
           "reviewRequests": {
             "nodes": [
               { "requestedReviewer": { "login": "dev" } },
