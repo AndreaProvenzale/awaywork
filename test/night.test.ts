@@ -33,12 +33,20 @@ const quota = (long: number): Quota => ({
 })
 
 const models: (string | undefined)[] = []
+const envs: NodeJS.ProcessEnv[] = []
+const loaded = {
+  PATH: '/bin',
+  FAKE_AGENT_TOKEN: 'own',
+  CODEX_AUTH_JSON: 'other',
+  FAKE_TOKEN: 'src',
+}
 
 /** Commits and writes a PR body, or writes a report, as a model would; the week fills to 45%. */
 const worker: Provider = {
   ...fakeProvider('claude'),
   async *run(job) {
     models.push(job.model)
+    envs.push(job.env)
     const out = join(job.dir, '.nightshift/out')
     if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
     else {
@@ -91,10 +99,13 @@ queue:
     runId: '20260925-010000',
     runDir,
     dryRun: false,
-    providers: { claude: worker },
-    sources: { github: fakeSource() as Source },
+    providers: {
+      claude: worker,
+      codex: { ...fakeProvider('codex'), secrets: ['CODEX_AUTH_JSON'] },
+    },
+    sources: { github: { ...fakeSource(), secrets: () => ['FAKE_TOKEN'] } as Source },
     forge,
-    ctx: { env: {}, log: () => {} },
+    ctx: { env: loaded, log: () => {} },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -109,6 +120,8 @@ queue:
     ['acme-api-2', 'done', { kind: 'report', text: 'Approve.' }],
   ])
   expect(models).toEqual(['opus', 'sonnet'])
+  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR']
+  expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
   expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).toMatch(/Z working\n/)

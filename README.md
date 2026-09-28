@@ -114,7 +114,8 @@ stream and stops at the ceiling, or when the short session window passes
 
 ## The paranoid bit
 
-- **The model never sees a forge token.** PR diffs, threads and CI logs are
+- **The model sees only its own agent's token.** No forge token, no
+  tracker token, no other agent's login. PR diffs, threads and CI logs are
   prefetched into files. night-shift itself does the push.
 - **It only pushes branches it creates** (`night/<key>`). No force pushes,
   merges or comments, and it never touches anyone else's branch.

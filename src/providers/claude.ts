@@ -1,7 +1,6 @@
 import { execa } from 'execa'
 import { z } from 'zod'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
-import { workerEnv } from '../worker/workspace.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -37,7 +36,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       if (job.model) args.push('--model', job.model)
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
-        env: workerEnv(process.env, job.dir),
+        env: job.env,
         extendEnv: false,
         cancelSignal: signal,
         reject: false,

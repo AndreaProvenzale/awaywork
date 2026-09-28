@@ -33,6 +33,7 @@ const job = (): Job => ({
   dir,
   prompt: 'fix it',
   maxTurns: 2,
+  env: process.env,
 })
 
 providerContract(provider, job)
@@ -89,8 +90,12 @@ describe('claude provider', () => {
     expect(events.at(-1)).toEqual({ type: 'done', ok: false, turns: 0 })
   })
 
-  it('gives the model no forge token and no gh login', () => {
-    const env = workerEnv({ PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y' }, '/work')
+  it('gives the model no forge token, no withheld secret and no gh login', () => {
+    const env = workerEnv(
+      { PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y', ASANA_TOKEN: 'z' },
+      '/work',
+      ['ASANA_TOKEN'],
+    )
     expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.nightshift/gh' })
   })
 

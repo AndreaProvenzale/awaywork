@@ -8,7 +8,7 @@ import { allowance } from '../src/core/budget.js'
 import type { Source, Unit } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { runWorker } from '../src/worker/run.js'
-import { prepareWorkspace } from '../src/worker/workspace.js'
+import { prepareWorkspace, workerEnv } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -61,7 +61,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const quota = await claude.probe(ctx)
     expect(quota?.windows.map((w) => w.span)).toEqual(['short', 'long'])
 
-    const job = { unit, dir, prompt, maxTurns: 12 }
+    const job = { unit, dir, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
     const result = await runWorker(claude, job, allowance(config.budget, quota, Date.now()), {
       log: console.log,
     })

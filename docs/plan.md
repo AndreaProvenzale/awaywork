@@ -159,7 +159,7 @@ interface Forge {
   draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
-interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number }
+interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number; model?: string; env: ProcessEnv }  // env from workerEnv
 
 interface Unit {
   id: string; items: Item[]; repo: string; base: string; branch: string   // base '' = default branch; branch rendered

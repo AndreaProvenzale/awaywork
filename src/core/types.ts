@@ -85,6 +85,8 @@ export interface Job {
   prompt: string
   maxTurns: number
   model?: string
+  /** The worker's whole environment, from `workerEnv`: providers spawn with it and nothing else. */
+  env: NodeJS.ProcessEnv
 }
 
 export interface Provider {

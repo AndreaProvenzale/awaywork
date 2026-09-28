@@ -8,7 +8,7 @@ import type { NightReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Provider, Quota, Source } from '../core/types.js'
 import { publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { prepareWorkspace, WORK_DIR } from './workspace.js'
+import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
 
 const MAX_TURNS = 200
 
@@ -47,6 +47,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     (p) => !only || p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only),
   )
   if (n.only && planned.length === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
+  const secrets = [
+    ...Object.values(n.providers).flatMap((p) => p.secrets),
+    ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
+  ]
 
   for (const p of planned) {
     const { unit } = p
@@ -87,7 +91,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const a = allowances[id]
       if (!a) continue
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
-      const job = { unit, dir, prompt, maxTurns, model }
+      const withheld = secrets.filter((name) => !provider.secrets.includes(name))
+      const env = workerEnv(n.ctx.env, dir, withheld)
+      const job = { unit, dir, prompt, maxTurns, model, env }
       const worker = await runWorker(provider, job, a, { log, signal: n.signal, watch: n.watch })
       Object.assign(result, worker)
       if (worker.quota) {
