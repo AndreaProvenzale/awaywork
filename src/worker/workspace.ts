@@ -79,9 +79,14 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   return prompt
 }
 
-/** The model's environment: no forge token, and a gh config dir without the local login. */
-export function workerEnv(env: NodeJS.ProcessEnv, dir: string): NodeJS.ProcessEnv {
-  const kept = Object.entries(env).filter(([name]) => !forgeTokens.includes(name))
+/** The model's environment: no forge token, none of `withheld`, and a gh config dir without the local login. */
+export function workerEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  withheld: string[],
+): NodeJS.ProcessEnv {
+  const hidden = new Set([...forgeTokens, ...withheld])
+  const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
 }
 

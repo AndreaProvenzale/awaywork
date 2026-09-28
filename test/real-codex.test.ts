@@ -61,7 +61,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const quota = await codex.probe(ctx)
     expect(quota?.windows.map((w) => w.span)).toContain('long')
 
-    const job = { unit, dir, prompt, maxTurns: 12 }
+    const job = { unit, dir, prompt, maxTurns: 12, withheld: [] }
     const result = await runWorker(codex, job, allowance(config.budget, quota, Date.now()), {
       log: console.log,
     })

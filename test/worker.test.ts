@@ -25,6 +25,7 @@ const job: Job = {
   dir: tmpdir(),
   prompt: 'fix it',
   maxTurns: 3,
+  withheld: [],
 }
 
 const budget = { reserve: 0.1, session_max: 0.9, fallback: { units: 4, turns: 60 } }

@@ -89,7 +89,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const release = await lock(lockFile, () => {})
-      const { [AUTH_SECRET]: _, ...env } = workerEnv(process.env, job.dir)
+      const { [AUTH_SECRET]: _, ...env } = workerEnv(process.env, job.dir, job.withheld)
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined

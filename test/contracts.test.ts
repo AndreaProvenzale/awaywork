@@ -27,6 +27,7 @@ providerContract(fakeProvider(), () => ({
   dir: '/tmp/unused',
   prompt: 'fix it',
   maxTurns: 3,
+  withheld: [],
 }))
 
 sourceContract(fakeSource() as Source<unknown>, {})

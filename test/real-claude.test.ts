@@ -61,7 +61,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const quota = await claude.probe(ctx)
     expect(quota?.windows.map((w) => w.span)).toEqual(['short', 'long'])
 
-    const job = { unit, dir, prompt, maxTurns: 12 }
+    const job = { unit, dir, prompt, maxTurns: 12, withheld: [] }
     const result = await runWorker(claude, job, allowance(config.budget, quota, Date.now()), {
       log: console.log,
     })

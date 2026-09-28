@@ -37,7 +37,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       if (job.model) args.push('--model', job.model)
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
-        env: workerEnv(process.env, job.dir),
+        env: workerEnv(process.env, job.dir, job.withheld),
         extendEnv: false,
         cancelSignal: signal,
         reject: false,
