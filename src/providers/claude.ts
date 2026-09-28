@@ -34,6 +34,7 @@ export function claudeProvider(bin = 'claude'): Provider {
 
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
+      if (job.model) args.push('--model', job.model)
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
         env: workerEnv(process.env, job.dir),

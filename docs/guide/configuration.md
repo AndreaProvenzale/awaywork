@@ -37,7 +37,7 @@ budget:                         # defaults; any provider can override
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude
+  - claude: { model: opus }     # default: the binary's own model
   - codex: { budget: { per_night: 5% } }
 sources:
   github: { repos: [acme/*] }
@@ -63,6 +63,7 @@ queue:                          # first matching rule wins; top = highest priori
     order: oldest
   - skill: review
     where: { type: pr, review_requested: true }
+    model: { claude: sonnet }
   - skill: implement
     source: asana
     where: { section: Ready, tags: backend }
@@ -84,7 +85,9 @@ Budgets are shares of each provider's quota windows; see
 ## Providers
 
 A list, in routing order. A bare name uses the defaults; a map overrides
-the budget for that provider.
+the budget for that provider or sets its `model`, passed as is to the
+binary (`claude --model`, `codex exec -m`). Without one, the binary picks
+its own default.
 
 ## Sources
 
@@ -131,6 +134,7 @@ the repo's PR template, its recent commit style and your instructions
 | `source` | Only items from this source |
 | `where` | Conditions on `type` and the source's fields |
 | `provider` | One or a list; overrides the global order for this rule |
+| `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
 | `skills` | Extra skills the agent may use |
 | `instructions` | One or more instruction files for this rule |
 | `deliver` | `draft_pr` or `report`; default from the skill |

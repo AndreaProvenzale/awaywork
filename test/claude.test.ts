@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -92,6 +92,20 @@ describe('claude provider', () => {
   it('gives the model no forge token and no gh login', () => {
     const env = workerEnv({ PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y' }, '/work')
     expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.nightshift/gh' })
+  })
+
+  it('passes the model only when one is set', async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    const argv = async (model?: string) => {
+      await collect(provider.run({ ...job(), model }, new AbortController().signal))
+      return JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+    }
+    try {
+      expect((await argv('opus')).join(' ')).toContain('--model opus')
+      expect(await argv()).not.toContain('--model')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
   })
 
   it('reports a failed run when the binary exits without a result', async () => {

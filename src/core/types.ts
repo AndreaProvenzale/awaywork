@@ -84,6 +84,7 @@ export interface Job {
   dir: string
   prompt: string
   maxTurns: number
+  model?: string
 }
 
 export interface Provider {
@@ -125,6 +126,7 @@ export interface Rule {
   source?: string
   where: Record<string, WhereValue>
   provider: string[]
+  model?: Record<string, string>
   skills: string[]
   instructions: string[]
   deliver?: Deliver

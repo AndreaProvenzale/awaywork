@@ -32,10 +32,13 @@ const quota = (long: number): Quota => ({
   ],
 })
 
+const models: (string | undefined)[] = []
+
 /** Commits and writes a PR body, or writes a report, as a model would; the week fills to 45%. */
 const worker: Provider = {
   ...fakeProvider('claude'),
   async *run(job) {
+    models.push(job.model)
     const out = join(job.dir, '.nightshift/out')
     if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
     else {
@@ -65,11 +68,11 @@ it('runs, publishes and reports a night', async () => {
   forge.branches.add('acme/api:night/acme-api-3')
 
   const config = parseConfig(`
-providers: [claude: {}]
+providers: [claude: { model: opus }]
 sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: fix-ci, where: { checks: failing } }
-  - { skill: review, where: { review_requested: true } }
+  - { skill: review, where: { review_requested: true }, model: { claude: sonnet } }
 `)
   const items = [
     githubPr(1, { checks: 'failing' }),
@@ -105,6 +108,7 @@ queue:
     ['acme-api-3', 'skipped', 'night/acme-api-3 already exists on acme/api'],
     ['acme-api-2', 'done', { kind: 'report', text: 'Approve.' }],
   ])
+  expect(models).toEqual(['opus', 'sonnet'])
   const unitDir = join(runDir, 'units', 'acme-api-1')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
   expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).toMatch(/Z working\n/)

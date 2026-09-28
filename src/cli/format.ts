@@ -82,6 +82,10 @@ export function describeRule(r: Rule): string {
   const where = Object.entries(r.where).map(([k, v]) => describeWhere(k, v))
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
+    r.model &&
+      `model=${Object.entries(r.model)
+        .map(([p, m]) => `${p}:${m}`)
+        .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
   ]

@@ -98,6 +98,11 @@
                 "description": "claude settings",
                 "type": "object",
                 "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Model passed to the provider's binary; default the binary's"
+                  },
                   "budget": {
                     "type": "object",
                     "properties": {
@@ -150,6 +155,11 @@
                 "description": "codex settings",
                 "type": "object",
                 "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Model passed to the provider's binary; default the binary's"
+                  },
                   "budget": {
                     "type": "object",
                     "properties": {
@@ -415,6 +425,18 @@
                 }
               }
             ]
+          },
+          "model": {
+            "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Model passed to the provider's binary; default the binary's"
+            }
           },
           "skills": {
             "default": [],

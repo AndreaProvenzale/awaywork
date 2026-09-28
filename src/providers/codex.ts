@@ -95,7 +95,8 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       let done: WorkerEvent | undefined
       try {
         await seedAuth(process.env)
-        const child = execa(bin, [...EXEC, '-C', job.dir, '-'], {
+        const model = job.model ? ['-m', job.model] : []
+        const child = execa(bin, [...EXEC, ...model, '-C', job.dir, '-'], {
           cwd: job.dir,
           env,
           extendEnv: false,

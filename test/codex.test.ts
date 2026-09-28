@@ -112,6 +112,20 @@ describe('codex provider', () => {
     ])
   })
 
+  it('passes the model only when one is set', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    const argv = async (model?: string) => {
+      await collect(provider.run({ ...job(), model }, new AbortController().signal))
+      return JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
+    }
+    try {
+      expect((await argv('gpt-5-codex')).join(' ')).toContain('-m gpt-5-codex')
+      expect(await argv()).not.toContain('-m')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it('fails a turn the model could not finish', async () => {
     process.env.FAKE_CODEX_RUN = 'failed'
     try {
