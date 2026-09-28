@@ -37,7 +37,7 @@ const job = (maxTurns = 10): Job => ({
   dir: tmp,
   prompt: 'fix it',
   maxTurns,
-  withheld: [],
+  env: process.env,
 })
 
 providerContract(provider, job)

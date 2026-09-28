@@ -85,8 +85,8 @@ export interface Job {
   prompt: string
   maxTurns: number
   model?: string
-  /** Env var names the worker must not see: other providers' and every source's secrets. */
-  withheld: string[]
+  /** The worker's whole environment, from `workerEnv`: providers spawn with it and nothing else. */
+  env: NodeJS.ProcessEnv
 }
 
 export interface Provider {

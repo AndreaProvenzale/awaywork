@@ -8,7 +8,7 @@ import type { NightReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Provider, Quota, Source } from '../core/types.js'
 import { publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { prepareWorkspace, WORK_DIR } from './workspace.js'
+import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
 
 const MAX_TURNS = 200
 
@@ -92,7 +92,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
-      const job = { unit, dir, prompt, maxTurns, model, withheld }
+      const env = workerEnv(n.ctx.env, dir, withheld)
+      const job = { unit, dir, prompt, maxTurns, model, env }
       const worker = await runWorker(provider, job, a, { log, signal: n.signal, watch: n.watch })
       Object.assign(result, worker)
       if (worker.quota) {

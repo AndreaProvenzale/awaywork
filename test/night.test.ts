@@ -13,7 +13,6 @@ import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Quota, Source } from '../src/core/types.js'
 import { runNight } from '../src/worker/night.js'
-import { workerEnv } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -47,7 +46,7 @@ const worker: Provider = {
   ...fakeProvider('claude'),
   async *run(job) {
     models.push(job.model)
-    envs.push(workerEnv(loaded, job.dir, job.withheld))
+    envs.push(job.env)
     const out = join(job.dir, '.nightshift/out')
     if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
     else {
@@ -106,7 +105,7 @@ queue:
     },
     sources: { github: { ...fakeSource(), secrets: () => ['FAKE_TOKEN'] } as Source },
     forge,
-    ctx: { env: {}, log: () => {} },
+    ctx: { env: loaded, log: () => {} },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })

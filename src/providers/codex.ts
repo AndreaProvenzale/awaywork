@@ -7,7 +7,6 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
-import { workerEnv } from '../worker/workspace.js'
 
 const AUTH_SECRET = 'CODEX_AUTH_JSON'
 /** No user config (MCP servers, notify hooks, plugins), no saved session; workspace-write can't commit (.git is read-only). */
@@ -89,7 +88,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const release = await lock(lockFile, () => {})
-      const { [AUTH_SECRET]: _, ...env } = workerEnv(process.env, job.dir, job.withheld)
+      const { [AUTH_SECRET]: _, ...env } = job.env
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined

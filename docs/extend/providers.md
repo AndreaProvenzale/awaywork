@@ -46,9 +46,11 @@ interface Provider {
 ```
 
 - `run` spawns the binary in `job.dir` with `job.prompt`, under
-  `job.maxTurns`, with the environment from `workerEnv()` (forge tokens
-  and `job.withheld`, the other providers' and sources' secrets, removed). It yields `log` lines, `quota` whenever the stream reports
-  one, and exactly one `done`. It stops when `signal` aborts.
+  `job.maxTurns`, with `job.env` as its whole environment
+  (`extendEnv: false`): night-shift has already removed the forge tokens
+  and the other providers' and sources' secrets. It yields `log` lines,
+  `quota` whenever the stream reports one, and exactly one `done`. It
+  stops when `signal` aborts.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h
   session and `long` for the week or month. Return `null` when the quota
   can't be read; night-shift then applies `fallback`.
