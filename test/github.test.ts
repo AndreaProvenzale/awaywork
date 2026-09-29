@@ -36,6 +36,7 @@ describe('github source', () => {
       repo: 'acme/api',
       label: ['backend'],
       author: 'dev',
+      trusted: true,
       mine: true,
       draft: false,
       checks: 'failing',
@@ -46,12 +47,18 @@ describe('github source', () => {
     })
     expect(pr3?.fields).toMatchObject({ draft: true, mine: true })
     expect(pr3?.fields).not.toHaveProperty('checks')
-    expect(pr2?.fields).toMatchObject({ mine: false, review_requested: true, checks: 'pending' })
+    expect(pr2?.fields).toMatchObject({
+      mine: false,
+      trusted: false,
+      review_requested: true,
+      checks: 'pending',
+    })
     expect(pr2?.reviewers).toEqual(['dev', 'backend'])
     expect(issue5?.fields).toEqual({
       repo: 'acme/api',
       label: ['night-shift', 'backend'],
       author: 'lead',
+      trusted: true,
       mine: true,
       created: '2026-01-01T08:00:00Z',
       updated: '2026-02-01T08:00:00Z',

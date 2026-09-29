@@ -59,7 +59,7 @@ describe('init', () => {
           where: {type: pr, mine: true, unresolved_threads: {not: 0}}
         - skill: review
           source: github
-          where: {type: pr, review_requested: true}
+          where: {type: pr, review_requested: true, trusted: true}
       "
     `)
     const cfg = parseConfig(text)
