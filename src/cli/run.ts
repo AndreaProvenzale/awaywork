@@ -9,6 +9,7 @@ import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { runNight } from '../worker/night.js'
+import { notify } from '../worker/notify.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal } from './format.js'
 import { planTonight } from './plan.js'
@@ -58,6 +59,10 @@ export function runCommand(program: Command): void {
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report))
         console.log(summarize(report, reportPath))
+        if (config.notify) {
+          const failure = await notify(config.notify.command, { path: reportPath, runId })
+          if (failure) console.error(`notify failed: ${failure}`)
+        }
       } catch (e) {
         reportConfigError(e)
       }

@@ -31,6 +31,7 @@ with:
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
+| `notify` | object |  | Run after each night with the morning report; a failure is only logged |
 
 ## `night`
 
@@ -186,3 +187,12 @@ Matches items whose number field passes every comparison.
 | `gte` | number |  | Greater than or equal to |
 | `lt` | number |  | Less than |
 | `lte` | number |  | Less than or equal to |
+
+## `notify`
+
+Run after each night with the morning report; a failure is only logged.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env |
+| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |

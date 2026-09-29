@@ -5,7 +5,9 @@ description: Run night-shift every night on your machine with launchd, systemd o
 # Scheduling
 
 A scheduled run is `nightshift run --scheduled`: it does nothing outside
-the `night` window and starts no unit after `night.end`.
+the `night` window and starts no unit after `night.end`. A unit still
+running at `night.end` stops there with status `stopped: night ended`,
+and what it left is published as for a quota stop.
 
 ## On your machine
 
@@ -53,7 +55,7 @@ manual run; `nightshift schedule remove` deletes it. Then:
 
 1. Commit your config as `.night-shift/config.yml`.
 2. Add the repository secrets it lists, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`.
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN` and your `notify.secrets`.
 3. Run it once by hand from the Actions tab.
 
 `GH_TOKEN` is your own token, since the work is yours: it reads your PRs,

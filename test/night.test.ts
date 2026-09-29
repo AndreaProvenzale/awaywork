@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
@@ -39,6 +39,7 @@ const loaded = {
   FAKE_AGENT_TOKEN: 'own',
   CODEX_AUTH_JSON: 'other',
   FAKE_TOKEN: 'src',
+  NTFY_TOPIC: 'notify',
 }
 
 /** Commits and writes a PR body, or writes a report, as a model would; the week fills to 45%. */
@@ -81,6 +82,7 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: fix-ci, where: { checks: failing } }
   - { skill: review, where: { review_requested: true }, model: { claude: sonnet } }
+notify: { command: 'true', secrets: [NTFY_TOPIC] }
 `)
   const items = [
     githubPr(1, { checks: 'failing' }),
@@ -207,4 +209,66 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     'the night window ended',
     'the night window ended',
   ])
+})
+
+it('stops a unit still running at night.end and publishes what it left', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-end-'))
+  const origin = join(root, 'origin')
+  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa('git', ['clone', '-q', origin, dir])
+    },
+  }
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+  )
+  const plan = planNight({
+    config,
+    items: [githubPr(1), githubPr(2)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  vi.useFakeTimers({ toFake: ['Date'] })
+  const until = new Date(Date.now() + 100)
+  const endless: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job, signal) {
+      await writeFile(join(job.dir, 'fix.txt'), 'half')
+      await git(job.dir, 'add', 'fix.txt')
+      await git(job.dir, 'commit', '-qm', 'Start the fix')
+      await writeFile(join(job.dir, '.nightshift/out/pr.md'), 'Start the fix\n\nUnfinished.')
+      vi.setSystemTime(until)
+      if (!signal.aborted) await new Promise((ok) => signal.addEventListener('abort', ok))
+      yield { type: 'done', ok: false, turns: 1 }
+    },
+  }
+  try {
+    const report = await runNight({
+      config,
+      configDir: root,
+      plan,
+      runId: 'r1',
+      runDir: join(root, 'run'),
+      dryRun: false,
+      until,
+      providers: { claude: endless },
+      sources: { github: fakeSource() as Source },
+      forge,
+      ctx: { env: {}, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    expect(report.results.map((u) => [u.status, u.outcome ?? u.reason])).toEqual([
+      [
+        'stopped: night ended',
+        { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+      ],
+      ['skipped', 'the night window ended'],
+    ])
+  } finally {
+    vi.useRealTimers()
+  }
 })

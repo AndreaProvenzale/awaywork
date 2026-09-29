@@ -75,7 +75,7 @@ queue:                          # first matching rule wins; top = highest priori
 ## Night and budget
 
 `night.start` is when a scheduled run begins; no unit starts after
-`night.end`. Times are local to the machine, or to the workflow's
+`night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
 Budgets are shares of each provider's quota windows; see
@@ -164,6 +164,29 @@ GitHub that is newest first, so with little quota the oldest can wait
 night after night. `order: oldest` runs them first. Items without the
 timestamp go last.
 
+## Notify
+
+To get the morning report where you already look, `notify.command` runs
+in a shell after every run, dry runs included, with the report's path in
+`NIGHTSHIFT_REPORT` and the run id in `NIGHTSHIFT_RUN_ID`. There are no
+built-in integrations. A command that fails or takes over a minute is
+logged; the run still succeeds.
+
+```yaml
+notify:                         # ntfy
+  command: curl -sf -H "Title: night-shift $NIGHTSHIFT_RUN_ID" -H "Markdown: yes" --data-binary @"$NIGHTSHIFT_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+  secrets: [NTFY_TOPIC]
+```
+
+```yaml
+notify:                         # a Slack incoming webhook
+  command: jq -Rs '{text:.}' "$NIGHTSHIFT_REPORT" | curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
+  secrets: [SLACK_WEBHOOK_URL]
+```
+
+`secrets` names the env vars the command reads: workers never see them,
+and the GitHub Actions workflow passes them from repository secrets.
+
 ## Secrets
 
 The config holds env var **names** only. Values come from the environment
@@ -175,3 +198,4 @@ or `~/.config/night-shift/env` (the environment wins).
 | `CODEX_AUTH_JSON` | Codex on a runner: seeds `auth.json` when missing |
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
+| Your `notify.secrets` | The notify command |

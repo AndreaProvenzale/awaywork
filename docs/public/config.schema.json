@@ -511,6 +511,30 @@
         "additionalProperties": false,
         "description": "First matching rule wins; top = highest priority"
       }
+    },
+    "notify": {
+      "description": "Run after each night with the morning report; a failure is only logged",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env"
+        },
+        "secrets": {
+          "default": [],
+          "description": "Env vars the command needs; withheld from workers, listed in Actions",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
