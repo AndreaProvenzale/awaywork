@@ -55,7 +55,7 @@ manual run; `nightshift schedule remove` deletes it. Then:
 
 1. Commit your config as `.night-shift/config.yml`.
 2. Add the repository secrets it lists, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`.
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN` and your `notify.secrets`.
 3. Run it once by hand from the Actions tab.
 
 `GH_TOKEN` is your own token, since the work is yours: it reads your PRs,
