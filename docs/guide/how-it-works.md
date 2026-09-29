@@ -76,7 +76,8 @@ task linked to your PR becomes one unit with that PR.
   [`then`](./configuration.md#then) steps run right after its unit.
 - A draft PR that would start from the default branch stacks on the last
   one published on its repo that night instead, so a night's PRs don't
-  conflict with each other. Its body names the PR to merge first.
+  conflict with each other. A chain counts as one: the next unit stacks
+  on its last draft PR. The body names the PR to merge first.
 
 ## Budget
 
@@ -102,9 +103,9 @@ unit goes to the next provider.
 
 ## The worker
 
-Each unit runs in a fresh clone on a new branch cut from its base (your
-PR's branch when it has one, else tonight's last draft PR on the repo,
-else the default branch).
+Each unit runs in a fresh clone on a new branch cut from its base: the
+draft PR a `then` step follows, else your PR's branch, else tonight's
+last draft PR on the repo, else the default branch.
 
 - `.nightshift/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with

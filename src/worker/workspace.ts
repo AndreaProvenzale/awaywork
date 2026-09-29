@@ -148,16 +148,14 @@ function unitSection(unit: Unit, items: string[], previous?: Previous): string {
         ]
       : []),
     `Items:\n${items.join('\n')}`,
-    ...(previous ? [followUp(unit, previous)] : []),
+    ...(previous ? [followUp(previous)] : []),
     `Deliver: ${deliver}`,
   ].join('\n\n')
 }
 
-function followUp(unit: Unit, { skill, outcome }: Previous): string {
+function followUp({ skill, outcome }: Previous): string {
   const context = `\`${WORK_DIR}/context/previous/\``
   if (outcome.kind !== 'pr')
     return `This unit follows \`${skill}\` on the same items, which wrote a report tonight: \`${outputFile.report}\` in ${context}.`
-  const stacked =
-    unit.deliver === 'draft_pr' ? ' Your PR is stacked on it: link it in the body.' : ''
-  return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} tonight; you start from its branch. Its body and diff are \`${outputFile.draft_pr}\` and \`diff.patch\` in ${context}.${stacked}`
+  return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} tonight; you start from its branch. Its body and diff are \`${outputFile.draft_pr}\` and \`diff.patch\` in ${context}.`
 }

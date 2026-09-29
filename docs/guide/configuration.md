@@ -195,8 +195,8 @@ queue:
   `then`. It inherits none of the rule's: an unset key has the same
   default as on a rule.
 - After a draft PR, the next step starts from that PR's branch, and a
-  draft PR it opens is stacked on it. After a report, it starts from the
-  same base.
+  draft PR it opens is stacked on it: its body names that PR to merge
+  first. After a report, it starts from the same base.
 - The step finds what the one before delivered in
   `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
   `report.md`.

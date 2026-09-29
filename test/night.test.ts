@@ -492,3 +492,80 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
 })
+
+it("stacks a chain's draft PRs on each other, and the repo's next unit on the chain's last", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-chain-'))
+  const origin = join(root, 'origin')
+  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+  const opened: { head: string; base: string; body: string }[] = []
+  const fake = fakeForge()
+  const forge = {
+    ...fake,
+    clone: async (_repo: string, branch: string, dir: string) => {
+      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+    },
+    push: async (dir: string, branch: string, opts: { repo: string }) => {
+      await fake.push(dir, branch, opts)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
+    },
+    draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
+      opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
+      return `https://example.com/${repo}/pull/${head}`
+    },
+  }
+  const implementer: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+      await git(job.dir, 'add', '.')
+      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+      await writeFile(join(job.dir, '.nightshift/out/pr.md'), `Work on ${job.unit.id}\n\nDone.`)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const issue = (n: number) =>
+    fakeItem({
+      source: 'github',
+      key: `acme/api#${n}`,
+      type: 'issue',
+      fields: { repo: 'acme/api' },
+    })
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
+`)
+  const plan = planNight({
+    config,
+    items: [issue(1), issue(2)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: implementer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const url = (branch: string) => `https://example.com/acme/api/pull/${branch}`
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
+    ['night/acme-api-1', ''],
+    ['night/acme-api-1-review', 'night/acme-api-1'],
+    ['night/acme-api-2', 'night/acme-api-1-review'],
+    ['night/acme-api-2-review', 'night/acme-api-2'],
+  ])
+  expect(opened[1]?.body).toContain(`Stacked on ${url('night/acme-api-1')}: merge that first.`)
+  expect(opened[2]?.body).toContain(
+    `Stacked on ${url('night/acme-api-1-review')}: merge that first.`,
+  )
+})
