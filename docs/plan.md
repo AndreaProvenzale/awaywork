@@ -469,7 +469,7 @@ Schema for autocompletion and `config edit` as the safety net.
       `docs/guide/` and `docs/extend/`, published to GitHub Pages with
       VitePress, plus `llms.txt`, `llms-full.txt` and each page as Markdown.
       `pnpm docs:gen` writes the CLI and config references and the JSON
-      Schema from the built CLI; CI fails when they are stale.
+      Schema from the CLI's source; CI fails when they are stale.
 - [x] npm publish workflow (a `v*` tag, trusted publishing, `next` for
       pre-releases), versioning in `CONTRIBUTING.md`, Apache-2.0 LICENSE
       and NOTICE (Symphony credit). Neither workflow has run yet.
