@@ -34,11 +34,11 @@ export async function publish(
 
   const trailer = `git commit -q --amend --no-edit --no-verify --trailer 'Night-shift: ${runId}'`
   await git(dir, 'rebase', '-q', '--exec', trailer, `${oldest}^`)
-  await forge.push(dir, unit.branch, { repo: unit.repo })
-  const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
   await writeFile(
     join(dir, WORK_DIR, 'out', 'diff.patch'),
     `${await git(dir, 'diff', `${oldest}^`)}\n`,
   )
+  await forge.push(dir, unit.branch, { repo: unit.repo })
+  const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
   return { kind: 'pr', url, commits: commits.length }
 }

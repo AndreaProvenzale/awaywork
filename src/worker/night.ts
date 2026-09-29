@@ -43,10 +43,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
   const only = n.only && slug(n.only)
-  const planned = n.plan.units.filter(
-    (p) => !only || p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only),
+  const wanted = new Set(
+    n.plan.units
+      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
+      .map((p) => p.unit.id),
   )
-  if (n.only && planned.length === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
+  if (n.only && wanted.size === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
+  // A chained unit needs the units it follows.
+  for (const p of [...n.plan.units].reverse())
+    if (wanted.has(p.unit.id) && p.after) wanted.add(p.after)
+  const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
   const secrets = [
     ...Object.values(n.providers).flatMap((p) => p.secrets),
     ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
@@ -66,7 +72,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     }
     const after = results.find((r) => p.after && r.planned.unit.id === p.after)
     if (p.after && (after?.outcome?.kind ?? 'none') === 'none') {
-      skip(`${p.after} delivered nothing to follow`)
+      skip(
+        n.dryRun
+          ? 'a dry run delivers nothing for it to follow'
+          : `${p.after} delivered nothing to follow`,
+      )
       continue
     }
     const { provider: id, passed } = route(unit.providers, allowances, routed)

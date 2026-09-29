@@ -21,11 +21,14 @@ export async function unknownSkills(config: Config, userDir = userSkillsDir): Pr
   const catalog = { user: await loadSkills(userDir), builtin: builtinSkills }
   const problems: string[] = []
   config.queue?.forEach((rule, i) => {
-    for (const step of [rule, ...(rule.then ?? [])])
+    const chain = [rule, ...(rule.then ?? [])]
+    chain.forEach((step, j) => {
+      const at = j === 0 ? `queue[${i}]` : `queue[${i}].then[${j - 1}]`
       for (const name of [step.skill, ...step.skills]) {
         if (resolveSkill(name, catalog)) continue
-        problems.push(`queue[${i}]: unknown skill "${name}" (not built in, not in ${userDir})`)
+        problems.push(`${at}: unknown skill "${name}" (not built in, not in ${userDir})`)
       }
+    })
   })
   return problems
 }

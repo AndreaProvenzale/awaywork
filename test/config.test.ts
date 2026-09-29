@@ -199,8 +199,8 @@ describe('skills', () => {
       `${minimal}queue: [{ skill: implement, then: [review, { skill: our-review, skills: [house-style] }] }]`,
     )
     expect(await unknownSkills(cfg, '/none')).toEqual([
-      'queue[0]: unknown skill "our-review" (not built in, not in /none)',
-      'queue[0]: unknown skill "house-style" (not built in, not in /none)',
+      'queue[0].then[1]: unknown skill "our-review" (not built in, not in /none)',
+      'queue[0].then[1]: unknown skill "house-style" (not built in, not in /none)',
     ])
   })
 })

@@ -272,6 +272,21 @@ queue:
     )
   })
 
+  it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
+    const yaml = (step: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
+    const theirs = githubPr(2, { checks: 'failing', mine: false })
+    expect(plan(yaml('review'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
+      true,
+      true,
+    ])
+    const result = plan(yaml('bad.lock'), [theirs], {})
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'then bad.lock: branch template night/{key} renders an invalid name "night/acme-api-2-bad.lock"',
+    ])
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])

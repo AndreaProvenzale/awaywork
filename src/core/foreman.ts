@@ -57,6 +57,8 @@ export function planNight(input: {
       continue
     }
     const templateFor = (step: Step) => step.branch ?? config.repos[repo]?.branch ?? config.branch
+    const deliverOf = (step: Step) =>
+      step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
     const add = (
       step: Step,
       at: Pick<Unit, 'id' | 'base' | 'foreign' | 'branch'>,
@@ -80,7 +82,7 @@ export function planNight(input: {
           ...(repoInstructions ? [repoInstructions] : []),
           ...step.instructions,
         ],
-        deliver: step.deliver ?? skill?.meta.deliver ?? 'draft_pr',
+        deliver: deliverOf(step),
       }
       units.push({
         unit,
@@ -94,33 +96,39 @@ export function planNight(input: {
       return unit
     }
 
-    const template = templateFor(rule)
-    const branch = renderBranch(template, items[0] as Item)
-    if (!isValidRef(branch)) {
-      skip(`branch template ${template} renders an invalid name "${branch}"`)
+    const chain = [rule, ...(rule.then ?? [])]
+    const pushed: string[] = []
+    const branches = chain.map((step) => {
+      const rendered = renderBranch(templateFor(step), items[0] as Item)
+      const branch = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
+      if (deliverOf(step) === 'draft_pr') pushed.push(branch)
+      return branch
+    })
+    const bad = branches.findIndex((b) => !isValidRef(b))
+    if (bad >= 0) {
+      const step = chain[bad] as Step
+      const where = bad > 0 ? `then ${step.skill}: ` : ''
+      skip(
+        `${where}branch template ${templateFor(step)} renders an invalid name "${branches[bad]}"`,
+      )
       continue
     }
     const id = slug(items[0]?.key ?? '')
-    let previous = add(rule, { id, base: pr?.branch ?? '', foreign: pr ? !pr.mine : false, branch })
-    const pushed: string[] = []
-    for (const step of rule.then ?? []) {
-      if (previous.deliver === 'draft_pr') pushed.push(previous.branch)
-      const rendered = renderBranch(templateFor(step), items[0] as Item)
-      const next = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
-      if (!isValidRef(next)) {
-        skip(
-          `then ${step.skill}: branch template ${templateFor(step)} renders an invalid name "${next}"`,
-        )
-        break
-      }
+    let previous = add(rule, {
+      id,
+      base: pr?.branch ?? '',
+      foreign: pr ? !pr.mine : false,
+      branch: branches[0] as string,
+    })
+    for (const [j, step] of (rule.then ?? []).entries()) {
       const stacked = previous.deliver === 'draft_pr'
       previous = add(
         step,
         {
           id: `${id}-${slug(step.skill)}`,
           base: stacked ? previous.branch : previous.base,
-          foreign: stacked ? false : previous.foreign,
-          branch: next,
+          foreign: previous.foreign,
+          branch: branches[j + 1] as string,
         },
         previous.id,
       )

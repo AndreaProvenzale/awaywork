@@ -211,6 +211,44 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   ])
 })
 
+it('runs a chained unit with the units it follows, which a dry run leaves nothing to', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-dry-chain-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa('git', ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci, then: review }]',
+  )
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: true,
+    only: 'acme-api-1-review',
+    providers: { claude: worker },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'prepared', undefined],
+    ['acme-api-1-review', 'skipped', 'a dry run delivers nothing for it to follow'],
+  ])
+})
+
 it('stops a unit still running at night.end and publishes what it left', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-end-'))
   const origin = join(root, 'origin')

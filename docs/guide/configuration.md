@@ -201,8 +201,9 @@ queue:
   `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
   `report.md`.
 - A step runs only when the one before delivered; otherwise the rest of
-  the chain is skipped, with the reason in the report. The next night
-  doesn't retry it: the item's night-shift PR waits for your review.
+  the chain is skipped, with the reason in the report. Once a unit in the
+  chain opened a draft PR, the next night doesn't retry: the item waits
+  for your review of it. Otherwise the whole chain runs again.
 - Each step is a unit of its own in `plan` and the report (`<unit>-<skill>`),
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
