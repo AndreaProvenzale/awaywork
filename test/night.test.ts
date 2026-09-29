@@ -326,7 +326,7 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     allowances: { claude: allowance(config.budget, null, 0) },
     skills: { builtin: builtinSkills },
   })
-  await runNight({
+  const report = await runNight({
     config,
     configDir: root,
     plan,
@@ -342,6 +342,11 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
   })
 
   const first = 'https://example.com/acme/api/pull/night/acme-api-1'
+  expect(report.results.map((u) => u.outcome)).toContainEqual({
+    kind: 'pr',
+    url: 'https://example.com/acme/api/pull/night/acme-api-3',
+    commits: 1,
+  })
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['night/acme-api-1', ''],
     ['night/acme-api-4', 'feature-4'],
