@@ -6,6 +6,7 @@ import { parseConfig } from '../src/config/load.js'
 import type { Ctx } from '../src/core/types.js'
 import { adfToMarkdown, jiraSource } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
+import { scriptedAsk } from './fakes/ask.js'
 import { jiraFetch } from './fakes/jira.js'
 
 const ctx: Ctx = { env: { JIRA_API_TOKEN: 'atl-token' }, log: () => {} }
@@ -144,6 +145,14 @@ describe('jira source', () => {
     expect(adfToMarkdown(doc)).toBe(
       '## Steps\n\n1. one\n2. two\n\n> quoted\n\n[docs](https://x.test)',
     )
+  })
+
+  it('refuses to set up without a site', async () => {
+    const ask = scriptedAsk([
+      [/^Jira Cloud site/, ''],
+      [/^Atlassian account email/, ''],
+    ])
+    await expect(source.init?.(ask, ctx)).rejects.toThrow('Jira needs a site and an email')
   })
 
   it('takes a site host and projects mapped to owner/repo', () => {

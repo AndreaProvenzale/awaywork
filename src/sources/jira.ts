@@ -185,6 +185,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
         .replace(/^https?:\/\//, '')
         .replace(/\/.*$/, '')
       const email = (await ask.text('Atlassian account email')).trim()
+      if (!site || !email) throw new Error('Jira needs a site and an email')
       const token =
         ctx.env.JIRA_API_TOKEN ||
         (await ask.secret(
