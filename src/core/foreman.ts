@@ -1,4 +1,5 @@
 import type { Config } from '../config/schema.js'
+import { type Attempts, unchangedSince } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -31,6 +32,8 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  /** Earlier attempts: a unit none of whose items changed since its skill last ran is skipped. */
+  attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
@@ -48,6 +51,11 @@ export function planNight(input: {
     const ours = prs.find((p) => p.ours)
     if (ours) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
+    if (since.every(Boolean)) {
+      skip(`unchanged since run ${since.sort().at(-1)}`)
       continue
     }
     const pr = prs[0]
