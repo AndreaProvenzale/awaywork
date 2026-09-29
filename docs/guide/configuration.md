@@ -75,7 +75,7 @@ queue:                          # first matching rule wins; top = highest priori
 ## Night and budget
 
 `night.start` is when a scheduled run begins; no unit starts after
-`night.end`. Times are local to the machine, or to the workflow's
+`night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
 Budgets are shares of each provider's quota windows; see

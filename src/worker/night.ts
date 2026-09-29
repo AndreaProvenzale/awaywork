@@ -21,7 +21,7 @@ export interface NightInput {
   dryRun: boolean
   /** Run only this unit, named by its id or an item key, in any case. */
   only?: string
-  /** Start no unit from this time on. */
+  /** Start no unit from this time on, and stop the running one at it. */
   until?: Date
   providers: Record<string, Provider>
   sources: Record<string, Source>
@@ -95,7 +95,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
       const job = { unit, dir, prompt, maxTurns, model, env }
-      const worker = await runWorker(provider, job, a, { log, signal: n.signal, watch: n.watch })
+      const worker = await runWorker(provider, job, a, {
+        log,
+        signal: n.signal,
+        until: n.until,
+        watch: n.watch,
+      })
       Object.assign(result, worker)
       if (worker.quota) {
         quotas[id] = worker.quota

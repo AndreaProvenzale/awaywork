@@ -5,7 +5,9 @@ description: Run night-shift every night on your machine with launchd, systemd o
 # Scheduling
 
 A scheduled run is `nightshift run --scheduled`: it does nothing outside
-the `night` window and starts no unit after `night.end`.
+the `night` window and starts no unit after `night.end`. A unit still
+running at `night.end` stops there with status `stopped: night ended`,
+and what it left is published as for a quota stop.
 
 ## On your machine
 
