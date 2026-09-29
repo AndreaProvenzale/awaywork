@@ -126,18 +126,24 @@ export type Scalar = string | number | boolean
 export type Comparison = Partial<Record<'gt' | 'gte' | 'lt' | 'lte', number>>
 export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison
 
-export interface Rule {
+/** What a unit runs: a rule's own settings, or a step it chains after its unit. */
+export interface Step {
   skill: string
-  source?: string
-  where: Record<string, WhereValue>
   provider: string[]
   model?: Record<string, string>
   skills: string[]
   instructions: string[]
   deliver?: Deliver
   branch?: string
+}
+
+export interface Rule extends Step {
+  source?: string
+  where: Record<string, WhereValue>
   order?: Order
   units?: number
+  /** Units run in turn after the rule's unit, each on what the one before delivered. */
+  then?: Step[]
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -152,7 +158,7 @@ export interface Unit {
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
   branch: string
-  rule: Rule
+  rule: Step
   skill: string
   skills: string[]
   providers: string[]

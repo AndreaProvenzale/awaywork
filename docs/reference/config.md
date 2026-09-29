@@ -180,7 +180,8 @@ First matching rule wins; top = highest priority.
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
-| `units` | integer |  | At most this many units per night from this rule |
+| `units` | integer |  | At most this many units per night from this rule, its then steps included |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered |
 
 ## `queue[].where.<key>`
 
@@ -200,6 +201,22 @@ Matches items whose number field passes every comparison.
 | `gte` | number |  | Greater than or equal to |
 | `lt` | number |  | Less than |
 | `lte` | number |  | Less than or equal to |
+
+## `queue[].then`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `skill` (required) | string |  | The skill that does the work |
+| `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
+| `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
+| `skills` | string[] | `[]` | Extra skills available to the worker |
+| `instructions` | string \| string[] |  | Instruction files added for this rule |
+| `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
+| `branch` | string |  | Branch name template for this rule |
+
+## `queue[].then[]`
+
+Same keys as `queue[].then`.
 
 ## `notify`
 

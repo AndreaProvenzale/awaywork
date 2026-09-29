@@ -205,6 +205,88 @@ queue:
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
   })
 
+  it('chains steps: stacked on a draft PR, on the same base after a report', () => {
+    const yaml = `
+providers: [claude, codex]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: plan
+    where: { type: issue }
+    model: { claude: opus }
+    then:
+      - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
+      - { skill: review, provider: codex, branch: 'review/{key}' }
+  - { skill: fix-ci, where: { checks: failing }, then: review }
+`
+    const items = [issue, githubPr(3, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
+    expect(
+      result.units.map(({ unit, provider, after }) => [
+        unit.id,
+        unit.skill,
+        provider,
+        unit.deliver,
+        unit.base,
+        unit.branch,
+        after,
+      ]),
+    ).toEqual([
+      ['acme-api-5', 'plan', 'claude', 'report', '', 'night/acme-api-5', undefined],
+      [
+        'acme-api-5-implement',
+        'implement',
+        'claude',
+        'draft_pr',
+        '',
+        'night/acme-api-5',
+        'acme-api-5',
+      ],
+      [
+        'acme-api-5-review',
+        'review',
+        'codex',
+        'report',
+        'night/acme-api-5',
+        'review/acme-api-5',
+        'acme-api-5-implement',
+      ],
+      ['acme-api-3', 'fix-ci', 'claude', 'draft_pr', 'feature-3', 'night/acme-api-3', undefined],
+      [
+        'acme-api-3-review',
+        'review',
+        'claude',
+        'report',
+        'night/acme-api-3',
+        'night/acme-api-3-review',
+        'acme-api-3',
+      ],
+    ])
+    expect(result.units[1]?.unit).toMatchObject({
+      rule: { model: { claude: 'sonnet' } },
+      instructions: ['notes/impl.md'],
+    })
+    const text = formatPlan(result)
+    expect(text).toContain('#1  plan    type=issue model=claude:opus then=implement,review')
+    expect(text).toContain(
+      '     after acme-api-5-implement\n     github acme/api#5: Add rate limits',
+    )
+  })
+
+  it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
+    const yaml = (step: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
+    const theirs = githubPr(2, { checks: 'failing', mine: false })
+    expect(plan(yaml('review'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
+      true,
+      true,
+    ])
+    const result = plan(yaml('bad.lock'), [theirs], {})
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'then bad.lock: branch template night/{key} renders an invalid name "night/acme-api-2-bad.lock"',
+    ])
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
@@ -241,6 +323,38 @@ queue:
       ['acme/api#2', 'over the cap: rule #1 units is 1'],
       ['acme/api#4', 'over the cap: night.units_per_repo is 2'],
       ['acme/ops#7', 'over the cap: night.units is 4'],
+    ])
+  })
+
+  it("counts then steps against the caps and their rule's units", () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 4 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: implement, where: { type: issue }, units: 3, then: review }
+  - { skill: fix-ci, where: { checks: failing } }
+`
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      inRepo('acme/api', 1),
+      inRepo('acme/web', 2),
+      inRepo('acme/app', 3),
+      githubPr(4, { checks: 'failing' }),
+      githubPr(5, { checks: 'failing' }),
+    ]
+    const result = plan(yaml, items, { claude: week(0.1) })
+    expect(result.units.map((u) => u.unit.id)).toEqual([
+      'acme-api-1',
+      'acme-api-1-review',
+      'acme-web-2',
+      'acme-api-4',
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/web#2', 'then review: over the cap: rule #1 units is 3'],
+      ['acme/app#3', 'over the cap: rule #1 units is 3'],
+      ['acme/api#5', 'over the cap: night.units is 4'],
     ])
   })
 })

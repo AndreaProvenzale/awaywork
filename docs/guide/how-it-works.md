@@ -70,8 +70,10 @@ task linked to your PR becomes one unit with that PR.
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
-  review**: night-shift doesn't stack work on work you haven't read.
-- Units run one at a time, in queue order.
+  review**: night-shift doesn't stack work on work you haven't read,
+  unless a rule asks for it with [`then`](./configuration.md#then).
+- Units run one at a time, in queue order; a rule's `then` steps run
+  right after its unit.
 
 ## Budget
 
