@@ -7,11 +7,16 @@ const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
 const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day: 'long' }
 const stream = ['--output-format', 'stream-json', '--verbose']
 /** Auto-memory lives under ~/.claude whatever the setting sources. */
-const noMemory = ['--settings', '{"autoMemoryEnabled":false}']
+const noMemory = { autoMemoryEnabled: false }
+/** Bash in the OS sandbox, which has no network; a missing sandbox fails instead of running unconfined. */
+const offline = {
+  ...noMemory,
+  sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
+}
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
-const repoOnly = ['--setting-sources', 'project,local', ...noMemory]
+const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
-const isolated = ['--setting-sources', '', '--strict-mcp-config', ...noMemory]
+const isolated = ['--setting-sources', '', '--strict-mcp-config']
 
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(bin = 'claude'): Provider {
@@ -32,7 +37,8 @@ export function claudeProvider(bin = 'claude'): Provider {
     /** One Haiku turn; its rate_limit_event carries both windows. */
     async probe(ctx) {
       const args = ['-p', 'reply ok', '--model', PROBE_MODEL, '--max-turns', '1', ...stream]
-      const { stdout } = await execa(bin, [...args, ...isolated], {
+      const settings = ['--settings', JSON.stringify(noMemory)]
+      const { stdout } = await execa(bin, [...args, ...isolated, ...settings], {
         env: ctx.env,
         extendEnv: false,
         reject: false,
@@ -45,6 +51,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
       args.push(...(job.unit.foreign ? isolated : repoOnly))
+      args.push('--settings', JSON.stringify(job.unit.network ? noMemory : offline))
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
         env: job.env,

@@ -331,6 +331,10 @@
           "instructions": {
             "description": "Instruction file for units in this repo",
             "type": "string"
+          },
+          "network": {
+            "description": "Network for the worker's commands; default on, off on someone else's PR",
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -527,6 +531,10 @@
               "newest",
               "updated"
             ]
+          },
+          "network": {
+            "description": "Network for the worker's commands; default the repo's",
+            "type": "boolean"
           }
         },
         "required": [

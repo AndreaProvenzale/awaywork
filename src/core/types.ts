@@ -137,6 +137,7 @@ export interface Rule {
   deliver?: Deliver
   branch?: string
   order?: Order
+  network?: boolean
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -150,6 +151,8 @@ export interface Unit {
   base: string
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
+  /** Whether the worker's commands may reach the network. */
+  network: boolean
   branch: string
   rule: Rule
   skill: string

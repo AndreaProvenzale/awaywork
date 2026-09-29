@@ -39,6 +39,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
       repo: 'acme/api',
       base: '',
       foreign: false,
+      network: true,
       branch: 'night/fake-1',
       rule: { skill: 'implement', where: {}, provider: [], skills: [], instructions: [] },
       skill: 'implement',

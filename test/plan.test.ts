@@ -209,6 +209,30 @@ queue:
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
   })
+
+  it("takes network from the rule, then the repo, else off only on someone else's PR", () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos: { acme/web: { network: false } }
+queue:
+  - { skill: fix-ci, where: { checks: failing }, network: true }
+  - { skill: review, where: { review_requested: true } }
+  - { skill: implement, where: { type: issue } }
+`
+    const items = [
+      githubPr(1, { mine: false, checks: 'failing' }),
+      githubPr(2, { mine: false, review_requested: true }),
+      issue,
+      fakeItem({ ...issue, key: 'acme/web#5', fields: { repo: 'acme/web' } }),
+    ]
+    expect(plan(yaml, items, {}).units.map((u) => u.unit.network)).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+  })
 })
 
 describe('branch', () => {

@@ -19,6 +19,7 @@ providerContract(fakeProvider(), () => ({
     repo: 'acme/api',
     base: 'main',
     foreign: false,
+    network: true,
     branch: 'night/FAKE-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',

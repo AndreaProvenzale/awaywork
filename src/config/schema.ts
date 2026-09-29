@@ -133,6 +133,10 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    network: z
+      .boolean()
+      .optional()
+      .describe("Network for the worker's commands; default the repo's"),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -141,6 +145,10 @@ const repo = z.strictObject({
   setup: z.string().optional().describe('Setup command, given to the worker in its prompt'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
+  network: z
+    .boolean()
+    .optional()
+    .describe("Network for the worker's commands; default on, off on someone else's PR"),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])

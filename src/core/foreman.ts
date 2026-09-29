@@ -66,13 +66,15 @@ export function planNight(input: {
     if (provider) routed[provider] = (routed[provider] ?? 0) + 1
     const id = slug(items[0]?.key ?? '')
     const repoInstructions = config.repos[repo]?.instructions
+    const foreign = pr ? !pr.mine : false
     units.push({
       unit: {
         id,
         items,
         repo,
         base: pr?.branch ?? '',
-        foreign: pr ? !pr.mine : false,
+        foreign,
+        network: rule.network ?? config.repos[repo]?.network ?? !foreign,
         branch,
         rule,
         skill: rule.skill,

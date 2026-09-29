@@ -161,6 +161,7 @@ My open Linear issues.
 | `setup` | string |  | Setup command, given to the worker in its prompt |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
+| `network` | boolean |  | Network for the worker's commands; default on, off on someone else's PR |
 
 ## `queue[]`
 
@@ -178,6 +179,7 @@ First matching rule wins; top = highest priority.
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
+| `network` | boolean |  | Network for the worker's commands; default the repo's |
 
 ## `queue[].where.<key>`
 

@@ -23,6 +23,7 @@ const job = (): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
+    network: true,
     branch: 'night/fake-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
@@ -122,6 +123,7 @@ describe('claude provider', () => {
         ...job().unit,
         base: 'sessions',
         foreign: !mine,
+        network: true,
         items: [fakeItem({ linkedPrs: [pr] })],
       }
       await collect(provider.run({ ...job(), unit }, new AbortController().signal))
@@ -139,6 +141,21 @@ describe('claude provider', () => {
       await provider.probe({ env: process.env, log: () => {} })
       const probe = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       expect(flag(probe, '--setting-sources')).toBe('')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('runs Bash in the sandbox, which has no network, when the unit is offline', async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const unit = { ...job().unit, network: false }
+      await collect(provider.run({ ...job(), unit }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      expect(JSON.parse(args[args.indexOf('--settings') + 1] as string)).toEqual({
+        autoMemoryEnabled: false,
+        sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
+      })
     } finally {
       delete process.env.FAKE_ARGV
     }

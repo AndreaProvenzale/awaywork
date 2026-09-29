@@ -27,6 +27,7 @@ const job = (maxTurns = 10): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
+    network: true,
     branch: 'night/fake-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
@@ -123,6 +124,25 @@ describe('codex provider', () => {
     try {
       expect((await argv('gpt-5-codex')).join(' ')).toContain('-m gpt-5-codex')
       expect(await argv()).not.toContain('-m')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('drops full access for a profile without network when the unit is offline', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    const argv = async (network: boolean) => {
+      const unit = { ...job().unit, network }
+      await collect(provider.run({ ...job(), unit }, new AbortController().signal))
+      return JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
+    }
+    try {
+      expect((await argv(true)).join(' ')).toContain('--sandbox danger-full-access')
+      const offline = await argv(false)
+      expect(offline).not.toContain('--sandbox')
+      expect(offline).toContain('permissions.night.network.enabled=false')
+      expect(offline).toContain('web_search="disabled"')
+      expect(offline.join(' ')).toContain(`${JSON.stringify(join(tmp, '.git'))}="write"`)
     } finally {
       delete process.env.FAKE_ARGV
     }

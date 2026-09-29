@@ -9,15 +9,10 @@ import { stateDir } from '../config/paths.js'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const AUTH_SECRET = 'CODEX_AUTH_JSON'
-/** No user config (MCP servers, notify hooks, plugins), no saved session; workspace-write can't commit (.git is read-only). */
-const EXEC = [
-  'exec',
-  '--json',
-  '--ephemeral',
-  '--ignore-user-config',
-  '--sandbox',
-  'danger-full-access',
-]
+/** No user config (MCP servers, notify hooks, plugins), no saved session. */
+const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
+/** workspace-write can't commit (.git is read-only). */
+const ONLINE = ['--sandbox', 'danger-full-access']
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 
@@ -95,7 +90,8 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       try {
         await seedAuth(process.env)
         const model = job.model ? ['-m', job.model] : []
-        const child = execa(bin, [...EXEC, ...model, '-C', job.dir, '-'], {
+        const sandbox = job.unit.network ? ONLINE : offline(job.dir)
+        const child = execa(bin, [...EXEC, ...sandbox, ...model, '-C', job.dir, '-'], {
           cwd: job.dir,
           env,
           extendEnv: false,
@@ -136,6 +132,18 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 }
 
 export const codex = codexProvider()
+
+/** A permission profile that reads anywhere, writes the clone (its .git too) and tmp, with no network or web search. */
+export function offline(dir: string): string[] {
+  const writable = [dir, join(dir, '.git')].map((path) => `${JSON.stringify(path)}="write"`)
+  const filesystem = `{":root"="read",":tmpdir"="write",${writable.join(',')}}`
+  return [
+    ...['-c', 'default_permissions="night"'],
+    ...['-c', `permissions.night.filesystem=${filesystem}`],
+    ...['-c', 'permissions.night.network.enabled=false'],
+    ...['-c', 'web_search="disabled"'],
+  ]
+}
 
 /** Worker events in one `codex exec --json` event: tool calls and errors as log lines, and the turn's end. */
 export function toEvents(
