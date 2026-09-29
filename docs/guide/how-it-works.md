@@ -24,6 +24,7 @@ A source returns your open items with facts about each: a `type` (`pr`,
 |---|---|---|
 | GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
 | Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
+| Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `project`, `repo` (from `team_repos`), `created`, `updated` |
 
 ## The queue
 
@@ -49,13 +50,16 @@ rules whose source is configured:
 |---|---|---|---|
 | 1 | `fix-ci` | GitHub | my PR, checks failing |
 | 2 | `qa-feedback` | Asana | section `QA` |
-| 3 | `address-review` | GitHub | my PR, unresolved threads |
-| 4 | `review` | GitHub | my review requested, trusted author |
-| 5 | `continue` | Asana | section `In progress` |
-| 6 | `plan` | Asana | section `Current sprint` |
+| 3 | `qa-feedback` | Linear | state `QA` |
+| 4 | `address-review` | GitHub | my PR, unresolved threads |
+| 5 | `review` | GitHub | my review requested, trusted author |
+| 6 | `continue` | Asana | section `In progress` |
+| 7 | `continue` | Linear | state `In Progress` |
+| 8 | `plan` | Asana | section `Current sprint` |
+| 9 | `plan` | Linear | state `Todo` |
 
 `nightshift init` writes the queue out, with your real Asana section
-names, so you can edit it.
+and Linear state names, so you can edit it.
 
 ## Units
 

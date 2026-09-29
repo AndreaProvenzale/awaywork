@@ -39,7 +39,8 @@ Setting up:
    night. Override with `--provider claude codex` (first takes units
    first), `--source github asana` and `--night 23:00-06:00`. Asana is
    skipped with a note unless `ASANA_TOKEN` is set; then it takes the
-   first workspace and every project with the user's tasks. It refuses
+   first workspace and every project with the user's tasks. Linear is
+   likewise skipped unless `LINEAR_API_KEY` is set. It refuses
    to replace an existing config without `--force`. To go further, edit
    the file from [Configuration](./configuration.md) and the
    [reference](../reference/config.md). Asana gids come from

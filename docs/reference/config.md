@@ -123,6 +123,7 @@ Where work comes from; configure at least one.
 |---|---|---|---|
 | `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me; also the forge |
 | `asana` | object |  | My incomplete Asana tasks |
+| `linear` | object |  | My open Linear issues |
 
 ## `sources.github`
 
@@ -143,6 +144,15 @@ My incomplete Asana tasks.
 | `project_repos` | map |  | Project gid -> owner/repo where its tasks' code lives |
 | `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
 
+## `sources.linear`
+
+My open Linear issues.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `team_repos` | map |  | Team key -> owner/repo where its issues' code lives |
+| `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
+
 ## `repos.<key>`
 
 | Key | Type | Default | Description |
@@ -159,7 +169,7 @@ First matching rule wins; top = highest priority.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
-| `source` | "github" \| "asana" |  | Match only items from this source |
+| `source` | "github" \| "asana" \| "linear" |  | Match only items from this source |
 | `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |

@@ -272,6 +272,29 @@
           ],
           "additionalProperties": false,
           "description": "My incomplete Asana tasks"
+        },
+        "linear": {
+          "type": "object",
+          "properties": {
+            "team_repos": {
+              "description": "Team key -> owner/repo where its issues' code lives",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+              }
+            },
+            "token_env": {
+              "default": "LINEAR_API_KEY",
+              "description": "Env var holding the Linear personal API key",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "description": "My open Linear issues"
         }
       },
       "additionalProperties": false,
@@ -343,7 +366,8 @@
             "type": "string",
             "enum": [
               "github",
-              "asana"
+              "asana",
+              "linear"
             ]
           },
           "where": {

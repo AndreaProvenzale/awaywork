@@ -209,6 +209,15 @@ YouTrack, Shortcut, Plane.
 - API key restricted to read and to teams [C]; limits [V]
   https://linear.app/developers/rate-limiting
 - MCP with Bearer key and read-only endpoint [V] https://linear.app/docs/mcp
+- **Adapter.** One GraphQL endpoint, `https://api.linear.app/graphql`;
+  a personal key goes in `Authorization` without `Bearer` [I].
+  `viewer.assignedIssues` filtered on `state.type` not in `completed`,
+  `canceled`, paged by `pageInfo.endCursor`; comments per issue through
+  `issue(id).comments` [I]. Key is the `identifier` (`ENG-12`).
+- **PR links.** Not read from `attachments` until the claim below is
+  verified: night-shift links issues through the forge by key, which
+  matches Linear's own branch names (`dev/eng-12-title`) [I].
+- **Repo for an issue.** `team_repos` maps a team key to `owner/repo`.
 
 ### GitHub
 - `@me` works in GraphQL `search` queries (`author:`, `assignee:`,
@@ -242,6 +251,10 @@ YouTrack, Shortcut, Plane.
 ## Unverified, check before relying on it
 
 - Linear: PRs from the GitHub integration appear in `issue.attachments`.
+- Linear: personal keys limited to read and to teams; the `Authorization`
+  format, the `assignedIssues` filter and comment paging used by
+  `linear.ts`; the whole source against a live workspace
+  (`real-linear.test.ts`).
 - Asana: GitHub integration attachments readable via `/attachments`,
   and in which field the PR URL sits.
 - Asana: the whole source against a live workspace (`real-asana.test.ts`).

@@ -1,0 +1,26 @@
+{
+  "data": {
+    "viewer": {
+      "assignedIssues": {
+        "nodes": [
+          {
+            "id": "a1b2c3d4-0000-4000-8000-000000000012",
+            "identifier": "ENG-12",
+            "title": "Refill the rate-limit bucket",
+            "description": "Bursts still return 500.",
+            "url": "https://linear.app/acme/issue/ENG-12/refill-the-rate-limit-bucket",
+            "priorityLabel": "High",
+            "createdAt": "2026-01-01T08:00:00.000Z",
+            "updatedAt": "2026-01-03T08:00:00.000Z",
+            "assignee": { "name": "Dev" },
+            "state": { "name": "QA" },
+            "team": { "key": "ENG" },
+            "project": { "name": "Rate limits" },
+            "labels": { "nodes": [{ "name": "backend" }, { "name": "bug" }] }
+          }
+        ],
+        "pageInfo": { "hasNextPage": true, "endCursor": "cursor-1" }
+      }
+    }
+  }
+}

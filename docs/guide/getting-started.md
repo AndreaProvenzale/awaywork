@@ -14,7 +14,8 @@ description: Install night-shift, write a config, preview tonight with plan, run
   - [Claude Code](https://code.claude.com): `claude` logged in, or
     `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.
-- Optionally an Asana personal access token, if your tasks live there.
+- Optionally an Asana personal access token or a Linear personal API key,
+  if your tasks live there.
 
 ## Install
 
@@ -32,7 +33,9 @@ nightshift init
 `init` finds the installed agents and your `gh` login, then asks which
 providers and sources to use and which rules to start the queue with. For
 Asana it lists your workspaces, projects and real section names, and asks
-which repo each project's code lives in. It writes
+which repo each project's code lives in; for Linear it lists your teams
+and their real workflow states, and asks which repo each team's code
+lives in. It writes
 `~/.config/night-shift/config.yml`; a token you type is saved to
 `~/.config/night-shift/env` (mode 600), never to the config. Last, it
 asks where to run every night: this machine, GitHub Actions or later, and
