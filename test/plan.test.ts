@@ -128,6 +128,19 @@ queue: [{ skill: address-review, where: { unresolved_threads: { gte: 2, lt: 5 } 
     )
   })
 
+  it('names the failing relative date of the closest rule', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix-ci, where: { updated: { older_than: 3d } } }]`
+    const now = new Date().toISOString()
+    const result = plan(yaml, [githubPr(1, { updated: now })], { claude: week(0.1) })
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      `matched no rule; closest #1 fix-ci: updated is ${now}, wants older than 3d`,
+    ])
+    expect(formatPlan(result)).toContain('#1  fix-ci  updated:older_than=3d')
+  })
+
   it('routes past a provider at its ceiling and caps fallback units', () => {
     const yaml = `
 budget: { fallback: { units: 1, turns: 30 } }

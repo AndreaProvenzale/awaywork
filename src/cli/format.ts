@@ -1,7 +1,7 @@
 import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
-import { bounds, comparisons } from '../core/queue.js'
+import { bounds, comparisons, isAge, spans } from '../core/queue.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
@@ -99,6 +99,10 @@ export function describeRule(r: Rule): string {
 function describeWhere(key: string, value: WhereValue): string {
   if (typeof value === 'object' && !Array.isArray(value)) {
     if ('not' in value) return `${key}!=${[value.not].flat().join('|')}`
+    if (isAge(value))
+      return spans(value)
+        .map(([op, span]) => `${key}:${op}=${span}`)
+        .join(' ')
     return bounds(value)
       .map(([op, bound]) => `${key}${comparisons[op].symbol}${bound}`)
       .join(' ')
