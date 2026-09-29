@@ -147,7 +147,8 @@ the repo's PR template, its recent commit style and your instructions
 where:
   type: pr                          # equals
   checks: [failing, pending]        # any of
-  unresolved_threads: { not: 0 }    # not
+  review_requested: { not: true }   # not
+  unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
   label: night-shift                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
 ```

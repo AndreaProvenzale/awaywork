@@ -112,6 +112,20 @@ describe('plan', () => {
     ])
   })
 
+  it('names the failing comparison of the closest rule', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: address-review, where: { unresolved_threads: { gte: 2, lt: 5 } } }]`
+    const result = plan(yaml, [githubPr(1, { unresolved_threads: 1 })], { claude: week(0.1) })
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'matched no rule; closest #1 address-review: unresolved_threads is 1, wants >= 2 and < 5',
+    ])
+    expect(formatPlan(result)).toContain(
+      '#1  address-review  unresolved_threads>=2 unresolved_threads<5',
+    )
+  })
+
   it('routes past a provider at its ceiling and caps fallback units', () => {
     const yaml = `
 budget: { fallback: { units: 1, turns: 30 } }

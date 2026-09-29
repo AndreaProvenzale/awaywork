@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import type { Rule } from '../core/types.js'
+import { bounds } from '../core/queue.js'
+import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { sourceField, sources } from '../sources/index.js'
 
@@ -91,6 +92,15 @@ const scalars = z.union([scalar, z.array(scalar).min(1)])
 const whereValue = z.union([
   scalars,
   z.strictObject({ not: scalars }).describe('Matches items whose field has none of these values'),
+  z
+    .strictObject({
+      gt: z.number().optional().describe('Greater than'),
+      gte: z.number().optional().describe('Greater than or equal to'),
+      lt: z.number().optional().describe('Less than'),
+      lte: z.number().optional().describe('Less than or equal to'),
+    })
+    .refine((c) => Object.keys(c).length > 0, 'expected gt, gte, lt or lte')
+    .describe('Matches items whose number field passes every comparison'),
 ])
 
 const rule: z.ZodType<Rule, unknown> = z
@@ -100,7 +110,9 @@ const rule: z.ZodType<Rule, unknown> = z
     where: z
       .record(z.string(), whereValue)
       .default({})
-      .describe('Item facts to match: type or a source field; a list means any of, {not} negates'),
+      .describe(
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers',
+      ),
     provider: oneOrMany
       .default([])
       .describe('Providers for this rule, in order; default the providers order'),
@@ -215,10 +227,7 @@ export const configSchema = z
           })
           continue
         }
-        const values = [
-          typeof value === 'object' && !Array.isArray(value) ? value.not : value,
-        ].flat()
-        for (const v of values)
+        for (const v of whereValues(value))
           if (!field.safeParse(v).success)
             ctx.addIssue({
               code: 'custom',
@@ -248,6 +257,11 @@ function fieldFor(scope: string[], key: string): z.ZodType | undefined {
   const matches = scope.flatMap((id) => sourceField(sources[id]?.fields ?? {}, key) ?? [])
   if (matches.length === 0) return undefined
   return matches.length === 1 ? matches[0] : z.union(matches)
+}
+
+function whereValues(value: WhereValue): Scalar[] {
+  if (typeof value !== 'object' || Array.isArray(value)) return [value].flat()
+  return 'not' in value ? [value.not].flat() : bounds(value).map(([, bound]) => bound)
 }
 
 function unknownKey(key: string, scope: string[]): string {
