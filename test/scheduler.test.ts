@@ -127,25 +127,42 @@ it('reads back a job whose paths need escaping', () => {
   expect(parseCronLine(cronLine(awkward))).toEqual(awkward)
 })
 
-it('writes a workflow with a local-time cron, disk cleanup and secrets by name only', () => {
+it('writes a workflow with a local-time cron that calls the action with a pinned version', () => {
   const text = workflow({
     start: '01:30',
     timezone: 'Europe/Rome',
     config: '.night-shift/config.yml',
-    packages: ['@anthropic-ai/claude-code'],
+    version: '0.3.1',
+    packages: ['@anthropic-ai/claude-code', '@openai/codex'],
     secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'],
   })
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
   expect(parsed.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
-    NIGHT_SHIFT_CONFIG: '.night-shift/config.yml',
     GH_TOKEN: '${{ secrets.GH_TOKEN }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
   })
-  const runs = parsed.jobs.night.steps.map((s: { run?: string }) => s.run ?? '')
+  expect(parsed.jobs.night.steps).toEqual([
+    { uses: 'actions/checkout@v5' },
+    {
+      uses: 'AndreaProvenzale/night-shift@v1',
+      with: {
+        config: '.night-shift/config.yml',
+        version: '0.3.1',
+        packages: '@anthropic-ai/claude-code @openai/codex',
+      },
+    },
+  ])
+})
+
+it('ships an action that installs the pinned version and runs the night', async () => {
+  const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
+  expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages'])
+  expect(action.runs.using).toBe('composite')
+  const runs = action.runs.steps.map((s: { run?: string }) => s.run ?? '')
   expect(runs[0]).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
-  expect(runs).toContain('npm install -g nightshift-agent @anthropic-ai/claude-code')
+  expect(runs).toContain('npm install -g "nightshift-agent@$VERSION" $PACKAGES')
   expect(runs).toContain(
     "nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
   )

@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { stateDir } from '../config/paths.js'
+import { packageVersion, stateDir } from '../config/paths.js'
 import { clock } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
@@ -146,6 +146,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
         start: night.start,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         config: REPO_CONFIG,
+        version: packageVersion,
         packages: used.map((p) => p.package),
         secrets: [...secrets],
       }),

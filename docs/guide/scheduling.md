@@ -62,9 +62,12 @@ manual run; `nightshift schedule remove` deletes it. Then:
 issues, checks and Actions logs, pushes new branches and opens draft PRs
 in the configured repos.
 
-The workflow frees about 20 GB of preinstalled SDKs first (runners
-otherwise die quietly on large repos), commits as the token's user, and
-appends the morning report to the job summary.
+The workflow calls night-shift's action, `AndreaProvenzale/night-shift@v1`,
+which installs the nightshift-agent version you generated it with. The
+action frees about 20 GB of preinstalled SDKs first (runners otherwise
+die quietly on large repos), commits as the token's user, and appends the
+morning report to the job summary. Fixes to those steps reach you through
+`v1`; to upgrade night-shift itself, raise `version` in the workflow.
 
 ### Credentials on a runner
 
