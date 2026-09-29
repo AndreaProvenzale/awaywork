@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import type { Job } from '../src/core/types.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
@@ -80,6 +80,35 @@ describe('worker', () => {
     })
     expect(result).toMatchObject({ status: 'stopped: resources', reason: 'disk below 2 GB' })
     expect(stopped).toBe(true)
+  })
+
+  it('stops at night.end', async () => {
+    vi.useFakeTimers()
+    const minute = 60_000
+    const slow = {
+      ...fakeProvider(),
+      async *run(job: Job, signal: AbortSignal) {
+        for await (const event of fakeProvider().run(job, signal)) {
+          yield event
+          if (event.type === 'quota') await new Promise((ok) => setTimeout(ok, minute))
+        }
+      },
+    }
+    const lines: string[] = []
+    const until = new Date(Date.now() + 1.5 * minute)
+    const running = runWorker(slow, job, allowance(budget, quota, now), {
+      log: (l) => lines.push(l),
+      until,
+      watch: () => idle,
+    })
+    await vi.advanceTimersByTimeAsync(3 * minute)
+    vi.useRealTimers()
+    expect(await running).toMatchObject({
+      status: 'stopped: night ended',
+      reason: 'reached night.end',
+      turns: 2,
+    })
+    expect(lines).toEqual(['turn 1', 'turn 2', 'stop: reached night.end'])
   })
 })
 

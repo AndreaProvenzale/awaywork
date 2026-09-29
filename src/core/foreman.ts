@@ -2,7 +2,7 @@ import type { Config } from '../config/schema.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { closestRule, defaultRules, fieldValue, rank } from './queue.js'
+import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import type { Item, Rule, Unit, WhereValue } from './types.js'
 
@@ -108,7 +108,8 @@ function noRuleReason(item: Item, queue: Rule[]): string {
 }
 
 function describeWant(want: WhereValue): string {
-  if (typeof want === 'object' && !Array.isArray(want)) return `not ${describeWant(want.not)}`
+  if (typeof want === 'object' && !Array.isArray(want))
+    return 'not' in want ? `not ${describeWant(want.not)}` : describeComparison(want)
   return [want].flat().join('|')
 }
 

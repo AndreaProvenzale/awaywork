@@ -78,6 +78,13 @@ describe('config', () => {
     expect(problems(rule('{ type: { not: epic } }'))).toEqual([
       'queue[0].where.type: invalid value "epic"',
     ])
+    expect(problems(rule('{ unresolved_threads: { gte: 2, lt: 5 } }'))).toEqual([])
+    expect(problems(rule('{ checks: { gte: 2 } }'))).toEqual([
+      'queue[0].where.checks: invalid value 2',
+    ])
+    expect(problems(rule('{ unresolved_threads: {} }'))).toEqual([
+      expect.stringContaining('queue[0].where.unresolved_threads'),
+    ])
   })
 
   it('takes a rule order', () => {

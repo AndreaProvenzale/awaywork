@@ -348,7 +348,7 @@
           },
           "where": {
             "default": {},
-            "description": "Item facts to match: type or a source field; a list means any of, {not} negates",
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -408,6 +408,29 @@
                   ],
                   "additionalProperties": false,
                   "description": "Matches items whose field has none of these values"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "gt": {
+                      "description": "Greater than",
+                      "type": "number"
+                    },
+                    "gte": {
+                      "description": "Greater than or equal to",
+                      "type": "number"
+                    },
+                    "lt": {
+                      "description": "Less than",
+                      "type": "number"
+                    },
+                    "lte": {
+                      "description": "Less than or equal to",
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Matches items whose number field passes every comparison"
                 }
               ]
             }
@@ -488,6 +511,30 @@
         "additionalProperties": false,
         "description": "First matching rule wins; top = highest priority"
       }
+    },
+    "notify": {
+      "description": "Run after each night with the morning report; a failure is only logged",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env"
+        },
+        "secrets": {
+          "default": [],
+          "description": "Env vars the command needs; withheld from workers, listed in Actions",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
