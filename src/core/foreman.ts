@@ -1,5 +1,5 @@
 import type { Config } from '../config/schema.js'
-import { type Attempts, unchangedSince } from './attempts.js'
+import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -34,7 +34,7 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
-  /** Earlier attempts: a unit none of whose items changed since its skill last ran is skipped. */
+  /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
   attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
@@ -60,6 +60,10 @@ export function planNight(input: {
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
     if (since.every(Boolean)) {
       skip(`unchanged since run ${since.sort().at(-1)}`)
+      continue
+    }
+    if (items.every((i) => failedAttempts(i, rule.skill, input.attempts ?? {}) >= MAX_ATTEMPTS)) {
+      skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
     const pr = prs[0]

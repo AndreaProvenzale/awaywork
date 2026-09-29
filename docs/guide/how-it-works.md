@@ -79,6 +79,12 @@ task linked to your PR becomes one unit with that PR.
   finished; commits left unpushed retry. "Changed" is the item's
   `updated` time; attempts live in `~/.local/state/night-shift/attempts.json`,
   and a unit picked with `run --unit` isn't skipped.
+- A unit whose chain didn't finish 3 runs in a row (a failure, a stop,
+  commits left unpushed) is skipped as **gave up after 3 attempts** until
+  one of its items changes or it matches another skill. A plan report
+  followed by a failed implement is one failure; a finished attempt
+  clears the count, and skipped, dry-run and aborted units don't count.
+  `run --unit` runs it anyway.
 - Units run one at a time, in queue order; a rule's `then` steps run
   right after its unit.
 - Optional [caps](./configuration.md#night-and-budget) limit the units

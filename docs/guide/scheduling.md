@@ -67,7 +67,7 @@ otherwise die quietly on large repos), commits as the token's user, and
 appends the morning report to the job summary.
 
 A runner starts with an empty state dir, so it keeps no attempts: an
-item unchanged since last night runs again.
+item unchanged since last night runs again, and none is given up on.
 
 ### Credentials on a runner
 

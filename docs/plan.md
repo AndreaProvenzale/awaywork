@@ -256,7 +256,10 @@ Semantics, fixed so every milestone agrees:
   run. A chain records its items once, when every unit finished or
   the chain ended at a unit that made nothing; commits left unpushed
   retry, and a step is never skipped on its own. A unit picked with
-  `run --unit` isn't skipped. Not persisted in Actions.
+  `run --unit` isn't skipped. A chain that ran but didn't finish counts
+  one failure on each item instead; after 3 in a row on the same
+  `updated` time and skill the unit is skipped as gave up. Not persisted
+  in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
