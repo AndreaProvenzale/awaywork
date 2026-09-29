@@ -71,6 +71,10 @@ task linked to your PR becomes one unit with that PR.
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
   review**: night-shift doesn't stack work on work you haven't read.
+- After 3 runs without a draft PR or a report (an error, a stop, no
+  commits), a unit is skipped as **gave up after 3 attempts** until one
+  of its items changes. The count lives in
+  `~/.local/state/night-shift/attempts.json`; a delivery clears it.
 - Units run one at a time, in queue order.
 
 ## Budget

@@ -1,4 +1,5 @@
 import type { Config } from '../config/schema.js'
+import { type Attempts, failedAttempts, MAX_ATTEMPTS } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -29,6 +30,7 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
@@ -46,6 +48,10 @@ export function planNight(input: {
     const ours = prs.find((p) => p.ours)
     if (ours) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    if (items.every((i) => failedAttempts(input.attempts ?? {}, i) >= MAX_ATTEMPTS)) {
+      skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
     const pr = prs[0]
