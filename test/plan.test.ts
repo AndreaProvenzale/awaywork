@@ -4,7 +4,8 @@ import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { planNight } from '../src/core/foreman.js'
+import { type PlannedUnit, planNight } from '../src/core/foreman.js'
+import { summarize } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
@@ -351,8 +352,22 @@ queue:
       'acme-web-2',
       'acme-api-4',
     ])
+    expect(result.units.map((u) => u.capped)).toEqual([
+      undefined,
+      undefined,
+      'then review: over the cap: rule #1 units is 3',
+      undefined,
+    ])
+    expect(formatPlan(result)).toContain(
+      '     github acme/web#2: Fix the thing\n     then review: over the cap: rule #1 units is 3',
+    )
+    const planned = result.units[2] as PlannedUnit
+    const report = { runId: 'r1', dryRun: false, startedAt: new Date(0), finishedAt: new Date(0) }
+    const results = [{ planned, provider: 'claude', status: 'done' as const, turns: 3 }]
+    expect(summarize({ ...report, plan: result, results, quotas: {} }, 'report.md')).toContain(
+      'acme-web-2  done, 3 turns (then review: over the cap: rule #1 units is 3)',
+    )
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/web#2', 'then review: over the cap: rule #1 units is 3'],
       ['acme/app#3', 'over the cap: rule #1 units is 3'],
       ['acme/api#5', 'over the cap: night.units is 4'],
     ])

@@ -220,7 +220,8 @@ queue:
 - A skill runs at most once per chain.
 - Steps count against the [caps](#night-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
-  doesn't start; a step over a cap is skipped with the rest of the chain.
+  doesn't start; a step over a cap is left out with the rest of the chain,
+  and the unit before it names the cap.
 
 ## Notify
 

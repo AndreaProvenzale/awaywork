@@ -15,6 +15,8 @@ export interface PlannedUnit {
   passed: string[]
   /** The unit this one chains after, by id: it runs only on what that unit delivered. */
   after?: string
+  /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
+  capped?: string
 }
 
 export interface NightPlan {
@@ -144,7 +146,8 @@ export function planNight(input: {
     for (const [j, step] of (rule.then ?? []).entries()) {
       const capped = overCap()
       if (capped) {
-        skip(`then ${step.skill}: ${capped}`)
+        const last = units.at(-1) as PlannedUnit
+        last.capped = `then ${step.skill}: ${capped}`
         break
       }
       const stacked = previous.deliver === 'draft_pr'

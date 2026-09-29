@@ -66,6 +66,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
         const rule = p.itemRules[j + 1] ?? p.rule
         out.push(`     + ${item.source} ${item.key}: same feature, matched #${rule + 1}`)
       })
+      if (p.capped) out.push(`     ${p.capped}`)
       if (p.passed.length > 0 || !p.provider)
         out.push(
           `     provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
