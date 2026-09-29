@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse } from 'yaml'
+import { staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLine, parseCronLine } from '../src/scheduler/cron.js'
 import { removeWorkflow, WORKFLOW, workflow } from '../src/scheduler/github-actions.js'
-import type { Schedule } from '../src/scheduler/index.js'
+import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
 
@@ -160,4 +161,22 @@ it('removes only its own workflow from a repo', async () => {
   expect(existsSync(join(root, WORKFLOW))).toBe(false)
   expect(existsSync(join(root, '.github/workflows/ci.yml'))).toBe(true)
   expect(await removeWorkflow(root)).toBe(false)
+})
+
+it('warns when an installed job for this config no longer starts at night.start', async () => {
+  const installed = (id: string, job?: Schedule): Scheduler => ({
+    id,
+    install: async () => '',
+    remove: async () => false,
+    read: async () => job,
+  })
+  const all = {
+    launchd: installed('launchd', schedule),
+    cron: installed('cron', { ...schedule, command: ['nightshift', '--config', '/h/other.yml'] }),
+    systemd: installed('systemd'),
+  }
+  expect(await staleSchedules("/h/it's.yml", '01:05', all)).toEqual([])
+  expect(await staleSchedules("/h/it's.yml", '02:30', all)).toEqual([
+    'the launchd job starts at 01:05, night.start is 02:30; run `nightshift schedule install`',
+  ])
 })

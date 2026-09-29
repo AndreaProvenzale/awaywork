@@ -9,6 +9,7 @@ import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
+import { staleSchedules } from './schedule.js'
 
 export interface Check {
   status: Status
@@ -65,6 +66,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
     return checks
   }
+  for (const warning of await staleSchedules(path, config.night.start))
+    report('warn', 'schedule', warning)
 
   for (const { id, budget } of config.providers) {
     const provider = providers[id]
