@@ -64,7 +64,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         base: '',
         foreign: false,
         branch: 'night/acme-api-1',
-        rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+        rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
         skill: 'fix-ci',
         skills: ['house-style'],
         providers: ['claude'],
@@ -107,8 +107,10 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    const review = async (mine: boolean) => {
+    const review = async (mine: boolean, stacked = false) => {
       const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+      const out = join(root, 'previous')
+      await mkdir(out)
       const dir = join(root, 'clone')
       const forge = {
         ...fakeForge(),
@@ -133,7 +135,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           base: 'sessions',
           foreign: !mine,
           branch: 'night/acme-api-2',
-          rule: { skill: 'review', where: {}, provider: [], skills: [], instructions: [] },
+          rule: { skill: 'review', provider: [], skills: [], instructions: [] },
           skill: 'review',
           skills: [],
           providers: ['claude'],
@@ -148,6 +150,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         provider: claude,
         ctx: { env: {}, log: () => {} },
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
+        previous: stacked
+          ? { skill: 'fix-ci', outcome: { kind: 'pr', url: 'u', commits: 1 }, out }
+          : undefined,
       })
       return { dir, prompt }
     }
@@ -161,6 +166,11 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       )
       expect(existsSync(join(dir, '.claude/skills/review/extra.md'))).toBe(false)
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it('says a stacked branch is built on the PR someone else opened', async () => {
+      const { prompt } = await review(false, true)
+      expect(prompt).toContain('`sessions` is built on a pull request someone else opened')
     })
 
     it("keeps them on the developer's own PR", async () => {

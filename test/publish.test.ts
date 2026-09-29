@@ -18,7 +18,7 @@ const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
   base: 'feature-1',
   foreign: false,
   branch: 'night/FAKE-1',
-  rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+  rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
   skill: 'fix-ci',
   skills: [],
   providers: ['fake'],
