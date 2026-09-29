@@ -375,6 +375,7 @@ describe('attempts', () => {
     const [done, stopped] = first.units
     const report = {
       runId: 'r1',
+      plan: first,
       results: [
         { planned: done, status: 'done' },
         { planned: stopped, status: 'stopped: quota' },
@@ -410,6 +411,32 @@ describe('attempts', () => {
     expect(
       plan(yaml, [bare], {}, {}, { 'github:acme/api#1': { runId: 'r1', updated: at } }).units,
     ).toHaveLength(1)
+  })
+
+  it('records a chain once, only when none of its units failed or stopped', () => {
+    const chain = yaml.replace('{ skill: fix-ci }', '{ skill: plan, then: [implement, review] }')
+    const first = plan(chain, [githubPr(1, { updated: at })], {})
+    const [head, implement, review] = first.units.map((planned) => ({ planned }))
+    const outcomes = {
+      review: { kind: 'report', text: 'r' },
+      pr: { kind: 'pr', url: 'u', commits: 1 },
+    }
+    const record = (...results: object[]) =>
+      recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    const planned = { ...head, status: 'done', outcome: outcomes.review }
+    const opened = { ...implement, status: 'done', outcome: outcomes.pr }
+
+    expect(record(planned, { ...implement, status: 'failed' })).toEqual({})
+    expect(record(planned, opened)).toEqual({})
+    const gaveUp = { ...implement, status: 'done', outcome: { kind: 'none', reason: 'no commits' } }
+    const attempts = record(planned, gaveUp, { ...review, status: 'skipped' })
+    expect(attempts).toEqual({ 'github:acme/api#1': { runId: 'r1', updated: at } })
+    const reviewed = { ...review, status: 'done', outcome: outcomes.review }
+    expect(record(planned, opened, reviewed)).toEqual(attempts)
+
+    const again = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+    expect(again.units).toEqual([])
+    expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
   })
 })
 
