@@ -205,6 +205,73 @@ queue:
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
   })
 
+  it('chains steps: stacked on a draft PR, on the same base after a report', () => {
+    const yaml = `
+providers: [claude, codex]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: plan
+    where: { type: issue }
+    model: { claude: opus }
+    then:
+      - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
+      - { skill: review, provider: codex, branch: 'review/{key}' }
+  - { skill: fix-ci, where: { checks: failing }, then: review }
+`
+    const items = [issue, githubPr(3, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
+    expect(
+      result.units.map(({ unit, provider, after }) => [
+        unit.id,
+        unit.skill,
+        provider,
+        unit.deliver,
+        unit.base,
+        unit.branch,
+        after,
+      ]),
+    ).toEqual([
+      ['acme-api-5', 'plan', 'claude', 'report', '', 'night/acme-api-5', undefined],
+      [
+        'acme-api-5-implement',
+        'implement',
+        'claude',
+        'draft_pr',
+        '',
+        'night/acme-api-5',
+        'acme-api-5',
+      ],
+      [
+        'acme-api-5-review',
+        'review',
+        'codex',
+        'report',
+        'night/acme-api-5',
+        'review/acme-api-5',
+        'acme-api-5-implement',
+      ],
+      ['acme-api-3', 'fix-ci', 'claude', 'draft_pr', 'feature-3', 'night/acme-api-3', undefined],
+      [
+        'acme-api-3-review',
+        'review',
+        'claude',
+        'report',
+        'night/acme-api-3',
+        'night/acme-api-3-review',
+        'acme-api-3',
+      ],
+    ])
+    expect(result.units[1]?.unit).toMatchObject({
+      rule: { model: { claude: 'sonnet' } },
+      instructions: ['notes/impl.md'],
+    })
+    const text = formatPlan(result)
+    expect(text).toContain('#1  plan    type=issue model=claude:opus then=implement,review')
+    expect(text).toContain(
+      '     after acme-api-5-implement\n     github acme/api#5: Add rate limits',
+    )
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])

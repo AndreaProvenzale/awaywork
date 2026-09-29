@@ -59,6 +59,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
     out.push(`  ${style('bold', lines[0] ?? '')}`)
     plan.units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
+      if (p.after) out.push(`     after ${p.after}`)
       const [top, ...merged] = p.unit.items
       out.push(`     ${top?.source} ${top?.key}: ${top?.title}`)
       merged.forEach((item, j) => {
@@ -89,6 +90,7 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
+    r.then?.length && `then=${r.then.map((s) => s.skill).join(',')}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||

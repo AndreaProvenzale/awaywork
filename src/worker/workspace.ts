@@ -7,6 +7,7 @@ import type { Config } from '../config/schema.js'
 import { slug } from '../core/foreman.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
+import type { Outcome } from './publish.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
 export const WORK_DIR = '.nightshift'
@@ -26,6 +27,14 @@ export interface WorkspaceInput {
   provider: Provider
   ctx: Ctx
   skillDirs?: { user: string; builtin: string }
+  /** The unit this one chains after: its skill, what it delivered and its `out/` folder. */
+  previous?: Previous
+}
+
+interface Previous {
+  skill: string
+  outcome: Outcome
+  out: string
 }
 
 /**
@@ -70,12 +79,13 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     await source.prefetch(item, join(dir, context), w.ctx)
     items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
   }
+  if (w.previous) await cp(w.previous.out, join(work, 'context', 'previous'), { recursive: true })
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo = w.config.repos[unit.repo] ?? {}
   const skill = await readFile(join(findSkill(unit.skill, roots), 'SKILL.md'), 'utf8')
   const prompt = assemblePrompt({
-    harness: `${await readFile(harnessPath, 'utf8')}\n${unitSection(unit, items)}`,
+    harness: `${await readFile(harnessPath, 'utf8')}\n${unitSection(unit, items, w.previous)}`,
     skill: skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
     instructions: await Promise.all(w.config.instructions.map(read)),
     repo: {
@@ -117,7 +127,7 @@ function findSkill(name: string, roots: string[]): string {
   return join(root, name)
 }
 
-function unitSection(unit: Unit, items: string[]): string {
+function unitSection(unit: Unit, items: string[], previous?: Previous): string {
   const base = unit.base ? `\`${unit.base}\`` : 'the default branch'
   const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
   const deliver =
@@ -133,6 +143,16 @@ function unitSection(unit: Unit, items: string[]): string {
         ]
       : []),
     `Items:\n${items.join('\n')}`,
+    ...(previous ? [followUp(unit, previous)] : []),
     `Deliver: ${deliver}`,
   ].join('\n\n')
+}
+
+function followUp(unit: Unit, { skill, outcome }: Previous): string {
+  const context = `\`${WORK_DIR}/context/previous/\``
+  if (outcome.kind !== 'pr')
+    return `This unit follows \`${skill}\` on the same items, which wrote a report tonight: \`report.md\` in ${context}.`
+  const stacked =
+    unit.deliver === 'draft_pr' ? ' Your PR is stacked on it: link it in the body.' : ''
+  return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} tonight; you start from its branch. Its body and diff are \`pr.md\` and \`diff.patch\` in ${context}.${stacked}`
 }

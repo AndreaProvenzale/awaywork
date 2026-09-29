@@ -16,7 +16,7 @@ const job: Job = {
     base: '',
     foreign: false,
     branch: 'night/fake-1',
-    rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+    rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
     providers: ['fake'],

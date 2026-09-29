@@ -64,6 +64,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       skip('the night window ended')
       continue
     }
+    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
+    if (p.after && (after?.outcome?.kind ?? 'none') === 'none') {
+      skip(`${p.after} delivered nothing to follow`)
+      continue
+    }
     const { provider: id, passed } = route(unit.providers, allowances, routed)
     const provider = id && n.providers[id]
     if (!id || !provider) {
@@ -87,7 +92,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     results.push(result)
     try {
       const ctx = { ...n.ctx, log }
-      const prompt = await prepareWorkspace({ ...n, unit, dir, provider, ctx })
+      const previous = after?.outcome && {
+        skill: after.planned.unit.skill,
+        outcome: after.outcome,
+        out: join(n.runDir, 'units', after.planned.unit.id, 'out'),
+      }
+      const prompt = await prepareWorkspace({ ...n, unit, dir, provider, ctx, previous })
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
