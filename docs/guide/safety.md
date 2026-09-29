@@ -48,10 +48,29 @@ not asked of the model.
   `ANTHROPIC_BASE_URL` in the environment, not in
   `~/.claude/settings.json`.
 
-The agent's own tools are not sandboxed: Claude Code gets Bash and file
-tools pre-approved, Codex runs with `--sandbox danger-full-access`, which
-it needs to commit. Run night-shift on a machine or runner where that is
-acceptable: it can read what your user can read.
+## Network
+
+The network is how injected instructions or someone else's code would
+send your agent's login out. With `network: false` (a repo or a rule; the
+default on a PR someone else opened), each agent's own OS sandbox runs
+its commands:
+
+- **Claude Code**: Bash in its sandbox (`sandbox.enabled`), with no way
+  to run a command outside it and a failed start instead of an
+  unconfined shell when the sandbox is missing. Writes stay in the
+  clone. A repo's own `.claude/settings.json` can still allow domains;
+  on someone else's PR it isn't loaded.
+- **Codex**: a permission profile that reads anywhere, writes the clone,
+  its `.git` and the temp dir, with no network and no web search.
+
+The agent's own requests to its vendor still go out. Offline, `setup`
+can't install dependencies.
+
+With network on, the agent's tools are not sandboxed: Claude Code gets
+Bash and file tools pre-approved, Codex runs with `--sandbox
+danger-full-access`, which it needs to commit. Either way, run
+night-shift on a machine or runner where that is acceptable: it can read
+what your user can read.
 
 ## What night-shift publishes
 

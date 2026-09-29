@@ -128,6 +128,12 @@ level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
+`network: false` on a repo or a rule cuts the agent's commands off the
+network; the rule wins over the repo. Unset, it is off on a PR someone
+else opened and on everywhere else. Offline, `setup` can't fetch
+dependencies, so a unit that needs them sets `network: true`. See
+[Safety](./safety.md#network).
+
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions
 (e.g. "prefix PR titles with the task key").
@@ -146,6 +152,7 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
+| `network` | `false` cuts the agent's commands off the network; default the repo's |
 
 ### `where`
 
