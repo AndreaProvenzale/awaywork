@@ -22,7 +22,7 @@ A source returns your open items with facts about each: a `type` (`pr`,
 
 | Source | Items | Fields a rule can match |
 |---|---|---|
-| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
+| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
 | Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
 | Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `project`, `repo` (from `team_repos`), `created`, `updated` |
 
@@ -52,7 +52,7 @@ rules whose source is configured:
 | 2 | `qa-feedback` | Asana | section `QA` |
 | 3 | `qa-feedback` | Linear | state `QA` |
 | 4 | `address-review` | GitHub | my PR, unresolved threads |
-| 5 | `review` | GitHub | my review requested |
+| 5 | `review` | GitHub | my review requested, trusted author |
 | 6 | `continue` | Asana | section `In progress` |
 | 7 | `continue` | Linear | state `In Progress` |
 | 8 | `plan` | Asana | section `Current sprint` |
@@ -134,4 +134,5 @@ the report-only outputs. On a terminal its tables are aligned and statuses
 coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
 in the job summary.
 `nightshift report --list` lists recent runs with their units, draft PRs
-and reports; `nightshift report <id>` prints one of them.
+and reports; `nightshift report <id>` prints one of them. A
+[`notify` command](./configuration.md#notify) can send it elsewhere.

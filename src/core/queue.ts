@@ -1,4 +1,4 @@
-import type { Item, Order, Rule, Scalar, WhereValue } from './types.js'
+import type { Comparison, Item, Order, Rule, Scalar, WhereValue } from './types.js'
 
 const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
   skill,
@@ -15,7 +15,7 @@ export const defaultQueue: Rule[] = [
   rule('qa-feedback', 'asana', { section: 'QA' }),
   rule('qa-feedback', 'linear', { state: 'QA' }),
   rule('address-review', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
-  rule('review', 'github', { type: 'pr', review_requested: true }),
+  rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('continue', 'asana', { section: 'In progress' }),
   rule('continue', 'linear', { state: 'In Progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
@@ -87,10 +87,36 @@ export function closestRule(
   return best
 }
 
+export const comparisons: Record<
+  keyof Comparison,
+  { symbol: string; holds: (value: number, bound: number) => boolean }
+> = {
+  gt: { symbol: '>', holds: (v, bound) => v > bound },
+  gte: { symbol: '>=', holds: (v, bound) => v >= bound },
+  lt: { symbol: '<', holds: (v, bound) => v < bound },
+  lte: { symbol: '<=', holds: (v, bound) => v <= bound },
+}
+
+export function bounds(want: Comparison): [keyof Comparison, number][] {
+  return Object.entries(want) as [keyof Comparison, number][]
+}
+
+/** E.g. `>= 2 and < 5`. */
+export function describeComparison(want: Comparison): string {
+  return bounds(want)
+    .map(([op, bound]) => `${comparisons[op].symbol} ${bound}`)
+    .join(' and ')
+}
+
 function matchesValue(want: WhereValue, actual: unknown): boolean {
-  if (typeof want === 'object' && !Array.isArray(want)) return !matchesValue(want.not, actual)
-  const wanted: Scalar[] = [want].flat()
   const values = Array.isArray(actual) ? actual : [actual]
+  if (typeof want === 'object' && !Array.isArray(want)) {
+    if ('not' in want) return !matchesValue(want.not, actual)
+    return values.some(
+      (v) => typeof v === 'number' && bounds(want).every(([op, b]) => comparisons[op].holds(v, b)),
+    )
+  }
+  const wanted: Scalar[] = [want].flat()
   return values.some((v) => wanted.includes(v))
 }
 

@@ -15,6 +15,7 @@
           "updatedAt": "2026-02-01T08:00:00Z",
           "repository": { "nameWithOwner": "acme/api" },
           "author": { "login": "lead" },
+          "authorAssociation": "MEMBER",
           "assignees": { "nodes": [{ "login": "dev" }] },
           "labels": { "nodes": [{ "name": "night-shift" }, { "name": "backend" }] },
           "comments": {
@@ -44,6 +45,7 @@
           "updatedAt": "2026-02-02T08:00:00Z",
           "repository": { "nameWithOwner": "acme/web" },
           "author": { "login": "dev" },
+          "authorAssociation": "OWNER",
           "assignees": { "nodes": [{ "login": "dev" }] },
           "labels": { "nodes": [] },
           "comments": { "nodes": [] },

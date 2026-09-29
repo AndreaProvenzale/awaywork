@@ -32,6 +32,11 @@ describe('where', () => {
     ['type matches the item type', { type: 'pr' }, true],
     ['a missing field never equals', { review_requested: true }, false],
     ['a missing field is not anything', { review_requested: { not: true } }, true],
+    ['gte compares a number', { unresolved_threads: { gte: 3 } }, true],
+    ['lt compares a number', { unresolved_threads: { lt: 3 } }, false],
+    ['comparisons combine into a range', { unresolved_threads: { gt: 1, lte: 5 } }, true],
+    ['a comparison never matches a missing field', { review_requested: { lt: 1 } }, false],
+    ['a comparison never matches a string', { checks: { gt: 0 } }, false],
     ['every key must match', { type: 'pr', checks: 'passing' }, false],
     ['no keys match everything', {}, true],
   ] as const)('%s', (_, where, expected) => {

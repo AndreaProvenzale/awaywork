@@ -73,7 +73,7 @@ night would do, without running an agent:
 ```
 Queue
   #1  fix-ci     type=pr mine=true checks=failing
-  #2  review     type=pr review_requested=true
+  #2  review     type=pr review_requested=true trusted=true
 
 Providers
   provider  window     used  ceiling  set by     resets in  session / stop at
@@ -116,6 +116,6 @@ plan, the worker's log, its context files and the report.
 nightshift schedule install      # launchd; --with systemd or cron on Linux
 ```
 
-The job starts at `night.start` (default `01:00`) and starts no unit after
+The job starts at `night.start` (default `01:00`) and stops at
 `night.end` (`07:00`). To run in GitHub Actions instead, add
 `--with github-actions`; see [Scheduling](./scheduling.md).

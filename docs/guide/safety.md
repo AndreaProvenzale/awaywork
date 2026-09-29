@@ -14,9 +14,9 @@ not asked of the model.
   before the agent starts. The agent's environment has `GH_TOKEN` and
   similar variables removed and a `gh` config without a login.
 - **Only its own agent's secret.** Every secret a configured source
-  declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, or your `token_env`) and every other
-  provider's (`CODEX_AUTH_JSON` for a Claude worker) is removed too. A
-  Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
+  declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, or your `token_env`), your
+  `notify.secrets` and every other provider's (`CODEX_AUTH_JSON` for a
+  Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
   Codex reads `auth.json` and gets no secret. The rest of your
   environment stays so repo tooling runs, including any variable you
   added to the env file that nothing declares.
@@ -36,6 +36,11 @@ not asked of the model.
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
   skills); Codex still loads `AGENTS.md` and its skills itself.
+- **Only trusted authors' code runs by default.** Reviewing a PR means
+  running its tests, with your agent's login in the environment. The
+  default `review` rule matches `trusted: true` only: PRs whose author
+  is an owner, member or collaborator of the repo. A rule without it
+  reviews anyone's PR.
 - **Not your agent's config.** Workers skip your user-level agent
   config: `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`,
   skills and auto-memory for Claude Code, `config.toml` for Codex. The
