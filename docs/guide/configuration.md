@@ -155,11 +155,13 @@ where:
   checks: [failing, pending]        # any of
   review_requested: { not: true }   # not
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
+  updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   label: night-shift                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
 ```
 
-A missing field equals nothing. An unknown key is a config error that
+A missing field equals nothing, and is neither older nor newer than
+anything; spans count back from when the plan runs. An unknown key is a config error that
 lists the keys each source offers. The [field table](./how-it-works.md#items)
 lists them too.
 

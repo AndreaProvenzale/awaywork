@@ -23,7 +23,7 @@ A source returns your open items with facts about each: a `type` (`pr`,
 | Source | Items | Fields a rule can match |
 |---|---|---|
 | GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
-| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
+| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated`, `due` |
 | Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `project`, `repo` (from `team_repos`), `created`, `updated` |
 
 ## The queue

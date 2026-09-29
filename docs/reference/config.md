@@ -170,7 +170,7 @@ First matching rule wins; top = highest priority.
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
 | `source` | "github" \| "asana" \| "linear" |  | Match only items from this source |
-| `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers |
+| `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
@@ -197,6 +197,15 @@ Matches items whose number field passes every comparison.
 | `gte` | number |  | Greater than or equal to |
 | `lt` | number |  | Less than |
 | `lte` | number |  | Less than or equal to |
+
+## `queue[].where.<key>`
+
+Matches items whose date field is this long before now, e.g. { older_than: 3d }.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `older_than` | string |  | Longer ago than this span |
+| `newer_than` | string |  | More recent than this span |
 
 ## `notify`
 
