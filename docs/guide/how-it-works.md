@@ -87,6 +87,8 @@ task linked to your PR becomes one unit with that PR.
   `run --unit` runs it anyway.
 - Units run one at a time, in queue order; a rule's `then` steps run
   right after its unit.
+- Optional [caps](./configuration.md#night-and-budget) limit the units
+  per night, per repo and per rule.
 
 ## Budget
 

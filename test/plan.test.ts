@@ -7,8 +7,8 @@ import { parseConfig } from '../src/config/load.js'
 import { type Attempts, loadAttempts, recordAttempts, saveAttempts } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { planNight } from '../src/core/foreman.js'
-import type { NightReport } from '../src/core/report.js'
+import { type PlannedUnit, planNight } from '../src/core/foreman.js'
+import { type NightReport, summarize } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
@@ -301,6 +301,110 @@ queue:
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
+  })
+
+  it('skips units past the night, repo and rule caps, naming the cap', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 4, units_per_repo: 2 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: fix-ci, where: { checks: failing }, units: 1 }
+  - { skill: implement, where: { type: issue } }
+`
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { checks: 'failing' }),
+      inRepo('acme/api', 3),
+      inRepo('acme/api', 4),
+      inRepo('acme/web', 5),
+      inRepo('acme/app', 6),
+      inRepo('acme/ops', 7),
+    ]
+    const result = plan(yaml, items, { claude: week(0.1) })
+    expect(result.units.map((u) => u.unit.id)).toEqual([
+      'acme-api-1',
+      'acme-api-3',
+      'acme-web-5',
+      'acme-app-6',
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#2', 'over the cap: rule #1 units is 1'],
+      ['acme/api#4', 'over the cap: night.units_per_repo is 2'],
+      ['acme/ops#7', 'over the cap: night.units is 4'],
+    ])
+  })
+
+  it("counts then steps against the caps and their rule's units", () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 4 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: implement, where: { type: issue }, units: 3, then: review }
+  - { skill: fix-ci, where: { checks: failing } }
+`
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      inRepo('acme/api', 1),
+      inRepo('acme/web', 2),
+      inRepo('acme/app', 3),
+      githubPr(4, { checks: 'failing' }),
+      githubPr(5, { checks: 'failing' }),
+    ]
+    const result = plan(yaml, items, { claude: week(0.1) })
+    expect(result.units.map((u) => u.unit.id)).toEqual([
+      'acme-api-1',
+      'acme-api-1-review',
+      'acme-web-2',
+      'acme-api-4',
+    ])
+    expect(result.units.map((u) => u.capped)).toEqual([
+      undefined,
+      undefined,
+      'then review: over the cap: rule #1 units is 3',
+      undefined,
+    ])
+    expect(formatPlan(result)).toContain(
+      '     github acme/web#2: Fix the thing\n     then review: over the cap: rule #1 units is 3',
+    )
+    const planned = result.units[2] as PlannedUnit
+    const report = { runId: 'r1', dryRun: false, startedAt: new Date(0), finishedAt: new Date(0) }
+    const results = [{ planned, provider: 'claude', status: 'done' as const, turns: 3 }]
+    expect(summarize({ ...report, plan: result, results, quotas: {} }, 'report.md')).toContain(
+      'acme-web-2  done, 3 turns (then review: over the cap: rule #1 units is 3)',
+    )
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/app#3', 'over the cap: rule #1 units is 3'],
+      ['acme/api#5', 'over the cap: night.units is 4'],
+    ])
+  })
+
+  it('counts only units routed to a provider against the caps', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 1 }
+providers: [claude: {}, codex: {}]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: implement, provider: [codex], where: { type: issue } }
+  - { skill: fix-ci, where: { checks: failing } }
+`
+    const issue = fakeItem({
+      source: 'github',
+      key: 'acme/api#1',
+      type: 'issue',
+      fields: { repo: 'acme/api' },
+    })
+    const items = [issue, githubPr(2, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.99) })
+    expect(result.units.map((u) => [u.unit.id, u.provider])).toEqual([
+      ['acme-api-1', undefined],
+      ['acme-api-2', 'claude'],
+    ])
+    expect(result.skipped).toEqual([])
   })
 })
 

@@ -141,6 +141,7 @@ export interface Rule extends Step {
   source?: string
   where: Record<string, WhereValue>
   order?: Order
+  units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
   then?: Step[]
 }

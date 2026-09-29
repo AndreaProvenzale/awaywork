@@ -7,7 +7,7 @@
         "start": "01:00",
         "end": "07:00"
       },
-      "description": "Local hours a scheduled run may start units in",
+      "description": "Local hours a scheduled run may start units in, and how many",
       "type": "object",
       "properties": {
         "start": {
@@ -19,6 +19,18 @@
           "type": "string",
           "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
           "description": "No unit starts after this"
+        },
+        "units": {
+          "description": "At most this many units per night",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "units_per_repo": {
+          "description": "At most this many units per night in one repo",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "required": [
@@ -528,6 +540,12 @@
               "updated"
             ]
           },
+          "units": {
+            "description": "At most this many units per night from this rule, its then steps included",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
           "then": {
             "description": "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
             "anyOf": [
@@ -612,7 +630,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
               },
               {
                 "minItems": 1,
@@ -698,7 +716,7 @@
                       "additionalProperties": false
                     }
                   ],
-                  "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+                  "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
                 }
               }
             ]
