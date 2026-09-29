@@ -71,6 +71,10 @@ task linked to your PR becomes one unit with that PR.
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
   review**: night-shift doesn't stack work on work you haven't read.
+- `nightshift skip <key>` leaves an item, and any unit it joins, alone
+  until `nightshift unskip <key>` or the `--until` date; `plan` lists it
+  under Skipped with the `--reason`. Skips live in
+  `~/.local/state/night-shift/items.json`.
 - Units run one at a time, in queue order.
 
 ## Budget

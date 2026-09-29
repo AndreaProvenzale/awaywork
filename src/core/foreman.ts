@@ -2,6 +2,7 @@ import type { Config } from '../config/schema.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
+import { describeSkip, type Skip } from './item-state.js'
 import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import type { Item, Rule, Unit, WhereValue } from './types.js'
@@ -29,11 +30,19 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  skips?: Record<string, Skip>
 }): NightPlan {
-  const { config, allowances } = input
+  const { config, allowances, skips = {} } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
-  const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
+  const skipReason = (item: Item) => {
+    const skip = skips[item.key]
+    return skip && describeSkip(item.key, skip)
+  }
+  const skipped = unmatched.map((item) => ({
+    item,
+    reason: skipReason(item) ?? noRuleReason(item, queue),
+  }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
 
@@ -42,6 +51,11 @@ export function planNight(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
+    const skippedByUser = items.map(skipReason).find(Boolean)
+    if (skippedByUser) {
+      skip(skippedByUser)
+      continue
+    }
     const prs = items.flatMap((i) => i.linkedPrs)
     const ours = prs.find((p) => p.ours)
     if (ours) {
