@@ -156,6 +156,9 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue: [{ skill: plan, then: { skill: review, where: {} } }]`),
     ).toEqual(['queue[0].then: Unrecognized key: "where"'])
+    expect(
+      problems(`${minimal}queue: [{ skill: plan, then: { skill: review, units: 1 } }]`),
+    ).toEqual(['queue[0].then: Unrecognized key: "units"'])
   })
 
   it('takes bare provider names next to overrides', () => {

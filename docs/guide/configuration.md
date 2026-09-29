@@ -30,7 +30,11 @@ version.
 ## A full example
 
 ```yaml
-night: { start: "01:00", end: "07:00", units: 8, units_per_repo: 3 }   # caps, unset by default
+night:
+  start: "01:00"
+  end: "07:00"
+  units: 8                      # caps, unset by default
+  units_per_repo: 3
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_night: 15%                # at most this share of the long window per night
@@ -85,6 +89,8 @@ in a morning. `night.units` caps the units planned per night,
 from that rule. None is set by default. Units past a cap are skipped in
 queue order, with the cap named in `nightshift plan` and the report. A
 [`then`](#then) step counts as a unit of the rule that started its chain.
+Only units routed to a provider count, and caps apply to each `nightshift
+run`, like `fallback.units`.
 
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:

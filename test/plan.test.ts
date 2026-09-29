@@ -372,6 +372,30 @@ queue:
       ['acme/api#5', 'over the cap: night.units is 4'],
     ])
   })
+
+  it('counts only units routed to a provider against the caps', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 1 }
+providers: [claude: {}, codex: {}]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: implement, provider: [codex], where: { type: issue } }
+  - { skill: fix-ci, where: { checks: failing } }
+`
+    const issue = fakeItem({
+      source: 'github',
+      key: 'acme/api#1',
+      type: 'issue',
+      fields: { repo: 'acme/api' },
+    })
+    const items = [issue, githubPr(2, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.99) })
+    expect(result.units.map((u) => [u.unit.id, u.provider])).toEqual([
+      ['acme-api-1', undefined],
+      ['acme-api-2', 'claude'],
+    ])
+    expect(result.skipped).toEqual([])
+  })
 })
 
 describe('branch', () => {

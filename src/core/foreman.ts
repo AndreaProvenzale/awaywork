@@ -71,9 +71,11 @@ export function planNight(input: {
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
       const { provider, passed } = route(providers, allowances, routed)
-      if (provider) routed[provider] = (routed[provider] ?? 0) + 1
-      perRepo[repo] = (perRepo[repo] ?? 0) + 1
-      perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
+      if (provider) {
+        routed[provider] = (routed[provider] ?? 0) + 1
+        perRepo[repo] = (perRepo[repo] ?? 0) + 1
+        perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
+      }
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
@@ -103,7 +105,11 @@ export function planNight(input: {
     }
     const overCap = () => {
       const cap = [
-        { name: 'night.units', max: config.night.units, count: units.length },
+        {
+          name: 'night.units',
+          max: config.night.units,
+          count: units.filter((u) => u.provider).length,
+        },
         {
           name: 'night.units_per_repo',
           max: config.night.units_per_repo,

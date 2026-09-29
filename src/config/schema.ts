@@ -132,7 +132,9 @@ const step = z
       .pipe(stepObject),
     stepObject,
   ])
-  .describe('A skill name, or a map with the rule keys other than source, where, order and then')
+  .describe(
+    'A skill name, or a map with the rule keys other than source, where, order, units and then',
+  )
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({

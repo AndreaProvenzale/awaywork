@@ -630,7 +630,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
               },
               {
                 "minItems": 1,
@@ -716,7 +716,7 @@
                       "additionalProperties": false
                     }
                   ],
-                  "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+                  "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
                 }
               }
             ]
