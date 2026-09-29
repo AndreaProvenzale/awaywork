@@ -240,6 +240,10 @@ Semantics, fixed so every milestone agrees:
   Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
   an open night-shift PR (`ours`) is skipped as waiting for review; such
   a PR is never a unit's base.
+- **Attempts.** A unit whose worker finished records each item's
+  `updated` time in `~/.local/state/night-shift/attempts.json`; a unit
+  none of whose items changed since is skipped as unchanged since that
+  run. `run --unit` ignores attempts. Not persisted in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);

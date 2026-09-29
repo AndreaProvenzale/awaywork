@@ -2,9 +2,11 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
+import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
+import type { NightReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
@@ -23,12 +25,19 @@ function plan(
   items: Item[],
   quotas: Record<string, Quota | null>,
   skills: SkillCatalog = {},
+  attempts: Attempts = {},
 ) {
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers)
     allowances[p.id] = allowance(p.budget, quotas[p.id] ?? null, now)
-  return planNight({ config, items, allowances, skills: { builtin: builtinSkills, ...skills } })
+  return planNight({
+    config,
+    items,
+    allowances,
+    skills: { builtin: builtinSkills, ...skills },
+    attempts,
+  })
 }
 const rows = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.rule + 1, u.unit.skill, u.provider ?? '-', u.unit.deliver])
@@ -271,6 +280,54 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
+  })
+})
+
+describe('attempts', () => {
+  const yaml =
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix-ci }]'
+  const at = '2026-01-01T00:00:00Z'
+
+  it('skips a unit none of whose items changed since a finished attempt', () => {
+    const first = plan(yaml, [githubPr(1, { updated: at }), githubPr(2, { updated: at })], {})
+    const [done, stopped] = first.units
+    const report = {
+      runId: 'r1',
+      results: [
+        { planned: done, status: 'done' },
+        { planned: stopped, status: 'stopped: quota' },
+      ],
+    } as NightReport
+    const attempts = recordAttempts({}, report)
+    expect(attempts).toEqual({ 'github:acme/api#1': { runId: 'r1', updated: at } })
+
+    const later = '2026-01-02T00:00:00Z'
+    const items = [
+      githubPr(1, { updated: at }),
+      githubPr(2, { updated: at }),
+      githubPr(3, { updated: at }),
+    ]
+    const again = plan(yaml, items, {}, {}, attempts)
+    expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-2', 'acme-api-3'])
+    expect(again.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#1', 'unchanged since run r1'],
+    ])
+    const changed = plan(yaml, [githubPr(1, { updated: later })], {}, {}, attempts)
+    expect(changed.units.map((u) => u.unit.id)).toEqual(['acme-api-1'])
+  })
+
+  it('runs a unit when any of its items changed, or has no updated time', () => {
+    const pr = githubPr(1, { updated: at })
+    const task = asanaTask(4, { updated: at }, { linkedPrs: pr.linkedPrs })
+    const attempts = {
+      'github:acme/api#1': { runId: 'r1', updated: at },
+      'asana:T-4': { runId: 'r1', updated: '2025-12-31T00:00:00Z' },
+    }
+    expect(plan(yaml, [pr, task], {}, {}, attempts).units).toHaveLength(1)
+    const bare = githubPr(1)
+    expect(
+      plan(yaml, [bare], {}, {}, { 'github:acme/api#1': { runId: 'r1', updated: at } }).units,
+    ).toHaveLength(1)
   })
 })
 
