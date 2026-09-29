@@ -2,8 +2,8 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsFile, runsDir } from '../config/paths.js'
-import { recordAttempts, saveAttempts } from '../core/attempts.js'
+import { attemptsPath, runsDir } from '../config/paths.js'
+import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, runLine, summarize } from '../core/report.js'
 import { nightEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
@@ -33,7 +33,7 @@ export function runCommand(program: Command): void {
           )
           return
         }
-        const { plan, warnings, ctx, attempts } = await planTonight(config)
+        const { plan, warnings, ctx } = await planTonight(config, { retry: !!opts.unit })
         const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
@@ -57,9 +57,9 @@ export function runCommand(program: Command): void {
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })
-        if (!opts.dryRun) await saveAttempts(attemptsFile, recordAttempts(attempts, report.results))
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report))
+        await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
         if (config.notify) {
           const failure = await notify(config.notify.command, { path: reportPath, runId })

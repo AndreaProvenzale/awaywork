@@ -527,6 +527,181 @@
               "newest",
               "updated"
             ]
+          },
+          "then": {
+            "description": "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "skill": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "The skill that does the work"
+                      },
+                      "provider": {
+                        "description": "Providers for this rule, in order; default the providers order",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      },
+                      "model": {
+                        "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Model passed to the provider's binary; default the binary's"
+                        }
+                      },
+                      "skills": {
+                        "default": [],
+                        "description": "Extra skills available to the worker",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "instructions": {
+                        "description": "Instruction files added for this rule",
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      },
+                      "deliver": {
+                        "description": "Output: a draft PR or the morning report; default the skill's",
+                        "type": "string",
+                        "enum": [
+                          "draft_pr",
+                          "report"
+                        ]
+                      },
+                      "branch": {
+                        "description": "Branch name template for this rule",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "skill"
+                    ],
+                    "additionalProperties": false
+                  }
+                ],
+                "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "skill": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "The skill that does the work"
+                        },
+                        "provider": {
+                          "description": "Providers for this rule, in order; default the providers order",
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        },
+                        "model": {
+                          "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Model passed to the provider's binary; default the binary's"
+                          }
+                        },
+                        "skills": {
+                          "default": [],
+                          "description": "Extra skills available to the worker",
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "instructions": {
+                          "description": "Instruction files added for this rule",
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          ]
+                        },
+                        "deliver": {
+                          "description": "Output: a draft PR or the morning report; default the skill's",
+                          "type": "string",
+                          "enum": [
+                            "draft_pr",
+                            "report"
+                          ]
+                        },
+                        "branch": {
+                          "description": "Branch name template for this rule",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "skill"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "A skill name, or a map with the rule keys other than source, where, order and then"
+                }
+              }
+            ]
           }
         },
         "required": [

@@ -1,10 +1,14 @@
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
+import { type Attempts, loadAttempts, recordAttempts, saveAttempts } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
+import type { NightReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
@@ -23,12 +27,19 @@ function plan(
   items: Item[],
   quotas: Record<string, Quota | null>,
   skills: SkillCatalog = {},
+  attempts: Attempts = {},
 ) {
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers)
     allowances[p.id] = allowance(p.budget, quotas[p.id] ?? null, now)
-  return planNight({ config, items, allowances, skills: { builtin: builtinSkills, ...skills } })
+  return planNight({
+    config,
+    items,
+    allowances,
+    skills: { builtin: builtinSkills, ...skills },
+    attempts,
+  })
 }
 const rows = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.rule + 1, u.unit.skill, u.provider ?? '-', u.unit.deliver])
@@ -205,6 +216,88 @@ queue:
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
   })
 
+  it('chains steps: stacked on a draft PR, on the same base after a report', () => {
+    const yaml = `
+providers: [claude, codex]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: plan
+    where: { type: issue }
+    model: { claude: opus }
+    then:
+      - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
+      - { skill: review, provider: codex, branch: 'review/{key}' }
+  - { skill: fix-ci, where: { checks: failing }, then: review }
+`
+    const items = [issue, githubPr(3, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
+    expect(
+      result.units.map(({ unit, provider, after }) => [
+        unit.id,
+        unit.skill,
+        provider,
+        unit.deliver,
+        unit.base,
+        unit.branch,
+        after,
+      ]),
+    ).toEqual([
+      ['acme-api-5', 'plan', 'claude', 'report', '', 'night/acme-api-5', undefined],
+      [
+        'acme-api-5-implement',
+        'implement',
+        'claude',
+        'draft_pr',
+        '',
+        'night/acme-api-5',
+        'acme-api-5',
+      ],
+      [
+        'acme-api-5-review',
+        'review',
+        'codex',
+        'report',
+        'night/acme-api-5',
+        'review/acme-api-5',
+        'acme-api-5-implement',
+      ],
+      ['acme-api-3', 'fix-ci', 'claude', 'draft_pr', 'feature-3', 'night/acme-api-3', undefined],
+      [
+        'acme-api-3-review',
+        'review',
+        'claude',
+        'report',
+        'night/acme-api-3',
+        'night/acme-api-3-review',
+        'acme-api-3',
+      ],
+    ])
+    expect(result.units[1]?.unit).toMatchObject({
+      rule: { model: { claude: 'sonnet' } },
+      instructions: ['notes/impl.md'],
+    })
+    const text = formatPlan(result)
+    expect(text).toContain('#1  plan    type=issue model=claude:opus then=implement,review')
+    expect(text).toContain(
+      '     after acme-api-5-implement\n     github acme/api#5: Add rate limits',
+    )
+  })
+
+  it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
+    const yaml = (step: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
+    const theirs = githubPr(2, { checks: 'failing', mine: false })
+    expect(plan(yaml('review'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
+      true,
+      true,
+    ])
+    const result = plan(yaml('bad.lock'), [theirs], {})
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'then bad.lock: branch template night/{key} renders an invalid name "night/acme-api-2-bad.lock"',
+    ])
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
@@ -271,6 +364,163 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
+  })
+})
+
+describe('attempts', () => {
+  const yaml =
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix-ci }]'
+  const at = '2026-01-01T00:00:00Z'
+
+  it('skips a unit none of whose items changed since a finished attempt', () => {
+    const first = plan(yaml, [githubPr(1, { updated: at }), githubPr(2, { updated: at })], {})
+    const [done, stopped] = first.units
+    const report = {
+      runId: 'r1',
+      plan: first,
+      results: [
+        { planned: done, status: 'done' },
+        { planned: stopped, status: 'stopped: quota' },
+      ],
+    } as NightReport
+    const attempts = recordAttempts({}, report)
+    expect(attempts).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at },
+      'github:acme/api#2': { runId: 'r1', skill: 'fix-ci', updated: at, failed: 1 },
+    })
+
+    const later = '2026-01-02T00:00:00Z'
+    const items = [
+      githubPr(1, { updated: at }),
+      githubPr(2, { updated: at }),
+      githubPr(3, { updated: at }),
+    ]
+    const again = plan(yaml, items, {}, {}, attempts)
+    expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-2', 'acme-api-3'])
+    expect(again.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#1', 'unchanged since run r1'],
+    ])
+    const changed = plan(yaml, [githubPr(1, { updated: later })], {}, {}, attempts)
+    expect(changed.units.map((u) => u.unit.id)).toEqual(['acme-api-1'])
+  })
+
+  it('runs a unit when any of its items changed, or has no updated time', () => {
+    const pr = githubPr(1, { updated: at })
+    const task = asanaTask(4, { updated: at }, { linkedPrs: pr.linkedPrs })
+    const attempts = {
+      'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at },
+      'asana:T-4': { runId: 'r1', skill: 'fix-ci', updated: '2025-12-31T00:00:00Z' },
+    }
+    expect(plan(yaml, [pr, task], {}, {}, attempts).units).toHaveLength(1)
+    const bare = githubPr(1)
+    const recorded = { 'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at } }
+    expect(plan(yaml, [bare], {}, {}, recorded).units).toHaveLength(1)
+  })
+
+  it('runs an unchanged item again when it matches a different skill', () => {
+    const recorded = { 'github:acme/api#1': { runId: 'r1', skill: 'address-review', updated: at } }
+    expect(plan(yaml, [githubPr(1, { updated: at })], {}, {}, recorded).units).toHaveLength(1)
+  })
+
+  it('retries a unit whose commits were left unpublished, counting a failure', () => {
+    const first = plan(yaml, [githubPr(1, { updated: at })], {})
+    const outcome = {
+      kind: 'none',
+      reason: '2 commits but no PR body, not pushed',
+      unpublished: true,
+    }
+    const results = [{ planned: first.units[0], status: 'done', outcome }]
+    expect(recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at, failed: 1 },
+    })
+  })
+
+  it('loads a corrupt attempts file as empty and saves through a rename', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'attempts-'))
+    const path = join(dir, 'attempts.json')
+    await writeFile(path, '{"github:acme/api#1": {"runId"')
+    expect(await loadAttempts(path)).toEqual({})
+    const recorded = { 'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at } }
+    await saveAttempts(path, recorded)
+    expect(await loadAttempts(path)).toEqual(recorded)
+    expect(await readdir(dir)).toEqual(['attempts.json'])
+  })
+
+  it('records a chain once, only when every unit finished', () => {
+    const chain = yaml.replace('{ skill: fix-ci }', '{ skill: plan, then: [implement, review] }')
+    const first = plan(chain, [githubPr(1, { updated: at })], {})
+    const [head, implement, review] = first.units.map((planned) => ({ planned }))
+    const outcomes = {
+      review: { kind: 'report', text: 'r' },
+      pr: { kind: 'pr', url: 'u', commits: 1 },
+    }
+    const record = (...results: object[]) =>
+      recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    const planned = { ...head, status: 'done', outcome: outcomes.review }
+    const opened = { ...implement, status: 'done', outcome: outcomes.pr }
+
+    expect(record(planned, { ...implement, status: 'failed' })).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1 },
+    })
+    expect(record({ ...head, status: 'prepared' })).toEqual({})
+    expect(record(planned, opened)).toEqual({})
+    const gaveUp = { ...implement, status: 'done', outcome: { kind: 'none', reason: 'no commits' } }
+    const attempts = record(planned, gaveUp, { ...review, status: 'skipped' })
+    expect(attempts).toEqual({ 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at } })
+    const reviewed = { ...review, status: 'done', outcome: outcomes.review }
+    expect(record(planned, opened, reviewed)).toEqual(attempts)
+
+    const again = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+    expect(again.units).toEqual([])
+    expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
+  })
+
+  it('gives up on an item after three chains that did not finish, until it changes', () => {
+    const chain = yaml.replace('{ skill: fix-ci }', '{ skill: plan, then: implement }')
+    const report = { kind: 'report', text: 'r' }
+    let attempts: Attempts = {}
+    for (const runId of ['r1', 'r2', 'r3']) {
+      const night = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+      expect(night.units).toHaveLength(2)
+      const [head, implement] = night.units
+      const results = [
+        { planned: head, status: 'done', outcome: report },
+        { planned: implement, status: 'failed' },
+      ]
+      attempts = recordAttempts(attempts, { runId, plan: night, results } as NightReport)
+    }
+    expect(attempts).toEqual({
+      'github:acme/api#1': { runId: 'r3', skill: 'plan', updated: at, failed: 3 },
+    })
+    const gaveUp = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+    expect(gaveUp.units).toEqual([])
+    expect(gaveUp.skipped.map((s) => s.reason)).toEqual([
+      'gave up after 3 attempts; waiting for the item to change',
+    ])
+    const later = '2026-01-02T00:00:00Z'
+    expect(plan(chain, [githubPr(1, { updated: later })], {}, {}, attempts).units).toHaveLength(2)
+    const other = chain.replace('skill: plan', 'skill: review')
+    expect(plan(other, [githubPr(1, { updated: at })], {}, {}, attempts).units).toHaveLength(2)
+  })
+
+  it('clears failures on a finished attempt and ignores units that did not run', () => {
+    const first = plan(yaml, [githubPr(1, { updated: at })], {})
+    const failed = { 'github:acme/api#1': { runId: 'r0', skill: 'fix-ci', updated: at, failed: 2 } }
+    const recorded = (result: object) =>
+      recordAttempts(failed, {
+        runId: 'r1',
+        plan: first,
+        results: [{ planned: first.units[0], ...result }],
+      } as NightReport)
+
+    expect(recorded({ status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } })).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at },
+    })
+    expect(recorded({ status: 'error', reason: 'clone failed' })['github:acme/api#1']?.failed).toBe(
+      3,
+    )
+    for (const status of ['skipped', 'prepared', 'stopped: aborted'])
+      expect(recorded({ status })).toEqual(failed)
   })
 })
 

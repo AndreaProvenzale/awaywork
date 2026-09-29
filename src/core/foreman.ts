@@ -1,11 +1,11 @@
 import type { Config } from '../config/schema.js'
-import { type Attempts, failedAttempts, MAX_ATTEMPTS } from './attempts.js'
+import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
 import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
-import type { Item, Rule, Unit, WhereValue } from './types.js'
+import type { Item, Rule, Step, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -14,6 +14,8 @@ export interface PlannedUnit {
   origin?: Origin
   provider?: string
   passed: string[]
+  /** The unit this one chains after, by id: it runs only on what that unit delivered. */
+  after?: string
 }
 
 export interface NightPlan {
@@ -30,6 +32,7 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
   attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
@@ -50,7 +53,12 @@ export function planNight(input: {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
       continue
     }
-    if (items.every((i) => failedAttempts(input.attempts ?? {}, i) >= MAX_ATTEMPTS)) {
+    const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
+    if (since.every(Boolean)) {
+      skip(`unchanged since run ${since.sort().at(-1)}`)
+      continue
+    }
+    if (items.every((i) => failedAttempts(i, rule.skill, input.attempts ?? {}) >= MAX_ATTEMPTS)) {
       skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
@@ -60,43 +68,83 @@ export function planNight(input: {
       skip('no repo: no linked PR or repo field')
       continue
     }
-    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
-    const branch = renderBranch(template, items[0] as Item)
-    if (!isValidRef(branch)) {
-      skip(`branch template ${template} renders an invalid name "${branch}"`)
-      continue
-    }
-    const skill = resolveSkill(rule.skill, input.skills)
-    const providers = rule.provider.length > 0 ? rule.provider : config.providers.map((p) => p.id)
-    const { provider, passed } = route(providers, allowances, routed)
-    if (provider) routed[provider] = (routed[provider] ?? 0) + 1
-    const id = slug(items[0]?.key ?? '')
-    const repoInstructions = config.repos[repo]?.instructions
-    units.push({
-      unit: {
-        id,
+    const templateFor = (step: Step) => step.branch ?? config.repos[repo]?.branch ?? config.branch
+    const deliverOf = (step: Step) =>
+      step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
+    const add = (
+      step: Step,
+      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'branch'>,
+      after?: string,
+    ) => {
+      const skill = resolveSkill(step.skill, input.skills)
+      const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
+      const { provider, passed } = route(providers, allowances, routed)
+      if (provider) routed[provider] = (routed[provider] ?? 0) + 1
+      const repoInstructions = config.repos[repo]?.instructions
+      const unit: Unit = {
+        ...at,
         items,
         repo,
-        base: pr?.branch ?? '',
-        foreign: pr ? !pr.mine : false,
-        branch,
-        rule,
-        skill: rule.skill,
-        skills: rule.skills,
+        rule: step,
+        skill: step.skill,
+        skills: step.skills,
         providers,
         instructions: [
           ...config.instructions,
           ...(repoInstructions ? [repoInstructions] : []),
-          ...rule.instructions,
+          ...step.instructions,
         ],
-        deliver: rule.deliver ?? skill?.meta.deliver ?? 'draft_pr',
-      },
-      rule: ruleIndex,
-      itemRules: group.map((e) => e.rule),
-      origin: skill?.origin,
-      provider,
-      passed,
+        deliver: deliverOf(step),
+      }
+      units.push({
+        unit,
+        rule: ruleIndex,
+        itemRules: group.map((e) => e.rule),
+        origin: skill?.origin,
+        provider,
+        passed,
+        after,
+      })
+      return unit
+    }
+
+    const chain = [rule, ...(rule.then ?? [])]
+    const pushed: string[] = []
+    const branches = chain.map((step) => {
+      const rendered = renderBranch(templateFor(step), items[0] as Item)
+      const branch = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
+      if (deliverOf(step) === 'draft_pr') pushed.push(branch)
+      return branch
     })
+    const bad = branches.findIndex((b) => !isValidRef(b))
+    if (bad >= 0) {
+      const step = chain[bad] as Step
+      const where = bad > 0 ? `then ${step.skill}: ` : ''
+      skip(
+        `${where}branch template ${templateFor(step)} renders an invalid name "${branches[bad]}"`,
+      )
+      continue
+    }
+    const id = slug(items[0]?.key ?? '')
+    let previous = add(rule, {
+      id,
+      base: pr?.branch ?? '',
+      foreign: pr ? !pr.mine : false,
+      branch: branches[0] as string,
+    })
+    for (const [j, step] of (rule.then ?? []).entries()) {
+      const stacked = previous.deliver === 'draft_pr'
+      previous = add(
+        step,
+        {
+          id: `${id}-${slug(step.skill)}`,
+          base: stacked ? previous.branch : previous.base,
+          foreign: previous.foreign,
+          branch: branches[j + 1] as string,
+        },
+        previous.id,
+      )
+    }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }

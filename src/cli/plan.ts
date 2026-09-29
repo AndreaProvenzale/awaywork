@@ -1,9 +1,9 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsFile, userSkillsDir } from '../config/paths.js'
+import { attemptsPath, userSkillsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
-import { type Attempts, loadAttempts } from '../core/attempts.js'
+import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { type NightPlan, planNight } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
@@ -33,7 +33,8 @@ export function planCommand(program: Command): void {
 /** Collects items from every configured source, probes every provider and plans the night. */
 export async function planTonight(
   config: Config,
-): Promise<{ plan: NightPlan; warnings: string[]; ctx: Ctx; attempts: Attempts }> {
+  opts: { retry?: boolean } = {},
+): Promise<{ plan: NightPlan; warnings: string[]; ctx: Ctx }> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
 
@@ -50,9 +51,8 @@ export async function planTonight(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  const attempts = await loadAttempts(attemptsFile)
-  const plan = planNight({ config, items, allowances, skills, attempts })
-  return { plan, warnings, ctx, attempts }
+  const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
+  return { plan: planNight({ config, items, allowances, skills, attempts }), warnings, ctx }
 }
 
 /** Items from every configured source, tasks linked to their PRs; a failing source is logged. */
