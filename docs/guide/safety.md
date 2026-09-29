@@ -58,7 +58,8 @@ acceptable: it can read what your user can read.
 - Only a branch that **doesn't exist** on the remote, checked before the
   worker starts and again at push. Never force, never someone else's
   branch.
-- Only a **draft** PR, into your own PR's branch or the default branch.
+- Only a **draft** PR, into your own PR's branch, the default branch or
+  a draft PR night-shift opened earlier the same night.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body. A run killed before that
   publishes nothing.

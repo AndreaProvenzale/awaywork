@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { appendFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Forge, Unit } from '../core/types.js'
@@ -35,6 +35,8 @@ export async function publish(
   const trailer = `git commit -q --amend --no-edit --no-verify --trailer 'Night-shift: ${runId}'`
   await git(dir, 'rebase', '-q', '--exec', trailer, `${oldest}^`)
   await forge.push(dir, unit.branch, { repo: unit.repo })
+  if (unit.stackedOn)
+    await appendFile(file, `\n\nStacked on ${unit.stackedOn}: merge that first.\n`)
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
   return { kind: 'pr', url, commits: commits.length }
 }

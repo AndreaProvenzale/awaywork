@@ -34,6 +34,7 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
+ * A draft PR off the default branch stacks on the previous one published tonight on its repo, so they don't conflict.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -53,8 +54,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...(n.config.notify?.secrets ?? []),
   ]
 
+  const tips: Record<string, { branch: string; url: string }> = {}
+
   for (const p of planned) {
-    const { unit } = p
+    const stacks = p.unit.deliver === 'draft_pr' && p.unit.base === ''
+    const tip = stacks ? tips[p.unit.repo] : undefined
+    const unit = tip ? { ...p.unit, base: tip.branch, stackedOn: tip.url } : p.unit
     const skip = (reason: string) => results.push({ planned: p, status: 'skipped', reason })
     if (n.signal?.aborted) {
       skip('interrupted')
@@ -108,6 +113,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       }
       if (worker.status !== 'stopped: aborted')
         result.outcome = await publish(unit, dir, n.forge, n.runId)
+      if (stacks && result.outcome?.kind === 'pr')
+        tips[unit.repo] = { branch: unit.branch, url: result.outcome.url }
     } catch (e) {
       Object.assign(result, { status: 'error', reason: (e as Error).message })
       log(`error: ${(e as Error).stack}`)

@@ -150,6 +150,8 @@ export interface Unit {
   base: string
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
+  /** The URL of tonight's earlier draft PR whose branch `base` is. */
+  stackedOn?: string
   branch: string
   rule: Rule
   skill: string

@@ -5,8 +5,8 @@ description: Implement an issue or task that has no pull request yet. Use when a
 
 # Implement
 
-The unit is an issue or task with no pull request yet. Implement it from
-the default branch.
+The unit is an issue or task with no pull request yet. Implement it on the
+branch you are on.
 
 - Read the item and its comments, then the code involved. Ground every
   change in files and functions that exist; reuse what is there.

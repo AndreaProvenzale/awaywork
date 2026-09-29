@@ -14,7 +14,7 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Quota, Source } from '../src/core/types.js'
 import { runNight } from '../src/worker/night.js'
 import { fakeForge } from './fakes/forge.js'
-import { githubPr } from './fakes/items.js'
+import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
 
@@ -271,4 +271,92 @@ it('stops a unit still running at night.end and publishes what it left', async (
   } finally {
     vi.useRealTimers()
   }
+})
+
+it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
+  const origin = join(root, 'origin')
+  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+  await git(origin, 'branch', 'feature-4')
+  const opened: { head: string; base: string; body: string }[] = []
+  const fake = fakeForge()
+  const forge = {
+    ...fake,
+    clone: async (_repo: string, branch: string, dir: string) => {
+      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+    },
+    push: async (dir: string, branch: string, opts: { repo: string }) => {
+      await fake.push(dir, branch, opts)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
+    },
+    draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
+      opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
+      return `https://example.com/${repo}/pull/${head}`
+    },
+  }
+  const prompts: string[] = []
+  const implementer: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      if (job.unit.id !== 'acme-api-2') {
+        await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+        await git(job.dir, 'add', '.')
+        await git(job.dir, 'commit', '-qm', `Implement ${job.unit.id}`)
+        await writeFile(join(job.dir, '.nightshift/out/pr.md'), `Implement ${job.unit.id}\n\nDone.`)
+      }
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const issue = (n: number) =>
+    fakeItem({
+      source: 'github',
+      id: String(n),
+      key: `acme/api#${n}`,
+      type: 'issue',
+      fields: { repo: 'acme/api' },
+    })
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+  )
+  const plan = planNight({
+    config,
+    items: [issue(1), issue(2), githubPr(4), issue(3)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: implementer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const first = 'https://example.com/acme/api/pull/night/acme-api-1'
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
+    ['night/acme-api-1', ''],
+    ['night/acme-api-4', 'feature-4'],
+    ['night/acme-api-3', 'night/acme-api-1'],
+  ])
+  expect(opened[0]?.body).not.toContain('Stacked on')
+  expect(opened[2]?.body).toBe(
+    `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
+  )
+  expect(prompts[0]).toContain('cut from the default branch.')
+  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is tonight's earlier draft PR ${first}`
+  expect([prompts[1], prompts[3]]).toEqual([
+    expect.stringContaining(stacked),
+    expect.stringContaining(stacked),
+  ])
+  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
+  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
 })

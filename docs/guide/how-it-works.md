@@ -70,8 +70,11 @@ task linked to your PR becomes one unit with that PR.
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
-  review**: night-shift doesn't stack work on work you haven't read.
+  review**: night-shift doesn't add to work you haven't read.
 - Units run one at a time, in queue order.
+- A draft PR that would start from the default branch stacks on the last
+  one published on its repo that night instead, so a night's PRs don't
+  conflict with each other. Its body says which PR to merge first.
 
 ## Budget
 
@@ -98,7 +101,8 @@ unit goes to the next provider.
 ## The worker
 
 Each unit runs in a fresh clone on a new branch cut from its base (your
-PR's branch when it has one, else the default branch).
+PR's branch when it has one, else tonight's last draft PR on the repo,
+else the default branch).
 
 - `.nightshift/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -119,7 +123,7 @@ PR's branch when it has one, else the default branch).
 
 | `deliver` | What happens |
 |---|---|
-| `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into your PR's branch, else the default branch. No `pr.md`, no publish. |
+| `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
 | `report` | The worker writes `.nightshift/out/report.md`; nothing is pushed. It goes into the morning report. |
 
 `review` and `plan` default to `report`, every other skill to `draft_pr`;
