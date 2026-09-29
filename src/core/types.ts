@@ -137,6 +137,7 @@ export interface Rule {
   deliver?: Deliver
   branch?: string
   order?: Order
+  units?: number
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */

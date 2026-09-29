@@ -36,6 +36,8 @@ export function planNight(input: {
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
+  const perRepo: Record<string, number> = {}
+  const perRule: Record<number, number> = {}
 
   for (const group of dedupe(ranked)) {
     const items = group.map((e) => e.item)
@@ -60,6 +62,17 @@ export function planNight(input: {
       skip(`branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
+    const cap = [
+      { name: 'night.units', max: config.night.units, count: units.length },
+      { name: 'night.units_per_repo', max: config.night.units_per_repo, count: perRepo[repo] ?? 0 },
+      { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
+    ].find((c) => c.max !== undefined && c.count >= c.max)
+    if (cap) {
+      skip(`over the cap: ${cap.name} is ${cap.max}`)
+      continue
+    }
+    perRepo[repo] = (perRepo[repo] ?? 0) + 1
+    perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     const skill = resolveSkill(rule.skill, input.skills)
     const providers = rule.provider.length > 0 ? rule.provider : config.providers.map((p) => p.id)
     const { provider, passed } = route(providers, allowances, routed)
