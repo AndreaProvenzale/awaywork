@@ -17,7 +17,7 @@ same folder works for Claude Code and Codex.
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |
-| `review` | A PR awaiting your review; nothing is posted | report |
+| `review` | A PR awaiting your review, or tonight's own after a `then`; nothing is posted | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh

@@ -70,13 +70,16 @@ task linked to your PR becomes one unit with that PR.
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
-  review**: night-shift doesn't stack work on work you haven't read.
+  review**: night-shift doesn't stack work on work you haven't read,
+  unless a rule asks for it with [`then`](./configuration.md#then).
 - A unit none of whose items changed since a worker last finished on it
   is skipped as **unchanged since run `<id>`**, so a review or a unit
-  that gave up isn't redone every night. "Changed" is the item's
-  `updated` time; attempts live in `~/.local/state/night-shift/attempts.json`,
-  and `run --unit` ignores them.
-- Units run one at a time, in queue order.
+  that gave up isn't redone every night. A rule's `then` chain counts as
+  one attempt, and only when none of its units failed or stopped.
+  "Changed" is the item's `updated` time; attempts live in
+  `~/.local/state/night-shift/attempts.json`, and `run --unit` ignores them.
+- Units run one at a time, in queue order; a rule's `then` steps run
+  right after its unit.
 
 ## Budget
 

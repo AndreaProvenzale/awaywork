@@ -240,10 +240,21 @@ Semantics, fixed so every milestone agrees:
   Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
   an open night-shift PR (`ours`) is skipped as waiting for review; such
   a PR is never a unit's base.
+- **Chains.** A rule's `then` is a step or a list of steps: a skill
+  name, or a map with the rule keys other than `source`, `where`, `order`
+  and `then`, inheriting none of the rule's. Each step is a unit planned
+  after the rule's, id `<unit>-<skill slug>`, that runs only when the one
+  before delivered and gets its `out/` in `.nightshift/context/previous/`.
+  After a draft PR the step's base is that PR's branch, so its own draft
+  PR stacks on it; after a report the base is unchanged. A step's branch
+  gets `-<skill>` appended when an earlier draft PR in the chain renders
+  the same name. A skill runs at most once per chain.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time in `~/.local/state/night-shift/attempts.json`; a unit
   none of whose items changed since is skipped as unchanged since that
-  run. `run --unit` ignores attempts. Not persisted in Actions.
+  run. A chain records its items once, when every unit finished or
+  the chain ended at a unit that delivered nothing; a step is never
+  skipped on its own. `run --unit` ignores attempts. Not persisted in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
