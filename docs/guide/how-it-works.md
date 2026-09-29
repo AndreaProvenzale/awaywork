@@ -50,7 +50,7 @@ rules whose source is configured:
 | 1 | `fix-ci` | GitHub | my PR, checks failing |
 | 2 | `qa-feedback` | Asana | section `QA` |
 | 3 | `address-review` | GitHub | my PR, unresolved threads |
-| 4 | `review` | GitHub | my review requested |
+| 4 | `review` | GitHub | my review requested, trusted author |
 | 5 | `continue` | Asana | section `In progress` |
 | 6 | `plan` | Asana | section `Current sprint` |
 
