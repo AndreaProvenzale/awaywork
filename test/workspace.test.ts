@@ -8,8 +8,9 @@ import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
 import { loadSkills } from '../src/config/skills.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Source } from '../src/core/types.js'
+import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
+import { codex } from '../src/providers/codex.js'
 import { prepareWorkspace } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
@@ -31,6 +32,7 @@ describe('workspace', () => {
   it('clones onto the new branch with skills, context and the prompt, and keeps them out of git', async () => {
     const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
     const dir = join(root, 'clone')
+    const plugin = join(root, 'plugin')
     await mkdir(join(root, 'skills', 'house-style'), { recursive: true })
     await writeFile(
       join(root, 'skills', 'house-style', 'SKILL.md'),
@@ -72,6 +74,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         deliver: 'draft_pr',
       },
       dir,
+      plugin,
       config,
       configDir: root,
       forge,
@@ -82,8 +85,10 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     })
 
     expect((await git(dir, 'branch', '--show-current')).stdout).toBe('night/acme-api-1')
-    expect(existsSync(join(dir, '.claude/skills/fix-ci/SKILL.md'))).toBe(true)
-    expect(existsSync(join(dir, '.claude/skills/house-style/SKILL.md'))).toBe(true)
+    expect(existsSync(join(plugin, '.claude-plugin/plugin.json'))).toBe(true)
+    expect(existsSync(join(plugin, 'skills/fix-ci/SKILL.md'))).toBe(true)
+    expect(existsSync(join(plugin, 'skills/house-style/SKILL.md'))).toBe(true)
+    expect(existsSync(join(dir, '.claude/skills'))).toBe(false)
     expect(await readFile(join(dir, '.nightshift/context/fake-1/item.md'), 'utf8')).toBe(
       'CI is red',
     )
@@ -103,19 +108,22 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    const review = async (mine: boolean) => {
+    const review = async (mine: boolean, provider: Provider = claude) => {
       const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
       const dir = join(root, 'clone')
+      const plugin = join(root, 'plugin')
       const forge = {
         ...fakeForge(),
         async clone(_repo: string, _branch: string, into: string) {
-          await mkdir(join(into, '.night-shift/skills/review'), { recursive: true })
-          await mkdir(join(into, '.claude/skills/review'), { recursive: true })
           await execa('git', ['init', '-q', '-b', 'sessions', into])
+          await mkdir(join(into, '.night-shift/skills/review'), { recursive: true })
           await writeFile(join(into, '.night-shift/instructions.md'), 'AUTHOR NOTE')
           await writeFile(join(into, '.night-shift/skills/review/SKILL.md'), 'AUTHOR SKILL')
-          await writeFile(join(into, '.claude/skills/review/SKILL.md'), 'AUTHOR SKILL')
-          await writeFile(join(into, '.claude/skills/review/extra.md'), 'AUTHOR EXTRA')
+          for (const skills of ['.claude/skills', '.agents/skills']) {
+            await mkdir(join(into, skills, 'review'), { recursive: true })
+            await writeFile(join(into, skills, 'review/SKILL.md'), 'AUTHOR SKILL')
+            await writeFile(join(into, skills, 'review/extra.md'), 'AUTHOR EXTRA')
+          }
           await git(into, 'add', '.')
           await git(into, 'commit', '-qm', 'init')
         },
@@ -137,34 +145,49 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           deliver: 'report',
         },
         dir,
+        plugin,
         config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
         configDir: root,
         forge,
         sources: { fake: fakeSource() as Source },
-        provider: claude,
+        provider,
         ctx: { env: {}, log: () => {} },
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
       })
-      return { dir, prompt }
+      return { dir, plugin, prompt }
     }
+    const builtinReview = () => readFile(join(builtinSkillsDir, 'review/SKILL.md'), 'utf8')
 
     it("ignores them when someone else opened it and says the branch's files are the author's", async () => {
-      const { dir, prompt } = await review(false)
+      const { dir, plugin, prompt } = await review(false)
       expect(prompt).not.toContain('AUTHOR')
       expect(prompt).toContain('`sessions` is a pull request someone else opened')
-      expect(await readFile(join(dir, '.claude/skills/review/SKILL.md'), 'utf8')).toBe(
-        await readFile(join(builtinSkillsDir, 'review/SKILL.md'), 'utf8'),
+      expect(await readFile(join(plugin, 'skills/review/SKILL.md'), 'utf8')).toBe(
+        await builtinReview(),
       )
-      expect(existsSync(join(dir, '.claude/skills/review/extra.md'))).toBe(false)
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it("replaces the author's copy in the clone for Codex and keeps it out of git", async () => {
+      const { dir } = await review(false, codex)
+      expect(await readFile(join(dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
+        await builtinReview(),
+      )
+      expect(existsSync(join(dir, '.agents/skills/review/extra.md'))).toBe(false)
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
     })
 
     it("keeps them on the developer's own PR", async () => {
-      const { dir, prompt } = await review(true)
+      const { dir, plugin, prompt } = await review(true)
       expect(prompt).toContain('AUTHOR NOTE')
       expect(prompt).toContain('AUTHOR SKILL')
       expect(prompt).not.toContain('someone else opened')
+      expect(await readFile(join(plugin, 'skills/review/SKILL.md'), 'utf8')).toBe('AUTHOR SKILL')
       expect(await readFile(join(dir, '.claude/skills/review/SKILL.md'), 'utf8')).toBe(
+        'AUTHOR SKILL',
+      )
+      const own = await review(true, codex)
+      expect(await readFile(join(own.dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
         'AUTHOR SKILL',
       )
     })
