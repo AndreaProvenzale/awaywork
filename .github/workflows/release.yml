@@ -34,3 +34,9 @@ jobs:
           ${{ contains(github.ref_name, '-') && '--prerelease' || '' }}
         env:
           GH_TOKEN: ${{ github.token }}
+      # Generated workflows call the action at v1 (src/scheduler/github-actions.ts).
+      - name: Move the v1 tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          git tag -f v1
+          git push -f origin refs/tags/v1
