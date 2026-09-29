@@ -159,6 +159,7 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
+| `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
 
 ### `where`
 
@@ -182,6 +183,45 @@ Within a rule, units run in the order the source returns items; for
 GitHub that is newest first, so with little quota the oldest can wait
 night after night. `order: oldest` runs them first. Items without the
 timestamp go last.
+
+### `then`
+
+Steps run right after the rule's unit, one after the other, each on what
+the one before delivered. A step is a skill name, or a map when you want
+to set more:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    then: review
+
+  - skill: plan
+    where: { section: Ready }
+    model: { claude: opus }
+    then:
+      - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
+      - { skill: review, provider: codex }
+```
+
+- A step takes the rule keys except `source`, `where`, `order` and
+  `then`. It inherits none of the rule's: an unset key has the same
+  default as on a rule.
+- After a draft PR, the next step starts from that PR's branch, and a
+  draft PR it opens is stacked on it. After a report, it starts from the
+  same base.
+- The step finds what the one before delivered in
+  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
+  `report.md`.
+- A step runs only when the one before delivered; otherwise the rest of
+  the chain is skipped, with the reason in the report. Once a unit in the
+  chain opened a draft PR, the next night doesn't retry: the item waits
+  for your review of it. Otherwise the whole chain runs again.
+- Each step is a unit of its own in `plan` and the report (`<unit>-<skill>`),
+  routed and budgeted like any other. Its branch uses the usual template,
+  with `-<skill>` appended when a draft PR earlier in the chain already
+  took the name.
+- A skill runs at most once per chain.
 
 ## Notify
 

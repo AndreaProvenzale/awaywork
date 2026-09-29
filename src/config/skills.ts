@@ -19,13 +19,18 @@ export async function loadSkills(dir: string): Promise<Record<string, SkillMeta>
 /** Skills a queue names that are neither the user's nor built in; in-repo skills are only visible at run time. */
 export async function unknownSkills(config: Config, userDir = userSkillsDir): Promise<string[]> {
   const catalog = { user: await loadSkills(userDir), builtin: builtinSkills }
-  const named = [
-    ...config.skills.map((name) => ({ at: 'skills', name })),
-    ...(config.queue ?? []).flatMap((rule, i) =>
-      [rule.skill, ...rule.skills].map((name) => ({ at: `queue[${i}]`, name })),
-    ),
-  ]
-  return named
-    .filter(({ name }) => !resolveSkill(name, catalog))
-    .map(({ at, name }) => `${at}: unknown skill "${name}" (not built in, not in ${userDir})`)
+  const problems = config.skills
+    .filter((name) => !resolveSkill(name, catalog))
+    .map((name) => `skills: unknown skill "${name}" (not built in, not in ${userDir})`)
+  config.queue?.forEach((rule, i) => {
+    const chain = [rule, ...(rule.then ?? [])]
+    chain.forEach((step, j) => {
+      const at = j === 0 ? `queue[${i}]` : `queue[${i}].then[${j - 1}]`
+      for (const name of [step.skill, ...step.skills]) {
+        if (resolveSkill(name, catalog)) continue
+        problems.push(`${at}: unknown skill "${name}" (not built in, not in ${userDir})`)
+      }
+    })
+  })
+  return problems
 }
