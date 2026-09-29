@@ -40,7 +40,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
       base: '',
       foreign: false,
       branch: 'night/fake-1',
-      rule: { skill: 'implement', where: {}, provider: [], skills: [], instructions: [] },
+      rule: { skill: 'implement', provider: [], skills: [], instructions: [] },
       skill: 'implement',
       skills: [],
       providers: ['claude'],
