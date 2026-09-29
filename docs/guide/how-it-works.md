@@ -70,11 +70,13 @@ task linked to your PR becomes one unit with that PR.
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
-  review**: night-shift doesn't add to work you haven't read.
-- Units run one at a time, in queue order.
+  review**: night-shift doesn't add to work you haven't read from an
+  earlier night.
+- Units run one at a time, in queue order; a rule's
+  [`then`](./configuration.md#then) steps run right after its unit.
 - A draft PR that would start from the default branch stacks on the last
   one published on its repo that night instead, so a night's PRs don't
-  conflict with each other. Its body says which PR to merge first.
+  conflict with each other. Its body names the PR to merge first.
 
 ## Budget
 
