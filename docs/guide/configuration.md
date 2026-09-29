@@ -30,7 +30,11 @@ version.
 ## A full example
 
 ```yaml
-night: { start: "01:00", end: "07:00" }
+night:
+  start: "01:00"
+  end: "07:00"
+  units: 8                      # caps, unset by default
+  units_per_repo: 3
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_night: 15%                # at most this share of the long window per night
@@ -61,6 +65,7 @@ queue:                          # first matching rule wins; top = highest priori
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
     order: oldest
+    units: 2                    # at most 2 of these per night
   - skill: review
     where: { type: pr, review_requested: true, trusted: true }
     model: { claude: sonnet }
@@ -77,6 +82,15 @@ queue:                          # first matching rule wins; top = highest priori
 `night.start` is when a scheduled run begins; no unit starts after
 `night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
+
+A readable quota decides how much work fits, not how much you can review
+in a morning. `night.units` caps the units planned per night,
+`night.units_per_repo` those in any one repo, and a rule's `units` those
+from that rule. None is set by default. Units past a cap are skipped in
+queue order, with the cap named in `nightshift plan` and the report. A
+[`then`](#then) step counts as a unit of the rule that started its chain.
+Only units routed to a provider count, and caps apply to each `nightshift
+run`, like `fallback.units`.
 
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
@@ -146,6 +160,7 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
+| `units` | At most this many units per night from this rule, its `then` steps included |
 | `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
 
 ### `where`
@@ -191,8 +206,8 @@ queue:
       - { skill: review, provider: codex }
 ```
 
-- A step takes the rule keys except `source`, `where`, `order` and
-  `then`. It inherits none of the rule's: an unset key has the same
+- A step takes the rule keys except `source`, `where`, `order`, `units`
+  and `then`. It inherits none of the rule's: an unset key has the same
   default as on a rule.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it. After a report, it starts from the
@@ -209,6 +224,10 @@ queue:
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
 - A skill runs at most once per chain.
+- Steps count against the [caps](#night-and-budget) like any unit, and
+  against their rule's `units`. A chain whose first unit is over a cap
+  doesn't start; a step over a cap is left out with the rest of the chain,
+  and the unit before it names the cap.
 
 ## Notify
 
