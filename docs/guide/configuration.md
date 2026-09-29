@@ -206,7 +206,8 @@ queue:
 
 - A step takes the rule keys except `source`, `where`, `order` and
   `then`. It inherits none of the rule's: an unset key has the same
-  default as on a rule.
+  default as on a rule. Top-level `instructions` and `skills` still
+  apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it. After a report, it starts from the
   same base.

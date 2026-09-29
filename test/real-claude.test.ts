@@ -20,7 +20,9 @@ const git = (dir: string, ...args: string[]) =>
 it.skipIf(!process.env.NIGHTSHIFT_REAL)(
   'runs the real claude binary through a unit',
   async () => {
-    const dir = join(await mkdtemp(join(tmpdir(), 'nightshift-real-')), 'clone')
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const dir = join(root, 'clone')
+    const plugin = join(root, 'plugin')
     const forge = {
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
@@ -52,6 +54,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const prompt = await prepareWorkspace({
       unit,
       dir,
+      plugin,
       config,
       configDir: dir,
       forge,
@@ -62,7 +65,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const quota = await claude.probe(ctx)
     expect(quota?.windows.map((w) => w.span)).toEqual(['short', 'long'])
 
-    const job = { unit, dir, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
+    const job = { unit, dir, plugin, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
     const result = await runWorker(claude, job, allowance(config.budget, quota, Date.now()), {
       log: console.log,
     })
