@@ -250,11 +250,13 @@ Semantics, fixed so every milestone agrees:
   gets `-<skill>` appended when an earlier draft PR in the chain renders
   the same name. A skill runs at most once per chain.
 - **Attempts.** A unit whose worker finished records each item's
-  `updated` time in `~/.local/state/night-shift/attempts.json`; a unit
+  `updated` time and the unit's skill in
+  `~/.local/state/night-shift/attempts.json`; a unit of the same skill
   none of whose items changed since is skipped as unchanged since that
   run. A chain records its items once, when every unit finished or
-  the chain ended at a unit that delivered nothing; a step is never
-  skipped on its own. `run --unit` ignores attempts. Not persisted in Actions.
+  the chain ended at a unit that made nothing; commits left unpushed
+  retry, and a step is never skipped on its own. A unit picked with
+  `run --unit` isn't skipped. Not persisted in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);

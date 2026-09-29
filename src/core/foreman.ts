@@ -32,7 +32,7 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
-  /** Earlier attempts: a unit none of whose items changed since is skipped. */
+  /** Earlier attempts: a unit none of whose items changed since its skill last ran is skipped. */
   attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
@@ -53,7 +53,7 @@ export function planNight(input: {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
       continue
     }
-    const since = items.map((item) => unchangedSince(item, input.attempts ?? {}))
+    const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
     if (since.every(Boolean)) {
       skip(`unchanged since run ${since.sort().at(-1)}`)
       continue
