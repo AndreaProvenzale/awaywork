@@ -96,6 +96,7 @@ its own default.
 | `github` | `repos`: `owner/name` globs such as `acme/*` |
 | `asana` | `workspace` gid, optional `projects` (gids), `project_repos` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `team_repos` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
+| `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `project_repos` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 
 Asana has no read-only personal token: the token can do anything you can.
 night-shift only reads with it and never hands it to the agent. Create
@@ -104,6 +105,13 @@ one just for night-shift so you can revoke it alone.
 Linear takes a personal API key (Settings > Account > Security & access).
 night-shift only reads with it and never hands it to the agent: when
 Linear offers the choice, give the key read access only.
+
+Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
+API tokens). Prefer "Create API token with scopes", app Jira, scope
+`read:jira-work`: `init` then finds the site's `cloud_id` and night-shift
+calls `api.atlassian.com`, as scoped tokens require. A token without
+scopes can do anything you can; night-shift only reads with it. Tokens
+expire after at most a year.
 
 ## Branch names
 
@@ -116,6 +124,7 @@ item's title as a slug of at most 40 characters.
 | GitHub PR or issue `acme/api#12` | `acme-api-12` |
 | Asana task with custom ID `ENG-12` | `ENG-12` |
 | Linear issue `ENG-12` | `ENG-12` |
+| Jira issue `ENG-12` | `ENG-12` |
 
 The name is cosmetic. The guardrail is that night-shift only pushes a
 branch that doesn't exist on the remote yet.
@@ -204,5 +213,6 @@ or `~/.config/night-shift/env` (the environment wins).
 | `CODEX_AUTH_JSON` | Codex on a runner: seeds `auth.json` when missing |
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
+| `JIRA_API_TOKEN` (or your `token_env`) | Jira |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |

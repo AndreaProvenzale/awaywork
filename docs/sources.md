@@ -155,6 +155,18 @@ YouTrack, Shortcut, Plane.
 - Data Center: bearer PATs, API v2 [V/I].
 - Rovo MCP token auth, admin opt-in [V]
   https://support.atlassian.com/atlassian-rovo-mcp-server/docs/configuring-authentication-via-api-token/
+- **Adapter.** Cloud only. Basic auth with `email:token` [I]; the site
+  URL for a classic token, `api.atlassian.com/ex/jira/{cloudId}` for a
+  scoped one, with the cloud id from the site's `/_edge/tenant_info` [I].
+  `POST /rest/api/3/search/jql` with `assignee = currentUser() AND
+  resolution = Unresolved`, the configured `jql` ANDed in, fields
+  `*all,-comment`, paged by `nextPageToken`; custom field names from
+  `/rest/api/3/field`; comments per issue from `/issue/{id}/comment`,
+  paged by `startAt`, ADF turned into minimal Markdown [I]. 429s wait out
+  `Retry-After`, as for Asana. Key is the issue key (`ENG-12`).
+- **PR links.** `dev-status` stays unused: night-shift links issues
+  through the forge by key, which Jira's own branch names carry [I].
+- **Repo for an issue.** `project_repos` maps a project key to `owner/repo`.
 
 ### Asana
 - PAT has the user's full access; read scopes exist for OAuth apps only
@@ -255,6 +267,10 @@ YouTrack, Shortcut, Plane.
   format, the `assignedIssues` filter and comment paging used by
   `linear.ts`; the whole source against a live workspace
   (`real-linear.test.ts`).
+- Jira: basic auth of a scoped token on the gateway, the `tenant_info`
+  cloud id, `-comment` in `fields`, `*all` returning custom fields on
+  `search/jql`; the whole source against a live site
+  (`real-jira.test.ts`).
 - Asana: GitHub integration attachments readable via `/attachments`,
   and in which field the PR URL sits.
 - Asana: the whole source against a live workspace (`real-asana.test.ts`).
