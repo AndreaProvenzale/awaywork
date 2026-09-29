@@ -51,6 +51,7 @@ Quota allocation defaults; any provider can override them.
 | `reserve` | percent | `"10%"` | Never go past 1 - reserve of any window |
 | `per_night` | percent |  | At most this share of the long window per night |
 | `session_max` | percent | `"90%"` | Stop a worker past this share of the short window |
+| `unit_minutes` | integer |  | Stop a worker after this many minutes |
 | `fallback` | object | `{"units":4,"turns":60}` | Caps when the provider's quota can't be read |
 
 ## `budget.fallback`
@@ -87,6 +88,7 @@ Overrides the top-level budget for this provider.
 | `reserve` | percent |  | Never go past 1 - reserve of any window |
 | `per_night` | percent |  | At most this share of the long window per night |
 | `session_max` | percent |  | Stop a worker past this share of the short window |
+| `unit_minutes` | integer |  | Stop a worker after this many minutes |
 | `fallback` | object |  | Caps when the provider's quota can't be read |
 
 ## `providers[].claude.budget.fallback`

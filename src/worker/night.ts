@@ -75,7 +75,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     routed[id] = (routed[id] ?? 0) + 1
-    const model = unit.rule.model?.[id] ?? n.config.providers.find((c) => c.id === id)?.model
+    const providerConfig = n.config.providers.find((c) => c.id === id)
+    const model = unit.rule.model?.[id] ?? providerConfig?.model
     n.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
     const unitDir = join(n.runDir, 'units', unit.id)
@@ -99,6 +100,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         log,
         signal: n.signal,
         until: n.until,
+        maxMinutes: providerConfig?.budget.unit_minutes,
         watch: n.watch,
       })
       Object.assign(result, worker)

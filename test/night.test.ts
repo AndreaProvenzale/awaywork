@@ -272,3 +272,53 @@ it('stops a unit still running at night.end and publishes what it left', async (
     vi.useRealTimers()
   }
 })
+
+it("stops a unit at its provider's unit_minutes", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-time-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa('git', ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(
+    'providers: [claude: { budget: { unit_minutes: 5 } }]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+  )
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const hung: Provider = {
+    ...fakeProvider('claude'),
+    async *run(_job, signal) {
+      vi.advanceTimersByTime(5 * 60_000)
+      if (!signal.aborted) await new Promise((ok) => signal.addEventListener('abort', ok))
+      yield { type: 'done', ok: false, turns: 1 }
+    },
+  }
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    const report = await runNight({
+      config,
+      configDir: root,
+      plan,
+      runId: 'r1',
+      runDir: join(root, 'run'),
+      dryRun: false,
+      providers: { claude: hung },
+      sources: { github: fakeSource() as Source },
+      forge,
+      ctx: { env: {}, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+      ['stopped: time', 'reached unit_minutes (5)'],
+    ])
+  } finally {
+    vi.useRealTimers()
+  }
+})

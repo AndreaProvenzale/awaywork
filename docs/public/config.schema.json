@@ -48,6 +48,12 @@
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
         },
+        "unit_minutes": {
+          "description": "Stop a worker after this many minutes",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
         "fallback": {
           "default": {
             "units": 4,
@@ -121,6 +127,12 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
+                      "unit_minutes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "description": "Stop a worker after this many minutes"
+                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -177,6 +189,12 @@
                         "description": "Stop a worker past this share of the short window",
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "unit_minutes": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "description": "Stop a worker after this many minutes"
                       },
                       "fallback": {
                         "type": "object",

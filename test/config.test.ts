@@ -141,6 +141,19 @@ describe('config', () => {
     ])
   })
 
+  it('takes unit_minutes globally and per provider', () => {
+    const cfg = parseConfig(
+      `${minimal.replace('[claude: {}]', '[claude, codex: { budget: { unit_minutes: 30 } }]')}budget: { unit_minutes: 90 }`,
+    )
+    expect(cfg.providers.map((p) => [p.id, p.budget.unit_minutes])).toEqual([
+      ['claude', 90],
+      ['codex', 30],
+    ])
+    expect(problems(`${minimal}budget: { unit_minutes: 0 }`)).toEqual([
+      expect.stringMatching(/^budget\.unit_minutes: /),
+    ])
+  })
+
   it('rejects a night window that starts when it ends', () => {
     expect(problems(`${minimal}night: { start: '01:00', end: '01:00' }`)).toEqual([
       'night: start and end must differ',
