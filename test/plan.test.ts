@@ -205,6 +205,18 @@ queue:
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
   })
 
+  it("adds the top-level skills to every unit, before the rule's", () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+skills: [house-style]
+queue:
+  - { skill: fix-ci, skills: [our-api-conventions], where: { checks: failing } }
+`
+    const [unit] = plan(yaml, [githubPr(1, { checks: 'failing' })], {}).units
+    expect(unit?.unit.skills).toEqual(['house-style', 'our-api-conventions'])
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])

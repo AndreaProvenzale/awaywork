@@ -76,7 +76,7 @@ export function planNight(input: {
         branch,
         rule,
         skill: rule.skill,
-        skills: rule.skills,
+        skills: [...config.skills, ...rule.skills],
         providers,
         instructions: [
           ...config.instructions,
