@@ -98,6 +98,11 @@
                 "description": "claude settings",
                 "type": "object",
                 "properties": {
+                  "settings": {
+                    "description": "Settings file for every worker, relative to the config file; passed as --settings",
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "model": {
                     "type": "string",
                     "minLength": 1,
@@ -155,6 +160,20 @@
                 "description": "codex settings",
                 "type": "object",
                 "properties": {
+                  "config": {
+                    "description": "Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c",
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    }
+                  },
                   "model": {
                     "type": "string",
                     "minLength": 1,
@@ -349,6 +368,14 @@
           }
         }
       ]
+    },
+    "skills": {
+      "default": [],
+      "description": "Extra skills available to every unit",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "queue": {
       "description": "Rules mapping items to skills; default the built-in queue",
