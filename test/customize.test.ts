@@ -55,8 +55,15 @@ describe('queue order in the config text', () => {
   })
 
   it('writes the default queue when the config has none', () => {
-    const [fixCi, , , addressReview, review] = defaultQueue as [Rule, Rule, Rule, Rule, Rule]
-    const next = withQueueOrder('providers: [claude]', defaultQueue, [4, 0])
+    const [fixCi, , , , addressReview, review] = defaultQueue as [
+      Rule,
+      Rule,
+      Rule,
+      Rule,
+      Rule,
+      Rule,
+    ]
+    const next = withQueueOrder('providers: [claude]', defaultQueue, [5, 0])
     expect(next).toBe(`providers: [claude]\n${queueYaml([review, fixCi])}`)
     expect(queueYaml([{ ...addressReview, provider: ['codex'], skills: [] }])).toContain(
       '    where: {type: pr, mine: true, unresolved_threads: {not: 0}}\n    provider: [codex]\n',
