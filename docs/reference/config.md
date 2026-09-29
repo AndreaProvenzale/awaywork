@@ -158,7 +158,8 @@ My open Linear issues.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `branch` | string |  | Branch name template for this repo |
-| `setup` | string |  | Setup command, given to the worker in its prompt |
+| `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
+| `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 

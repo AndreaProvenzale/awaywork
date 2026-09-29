@@ -8,6 +8,7 @@ import type { NightReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Provider, Quota, Source } from '../core/types.js'
 import { publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
+import { runSetup } from './setup.js'
 import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
 
 const MAX_TURNS = 200
@@ -51,6 +52,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...Object.values(n.providers).flatMap((p) => p.secrets),
     ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
     ...(n.config.notify?.secrets ?? []),
+    ...Object.values(n.config.repos).flatMap((r) => r.secrets),
   ]
 
   for (const p of planned) {
@@ -91,6 +93,19 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
+      const repo = n.config.repos[unit.repo]
+      if (repo?.setup) {
+        const failed = await runSetup(
+          repo.setup,
+          dir,
+          setupEnv(n.ctx.env, dir, secrets, repo.secrets),
+          log,
+        )
+        if (failed) {
+          Object.assign(result, { status: 'skipped', reason: failed })
+          continue
+        }
+      }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
@@ -124,4 +139,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
+}
+
+/** Like the worker's, with every secret withheld except the repo's own. */
+function setupEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  secrets: string[],
+  own: string[],
+): NodeJS.ProcessEnv {
+  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
+  return { ...workerEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }
