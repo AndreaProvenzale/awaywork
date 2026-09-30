@@ -54,12 +54,14 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   )
   if (n.only && wanted.size === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
   // A loop round needs its whole loop, and a chained unit the units it follows.
-  const loops = new Set(
-    n.plan.units.flatMap((p) => (p.loop && wanted.has(p.unit.id) ? [p.loop.host] : [])),
-  )
-  for (const p of n.plan.units) if (loops.has(p.loop?.host ?? p.unit.id)) wanted.add(p.unit.id)
-  for (const p of [...n.plan.units].reverse())
-    if (wanted.has(p.unit.id) && p.after) wanted.add(p.after)
+  for (let size = 0; size !== wanted.size; ) {
+    size = wanted.size
+    for (const p of n.plan.units) {
+      if (p.loop && wanted.has(p.unit.id)) wanted.add(p.loop.host)
+      if (p.loop && wanted.has(p.loop.host)) wanted.add(p.unit.id)
+      if (p.after && wanted.has(p.unit.id)) wanted.add(p.after)
+    }
+  }
   const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
   const secrets = [
     ...Object.values(n.providers).flatMap((p) => p.secrets),
@@ -80,9 +82,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const { host, unit, dir } = loop
     host.loop = describeLoop(loop)
     try {
-      if (loop.interrupted)
-        host.outcome ??= { kind: 'none', reason: 'interrupted', unpublished: true }
-      else {
+      if (loop.interrupted) {
+        const kept = host.outcome?.kind === 'report' && (await commitsSince(dir, loop.start)) === 0
+        if (!kept) host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
+      } else {
         await appendLoopSummary(dir, loop)
         const published = await publish({ ...unit, deliver: 'draft_pr' }, dir, n.forge, n.runId)
         // A report host whose loop committed nothing keeps its report.
@@ -108,18 +111,26 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const inRound = !!p.loop && p.loop.host !== p.unit.id
     const round = inRound ? open : undefined
     if (p.loop && inRound && (!round || round.ended)) {
-      if (!round && p.loop.round === 1 && p.loop.step === 0)
+      if (!round && p.loop.round === 1 && p.loop.step === 0) {
+        const host = results.find((r) => r.planned.unit.id === p.loop?.host)
         results.push({
           planned: p,
           status: 'skipped',
           reason: n.dryRun
             ? 'a dry run delivers nothing for it to follow'
-            : `${p.loop.host} left nothing to loop on`,
+            : host?.status === 'done'
+              ? `${p.loop.host} left nothing to loop on`
+              : `${p.loop.host} ${host?.status ?? 'did not run'}, loop not started`,
         })
+      }
       continue
     }
     const hosting = hosts.has(p.unit.id)
-    const { repo, base } = p.unit
+    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
+    // A loop that kept its host's report opened no branch: follow it as a report.
+    const keptReport = after?.outcome?.kind === 'report' && hosts.has(after.planned.unit.id)
+    const { repo } = p.unit
+    const base = keptReport ? after.planned.unit.base : p.unit.base
     // A loop publishes its host as a draft PR, whatever the host's own delivery.
     const deliver = hosting ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
@@ -130,7 +141,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       ? { ...p.unit, base: round.unit.base, stackedOn: round.unit.stackedOn }
       : stackedOn
         ? { ...p.unit, base: onto, stackedOn }
-        : p.unit
+        : { ...p.unit, base }
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
       if (round) round.ended = reason
@@ -144,7 +155,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       skip('the night window ended')
       continue
     }
-    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
     if (p.after && (after?.outcome?.kind ?? 'none') === 'none') {
       skip(
         n.dryRun
@@ -260,6 +270,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           unit,
           dir,
           unitDir,
+          start,
           stacks,
           skills: p.loop.skills,
           rounds: 0,
@@ -278,7 +289,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           loop.ended = `max ${p.loop.max} rounds reached`
       } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
-        open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
+        open = { host: result, unit, dir, unitDir, start, stacks, skills, rounds: 0, last: result }
       } else if (!aborted) {
         result.outcome = await publish(unit, dir, n.forge, n.runId)
         if (result.outcome?.kind === 'pr') {
@@ -318,6 +329,8 @@ interface OpenLoop {
   unit: Unit
   dir: string
   unitDir: string
+  /** The clone's head before the host ran. */
+  start: string
   stacks: boolean
   skills: string[]
   rounds: number
@@ -362,6 +375,8 @@ async function roundOutcome(unit: Unit, dir: string, start: string): Promise<Out
 /** Saves a unit's own commits for the next round, and clears what only it wrote from the shared clone. */
 async function handOff(dir: string, start: string, unitDir: string): Promise<void> {
   const diff = await git(dir, 'diff', start, 'HEAD')
+  // A round that cleaned the clone left no `out/` to copy.
+  await mkdir(join(unitDir, 'out'), { recursive: true })
   if (diff) await writeFile(join(unitDir, 'out', 'diff.patch'), `${diff}\n`)
   const out = join(dir, WORK_DIR, 'out')
   await Promise.all(['report.md', 'verdict'].map((f) => rm(join(out, f), { force: true })))

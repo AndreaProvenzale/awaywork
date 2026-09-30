@@ -224,7 +224,7 @@ Matches items whose field has none of these values.
 |---|---|---|---|
 | `not` (required) | string \| number \| boolean \| (string \| number \| boolean)[] |  |  |
 
-## `queue[].where.<key>`
+## `queue[].where.<key>` (gt)
 
 Matches items whose number field passes every comparison.
 
@@ -235,7 +235,7 @@ Matches items whose number field passes every comparison.
 | `lt` | number |  | Less than |
 | `lte` | number |  | Less than or equal to |
 
-## `queue[].where.<key>`
+## `queue[].where.<key>` (older_than)
 
 Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 
@@ -256,7 +256,7 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 
-## `queue[].then`
+## `queue[].then` (loop)
 
 Steps repeated until a condition holds; the loop publishes one draft PR at the end.
 
@@ -293,6 +293,10 @@ Matches every verdict but these.
 ## `queue[].then[]`
 
 Same keys as `queue[].then`.
+
+## `queue[].then[]` (loop)
+
+Same keys as `queue[].then` (loop).
 
 ## `queue[].then[].loop`
 

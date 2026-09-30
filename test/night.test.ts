@@ -7,12 +7,13 @@ import { expect, it, vi } from 'vitest'
 import { formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
+import { failedAttempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Provider, Quota, Source } from '../src/core/types.js'
-import { runNight } from '../src/worker/night.js'
+import type { Item, Provider, Quota, Source } from '../src/core/types.js'
+import { type NightInput, runNight } from '../src/worker/night.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -1003,5 +1004,145 @@ queue:
   expect(files.stdout.split('\n')).toEqual([
     'acme-api-1-implement-1.txt',
     'acme-api-1-implement-2.txt',
+  ])
+})
+
+/** Plans `yaml` for `items` and runs the night against a local origin. */
+async function loopNight(
+  yaml: string,
+  items: Item[],
+  provider: Provider,
+  input: Partial<NightInput> = {},
+) {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
+  const { origin, opened, forge } = await originForge(root)
+  const config = parseConfig(`providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+${yaml}`)
+  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+  const plan = planNight({
+    config,
+    items,
+    allowances: { claude: allowance(config.budget, quota(0.36), now) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: provider },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    ...input,
+  })
+  return { report, opened, origin }
+}
+
+it('records a loop interrupted after a report as unpublished, so it counts a failure', async () => {
+  const stop = new AbortController()
+  const provider = looper({})
+  const item = fakeItem({
+    source: 'github',
+    id: '1',
+    key: 'acme/api#1',
+    type: 'issue',
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [implement, review], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    {
+      ...provider,
+      run(job, signal) {
+        if (job.unit.id === 'acme-api-1-review-1') stop.abort()
+        return provider.run(job, signal)
+      },
+    },
+    { signal: stop.signal },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
+    ['acme-api-1', 'done', 'report'],
+    ['acme-api-1-implement-1', 'done', 'none'],
+    ['acme-api-1-review-1', 'stopped: aborted', 'report'],
+  ])
+  expect(report.results[1]?.outcome).toEqual({
+    kind: 'none',
+    reason: 'interrupted',
+    unpublished: true,
+  })
+  expect(opened).toEqual([])
+  expect(failedAttempts(item, 'plan', recordAttempts({}, report))).toBe(1)
+})
+
+it("runs the step after a loop that kept its host's report on the host's base", async () => {
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: plan
+    then:
+      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - review
+`,
+    [issue(1)],
+    looper({ 'acme-api-1-qa-feedback-1': 'approve' }),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
+    ['acme-api-1', 'done', 'report'],
+    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review', 'done', 'report'],
+  ])
+  expect(opened).toEqual([])
+})
+
+it('runs the whole loop for a step after it that --unit names', async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+      - { skill: qa-feedback, deliver: report }
+`,
+    [issue(1), issue(2)],
+    looper({ 'acme-api-1-review-1': 'approve' }),
+    { only: 'acme-api-1-qa-feedback' },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-review-1', 'done'],
+    ['acme-api-1-qa-feedback', 'done'],
+  ])
+})
+
+it("names why a loop didn't start after a host that failed", async () => {
+  const provider = looper({})
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1') throw new Error('crashed')
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'error', 'crashed'],
+    ['acme-api-1-review-1', 'skipped', 'acme-api-1 error, loop not started'],
   ])
 })

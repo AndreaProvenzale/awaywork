@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { bounds, isAge, ruleSteps, spanPattern } from '../core/queue.js'
+import { bounds, isAge, isLoop, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { commandConfig } from '../sources/command.js'
@@ -283,6 +283,17 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
+      // Back-to-back loops would share one host, and the second would never run.
+      if (Array.isArray(r.then))
+        r.then.forEach((entry, j, then) => {
+          const before = then[j - 1]
+          if (before && isLoop(before) && isLoop(entry))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j, 'loop'],
+              message: "a loop can't follow another loop directly; put a step between them",
+            })
+        })
       // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
       const inLoop = (path: (string | number)[]) => path[2] === 'loop'
       chain.forEach(({ step: s, at: path }, j) => {

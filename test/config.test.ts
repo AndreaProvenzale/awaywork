@@ -210,6 +210,17 @@ describe('config', () => {
       'queue[0].then.max: Too big: expected number to be <=5',
     ])
     expect(loop('[review], until: {}, max: 1')).toEqual(['queue[0].then.until: expected verdict'])
+    const loops = (between: string) =>
+      problems(`${minimal}queue:
+  - skill: implement
+    then:
+      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }${between}
+      - { loop: [qa-feedback, fix-ci], until: { verdict: approve }, max: 2 }
+`)
+    expect(loops('')).toEqual([
+      "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
+    ])
+    expect(loops('\n      - plan')).toEqual([])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {

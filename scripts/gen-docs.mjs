@@ -78,11 +78,16 @@ function objects(s, path, out) {
 
 function configDoc(schema) {
   const seen = new Map()
+  const shapes = new Map()
   const sections = objects(schema, '', []).map(({ path, schema: s }) => {
-    const title = `## ${path ? `\`${path}\`` : 'Top level'}`
     const key = JSON.stringify(s)
-    if (seen.has(key)) return `${title}\n\nSame keys as \`${seen.get(key)}\`.`
-    seen.set(key, path)
+    // A second shape at one path, e.g. a loop where a step goes, is named by its first key.
+    if (!shapes.has(path)) shapes.set(path, key)
+    const variant = shapes.get(path) === key ? '' : ` (${Object.keys(s.properties)[0]})`
+    const name = path ? `\`${path}\`${variant}` : 'Top level'
+    const title = `## ${name}`
+    if (seen.has(key)) return `${title}\n\nSame keys as ${seen.get(key)}.`
+    seen.set(key, name)
     const required = new Set(s.required ?? [])
     const rows = Object.entries(s.properties).map(([name, p]) => {
       const def = p.default === undefined ? '' : `\`${JSON.stringify(p.default)}\``

@@ -328,7 +328,9 @@ queue:
   `plan` lists round 1. A loop counts once against the caps, since it
   opens one draft PR, and once as an attempt: when it published, the item
   waits for your review.
-- A step after the loop follows the loop's draft PR.
+- A step after the loop follows the loop's draft PR, or, when a loop
+  after a report committed nothing, runs as after that report. A loop
+  can't follow another loop directly: put a step between them.
 
 ## Notify
 
