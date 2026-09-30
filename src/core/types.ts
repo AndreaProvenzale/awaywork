@@ -147,13 +147,26 @@ export interface Step {
   branch?: string
 }
 
+/** What a loop checks after each of its steps; every key set must hold. */
+export interface Condition {
+  /** The latest verdict a step of the loop wrote. */
+  verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
+}
+
+/** Steps run round after round in one clone, until `until` holds or `max` rounds ran; one publish at the end. */
+export interface Loop {
+  loop: Step[]
+  until: Condition
+  max: number
+}
+
 export interface Rule extends Step {
   source?: string
   where: Record<string, WhereValue>
   order?: Order
   units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
-  then?: Step[]
+  then?: (Step | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
 }

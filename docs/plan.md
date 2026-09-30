@@ -250,7 +250,20 @@ Semantics, fixed so every milestone agrees:
   draft PR step off the default branch stacks at run time on the repo's
   last stacked draft PR that night. A step's branch gets `-<skill>`
   appended when an earlier draft PR in the chain renders the same name.
-  A skill runs at most once per chain.
+  A skill runs at most once per chain, loop steps included.
+- **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
+  steps round after round, planned as units `<unit>-<skill>-<round>` up
+  to `max` (at most 5). Rounds work in the clone of the draft PR unit
+  before the loop, whose publish waits for the loop's end; after a
+  report the loop's first unit clones afresh and hosts it. `until` is
+  checked after every step; its `verdict` matches the latest word a step
+  wrote to `out/verdict`. Before each step `context/previous/` holds the
+  step before's `report.md`, `verdict`, `pr.md` and a `diff.patch` of
+  its commits. A round that can't route, reaches `night.end`, fails or
+  stops ends the loop, which publishes what it has; night-shift appends
+  the loop's summary and last report to the PR body. A loop counts once
+  against the caps and as an attempt through its host; a step after the
+  loop follows the host.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill

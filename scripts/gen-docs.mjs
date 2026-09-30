@@ -92,6 +92,8 @@ function configDoc(schema) {
     const intro = s.description ? `${s.description}.\n\n` : ''
     return `${title}\n\n${intro}| Key | Type | Default | Description |\n|---|---|---|---|\n${rows.join('\n')}`
   })
+  // A union can reach one object twice at a path, e.g. a step alone or in a list.
+  const unique = [...new Set(sections)]
   return `${header('Every config key with its type, default and meaning, from the JSON Schema.')}
 # Config reference
 
@@ -108,7 +110,7 @@ with:
 \`nightshift config check\` validates what the schema cannot, such as
 \`where\` keys and skill names.
 
-${sections.join('\n\n')}
+${unique.join('\n\n')}
 `
 }
 

@@ -1,4 +1,4 @@
-import type { Age, Comparison, Item, Order, Rule, Scalar, WhereValue } from './types.js'
+import type { Age, Comparison, Item, Loop, Order, Rule, Scalar, Step, WhereValue } from './types.js'
 
 const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
   skill,
@@ -143,7 +143,7 @@ function timestamp(value: unknown): number {
     : Number.NaN
 }
 
-function matchesValue(want: WhereValue, actual: unknown): boolean {
+export function matchesValue(want: WhereValue, actual: unknown): boolean {
   const values = Array.isArray(actual) ? actual : [actual]
   if (typeof want === 'object' && !Array.isArray(want)) {
     if ('not' in want) return !matchesValue(want.not, actual)
@@ -160,6 +160,22 @@ function matchesValue(want: WhereValue, actual: unknown): boolean {
   }
   const wanted: Scalar[] = [want].flat()
   return values.some((v) => wanted.includes(v))
+}
+
+export function isLoop(entry: Step | Loop): entry is Loop {
+  return 'loop' in entry
+}
+
+/** The rule and every step it chains, loop steps included, with the config path of each. */
+export function ruleSteps(rule: Rule): { step: Step; at: (string | number)[] }[] {
+  return [
+    { step: rule, at: [] },
+    ...(rule.then ?? []).flatMap((entry, j) =>
+      isLoop(entry)
+        ? entry.loop.map((step, k) => ({ step, at: ['then', j, 'loop', k] }))
+        : [{ step: entry, at: ['then', j] }],
+    ),
+  ]
 }
 
 export interface RuleMatches {

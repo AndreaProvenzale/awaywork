@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { ruleSteps } from '../core/queue.js'
 import { builtinSkills, parseSkill, resolveSkill, type SkillMeta } from '../core/skills.js'
 import { userSkillsDir } from './paths.js'
 import type { Config } from './schema.js'
@@ -23,14 +24,13 @@ export async function unknownSkills(config: Config, userDir = userSkillsDir): Pr
     .filter((name) => !resolveSkill(name, catalog))
     .map((name) => `skills: unknown skill "${name}" (not built in, not in ${userDir})`)
   config.queue?.forEach((rule, i) => {
-    const chain = [rule, ...(rule.then ?? [])]
-    chain.forEach((step, j) => {
-      const at = j === 0 ? `queue[${i}]` : `queue[${i}].then[${j - 1}]`
+    for (const { step, at: path } of ruleSteps(rule)) {
+      const at = `queue[${i}]${path.map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('')}`
       for (const name of [step.skill, ...step.skills]) {
         if (resolveSkill(name, catalog)) continue
         problems.push(`${at}: unknown skill "${name}" (not built in, not in ${userDir})`)
       }
-    })
+    }
   })
   return problems
 }

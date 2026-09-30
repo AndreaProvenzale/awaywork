@@ -3,10 +3,10 @@ import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './a
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
+import { closestRule, defaultRules, describeComparison, fieldValue, isLoop, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
-import type { Item, Rule, Step, Unit, WhereValue } from './types.js'
+import type { Condition, Item, Loop, Rule, Step, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -19,6 +19,18 @@ export interface PlannedUnit {
   after?: string
   /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
   capped?: string
+  /** A loop round: it works in the host unit's clone, which publishes once the loop ends. */
+  loop?: LoopRound
+}
+
+export interface LoopRound {
+  host: string
+  round: number
+  /** The step's index in the loop. */
+  step: number
+  skills: string[]
+  until: Condition
+  max: number
 }
 
 export interface NightPlan {
@@ -47,6 +59,7 @@ export function planNight(input: {
   const routed: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
   const perRule: Record<number, number> = {}
+  let counted = 0
 
   for (const group of dedupe(ranked)) {
     const items = group.map((e) => e.item)
@@ -88,12 +101,20 @@ export function planNight(input: {
       step: Step,
       at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch'>,
       after?: string,
+      loop?: LoopRound,
     ) => {
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      const { provider, passed } = route(providers, allowances, routed)
-      if (provider) {
-        routed[provider] = (routed[provider] ?? 0) + 1
+      const same =
+        loop && units.find((u) => u.loop?.host === loop.host && u.loop.step === loop.step)
+      // Later rounds take round 1's route: the run re-routes each round anyway.
+      const { provider, passed } = same
+        ? { provider: same.provider, passed: same.passed }
+        : route(providers, allowances, routed)
+      if (provider && !same) routed[provider] = (routed[provider] ?? 0) + 1
+      // A loop counts once against the caps.
+      if (provider && (!loop || (loop.round === 1 && loop.step === 0))) {
+        counted++
         perRepo[repo] = (perRepo[repo] ?? 0) + 1
         perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
       }
@@ -122,16 +143,13 @@ export function planNight(input: {
         provider,
         passed,
         after,
+        ...(loop && { loop }),
       })
       return unit
     }
     const overCap = () => {
       const cap = [
-        {
-          name: 'night.units',
-          max: config.night.units,
-          count: units.filter((u) => u.provider).length,
-        },
+        { name: 'night.units', max: config.night.units, count: counted },
         {
           name: 'night.units_per_repo',
           max: config.night.units_per_repo,
@@ -144,15 +162,20 @@ export function planNight(input: {
 
     const chain = [rule, ...(rule.then ?? [])]
     const pushed: string[] = []
-    const branches = chain.map((step) => {
+    let delivers: Unit['deliver'] | undefined
+    const branches = chain.map((entry) => {
+      // A loop after a draft PR works on that unit's branch.
+      if (isLoop(entry) && delivers === 'draft_pr') return undefined
+      const step = firstStep(entry)
       const rendered = renderBranch(templateFor(step), items[0] as Item)
       const branch = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
-      if (deliverOf(step) === 'draft_pr') pushed.push(branch)
+      delivers = isLoop(entry) ? 'draft_pr' : deliverOf(step)
+      if (delivers === 'draft_pr') pushed.push(branch)
       return branch
     })
-    const bad = branches.findIndex((b) => !isValidRef(b))
+    const bad = branches.findIndex((b) => b !== undefined && !isValidRef(b))
     if (bad >= 0) {
-      const step = chain[bad] as Step
+      const step = firstStep(chain[bad] as Step | Loop)
       const where = bad > 0 ? `then ${step.skill}: ` : ''
       skip(
         `${where}branch template ${templateFor(step)} renders an invalid name "${branches[bad]}"`,
@@ -165,6 +188,36 @@ export function planNight(input: {
       continue
     }
     const id = slug(items[0]?.key ?? '')
+    /** Plans every round; the host is the draft PR unit before, else the loop's first unit on a fresh clone. */
+    const addLoop = (loop: Loop, before: Unit, branch: string | undefined): Unit => {
+      let host = branch === undefined ? before : undefined
+      const skills = loop.loop.map((s) => s.skill)
+      for (let round = 1; round <= loop.max; round++)
+        for (const [s, step] of loop.loop.entries()) {
+          const on = host ?? before
+          const unit = add(
+            step,
+            {
+              id: `${id}-${slug(step.skill)}-${round}`,
+              base: host ? host.base : before.base,
+              foreign: on.foreign,
+              untrusted: on.untrusted,
+              branch: host ? host.branch : (branch as string),
+            },
+            host ? undefined : before.id,
+            {
+              host: host?.id ?? `${id}-${slug(step.skill)}-1`,
+              round,
+              step: s,
+              skills,
+              until: loop.until,
+              max: loop.max,
+            },
+          )
+          host ??= unit
+        }
+      return { ...(host as Unit), deliver: 'draft_pr' }
+    }
     let previous = add(rule, {
       id,
       base: pr?.branch ?? '',
@@ -172,18 +225,22 @@ export function planNight(input: {
       untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
     })
-    for (const [j, step] of (rule.then ?? []).entries()) {
+    for (const [j, entry] of (rule.then ?? []).entries()) {
       const capped = overCap()
       if (capped) {
-        const last = units.at(-1) as PlannedUnit
-        last.capped = `then ${step.skill}: ${capped}`
+        const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit
+        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${capped}`
         break
+      }
+      if (isLoop(entry)) {
+        previous = addLoop(entry, previous, branches[j + 1])
+        continue
       }
       const stacked = previous.deliver === 'draft_pr'
       previous = add(
-        step,
+        entry,
         {
-          id: `${id}-${slug(step.skill)}`,
+          id: `${id}-${slug(entry.skill)}`,
           base: stacked ? previous.branch : previous.base,
           foreign: previous.foreign,
           untrusted: previous.untrusted,
@@ -194,6 +251,10 @@ export function planNight(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+function firstStep(entry: Step | Loop): Step {
+  return isLoop(entry) ? (entry.loop[0] as Step) : entry
 }
 
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */

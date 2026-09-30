@@ -213,7 +213,7 @@ First matching rule wins; top = highest priority.
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered |
+| `then` | string \| object \| object \| (string \| object \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 
 ## `queue[].where.<key>`
@@ -256,9 +256,59 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 
+## `queue[].then`
+
+Steps repeated until a condition holds; the loop publishes one draft PR at the end.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the clone of the unit before |
+| `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
+| `max` (required) | integer |  | At most this many rounds, up to 5 |
+
+## `queue[].then.loop`
+
+Same keys as `queue[].then`.
+
+## `queue[].then.loop[]`
+
+Same keys as `queue[].then`.
+
+## `queue[].then.until`
+
+Ends the loop as soon as it holds; checked after every step.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `verdict` | string \| string[] \| object |  | The latest verdict a loop step wrote; a list means any of, {not} negates |
+
+## `queue[].then.until.verdict`
+
+Matches every verdict but these.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `not` (required) | string \| string[] |  |  |
+
 ## `queue[].then[]`
 
 Same keys as `queue[].then`.
+
+## `queue[].then[].loop`
+
+Same keys as `queue[].then`.
+
+## `queue[].then[].loop[]`
+
+Same keys as `queue[].then`.
+
+## `queue[].then[].until`
+
+Same keys as `queue[].then.until`.
+
+## `queue[].then[].until.verdict`
+
+Same keys as `queue[].then.until.verdict`.
 
 ## `notify`
 

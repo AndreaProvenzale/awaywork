@@ -13,6 +13,8 @@ export interface UnitResult {
   outcome?: Outcome
   /** The one word the unit wrote to `out/verdict`. */
   verdict?: string
+  /** How the loop this unit hosts went, e.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
+  loop?: string
 }
 
 export interface NightReport {
@@ -93,7 +95,11 @@ export function runLine(runId: string, report: string | undefined): string {
 
 function status(u: UnitResult): string {
   const turns = u.turns ? `, ${u.turns} turns` : ''
-  const why = [u.status !== 'skipped' && u.reason, u.planned.capped].filter(Boolean)
+  const why = [
+    u.status !== 'skipped' && u.reason,
+    u.loop && `loop: ${u.loop}`,
+    u.planned.capped,
+  ].filter(Boolean)
   return `${u.status}${turns}${why.length > 0 ? ` (${why.join('; ')})` : ''}`
 }
 

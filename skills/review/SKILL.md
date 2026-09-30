@@ -15,6 +15,8 @@ to say.
 - Read the PR description, diff, threads and checks in the context
   folder, or `previous/` for tonight's PR. The clone is at the PR's
   branch; read the code around the diff.
+- In a loop, the branch holds tonight's work so far: review everything
+  it adds over its base, not only the last step's `diff.patch`.
 - Judge the change against what it claims to do: does it do that, and
   only that?
 - Look for correctness bugs, missing edge cases, broken contracts,

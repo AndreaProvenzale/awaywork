@@ -283,11 +283,52 @@ queue:
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
-- A skill runs at most once per chain.
+- A skill runs at most once per chain, loop steps included.
 - Steps count against the [caps](#night-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
   doesn't start; a step over a cap is left out with the rest of the chain,
   and the unit before it names the cap.
+
+#### Loops
+
+A `loop` step repeats its steps, round after round, until a condition
+holds or `max` rounds ran. Review and fix until the review approves, with
+the other agent reviewing:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    then:
+      - loop:
+          - { skill: review, provider: codex }
+          - address-review
+        until: { verdict: [approve, comments] }
+        max: 3
+```
+
+- Every round works in the clone of the draft PR unit before the loop,
+  on its branch, and nothing is pushed until the loop ends: then that
+  unit opens one draft PR with every round's commits. Its body ends with
+  how the loop went and the last report a round wrote. After a report,
+  the loop starts from a fresh clone on the same base, and its first
+  unit opens the draft PR.
+- `until` is checked after every step and ends the loop as soon as it
+  holds. `verdict` is the latest word a step wrote to
+  `.nightshift/out/verdict` (built-in `review` writes `approve`,
+  `comments` or `changes`); it takes a word, a list for any of, or
+  `{ not: … }`. `max` is at most 5.
+- A step finds the one before's output in `.nightshift/context/previous/`:
+  its `report.md` and `verdict`, the PR body so far in `pr.md`, and its
+  commits in `diff.patch`.
+- Each round is routed and budgeted live. No provider left, `night.end`,
+  or a step that fails or stops ends the loop, which still publishes what
+  it has and says why.
+- Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
+  `plan` lists round 1. A loop counts once against the caps, since it
+  opens one draft PR, and once as an attempt: when it published, the item
+  waits for your review.
+- A step after the loop follows the loop's draft PR.
 
 ## Notify
 

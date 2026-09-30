@@ -95,7 +95,9 @@ task linked to your PR becomes one unit with that PR.
   Skips live in `~/.local/state/night-shift/skips.json`, and
   `run --unit` runs the item anyway.
 - Units run one at a time, in queue order; a rule's
-  [`then`](./configuration.md#then) steps run right after its unit.
+  [`then`](./configuration.md#then) steps run right after its unit. A
+  [loop](./configuration.md#loops) repeats its steps in one clone and
+  publishes once, when it ends.
 - A draft PR that would start from the default branch stacks on the last
   one published on its repo that night instead, so a night's PRs don't
   conflict with each other. A chain counts as one: the next unit stacks
@@ -129,7 +131,8 @@ unit goes to the next provider.
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
 draft PR a `then` step follows, else your PR's branch, else tonight's
-last draft PR on the repo, else the default branch.
+last draft PR on the repo, else the default branch. A loop's rounds reuse
+the clone of the unit the loop started from.
 
 - `.nightshift/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -156,7 +159,7 @@ last draft PR on the repo, else the default branch.
 
 Either way, a skill that defines verdicts also writes one word to
 `.nightshift/out/verdict`, such as `approve`. The report shows it next to
-the unit's result.
+the unit's result, and a [loop](./configuration.md#loops) can end on it.
 
 `review` and `plan` default to `report`, every other skill to `draft_pr`;
 a rule can override either. Every PR body ends with a footer naming
