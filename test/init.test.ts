@@ -10,10 +10,12 @@ import { loadSkills } from '../src/config/skills.js'
 import type { Ctx } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
 import { githubSource } from '../src/sources/github.js'
+import { jiraSource } from '../src/sources/jira.js'
 import { linearSource } from '../src/sources/linear.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 import { recorded } from './fakes/gh.js'
+import { jiraFetch } from './fakes/jira.js'
 import { linearFetch } from './fakes/linear.js'
 import { fakeProvider } from './fakes/provider.js'
 
@@ -30,6 +32,7 @@ const registry = (env: Ctx['env'] = { ASANA_TOKEN: 'pat' }) => ({
     github: githubSource(gh()),
     asana: asanaSource(recordedFetch(asanaRoutes())),
     linear: linearSource(linearFetch()),
+    jira: jiraSource(jiraFetch()),
   },
   skills,
 })
@@ -144,6 +147,43 @@ describe('init', () => {
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
       ['qa-feedback', { state: 'QA' }],
       ['continue', { state: 'In Progress' }],
+    ])
+  })
+
+  it("maps Jira projects to repos through the gateway and rules onto the site's statuses", async () => {
+    const ask = scriptedAsk([
+      [/^Providers/, initial],
+      [/^Where does the work come from/, ['jira']],
+      [/^Jira Cloud site/, 'acme.atlassian.net'],
+      [/^Atlassian account email/, 'dev@acme.test'],
+      [/^Atlassian API token/, 'atl-token'],
+      [/^Is the token scoped/, true],
+      [/^Jira projects/, ['ENG', 'WEB']],
+      [/^GitHub repo for issues in ENG/, 'acme/api'],
+      [/^GitHub repo for issues in WEB/, ''],
+      [/^Starting queue/, initial],
+      [/^Which status holds the items for qa-feedback/, initial],
+      [/^Which status holds the items for continue/, initial],
+      [/^Which status holds the items for plan/, initial],
+      [/^Night starts/, initial],
+      [/^Night ends/, initial],
+    ])
+    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry({}) })
+    expect(ask.secrets).toEqual(['JIRA_API_TOKEN'])
+    const cfg = parseConfig(text)
+    expect(cfg.sources).toEqual({
+      jira: {
+        site: 'acme.atlassian.net',
+        email: 'dev@acme.test',
+        cloud_id: '0a1b2c3d-0000-4000-8000-000000000001',
+        project_repos: { ENG: 'acme/api' },
+        token_env: 'JIRA_API_TOKEN',
+      },
+    })
+    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
+      ['qa-feedback', { status: 'QA' }],
+      ['continue', { status: 'In Progress' }],
+      ['plan', { status: 'To Do' }],
     ])
   })
 

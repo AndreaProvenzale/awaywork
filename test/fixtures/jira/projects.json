@@ -1,0 +1,10 @@
+{
+  "startAt": 0,
+  "maxResults": 100,
+  "total": 2,
+  "isLast": true,
+  "values": [
+    { "id": "10000", "key": "ENG", "name": "Engineering" },
+    { "id": "10001", "key": "WEB", "name": "Web" }
+  ]
+}

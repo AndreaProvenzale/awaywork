@@ -131,6 +131,7 @@ Where work comes from; configure at least one.
 | `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me; also the forge |
 | `asana` | object |  | My incomplete Asana tasks |
 | `linear` | object |  | My open Linear issues |
+| `jira` | object |  | My unresolved Jira Cloud issues |
 
 ## `sources.github`
 
@@ -160,6 +161,19 @@ My open Linear issues.
 | `team_repos` | map |  | Team key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
 
+## `sources.jira`
+
+My unresolved Jira Cloud issues.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `site` (required) | string |  | Jira Cloud site host, e.g. acme.atlassian.net |
+| `email` (required) | string |  | Atlassian account email the API token belongs to |
+| `cloud_id` | string |  | Site cloud id: set for a scoped token, which calls api.atlassian.com |
+| `jql` | string |  | JQL condition ANDed with my unresolved issues |
+| `project_repos` | map |  | Project key -> owner/repo where its issues' code lives |
+| `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
+
 ## `repos.<key>`
 
 | Key | Type | Default | Description |
@@ -177,7 +191,7 @@ First matching rule wins; top = highest priority.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
-| `source` | "github" \| "asana" \| "linear" |  | Match only items from this source |
+| `source` | "github" \| "asana" \| "linear" \| "jira" |  | Match only items from this source |
 | `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |

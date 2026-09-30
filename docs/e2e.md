@@ -23,6 +23,7 @@ From `lessons.md`:
 |---|---|
 | Asana | Never read a live workspace (`real-asana.test.ts`), nor `project_repos`. |
 | Linear | Never read a live workspace (`real-linear.test.ts`), nor `team_repos`; queries shaped from the documented schema, not replayed from real responses. |
+| Jira | Never read a live site (`real-jira.test.ts`), nor `project_repos`, a scoped token or the gateway; fixtures shaped from the documented responses. |
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
 | Claude ceiling | Never stopped mid-run: real units stayed below 1% of either window. |
