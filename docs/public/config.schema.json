@@ -420,7 +420,7 @@
           },
           "where": {
             "default": {},
-            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers",
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -503,6 +503,23 @@
                   },
                   "additionalProperties": false,
                   "description": "Matches items whose number field passes every comparison"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "older_than": {
+                      "description": "Longer ago than this span",
+                      "type": "string",
+                      "pattern": "^\\d+[mhdw]$"
+                    },
+                    "newer_than": {
+                      "description": "More recent than this span",
+                      "type": "string",
+                      "pattern": "^\\d+[mhdw]$"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Matches items whose date field is this long before now, e.g. { older_than: 3d }"
                 }
               ]
             }

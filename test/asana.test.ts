@@ -44,10 +44,12 @@ describe('asana source', () => {
       tags: ['backend'],
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
+      due: '2026-01-10',
       'fields.ID': 'ENG-12',
       'fields.Priority': 'High',
       'fields.Estimate': 3,
       'fields.Platforms': ['API', 'Web'],
+      'fields.Launch': '2026-02-01',
     })
     expect(eng14?.fields).toMatchObject({
       project: ['Backend', 'Roadmap'],

@@ -85,6 +85,13 @@ describe('config', () => {
     expect(problems(rule('{ unresolved_threads: {} }'))).toEqual([
       expect.stringContaining('queue[0].where.unresolved_threads'),
     ])
+    expect(problems(rule('{ updated: { older_than: 3d, newer_than: 2w } }'))).toEqual([])
+    expect(problems(rule('{ created: { older_than: 3 days } }'))).toEqual([
+      expect.stringContaining('queue[0].where.created'),
+    ])
+    expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
+      'queue[0].where.checks: older_than and newer_than need a date field',
+    ])
   })
 
   it('takes a rule order', () => {

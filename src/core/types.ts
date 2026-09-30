@@ -132,7 +132,9 @@ export interface Forge {
 
 export type Scalar = string | number | boolean
 export type Comparison = Partial<Record<'gt' | 'gte' | 'lt' | 'lte', number>>
-export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison
+/** Spans like `3d`: a number and m, h, d or w. */
+export type Age = Partial<Record<'older_than' | 'newer_than', string>>
+export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison | Age
 
 /** What a unit runs: a rule's own settings, or a step it chains after its unit. */
 export interface Step {

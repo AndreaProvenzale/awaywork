@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { bounds } from '../core/queue.js'
+import { bounds, isAge, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { sourceField, sources } from '../sources/index.js'
@@ -91,6 +91,7 @@ const sourcesConfig = z
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const scalars = z.union([scalar, z.array(scalar).min(1)])
+const span = z.string().regex(spanPattern, 'expected a span like 3d: a number and m, h, d or w')
 const whereValue = z.union([
   scalars,
   z.strictObject({ not: scalars }).describe('Matches items whose field has none of these values'),
@@ -103,6 +104,13 @@ const whereValue = z.union([
     })
     .refine((c) => Object.keys(c).length > 0, 'expected gt, gte, lt or lte')
     .describe('Matches items whose number field passes every comparison'),
+  z
+    .strictObject({
+      older_than: span.optional().describe('Longer ago than this span'),
+      newer_than: span.optional().describe('More recent than this span'),
+    })
+    .refine((a) => Object.keys(a).length > 0, 'expected older_than or newer_than')
+    .describe('Matches items whose date field is this long before now, e.g. { older_than: 3d }'),
 ])
 
 const skill = z.string().min(1).describe('The skill that does the work')
@@ -144,7 +152,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .record(z.string(), whereValue)
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now',
       ),
     ...stepSettings,
     order: z
@@ -276,6 +284,15 @@ export const configSchema = z
           })
           continue
         }
+        if (typeof value === 'object' && !Array.isArray(value) && isAge(value)) {
+          if (!field.safeParse(new Date().toISOString()).success)
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'where', key],
+              message: 'older_than and newer_than need a date field',
+            })
+          continue
+        }
         for (const v of whereValues(value))
           if (!field.safeParse(v).success)
             ctx.addIssue({
@@ -310,7 +327,8 @@ function fieldFor(scope: string[], key: string): z.ZodType | undefined {
 
 function whereValues(value: WhereValue): Scalar[] {
   if (typeof value !== 'object' || Array.isArray(value)) return [value].flat()
-  return 'not' in value ? [value.not].flat() : bounds(value).map(([, bound]) => bound)
+  if ('not' in value) return [value.not].flat()
+  return isAge(value) ? [] : bounds(value).map(([, bound]) => bound)
 }
 
 function unknownKey(key: string, scope: string[]): string {
