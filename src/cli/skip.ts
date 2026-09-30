@@ -1,4 +1,5 @@
 import type { Command } from 'commander'
+import { configPath, loadConfig } from '../config/load.js'
 import { skipsPath } from '../config/paths.js'
 import {
   activeSkips,
@@ -8,7 +9,6 @@ import {
   saveSkips,
   untilTime,
 } from '../core/skips.js'
-import { sources } from '../sources/index.js'
 
 export function skipCommand(program: Command): void {
   program
@@ -23,7 +23,7 @@ export function skipCommand(program: Command): void {
     .option('--reason <text>', 'why, shown by nightshift plan')
     .action((key: string | undefined, opts: Skip) =>
       printOutcome(async () => {
-        if (key) return skipItem(key, opts)
+        if (key) return skipItem(key, opts, await configuredSources(program))
         if (opts.until || opts.reason)
           throw new Error('name the item to skip: nightshift skip <source:key>')
         return listSkips()
@@ -33,7 +33,13 @@ export function skipCommand(program: Command): void {
   program
     .command('unskip <key>')
     .description('let night-shift pick up a skipped item (source:key) again')
-    .action((key: string) => printOutcome(() => unskipItem(key)))
+    .action((key: string) =>
+      printOutcome(async () => unskipItem(key, await configuredSources(program))),
+    )
+}
+
+async function configuredSources(program: Command): Promise<string[]> {
+  return Object.keys((await loadConfig(configPath(program.opts().config))).sources)
 }
 
 async function printOutcome(command: () => Promise<string>): Promise<void> {
@@ -46,19 +52,20 @@ async function printOutcome(command: () => Promise<string>): Promise<void> {
 }
 
 /** Items are named `source:key`: two trackers can both have an `ENG-12`. */
-function checkKey(key: string): void {
+function checkKey(key: string, sources: string[]): void {
   const [source = '', ...rest] = key.split(':')
-  if (!Object.hasOwn(sources, source) || !rest.join(':'))
+  if (!sources.includes(source) || !rest.join(':'))
     throw new Error(`name the item as source:key, e.g. github:acme/api#5 (got ${key})`)
 }
 
 export async function skipItem(
   key: string,
   skip: Skip,
+  sources: string[],
   path = skipsPath,
   now = Date.now(),
 ): Promise<string> {
-  checkKey(key)
+  checkKey(key, sources)
   if (skip.until !== undefined && (untilTime(skip.until) ?? 0) <= now)
     throw new Error(`--until ${skip.until} is not a future date (YYYY-MM-DD)`)
   const skips = await loadSkips(path)
@@ -67,8 +74,12 @@ export async function skipItem(
   return describeSkip(key, skip)
 }
 
-export async function unskipItem(key: string, path = skipsPath): Promise<string> {
-  checkKey(key)
+export async function unskipItem(
+  key: string,
+  sources: string[],
+  path = skipsPath,
+): Promise<string> {
+  checkKey(key, sources)
   const skips = await loadSkips(path)
   if (!skips[key]) return `${key} is not skipped`
   delete skips[key]
