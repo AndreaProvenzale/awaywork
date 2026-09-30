@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { clock } from '../core/window.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
 export const REPO_CONFIG = '.night-shift/config.yml'
-const ACTION = 'AndreaProvenzale/night-shift@v1'
+const ACTION_REPO = 'AndreaProvenzale/night-shift'
+const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
   start: string
@@ -54,4 +55,11 @@ export async function removeWorkflow(root: string): Promise<boolean> {
   if (!existsSync(file)) return false
   await rm(file)
   return true
+}
+
+/** Warns when the repo's workflow predates night-shift's action and runs its steps inline. */
+export async function staleWorkflow(root: string): Promise<string | undefined> {
+  const file = join(root, WORKFLOW)
+  if (!existsSync(file) || (await readFile(file, 'utf8')).includes(`uses: ${ACTION_REPO}@`)) return
+  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule remove\`, then \`nightshift schedule install --with github-actions\``
 }

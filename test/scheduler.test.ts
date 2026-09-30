@@ -8,7 +8,12 @@ import { parse } from 'yaml'
 import { offerSecrets, staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLine, parseCronLine } from '../src/scheduler/cron.js'
-import { removeWorkflow, WORKFLOW, workflow } from '../src/scheduler/github-actions.js'
+import {
+  removeWorkflow,
+  staleWorkflow,
+  WORKFLOW,
+  workflow,
+} from '../src/scheduler/github-actions.js'
 import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
@@ -168,6 +173,14 @@ it('ships an action that installs the pinned version and runs the night', async 
   expect(runs).toContain(
     "nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
   )
+  const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
+  expect(step("Commit as the token's user").run).toContain(
+    'git config --global user.email "$user@users.noreply.github.com"',
+  )
+  expect(step('Morning report')).toMatchObject({
+    if: 'always()',
+    run: 'nightshift report >> "$GITHUB_STEP_SUMMARY" || true',
+  })
 })
 
 it('removes only its own workflow from a repo', async () => {
@@ -179,6 +192,17 @@ it('removes only its own workflow from a repo', async () => {
   expect(existsSync(join(root, WORKFLOW))).toBe(false)
   expect(existsSync(join(root, '.github/workflows/ci.yml'))).toBe(true)
   expect(await removeWorkflow(root)).toBe(false)
+})
+
+it('warns about a workflow that runs its steps inline instead of calling the action', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  expect(await staleWorkflow(root)).toBeUndefined()
+  await mkdir(join(root, '.github/workflows'), { recursive: true })
+  await writeFile(join(root, WORKFLOW), 'steps:\n  - run: npm install -g nightshift-agent\n')
+  expect(await staleWorkflow(root)).toMatch(/doesn't call night-shift's action/)
+  const current = { start: '01:30', timezone: 'UTC', config: 'c.yml', version: '0.3.1' }
+  await writeFile(join(root, WORKFLOW), workflow({ ...current, packages: [], secrets: [] }))
+  expect(await staleWorkflow(root)).toBeUndefined()
 })
 
 it('offers to set only the secrets it has values for, and never prints them', async () => {

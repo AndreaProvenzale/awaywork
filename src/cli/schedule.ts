@@ -101,7 +101,7 @@ export async function staleSchedules(
   return warnings
 }
 
-const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+export const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */
 export async function installSchedule(config: string | undefined, id?: string): Promise<void> {
