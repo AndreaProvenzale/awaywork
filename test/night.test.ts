@@ -817,6 +817,81 @@ repos:
   expect(formatReport(report)).toContain('### acme-api-1: PR 1 (fix-ci)')
 })
 
+it("loops in the push unit's clone and pushes every round's commits onto your PR once", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  expect(formatPlan(plan)).toContain(
+    'loop review ⇄ implement until verdict approve, at most 2 rounds; one push onto feature-1 from acme-api-1',
+  )
+  const prompts: string[] = []
+  const verdicts: Record<string, string> = {
+    'acme-api-1-review-1': 'changes',
+    'acme-api-1-review-2': 'approve',
+  }
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      const out = join(job.dir, '.nightshift/out')
+      if (job.unit.deliver === 'report') {
+        await writeFile(join(out, 'report.md'), `${job.unit.id} review.`)
+        await writeFile(join(out, 'verdict'), verdicts[job.unit.id] ?? '')
+      } else {
+        await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+        await git(job.dir, 'add', '.')
+        await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+        if (job.unit.deliver === 'push') await writeFile(join(out, 'report.md'), 'Fixed CI.')
+      }
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: provider },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(opened).toEqual([])
+  const host = report.results[0]
+  expect(host?.outcome).toMatchObject({ kind: 'pushed', branch: 'feature-1', commits: 2 })
+  expect(host?.outcome && 'text' in host.outcome && host.outcome.text).toContain(
+    'Fixed CI.\n\n## Night-shift loop\n\n2 rounds of review ⇄ implement; until held: verdict approve.',
+  )
+  const log = await git(origin, 'log', '--format=%s', 'feature-1')
+  expect(log.stdout.split('\n')).toEqual([
+    'Work on acme-api-1-implement-1',
+    'Work on acme-api-1',
+    'init',
+  ])
+  expect(prompts[2]).toContain(
+    "Deliver: commits for the loop. Commit on this branch; night-shift pushes them onto `feature-1`, the developer's own pull request, when the loop ends.",
+  )
+})
+
 it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-setup-'))
   const { forge } = await originForge(root)

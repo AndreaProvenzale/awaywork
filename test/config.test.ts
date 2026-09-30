@@ -212,6 +212,11 @@ describe('config', () => {
     expect(loop('[review], until: {}, max: 1')).toEqual([
       'queue[0].then.until: expected verdict or command',
     ])
+    expect(
+      loop('[review, { skill: fix-ci, deliver: push }], until: { verdict: approve }, max: 2'),
+    ).toEqual([
+      'queue[0].then[0].loop[1].deliver: a loop publishes through the unit before it: set deliver push there',
+    ])
     const loops = (between: string) =>
       problems(`${minimal}queue:
   - skill: implement

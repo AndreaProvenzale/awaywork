@@ -65,9 +65,10 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       if (p.after) out.push(`     after ${p.after}`)
       if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}`)
       if (p.loop?.step === 0) {
-        const { skills, until, max, host } = p.loop
+        const { skills, until, max, host, deliver } = p.loop
+        const publish = deliver === 'push' ? `one push onto ${p.unit.base}` : 'one draft PR'
         out.push(
-          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; one draft PR from ${host}`,
+          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; ${publish} from ${host}`,
         )
       }
       const [top, ...merged] = p.unit.items

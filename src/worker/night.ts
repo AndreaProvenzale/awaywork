@@ -13,6 +13,7 @@ import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
   notSymlink,
+  outputFile,
   prepareWorkspace,
   readOutput,
   refuseSymlinks,
@@ -163,7 +164,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     return { facts, check: ran }
   }
 
-  /** Publishes the loop's clone once, as its host's draft PR, with how the loop went. */
+  /** Publishes the loop's clone once, as its host's draft PR or push, with how the loop went. */
   const closeLoop = async (loop: OpenLoop) => {
     open = undefined
     const { host, unit, dir } = loop
@@ -174,8 +175,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (loop.interrupted)
         host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
       else {
-        await appendLoopSummary(dir, loop)
-        const published = await publish({ ...unit, deliver: 'draft_pr' }, dir, n.forge, n.runId)
+        const deliver = unit.deliver === 'push' ? 'push' : 'draft_pr'
+        const output = `${WORK_DIR}/out/${outputFile[deliver]}`
+        await refuseSymlinks(dir, [output])
+        const file = join(dir, output)
+        // The rounds cleared the push host's report from the clone; its unit dir kept it.
+        if (deliver === 'push')
+          await cp(join(loop.unitDir, 'out', outputFile.push), file).catch(() => {})
+        await appendLoopSummary(file, loop)
+        const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId)
         // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
         const kept =
           host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
@@ -186,6 +194,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           opened[`${unit.repo} ${unit.branch}`] = published.url
           if (loop.stacks) tips[unit.repo] = unit.branch
         }
+        if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
       }
     } catch (e) {
       Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
@@ -228,8 +237,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         ? (ranOn[after.planned.unit.id] ?? p.unit.base)
         : p.unit.base)
     const { repo } = p.unit
-    // A loop publishes its host as a draft PR, whatever the host's own delivery.
-    const deliver = hosting ? 'draft_pr' : p.unit.deliver
+    // A loop publishes its host as a draft PR, unless the host pushes onto your PR.
+    const deliver = hosting && p.unit.deliver !== 'push' ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
     const onto = stacks ? (tips[repo] ?? '') : base
     const tonight = opened[`${repo} ${onto}`]
@@ -595,10 +604,8 @@ function describeLoop(loop: OpenLoop): string {
   return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`
 }
 
-/** night-shift's own note in the PR body: how the loop went, its last verdict, and the last report a round wrote. */
-async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
-  await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
-  const file = join(dir, WORK_DIR, 'out', 'pr.md')
+/** night-shift's own note in the PR body or push report: how the loop went, its last verdict, and the last report a round wrote. */
+async function appendLoopSummary(file: string, loop: OpenLoop): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
   const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''

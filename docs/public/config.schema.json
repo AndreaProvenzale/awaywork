@@ -1255,7 +1255,7 @@
                   "max"
                 ],
                 "additionalProperties": false,
-                "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
+                "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
               },
               {
                 "minItems": 1,
@@ -1817,7 +1817,7 @@
                         "max"
                       ],
                       "additionalProperties": false,
-                      "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
+                      "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
                     }
                   ]
                 }

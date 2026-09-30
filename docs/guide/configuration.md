@@ -333,9 +333,11 @@ queue:
   unit opens one draft PR with every round's commits. Its body ends with
   how the loop went, the last verdict and the last report a round
   wrote. If that unit doesn't finish `done` with commits, it publishes
-  as usual and the loop doesn't run. After a report, the loop starts
-  from a fresh clone on the same base, and its first unit opens the
-  draft PR.
+  as usual and the loop doesn't run. After a [`push`](#push) unit, the
+  loop works in that unit's clone the same way and ends with one push
+  onto your PR, the summary in its report. After a report, the loop
+  starts from a fresh clone on the same base, and its first unit opens
+  the draft PR.
 - `until` is checked after every step and ends the loop as soon as it
   holds; with both keys, both must. `verdict` is the latest word a step
   wrote to `.nightshift/out/verdict` (built-in `review` writes `approve`,
@@ -449,6 +451,9 @@ queue:
 - A `then` step can push only after a report or a push, onto the same
   PR. After a draft PR its base is that night's new branch, not your PR:
   the step is left out with the rest of the chain.
+- A [loop](#loops) after a push unit pushes every round's commits once,
+  when it ends. A loop's own steps can't set `deliver: push`: the unit
+  before the loop does.
 - A fast-forward only: night-shift refuses when the branch moved since
   the clone, and never forces. The commits get the `Night-shift:` trailer.
 - The agent writes `.nightshift/out/report.md`; without it nothing is

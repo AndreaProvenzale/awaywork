@@ -235,7 +235,10 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
   const continues = loop !== undefined && loop.host !== unit.id
   const body = continues && !!previous && existsSync(join(previous.out, outputFile.draft_pr))
   const deliver = {
-    draft_pr: `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`,
+    draft_pr:
+      loop?.deliver === 'push'
+        ? `commits for the loop. Commit on this branch; night-shift pushes them onto ${base}, the developer's own pull request, when the loop ends.`
+        : `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`,
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. Commit on this branch and write \`${output}\`.`,
   }[unit.deliver]
@@ -266,7 +269,11 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
 
 function loopSection(loop: LoopRound, unit: Unit): string {
   const ends = describeCondition(loop.until)
-  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift publishes the branch as one draft PR when the loop ends.`
+  const publish =
+    loop.deliver === 'push'
+      ? `pushes the branch's commits onto \`${unit.base}\``
+      : 'publishes the branch as one draft PR'
+  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift ${publish} when the loop ends.`
 }
 
 function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean): string {

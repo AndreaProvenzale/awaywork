@@ -39,6 +39,8 @@ export interface LoopRound {
   skills: string[]
   until: Condition
   max: number
+  /** How the loop publishes: its host's draft PR, or a push onto the developer's PR. */
+  deliver: 'draft_pr' | 'push'
 }
 
 export interface NightPlan {
@@ -176,8 +178,8 @@ export function planNight(input: {
     const pushed: string[] = []
     let delivers: Unit['deliver'] | undefined
     const branches = chain.map((entry) => {
-      // A loop after a draft PR works on that unit's branch.
-      if (isLoop(entry) && delivers === 'draft_pr') return undefined
+      // A loop after a draft PR or a push works on that unit's branch.
+      if (isLoop(entry) && (delivers === 'draft_pr' || delivers === 'push')) return undefined
       const step = firstStep(entry)
       const rendered = renderBranch(templateFor(step), items[0] as Item)
       const branch = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
@@ -207,9 +209,10 @@ export function planNight(input: {
       continue
     }
     const id = slug(items[0]?.key ?? '')
-    /** Plans every round; the host is the draft PR unit before, else the loop's first unit on a fresh clone. */
+    /** Plans every round; the host is the draft PR or push unit before, else the loop's first unit on a fresh clone. */
     const addLoop = (loop: Loop, before: Unit, branch: string | undefined): Unit => {
       let host = branch === undefined ? before : undefined
+      const deliver = host?.deliver === 'push' ? 'push' : 'draft_pr'
       const skills = loop.loop.map((s) => s.skill)
       for (let round = 1; round <= loop.max; round++)
         for (const [s, step] of loop.loop.entries()) {
@@ -231,11 +234,12 @@ export function planNight(input: {
               skills,
               until: loop.until,
               max: loop.max,
+              deliver,
             },
           )
           host ??= unit
         }
-      return { ...(host as Unit), deliver: 'draft_pr' }
+      return { ...(host as Unit), deliver }
     }
     let previous = add(rule, {
       id,

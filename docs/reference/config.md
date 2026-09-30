@@ -277,7 +277,7 @@ Matches every verdict but these.
 
 ## `queue[].then` (loop)
 
-Steps repeated until a condition holds; the loop publishes one draft PR at the end.
+Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
