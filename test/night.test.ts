@@ -846,7 +846,7 @@ queue:
 
   const url = 'https://example.com/acme/api/pull/night/acme-api-1'
   expect(report.results.map((u) => [u.planned.unit.id, u.outcome, u.verdict])).toEqual([
-    ['acme-api-1', { kind: 'pr', url, commits: 2 }, undefined],
+    ['acme-api-1', { kind: 'pr', url, commits: 2 }, 'approve'],
     [
       'acme-api-1-review-1',
       { kind: 'report', text: 'acme-api-1-review-1 says changes.' },
@@ -902,7 +902,7 @@ queue:
   expect(prompts[4]).toContain(`which opened ${url} tonight; you start from its branch.`)
   const text = formatReport(report)
   expect(text).toContain(
-    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits) |`,
+    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
   )
   expect(text).toContain(
     '| 4 | acme-api-1-review-2 | review | claude | done, 1 turns | report below, verdict approve |',
@@ -1190,7 +1190,7 @@ queue:
     ['night/acme-api-1-qa-feedback', 'night/acme-api-1'],
   ])
   expect(opened[1]?.body).toContain(`Stacked on ${url}: merge that first.`)
-  expect(seen['acme-api-1-plan']).toEqual(['check.log', 'diff.patch', 'pr.md'])
+  expect(seen['acme-api-1-plan']).toEqual(['diff.patch', 'pr.md', 'when.log'])
   const prompt = await readFile(join(root, 'run/units/acme-api-1-plan/prompt.md'), 'utf8')
   expect(prompt).toContain(
     'Before you started, night-shift ran `test -e acme-api-1-qa-feedback.txt`',
@@ -1857,4 +1857,92 @@ it('ends a loop interrupted between rounds, and retries its chain without counti
   })
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})
+})
+
+it("reads a loop's last verdict in the when of the step after it", async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+      - { skill: plan, when: { verdict: approve } }
+`,
+    [issue(1)],
+    looper({ 'acme-api-1-review-1': 'approve' }),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.verdict])).toEqual([
+    ['acme-api-1', 'done', 'approve'],
+    ['acme-api-1-review-1', 'done', 'approve'],
+    ['acme-api-1-plan', 'done', undefined],
+  ])
+})
+
+it("doesn't run a check without network, or while the clone has uncommitted changes", async () => {
+  const provider = looper({})
+  const env = { ctx: { env: { PATH: process.env.PATH }, log: () => {} } }
+  const offline = await loopNight(
+    `queue:
+  - skill: implement
+    network: false
+    then: { skill: review, when: { command: 'true' } }
+`,
+    [issue(1)],
+    provider,
+    env,
+  )
+  expect(offline.report.results[1]?.reason).toBe(
+    "when `true` passes didn't hold (not run without network: it has no sandbox)",
+  )
+
+  const dirty = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [address-review], until: { command: 'test -e fixed.txt' }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-address-review-1')
+          await writeFile(join(job.dir, 'fixed.txt'), 'uncommitted')
+      },
+    },
+    env,
+  )
+  expect(dirty.report.results[0]?.loop).toBe('1 round of address-review; max 1 round reached')
+  expect(dirty.opened[0]?.body).toContain('failed: uncommitted changes in the clone')
+})
+
+it("fences a failed check's output in the PR body past any backticks in it", async () => {
+  const { opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [address-review], until: { command: "echo '\`\`\`\`'; false" }, max: 1 }
+`,
+    [issue(1)],
+    looper({}),
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(opened[0]?.body).toContain("`````\n$ echo '````'; false\n````\nfailed:")
+})
+
+it('matches changed against the draft PR a chain stacked on, not the default branch', async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { skill: review, when: { changed: acme-api-1.txt } }
+`,
+    [issue(1), issue(2)],
+    looper({}),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-review', 'done', undefined],
+    ['acme-api-2', 'done', undefined],
+    ['acme-api-2-review', 'skipped', "when the branch changes acme-api-1.txt didn't hold"],
+  ])
 })

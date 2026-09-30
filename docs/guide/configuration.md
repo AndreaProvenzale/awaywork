@@ -325,13 +325,15 @@ queue:
   step, outside the model; it holds when it exits 0. `max` is at most 5.
 - A command runs like `setup` on a branch a worker wrote: without the
   repo's `secrets`, for at most 15 minutes, and not past `night.end`. It
-  runs again only once a step committed. On a PR whose author isn't
-  trusted it doesn't run and doesn't hold.
+  runs again only once a step committed. It doesn't run, and doesn't
+  hold, on a PR whose author isn't trusted, with `network: false` (it
+  would run the worker's code outside the worker's sandbox), or while the
+  clone has uncommitted changes, which the branch wouldn't publish.
 - A step finds the one before's output in `.nightshift/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When
-  the loop ends with the command failing, its output goes into the PR
-  body too.
+  the loop ends with the command failing, the tail of its output goes
+  into the PR body too.
 - Each round is routed and budgeted live. No provider left, `night.end`,
   or a step that fails or stops ends the loop, which still publishes what
   it has and says why; a loop after a report that ends this way with no
@@ -376,9 +378,10 @@ queue:
 - `command` runs as in `until`, in the step's clone before its agent
   starts. Prefix `!` to run a step only when a check fails, such as a
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
-  `.nightshift/context/previous/check.log`.
-- `changed` is a glob or a list; it holds when the branch changes a
-  matching path against the repo's default branch.
+  `.nightshift/context/previous/when.log`.
+- `changed` is a glob or a list; it holds when the chain's commits change
+  a matching path: against the repo's default branch, or the draft PR the
+  chain stacked on.
 - Every key set must hold. `plan` shows each step's `when`, and the
   report says which one didn't hold.
 - A skipped step doesn't end a loop. After a report, a loop's first unit

@@ -271,14 +271,16 @@ Semantics, fixed so every milestone agrees:
   counts a failure unless a round couldn't run for `night.end` or no
   provider left. An interrupted loop publishes nothing and records no attempt, like an aborted unit. A loop
   counts once against the caps and as an attempt through its host; a
-  step after the loop follows the host, or runs where the host ran when
-  the host kept its report.
+  step after the loop follows the host, which carries the loop's last
+  verdict, or runs where the host ran when the host kept its report.
 - **Conditions.** A condition's `command` runs outside the model like
   `setup` on a branch a worker wrote (no repo secrets, 15 minutes, not
   past `night.end`), once per commit per clone; on an untrusted author's
-  PR it doesn't run and doesn't hold. Its last 200 lines go to
-  `check.log`. A step's `when` (`verdict` of the unit before, `command`,
-  `changed` globs against the default branch) is checked in its clone
+  PR, on an offline unit (night-shift has no sandbox of its own) or in a
+  clone with uncommitted changes it doesn't run and doesn't hold. Its
+  last 8 KB go to `check.log`, or `when.log` for a `when`. A step's `when`
+  (`verdict` of the unit before, `command`, `changed` globs against the
+  branch the chain's commits started from) is checked in its clone
   after setup; when it doesn't hold the step is passed over: the next
   step follows the unit before it and starts from the base it would
   have, and attempts walk past it. A passed-over step doesn't end a loop.
