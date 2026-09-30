@@ -8,7 +8,7 @@ import { formatReport, runLine, summarize } from '../core/report.js'
 import { nightEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
-import { sources } from '../sources/index.js'
+import { sourceFor } from '../sources/index.js'
 import { runNight } from '../worker/night.js'
 import { notify } from '../worker/notify.js'
 import { reportConfigError } from './config.js'
@@ -52,7 +52,12 @@ export function runCommand(program: Command): void {
           only: opts.unit,
           until,
           providers,
-          sources,
+          sources: Object.fromEntries(
+            Object.entries(config.sources).flatMap(([id, cfg]) => {
+              const source = sourceFor(id, cfg)
+              return source ? [[id, source]] : []
+            }),
+          ),
           forge: githubForge(),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,

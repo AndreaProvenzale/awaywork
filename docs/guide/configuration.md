@@ -123,6 +123,7 @@ including someone else's PR:
 | `asana` | `workspace` gid, optional `projects` (gids), `project_repos` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `team_repos` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `project_repos` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
+| any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
 
 Asana has no read-only personal token: the token can do anything you can.
 night-shift only reads with it and never hands it to the agent. Create
@@ -323,6 +324,7 @@ or `~/.config/night-shift/env` (the environment wins).
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |
+| A custom source's `secrets` | That source's command |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |

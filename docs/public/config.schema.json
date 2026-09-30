@@ -390,8 +390,43 @@
           "description": "My unresolved Jira Cloud issues"
         }
       },
-      "additionalProperties": false,
-      "description": "Where work comes from; configure at least one"
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Shell command printing the items as a JSON array; runs in the config file's folder"
+          },
+          "fields": {
+            "default": [],
+            "description": "Item fields rules may match on",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secrets": {
+            "default": [],
+            "description": "Env vars the command reads; the GitHub Actions workflow passes them in",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]*$"
+            }
+          },
+          "setup": {
+            "description": "Runs in the config file's folder before night-shift on GitHub Actions",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false,
+        "description": "A custom source: any command that prints your open items as JSON"
+      },
+      "description": "Where work comes from: built-in sources or your own commands; at least one"
     },
     "branch": {
       "default": "night/{key}",
@@ -478,12 +513,7 @@
           "source": {
             "description": "Match only items from this source",
             "type": "string",
-            "enum": [
-              "github",
-              "asana",
-              "linear",
-              "jira"
-            ]
+            "minLength": 1
           },
           "where": {
             "default": {},

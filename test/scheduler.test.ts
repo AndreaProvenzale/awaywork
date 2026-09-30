@@ -142,6 +142,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
     version: '0.3.1',
     packages: ['@anthropic-ai/claude-code', '@openai/codex'],
     secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'],
+    setup: [],
   })
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
@@ -183,6 +184,26 @@ it('ships an action that installs the pinned version and runs the night', async 
   })
 })
 
+it("runs command sources' setup in the config's folder before night-shift", () => {
+  const text = workflow({
+    start: '01:30',
+    timezone: 'Europe/Rome',
+    config: '.night-shift/config.yml',
+    version: '0.3.1',
+    packages: [],
+    secrets: [],
+    setup: ['cargo build --release\ncp target/release/tracker bin/'],
+  })
+  const steps: { run?: string; uses?: string; 'working-directory'?: string }[] =
+    parse(text).jobs.night.steps
+  const setup = steps.findIndex((s) => s.run?.startsWith('cargo'))
+  expect(steps[setup]).toEqual({
+    'working-directory': '.night-shift',
+    run: 'cargo build --release\ncp target/release/tracker bin/\n',
+  })
+  expect(setup).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('AndreaProvenzale/')))
+})
+
 it('removes only its own workflow from a repo', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
   await mkdir(join(root, '.github/workflows'), { recursive: true })
@@ -201,7 +222,10 @@ it('warns about a workflow that runs its steps inline instead of calling the act
   await writeFile(join(root, WORKFLOW), 'steps:\n  - run: npm install -g nightshift-agent\n')
   expect(await staleWorkflow(root)).toMatch(/doesn't call night-shift's action/)
   const current = { start: '01:30', timezone: 'UTC', config: 'c.yml', version: '0.3.1' }
-  await writeFile(join(root, WORKFLOW), workflow({ ...current, packages: [], secrets: [] }))
+  await writeFile(
+    join(root, WORKFLOW),
+    workflow({ ...current, packages: [], secrets: [], setup: [] }),
+  )
   expect(await staleWorkflow(root)).toBeUndefined()
 })
 

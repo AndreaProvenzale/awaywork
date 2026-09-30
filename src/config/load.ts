@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 import type { z } from 'zod'
+import { isCommand } from '../sources/command.js'
 import { defaultConfigPath } from './paths.js'
 import { type Config, configSchema } from './schema.js'
 
@@ -24,7 +25,10 @@ export async function loadConfig(path: string): Promise<Config> {
   const text = await readFile(path, 'utf8').catch((e: NodeJS.ErrnoException) => {
     throw new ConfigError(path, [e.code === 'ENOENT' ? 'file not found' : e.message])
   })
-  return parseConfig(text, path)
+  const config = parseConfig(text, path)
+  for (const cfg of Object.values(config.sources))
+    if (isCommand(cfg)) cfg.dir = dirname(resolve(path))
+  return config
 }
 
 export function parseConfig(text: string, path = '<config>'): Config {

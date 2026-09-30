@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { clock } from '../core/window.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
@@ -18,12 +18,18 @@ export interface Workflow {
   version: string
   packages: string[]
   secrets: string[]
+  /** Command sources' setup scripts, run in the config's folder. */
+  setup: string[]
 }
 
 /** A nightly workflow calling night-shift's action; secrets appear by name only, their values stay in the repo's settings. */
 export function workflow(w: Workflow): string {
   const [hour, minute] = clock(w.start)
   const env = [`TZ: ${w.timezone}`, ...w.secrets.map((name) => `${name}: \${{ secrets.${name} }}`)]
+  const setup = w.setup.map(
+    (script) =>
+      `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
+  )
   return `name: night-shift
 
 on:
@@ -41,12 +47,20 @@ jobs:
 ${env.map((line) => `      ${line}`).join('\n')}
     steps:
       - uses: actions/checkout@v5
-      - uses: ${ACTION}
+${setup.join('')}      - uses: ${ACTION}
         with:
           config: ${w.config}
           version: ${w.version}
           packages: ${JSON.stringify(w.packages.join(' '))}
 `
+}
+
+function indent(text: string, spaces: number): string {
+  return text
+    .trimEnd()
+    .split('\n')
+    .map((line) => ' '.repeat(spaces) + line)
+    .join('\n')
 }
 
 /** Deletes the workflow under a repo root; false when there was none. */

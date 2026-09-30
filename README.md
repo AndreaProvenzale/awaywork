@@ -133,7 +133,8 @@ More in [Safety](docs/guide/safety.md).
 | Claude Code, Codex | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own:
-[add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md).
+[add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md),
+or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON.
 Needs Node 22+, `git`, and `gh auth login`.
 
 ## Docs

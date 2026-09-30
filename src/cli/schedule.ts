@@ -12,7 +12,8 @@ import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
 import { defaultScheduler, type Schedule, type Scheduler, schedulers } from '../scheduler/index.js'
-import { sources } from '../sources/index.js'
+import { isCommand } from '../sources/command.js'
+import { sourceFor } from '../sources/index.js'
 import { Cancelled, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
 
@@ -164,7 +165,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
     const secrets = new Set([
       'GH_TOKEN',
       ...used.flatMap((p) => p.secrets),
-      ...Object.entries(configured).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+      ...Object.entries(configured).flatMap(([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? []),
       ...(notify?.secrets ?? []),
       ...Object.values(repos).flatMap((r) => r.secrets),
     ])
@@ -178,6 +179,9 @@ async function installWorkflow(config: string | undefined): Promise<void> {
         version: packageVersion,
         packages: used.map((p) => p.package),
         secrets: [...secrets],
+        setup: Object.values(configured).flatMap((cfg) =>
+          isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
+        ),
       }),
     )
     console.log(`Wrote ${WORKFLOW}`)
