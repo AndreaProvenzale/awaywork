@@ -34,6 +34,8 @@ nightshift schedule remove
   `loginctl enable-linger` lifts that.
 - Output goes to `~/.local/state/night-shift/schedule.log`; the morning
   report is `nightshift report`.
+- The job bakes in `night.start`. When you change it, `config edit` and
+  `doctor` warn until `schedule install` runs again.
 
 The machine must be awake at `night.start`. On a laptop, a sleep schedule
 that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that
@@ -51,17 +53,23 @@ nightshift schedule install --with github-actions
 
 This writes `.github/workflows/night-shift.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
-manual run; `nightshift schedule remove` deletes it. Then:
+manual run; `nightshift schedule remove` deletes it. It also copies your
+config to `.night-shift/config.yml` unless the repo has one, and offers to
+set each repository secret the config needs whose value is in your
+environment or `~/.config/night-shift/env`, with `gh secret set`. Values
+are never printed. Then:
 
-1. Commit your config as `.night-shift/config.yml`.
-2. Add the repository secrets it lists, e.g. `GH_TOKEN`,
+1. Commit the workflow and `.night-shift/config.yml`.
+2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets` and
    your repos' `secrets`.
 3. Run it once by hand from the Actions tab.
 
-`GH_TOKEN` is your own token, since the work is yours: it reads your PRs,
+`GH_TOKEN` is your own token, since the work is yours: a classic personal
+access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
 issues, checks and Actions logs, pushes new branches and opens draft PRs
-in the configured repos.
+in the configured repos; `workflow` lets it push branches that change
+workflow files.
 
 The workflow frees about 20 GB of preinstalled SDKs first (runners
 otherwise die quietly on large repos), commits as the token's user, and
