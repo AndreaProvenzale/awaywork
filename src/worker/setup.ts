@@ -20,8 +20,22 @@ export async function runSetup(
   dir: string,
   env: NodeJS.ProcessEnv,
   log: (line: string) => void,
-  { secrets, signal, until }: SetupOptions,
+  opts: SetupOptions,
 ): Promise<string | undefined> {
+  const { output, failed } = await runCommand(command, dir, env, opts)
+  if (output) log(`setup: ${output}`)
+  if (!failed) return undefined
+  const tail = output.split('\n').slice(-TAIL_LINES).join('\n')
+  return [`setup failed: ${failed}`, tail].filter(Boolean).join('\n')
+}
+
+/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0. */
+export async function runCommand(
+  command: string,
+  dir: string,
+  env: NodeJS.ProcessEnv,
+  { secrets, signal, until }: SetupOptions,
+): Promise<{ output: string; failed?: string }> {
   const nightEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
   const deadline = AbortSignal.timeout(
     Math.max(0, nightEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
@@ -50,15 +64,13 @@ export async function runSetup(
 
   const values = secrets.flatMap((name) => env[name] || [])
   const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
-  if (output) log(`setup: ${output}`)
-  if (!result.failed) return undefined
-  const why = signal?.aborted
+  if (!result.failed) return { output }
+  const failed = signal?.aborted
     ? 'interrupted'
     : deadline.aborted
       ? nightEnds
         ? 'the night window ended'
         : `timed out after ${TIMEOUT_MS / 60_000} min`
       : result.shortMessage
-  const tail = output.split('\n').slice(-TAIL_LINES).join('\n')
-  return [`setup failed: ${why}`, tail].filter(Boolean).join('\n')
+  return { output, failed }
 }
