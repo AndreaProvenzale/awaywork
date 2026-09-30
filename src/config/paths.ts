@@ -23,3 +23,4 @@ export const packageVersion: string = JSON.parse(
 export const stateDir = join(homedir(), '.local', 'state', 'night-shift')
 export const runsDir = join(stateDir, 'runs')
 export const attemptsPath = join(stateDir, 'attempts.json')
+export const skipsPath = join(stateDir, 'skips.json')
