@@ -55,7 +55,8 @@ manual run; `nightshift schedule remove` deletes it. Then:
 
 1. Commit your config as `.night-shift/config.yml`.
 2. Add the repository secrets it lists, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN` and your `notify.secrets`.
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets` and
+   your repos' `secrets`.
 3. Run it once by hand from the Actions tab.
 
 `GH_TOKEN` is your own token, since the work is yours: it reads your PRs,
@@ -65,6 +66,9 @@ in the configured repos.
 The workflow frees about 20 GB of preinstalled SDKs first (runners
 otherwise die quietly on large repos), commits as the token's user, and
 appends the morning report to the job summary.
+
+A runner starts with an empty state dir, so it keeps no attempts: an
+item unchanged since last night runs again, and none is given up on.
 
 ### Credentials on a runner
 
