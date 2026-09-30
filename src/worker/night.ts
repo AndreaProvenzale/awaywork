@@ -117,11 +117,18 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const repo = n.config.repos[unit.repo]
       if (repo?.setup) {
+        // A PR someone else opened runs its author's install scripts: they get none of the repo's secrets.
+        const own = unit.foreign ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,
-          setupEnv(n.ctx.env, dir, secrets, repo.secrets),
+          setupEnv(n.ctx.env, dir, secrets, own),
           log,
+          {
+            secrets: own,
+            signal: n.signal,
+            until: n.until,
+          },
         )
         if (failed) {
           Object.assign(result, { status: 'skipped', reason: failed })
