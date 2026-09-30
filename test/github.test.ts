@@ -268,6 +268,30 @@ describe('github forge', () => {
     expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
   })
 
+  it('fast-forwards an existing branch only while its remote head is where the clone started', async () => {
+    const run = recorded([
+      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
+      [/matching-refs/, '[]'],
+      [/^git /, ''],
+    ])
+    const forge = githubForge(run)
+    await expect(
+      forge.fastForward('/work/u1', 'night/acme-api-1-old', 'def', { repo: 'acme/api' }),
+    ).rejects.toThrow('refusing to push onto night/acme-api-1-old on acme/api: it is at abc')
+    await expect(
+      forge.fastForward('/work/u1', 'feature-1', 'abc', { repo: 'acme/api' }),
+    ).rejects.toThrow("it doesn't exist")
+    expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
+    await forge.fastForward('/work/u1', 'night/acme-api-1-old', 'abc', { repo: 'acme/api' })
+    const push = run.calls.at(-1) ?? []
+    expect(push.slice(-3)).toEqual([
+      'push',
+      'https://github.com/acme/api.git',
+      'HEAD:refs/heads/night/acme-api-1-old',
+    ])
+    expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
+  })
+
   it('opens a draft PR titled by the body file first line', async () => {
     const dir = await tmp()
     const body = join(dir, 'PR_BODY.md')

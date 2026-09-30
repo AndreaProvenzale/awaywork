@@ -194,6 +194,13 @@ export function planNight(input: {
       )
       continue
     }
+    const base = pr?.branch ?? ''
+    const foreign = pr ? !pr.mine : false
+    const refused = deliverOf(rule) === 'push' && pushRefusal(base, foreign, false)
+    if (refused) {
+      skip(refused)
+      continue
+    }
     const capped = overCap()
     if (capped) {
       skip(capped)
@@ -232,28 +239,33 @@ export function planNight(input: {
     }
     let previous = add(rule, {
       id,
-      base: pr?.branch ?? '',
-      foreign: pr ? !pr.mine : false,
+      base,
+      foreign,
       untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
     })
     for (const [j, entry] of (rule.then ?? []).entries()) {
-      const capped = overCap()
-      if (capped) {
+      const stacked = previous.deliver === 'draft_pr'
+      const onto = stacked ? previous.branch : previous.base
+      const refused =
+        !isLoop(entry) &&
+        deliverOf(entry) === 'push' &&
+        pushRefusal(onto, previous.foreign, stacked)
+      const left = refused || overCap()
+      if (left) {
         const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit
-        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${capped}`
+        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${left}`
         break
       }
       if (isLoop(entry)) {
         previous = addLoop(entry, previous, branches[j + 1])
         continue
       }
-      const stacked = previous.deliver === 'draft_pr'
       previous = add(
         entry,
         {
           id: `${id}-${slug(entry.skill)}`,
-          base: stacked ? previous.branch : previous.base,
+          base: onto,
           foreign: previous.foreign,
           untrusted: previous.untrusted,
           branch: branches[j + 1] as string,
@@ -267,6 +279,13 @@ export function planNight(input: {
 
 function firstStep(entry: Step | Loop): Step {
   return isLoop(entry) ? (entry.loop[0] as Step) : entry
+}
+
+/** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened tonight. */
+function pushRefusal(base: string, foreign: boolean, tonight: boolean): string | undefined {
+  if (tonight) return `deliver push: ${base} is a draft PR opened tonight, not your own PR`
+  if (!base) return 'deliver push: no PR of yours to push onto'
+  if (foreign) return `deliver push: ${base} is someone else's PR`
 }
 
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */

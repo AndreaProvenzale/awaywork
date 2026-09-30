@@ -60,12 +60,12 @@ export function formatReport(r: NightReport): string {
     out.push(`- ${id}: ${quotaLine(a, r.quotas[id], units)}`)
   }
 
-  const reports = r.results.filter((u) => u.outcome?.kind === 'report')
+  const reports = r.results.filter((u) => u.outcome && 'text' in u.outcome)
   if (reports.length > 0) {
     out.push('', '## Reports')
     for (const u of reports) {
       const top = u.planned.unit.items[0]
-      const text = u.outcome?.kind === 'report' ? u.outcome.text : ''
+      const text = u.outcome && 'text' in u.outcome ? u.outcome.text : ''
       out.push('', `### ${u.planned.unit.id}: ${top?.title} (${u.planned.unit.skill})`, '')
       out.push(top?.url ?? '', '', text)
     }
@@ -111,6 +111,8 @@ function result(u: UnitResult): string {
   const verdict = u.verdict ? `, verdict ${u.verdict}` : ''
   if (u.outcome?.kind === 'pr') return `${u.outcome.url} (${u.outcome.commits} commits)${verdict}`
   if (u.outcome?.kind === 'report') return `report below${verdict}`
+  if (u.outcome?.kind === 'pushed')
+    return `${u.outcome.commits} commits pushed onto ${u.outcome.branch}, report below${verdict}`
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 

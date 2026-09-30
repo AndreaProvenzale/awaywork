@@ -80,9 +80,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...Object.values(n.config.repos).flatMap((r) => r.secrets),
   ]
 
-  // Tonight's draft PRs by repo and branch, and the branch on top of each repo's stack.
+  // Tonight's draft PRs by repo and branch, the branch on top of each repo's stack, and the PR branches pushed onto.
   const opened: Record<string, string> = {}
   const tips: Record<string, string> = {}
+  const pushed = new Set<string>()
   const hosts = new Set(planned.flatMap((p) => (p.loop ? [p.loop.host] : [])))
   // The base each unit ran on: a step after one that opened no PR runs there too.
   const ranOn: Record<string, string> = {}
@@ -320,7 +321,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const repo = n.config.repos[unit.repo]
       if (repo?.setup && !unit.untrusted && !round) {
         // A PR someone else opened, or a branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
-        const own = unit.foreign || tonight || pickedUp ? [] : repo.secrets
+        const written = pushed.has(`${unit.repo} ${unit.base}`) || pickedUp
+        const own = unit.foreign || tonight || written ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,
@@ -444,6 +446,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           if (stacks) tips[unit.repo] = unit.branch
         }
       }
+      if (result.outcome?.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
     } catch (e) {
       Object.assign(result, { status: 'error', reason: (e as Error).message })
       log(`error: ${(e as Error).stack}`)

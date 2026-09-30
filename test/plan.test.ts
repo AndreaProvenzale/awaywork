@@ -486,6 +486,32 @@ queue:
     ])
   })
 
+  it("pushes only onto your own PR's branch, never onto someone else's or tonight's draft PR", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: address-review, where: { type: pr }, deliver: push, then: [{ skill: review, deliver: push }, { skill: implement, deliver: draft_pr }, { skill: fix-ci, deliver: push }] }
+  - { skill: implement, where: { type: issue }, deliver: push }
+`
+    const mine = githubPr(1)
+    const theirs = githubPr(2, { mine: false })
+    const result = plan(yaml, [mine, theirs, issue], {})
+    expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base])).toEqual([
+      ['acme-api-1', 'push', 'feature-1'],
+      ['acme-api-1-review', 'push', 'feature-1'],
+      ['acme-api-1-implement', 'draft_pr', 'feature-1'],
+    ])
+    expect(result.units[2]?.capped).toBe(
+      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+    )
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
+      ['acme/api#5', 'deliver push: no PR of yours to push onto'],
+    ])
+    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])

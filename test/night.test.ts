@@ -547,6 +547,11 @@ async function originForge(root: string) {
       await fake.push(dir, branch, opts)
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
+    fastForward: async (dir: string, branch: string, from: string) => {
+      const head = await git(origin, 'rev-parse', `refs/heads/${branch}`)
+      if (head.stdout !== from) throw new Error(`${branch} moved`)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
+    },
     draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
       opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
       return `https://example.com/${repo}/pull/${head}`
@@ -732,6 +737,84 @@ queue:
   ])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+})
+
+it('pushes onto your own PR, and runs what follows on it without setup secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push, then: { skill: implement, deliver: draft_pr } }]
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const prompts: string[] = []
+  const pusher: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+      await git(job.dir, 'add', `${job.unit.id}.txt`)
+      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+      const out = job.unit.deliver === 'push' ? 'report.md' : 'pr.md'
+      await writeFile(join(job.dir, '.nightshift/out', out), `Work on ${job.unit.id}\n\nDone.`)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: pusher },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => u.outcome)).toEqual([
+    { kind: 'pushed', branch: 'feature-1', commits: 1, text: 'Work on acme-api-1\n\nDone.' },
+    { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+  ])
+  const pushed = await git(
+    origin,
+    'log',
+    '--format=%s|%(trailers:key=Night-shift,valueonly)',
+    'feature-1',
+  )
+  expect(pushed.stdout.split('\n').filter(Boolean)).toEqual(['Work on acme-api-1|r1', 'init|'])
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['night/acme-api-1', 'feature-1']])
+  expect(opened[0]?.body).not.toContain('Stacked on')
+  const setups = await Promise.all(
+    ['acme-api-1', 'acme-api-1-implement'].map((id) =>
+      readFile(join(root, 'run/units', id, 'setup.txt'), 'utf8'),
+    ),
+  )
+  expect(setups).toEqual(['npm\n', '\n'])
+  expect(prompts[0]).toContain(
+    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.nightshift/out/report.md`.",
+  )
+  expect(prompts[1]).toContain(
+    'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` tonight; you start from them.',
+  )
+  expect(formatReport(report)).toContain(
+    '| 1 | acme-api-1 | fix-ci | claude | done, 1 turns | 1 commits pushed onto feature-1, report below |',
+  )
+  expect(formatReport(report)).toContain('### acme-api-1: PR 1 (fix-ci)')
 })
 
 it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {

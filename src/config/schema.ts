@@ -128,9 +128,11 @@ const stepSettings = {
   skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   deliver: z
-    .enum(['draft_pr', 'report'])
+    .enum(['draft_pr', 'report', 'push'])
     .optional()
-    .describe("Output: a draft PR or the morning report; default the skill's"),
+    .describe(
+      "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
+    ),
   branch: branch.optional().describe('Branch name template for this rule'),
 }
 const MAX_ROUNDS = 5

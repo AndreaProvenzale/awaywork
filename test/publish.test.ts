@@ -105,6 +105,43 @@ describe('publish', () => {
     })
   })
 
+  it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
+    const report = (text: string) => writeFile(join(dir, '.nightshift/out/report.md'), text)
+    const forge = fakeForge()
+    const start = await git(dir, 'rev-parse', 'HEAD')
+    await commit('first')
+    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+      kind: 'none',
+      reason: '1 commits but no report, not pushed',
+      unpublished: true,
+    })
+    await report('Fixed the flaky test.\n')
+    for (const refused of [{ base: '' }, { foreign: true }])
+      expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1')).toEqual({
+        kind: 'none',
+        reason: "push goes only onto your own PR's branch, not pushed",
+        unpublished: true,
+      })
+    expect(forge.fastForwards).toEqual([])
+
+    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+      kind: 'pushed',
+      branch: 'feature-1',
+      commits: 1,
+      text: 'Fixed the flaky test.',
+    })
+    expect(forge.fastForwards).toEqual([`acme/api:feature-1 from ${start}`])
+    expect(forge.branches.size).toBe(0)
+    const trailers = await git(
+      dir,
+      'log',
+      '--format=%s|%(trailers:key=Night-shift,valueonly)',
+      'origin/feature-1..HEAD',
+    )
+    expect(trailers.trim()).toBe('first|r1')
+    expect(await git(dir, 'log', '-1', '--format=%(trailers:key=Night-shift)', start)).toBe('')
+  })
+
   it('returns the report for report delivery and pushes nothing', async () => {
     const forge = fakeForge()
     await commit('stray')

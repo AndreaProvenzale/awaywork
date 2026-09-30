@@ -25,6 +25,14 @@ const remote = (repo: string) => `https://github.com/${repo}.git`
 export function githubForge(run: Exec = exec): Forge {
   let myPrs: Promise<PrNode[]> | undefined
 
+  /** The commit a branch points at on the remote, matched by exact name. */
+  const headOf = async (repo: string, name: string): Promise<string | undefined> => {
+    const refs: { ref: string; object: { sha: string } }[] = JSON.parse(
+      await run('gh', ['api', `repos/${repo}/git/matching-refs/heads/${name}`]),
+    )
+    return refs.find((r) => r.ref === `refs/heads/${name}`)?.object.sha
+  }
+
   const forge: Forge = {
     async clone(repo, branch, dir) {
       const pick = branch ? ['--branch', branch] : []
@@ -52,15 +60,30 @@ export function githubForge(run: Exec = exec): Forge {
     },
 
     async branchExists(repo, name) {
-      const refs = JSON.parse(
-        await run('gh', ['api', `repos/${repo}/git/matching-refs/heads/${name}`]),
-      )
-      return refs.some((r: { ref: string }) => r.ref === `refs/heads/${name}`)
+      return (await headOf(repo, name)) !== undefined
     },
 
     async push(dir, branch, { repo }) {
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)
+      await run('git', [
+        '-C',
+        dir,
+        ...withGhLogin,
+        'push',
+        remote(repo),
+        `HEAD:refs/heads/${branch}`,
+      ])
+    },
+
+    async fastForward(dir, branch, from, { repo }) {
+      const head = await headOf(repo, branch)
+      if (head !== from) {
+        const now = head ? `it is at ${head.slice(0, 7)}` : "it doesn't exist"
+        throw new Error(
+          `refusing to push onto ${branch} on ${repo}: ${now}, the clone started from ${from.slice(0, 7)}`,
+        )
+      }
       await run('git', [
         '-C',
         dir,
