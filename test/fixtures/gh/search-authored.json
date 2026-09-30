@@ -34,7 +34,20 @@
             "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]
           },
           "reviewThreads": {
-            "nodes": [{ "isResolved": false }, { "isResolved": false }, { "isResolved": true }]
+            "nodes": [
+              {
+                "isResolved": false,
+                "comments": { "nodes": [{ "author": { "__typename": "Bot" } }] }
+              },
+              {
+                "isResolved": false,
+                "comments": { "nodes": [{ "author": { "__typename": "User" } }] }
+              },
+              {
+                "isResolved": true,
+                "comments": { "nodes": [{ "author": { "__typename": "User" } }] }
+              }
+            ]
           },
           "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
         },

@@ -38,7 +38,7 @@ const searchQuery = `query($q: String!) {
       ... on PullRequest { ${common}
         isDraft headRefName viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
-        reviewThreads(first: 100) { nodes { isResolved } }
+        reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { author { __typename } } } } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
     }
@@ -93,7 +93,10 @@ interface Node extends PrLink {
   closedByPullRequestsReferences?: Nodes<PrLink>
   isDraft?: boolean
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
-  reviewThreads?: Nodes<{ isResolved: boolean }>
+  reviewThreads?: Nodes<{
+    isResolved: boolean
+    comments: Nodes<{ author: { __typename: string } | null }>
+  }>
   commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
 }
 interface Thread {
@@ -134,8 +137,10 @@ export function githubSource(run: Exec = exec): Source<Config> {
       trusted: z.boolean(),
       mine: z.boolean(),
       draft: z.boolean(),
+      ours: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
+      unresolved_human_threads: z.number().int().min(0),
       review_requested: z.boolean(),
       created: z.iso.datetime(),
       updated: z.iso.datetime(),
@@ -223,9 +228,14 @@ function toItem(node: Node): Item {
   }
   if (isPr) {
     const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)
+    const unresolved = node.reviewThreads?.nodes.filter((t) => !t.isResolved) ?? []
     Object.assign(fields, {
       draft: node.isDraft,
-      unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
+      ours: isOurs(node.body),
+      unresolved_threads: unresolved.length,
+      unresolved_human_threads: unresolved.filter(
+        (t) => t.comments.nodes[0]?.author?.__typename !== 'Bot',
+      ).length,
       review_requested: false,
       ...(checks && { checks }),
     })

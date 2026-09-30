@@ -39,8 +39,10 @@ describe('github source', () => {
       trusted: true,
       mine: true,
       draft: false,
+      ours: false,
       checks: 'failing',
       unresolved_threads: 2,
+      unresolved_human_threads: 1,
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
@@ -64,6 +66,19 @@ describe('github source', () => {
       updated: '2026-02-01T08:00:00Z',
     })
     expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
+  })
+
+  it('marks a PR night-shift opened as ours', async () => {
+    const authored = fixture('search-authored.json').replace(
+      '"body": "Adds a token bucket per client."',
+      `"body": ${JSON.stringify(footer('r0'))}`,
+    )
+    const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
+      { repos: ['acme/*'] },
+      ctx,
+    )
+    expect(pr1?.fields.ours).toBe(true)
+    expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
