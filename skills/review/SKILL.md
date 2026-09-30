@@ -25,7 +25,8 @@ to say.
 The report:
 
 1. Verdict in one line: approve, approve with comments, or request
-   changes.
+   changes. Write the same as one word, `approve`, `comments` or
+   `changes`, to `.nightshift/out/verdict`.
 2. Findings ranked by severity, each with `path:line`, the problem, a
    concrete failure scenario, and a suggested fix.
 3. Paste-ready review comments, one per finding.

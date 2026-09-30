@@ -49,8 +49,10 @@ const worker: Provider = {
     models.push(job.model)
     envs.push(job.env)
     const out = join(job.dir, '.nightshift/out')
-    if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
-    else {
+    if (job.unit.deliver === 'report') {
+      await writeFile(join(out, 'report.md'), 'Approve.')
+      await writeFile(join(out, 'verdict'), 'Approve\n')
+    } else {
       await writeFile(join(job.dir, 'fix.txt'), 'fixed')
       await git(job.dir, 'add', 'fix.txt')
       await git(job.dir, 'commit', '-qm', 'Fix the build')
@@ -138,6 +140,9 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   )
   expect(text).toContain(
     '| 2 | acme-api-3 | fix-ci | - | skipped | night/acme-api-3 already exists on acme/api |',
+  )
+  expect(text).toContain(
+    '| 3 | acme-api-2 | review | claude | done, 5 turns | report below, verdict approve |',
   )
   expect(text).toContain(
     '- claude: seven_day 36% to 45%, ceiling 54%; session 10% to 10%, stop at 90%',

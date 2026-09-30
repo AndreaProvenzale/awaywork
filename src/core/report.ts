@@ -11,6 +11,8 @@ export interface UnitResult {
   reason?: string
   turns?: number
   outcome?: Outcome
+  /** The one word the unit wrote to `out/verdict`. */
+  verdict?: string
 }
 
 export interface NightReport {
@@ -81,8 +83,10 @@ export function runLine(runId: string, report: string | undefined): string {
     .split('\n')
     .filter((line) => /^\| \d+ \|/.test(line))
     .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
-  const prs = results.filter((r) => /^https:\/\/\S+ \(\d+ commits\)$/.test(r)).length
-  const reports = results.filter((r) => r === 'report below').length
+  const prs = results.filter((r) =>
+    /^https:\/\/\S+ \(\d+ commits\)(, verdict \S+)?$/.test(r),
+  ).length
+  const reports = results.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
   return `${runId}  ${results.length} units, ${prs} draft PRs, ${reports} reports${dry}`
 }
@@ -95,9 +99,10 @@ function status(u: UnitResult): string {
 
 function result(u: UnitResult): string {
   if (u.status === 'skipped') return u.reason ?? ''
-  if (u.outcome?.kind === 'pr') return `${u.outcome.url} (${u.outcome.commits} commits)`
-  if (u.outcome?.kind === 'report') return 'report below'
-  return u.outcome?.reason ?? '-'
+  const verdict = u.verdict ? `, verdict ${u.verdict}` : ''
+  if (u.outcome?.kind === 'pr') return `${u.outcome.url} (${u.outcome.commits} commits)${verdict}`
+  if (u.outcome?.kind === 'report') return `report below${verdict}`
+  return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 
 function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): string {

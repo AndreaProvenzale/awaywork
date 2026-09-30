@@ -154,6 +154,10 @@ last draft PR on the repo, else the default branch.
 | `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
 | `report` | The worker writes `.nightshift/out/report.md`; nothing is pushed. It goes into the morning report. |
 
+Either way, a skill that defines verdicts also writes one word to
+`.nightshift/out/verdict`, such as `approve`. The report shows it next to
+the unit's result.
+
 `review` and `plan` default to `report`, every other skill to `draft_pr`;
 a rule can override either. Every PR body ends with a footer naming
 night-shift and the run, which is how the next plan recognises it.

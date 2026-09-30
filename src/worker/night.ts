@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { cp, mkdir, rm } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
@@ -172,6 +172,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         quotas[id] = worker.quota
         allowances[id] = withQuota(a, worker.quota)
       }
+      result.verdict = await readVerdict(dir)
       if (worker.status !== 'stopped: aborted')
         result.outcome = await publish(unit, dir, n.forge, n.runId)
       if (result.outcome?.kind === 'pr') {
@@ -195,6 +196,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
+}
+
+/** The one lowercase word a skill wrote to `out/verdict`, if any. */
+async function readVerdict(dir: string): Promise<string | undefined> {
+  const text = await readFile(join(dir, WORK_DIR, 'out', 'verdict'), 'utf8').catch(() => '')
+  const word = text.trim().toLowerCase()
+  return /^[a-z][a-z_-]*$/.test(word) ? word : undefined
 }
 
 /** Like the worker's, with every secret withheld except the repo's own. */
