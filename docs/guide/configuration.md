@@ -170,14 +170,16 @@ level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
-`skills` at the top level adds skills to every unit, like a rule's
-`skills`; see [Skills](./skills.md#where-skills-come-from).
-
 `network: false` on a repo or a rule cuts the agent's commands off the
 network; the rule wins over the repo and covers its `then` steps. Unset,
-it is off on a PR someone else opened and on everywhere else. `setup`
-keeps the network, so put what the agent needs, like dependencies,
-there. See [Safety](./safety.md#network).
+it is on. `setup` keeps the network, so it can install what the agent
+needs, but it doesn't run on an untrusted author's PR: there an offline
+agent has only the clone. Offline is tested on macOS only: on Linux,
+Claude Code's sandbox needs bubblewrap and socat, and neither agent's is
+verified there yet [I]. See [Safety](./safety.md#network).
+
+`skills` at the top level adds skills to every unit, like a rule's
+`skills`; see [Skills](./skills.md#where-skills-come-from).
 
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions

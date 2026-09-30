@@ -169,7 +169,7 @@ My open Linear issues.
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
-| `network` | boolean |  | Network for the worker's commands; default on, off on someone else's PR |
+| `network` | boolean |  | Network for the worker's commands; default on |
 
 ## `queue[]`
 

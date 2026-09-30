@@ -391,7 +391,7 @@
             "type": "string"
           },
           "network": {
-            "description": "Network for the worker's commands; default on, off on someone else's PR",
+            "description": "Network for the worker's commands; default on",
             "type": "boolean"
           }
         },

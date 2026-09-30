@@ -154,6 +154,7 @@ export interface Rule extends Step {
   units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
   then?: Step[]
+  /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
 }
 

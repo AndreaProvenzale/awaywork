@@ -79,6 +79,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     repo: {
       setup: repo.setup,
       setupSkipped: unit.untrusted,
+      offline: !unit.network,
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },

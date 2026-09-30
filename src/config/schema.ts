@@ -192,10 +192,7 @@ const repo = z.strictObject({
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
-  network: z
-    .boolean()
-    .optional()
-    .describe("Network for the worker's commands; default on, off on someone else's PR"),
+  network: z.boolean().optional().describe("Network for the worker's commands; default on"),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])

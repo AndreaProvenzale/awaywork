@@ -134,7 +134,13 @@ describe('codex provider', () => {
     process.env.FAKE_ARGV = join(tmp, 'argv.json')
     const argv = async (network: boolean) => {
       const unit = { ...job().unit, network }
-      const config = { config: { web_search: 'live' } }
+      const config = {
+        config: {
+          web_search: 'live',
+          default_permissions: 'open',
+          sandbox_mode: 'danger-full-access',
+        },
+      }
       await collect(provider.run({ ...job(), unit, config }, new AbortController().signal))
       return JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
     }
@@ -144,6 +150,9 @@ describe('codex provider', () => {
       expect(offline).not.toContain('--sandbox')
       expect(offline).toContain('permissions.night.network.enabled=false')
       expect(offline.findLast((a) => a.startsWith('web_search='))).toBe('web_search="disabled"')
+      expect(offline.findLast((a) => a.startsWith('default_permissions='))).toBe(
+        'default_permissions="night"',
+      )
       expect(offline.join(' ')).toContain(`${JSON.stringify(join(tmp, '.git'))}="write"`)
     } finally {
       delete process.env.FAKE_ARGV

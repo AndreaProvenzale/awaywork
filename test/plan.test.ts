@@ -334,14 +334,14 @@ queue:
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
   })
 
-  it("takes network from the rule, then the repo, else off only on someone else's PR", () => {
+  it('takes network from the rule, then the repo, else on', () => {
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 repos: { acme/web: { network: false } }
 queue:
   - { skill: fix-ci, where: { checks: failing }, network: true }
-  - { skill: review, where: { review_requested: true }, then: implement }
+  - { skill: review, where: { review_requested: true }, then: implement, network: false }
   - { skill: implement, where: { type: issue } }
 `
     const items = [

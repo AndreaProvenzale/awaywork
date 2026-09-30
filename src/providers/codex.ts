@@ -104,7 +104,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           '-c',
           `${k}=${JSON.stringify(v)}`,
         ])
-        // After the developer's overrides, so the unit's network setting wins.
+        // After the developer's overrides, so theirs of the same keys lose.
         const sandbox = job.unit.network ? ONLINE : offline(job.dir)
         const args = [...EXEC, ...model, ...overrides, ...sandbox, '-C', job.dir, '-']
         const child = execa(bin, args, {

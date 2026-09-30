@@ -2,7 +2,13 @@ export interface PromptParts {
   harness: string
   skill: string
   instructions: string[]
-  repo: { setup?: string; setupSkipped?: boolean; test?: string; instructions?: string }
+  repo: {
+    setup?: string
+    setupSkipped?: boolean
+    offline?: boolean
+    test?: string
+    instructions?: string
+  }
   inRepo?: string
   rule: string[]
 }
@@ -14,6 +20,8 @@ export function assemblePrompt(p: PromptParts): string {
       (p.repo.setupSkipped
         ? `Setup, not run because this PR's author isn't trusted: \`${p.repo.setup}\`. Don't run it or install dependencies.`
         : `Setup, already run: \`${p.repo.setup}\``),
+    p.repo.offline &&
+      "No network: your commands can't reach it, so don't install dependencies or download anything.",
     p.repo.test && `Test: \`${p.repo.test}\``,
   ].filter(Boolean)
   return [

@@ -137,6 +137,13 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   binary says a missing sandbox backend runs the shell unconfined unless
   `sandbox.failIfUnavailable` is true [V, binary strings]; the Linux
   backend (bubblewrap) is not tested.
+- The sandbox covers Bash, PowerShell and Monitor only; Read, Edit and
+  Write are held by permission rules. Hooks and MCP servers run outside
+  it. On Linux it needs bubblewrap and socat, and Ubuntu 24.04+ AppArmor
+  stops bubblewrap creating user namespaces without a profile for it.
+  [V] https://code.claude.com/docs/en/sandboxing Whether GitHub's
+  `ubuntu-latest` runner has them is not checked, so offline there may
+  fail to start [I].
 - Routines: cloud, cron (1 h minimum), API `/fire`, GitHub events; plan
   usage plus a daily run cap. [V] https://code.claude.com/docs/en/routines
 
@@ -193,6 +200,11 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   `.git` stays read-only. `--sandbox` overrides the profile, so it must
   be left out. `-c web_search="disabled"` drops the hosted `web_search`
   tool from the request. [V, tested] Linux (Landlock) not tested.
+- `-c sandbox_mode="danger-full-access"`, before or after the profile,
+  doesn't reopen the network or writes outside the clone; alone it does.
+  Neither does an earlier `permissions.night.network.enabled=true`, and
+  a `profile` key is refused (0.149.1, macOS, `codex exec` on a stub).
+  [V, tested]
 - `--ignore-user-config` skips `config.toml` (MCP servers, notify hooks,
   plugins) while auth still comes from `CODEX_HOME` [V, `--help`; tested];
   `--ephemeral` saves no session. A prompt argument plus piped stdin
@@ -275,6 +287,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Codex: Plus/Pro window shape; whether an app server beside a running
   `exec` can share one `auth.json` safely, which a mid-run quota read needs.
 - Offline workers on Linux: Claude's bubblewrap sandbox and Codex's
-  Landlock profile were only tested on macOS.
+  Landlock profile were only tested on macOS, so the network stays on
+  by default until they are.
 - Codex remote: an ephemeral runner seeds `auth.json` from the secret
   every run, so after a refresh the secret's refresh token goes stale.
