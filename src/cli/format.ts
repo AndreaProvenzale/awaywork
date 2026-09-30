@@ -63,6 +63,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
     units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
       if (p.after) out.push(`     after ${p.after}`)
+      if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}`)
       if (p.loop?.step === 0) {
         const { skills, until, max, host } = p.loop
         out.push(

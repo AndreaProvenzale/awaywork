@@ -145,12 +145,18 @@ export interface Step {
   instructions: string[]
   deliver?: Deliver
   branch?: string
+  /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */
+  when?: Condition
 }
 
-/** What a loop checks after each of its steps; every key set must hold. */
+/** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
-  /** The latest verdict a step of the loop wrote. */
+  /** The latest verdict a step of the loop wrote, or for `when` the step before's. */
   verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
+  /** A shell command night-shift runs in the clone, outside the model; exit 0 holds. */
+  command?: string
+  /** `when` only: globs, holding when the branch changes a matching path against the default branch. */
+  changed?: string[]
 }
 
 /** Steps run round after round in one clone, until `until` holds or `max` rounds ran; one publish at the end. */

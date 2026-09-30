@@ -209,7 +209,9 @@ describe('config', () => {
       'queue[0].then.until.verdict: expected one lowercase word like approve',
       'queue[0].then.max: Too big: expected number to be <=5',
     ])
-    expect(loop('[review], until: {}, max: 1')).toEqual(['queue[0].then.until: expected verdict'])
+    expect(loop('[review], until: {}, max: 1')).toEqual([
+      'queue[0].then.until: expected verdict or command',
+    ])
     const loops = (between: string) =>
       problems(`${minimal}queue:
   - skill: implement
@@ -221,6 +223,40 @@ describe('config', () => {
       "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
     ])
     expect(loops('\n      - plan')).toEqual([])
+  })
+
+  it('takes a command in until, and when on then and loop steps but not on a rule', () => {
+    const cfg = parseConfig(`${minimal}queue:
+  - skill: implement
+    then:
+      - { skill: review, when: { changed: "src/auth/**" } }
+      - loop: [{ skill: address-review, when: { verdict: changes, command: "! pnpm test" } }, qa-feedback]
+        until: { verdict: approve, command: pnpm test }
+        max: 2
+`)
+    const [step, loop] = cfg.queue?.[0]?.then ?? []
+    expect(step).toMatchObject({ skill: 'review', when: { changed: ['src/auth/**'] } })
+    expect(loop).toMatchObject({
+      loop: [
+        { skill: 'address-review', when: { verdict: 'changes', command: '! pnpm test' } },
+        { skill: 'qa-feedback' },
+      ],
+      until: { verdict: 'approve', command: 'pnpm test' },
+    })
+    expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
+      ['queue[0]: Unrecognized key: "when"'],
+    )
+    expect(
+      problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
+    ).toEqual(['queue[0].then.when: expected verdict, command or changed'])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: implement, then: { loop: review, until: { changed: src }, max: 1 } }]`,
+      ),
+    ).toEqual([
+      'queue[0].then.until: Unrecognized key: "changed"',
+      'queue[0].then.until: expected verdict or command',
+    ])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {

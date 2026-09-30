@@ -772,6 +772,79 @@
                       "branch": {
                         "description": "Branch name template for this rule",
                         "type": "string"
+                      },
+                      "when": {
+                        "description": "Run this step only when every key holds; otherwise skip it",
+                        "type": "object",
+                        "properties": {
+                          "verdict": {
+                            "description": "The step before's verdict; a list means any of, {not} negates",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z_-]*$"
+                                  },
+                                  {
+                                    "minItems": 1,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z_-]*$"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "not": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z_-]*$"
+                                      },
+                                      {
+                                        "minItems": 1,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "pattern": "^[a-z][a-z_-]*$"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "not"
+                                ],
+                                "additionalProperties": false,
+                                "description": "Matches every verdict but these"
+                              }
+                            ]
+                          },
+                          "command": {
+                            "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "changed": {
+                            "description": "Globs; holds when the branch changes a matching path against the default branch",
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -780,7 +853,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
               },
               {
                 "type": "object",
@@ -861,6 +934,79 @@
                               "branch": {
                                 "description": "Branch name template for this rule",
                                 "type": "string"
+                              },
+                              "when": {
+                                "description": "Run this step only when every key holds; otherwise skip it",
+                                "type": "object",
+                                "properties": {
+                                  "verdict": {
+                                    "description": "The step before's verdict; a list means any of, {not} negates",
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z_-]*$"
+                                          },
+                                          {
+                                            "minItems": 1,
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z_-]*$"
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "not": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "pattern": "^[a-z][a-z_-]*$"
+                                              },
+                                              {
+                                                "minItems": 1,
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string",
+                                                  "pattern": "^[a-z][a-z_-]*$"
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "not"
+                                        ],
+                                        "additionalProperties": false,
+                                        "description": "Matches every verdict but these"
+                                      }
+                                    ]
+                                  },
+                                  "command": {
+                                    "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "changed": {
+                                    "description": "Globs; holds when the branch changes a matching path against the default branch",
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
                               }
                             },
                             "required": [
@@ -869,7 +1015,7 @@
                             "additionalProperties": false
                           }
                         ],
-                        "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                        "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
                       },
                       {
                         "minItems": 1,
@@ -947,6 +1093,79 @@
                                 "branch": {
                                   "description": "Branch name template for this rule",
                                   "type": "string"
+                                },
+                                "when": {
+                                  "description": "Run this step only when every key holds; otherwise skip it",
+                                  "type": "object",
+                                  "properties": {
+                                    "verdict": {
+                                      "description": "The step before's verdict; a list means any of, {not} negates",
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z_-]*$"
+                                            },
+                                            {
+                                              "minItems": 1,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "pattern": "^[a-z][a-z_-]*$"
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "not": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "pattern": "^[a-z][a-z_-]*$"
+                                                },
+                                                {
+                                                  "minItems": 1,
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "pattern": "^[a-z][a-z_-]*$"
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "required": [
+                                            "not"
+                                          ],
+                                          "additionalProperties": false,
+                                          "description": "Matches every verdict but these"
+                                        }
+                                      ]
+                                    },
+                                    "command": {
+                                      "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "changed": {
+                                      "description": "Globs; holds when the branch changes a matching path against the default branch",
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "additionalProperties": false
                                 }
                               },
                               "required": [
@@ -955,7 +1174,7 @@
                               "additionalProperties": false
                             }
                           ],
-                          "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                          "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
                         }
                       }
                     ]
@@ -1009,6 +1228,11 @@
                             "description": "Matches every verdict but these"
                           }
                         ]
+                      },
+                      "command": {
+                        "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                        "type": "string",
+                        "minLength": 1
                       }
                     },
                     "additionalProperties": false,
@@ -1107,6 +1331,79 @@
                             "branch": {
                               "description": "Branch name template for this rule",
                               "type": "string"
+                            },
+                            "when": {
+                              "description": "Run this step only when every key holds; otherwise skip it",
+                              "type": "object",
+                              "properties": {
+                                "verdict": {
+                                  "description": "The step before's verdict; a list means any of, {not} negates",
+                                  "anyOf": [
+                                    {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^[a-z][a-z_-]*$"
+                                        },
+                                        {
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z_-]*$"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "not": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z_-]*$"
+                                            },
+                                            {
+                                              "minItems": 1,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "pattern": "^[a-z][a-z_-]*$"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "not"
+                                      ],
+                                      "additionalProperties": false,
+                                      "description": "Matches every verdict but these"
+                                    }
+                                  ]
+                                },
+                                "command": {
+                                  "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "changed": {
+                                  "description": "Globs; holds when the branch changes a matching path against the default branch",
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "additionalProperties": false
                             }
                           },
                           "required": [
@@ -1115,7 +1412,7 @@
                           "additionalProperties": false
                         }
                       ],
-                      "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                      "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
                     },
                     {
                       "type": "object",
@@ -1196,6 +1493,79 @@
                                     "branch": {
                                       "description": "Branch name template for this rule",
                                       "type": "string"
+                                    },
+                                    "when": {
+                                      "description": "Run this step only when every key holds; otherwise skip it",
+                                      "type": "object",
+                                      "properties": {
+                                        "verdict": {
+                                          "description": "The step before's verdict; a list means any of, {not} negates",
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "pattern": "^[a-z][a-z_-]*$"
+                                                },
+                                                {
+                                                  "minItems": 1,
+                                                  "type": "array",
+                                                  "items": {
+                                                    "type": "string",
+                                                    "pattern": "^[a-z][a-z_-]*$"
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "not": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string",
+                                                      "pattern": "^[a-z][a-z_-]*$"
+                                                    },
+                                                    {
+                                                      "minItems": 1,
+                                                      "type": "array",
+                                                      "items": {
+                                                        "type": "string",
+                                                        "pattern": "^[a-z][a-z_-]*$"
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "required": [
+                                                "not"
+                                              ],
+                                              "additionalProperties": false,
+                                              "description": "Matches every verdict but these"
+                                            }
+                                          ]
+                                        },
+                                        "command": {
+                                          "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                          "type": "string",
+                                          "minLength": 1
+                                        },
+                                        "changed": {
+                                          "description": "Globs; holds when the branch changes a matching path against the default branch",
+                                          "anyOf": [
+                                            {
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "additionalProperties": false
                                     }
                                   },
                                   "required": [
@@ -1204,7 +1574,7 @@
                                   "additionalProperties": false
                                 }
                               ],
-                              "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                              "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
                             },
                             {
                               "minItems": 1,
@@ -1282,6 +1652,79 @@
                                       "branch": {
                                         "description": "Branch name template for this rule",
                                         "type": "string"
+                                      },
+                                      "when": {
+                                        "description": "Run this step only when every key holds; otherwise skip it",
+                                        "type": "object",
+                                        "properties": {
+                                          "verdict": {
+                                            "description": "The step before's verdict; a list means any of, {not} negates",
+                                            "anyOf": [
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string",
+                                                    "pattern": "^[a-z][a-z_-]*$"
+                                                  },
+                                                  {
+                                                    "minItems": 1,
+                                                    "type": "array",
+                                                    "items": {
+                                                      "type": "string",
+                                                      "pattern": "^[a-z][a-z_-]*$"
+                                                    }
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "not": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "pattern": "^[a-z][a-z_-]*$"
+                                                      },
+                                                      {
+                                                        "minItems": 1,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "pattern": "^[a-z][a-z_-]*$"
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                "required": [
+                                                  "not"
+                                                ],
+                                                "additionalProperties": false,
+                                                "description": "Matches every verdict but these"
+                                              }
+                                            ]
+                                          },
+                                          "command": {
+                                            "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "changed": {
+                                            "description": "Globs; holds when the branch changes a matching path against the default branch",
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "array",
+                                                "items": {
+                                                  "type": "string"
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "additionalProperties": false
                                       }
                                     },
                                     "required": [
@@ -1290,7 +1733,7 @@
                                     "additionalProperties": false
                                   }
                                 ],
-                                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
                               }
                             }
                           ]
@@ -1344,6 +1787,11 @@
                                   "description": "Matches every verdict but these"
                                 }
                               ]
+                            },
+                            "command": {
+                              "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                              "type": "string",
+                              "minLength": 1
                             }
                           },
                           "additionalProperties": false,

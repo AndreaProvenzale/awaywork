@@ -255,6 +255,25 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
+| `when` | object |  | Run this step only when every key holds; otherwise skip it |
+
+## `queue[].then.when`
+
+Run this step only when every key holds; otherwise skip it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
+| `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
+| `changed` | string \| string[] |  | Globs; holds when the branch changes a matching path against the default branch |
+
+## `queue[].then.when.verdict`
+
+Matches every verdict but these.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `not` (required) | string \| string[] |  |  |
 
 ## `queue[].then` (loop)
 
@@ -270,9 +289,25 @@ Steps repeated until a condition holds; the loop publishes one draft PR at the e
 
 Same keys as `queue[].then`.
 
+## `queue[].then.loop.when`
+
+Same keys as `queue[].then.when`.
+
+## `queue[].then.loop.when.verdict`
+
+Same keys as `queue[].then.when.verdict`.
+
 ## `queue[].then.loop[]`
 
 Same keys as `queue[].then`.
+
+## `queue[].then.loop[].when`
+
+Same keys as `queue[].then.when`.
+
+## `queue[].then.loop[].when.verdict`
+
+Same keys as `queue[].then.when.verdict`.
 
 ## `queue[].then.until`
 
@@ -281,18 +316,23 @@ Ends the loop as soon as it holds; checked after every step.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The latest verdict a loop step wrote; a list means any of, {not} negates |
+| `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
 
 ## `queue[].then.until.verdict`
 
-Matches every verdict but these.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `not` (required) | string \| string[] |  |  |
+Same keys as `queue[].then.when.verdict`.
 
 ## `queue[].then[]`
 
 Same keys as `queue[].then`.
+
+## `queue[].then[].when`
+
+Same keys as `queue[].then.when`.
+
+## `queue[].then[].when.verdict`
+
+Same keys as `queue[].then.when.verdict`.
 
 ## `queue[].then[]` (loop)
 
@@ -302,9 +342,25 @@ Same keys as `queue[].then` (loop).
 
 Same keys as `queue[].then`.
 
+## `queue[].then[].loop.when`
+
+Same keys as `queue[].then.when`.
+
+## `queue[].then[].loop.when.verdict`
+
+Same keys as `queue[].then.when.verdict`.
+
 ## `queue[].then[].loop[]`
 
 Same keys as `queue[].then`.
+
+## `queue[].then[].loop[].when`
+
+Same keys as `queue[].then.when`.
+
+## `queue[].then[].loop[].when.verdict`
+
+Same keys as `queue[].then.when.verdict`.
 
 ## `queue[].then[].until`
 
@@ -312,7 +368,7 @@ Same keys as `queue[].then.until`.
 
 ## `queue[].then[].until.verdict`
 
-Same keys as `queue[].then.until.verdict`.
+Same keys as `queue[].then.when.verdict`.
 
 ## `notify`
 

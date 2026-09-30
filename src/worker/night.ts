@@ -4,13 +4,13 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
-import { describeCondition, holds } from '../core/condition.js'
+import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { runSetup } from './setup.js'
+import { runCommand, runSetup } from './setup.js'
 import {
   notSymlink,
   prepareWorkspace,
@@ -22,6 +22,7 @@ import {
 } from './workspace.js'
 
 const MAX_TURNS = 200
+const CHECK_LOG_LINES = 200
 
 export interface NightInput {
   config: Config
@@ -85,6 +86,51 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   // The base each unit ran on: a step after one that opened no PR runs there too.
   const ranOn: Record<string, string> = {}
   let open: OpenLoop | undefined
+  // A step skipped by its `when` stands for the unit it followed, and the base a step after that starts from.
+  const standIns: Record<string, { result: UnitResult; base: string }> = {}
+  const checks = new Map<string, Check>()
+
+  /** Runs a condition's command in the clone outside the model, once per commit, with none of the secrets. */
+  const check = async (
+    command: string,
+    unit: Unit,
+    dir: string,
+    log: (line: string) => void,
+  ): Promise<Check> => {
+    if (unit.untrusted) return { output: '', failed: "not run on an untrusted author's PR" }
+    const key = `${dir} ${await head(dir)} ${command}`
+    const known = checks.get(key)
+    if (known) return known
+    const result = await runCommand(command, dir, setupEnv(n.ctx.env, dir, secrets, []), {
+      secrets: [],
+      signal: n.signal,
+      until: n.until,
+    })
+    log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
+    checks.set(key, result)
+    return result
+  }
+
+  /** What `condition` needs to know about the clone; a command's output goes to `check.log` in `logDir`. */
+  const factsFor = async (
+    condition: Condition,
+    unit: Unit,
+    dir: string,
+    verdict: string | undefined,
+    log: (line: string) => void,
+    logDir: string,
+  ) => {
+    const facts: Facts = { verdict }
+    let ran: RanCheck | undefined
+    if (condition.command) {
+      ran = { command: condition.command, ...(await check(condition.command, unit, dir, log)) }
+      facts.command = !ran.failed
+      await mkdir(logDir, { recursive: true })
+      await writeFile(join(logDir, 'check.log'), checkLog(ran))
+    }
+    if (condition.changed) facts.changed = await changes(dir, condition.changed)
+    return { facts, check: ran }
+  }
 
   /** Publishes the loop's clone once, as its host's draft PR, with how the loop went. */
   const closeLoop = async (loop: OpenLoop) => {
@@ -142,12 +188,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     const hosting = hosts.has(p.unit.id)
-    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
-    const { repo } = p.unit
+    const standIn = p.after ? standIns[p.after] : undefined
+    const after = standIn?.result ?? results.find((r) => p.after && r.planned.unit.id === p.after)
     const base =
-      after && after.outcome?.kind !== 'pr'
+      standIn?.base ??
+      (after && after.outcome?.kind !== 'pr'
         ? (ranOn[after.planned.unit.id] ?? p.unit.base)
-        : p.unit.base
+        : p.unit.base)
+    const planUnit = { ...p.unit, base }
+    const { repo } = planUnit
     // A loop publishes its host as a draft PR, whatever the host's own delivery.
     const deliver = hosting ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
@@ -157,8 +206,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const unit = round
       ? { ...p.unit, base: round.unit.base, stackedOn: round.unit.stackedOn }
       : stackedOn
-        ? { ...p.unit, base: onto, stackedOn }
-        : { ...p.unit, base }
+        ? { ...planUnit, base: onto, stackedOn }
+        : planUnit
     ranOn[p.unit.id] = unit.base
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
@@ -251,6 +300,20 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           continue
         }
       }
+      const { when } = unit.rule
+      if (when) {
+        const previousDir = join(dir, WORK_DIR, 'context', 'previous')
+        const met = await factsFor(when, unit, dir, before?.verdict, log, previousDir)
+        if (!holds(when, met.facts)) {
+          const failed = met.check?.failed ? ` (${met.check.failed})` : ''
+          const reason = `when ${describeCondition(when)} didn't hold${failed}`
+          Object.assign(result, { status: 'skipped', reason, passedOver: true })
+          routed[id] = (routed[id] ?? 1) - 1
+          if (round && p.loop && isLast(p.loop)) round.ended = maxReached(p.loop.max)
+          if (!inRound && after) standIns[unit.id] = { result: after, base: unit.base }
+          continue
+        }
+      }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
@@ -283,6 +346,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const aborted = worker.status === 'stopped: aborted'
       if (p.loop) {
         result.outcome = await roundOutcome(unit, dir, start)
+        const out = join(dir, WORK_DIR, 'out')
+        const verdict = result.verdict ?? round?.verdict
+        const until =
+          worker.status === 'done'
+            ? await factsFor(p.loop.until, unit, dir, verdict, log, out)
+            : undefined
         const loop = round ?? {
           host: result,
           unit,
@@ -298,18 +367,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (result.verdict) loop.verdict = result.verdict
         if (result.outcome.kind === 'report')
           loop.report = { id: unit.id, text: result.outcome.text }
+        if (until?.check) loop.check = until.check
         if (aborted) Object.assign(loop, { ended: 'interrupted', interrupted: true })
-        else if (worker.status !== 'done') loop.ended = `${unit.id} ${worker.status}`
-        else if (untilHolds(p.loop.until, loop.verdict))
+        else if (!until) loop.ended = `${unit.id} ${worker.status}`
+        else if (untilHolds(p.loop.until, until.facts))
           Object.assign(loop, {
             ended: `until held: ${describeCondition(p.loop.until)}`,
             completed: true,
           })
-        else if (p.loop.round === p.loop.max && p.loop.step === p.loop.skills.length - 1)
-          Object.assign(loop, {
-            ended: `max ${p.loop.max} ${p.loop.max === 1 ? 'round' : 'rounds'} reached`,
-            completed: true,
-          })
+        else if (isLast(p.loop))
+          Object.assign(loop, { ended: maxReached(p.loop.max), completed: true })
       } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
         open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
@@ -366,11 +433,20 @@ interface OpenLoop {
   last?: UnitResult
   verdict?: string
   report?: { id: string; text: string }
+  /** The last run of `until`'s command. */
+  check?: RanCheck
   ended?: string
   /** It ended at `until` or `max`, not on a failure, a skip or an interrupt. */
   completed?: boolean
   interrupted?: boolean
 }
+
+interface Check {
+  output: string
+  failed?: string
+}
+
+type RanCheck = Check & { command: string }
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
@@ -382,8 +458,28 @@ async function commitsSince(dir: string, start: string): Promise<number> {
 }
 
 /** `until` waits for a verdict written inside the loop, even one it only wants `{ not }` of. */
-function untilHolds(until: Condition, verdict: string | undefined): boolean {
-  return (until.verdict === undefined || verdict !== undefined) && holds(until, { verdict })
+function untilHolds(until: Condition, facts: Facts): boolean {
+  return (until.verdict === undefined || facts.verdict !== undefined) && holds(until, facts)
+}
+
+/** Whether the branch changes a path matching one of `globs`, against the default branch. */
+async function changes(dir: string, globs: string[]): Promise<boolean> {
+  const paths = globs.map((glob) => `:(glob)${glob}`)
+  return (await git(dir, 'diff', '--name-only', 'origin/HEAD...HEAD', '--', ...paths)) !== ''
+}
+
+/** The command and the tail of its output, for the step after it. */
+function checkLog({ command, output, failed }: RanCheck): string {
+  const tail = output.split('\n').slice(-CHECK_LOG_LINES).join('\n')
+  return `$ ${command}\n${tail}\n${failed ? `failed: ${failed}` : 'passed'}\n`
+}
+
+function isLast(loop: { round: number; max: number; step: number; skills: string[] }): boolean {
+  return loop.round === loop.max && loop.step === loop.skills.length - 1
+}
+
+function maxReached(max: number): string {
+  return `max ${max} ${max === 1 ? 'round' : 'rounds'} reached`
 }
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */
@@ -415,7 +511,9 @@ async function handOff(dir: string, start: string, unitDir: string): Promise<voi
   if (diff) await writeFile(join(unitDir, 'out', 'diff.patch'), `${diff}\n`)
   await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
-  await Promise.all(['report.md', 'verdict'].map((f) => rm(join(out, f), { force: true })))
+  await Promise.all(
+    ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
+  )
 }
 
 /** E.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
@@ -432,13 +530,24 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
   if (!body || loop.rounds === 0) return
   const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
   const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}${verdict}.`]
-  const { report } = loop
+  const { report, check } = loop
   if (report)
     lines.push(
       '',
       `<details><summary>Last report: ${report.id}</summary>`,
       '',
       report.text,
+      '',
+      '</details>',
+    )
+  if (check?.failed)
+    lines.push(
+      '',
+      `<details><summary>Last check: \`${check.command}\` failed</summary>`,
+      '',
+      '```',
+      checkLog(check).trim(),
+      '```',
       '',
       '</details>',
     )

@@ -98,7 +98,8 @@ task linked to your PR becomes one unit with that PR.
 - Units run one at a time, in queue order; a rule's
   [`then`](./configuration.md#then) steps run right after its unit. A
   [loop](./configuration.md#loops) repeats its steps in one clone and
-  publishes once, when it ends.
+  publishes once, when it ends. A step with a
+  [`when`](./configuration.md#when) runs only when its condition holds.
 - A draft PR that would start from the default branch stacks on the last
   one published on its repo that night instead, so a night's PRs don't
   conflict with each other. A chain counts as one: the next unit stacks

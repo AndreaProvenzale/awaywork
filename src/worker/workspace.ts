@@ -249,7 +249,12 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
         ]
       : []),
     `Items:\n${items.join('\n')}`,
-    ...(previous ? [continues ? loopFollowUp(previous, body) : followUp(previous)] : []),
+    ...(previous ? [continues ? loopFollowUp(previous, loop, body) : followUp(previous)] : []),
+    ...(unit.rule.when?.command
+      ? [
+          `Before you started, night-shift ran \`${unit.rule.when.command}\`: its output is \`check.log\` in \`${WORK_DIR}/context/previous/\`.`,
+        ]
+      : []),
     `Deliver: ${deliver}`,
   ].join('\n\n')
 }
@@ -259,9 +264,12 @@ function loopSection(loop: LoopRound, unit: Unit): string {
   return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift publishes the branch as one draft PR when the loop ends.`
 }
 
-function loopFollowUp({ skill }: Previous, body: boolean): string {
+function loopFollowUp({ skill }: Previous, loop: LoopRound, body: boolean): string {
   const pr = body ? `, the PR body so far in \`${outputFile.draft_pr}\`` : ''
-  return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${pr}, and its commits in \`diff.patch\`.`
+  const check = loop.until.command
+    ? `, and the output of \`${loop.until.command}\`, which night-shift ran after it, in \`check.log\``
+    : ''
+  return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${pr}, and its commits in \`diff.patch\`${check}.`
 }
 
 function followUp({ skill, outcome }: Previous): string {
