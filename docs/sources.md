@@ -160,9 +160,10 @@ YouTrack, Shortcut, Plane.
   scoped one, with the cloud id from the site's `/_edge/tenant_info` [I].
   `POST /rest/api/3/search/jql` with `assignee = currentUser() AND
   resolution = Unresolved`, the configured `jql` ANDed in, fields
-  `*all,-comment`, paged by `nextPageToken`; custom field names from
+  `*all,-comment`, paged by `nextPageToken` until `isLast`, an empty page
+  or a repeated token; custom field names from
   `/rest/api/3/field`; comments per issue from `/issue/{id}/comment`,
-  paged by `startAt`, ADF turned into minimal Markdown [I]. 429s wait out
+  paged by `startAt`, oldest first, ADF turned into minimal Markdown [I]. 429s wait out
   `Retry-After`, as for Asana. Key is the issue key (`ENG-12`).
 - **PR links.** `dev-status` stays unused: night-shift links issues
   through the forge by key, which Jira's own branch names carry [I].

@@ -139,6 +139,9 @@ calls `api.atlassian.com`, as scoped tokens require. A token without
 scopes can do anything you can; night-shift only reads with it. Tokens
 expire after at most a year.
 
+Jira custom fields that share a name are keyed by name and id, such as
+`fields.Team (customfield_10040)`.
+
 ## Branch names
 
 `branch` is a template rendered per unit, set globally, per repo or per

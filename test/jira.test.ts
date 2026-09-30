@@ -7,10 +7,14 @@ import type { Ctx } from '../src/core/types.js'
 import { adfToMarkdown, jiraSource } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
 import { scriptedAsk } from './fakes/ask.js'
-import { jiraFetch } from './fakes/jira.js'
+import { jiraFetch, jiraFixture } from './fakes/jira.js'
 
 const ctx: Ctx = { env: { JIRA_API_TOKEN: 'atl-token' }, log: () => {} }
 const cfg = { site: 'acme.atlassian.net', email: 'dev@acme.test', token_env: 'JIRA_API_TOKEN' }
+
+type Adf = Parameters<typeof adfToMarkdown>[0]
+const text = (t: string, marks?: Adf['marks']): Adf => ({ type: 'text', text: t, marks })
+const para = (...content: Adf[]): Adf => ({ type: 'paragraph', content })
 
 describe('jira source', () => {
   const http = jiraFetch()
@@ -102,6 +106,60 @@ describe('jira source', () => {
     expect(await jiraSource(http).items(cfg, ctx)).toHaveLength(2)
   })
 
+  it('gives up after the third 429', async () => {
+    const http = recordedFetch([[/./, { status: 429, body: '', headers: { 'Retry-After': '0' } }]])
+    await expect(jiraSource(http).items(cfg, ctx)).rejects.toThrow('Jira /rest/api/3/field: 429')
+    expect(http.calls).toHaveLength(3)
+  })
+
+  it('stops paging the search on isLast, an empty page or a repeated token', async () => {
+    const searches = async (page: string) => {
+      const http = jiraFetch([[/\/search\/jql$/, page]])
+      await jiraSource(http).items(cfg, ctx)
+      return http.calls.filter((c) => c.url.endsWith('/search/jql')).length
+    }
+    const first = JSON.parse(jiraFixture('search-1.json'))
+    expect(await searches(JSON.stringify({ ...first, isLast: true }))).toBe(1)
+    expect(await searches(JSON.stringify({ ...first, issues: [] }))).toBe(1)
+    expect(await searches(jiraFixture('search-1.json'))).toBe(2)
+  })
+
+  it('pages comments past the first and sorts them by creation', async () => {
+    const [one, two] = JSON.parse(jiraFixture('comments-10012.json')).comments
+    const page = (startAt: number, comments: unknown[]) =>
+      JSON.stringify({ startAt, maxResults: 100, total: 3, comments })
+    const earliest = { ...one, created: '2026-01-01T09:00:00.000+0000' }
+    const http = jiraFetch([
+      [/\/issue\/10012\/comment\?startAt=0&/, page(0, [two, one])],
+      [/\/issue\/10012\/comment\?startAt=2&/, page(2, [earliest])],
+    ])
+    const [eng12] = await jiraSource(http).items(cfg, ctx)
+    expect(eng12?.comments.map((c) => c.at)).toEqual([
+      '2026-01-01T09:00:00.000Z',
+      '2026-01-01T10:00:00.000Z',
+      '2026-01-02T09:00:00.000Z',
+    ])
+  })
+
+  it('keys custom fields that share a name by name and id', async () => {
+    const fields = JSON.parse(jiraFixture('fields.json'))
+    const search = JSON.parse(jiraFixture('search-1.json'))
+    search.issues[0].fields.customfield_10060 = { value: 'Billing' }
+    const http = jiraFetch([
+      [
+        /\/field$/,
+        JSON.stringify([...fields, { id: 'customfield_10060', name: 'Team', custom: true }]),
+      ],
+      [/\/search\/jql$/, JSON.stringify({ ...search, isLast: true })],
+    ])
+    const [eng12] = await jiraSource(http).items(cfg, ctx)
+    expect(eng12?.fields).toMatchObject({
+      'fields.Team (customfield_10040)': 'Platform',
+      'fields.Team (customfield_10060)': 'Billing',
+    })
+    expect(eng12?.fields).not.toHaveProperty(['fields.Team'])
+  })
+
   it('names the missing token and the API error', async () => {
     await expect(source.items(cfg, { ...ctx, env: {} })).rejects.toThrow(
       'JIRA_API_TOKEN is not set',
@@ -125,9 +183,6 @@ describe('jira source', () => {
   })
 
   it('renders headings, links, quotes and ordered lists from ADF', () => {
-    type Adf = Parameters<typeof adfToMarkdown>[0]
-    const text = (t: string, marks?: Adf['marks']): Adf => ({ type: 'text', text: t, marks })
-    const para = (...content: Adf[]): Adf => ({ type: 'paragraph', content })
     const doc: Adf = {
       type: 'doc',
       content: [
@@ -146,6 +201,76 @@ describe('jira source', () => {
     expect(adfToMarkdown(doc)).toBe(
       '## Steps\n\n1. one\n2. two\n\n> quoted\n\n[docs](https://x.test)',
     )
+  })
+
+  it('renders tasks, statuses, dates and tables from ADF', () => {
+    const task = (state: string, t: string): Adf => ({
+      type: 'taskItem',
+      attrs: { state },
+      content: [text(t)],
+    })
+    const row = (cell: string, ...texts: string[]): Adf => ({
+      type: 'tableRow',
+      content: texts.map((t) => ({ type: cell, content: [para(text(t))] })),
+    })
+    const doc: Adf = {
+      type: 'doc',
+      content: [
+        { type: 'taskList', content: [task('DONE', 'first'), task('TODO', 'second')] },
+        para(text('Blocked, '), { type: 'status', attrs: { text: 'IN REVIEW' } }, text(' since '), {
+          type: 'date',
+          attrs: { timestamp: '1767225600000' },
+        }),
+        {
+          type: 'table',
+          content: [row('tableHeader', 'Case', 'Result'), row('tableCell', 'a | b', 'ok')],
+        },
+      ],
+    }
+    expect(adfToMarkdown(doc)).toBe(
+      '- [x] first\n- [ ] second\n\nBlocked, IN REVIEW since 2026-01-01\n\n| Case | Result |\n| --- | --- |\n| a \\| b | ok |',
+    )
+  })
+
+  it('sets up a classic token on the site URL, without a cloud id', async () => {
+    const http = jiraFetch()
+    const ask = scriptedAsk([
+      [/^Jira Cloud site/, 'acme.atlassian.net'],
+      [/^Atlassian account email/, 'dev@acme.test'],
+      [/^Is the token scoped/, false],
+      [/^Jira projects/, ['ENG']],
+      [/^GitHub repo for issues in ENG/, 'acme/api'],
+    ])
+    const setup = await jiraSource(http).init?.(ask, ctx)
+    expect(setup?.config).toEqual({
+      site: 'acme.atlassian.net',
+      email: 'dev@acme.test',
+      project_repos: { ENG: 'acme/api' },
+    })
+    expect(http.calls.map((c) => c.url.split('?')[0])).toEqual([
+      'https://acme.atlassian.net/rest/api/3/project/search',
+      'https://acme.atlassian.net/rest/api/3/status',
+    ])
+  })
+
+  it('lists every page of projects at setup', async () => {
+    const projects = JSON.parse(jiraFixture('projects.json'))
+    const ops = { id: '10002', key: 'OPS', name: 'Operations' }
+    const http = jiraFetch([
+      [/\/project\/search\?startAt=0&/, JSON.stringify({ ...projects, isLast: false })],
+      [
+        /\/project\/search\?startAt=2&/,
+        JSON.stringify({ ...projects, isLast: true, values: [ops] }),
+      ],
+    ])
+    const ask = scriptedAsk([
+      [/^Jira Cloud site/, 'acme.atlassian.net'],
+      [/^Atlassian account email/, 'dev@acme.test'],
+      [/^Is the token scoped/, true],
+      [/^Jira projects/, []],
+    ])
+    const setup = await jiraSource(http).init?.(ask, ctx)
+    expect(setup?.values?.project).toEqual(['ENG', 'WEB', 'OPS'])
   })
 
   it('refuses to set up without a site', async () => {

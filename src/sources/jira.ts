@@ -140,16 +140,17 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     /** My unresolved issues, narrowed by the configured JQL, with their comments. */
     async items(cfg, ctx) {
       const token = tokenFrom(cfg, ctx)
+      const custom = (await call<Field[]>(cfg, token, '/rest/api/3/field')).filter((f) => f.custom)
+      const shared = (name: string) => custom.filter((f) => f.name === name).length > 1
       const names = new Map(
-        (await call<Field[]>(cfg, token, '/rest/api/3/field'))
-          .filter((f) => f.custom)
-          .map((f) => [f.id, f.name]),
+        custom.map((f) => [f.id, shared(f.name) ? `${f.name} (${f.id})` : f.name]),
       )
       const jql = `assignee = currentUser() AND resolution = Unresolved${cfg.jql ? ` AND (${cfg.jql})` : ''} ORDER BY updated DESC`
       const issues: Issue[] = []
+      const tokens = new Set<string>()
       let nextPageToken: string | undefined
-      do {
-        const page = await call<{ issues: Issue[]; nextPageToken?: string }>(
+      for (;;) {
+        const page = await call<{ issues: Issue[]; nextPageToken?: string; isLast?: boolean }>(
           cfg,
           token,
           '/rest/api/3/search/jql',
@@ -157,7 +158,11 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
         )
         issues.push(...page.issues)
         nextPageToken = page.nextPageToken
-      } while (nextPageToken)
+        // Stops on a repeated token too: /search/jql has reported pagination bugs.
+        if (page.isLast || page.issues.length === 0 || !nextPageToken || tokens.has(nextPageToken))
+          break
+        tokens.add(nextPageToken)
+      }
 
       const items: Item[] = []
       for (const issue of issues) {
@@ -260,11 +265,13 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
     assignee: f.assignee?.displayName,
     reviewers: [],
     labels: f.labels,
-    comments: comments.map((c) => ({
-      author: c.author?.displayName ?? 'unknown',
-      body: adfToMarkdown(c.body),
-      at: iso(c.created),
-    })),
+    comments: comments
+      .map((c) => ({
+        author: c.author?.displayName ?? 'unknown',
+        body: adfToMarkdown(c.body),
+        at: iso(c.created),
+      }))
+      .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],
     fields: {
       project: f.project.key,
@@ -299,7 +306,7 @@ function fieldValue(value: unknown): string | number | string[] | undefined {
   return undefined
 }
 
-/** Atlassian Document Format as minimal Markdown: text, marks, lists, code, quotes, mentions. */
+/** Atlassian Document Format as minimal Markdown: text, marks, lists, tasks, tables, code, quotes, mentions. */
 export function adfToMarkdown(node: Adf): string {
   const inner = (sep = '') => (node.content ?? []).map(adfToMarkdown).join(sep)
   switch (node.type) {
@@ -315,7 +322,12 @@ export function adfToMarkdown(node: Adf): string {
       return '\n'
     case 'mention':
     case 'emoji':
+    case 'status':
       return String(node.attrs?.text ?? '')
+    case 'date': {
+      const at = new Date(Number(node.attrs?.timestamp))
+      return Number.isNaN(at.getTime()) ? '' : at.toISOString().slice(0, 10)
+    }
     case 'inlineCard':
       return String(node.attrs?.url ?? '')
     case 'rule':
@@ -341,6 +353,23 @@ export function adfToMarkdown(node: Adf): string {
           return bullet + text.replace(/\n/g, `\n${' '.repeat(bullet.length)}`)
         })
         .join('\n')}\n\n`
+    case 'taskList':
+      return `${inner()}\n`
+    case 'taskItem':
+      return `- [${node.attrs?.state === 'DONE' ? 'x' : ' '}] ${inner()}\n`
+    case 'table': {
+      const rows = (node.content ?? []).map((row) =>
+        (row.content ?? []).map((cell) =>
+          adfToMarkdown(cell)
+            .trim()
+            .replace(/\s*\n+\s*/g, ' ')
+            .replaceAll('|', '\\|'),
+        ),
+      )
+      const line = (cells: string[]) => `| ${cells.join(' | ')} |`
+      const [head = [], ...body] = rows
+      return `${[line(head), line(head.map(() => '---')), ...body.map(line)].join('\n')}\n\n`
+    }
     case 'doc':
       return inner().trimEnd()
     default:
