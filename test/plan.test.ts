@@ -511,13 +511,13 @@ queue:
       items: [pr, task, issue],
       allowances: {},
       skills: { builtin: builtinSkills },
-      skips: { 'T-7': { reason: 'blocked on design' }, 'acme/api#5': { until: '2026-01-05' } },
+      skips: { 'asana:T-7': { reason: 'blocked on design' }, 'linear:acme/api#1': {} },
     })
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#5', 'skipped with nightshift skip acme/api#5 until 2026-01-05'],
-      ['acme/api#1', 'skipped with nightshift skip T-7: blocked on design'],
-      ['T-7', 'skipped with nightshift skip T-7: blocked on design'],
+      ['acme/api#5', expect.stringContaining('matched no rule')],
+      ['acme/api#1', 'skipped with nightshift skip asana:T-7: blocked on design'],
+      ['T-7', 'skipped with nightshift skip asana:T-7: blocked on design'],
     ])
   })
 })

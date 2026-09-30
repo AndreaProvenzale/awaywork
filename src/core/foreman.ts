@@ -42,14 +42,7 @@ export function planNight(input: {
   const { config, allowances, skips = {} } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
-  const skipReason = (item: Item) => {
-    const skip = skips[item.key]
-    return skip && describeSkip(item.key, skip)
-  }
-  const skipped = unmatched.map((item) => ({
-    item,
-    reason: skipReason(item) ?? noRuleReason(item, queue),
-  }))
+  const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
@@ -60,9 +53,11 @@ export function planNight(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
-    const skippedByUser = items.map(skipReason).find(Boolean)
+    const skippedByUser = items
+      .map((item) => `${item.source}:${item.key}`)
+      .find((key) => skips[key])
     if (skippedByUser) {
-      skip(skippedByUser)
+      skip(describeSkip(skippedByUser, skips[skippedByUser] as Skip))
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)

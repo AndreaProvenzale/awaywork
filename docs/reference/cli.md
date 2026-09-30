@@ -29,9 +29,11 @@ Commands:
                          ceiling; runs no worker
   queue                  show what each rule matches tonight and reorder the
                          rules with the keyboard
-  skip [options] [key]   leave an item alone on the coming nights; with no key,
-                         list skipped items
-  unskip <key>           let night-shift pick up a skipped item again
+  skip [options] [key]   leave an item (source:key, e.g. github:acme/api#5)
+                         alone on the coming nights; with no key, list skipped
+                         items
+  unskip <key>           let night-shift pick up a skipped item (source:key)
+                         again
   skills                 list skills and eject built-ins to tweak
   run [options]          plan tonight, run a worker per unit and publish draft
                          PRs and reports
@@ -153,7 +155,8 @@ Options:
 ```text
 Usage: nightshift skip [options] [key]
 
-leave an item alone on the coming nights; with no key, list skipped items
+leave an item (source:key, e.g. github:acme/api#5) alone on the coming nights;
+with no key, list skipped items
 
 Options:
   --until <date>   skip until this local date (YYYY-MM-DD) starts; default:
@@ -167,7 +170,7 @@ Options:
 ```text
 Usage: nightshift unskip [options] <key>
 
-let night-shift pick up a skipped item again
+let night-shift pick up a skipped item (source:key) again
 
 Options:
   -h, --help  display help for command

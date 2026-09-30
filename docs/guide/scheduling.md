@@ -75,8 +75,9 @@ The workflow frees about 20 GB of preinstalled SDKs first (runners
 otherwise die quietly on large repos), commits as the token's user, and
 appends the morning report to the job summary.
 
-A runner starts with an empty state dir, so it keeps no attempts: an
-item unchanged since last night runs again, and none is given up on.
+A runner starts with an empty state dir, so it keeps no attempts or
+skips: an item unchanged since last night runs again, none is given up
+on, and `nightshift skip` on your machine doesn't reach it.
 
 ### Credentials on a runner
 

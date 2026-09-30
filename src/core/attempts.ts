@@ -2,7 +2,6 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { PlannedUnit } from './foreman.js'
 import type { NightReport, UnitResult } from './report.js'
-import type { Skip } from './skips.js'
 import type { Item } from './types.js'
 
 export const MAX_ATTEMPTS = 3
@@ -10,11 +9,10 @@ export const MAX_ATTEMPTS = 3
 /**
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
  * then; `failed` counts the attempts in a row that didn't finish, absent once one did.
- * A `nightshift skip` lives under the bare item key, as `skip`.
  */
 export type Attempts = Record<
   string,
-  { runId?: string; skill?: string; updated?: string; failed?: number; skip?: Skip }
+  { runId: string; skill: string; updated: string; failed?: number }
 >
 
 export async function loadAttempts(path: string): Promise<Attempts> {
