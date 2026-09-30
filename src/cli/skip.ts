@@ -1,13 +1,7 @@
 import type { Command } from 'commander'
-import { itemStateFile } from '../config/paths.js'
-import {
-  activeSkips,
-  describeSkip,
-  loadItemState,
-  type Skip,
-  saveItemState,
-  untilTime,
-} from '../core/item-state.js'
+import { attemptsPath } from '../config/paths.js'
+import { loadAttempts, saveAttempts } from '../core/attempts.js'
+import { activeSkips, describeSkip, type Skip, untilTime } from '../core/skips.js'
 
 export function skipCommand(program: Command): void {
   program
@@ -36,29 +30,29 @@ export function skipCommand(program: Command): void {
 export async function skipItem(
   key: string,
   skip: Skip,
-  path = itemStateFile,
+  path = attemptsPath,
   now = Date.now(),
 ): Promise<string> {
   if (skip.until !== undefined && (untilTime(skip.until) ?? 0) <= now)
     throw new Error(`--until ${skip.until} is not a future date (YYYY-MM-DD)`)
-  const state = await loadItemState(path)
+  const state = await loadAttempts(path)
   state[key] = { ...state[key], skip: { until: skip.until, reason: skip.reason } }
-  await saveItemState(path, state)
+  await saveAttempts(path, state)
   return describeSkip(key, skip)
 }
 
-export async function unskipItem(key: string, path = itemStateFile): Promise<string> {
-  const state = await loadItemState(path)
+export async function unskipItem(key: string, path = attemptsPath): Promise<string> {
+  const state = await loadAttempts(path)
   const entry = state[key]
   if (!entry?.skip) return `${key} is not skipped`
   delete entry.skip
   if (Object.keys(entry).length === 0) delete state[key]
-  await saveItemState(path, state)
+  await saveAttempts(path, state)
   return `${key} is no longer skipped`
 }
 
-export async function listSkips(path = itemStateFile, now = Date.now()): Promise<string> {
-  const skips = Object.entries(activeSkips(await loadItemState(path), now))
+export async function listSkips(path = attemptsPath, now = Date.now()): Promise<string> {
+  const skips = Object.entries(activeSkips(await loadAttempts(path), now))
   if (skips.length === 0) return 'No item is skipped'
   return skips.map(([key, skip]) => describeSkip(key, skip)).join('\n')
 }

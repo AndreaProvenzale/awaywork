@@ -3,9 +3,9 @@ import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './a
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { describeSkip, type Skip } from './item-state.js'
 import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
+import { describeSkip, type Skip } from './skips.js'
 import type { Item, Rule, Step, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {

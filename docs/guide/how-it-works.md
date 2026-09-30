@@ -87,8 +87,8 @@ task linked to your PR becomes one unit with that PR.
   `run --unit` runs it anyway.
 - `nightshift skip <key>` leaves an item, and any unit it joins, alone
   until `nightshift unskip <key>` or the `--until` date; `plan` lists it
-  under Skipped with the `--reason`. Skips live in
-  `~/.local/state/night-shift/items.json`.
+  under Skipped with the `--reason`. Skips live in `attempts.json` too,
+  and `run --unit` runs the item anyway.
 - Units run one at a time, in queue order; a rule's `then` steps run
   right after its unit.
 - Optional [caps](./configuration.md#night-and-budget) limit the units

@@ -1,13 +1,13 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, itemStateFile, userSkillsDir } from '../config/paths.js'
+import { attemptsPath, userSkillsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { type NightPlan, planNight } from '../core/foreman.js'
-import { activeSkips, loadItemState } from '../core/item-state.js'
 import { builtinSkills } from '../core/skills.js'
+import { activeSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item } from '../core/types.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
@@ -53,7 +53,7 @@ export async function planTonight(
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
-  const skips = activeSkips(await loadItemState(itemStateFile), Date.now())
+  const skips = activeSkips(attempts, Date.now())
   return { plan: planNight({ config, items, allowances, skills, attempts, skips }), warnings, ctx }
 }
 

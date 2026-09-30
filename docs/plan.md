@@ -258,8 +258,9 @@ Semantics, fixed so every milestone agrees:
   retry, and a step is never skipped on its own. A unit picked with
   `run --unit` isn't skipped. A chain that ran but didn't finish counts
   one failure on each item instead; after 3 in a row on the same
-  `updated` time and skill the unit is skipped as gave up. Not persisted
-  in Actions.
+  `updated` time and skill the unit is skipped as gave up. `nightshift
+  skip <key>` keeps a `skip` in the same file under the bare item key.
+  Not persisted in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
