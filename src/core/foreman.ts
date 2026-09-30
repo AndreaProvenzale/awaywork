@@ -95,7 +95,7 @@ export function planNight(input: {
         repo,
         rule: step,
         skill: step.skill,
-        skills: step.skills,
+        skills: [...config.skills, ...step.skills],
         providers,
         instructions: [
           ...config.instructions,

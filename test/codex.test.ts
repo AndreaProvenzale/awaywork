@@ -128,6 +128,18 @@ describe('codex provider', () => {
     }
   })
 
+  it('passes each config value as -c', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    try {
+      const config = { config: { model_reasoning_effort: 'high', 'tools.web_search': false } }
+      await collect(provider.run({ ...job(), config }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
+      expect(args.join(' ')).toContain('-c model_reasoning_effort="high" -c tools.web_search=false')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
   it('fails a turn the model could not finish', async () => {
     process.env.FAKE_CODEX_RUN = 'failed'
     try {

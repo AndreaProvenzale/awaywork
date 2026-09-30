@@ -130,6 +130,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   expect(existsSync(join(unitDir, 'prompt.md'))).toBe(true)
   expect(existsSync(join(unitDir, 'context/acme-api-1'))).toBe(true)
   expect(existsSync(join(runDir, 'work', 'acme-api-1'))).toBe(false)
+  expect(existsSync(join(runDir, 'plugins', 'acme-api-1'))).toBe(false)
 
   const text = formatReport(report)
   expect(text).toContain(

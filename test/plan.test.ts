@@ -216,6 +216,24 @@ queue:
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
   })
 
+  it("adds the top-level skills to every unit, before the rule's or step's", () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+skills: [house-style]
+queue:
+  - skill: fix-ci
+    skills: [our-api-conventions]
+    where: { checks: failing }
+    then: { skill: review, skills: [our-review-checklist] }
+`
+    const units = plan(yaml, [githubPr(1, { checks: 'failing' })], {}).units
+    expect(units.map((u) => u.unit.skills)).toEqual([
+      ['house-style', 'our-api-conventions'],
+      ['house-style', 'our-review-checklist'],
+    ])
+  })
+
   it('chains steps: stacked on a draft PR, on the same base after a report', () => {
     const yaml = `
 providers: [claude, codex]

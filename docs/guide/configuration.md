@@ -41,8 +41,8 @@ budget:                         # defaults; any provider can override
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: { model: opus }     # default: the binary's own model
-  - codex: { budget: { per_night: 5% } }
+  - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
+  - codex: { budget: { per_night: 5% }, config: { model_reasoning_effort: high } }
 sources:
   github: { repos: [acme/*] }
   asana:
@@ -57,6 +57,7 @@ repos:
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
+skills: [house-style]           # every unit, next to a rule's skills
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
@@ -103,6 +104,15 @@ the budget for that provider or sets its `model`, passed as is to the
 binary (`claude --model`, `codex exec -m`). Without one, the binary picks
 its own default.
 
+Workers skip your user-level agent config. To give them the hooks, env
+or settings you do want, list them here; they apply on every unit,
+including someone else's PR:
+
+- `claude: { settings: <file> }`: a Claude Code settings file, relative
+  to the config file, passed as `--settings`. Auto-memory stays off.
+- `codex: { config: { <key>: <value> } }`: each key passed as
+  `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
+
 ## Sources
 
 | Source | Keys |
@@ -141,6 +151,9 @@ should use there, plus an instructions file. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
+
+`skills` at the top level adds skills to every unit, like a rule's
+`skills`; see [Skills](./skills.md#where-skills-come-from).
 
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions
@@ -208,7 +221,8 @@ queue:
 
 - A step takes the rule keys except `source`, `where`, `order`, `units`
   and `then`. It inherits none of the rule's: an unset key has the same
-  default as on a rule.
+  default as on a rule. Top-level `instructions` and `skills` still
+  apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it. After a report, it starts from the
   same base.

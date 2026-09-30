@@ -141,7 +141,7 @@ interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>              // null = fixed budget
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
-  skillsDir: string                              // where skills go in the clone
+  skillsDir?: string                             // where skills go in the clone; unset: job.plugin
   instructionsFile: string                       // CLAUDE.md, AGENTS.md, …
 }
 
@@ -293,13 +293,14 @@ Semantics, fixed so every milestone agrees:
 - **Skills.** `skill` is the main skill, and `skills` are extras available
   to the worker. A name is looked up in `~/.config/night-shift/skills/`,
   then in-repo `.night-shift/skills/`, then the built-ins. Skills are
-  copied into the clone at the provider's `skillsDir`. Check each
+  copied into the clone at the provider's `skillsDir`, or into a plugin
+  folder outside it for a provider without one (Claude). Check each
   provider's skill location in its docs and tag it as in `providers.md`.
 - **Prompt**, in order: `harness.md`, the main skill, global
   `instructions`, repo `setup`/`test`/`instructions`, in-repo
   `.night-shift/instructions.md`, the rule's `instructions`.
 - **Workspace.** A unit runs in a fresh clone on its new branch, cut
-  from `base`. Skills go to the provider's `skillsDir`; `.nightshift/`
+  from `base`. Skills go to the provider's `skillsDir` or plugin; `.nightshift/`
   holds `context/<item key slug>/`, `prompt.md` and `out/`, where the
   model writes `pr.md` (first line the title) or `report.md`. Both are
   in `.git/info/exclude`, so the model can't commit them. The model's

@@ -90,11 +90,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     routed[id] = (routed[id] ?? 0) + 1
-    const model = unit.rule.model?.[id] ?? n.config.providers.find((c) => c.id === id)?.model
+    const entry = n.config.providers.find((c) => c.id === id)
+    const model = unit.rule.model?.[id] ?? entry?.model
     n.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
     const unitDir = join(n.runDir, 'units', unit.id)
     const dir = join(n.runDir, 'work', unit.id)
+    const plugin = join(n.runDir, 'plugins', unit.id)
     await mkdir(unitDir, { recursive: true })
     const logFile = createWriteStream(join(unitDir, 'worker.log'))
     const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -107,14 +109,25 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         outcome: after.outcome,
         out: join(n.runDir, 'units', after.planned.unit.id, 'out'),
       }
-      const prompt = await prepareWorkspace({ ...n, unit, dir, provider, ctx, previous })
+      const prompt = await prepareWorkspace({ ...n, unit, dir, plugin, provider, ctx, previous })
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
-      const job = { unit, dir, prompt, maxTurns, model, env }
+      const config = entry?.config
+      const job = {
+        unit,
+        dir,
+        prompt,
+        maxTurns,
+        model,
+        env,
+        config,
+        configDir: n.configDir,
+        plugin,
+      }
       const worker = await runWorker(provider, job, a, {
         log,
         signal: n.signal,
@@ -137,7 +150,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         recursive: true,
         filter: (src) => src !== join(dir, WORK_DIR, 'gh'),
       }).catch(() => {})
-      if (!n.dryRun) await rm(dir, { recursive: true, force: true })
+      if (!n.dryRun)
+        await Promise.all([dir, plugin].map((d) => rm(d, { recursive: true, force: true })))
     }
     n.ctx.log(`${unit.id}: ${result.status}`)
   }

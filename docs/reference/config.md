@@ -30,6 +30,7 @@ with:
 | `branch` | string | `"night/{key}"` | Branch name template; {key} is required, {title} optional |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
+| `skills` | string[] | `[]` | Extra skills available to every unit |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Run after each night with the morning report; a failure is only logged |
 
@@ -77,6 +78,7 @@ claude settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `settings` | string |  | Settings file for every worker, relative to the config file; passed as --settings |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
@@ -106,6 +108,7 @@ codex settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `config` | map |  | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 

@@ -27,6 +27,8 @@ export interface WorkspaceInput {
   provider: Provider
   ctx: Ctx
   skillDirs?: { user: string; builtin: string }
+  /** Where the skills go as a plugin, outside the clone, for a provider without `skillsDir`. */
+  plugin: string
   /** The unit this one chains after: its skill, what it delivered and its `out/` folder. */
   previous?: Previous
 }
@@ -51,24 +53,10 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
   const { user, builtin } = w.skillDirs ?? { user: userSkillsDir, builtin: builtinSkillsDir }
   const roots = foreign ? [user, builtin] : [user, join(dir, '.night-shift', 'skills'), builtin]
-  const excluded = [`/${WORK_DIR}/`]
-  const replaced: string[] = []
-  for (const name of new Set([unit.skill, ...unit.skills])) {
-    const target = join(dir, provider.skillsDir, name)
-    if (existsSync(target)) {
-      if (!foreign) {
-        w.ctx.log(`skill ${name}: kept the repo's own ${provider.skillsDir}/${name}`)
-        continue
-      }
-      w.ctx.log(`skill ${name}: replaced the PR author's ${provider.skillsDir}/${name}`)
-      await rm(target, { recursive: true })
-      replaced.push(target)
-    }
-    await cp(findSkill(name, roots), target, { recursive: true })
-    excluded.push(`/${provider.skillsDir}/${name}/`)
-  }
-  await appendFile(join(dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`)
-  if (replaced.length > 0) await hideFromGit(dir, replaced)
+  const names = [...new Set([unit.skill, ...unit.skills])]
+  if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
+  else await buildPlugin(w.plugin, names, roots)
+  await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
   const items: string[] = []
   for (const item of unit.items) {
@@ -111,6 +99,37 @@ export function workerEnv(
   const hidden = new Set([...forgeTokens, ...withheld])
   const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
+}
+
+/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR. */
+async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[], roots: string[]) {
+  const excluded: string[] = []
+  const replaced: string[] = []
+  for (const name of names) {
+    const target = join(w.dir, skillsDir, name)
+    if (existsSync(target)) {
+      if (!w.unit.foreign) {
+        w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
+        continue
+      }
+      w.ctx.log(`skill ${name}: replaced the PR author's ${skillsDir}/${name}`)
+      await rm(target, { recursive: true })
+      replaced.push(target)
+    }
+    await cp(findSkill(name, roots), target, { recursive: true })
+    excluded.push(`/${skillsDir}/${name}/`)
+  }
+  if (excluded.length > 0)
+    await appendFile(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`)
+  if (replaced.length > 0) await hideFromGit(w.dir, replaced)
+}
+
+/** A plugin named `nightshift` holding the skills, so they load as `nightshift:<name>`. */
+async function buildPlugin(plugin: string, names: string[], roots: string[]) {
+  await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
+  await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"nightshift"}\n')
+  for (const name of names)
+    await cp(findSkill(name, roots), join(plugin, 'skills', name), { recursive: true })
 }
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */

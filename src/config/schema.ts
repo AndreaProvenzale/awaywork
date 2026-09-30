@@ -200,6 +200,7 @@ export const configSchema = z
       .default({})
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+    skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
     queue: z
       .array(rule)
       .optional()

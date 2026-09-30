@@ -195,6 +195,10 @@ describe('skills', () => {
       '---\nname: our-api-conventions\n---\n',
     )
     expect(await unknownSkills(cfg, userDir)).toEqual([])
+    const top = parseConfig(`${minimal}skills: [house-style]`)
+    expect(await unknownSkills(top, userDir)).toEqual([
+      `skills: unknown skill "house-style" (not built in, not in ${userDir})`,
+    ])
   })
 
   it('checks the skills of every step in a chain', async () => {
