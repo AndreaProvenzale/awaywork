@@ -13,7 +13,7 @@ import { providers } from '../providers/index.js'
 import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
 import { defaultScheduler, schedulers } from '../scheduler/index.js'
 import { sources } from '../sources/index.js'
-import { terminalAsk } from './ask.js'
+import { Cancelled, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
 
 const GITHUB_ACTIONS = 'github-actions'
@@ -162,7 +162,12 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       await copyFile(path, repoConfig)
       console.log(`Copied ${path} to ${REPO_CONFIG}`)
     }
-    const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet)
+    const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet).catch(
+      (e) => {
+        if (e instanceof Cancelled) return [...secrets]
+        throw e
+      },
+    )
     console.log('Before the first night:')
     console.log(`  commit ${WORKFLOW} and ${REPO_CONFIG}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
