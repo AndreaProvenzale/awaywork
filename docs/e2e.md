@@ -37,9 +37,10 @@ From `lessons.md`:
 - `review_requested` needs a second GitHub account: nobody can request
   their own review. `address-review` can use review comments left on
   one's own PR.
-- The workflow from `schedule install --with github-actions` runs
-  `npm install -g nightshift-agent`, which is not on npm yet: publish a release candidate first, or point
-  the install line at a tarball or git ref in the test repo.
+- The workflow from `schedule install --with github-actions` calls
+  `AndreaProvenzale/night-shift@v1` with the CLI's own version, and only a
+  stable release moves `v1`: publish a release candidate first, and point
+  `uses:` at its tag and `version` at its number in the test repo.
 - A scheduled job runs the `claude` binary on `PATH`, with whichever
   login is active then, not a shell function or alias wrapping it.
 - Back up `~/.codex/auth.json`.

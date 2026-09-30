@@ -32,7 +32,8 @@ code depends on it.
 Versions follow SemVer; while on 0.x a minor version may change the
 config. A tag `vX.Y.Z` publishes to npm as `latest`, `vX.Y.Z-rc.N` as
 `next`, and both create a GitHub release with generated notes
-(`.github/workflows/release.yml`).
+(`.github/workflows/release.yml`). A stable release also moves the `v1`
+tag, which generated workflows call as the action (`action.yml`).
 
 ```sh
 npm version 0.1.0-rc.1    # bumps package.json, commits, tags
