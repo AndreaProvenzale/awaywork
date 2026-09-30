@@ -49,8 +49,8 @@ export function initCommand(program: Command): void {
             return outro('Kept the existing config')
         }
 
-        const found = spinner()
-        found.start('Looking for agents and a gh login')
+        const found = process.stdout.isTTY ? spinner() : undefined
+        found?.start('Looking for agents and a gh login')
         const installed: string[] = []
         const lines: string[] = []
         for (const p of Object.values(providers)) {
@@ -63,7 +63,8 @@ export function initCommand(program: Command): void {
           () => false,
         )
         lines.push(`gh: ${ghLogin ? 'logged in' : 'not logged in (gh auth login)'}`)
-        found.stop(lines.join(', '))
+        if (found) found.stop(lines.join(', '))
+        else log.info(lines.join(', '))
 
         const skills = {
           ...(await loadSkills(builtinSkillsDir)),
