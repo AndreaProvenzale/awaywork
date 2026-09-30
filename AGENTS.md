@@ -16,8 +16,8 @@ subscription quota. Read `README.md`, then `docs/`: `guide/` and
 - **Guardrails are not negotiable.** Workers never force-push, merge,
   touch someone else's branch, or comment on someone's behalf. By default
   they push only branches that did not exist (named `night/<key>` unless
-  configured); pushing to the developer's own branch is an explicit
-  per-rule opt-in.
+  configured); pushing to the developer's own PR branch is an explicit
+  per-rule opt-in (`deliver: push`), fast-forward only.
 - **State what you checked, not what you believe.** A finding names its
   evidence; research tags claims [V]/[C]/[I] as in `docs/providers.md`.
 - **No dates in docs.** Git history owns time.

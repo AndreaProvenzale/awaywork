@@ -157,7 +157,8 @@ item's title as a slug of at most 40 characters.
 | Jira issue `ENG-12` | `ENG-12` |
 
 The name is cosmetic. The guardrail is that night-shift only pushes a
-branch that doesn't exist on the remote yet.
+branch that doesn't exist on the remote yet, unless a rule opts in to
+[`push`](#push).
 
 ## Repos and instructions
 
@@ -175,8 +176,8 @@ Their values are masked in setup's output. On a PR someone else opened,
 setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
 otherwise the agent is told it didn't run. It gets none of them either
-on a branch a worker wrote: a `then` step's after a draft PR, a stacked
-draft PR's, or a night-shift PR's a rule took up again. Read
+on a branch a worker wrote: a `then` step's after a draft PR or a push,
+a stacked draft PR's, or a night-shift PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -211,7 +212,7 @@ the repo's PR template, its recent commit style and your instructions
 | `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
 | `skills` | Extra skills the agent may use |
 | `instructions` | One or more instruction files for this rule |
-| `deliver` | `draft_pr` or `report`; default from the skill |
+| `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per night from this rule, its `then` steps included |
@@ -290,10 +291,11 @@ queue:
   draft PR it opens is stacked on it: its body names that PR to merge
   first. After a report, it starts from the same base, except that a
   draft PR it would open off the default branch stacks on the repo's
-  last one that night, as any unit's does.
+  last one that night, as any unit's does. After a push, it starts from
+  your PR's branch, pushed commits included.
 - The step finds what the one before delivered in
-  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
-  `report.md`.
+  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
+  or both `report.md` and `diff.patch` after a push.
 - A step runs only when the one before delivered; otherwise the rest of
   the chain is skipped, with the reason in the report. Once a unit in the
   chain opened a draft PR, the next night doesn't retry: the item waits
@@ -427,6 +429,32 @@ queue:
 - The step right before a loop can't have a `when` unless it sets
   `deliver: report`, since the loop works in its clone: gate the loop's
   steps, or put a step between.
+
+### `push`
+
+By default night-shift only pushes branches that don't exist yet. `deliver:
+push` is the opt-in to add commits onto your own open PR instead of
+stacking a draft PR on it, e.g. to have review threads addressed in place:
+
+```yaml
+queue:
+  - skill: address-review
+    where: { type: pr, mine: true, unresolved_threads: { gt: 0 } }
+    deliver: push
+```
+
+- Only onto an open PR you authored, night-shift's own included (they
+  are opened with your login). On someone else's PR, or an item with no
+  PR of yours, the unit is skipped with the reason.
+- A `then` step can push only after a report or a push, onto the same
+  PR. After a draft PR its base is that night's new branch, not your PR:
+  the step is left out with the rest of the chain.
+- A fast-forward only: night-shift refuses when the branch moved since
+  the clone, and never forces. The commits get the `Night-shift:` trailer.
+- The agent writes `.nightshift/out/report.md`; without it nothing is
+  pushed. The PR body stays as it is and the report goes into the
+  morning report.
+- A skill's frontmatter can't default to `push`: only a rule opts in.
 
 ## Notify
 

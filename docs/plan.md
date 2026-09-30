@@ -156,6 +156,7 @@ interface Forge {
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
   push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
+  fastForward(dir, branch, from, opts): Promise<void>   // only while the remote head is `from`, never force
   draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
@@ -167,7 +168,7 @@ interface Unit {
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
-type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Delivery
+type Deliver = 'draft_pr' | 'report' | 'push'    // see Delivery
 interface Rule {            // a queue entry, normalized: one-or-many fields are lists
   skill: string; source?: string; where: Record<string, WhereValue>
   provider: string[]; skills: string[]; instructions: string[]; deliver?: Deliver
@@ -370,10 +371,13 @@ Semantics, fixed so every milestone agrees:
   into the developer's branch when the unit has one, else into the
   default branch.
 - `report`: nothing is pushed; the output goes into the morning report.
-- `push` (after v1): commit onto the developer's own branch, only when
-  a rule opts in, the branch is the developer's own PR head, and the push
-  is a fast-forward. Never someone else's branch, never force, never
-  merge, never a comment.
+- `push`: commit onto the developer's own branch, only when a rule opts
+  in (never a skill's default), the unit's base is an open PR the
+  developer authored (night-shift's own included), and the push is a
+  fast-forward from the commit the clone started at. A `then` step after
+  a draft PR can't push: its base is tonight's branch. The model writes
+  `report.md`, required to push; the PR body is untouched. Never someone
+  else's branch, never force, never merge, never a comment.
 
 ## Milestones
 

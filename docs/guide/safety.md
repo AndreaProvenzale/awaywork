@@ -111,15 +111,24 @@ what your user can read.
 - Only a branch that **doesn't exist** on the remote, checked before the
   worker starts and again at push. Never force, never someone else's
   branch.
+- The one exception is a rule with `deliver: push`: it adds commits onto
+  **your own open PR's** branch, as a fast-forward, only while the
+  branch is still where the clone started. It is refused on someone
+  else's PR, on an item without a PR of yours, and on a draft PR
+  night-shift opened that night. The commits land unreviewed on a
+  branch your CI and teammates run, so opt in only where that's fine.
+  A `then` step on that branch the same night runs `setup` without the
+  repo's `secrets`.
 - Only a **draft** PR, into your own PR's branch, the default branch or
   a PR night-shift opened: earlier the same night, or one a rule naming
   `ours` took up again.
   It never merges, approves, requests reviewers or comments.
-- Only when the agent wrote a PR body. A run killed before that
-  publishes nothing.
+- Only when the agent wrote a PR body, or its report for `push`. A run
+  killed before that publishes nothing.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from night-shift: a footer with the run id in
-  the body and a `Night-shift: <run id>` commit trailer.
+  the body and a `Night-shift: <run id>` commit trailer. Pushed commits
+  carry the trailer too.
 
 ## Resources
 
