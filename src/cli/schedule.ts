@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { configPath, loadConfig } from '../config/load.js'
-import { stateDir } from '../config/paths.js'
+import { packageVersion, stateDir } from '../config/paths.js'
 import type { Ask } from '../core/types.js'
 import { clock } from '../core/window.js'
 import { exec } from '../forge/gh.js'
@@ -101,7 +101,7 @@ export async function staleSchedules(
   return warnings
 }
 
-const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+export const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */
 export async function installSchedule(config: string | undefined, id?: string): Promise<void> {
@@ -175,6 +175,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
         start: night.start,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         config: REPO_CONFIG,
+        version: packageVersion,
         packages: used.map((p) => p.package),
         secrets: [...secrets],
       }),

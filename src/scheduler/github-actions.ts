@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { clock } from '../core/window.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
 export const REPO_CONFIG = '.night-shift/config.yml'
+const ACTION_REPO = 'AndreaProvenzale/night-shift'
+const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
   start: string
@@ -12,26 +14,16 @@ export interface Workflow {
   timezone: string
   /** Repo path of the config the run reads. */
   config: string
+  /** The nightshift-agent version the runner installs. */
+  version: string
   packages: string[]
   secrets: string[]
 }
 
-/** Preinstalled SDKs the runner doesn't need, about 20 GB (lessons.md, "Runners die quietly"). */
-const unusedSdks = [
-  '/usr/share/dotnet',
-  '/usr/local/lib/android',
-  '/opt/ghc',
-  '/opt/hostedtoolcache/CodeQL',
-]
-
-/** A nightly workflow; secrets appear by name only, their values stay in the repo's settings. */
+/** A nightly workflow calling night-shift's action; secrets appear by name only, their values stay in the repo's settings. */
 export function workflow(w: Workflow): string {
   const [hour, minute] = clock(w.start)
-  const env = [
-    `TZ: ${w.timezone}`,
-    `NIGHT_SHIFT_CONFIG: ${w.config}`,
-    ...w.secrets.map((name) => `${name}: \${{ secrets.${name} }}`),
-  ]
+  const env = [`TZ: ${w.timezone}`, ...w.secrets.map((name) => `${name}: \${{ secrets.${name} }}`)]
   return `name: night-shift
 
 on:
@@ -48,22 +40,12 @@ jobs:
     env:
 ${env.map((line) => `      ${line}`).join('\n')}
     steps:
-      - name: Free disk
-        run: sudo rm -rf ${unusedSdks.join(' ')}
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: ${ACTION}
         with:
-          node-version: 22
-      - run: npm install -g ${['nightshift-agent', ...w.packages].join(' ')}
-      - name: Commit as the token's user
-        run: |
-          user=$(gh api user --jq '"\\(.id)+\\(.login)"')
-          git config --global user.name "\${user#*+}"
-          git config --global user.email "$user@users.noreply.github.com"
-      - run: nightshift run \${{ github.event_name == 'schedule' && '--scheduled' || '' }}
-      - name: Morning report
-        if: always()
-        run: nightshift report >> "$GITHUB_STEP_SUMMARY" || true
+          config: ${w.config}
+          version: ${w.version}
+          packages: ${JSON.stringify(w.packages.join(' '))}
 `
 }
 
@@ -73,4 +55,11 @@ export async function removeWorkflow(root: string): Promise<boolean> {
   if (!existsSync(file)) return false
   await rm(file)
   return true
+}
+
+/** Warns when the repo's workflow predates night-shift's action and runs its steps inline. */
+export async function staleWorkflow(root: string): Promise<string | undefined> {
+  const file = join(root, WORKFLOW)
+  if (!existsSync(file) || (await readFile(file, 'utf8')).includes(`uses: ${ACTION_REPO}@`)) return
+  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule remove\`, then \`nightshift schedule install --with github-actions\``
 }
