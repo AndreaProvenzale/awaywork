@@ -30,11 +30,13 @@ const fallback = z
 const reserve = 'Never go past 1 - reserve of any window'
 const perNight = 'At most this share of the long window per night'
 const sessionMax = 'Stop a worker past this share of the short window'
+const unitMinutes = 'Stop a worker after this many minutes'
 const budget = z
   .strictObject({
     reserve: percent.prefault('10%').describe(reserve),
     per_night: percent.optional().describe(perNight),
     session_max: percent.prefault('90%').describe(sessionMax),
+    unit_minutes: z.int().positive().optional().describe(unitMinutes),
     fallback: fallback.default({ units: 4, turns: 60 }),
   })
   .describe('Quota allocation defaults; any provider can override them')
@@ -43,6 +45,7 @@ const budgetOverride = z
     reserve: percent.describe(reserve),
     per_night: percent.describe(perNight),
     session_max: percent.describe(sessionMax),
+    unit_minutes: z.int().positive().describe(unitMinutes),
     fallback,
   })
   .partial()

@@ -129,7 +129,8 @@ PR's branch when it has one, else the default branch).
 - The agent has no forge token, no source's or other provider's secret,
   and a `gh` config without a login.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota
-  reading) and a watchdog stops it below 1.5 GB of free memory or 2 GB of
+  reading), `unit_minutes` caps its wall-clock time when set (status
+  `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of
   disk, then kills every process it left behind.
 
 ## Delivery

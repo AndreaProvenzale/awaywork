@@ -39,6 +39,7 @@ budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_night: 15%                # at most this share of the long window per night
   session_max: 90%              # stop a worker past this share of the short window
+  unit_minutes: 90              # stop a worker after this many minutes
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model

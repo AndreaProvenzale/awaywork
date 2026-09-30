@@ -154,6 +154,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         log,
         signal: n.signal,
         until: n.until,
+        maxMinutes: entry?.budget.unit_minutes,
         watch: n.watch,
       })
       Object.assign(result, worker)
