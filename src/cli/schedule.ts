@@ -1,19 +1,27 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
+import { execa } from 'execa'
 import { configPath, loadConfig } from '../config/load.js'
 import { packageVersion, stateDir } from '../config/paths.js'
+import type { Ask } from '../core/types.js'
 import { clock } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
-import { defaultScheduler, schedulers } from '../scheduler/index.js'
+import { defaultScheduler, type Schedule, type Scheduler, schedulers } from '../scheduler/index.js'
 import { sources } from '../sources/index.js'
+import { Cancelled, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
 
 const GITHUB_ACTIONS = 'github-actions'
+const GH_TOKEN_HELP =
+  'GH_TOKEN is a classic personal access token of yours with the `repo` and `workflow` scopes ' +
+  '(https://github.com/settings/tokens/new?scopes=repo,workflow): `repo` reads your PRs, issues, ' +
+  'checks and Actions logs, pushes new branches and opens draft PRs; `workflow` lets it push ' +
+  'branches that change workflow files'
 
 export function scheduleCommand(program: Command): void {
   const schedule = program
@@ -52,11 +60,8 @@ export function scheduleCommand(program: Command): void {
         const job = await scheduler.read()
         if (!job) continue
         found = true
-        const at = [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
-        const flag = job.command.indexOf('--config')
-        const config = flag >= 0 ? job.command[flag + 1] : 'the default'
-        console.log(`Scheduled with ${scheduler.id} at ${at}`)
-        console.log(`Config: ${config}`)
+        console.log(`Scheduled with ${scheduler.id} at ${startsAt(job)}`)
+        console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
         console.log(`Log: ${job.log}`)
       }
       const root = await gitRoot()
@@ -69,6 +74,33 @@ export function scheduleCommand(program: Command): void {
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
+const startsAt = (job: Schedule) =>
+  [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
+
+function jobConfig(job: Schedule): string | undefined {
+  const flag = job.command.indexOf('--config')
+  return flag >= 0 ? job.command[flag + 1] : undefined
+}
+
+/** Warns about each installed job for this config that no longer starts at night.start. */
+export async function staleSchedules(
+  config: string,
+  start: string,
+  all: Record<string, Scheduler> = localSchedulers(),
+): Promise<string[]> {
+  const warnings = []
+  for (const scheduler of Object.values(all)) {
+    const job = await scheduler.read()
+    if (!job || jobConfig(job) !== resolve(config)) continue
+    const [hour, minute] = clock(start)
+    if (job.hour !== hour || job.minute !== minute)
+      warnings.push(
+        `the ${scheduler.id} job starts at ${startsAt(job)}, night.start is ${start}; run \`nightshift schedule install\``,
+      )
+  }
+  return warnings
+}
+
 const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */
@@ -126,13 +158,8 @@ async function installWorkflow(config: string | undefined): Promise<void> {
     return
   }
   try {
-    const {
-      night,
-      providers: picked,
-      sources: configured,
-      notify,
-      repos,
-    } = await loadConfig(configPath(config))
+    const path = configPath(config)
+    const { night, providers: picked, sources: configured, notify, repos } = await loadConfig(path)
     const used = picked.flatMap((p) => providers[p.id] ?? [])
     const secrets = new Set([
       'GH_TOKEN',
@@ -153,11 +180,56 @@ async function installWorkflow(config: string | undefined): Promise<void> {
         secrets: [...secrets],
       }),
     )
-    console.log(`Wrote ${WORKFLOW}. Before the first night:`)
-    console.log(`  commit your config as ${REPO_CONFIG}`)
-    console.log(`  add these repository secrets: ${[...secrets].join(', ')}`)
-    console.log('  GH_TOKEN is a token of yours that reads your PRs and pushes to their repos')
+    console.log(`Wrote ${WORKFLOW}`)
+    const repoConfig = join(root, REPO_CONFIG)
+    if (existsSync(repoConfig)) console.log(`Kept the existing ${REPO_CONFIG}`)
+    else {
+      await mkdir(dirname(repoConfig), { recursive: true })
+      await copyFile(path, repoConfig)
+      console.log(`Copied ${path} to ${REPO_CONFIG}`)
+    }
+    const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet).catch(
+      (e) => {
+        if (e instanceof Cancelled) return [...secrets]
+        throw e
+      },
+    )
+    console.log('Before the first night:')
+    console.log(`  commit ${WORKFLOW} and ${REPO_CONFIG}`)
+    if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
+    if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
     reportConfigError(e)
   }
+}
+
+/** Sets a repository secret of the current repo; the value goes through stdin, never argv. */
+const ghSecretSet = async (name: string, value: string) =>
+  void (await execa('gh', ['secret', 'set', name], { input: value }))
+
+/**
+ * Offers to set each secret whose value is in the env, the env file included;
+ * returns the names left unset. Values are never printed.
+ */
+export async function offerSecrets(
+  names: string[],
+  env: NodeJS.ProcessEnv,
+  ask: Ask,
+  set: (name: string, value: string) => Promise<void>,
+): Promise<string[]> {
+  const unset = []
+  for (const name of names) {
+    const value = env[name]
+    if (value && (await ask.confirm(`Set the ${name} repository secret from your env?`))) {
+      try {
+        await set(name, value)
+        ask.note(`Set ${name}`)
+        continue
+      } catch {
+        ask.note(`\`gh secret set ${name}\` failed`)
+      }
+    }
+    unset.push(name)
+  }
+  return unset
 }
