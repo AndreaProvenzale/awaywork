@@ -121,8 +121,13 @@ export interface Forge {
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
-  /** Pushes HEAD onto an existing branch, only while the remote head is still `from`; never forced. */
-  fastForward(dir: string, branch: string, from: string, opts: { repo: string }): Promise<void>
+  /** Pushes HEAD onto PR `pr`'s branch, only while it is open, in the repo, without auto-merge, and still at `from`; never forced. */
+  fastForward(
+    dir: string,
+    branch: string,
+    from: string,
+    opts: { repo: string; pr: number },
+  ): Promise<void>
   draftPr(
     repo: string,
     head: string,

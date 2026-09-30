@@ -162,7 +162,7 @@ the clone of the unit the loop started from.
 |---|---|
 | `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
 | `report` | The worker writes `.nightshift/out/report.md`; nothing is pushed. It goes into the morning report. |
-| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.nightshift/out/report.md`; night-shift adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while its head is still the commit the clone started from. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. |
+| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.nightshift/out/report.md`; night-shift adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while the PR is open, in the repo, without auto-merge, and its head is still the commit the clone started from. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. |
 
 Either way, a skill that defines verdicts also writes one word to
 `.nightshift/out/verdict`, such as `approve`. The report shows it next to

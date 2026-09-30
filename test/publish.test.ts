@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { Unit } from '../src/core/types.js'
+import type { PrRef, Unit } from '../src/core/types.js'
 import { publish } from '../src/worker/publish.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
@@ -11,9 +11,19 @@ import { fakeItem } from './fakes/items.js'
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
 
+const pr: PrRef = {
+  repo: 'acme/api',
+  number: 1,
+  url: 'https://github.com/acme/api/pull/1',
+  branch: 'feature-1',
+  ours: false,
+  mine: true,
+  trusted: true,
+}
+
 const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
   id: 'fake-1',
-  items: [fakeItem()],
+  items: [fakeItem({ linkedPrs: [pr] })],
   repo: 'acme/api',
   base: 'feature-1',
   foreign: false,
@@ -130,7 +140,7 @@ describe('publish', () => {
       commits: 1,
       text: 'Fixed the flaky test.',
     })
-    expect(forge.fastForwards).toEqual([`acme/api:feature-1 from ${start}`])
+    expect(forge.fastForwards).toEqual([`acme/api:feature-1 (#1) from ${start}`])
     expect(forge.branches.size).toBe(0)
     const trailers = await git(
       dir,
@@ -140,6 +150,23 @@ describe('publish', () => {
     )
     expect(trailers.trim()).toBe('first|r1')
     expect(await git(dir, 'log', '-1', '--format=%(trailers:key=Night-shift)', start)).toBe('')
+  })
+
+  it('refuses to push commits that include a merge', async () => {
+    const forge = fakeForge()
+    const start = await git(dir, 'rev-parse', 'HEAD')
+    await commit('first')
+    await git(dir, 'checkout', '-qb', 'side', start)
+    await commit('side')
+    await git(dir, 'checkout', '-q', '-')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
+    await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
+    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+      kind: 'none',
+      reason: '3 commits include a merge, not pushed',
+      unpublished: true,
+    })
+    expect(forge.fastForwards).toEqual([])
   })
 
   it('returns the report for report delivery and pushes nothing', async () => {

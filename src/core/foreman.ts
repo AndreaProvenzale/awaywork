@@ -251,10 +251,11 @@ export function planNight(input: {
     for (const [j, entry] of (rule.then ?? []).entries()) {
       const stacked = previous.deliver === 'draft_pr'
       const onto = stacked ? previous.branch : previous.base
+      // Only the rule's own PR branch takes a push, not one a step opened tonight.
       const refused =
         !isLoop(entry) &&
         deliverOf(entry) === 'push' &&
-        pushRefusal(onto, previous.foreign, stacked)
+        pushRefusal(onto, previous.foreign, onto !== base)
       const left = refused || overCap()
       if (left) {
         const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit

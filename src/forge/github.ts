@@ -20,18 +20,32 @@ type PrNode = {
 
 /** Git uses gh's login only for the command it is passed to; the clone keeps no helper. */
 const withGhLogin = ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential']
+/** A push runs none of the clone's hooks and sees its history as it is, not as replace refs say. */
+const pushSafely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
+
+const prStateQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    defaultBranchRef { name }
+    pullRequest(number: $number) {
+      state isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+    }
+  }
+}`
+
+type PrState = {
+  defaultBranchRef: { name: string } | null
+  pullRequest: {
+    state: string
+    isCrossRepository: boolean
+    headRefName: string
+    headRefOid: string
+    autoMergeRequest: unknown
+  }
+}
 const remote = (repo: string) => `https://github.com/${repo}.git`
 
 export function githubForge(run: Exec = exec): Forge {
   let myPrs: Promise<PrNode[]> | undefined
-
-  /** The commit a branch points at on the remote, matched by exact name. */
-  const headOf = async (repo: string, name: string): Promise<string | undefined> => {
-    const refs: { ref: string; object: { sha: string } }[] = JSON.parse(
-      await run('gh', ['api', `repos/${repo}/git/matching-refs/heads/${name}`]),
-    )
-    return refs.find((r) => r.ref === `refs/heads/${name}`)?.object.sha
-  }
 
   const forge: Forge = {
     async clone(repo, branch, dir) {
@@ -60,7 +74,10 @@ export function githubForge(run: Exec = exec): Forge {
     },
 
     async branchExists(repo, name) {
-      return (await headOf(repo, name)) !== undefined
+      const refs = JSON.parse(
+        await run('gh', ['api', `repos/${repo}/git/matching-refs/heads/${name}`]),
+      )
+      return refs.some((r: { ref: string }) => r.ref === `refs/heads/${name}`)
     },
 
     async push(dir, branch, { repo }) {
@@ -69,6 +86,7 @@ export function githubForge(run: Exec = exec): Forge {
       await run('git', [
         '-C',
         dir,
+        ...pushSafely,
         ...withGhLogin,
         'push',
         remote(repo),
@@ -76,17 +94,34 @@ export function githubForge(run: Exec = exec): Forge {
       ])
     },
 
-    async fastForward(dir, branch, from, { repo }) {
-      const head = await headOf(repo, branch)
-      if (head !== from) {
-        const now = head ? `it is at ${head.slice(0, 7)}` : "it doesn't exist"
-        throw new Error(
-          `refusing to push onto ${branch} on ${repo}: ${now}, the clone started from ${from.slice(0, 7)}`,
-        )
-      }
+    /** Reads the PR live: hours may have passed since planning. */
+    async fastForward(dir, branch, from, { repo, pr }) {
+      const [owner = '', name = ''] = repo.split('/')
+      const { repository: r } = await graphql<{ repository: PrState }>(run, prStateQuery, {
+        owner,
+        name,
+        number: pr,
+      })
+      const p = r.pullRequest
+      const refused =
+        p.state !== 'OPEN'
+          ? `#${pr} is ${p.state.toLowerCase()}`
+          : p.isCrossRepository
+            ? `#${pr}'s branch is on a fork`
+            : p.headRefName !== branch
+              ? `#${pr}'s branch is ${p.headRefName}`
+              : branch === r.defaultBranchRef?.name
+                ? `${branch} is the default branch`
+                : p.autoMergeRequest
+                  ? `#${pr} has auto-merge on`
+                  : p.headRefOid !== from
+                    ? `it is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+                    : undefined
+      if (refused) throw new Error(`refusing to push onto ${branch} on ${repo}: ${refused}`)
       await run('git', [
         '-C',
         dir,
+        ...pushSafely,
         ...withGhLogin,
         'push',
         remote(repo),

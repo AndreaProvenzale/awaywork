@@ -1,5 +1,5 @@
-import { createWriteStream } from 'node:fs'
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { createWriteStream, existsSync } from 'node:fs'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
@@ -445,7 +445,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           })
         else if (isLast(p.loop))
           Object.assign(loop, { ended: maxReached(p.loop.max), completed: true })
-      } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
+      } else if (
+        hosting &&
+        worker.status === 'done' &&
+        (await commitsSince(dir, start)) > 0 &&
+        // A push loop publishes its host's report, so a host without one has nothing to loop on.
+        (unit.deliver !== 'push' || existsSync(join(dir, WORK_DIR, 'out', outputFile.push)))
+      ) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
         open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
       } else if (!aborted) {

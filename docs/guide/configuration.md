@@ -448,14 +448,18 @@ queue:
 - Only onto an open PR you authored, night-shift's own included (they
   are opened with your login). On someone else's PR, or an item with no
   PR of yours, the unit is skipped with the reason.
-- A `then` step can push only after a report or a push, onto the same
-  PR. After a draft PR its base is that night's new branch, not your PR:
-  the step is left out with the rest of the chain.
+- A `then` step can push only onto the rule's own PR. After a draft PR,
+  even with a report in between, its base is that night's new branch,
+  not your PR: the step is left out with the rest of the chain.
 - A [loop](#loops) after a push unit pushes every round's commits once,
   when it ends. A loop's own steps can't set `deliver: push`: the unit
   before the loop does.
 - A fast-forward only: night-shift refuses when the branch moved since
-  the clone, and never forces. The commits get the `Night-shift:` trailer.
+  the clone, and never forces. It reads the PR again right before the
+  push and refuses when it is no longer open, lives on a fork, is the
+  default branch, or has auto-merge on, which would merge unreviewed
+  commits. New commits that include a merge aren't pushed either. The
+  commits get the `Night-shift:` trailer.
 - The agent writes `.nightshift/out/report.md`; without it nothing is
   pushed. The PR body stays as it is and the report goes into the
   morning report.

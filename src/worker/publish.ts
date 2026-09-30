@@ -10,8 +10,10 @@ export type Outcome =
   | { kind: 'pushed'; branch: string; commits: number; text: string }
   | { kind: 'none'; reason: string; unpublished?: true }
 
+// No hooks, and history as it is, not as the clone's replace refs say.
+const safely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 const git = async (dir: string, ...args: string[]) =>
-  (await execa('git', ['-C', dir, '-c', 'core.hooksPath=/dev/null', ...args])).stdout
+  (await execa('git', ['-C', dir, ...safely, ...args])).stdout
 
 /**
  * Delivers a finished unit: a draft PR only with commits, a PR body and a branch new to the remote;
@@ -39,10 +41,20 @@ export async function publish(
       reason: `${commits.length} commits but no ${push ? 'report' : 'PR body'}, not pushed`,
       unpublished: true,
     }
-  if (push && (!unit.base || unit.foreign))
+  const pr = unit.items
+    .flatMap((i) => i.linkedPrs)
+    .find((p) => p.repo === unit.repo && p.branch === unit.base)
+  if (push && (!pr || unit.foreign))
     return {
       kind: 'none',
       reason: `push goes only onto your own PR's branch, not pushed`,
+      unpublished: true,
+    }
+  // The trailer rebase would flatten a merge, replaying the merged branch's commits as night-shift's.
+  if (push && (await git(dir, 'rev-list', '--merges', 'HEAD', '--not', '--remotes')))
+    return {
+      kind: 'none',
+      reason: `${commits.length} commits include a merge, not pushed`,
       unpublished: true,
     }
   if (!push && (await forge.branchExists(unit.repo, unit.branch)))
@@ -58,9 +70,9 @@ export async function publish(
     join(dir, WORK_DIR, 'out', 'diff.patch'),
     `${await git(dir, 'diff', `${oldest}^`)}\n`,
   )
-  if (push) {
+  if (pr && push) {
     const from = await git(dir, 'rev-parse', `refs/remotes/origin/${unit.base}`)
-    await forge.fastForward(dir, unit.base, from, { repo: unit.repo })
+    await forge.fastForward(dir, unit.base, from, { repo: unit.repo, pr: pr.number })
     return { kind: 'pushed', branch: unit.base, commits: commits.length, text }
   }
   await forge.push(dir, unit.branch, { repo: unit.repo })

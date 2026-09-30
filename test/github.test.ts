@@ -257,6 +257,9 @@ describe('github forge', () => {
       'git',
       '-C',
       '/work/u1',
+      '--no-replace-objects',
+      '-c',
+      'core.hooksPath=/dev/null',
       '-c',
       'credential.helper=',
       '-c',
@@ -268,28 +271,62 @@ describe('github forge', () => {
     expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
   })
 
-  it('fast-forwards an existing branch only while its remote head is where the clone started', async () => {
+  it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
+    const state = (pr: Record<string, unknown>) =>
+      JSON.stringify({
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            pullRequest: {
+              state: 'OPEN',
+              isCrossRepository: false,
+              headRefName: 'feature-1',
+              headRefOid: 'abc1234',
+              autoMergeRequest: null,
+              ...pr,
+            },
+          },
+        },
+      })
     const run = recorded([
-      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
-      [/matching-refs/, '[]'],
+      [/number=2 /, state({ state: 'MERGED' })],
+      [/number=3 /, state({ isCrossRepository: true })],
+      [/number=4 /, state({ headRefName: 'main' })],
+      [/number=5 /, state({ autoMergeRequest: { enabledAt: '2026-01-01T00:00:00Z' } })],
+      [/number=6 /, state({ headRefOid: 'def5678' })],
+      [/number=1 /, state({})],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
-    await expect(
-      forge.fastForward('/work/u1', 'night/acme-api-1-old', 'def', { repo: 'acme/api' }),
-    ).rejects.toThrow('refusing to push onto night/acme-api-1-old on acme/api: it is at abc')
-    await expect(
-      forge.fastForward('/work/u1', 'feature-1', 'abc', { repo: 'acme/api' }),
-    ).rejects.toThrow("it doesn't exist")
+    const push = (branch: string, pr: number) =>
+      forge.fastForward('/work/u1', branch, 'abc1234', { repo: 'acme/api', pr })
+    await expect(push('feature-1', 2)).rejects.toThrow(
+      'refusing to push onto feature-1 on acme/api: #2 is merged',
+    )
+    await expect(push('feature-1', 3)).rejects.toThrow("#3's branch is on a fork")
+    await expect(push('main', 4)).rejects.toThrow('main is the default branch')
+    await expect(push('feature-1', 4)).rejects.toThrow("#4's branch is main")
+    await expect(push('feature-1', 5)).rejects.toThrow('#5 has auto-merge on')
+    await expect(push('feature-1', 6)).rejects.toThrow(
+      'it is at def5678, the clone started from abc1234',
+    )
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
-    await forge.fastForward('/work/u1', 'night/acme-api-1-old', 'abc', { repo: 'acme/api' })
-    const push = run.calls.at(-1) ?? []
-    expect(push.slice(-3)).toEqual([
+    await push('feature-1', 1)
+    expect(run.calls.at(-1)).toEqual([
+      'git',
+      '-C',
+      '/work/u1',
+      '--no-replace-objects',
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'credential.helper=',
+      '-c',
+      'credential.helper=!gh auth git-credential',
       'push',
       'https://github.com/acme/api.git',
-      'HEAD:refs/heads/night/acme-api-1-old',
+      'HEAD:refs/heads/feature-1',
     ])
-    expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
   })
 
   it('opens a draft PR titled by the body file first line', async () => {

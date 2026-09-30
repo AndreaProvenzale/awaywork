@@ -375,8 +375,11 @@ Semantics, fixed so every milestone agrees:
 - `push`: commit onto the developer's own branch, only when a rule opts
   in (never a skill's default), the unit's base is an open PR the
   developer authored (night-shift's own included), and the push is a
-  fast-forward from the commit the clone started at. A `then` step after
-  a draft PR can't push: its base is tonight's branch. The model writes
+  fast-forward from the commit the clone started at, checked again at
+  push time along with the PR being open, in the repo, not the default
+  branch and without auto-merge; no merge commits, no hooks, no replace
+  refs. A `then` step can push only onto the rule's own PR, never onto a
+  branch opened tonight. The model writes
   `report.md`, required to push; the PR body is untouched. Never someone
   else's branch, never force, never merge, never a comment.
 

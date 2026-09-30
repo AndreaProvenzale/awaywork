@@ -510,6 +510,18 @@ queue:
       ['acme/api#5', 'deliver push: no PR of yours to push onto'],
     ])
     expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+    const relayed = plan(
+      `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver: report }, { skill: fix-ci, deliver: push }] }]
+`,
+      [mine],
+      {},
+    )
+    expect(relayed.units.at(-1)?.capped).toBe(
+      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+    )
   })
 
   it('gathers every instruction file for the unit in prompt order', () => {

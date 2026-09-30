@@ -892,6 +892,49 @@ queue:
   )
 })
 
+it("doesn't open a push loop when the push unit wrote no report", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-bare-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome ?? u.reason])).toEqual([
+    [
+      'acme-api-1',
+      'done',
+      { kind: 'none', reason: '1 commits but no report, not pushed', unpublished: true },
+    ],
+    ['acme-api-1-review-1', 'skipped', 'acme-api-1 left nothing to loop on'],
+  ])
+})
+
 it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-setup-'))
   const { forge } = await originForge(root)
