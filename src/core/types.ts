@@ -9,6 +9,8 @@ export interface PrRef {
   ours: boolean
   /** Opened by the developer, by hand or through night-shift. */
   mine: boolean
+  /** Its author has write access or org membership; always, when it's mine. */
+  trusted: boolean
 }
 
 export interface Item {
@@ -163,6 +165,8 @@ export interface Unit {
   base: string
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
+  /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
+  untrusted: boolean
   branch: string
   rule: Step
   skill: string

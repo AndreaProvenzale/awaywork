@@ -47,6 +47,7 @@ export function githubForge(run: Exec = exec): Forge {
           branch: pr.headRefName,
           ours: isOurs(pr.body),
           mine: true,
+          trusted: true,
         }))
     },
 

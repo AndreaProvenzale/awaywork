@@ -143,6 +143,7 @@ describe('asana config and linking', () => {
       branch: 'ENG-12-bucket',
       ours: false,
       mine: true,
+      trusted: true,
     }
     const task = asanaTask(12, {}, { key: 'ENG-12' })
     const issue = fakeItem({ key: 'ENG-12', type: 'issue' })

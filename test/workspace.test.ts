@@ -65,6 +65,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         repo: 'acme/api',
         base: '',
         foreign: false,
+        untrusted: false,
         branch: 'night/acme-api-1',
         rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
         skill: 'fix-ci',
@@ -134,7 +135,15 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           await git(into, 'commit', '-qm', 'init')
         },
       }
-      const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
+      const pr = {
+        repo: 'acme/api',
+        number: 2,
+        url: 'u',
+        branch: 'sessions',
+        ours: false,
+        mine,
+        trusted: true,
+      }
       const prompt = await prepareWorkspace({
         unit: {
           id: 'acme-api-2',
@@ -142,6 +151,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: 'sessions',
           foreign: !mine,
+          untrusted: false,
           branch: 'night/acme-api-2',
           rule: { skill: 'review', provider: [], skills: [], instructions: [] },
           skill: 'review',

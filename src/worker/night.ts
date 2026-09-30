@@ -116,7 +116,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const a = allowances[id]
       if (!a) continue
       const repo = n.config.repos[unit.repo]
-      if (repo?.setup) {
+      if (repo?.setup && !unit.untrusted) {
         // A PR someone else opened runs its author's install scripts: they get none of the repo's secrets.
         const own = unit.foreign ? [] : repo.secrets
         const failed = await runSetup(

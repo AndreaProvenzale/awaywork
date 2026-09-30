@@ -77,7 +77,7 @@ export function planNight(input: {
       step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
     const add = (
       step: Step,
-      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'branch'>,
+      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch'>,
       after?: string,
     ) => {
       const skill = resolveSkill(step.skill, input.skills)
@@ -159,6 +159,7 @@ export function planNight(input: {
       id,
       base: pr?.branch ?? '',
       foreign: pr ? !pr.mine : false,
+      untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
     })
     for (const [j, step] of (rule.then ?? []).entries()) {
@@ -175,6 +176,7 @@ export function planNight(input: {
           id: `${id}-${slug(step.skill)}`,
           base: stacked ? previous.branch : previous.base,
           foreign: previous.foreign,
+          untrusted: previous.untrusted,
           branch: branches[j + 1] as string,
         },
         previous.id,

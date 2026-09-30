@@ -401,7 +401,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   )
 })
 
-it('runs setup before the worker with only its own secrets, none on a foreign PR, and skips a unit whose setup fails', async () => {
+it('runs setup before the worker with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
   const forge = {
     ...fakeForge(),
@@ -422,7 +422,12 @@ repos:
 `)
   const plan = planNight({
     config,
-    items: [githubPr(1), githubPr(2), githubPr(3, { mine: false })],
+    items: [
+      githubPr(1),
+      githubPr(2),
+      githubPr(3, { mine: false }),
+      githubPr(4, { mine: false, trusted: false }),
+    ],
     allowances: { claude: allowance(config.budget, null, 0) },
     skills: { builtin: builtinSkills },
   })
@@ -439,7 +444,7 @@ repos:
       claude: {
         ...worker,
         async *run(job) {
-          setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8'))
+          setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run'))
           workerEnvs.push(job.env)
           await writeFile(join(job.dir, '.nightshift/out/report.md'), 'Approve.')
           yield { type: 'done', ok: true, turns: 1 }
@@ -456,13 +461,16 @@ repos:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  expect(setups).toEqual(['npm,\n', ',\n'])
+  expect(setups).toEqual(['npm,\n', ',\n', 'not run'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([
     ['done', undefined],
     ['skipped', expect.stringMatching(/^setup failed: .*code 3.*\nresolving\n404 from registry$/s)],
     ['done', undefined],
+    ['done', undefined],
   ])
   const prompt = await readFile(join(root, 'run/units/acme-api-1/prompt.md'), 'utf8')
   expect(prompt).toContain('Setup, already run: `if [ -f broken ]')
+  const untrusted = await readFile(join(root, 'run/units/acme-api-4/prompt.md'), 'utf8')
+  expect(untrusted).toContain("Setup, not run because this PR's author isn't trusted")
 })

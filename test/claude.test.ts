@@ -23,6 +23,7 @@ const job = (): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
+    untrusted: false,
     branch: 'night/fake-1',
     rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
@@ -117,11 +118,20 @@ describe('claude provider', () => {
   it("loads the repo's config but not ~/.claude; neither on someone else's PR or a probe", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const argv = async (mine: boolean) => {
-      const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
+      const pr = {
+        repo: 'acme/api',
+        number: 2,
+        url: 'u',
+        branch: 'sessions',
+        ours: false,
+        mine,
+        trusted: true,
+      }
       const unit = {
         ...job().unit,
         base: 'sessions',
         foreign: !mine,
+        untrusted: false,
         items: [fakeItem({ linkedPrs: [pr] })],
       }
       await collect(provider.run({ ...job(), unit }, new AbortController().signal))
