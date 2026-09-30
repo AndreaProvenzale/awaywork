@@ -283,13 +283,20 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
+      // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
+      const inLoop = (path: (string | number)[]) => path[2] === 'loop'
       chain.forEach(({ step: s, at: path }, j) => {
         const stepAt = [...at, ...path]
-        if (chain.findIndex((c) => c.step.skill === s.skill) < j)
+        const earlier = chain.findIndex(
+          (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
+        )
+        if (earlier < j)
           ctx.addIssue({
             code: 'custom',
             path: [...stepAt, 'skill'],
-            message: `"${s.skill}" already runs earlier in this chain`,
+            message: inLoop(path)
+              ? `"${s.skill}" already runs in a loop of this chain`
+              : `"${s.skill}" already runs earlier in this chain`,
           })
         for (const p of s.provider)
           if (!providerIds.includes(p))

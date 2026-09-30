@@ -171,7 +171,7 @@ describe('config', () => {
     ).toEqual(['queue[0].then: Unrecognized key: "units"'])
   })
 
-  it('takes a loop in then, with its steps once per chain, a verdict word and a bounded max', () => {
+  it('takes a loop in then, with its steps once across loops, a verdict word and a bounded max', () => {
     const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
   - skill: implement
     then:
@@ -201,8 +201,9 @@ describe('config', () => {
     ])
     const loop = (body: string) =>
       problems(`${minimal}queue: [{ skill: implement, then: { loop: ${body} } }]`)
-    expect(loop('[review, implement], until: { verdict: approve }, max: 2')).toEqual([
-      'queue[0].then[0].loop[1].skill: "implement" already runs earlier in this chain',
+    expect(loop('[review, implement], until: { verdict: approve }, max: 2')).toEqual([])
+    expect(loop('[review, review], until: { verdict: approve }, max: 2')).toEqual([
+      'queue[0].then[0].loop[1].skill: "review" already runs in a loop of this chain',
     ])
     expect(loop('[review], until: { verdict: Approve }, max: 6')).toEqual([
       'queue[0].then.until.verdict: expected one lowercase word like approve',

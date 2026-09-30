@@ -398,6 +398,24 @@ queue:
     expect(text).not.toContain('acme-api-5-review-2')
   })
 
+  it('lets a loop repeat the skill of the unit it follows', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00" }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: address-review
+    where: { type: pr, unresolved_threads: { gt: 0 } }
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`
+    const result = plan(yaml, [githubPr(3, { unresolved_threads: 2 })], { claude: week(0.1) })
+    expect(result.units.map(({ unit, loop }) => [unit.id, unit.branch, loop?.host])).toEqual([
+      ['acme-api-3', 'night/acme-api-3', undefined],
+      ['acme-api-3-review-1', 'night/acme-api-3', 'acme-api-3'],
+      ['acme-api-3-address-review-1', 'night/acme-api-3', 'acme-api-3'],
+    ])
+  })
+
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
     const yaml = (step: string) =>
       `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`

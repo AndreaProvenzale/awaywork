@@ -283,7 +283,7 @@ queue:
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
-- A skill runs at most once per chain, loop steps included.
+- A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `address-review` then `loop: [review, address-review]`.
 - Steps count against the [caps](#night-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
   doesn't start; a step over a cap is left out with the rest of the chain,

@@ -250,7 +250,7 @@ Semantics, fixed so every milestone agrees:
   draft PR step off the default branch stacks at run time on the repo's
   last stacked draft PR that night. A step's branch gets `-<skill>`
   appended when an earlier draft PR in the chain renders the same name.
-  A skill runs at most once per chain, loop steps included.
+  A skill runs at most once outside loops, and once across the chain's loops.
 - **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
   steps round after round, planned as units `<unit>-<skill>-<round>` up
   to `max` (at most 5). Rounds work in the clone of the draft PR unit
