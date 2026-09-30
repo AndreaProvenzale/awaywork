@@ -89,6 +89,11 @@ task linked to your PR becomes one unit with that PR.
   followed by a failed implement is one failure; a finished attempt
   clears the count, and skipped, dry-run and aborted units don't count.
   `run --unit` runs it anyway.
+- `nightshift skip <source:key>` (e.g. `github:acme/api#5`) leaves an
+  item, and any unit it joins, alone until `nightshift unskip` or the
+  `--until` date; `plan` lists it under Skipped with the `--reason`.
+  Skips live in `~/.local/state/night-shift/skips.json`, and
+  `run --unit` runs the item anyway.
 - Units run one at a time, in queue order; a rule's `then` steps run
   right after its unit.
 - Optional [caps](./configuration.md#night-and-budget) limit the units
