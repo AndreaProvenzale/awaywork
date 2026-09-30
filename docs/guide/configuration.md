@@ -30,15 +30,20 @@ version.
 ## A full example
 
 ```yaml
-night: { start: "01:00", end: "07:00" }
+night:
+  start: "01:00"
+  end: "07:00"
+  units: 8                      # caps, unset by default
+  units_per_repo: 3
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_night: 15%                # at most this share of the long window per night
   session_max: 90%              # stop a worker past this share of the short window
+  unit_minutes: 90              # stop a worker after this many minutes
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: { model: opus }     # default: the binary's own model
-  - codex: { budget: { per_night: 5% } }
+  - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
+  - codex: { budget: { per_night: 5% }, config: { model_reasoning_effort: high } }
 sources:
   github: { repos: [acme/*] }
   asana:
@@ -49,10 +54,12 @@ branch: night/{key}             # default; {key} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
-    setup: pnpm install --frozen-lockfile
+    setup: pnpm install --frozen-lockfile   # run before the worker
+    secrets: [NPM_TOKEN]        # only setup sees these
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
+skills: [house-style]           # every unit, next to a rule's skills
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
@@ -61,6 +68,7 @@ queue:                          # first matching rule wins; top = highest priori
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
     order: oldest
+    units: 2                    # at most 2 of these per night
   - skill: review
     where: { type: pr, review_requested: true, trusted: true }
     model: { claude: sonnet }
@@ -78,6 +86,15 @@ queue:                          # first matching rule wins; top = highest priori
 `night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
+A readable quota decides how much work fits, not how much you can review
+in a morning. `night.units` caps the units planned per night,
+`night.units_per_repo` those in any one repo, and a rule's `units` those
+from that rule. None is set by default. Units past a cap are skipped in
+queue order, with the cap named in `nightshift plan` and the report. A
+[`then`](#then) step counts as a unit of the rule that started its chain.
+Only units routed to a provider count, and caps apply to each `nightshift
+run`, like `fallback.units`.
+
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
 `per_night: 5%` for a week shows what a unit costs you before you raise it.
@@ -88,6 +105,15 @@ A list, in routing order. A bare name uses the defaults; a map overrides
 the budget for that provider or sets its `model`, passed as is to the
 binary (`claude --model`, `codex exec -m`). Without one, the binary picks
 its own default.
+
+Workers skip your user-level agent config. To give them the hooks, env
+or settings you do want, list them here; they apply on every unit,
+including someone else's PR:
+
+- `claude: { settings: <file> }`: a Claude Code settings file, relative
+  to the config file, passed as `--settings`. Auto-memory stays off.
+- `codex: { config: { <key>: <value> } }`: each key passed as
+  `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
 ## Sources
 
@@ -122,17 +148,36 @@ branch that doesn't exist on the remote yet.
 
 ## Repos and instructions
 
-`repos.<owner/name>` holds the `setup` and `test` commands the agent
-should use there, plus an instructions file. `instructions` at the top
+`repos.<owner/name>` holds the `setup` and `test` commands for that
+repo, plus an instructions file. `setup` runs in the clone before the
+agent starts, outside the model; the agent is told it already ran.
+Anything it leaves running is stopped when it exits. A setup that fails,
+takes over 15 minutes or reaches `night.end` skips the unit, with the
+tail of its output in the report.
+
+`secrets` names the env vars setup needs, such as a private registry
+token: setup gets them and no other secret, the agent never sees them,
+and the GitHub Actions workflow passes them from repository secrets.
+Their values are masked in setup's output. On a PR someone else opened,
+setup runs the author's install scripts, so it gets none of them, and
+it runs only when the author has write access or org membership;
+otherwise the agent is told it didn't run. Read
+them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
+than writing them to your home directory, which the agent shares.
+
+`test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
+`skills` at the top level adds skills to every unit, like a rule's
+`skills`; see [Skills](./skills.md#where-skills-come-from).
+
 `network: false` on a repo or a rule cuts the agent's commands off the
-network; the rule wins over the repo. Unset, it is off on a PR someone
-else opened and on everywhere else. Offline, `setup` can't fetch
-dependencies, so a unit that needs them sets `network: true`. See
-[Safety](./safety.md#network).
+network; the rule wins over the repo and covers its `then` steps. Unset,
+it is off on a PR someone else opened and on everywhere else. `setup`
+keeps the network, so put what the agent needs, like dependencies,
+there. See [Safety](./safety.md#network).
 
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions
@@ -152,7 +197,9 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
-| `network` | `false` cuts the agent's commands off the network; default the repo's |
+| `units` | At most this many units per night from this rule, its `then` steps included |
+| `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
+| `network` | `false` cuts the agent's commands off the network, `then` steps included; default the repo's |
 
 ### `where`
 
@@ -162,11 +209,13 @@ where:
   checks: [failing, pending]        # any of
   review_requested: { not: true }   # not
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
+  updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   label: night-shift                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
 ```
 
-A missing field equals nothing. An unknown key is a config error that
+A missing field equals nothing, and is neither older nor newer than
+anything; spans count back from when the plan runs. An unknown key is a config error that
 lists the keys each source offers. The [field table](./how-it-works.md#items)
 lists them too.
 
@@ -176,6 +225,50 @@ Within a rule, units run in the order the source returns items; for
 GitHub that is newest first, so with little quota the oldest can wait
 night after night. `order: oldest` runs them first. Items without the
 timestamp go last.
+
+### `then`
+
+Steps run right after the rule's unit, one after the other, each on what
+the one before delivered. A step is a skill name, or a map when you want
+to set more:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    then: review
+
+  - skill: plan
+    where: { section: Ready }
+    model: { claude: opus }
+    then:
+      - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
+      - { skill: review, provider: codex }
+```
+
+- A step takes the rule keys except `source`, `where`, `order`, `units`
+  and `then`. It inherits none of the rule's: an unset key has the same
+  default as on a rule. Top-level `instructions` and `skills` still
+  apply, as to every unit.
+- After a draft PR, the next step starts from that PR's branch, and a
+  draft PR it opens is stacked on it. After a report, it starts from the
+  same base.
+- The step finds what the one before delivered in
+  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
+  `report.md`.
+- A step runs only when the one before delivered; otherwise the rest of
+  the chain is skipped, with the reason in the report. Once a unit in the
+  chain opened a draft PR, the next night doesn't retry: the item waits
+  for your review of it. Otherwise the whole chain runs again.
+- Each step is a unit of its own in `plan` and the report (`<unit>-<skill>`),
+  routed and budgeted like any other. Its branch uses the usual template,
+  with `-<skill>` appended when a draft PR earlier in the chain already
+  took the name.
+- A skill runs at most once per chain.
+- Steps count against the [caps](#night-and-budget) like any unit, and
+  against their rule's `units`. A chain whose first unit is over a cap
+  doesn't start; a step over a cap is left out with the rest of the chain,
+  and the unit before it names the cap.
 
 ## Notify
 
@@ -213,3 +306,4 @@ or `~/.config/night-shift/env` (the environment wins).
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |
+| Your `repos.<owner/name>.secrets` | That repo's `setup` |

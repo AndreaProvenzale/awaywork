@@ -9,6 +9,8 @@ export interface PrRef {
   ours: boolean
   /** Opened by the developer, by hand or through night-shift. */
   mine: boolean
+  /** Its author has write access or org membership; always, when it's mine. */
+  trusted: boolean
 }
 
 export interface Item {
@@ -89,6 +91,11 @@ export interface Job {
   model?: string
   /** The worker's whole environment, from `workerEnv`: providers spawn with it and nothing else. */
   env: NodeJS.ProcessEnv
+  /** The provider's entry in the config; its relative paths resolve against `configDir`. */
+  config?: Record<string, unknown>
+  configDir?: string
+  /** A plugin folder outside the clone with the unit's skills when the provider has no `skillsDir`. */
+  plugin?: string
 }
 
 export interface Provider {
@@ -104,7 +111,8 @@ export interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
-  skillsDir: string
+  /** Where the binary finds skills in the clone; unset, they come in `Job.plugin`. */
+  skillsDir?: string
   instructionsFile: string
 }
 
@@ -124,19 +132,28 @@ export interface Forge {
 
 export type Scalar = string | number | boolean
 export type Comparison = Partial<Record<'gt' | 'gte' | 'lt' | 'lte', number>>
-export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison
+/** Spans like `3d`: a number and m, h, d or w. */
+export type Age = Partial<Record<'older_than' | 'newer_than', string>>
+export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison | Age
 
-export interface Rule {
+/** What a unit runs: a rule's own settings, or a step it chains after its unit. */
+export interface Step {
   skill: string
-  source?: string
-  where: Record<string, WhereValue>
   provider: string[]
   model?: Record<string, string>
   skills: string[]
   instructions: string[]
   deliver?: Deliver
   branch?: string
+}
+
+export interface Rule extends Step {
+  source?: string
+  where: Record<string, WhereValue>
   order?: Order
+  units?: number
+  /** Units run in turn after the rule's unit, each on what the one before delivered. */
+  then?: Step[]
   network?: boolean
 }
 
@@ -151,10 +168,12 @@ export interface Unit {
   base: string
   /** `base` is a PR someone else opened: its in-repo config is the author's, not the developer's. */
   foreign: boolean
+  /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
+  untrusted: boolean
   /** Whether the worker's commands may reach the network. */
   network: boolean
   branch: string
-  rule: Rule
+  rule: Step
   skill: string
   skills: string[]
   providers: string[]

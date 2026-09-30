@@ -113,8 +113,14 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   enabled from user settings, so they go with them. [I] Workers run
   `project,local` on the developer's own branches and `''` with
   `--strict-mcp-config` on someone else's PR and in the probe, all
-  without auto-memory; a rule's extra skills are then not callable on
-  someone else's PR (the unit's skill is in the prompt).
+  without auto-memory.
+- Under `--setting-sources ''`, checked the same way (2.1.284): a
+  `--plugin-dir` folder with `.claude-plugin/plugin.json` named
+  `nightshift` and `skills/<name>/SKILL.md` lists `nightshift:<name>` in
+  the `init` event's `skills`, while the clone's `.claude/skills/` stays
+  out; a `SessionStart` hook in the `--settings` JSON runs. [V, tested]
+  So workers get their skills as that plugin, outside the clone, and the
+  developer's `settings` file merged into the `--settings` JSON.
 - Headless runs refuse writes under `.claude/` without a grant, even with
   `Write` allowed (`permission_denied`, `safetyCheck`). [V, tested]
 - An empty `GH_CONFIG_DIR` hides a keyring `gh` login. [V, tested]
@@ -194,6 +200,11 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Skills: `.agents/skills` in every directory from the working directory
   up to the repo root [V] https://learn.chatgpt.com/docs/build-skills; a
   `SKILL.md` there was found and followed by a headless `exec`. [V, tested]
+  Whether `exec` reads skills from anywhere outside the clone under
+  `--ignore-user-config` is unchecked [I], so workers still get theirs
+  copied into the clone. `-c key=value` overrides a config value, parsed
+  as TOML [V, `codex exec --help`]; that it applies under
+  `--ignore-user-config` is [I].
   Instructions: `AGENTS.md`, root down to the working directory [V]
   https://learn.chatgpt.com/docs/agent-configuration/agents-md
 - Scheduled tasks run in the cloud from web or mobile; desktop tasks on

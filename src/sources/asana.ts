@@ -26,6 +26,8 @@ const taskFields = [
   'permalink_url',
   'created_at',
   'modified_at',
+  'due_on',
+  'due_at',
   'assignee.name',
   'memberships.project.name',
   'memberships.section.name',
@@ -34,6 +36,7 @@ const taskFields = [
   'custom_fields.representation_type',
   'custom_fields.display_value',
   'custom_fields.number_value',
+  'custom_fields.date_value',
   'custom_fields.multi_enum_values.name',
 ].join(',')
 
@@ -42,6 +45,7 @@ interface CustomField extends Named {
   representation_type: string
   display_value: string | null
   number_value?: number | null
+  date_value?: { date: string; date_time: string | null } | null
   multi_enum_values?: Named[]
 }
 interface Task {
@@ -51,6 +55,8 @@ interface Task {
   permalink_url: string
   created_at?: string
   modified_at?: string
+  due_on?: string | null
+  due_at?: string | null
   assignee: Named | null
   memberships: { project: Named; section?: Named | null }[]
   tags: Named[]
@@ -103,6 +109,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
       tags: z.string(),
       created: z.iso.datetime(),
       updated: z.iso.datetime(),
+      due: z.union([z.iso.datetime(), z.iso.date()]),
       'fields.*': z.union([z.string(), z.number()]),
     },
     secrets: (cfg) => [cfg.token_env],
@@ -244,6 +251,7 @@ function toItem(task: Task, stories: Story[], projectRepos: Config['project_repo
       tags,
       ...(task.created_at && { created: task.created_at }),
       ...(task.modified_at && { updated: task.modified_at }),
+      ...((task.due_at || task.due_on) && { due: task.due_at || task.due_on }),
       ...Object.fromEntries(custom),
     },
     raw: task,
@@ -253,6 +261,8 @@ function toItem(task: Task, stories: Story[], projectRepos: Config['project_repo
 function fieldValue(f: CustomField): string | number | string[] | undefined {
   if (f.representation_type === 'number' && typeof f.number_value === 'number')
     return f.number_value
+  if (f.representation_type === 'date' && f.date_value)
+    return f.date_value.date_time ?? f.date_value.date
   if (f.representation_type === 'multi_enum') return f.multi_enum_values?.map((v) => v.name)
   return f.display_value ?? undefined
 }

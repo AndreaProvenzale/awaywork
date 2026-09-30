@@ -16,8 +16,9 @@ const job: Job = {
     base: '',
     foreign: false,
     network: true,
+    untrusted: false,
     branch: 'night/fake-1',
-    rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+    rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
     providers: ['fake'],
@@ -110,6 +111,34 @@ describe('worker', () => {
       turns: 2,
     })
     expect(lines).toEqual(['turn 1', 'turn 2', 'stop: reached night.end'])
+  })
+
+  it('stops after unit_minutes', async () => {
+    vi.useFakeTimers()
+    const minute = 60_000
+    const slow = {
+      ...fakeProvider(),
+      async *run(job: Job, signal: AbortSignal) {
+        for await (const event of fakeProvider().run(job, signal)) {
+          yield event
+          if (event.type === 'quota') await new Promise((ok) => setTimeout(ok, minute))
+        }
+      },
+    }
+    const lines: string[] = []
+    const running = runWorker(slow, job, allowance(budget, quota, now), {
+      log: (l) => lines.push(l),
+      maxMinutes: 1.5,
+      watch: () => idle,
+    })
+    await vi.advanceTimersByTimeAsync(3 * minute)
+    vi.useRealTimers()
+    expect(await running).toMatchObject({
+      status: 'stopped: time',
+      reason: 'reached unit_minutes (1.5)',
+      turns: 2,
+    })
+    expect(lines).toEqual(['turn 1', 'turn 2', 'stop: reached unit_minutes (1.5)'])
   })
 })
 

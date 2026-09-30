@@ -16,6 +16,15 @@ const ONLINE = ['--sandbox', 'danger-full-access']
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 
+const configSchema = z.strictObject({
+  config: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional()
+    .describe(
+      'Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c',
+    ),
+})
+
 /**
  * The stock `codex` binary on the local login in `$CODEX_HOME/auth.json`, which Codex rotates in place.
  * CODEX_AUTH_JSON seeds that file only when it is missing; runs and probes hold a per-machine lock.
@@ -54,7 +63,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 
   return {
     id: 'codex',
-    configSchema: z.strictObject({}),
+    configSchema,
     credential: 'rotating',
     quota: 'window',
     unattended: 'grey',
@@ -90,8 +99,15 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       try {
         await seedAuth(process.env)
         const model = job.model ? ['-m', job.model] : []
+        const { config = {} } = configSchema.parse(job.config ?? {})
+        const overrides = Object.entries(config).flatMap(([k, v]) => [
+          '-c',
+          `${k}=${JSON.stringify(v)}`,
+        ])
+        // After the developer's overrides, so the unit's network setting wins.
         const sandbox = job.unit.network ? ONLINE : offline(job.dir)
-        const child = execa(bin, [...EXEC, ...sandbox, ...model, '-C', job.dir, '-'], {
+        const args = [...EXEC, ...model, ...overrides, ...sandbox, '-C', job.dir, '-']
+        const child = execa(bin, args, {
           cwd: job.dir,
           env,
           extendEnv: false,

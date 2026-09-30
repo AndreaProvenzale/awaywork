@@ -1,6 +1,8 @@
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import type { Provider, Quota, WorkerEvent } from '../core/types.js'
+import type { Job, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -18,11 +20,19 @@ const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
 const isolated = ['--setting-sources', '', '--strict-mcp-config']
 
+const configSchema = z.strictObject({
+  settings: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Settings file for every worker, relative to the config file; passed as --settings'),
+})
+
 /** The stock `claude` binary; the token comes from CLAUDE_CODE_OAUTH_TOKEN or the local login. */
 export function claudeProvider(bin = 'claude'): Provider {
   return {
     id: 'claude',
-    configSchema: z.strictObject({}),
+    configSchema,
     credential: 'static',
     quota: 'window',
     unattended: 'allowed',
@@ -50,8 +60,8 @@ export function claudeProvider(bin = 'claude'): Provider {
     async *run(job, signal) {
       const args = ['-p', job.prompt, '--max-turns', String(job.maxTurns), ...stream]
       if (job.model) args.push('--model', job.model)
-      args.push(...(job.unit.foreign ? isolated : repoOnly))
-      args.push('--settings', JSON.stringify(job.unit.network ? noMemory : offline))
+      args.push(...(job.unit.foreign ? isolated : repoOnly), '--settings', await settings(job))
+      if (job.plugin) args.push('--plugin-dir', job.plugin)
       const child = execa(bin, [...args, '--allowedTools', TOOLS], {
         cwd: job.dir,
         env: job.env,
@@ -69,12 +79,18 @@ export function claudeProvider(bin = 'claude'): Provider {
       yield done && !signal.aborted ? done : { type: 'done', ok: false, turns: 0 }
     },
 
-    skillsDir: '.claude/skills',
     instructionsFile: 'CLAUDE.md',
   }
 }
 
 export const claude = claudeProvider()
+
+/** The developer's settings file with auto-memory off, and the sandbox when offline; it applies whatever the setting sources. */
+async function settings(job: Job): Promise<string> {
+  const { settings: file } = configSchema.parse(job.config ?? {})
+  const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
+  return JSON.stringify({ ...theirs, ...(job.unit.network ? noMemory : offline) })
+}
 
 /** Worker events in one stream-json line: tool calls as log lines, quota, and the final result. */
 export function toEvents(line: string): WorkerEvent[] {

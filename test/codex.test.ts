@@ -28,8 +28,9 @@ const job = (maxTurns = 10): Job => ({
     base: '',
     foreign: false,
     network: true,
+    untrusted: false,
     branch: 'night/fake-1',
-    rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+    rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
     providers: ['codex'],
@@ -133,7 +134,8 @@ describe('codex provider', () => {
     process.env.FAKE_ARGV = join(tmp, 'argv.json')
     const argv = async (network: boolean) => {
       const unit = { ...job().unit, network }
-      await collect(provider.run({ ...job(), unit }, new AbortController().signal))
+      const config = { config: { web_search: 'live' } }
+      await collect(provider.run({ ...job(), unit, config }, new AbortController().signal))
       return JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
     }
     try {
@@ -141,8 +143,20 @@ describe('codex provider', () => {
       const offline = await argv(false)
       expect(offline).not.toContain('--sandbox')
       expect(offline).toContain('permissions.night.network.enabled=false')
-      expect(offline).toContain('web_search="disabled"')
+      expect(offline.findLast((a) => a.startsWith('web_search='))).toBe('web_search="disabled"')
       expect(offline.join(' ')).toContain(`${JSON.stringify(join(tmp, '.git'))}="write"`)
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('passes each config value as -c', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    try {
+      const config = { config: { model_reasoning_effort: 'high', 'tools.web_search': false } }
+      await collect(provider.run({ ...job(), config }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
+      expect(args.join(' ')).toContain('-c model_reasoning_effort="high" -c tools.web_search=false')
     } finally {
       delete process.env.FAKE_ARGV
     }
