@@ -1,4 +1,4 @@
-import type { Comparison, Item, Order, Rule, Scalar, WhereValue } from './types.js'
+import type { Age, Comparison, Item, Order, Rule, Scalar, WhereValue } from './types.js'
 
 const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
   skill,
@@ -104,17 +104,56 @@ export function bounds(want: Comparison): [keyof Comparison, number][] {
   return Object.entries(want) as [keyof Comparison, number][]
 }
 
-/** E.g. `>= 2 and < 5`. */
-export function describeComparison(want: Comparison): string {
-  return bounds(want)
-    .map(([op, bound]) => `${comparisons[op].symbol} ${bound}`)
-    .join(' and ')
+export const ages: Record<
+  keyof Age,
+  { words: string; holds: (age: number, span: number) => boolean }
+> = {
+  older_than: { words: 'older than', holds: (age, span) => age > span },
+  newer_than: { words: 'newer than', holds: (age, span) => age < span },
+}
+
+export const spanPattern = /^\d+[mhdw]$/
+const spanUnits: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
+
+/** Milliseconds in a span like `3d`. */
+export function spanMs(span: string): number {
+  return Number(span.slice(0, -1)) * (spanUnits[span.slice(-1)] ?? Number.NaN)
+}
+
+export function isAge(want: object): want is Age {
+  return 'older_than' in want || 'newer_than' in want
+}
+
+export function spans(want: Age): [keyof Age, string][] {
+  return Object.entries(want) as [keyof Age, string][]
+}
+
+/** E.g. `>= 2 and < 5`, or `older than 3d`. */
+export function describeComparison(want: Comparison | Age): string {
+  const parts = isAge(want)
+    ? spans(want).map(([op, span]) => `${ages[op].words} ${span}`)
+    : bounds(want).map(([op, bound]) => `${comparisons[op].symbol} ${bound}`)
+  return parts.join(' and ')
+}
+
+/** Epoch milliseconds of an ISO date or datetime; NaN for anything else. */
+function timestamp(value: unknown): number {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)
+    ? Date.parse(value)
+    : Number.NaN
 }
 
 function matchesValue(want: WhereValue, actual: unknown): boolean {
   const values = Array.isArray(actual) ? actual : [actual]
   if (typeof want === 'object' && !Array.isArray(want)) {
     if ('not' in want) return !matchesValue(want.not, actual)
+    if (isAge(want)) {
+      const now = Date.now()
+      return values.some((v) => {
+        const age = now - timestamp(v)
+        return spans(want).every(([op, span]) => ages[op].holds(age, spanMs(span)))
+      })
+    }
     return values.some(
       (v) => typeof v === 'number' && bounds(want).every(([op, b]) => comparisons[op].holds(v, b)),
     )

@@ -8,6 +8,7 @@ import type { NightReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Provider, Quota, Source } from '../core/types.js'
 import { publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
+import { runSetup } from './setup.js'
 import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
 
 const MAX_TURNS = 200
@@ -43,14 +44,21 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
   const only = n.only && slug(n.only)
-  const planned = n.plan.units.filter(
-    (p) => !only || p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only),
+  const wanted = new Set(
+    n.plan.units
+      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
+      .map((p) => p.unit.id),
   )
-  if (n.only && planned.length === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
+  if (n.only && wanted.size === 0) throw new Error(`no unit "${n.only}" in tonight's plan`)
+  // A chained unit needs the units it follows.
+  for (const p of [...n.plan.units].reverse())
+    if (wanted.has(p.unit.id) && p.after) wanted.add(p.after)
+  const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
   const secrets = [
     ...Object.values(n.providers).flatMap((p) => p.secrets),
     ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
     ...(n.config.notify?.secrets ?? []),
+    ...Object.values(n.config.repos).flatMap((r) => r.secrets),
   ]
 
   for (const p of planned) {
@@ -64,6 +72,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       skip('the night window ended')
       continue
     }
+    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
+    if (p.after && (after?.outcome?.kind ?? 'none') === 'none') {
+      skip(
+        n.dryRun
+          ? 'a dry run delivers nothing for it to follow'
+          : `${p.after} delivered nothing to follow`,
+      )
+      continue
+    }
     const { provider: id, passed } = route(unit.providers, allowances, routed)
     const provider = id && n.providers[id]
     if (!id || !provider) {
@@ -75,11 +92,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     routed[id] = (routed[id] ?? 0) + 1
-    const model = unit.rule.model?.[id] ?? n.config.providers.find((c) => c.id === id)?.model
+    const entry = n.config.providers.find((c) => c.id === id)
+    const model = unit.rule.model?.[id] ?? entry?.model
     n.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
     const unitDir = join(n.runDir, 'units', unit.id)
     const dir = join(n.runDir, 'work', unit.id)
+    const plugin = join(n.runDir, 'plugins', unit.id)
     await mkdir(unitDir, { recursive: true })
     const logFile = createWriteStream(join(unitDir, 'worker.log'))
     const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -87,18 +106,55 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     results.push(result)
     try {
       const ctx = { ...n.ctx, log }
-      const prompt = await prepareWorkspace({ ...n, unit, dir, provider, ctx })
+      const previous = after?.outcome && {
+        skill: after.planned.unit.skill,
+        outcome: after.outcome,
+        out: join(n.runDir, 'units', after.planned.unit.id, 'out'),
+      }
+      const prompt = await prepareWorkspace({ ...n, unit, dir, plugin, provider, ctx, previous })
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
+      const repo = n.config.repos[unit.repo]
+      if (repo?.setup && !unit.untrusted) {
+        // A PR someone else opened runs its author's install scripts: they get none of the repo's secrets.
+        const own = unit.foreign ? [] : repo.secrets
+        const failed = await runSetup(
+          repo.setup,
+          dir,
+          setupEnv(n.ctx.env, dir, secrets, own),
+          log,
+          {
+            secrets: own,
+            signal: n.signal,
+            until: n.until,
+          },
+        )
+        if (failed) {
+          Object.assign(result, { status: 'skipped', reason: failed })
+          continue
+        }
+      }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
-      const job = { unit, dir, prompt, maxTurns, model, env }
+      const config = entry?.config
+      const job = {
+        unit,
+        dir,
+        prompt,
+        maxTurns,
+        model,
+        env,
+        config,
+        configDir: n.configDir,
+        plugin,
+      }
       const worker = await runWorker(provider, job, a, {
         log,
         signal: n.signal,
         until: n.until,
+        maxMinutes: entry?.budget.unit_minutes,
         watch: n.watch,
       })
       Object.assign(result, worker)
@@ -117,11 +173,23 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         recursive: true,
         filter: (src) => src !== join(dir, WORK_DIR, 'gh'),
       }).catch(() => {})
-      if (!n.dryRun) await rm(dir, { recursive: true, force: true })
+      if (!n.dryRun)
+        await Promise.all([dir, plugin].map((d) => rm(d, { recursive: true, force: true })))
     }
     n.ctx.log(`${unit.id}: ${result.status}`)
   }
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
+}
+
+/** Like the worker's, with every secret withheld except the repo's own. */
+function setupEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  secrets: string[],
+  own: string[],
+): NodeJS.ProcessEnv {
+  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
+  return { ...workerEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }

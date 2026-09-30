@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,8 +23,9 @@ const job = (): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
+    untrusted: false,
     branch: 'night/fake-1',
-    rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+    rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
     providers: ['claude'],
@@ -117,11 +118,20 @@ describe('claude provider', () => {
   it("loads the repo's config but not ~/.claude; neither on someone else's PR or a probe", async () => {
     process.env.FAKE_ARGV = join(dir, 'argv.json')
     const argv = async (mine: boolean) => {
-      const pr = { repo: 'acme/api', number: 2, url: 'u', branch: 'sessions', ours: false, mine }
+      const pr = {
+        repo: 'acme/api',
+        number: 2,
+        url: 'u',
+        branch: 'sessions',
+        ours: false,
+        mine,
+        trusted: true,
+      }
       const unit = {
         ...job().unit,
         base: 'sessions',
         foreign: !mine,
+        untrusted: false,
         items: [fakeItem({ linkedPrs: [pr] })],
       }
       await collect(provider.run({ ...job(), unit }, new AbortController().signal))
@@ -139,6 +149,23 @@ describe('claude provider', () => {
       await provider.probe({ env: process.env, log: () => {} })
       const probe = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       expect(flag(probe, '--setting-sources')).toBe('')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('passes the settings file with auto-memory off, and the skills plugin', async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    await writeFile(join(dir, 'worker.json'), '{"env":{"A":"1"},"autoMemoryEnabled":true}')
+    const plugin = join(dir, 'plugin')
+    try {
+      const run = { ...job(), config: { settings: 'worker.json' }, configDir: dir, plugin }
+      await collect(provider.run(run, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      expect(args[args.indexOf('--settings') + 1]).toBe(
+        '{"env":{"A":"1"},"autoMemoryEnabled":false}',
+      )
+      expect(args[args.indexOf('--plugin-dir') + 1]).toBe(plugin)
     } finally {
       delete process.env.FAKE_ARGV
     }
