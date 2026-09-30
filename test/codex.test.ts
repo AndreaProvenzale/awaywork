@@ -27,8 +27,9 @@ const job = (maxTurns = 10): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
+    untrusted: false,
     branch: 'night/fake-1',
-    rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
+    rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
     providers: ['codex'],
@@ -123,6 +124,18 @@ describe('codex provider', () => {
     try {
       expect((await argv('gpt-5-codex')).join(' ')).toContain('-m gpt-5-codex')
       expect(await argv()).not.toContain('-m')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('passes each config value as -c', async () => {
+    process.env.FAKE_ARGV = join(tmp, 'argv.json')
+    try {
+      const config = { config: { model_reasoning_effort: 'high', 'tools.web_search': false } }
+      await collect(provider.run({ ...job(), config }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
+      expect(args.join(' ')).toContain('-c model_reasoning_effort="high" -c tools.web_search=false')
     } finally {
       delete process.env.FAKE_ARGV
     }
