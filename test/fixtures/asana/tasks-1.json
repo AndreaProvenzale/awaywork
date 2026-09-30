@@ -8,6 +8,8 @@
       "permalink_url": "https://app.asana.com/1/100/project/11/task/1201",
       "created_at": "2026-01-01T08:00:00.000Z",
       "modified_at": "2026-01-03T08:00:00.000Z",
+      "due_on": "2026-01-10",
+      "due_at": null,
       "assignee": { "gid": "900", "resource_type": "user", "name": "Dev" },
       "memberships": [
         {
@@ -53,6 +55,15 @@
             { "gid": "442", "resource_type": "enum_option", "name": "Web" }
           ],
           "display_value": "API, Web"
+        },
+        {
+          "gid": "46",
+          "resource_type": "custom_field",
+          "name": "Launch",
+          "resource_subtype": "date",
+          "representation_type": "date",
+          "date_value": { "date": "2026-02-01", "date_time": null },
+          "display_value": "2026-02-01"
         },
         {
           "gid": "45",

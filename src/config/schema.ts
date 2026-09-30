@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { bounds } from '../core/queue.js'
+import { bounds, isAge, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { sourceField, sources } from '../sources/index.js'
@@ -13,6 +13,8 @@ export const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a ti
 const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
+
+const units = z.int().positive()
 
 const branch = z.string().superRefine((template, ctx) => {
   const problem = templateProblem(template)
@@ -28,11 +30,13 @@ const fallback = z
 const reserve = 'Never go past 1 - reserve of any window'
 const perNight = 'At most this share of the long window per night'
 const sessionMax = 'Stop a worker past this share of the short window'
+const unitMinutes = 'Stop a worker after this many minutes'
 const budget = z
   .strictObject({
     reserve: percent.prefault('10%').describe(reserve),
     per_night: percent.optional().describe(perNight),
     session_max: percent.prefault('90%').describe(sessionMax),
+    unit_minutes: z.int().positive().optional().describe(unitMinutes),
     fallback: fallback.default({ units: 4, turns: 60 }),
   })
   .describe('Quota allocation defaults; any provider can override them')
@@ -41,6 +45,7 @@ const budgetOverride = z
     reserve: percent.describe(reserve),
     per_night: percent.describe(perNight),
     session_max: percent.describe(sessionMax),
+    unit_minutes: z.int().positive().describe(unitMinutes),
     fallback,
   })
   .partial()
@@ -89,6 +94,7 @@ const sourcesConfig = z
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
 const scalars = z.union([scalar, z.array(scalar).min(1)])
+const span = z.string().regex(spanPattern, 'expected a span like 3d: a number and m, h, d or w')
 const whereValue = z.union([
   scalars,
   z.strictObject({ not: scalars }).describe('Matches items whose field has none of these values'),
@@ -101,6 +107,13 @@ const whereValue = z.union([
     })
     .refine((c) => Object.keys(c).length > 0, 'expected gt, gte, lt or lte')
     .describe('Matches items whose number field passes every comparison'),
+  z
+    .strictObject({
+      older_than: span.optional().describe('Longer ago than this span'),
+      newer_than: span.optional().describe('More recent than this span'),
+    })
+    .refine((a) => Object.keys(a).length > 0, 'expected older_than or newer_than')
+    .describe('Matches items whose date field is this long before now, e.g. { older_than: 3d }'),
 ])
 
 const skill = z.string().min(1).describe('The skill that does the work')
@@ -130,7 +143,9 @@ const step = z
       .pipe(stepObject),
     stepObject,
   ])
-  .describe('A skill name, or a map with the rule keys other than source, where, order and then')
+  .describe(
+    'A skill name, or a map with the rule keys other than source, where, order, units and then',
+  )
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -140,13 +155,16 @@ const rule: z.ZodType<Rule, unknown> = z
       .record(z.string(), whereValue)
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now',
       ),
     ...stepSettings,
     order: z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    units: units
+      .optional()
+      .describe('At most this many units per night from this rule, its then steps included'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, z.array(step).min(1)])
@@ -160,7 +178,14 @@ const rule: z.ZodType<Rule, unknown> = z
 
 const repo = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
-  setup: z.string().optional().describe('Setup command, given to the worker in its prompt'),
+  setup: z
+    .string()
+    .optional()
+    .describe('Setup command, run in the clone before the worker; a failure skips the unit'),
+  secrets: z
+    .array(z.string().min(1))
+    .default([])
+    .describe('Env vars setup needs; withheld from workers, listed in Actions'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
 })
@@ -173,10 +198,12 @@ export const configSchema = z
       .strictObject({
         start: time.describe('When a scheduled run starts, local time'),
         end: time.describe('No unit starts after this'),
+        units: units.optional().describe('At most this many units per night'),
+        units_per_repo: units.optional().describe('At most this many units per night in one repo'),
       })
       .refine((n) => n.start !== n.end, 'start and end must differ')
       .default({ start: '01:00', end: '07:00' })
-      .describe('Local hours a scheduled run may start units in'),
+      .describe('Local hours a scheduled run may start units in, and how many'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -191,6 +218,7 @@ export const configSchema = z
       .default({})
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+    skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
     queue: z
       .array(rule)
       .optional()
@@ -259,6 +287,15 @@ export const configSchema = z
           })
           continue
         }
+        if (typeof value === 'object' && !Array.isArray(value) && isAge(value)) {
+          if (!field.safeParse(new Date().toISOString()).success)
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'where', key],
+              message: 'older_than and newer_than need a date field',
+            })
+          continue
+        }
         for (const v of whereValues(value))
           if (!field.safeParse(v).success)
             ctx.addIssue({
@@ -293,7 +330,8 @@ function fieldFor(scope: string[], key: string): z.ZodType | undefined {
 
 function whereValues(value: WhereValue): Scalar[] {
   if (typeof value !== 'object' || Array.isArray(value)) return [value].flat()
-  return 'not' in value ? [value.not].flat() : bounds(value).map(([, bound]) => bound)
+  if ('not' in value) return [value.not].flat()
+  return isAge(value) ? [] : bounds(value).map(([, bound]) => bound)
 }
 
 function unknownKey(key: string, scope: string[]): string {

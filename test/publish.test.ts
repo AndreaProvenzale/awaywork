@@ -17,6 +17,7 @@ const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
   repo: 'acme/api',
   base: 'feature-1',
   foreign: false,
+  untrusted: false,
   branch: 'night/FAKE-1',
   rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
   skill: 'fix-ci',
@@ -92,12 +93,14 @@ describe('publish', () => {
     expect(await publish(unit(), dir, forge, 'r1')).toEqual({
       kind: 'none',
       reason: '1 commits but no PR body, not pushed',
+      unpublished: true,
     })
     await body('Title')
     forge.branches.add('acme/api:night/FAKE-1')
     expect(await publish(unit(), dir, forge, 'r1')).toEqual({
       kind: 'none',
       reason: 'night/FAKE-1 already exists on acme/api, not pushed',
+      unpublished: true,
     })
   })
 

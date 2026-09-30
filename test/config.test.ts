@@ -85,6 +85,13 @@ describe('config', () => {
     expect(problems(rule('{ unresolved_threads: {} }'))).toEqual([
       expect.stringContaining('queue[0].where.unresolved_threads'),
     ])
+    expect(problems(rule('{ updated: { older_than: 3d, newer_than: 2w } }'))).toEqual([])
+    expect(problems(rule('{ created: { older_than: 3 days } }'))).toEqual([
+      expect.stringContaining('queue[0].where.created'),
+    ])
+    expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
+      'queue[0].where.checks: older_than and newer_than need a date field',
+    ])
   })
 
   it('takes a rule order', () => {
@@ -156,6 +163,9 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue: [{ skill: plan, then: { skill: review, where: {} } }]`),
     ).toEqual(['queue[0].then: Unrecognized key: "where"'])
+    expect(
+      problems(`${minimal}queue: [{ skill: plan, then: { skill: review, units: 1 } }]`),
+    ).toEqual(['queue[0].then: Unrecognized key: "units"'])
   })
 
   it('takes bare provider names next to overrides', () => {
@@ -165,6 +175,19 @@ describe('config', () => {
     expect(cfg.providers.map((p) => [p.id, p.budget.per_night])).toEqual([
       ['claude', undefined],
       ['codex', 0.05],
+    ])
+  })
+
+  it('takes unit_minutes globally and per provider', () => {
+    const cfg = parseConfig(
+      `${minimal.replace('[claude: {}]', '[claude, codex: { budget: { unit_minutes: 30 } }]')}budget: { unit_minutes: 90 }`,
+    )
+    expect(cfg.providers.map((p) => [p.id, p.budget.unit_minutes])).toEqual([
+      ['claude', 90],
+      ['codex', 30],
+    ])
+    expect(problems(`${minimal}budget: { unit_minutes: 0 }`)).toEqual([
+      expect.stringMatching(/^budget\.unit_minutes: /),
     ])
   })
 
@@ -192,6 +215,10 @@ describe('skills', () => {
       '---\nname: our-api-conventions\n---\n',
     )
     expect(await unknownSkills(cfg, userDir)).toEqual([])
+    const top = parseConfig(`${minimal}skills: [house-style]`)
+    expect(await unknownSkills(top, userDir)).toEqual([
+      `skills: unknown skill "house-style" (not built in, not in ${userDir})`,
+    ])
   })
 
   it('checks the skills of every step in a chain', async () => {

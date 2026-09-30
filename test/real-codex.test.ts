@@ -20,7 +20,9 @@ const git = (dir: string, ...args: string[]) =>
 it.skipIf(!process.env.NIGHTSHIFT_REAL)(
   'runs the real codex binary through a unit',
   async () => {
-    const dir = join(await mkdtemp(join(tmpdir(), 'nightshift-real-codex-')), 'clone')
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-real-codex-'))
+    const dir = join(root, 'clone')
+    const plugin = join(root, 'plugin')
     const forge = {
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
@@ -39,6 +41,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
       repo: 'acme/api',
       base: '',
       foreign: false,
+      untrusted: false,
       branch: 'night/fake-1',
       rule: { skill: 'implement', provider: [], skills: [], instructions: [] },
       skill: 'implement',
@@ -52,6 +55,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const prompt = await prepareWorkspace({
       unit,
       dir,
+      plugin,
       config,
       configDir: dir,
       forge,
@@ -62,7 +66,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
     const quota = await codex.probe(ctx)
     expect(quota?.windows.map((w) => w.span)).toContain('long')
 
-    const job = { unit, dir, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
+    const job = { unit, dir, plugin, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
     const result = await runWorker(codex, job, allowance(config.budget, quota, Date.now()), {
       log: console.log,
     })

@@ -54,6 +54,8 @@ blocked on.
 - Verify with targeted checks only: tests of the files you touched, lint
   and format on changed files. Never whole-repo type checks, builds,
   `docker` or dev servers; the draft PR's CI runs the full checks.
+- Run the repo's documented generators, such as a docs generator, when
+  your change touches what they generate.
 - Every command finishes inside its tool call. Nothing in the background.
 - Install dependencies only when a targeted check needs them.
 

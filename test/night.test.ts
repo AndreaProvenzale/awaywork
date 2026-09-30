@@ -130,6 +130,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   expect(existsSync(join(unitDir, 'prompt.md'))).toBe(true)
   expect(existsSync(join(unitDir, 'context/acme-api-1'))).toBe(true)
   expect(existsSync(join(runDir, 'work', 'acme-api-1'))).toBe(false)
+  expect(existsSync(join(runDir, 'plugins', 'acme-api-1'))).toBe(false)
 
   const text = formatReport(report)
   expect(text).toContain(
@@ -398,6 +399,130 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   expect(review?.prompt).toContain(
     'This unit follows `implement` on the same items, which opened https://example.com/acme/api/pull/night/acme-api-5 tonight',
   )
+})
+
+it('runs setup before the worker with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, branch: string, dir: string) => {
+      await execa('git', ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+      if (branch === 'feature-2') await writeFile(join(dir, 'broken'), '')
+    },
+  }
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: review }]
+repos:
+  acme/api:
+    setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN" > setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const plan = planNight({
+    config,
+    items: [
+      githubPr(1),
+      githubPr(2),
+      githubPr(3, { mine: false }),
+      githubPr(4, { mine: false, trusted: false }),
+    ],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const setups: string[] = []
+  const workerEnvs: NodeJS.ProcessEnv[] = []
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: {
+      claude: {
+        ...worker,
+        async *run(job) {
+          setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run'))
+          workerEnvs.push(job.env)
+          await writeFile(join(job.dir, '.nightshift/out/report.md'), 'Approve.')
+          yield { type: 'done', ok: true, turns: 1 }
+        },
+      },
+    },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: {
+      env: { PATH: process.env.PATH, FAKE_AGENT_TOKEN: 'own', NPM_TOKEN: 'npm' },
+      log: () => {},
+    },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(setups).toEqual(['npm,\n', ',\n', 'not run'])
+  expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
+  expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+    ['done', undefined],
+    ['skipped', expect.stringMatching(/^setup failed: .*code 3.*\nresolving\n404 from registry$/s)],
+    ['done', undefined],
+    ['done', undefined],
+  ])
+  const prompt = await readFile(join(root, 'run/units/acme-api-1/prompt.md'), 'utf8')
+  expect(prompt).toContain('Setup, already run: `if [ -f broken ]')
+  const untrusted = await readFile(join(root, 'run/units/acme-api-4/prompt.md'), 'utf8')
+  expect(untrusted).toContain("Setup, not run because this PR's author isn't trusted")
+})
+
+it("stops a unit at its provider's unit_minutes", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-time-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa('git', ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(
+    'providers: [claude: { budget: { unit_minutes: 5 } }]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+  )
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const hung: Provider = {
+    ...fakeProvider('claude'),
+    async *run(_job, signal) {
+      vi.advanceTimersByTime(5 * 60_000)
+      if (!signal.aborted) await new Promise((ok) => signal.addEventListener('abort', ok))
+      yield { type: 'done', ok: false, turns: 1 }
+    },
+  }
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    const report = await runNight({
+      config,
+      configDir: root,
+      plan,
+      runId: 'r1',
+      runDir: join(root, 'run'),
+      dryRun: false,
+      providers: { claude: hung },
+      sources: { github: fakeSource() as Source },
+      forge,
+      ctx: { env: {}, log: () => {} },
+      watch: () => ({ stop: async () => {} }),
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+      ['stopped: time', 'reached unit_minutes (5)'],
+    ])
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
