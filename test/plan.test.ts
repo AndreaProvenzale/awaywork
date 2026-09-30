@@ -705,6 +705,27 @@ queue:
     expect(result.units[0]?.unit.items.map((i) => i.key)).toEqual(['acme/api#9', 'acme/api#5'])
   })
 
+  it('loops on the draft PR stacked on a night-shift PR it takes up', () => {
+    const ours = githubPr(9, { ours: true, unresolved_threads: 1, unresolved_human_threads: 1 })
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: address-review
+    where: { type: pr, ours: true }
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }`
+    const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }], {})
+    expect(result.units.map(({ unit, loop }) => [unit.id, unit.base, loop?.host])).toEqual([
+      ['acme-api-9', 'night/acme-api-5', undefined],
+      ['acme-api-9-review-1', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-implement-1', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-review-2', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-implement-2', 'night/acme-api-5', 'acme-api-9'],
+    ])
+    expect(result.units[0]?.unit.stackedOn).toBe('https://github.com/acme/api/pull/9')
+  })
+
   it("addresses people's threads on a night-shift PR by default, not a bot's", () => {
     const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
     const ours = (n: number, human: number) => {
