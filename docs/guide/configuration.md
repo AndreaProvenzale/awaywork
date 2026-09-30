@@ -184,6 +184,14 @@ level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
+`network: false` on a repo or a rule cuts the agent's commands off the
+network; the rule wins over the repo and covers its `then` steps. Unset,
+it is on. `setup` keeps the network, so it can install what the agent
+needs, but it doesn't run on an untrusted author's PR: there an offline
+agent has only the clone. Offline is tested on macOS only: on Linux,
+Claude Code's sandbox needs bubblewrap and socat, and neither agent's is
+verified there yet [I]. See [Safety](./safety.md#network).
+
 `skills` at the top level adds skills to every unit, like a rule's
 `skills`; see [Skills](./skills.md#where-skills-come-from).
 
@@ -207,6 +215,7 @@ the repo's PR template, its recent commit style and your instructions
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per night from this rule, its `then` steps included |
 | `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
+| `network` | `false` cuts the agent's commands off the network, `then` steps included; default the repo's |
 
 ### `where`
 

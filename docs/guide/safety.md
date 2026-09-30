@@ -57,10 +57,42 @@ not asked of the model.
   top-level `skills` ([Configuration](./configuration.md#providers)).
   They are yours, so they apply on someone else's PR too.
 
-The agent's own tools are not sandboxed: Claude Code gets Bash and file
-tools pre-approved, Codex runs with `--sandbox danger-full-access`, which
-it needs to commit. Run night-shift on a machine or runner where that is
-acceptable: it can read what your user can read.
+## Network
+
+The network is on by default. With `network: false` on a repo or a
+rule, each agent's own OS sandbox runs its commands without it. That
+closes one way for injected instructions or someone else's code to send
+your agent's login out, not every way: the login stays in the agent's
+environment, reads aren't restricted, and the draft PR's commits and
+body are pushed without a secret scan.
+
+- **Claude Code**: Bash in its sandbox (`sandbox.enabled`), with no way
+  to run a command outside it and a failed start instead of an
+  unconfined shell when the sandbox is missing. Bash writes stay in the
+  clone and a temp dir; Write and Edit are held by Claude Code's
+  permissions, not the sandbox [V]. It replaces the `sandbox` of your
+  `settings` file. On your own repo the repo's config still loads: its
+  `.claude/settings.json` can allow domains, and its hooks and `.mcp.json`
+  servers run outside the sandbox [V]. On someone else's PR none of it
+  is loaded.
+- **Codex**: a permission profile that reads anywhere, writes the clone,
+  its `.git` and the temp dir, with no network and no web search. It
+  comes after your `config` values, so theirs for the same keys lose,
+  and a `sandbox_mode` there doesn't switch it off [V, tested].
+
+The agent's own requests to its vendor still go out. `setup` runs before
+the agent, outside the sandbox, so it can still install dependencies,
+except on an untrusted author's PR, where it doesn't run.
+
+Offline is tested on macOS only. On Linux, Claude Code's sandbox needs
+bubblewrap and socat [V]; offline isn't verified there for either agent,
+so it may fail, e.g. on a stock GitHub Actions runner [I].
+
+With network on, the agent's tools are not sandboxed: Claude Code gets
+Bash and file tools pre-approved, Codex runs with `--sandbox
+danger-full-access`, which it needs to commit. Either way, run
+night-shift on a machine or runner where that is acceptable: it can read
+what your user can read.
 
 ## What night-shift publishes
 

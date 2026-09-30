@@ -173,6 +173,10 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
       ),
+    network: z
+      .boolean()
+      .optional()
+      .describe("Network for the worker's commands, then steps included; default the repo's"),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -188,6 +192,7 @@ const repo = z.strictObject({
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
+  network: z.boolean().optional().describe("Network for the worker's commands; default on"),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])

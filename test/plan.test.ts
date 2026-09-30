@@ -334,6 +334,31 @@ queue:
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
   })
 
+  it('takes network from the rule, then the repo, else on', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos: { acme/web: { network: false } }
+queue:
+  - { skill: fix-ci, where: { checks: failing }, network: true }
+  - { skill: review, where: { review_requested: true }, then: implement, network: false }
+  - { skill: implement, where: { type: issue } }
+`
+    const items = [
+      githubPr(1, { mine: false, checks: 'failing' }),
+      githubPr(2, { mine: false, review_requested: true }),
+      issue,
+      fakeItem({ ...issue, key: 'acme/web#5', fields: { repo: 'acme/web' } }),
+    ]
+    expect(plan(yaml, items, {}).units.map((u) => u.unit.network)).toEqual([
+      true,
+      false,
+      false,
+      true,
+      false,
+    ])
+  })
+
   it('skips units past the night, repo and rule caps, naming the cap', () => {
     const yaml = `
 night: { start: "01:00", end: "07:00", units: 4, units_per_repo: 2 }

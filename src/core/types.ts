@@ -154,6 +154,8 @@ export interface Rule extends Step {
   units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
   then?: Step[]
+  /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
+  network?: boolean
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -169,6 +171,8 @@ export interface Unit {
   foreign: boolean
   /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
   untrusted: boolean
+  /** Whether the worker's commands may reach the network. */
+  network: boolean
   /** The URL of tonight's earlier draft PR whose branch `base` is. */
   stackedOn?: string
   branch: string

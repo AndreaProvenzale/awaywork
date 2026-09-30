@@ -433,6 +433,10 @@
           "instructions": {
             "description": "Instruction file for units in this repo",
             "type": "string"
+          },
+          "network": {
+            "description": "Network for the worker's commands; default on",
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -836,6 +840,10 @@
                 }
               }
             ]
+          },
+          "network": {
+            "description": "Network for the worker's commands, then steps included; default the repo's",
+            "type": "boolean"
           }
         },
         "required": [

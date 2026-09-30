@@ -100,6 +100,7 @@ export function planNight(input: {
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
+        network: rule.network ?? config.repos[repo]?.network ?? true,
         items,
         repo,
         rule: step,

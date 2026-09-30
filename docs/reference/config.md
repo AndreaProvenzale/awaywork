@@ -183,6 +183,7 @@ My unresolved Jira Cloud issues.
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
+| `network` | boolean |  | Network for the worker's commands; default on |
 
 ## `queue[]`
 
@@ -202,6 +203,7 @@ First matching rule wins; top = highest priority.
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered |
+| `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 
 ## `queue[].where.<key>`
 

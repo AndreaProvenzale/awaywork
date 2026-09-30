@@ -124,6 +124,26 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Headless runs refuse writes under `.claude/` without a grant, even with
   `Write` allowed (`permission_denied`, `safetyCheck`). [V, tested]
 - An empty `GH_CONFIG_DIR` hides a keyring `gh` login. [V, tested]
+- Sandbox, checked on macOS with a stub API (2.1.284): `claude -p
+  --settings '{"sandbox":{"enabled":true}}'` runs Bash with network
+  denied (`deny network-outbound` in the tool result) and writes limited
+  to the working directory; `git commit` there works. A Bash call with
+  `dangerouslyDisableSandbox` is refused headless, and with
+  `allowUnsandboxedCommands: false` runs sandboxed anyway. Sandboxed Bash
+  can't write `.claude/settings.json` or `.claude/settings.local.json`.
+  Project settings merge in: their `sandbox.enabled: false` loses to the
+  flag, but their `sandbox.network.allowedDomains` or a
+  `WebFetch(domain:…)` allow rule opens those domains. [V, tested] The
+  binary says a missing sandbox backend runs the shell unconfined unless
+  `sandbox.failIfUnavailable` is true [V, binary strings]; the Linux
+  backend (bubblewrap) is not tested.
+- The sandbox covers Bash, PowerShell and Monitor only; Read, Edit and
+  Write are held by permission rules. Hooks and MCP servers run outside
+  it. On Linux it needs bubblewrap and socat, and Ubuntu 24.04+ AppArmor
+  stops bubblewrap creating user namespaces without a profile for it.
+  [V] https://code.claude.com/docs/en/sandboxing Whether GitHub's
+  `ubuntu-latest` runner has them is not checked, so offline there may
+  fail to start [I].
 - Routines: cloud, cron (1 h minimum), API `/fire`, GitHub events; plan
   usage plus a daily run cap. [V] https://code.claude.com/docs/en/routines
 
@@ -167,8 +187,24 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   would share `auth.json` and could race a token refresh [I]. So a Codex
   worker stops at its ceiling only between units, never mid-run.
 - The `workspace-write` sandbox refuses `.git/index.lock`, so the model
-  cannot commit; workers run `--sandbox danger-full-access`, like Claude's
-  unsandboxed Bash. [V, tested]
+  cannot commit; workers with network run `--sandbox danger-full-access`,
+  like Claude's unsandboxed Bash. [V, tested]
+- Network off with `.git` writable (0.149.1, macOS, `codex sandbox` and
+  `codex exec` on a stub Responses API): `workspace-write` blocks the
+  network, and `sandbox_workspace_write.writable_roots` doesn't reopen
+  `.git`. A permission profile passed with `-c` does:
+  `default_permissions="night"`, `permissions.night.filesystem` with
+  `":root"="read"`, the clone and `<clone>/.git` as `"write"`, and
+  `permissions.night.network.enabled=false` commits, blocks `curl` and
+  blocks writes outside the clone. Without the explicit `.git` entry
+  `.git` stays read-only. `--sandbox` overrides the profile, so it must
+  be left out. `-c web_search="disabled"` drops the hosted `web_search`
+  tool from the request. [V, tested] Linux (Landlock) not tested.
+- `-c sandbox_mode="danger-full-access"`, before or after the profile,
+  doesn't reopen the network or writes outside the clone; alone it does.
+  Neither does an earlier `permissions.night.network.enabled=true`, and
+  a `profile` key is refused (0.149.1, macOS, `codex exec` on a stub).
+  [V, tested]
 - `--ignore-user-config` skips `config.toml` (MCP servers, notify hooks,
   plugins) while auth still comes from `CODEX_HOME` [V, `--help`; tested];
   `--ephemeral` saves no session. A prompt argument plus piped stdin
@@ -250,5 +286,8 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Devin: personal-plan CLI billing.
 - Codex: Plus/Pro window shape; whether an app server beside a running
   `exec` can share one `auth.json` safely, which a mid-run quota read needs.
+- Offline workers on Linux: Claude's bubblewrap sandbox and Codex's
+  Landlock profile were only tested on macOS, so the network stays on
+  by default until they are.
 - Codex remote: an ephemeral runner seeds `auth.json` from the secret
   every run, so after a refresh the secret's refresh token goes stale.
