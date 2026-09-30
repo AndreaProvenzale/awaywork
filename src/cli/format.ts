@@ -1,7 +1,7 @@
 import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import type { NightPlan } from '../core/foreman.js'
-import { bounds, comparisons } from '../core/queue.js'
+import { bounds, comparisons, isAge, spans } from '../core/queue.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
@@ -59,12 +59,14 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
     out.push(`  ${style('bold', lines[0] ?? '')}`)
     plan.units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
+      if (p.after) out.push(`     after ${p.after}`)
       const [top, ...merged] = p.unit.items
       out.push(`     ${top?.source} ${top?.key}: ${top?.title}`)
       merged.forEach((item, j) => {
         const rule = p.itemRules[j + 1] ?? p.rule
         out.push(`     + ${item.source} ${item.key}: same feature, matched #${rule + 1}`)
       })
+      if (p.capped) out.push(`     ${p.capped}`)
       if (p.passed.length > 0 || !p.provider)
         out.push(
           `     provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
@@ -89,6 +91,7 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
+    r.then?.length && `then=${r.then.map((s) => s.skill).join(',')}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||
@@ -99,6 +102,10 @@ export function describeRule(r: Rule): string {
 function describeWhere(key: string, value: WhereValue): string {
   if (typeof value === 'object' && !Array.isArray(value)) {
     if ('not' in value) return `${key}!=${[value.not].flat().join('|')}`
+    if (isAge(value))
+      return spans(value)
+        .map(([op, span]) => `${key}:${op}=${span}`)
+        .join(' ')
     return bounds(value)
       .map(([op, bound]) => `${key}${comparisons[op].symbol}${bound}`)
       .join(' ')

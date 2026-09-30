@@ -23,7 +23,7 @@ A source returns your open items with facts about each: a `type` (`pr`,
 | Source | Items | Fields a rule can match |
 |---|---|---|
 | GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `review_requested`, `created`, `updated` |
-| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
+| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated`, `due` |
 | Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `project`, `repo` (from `team_repos`), `created`, `updated` |
 
 ## The queue
@@ -70,8 +70,25 @@ task linked to your PR becomes one unit with that PR.
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
 - A unit that links an open night-shift PR is skipped as **waiting for
-  review**: night-shift doesn't stack work on work you haven't read.
-- Units run one at a time, in queue order.
+  review**: night-shift doesn't stack work on work you haven't read,
+  unless a rule asks for it with [`then`](./configuration.md#then).
+- A unit none of whose items changed since a worker last finished the
+  same skill on it is skipped as **unchanged since run `<id>`**, so a
+  review or a unit that gave up isn't redone every night. A rule's `then`
+  chain counts as one attempt, recorded only when every unit of the chain
+  finished; commits left unpushed retry. "Changed" is the item's
+  `updated` time; attempts live in `~/.local/state/night-shift/attempts.json`,
+  and a unit picked with `run --unit` isn't skipped.
+- A unit whose chain didn't finish 3 runs in a row (a failure, a stop,
+  commits left unpushed) is skipped as **gave up after 3 attempts** until
+  one of its items changes or it matches another skill. A plan report
+  followed by a failed implement is one failure; a finished attempt
+  clears the count, and skipped, dry-run and aborted units don't count.
+  `run --unit` runs it anyway.
+- Units run one at a time, in queue order; a rule's `then` steps run
+  right after its unit.
+- Optional [caps](./configuration.md#night-and-budget) limit the units
+  per night, per repo and per rule.
 
 ## Budget
 
@@ -112,7 +129,8 @@ PR's branch when it has one, else the default branch).
 - The agent has no forge token, no source's or other provider's secret,
   and a `gh` config without a login.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota
-  reading) and a watchdog stops it below 1.5 GB of free memory or 2 GB of
+  reading), `unit_minutes` caps its wall-clock time when set (status
+  `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of
   disk, then kills every process it left behind.
 
 ## Delivery

@@ -17,7 +17,7 @@ same folder works for Claude Code and Codex.
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |
-| `review` | A PR awaiting your review; nothing is posted | report |
+| `review` | A PR awaiting your review, or tonight's own after a `then`; nothing is posted | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
@@ -31,19 +31,24 @@ them.
 
 ## Where skills come from
 
-A rule's skill name is looked up, first match wins, in:
+A skill name, a rule's or one in `skills`, is looked up, first match
+wins, in:
 
 1. `~/.config/night-shift/skills/<name>/`, yours;
 2. `.night-shift/skills/<name>/` in the unit's repo, the team's;
 3. the built-ins.
 
-A repo that already has a skill of that name in the agent's own folder
-(`.claude/skills/`, `.agents/skills/`) keeps it. On a PR someone else
-opened, those are the author's: night-shift skips `.night-shift/skills/`
-and replaces the agent folder's copy with its own; Claude Code loads no
-in-repo skills there, so a rule's extra `skills` aren't callable.
-`config check` sees user and built-in skills only; an in-repo skill
-resolves at run time.
+On a PR someone else opened, `.night-shift/skills/` is the author's and
+is skipped. To use a skill from `~/.claude/skills/`, link it into yours:
+`ln -s ~/.claude/skills/<name> ~/.config/night-shift/skills/<name>`.
+
+Claude Code gets the unit's skills as a plugin outside the clone
+(`--plugin-dir`), named `nightshift:<name>`, so they are callable on
+every unit, someone else's PR included. Codex gets them copied into the
+clone's `.agents/skills/`: a repo that already has a skill of that name
+there keeps it, except on someone else's PR, where night-shift's copy
+replaces it. `config check` sees user and built-in skills only; an
+in-repo skill resolves at run time.
 
 ## Tweak a built-in
 
@@ -91,5 +96,5 @@ queue:
   how, and what couldn't be.
 - Context is in `.nightshift/context/<item>/`: `pr.md`, `diff.patch`,
   `threads.md`, `checks.md` for a PR; `issue.md` or `task.md` otherwise.
-- `skills: [name]` on a rule adds extra skills the agent may call, such
-  as your team's conventions.
+- `skills: [name]` on a rule, or at the top level for every unit, adds
+  extra skills the agent may call, such as your team's conventions.

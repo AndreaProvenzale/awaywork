@@ -15,27 +15,33 @@ not asked of the model.
   similar variables removed and a `gh` config without a login.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, or your `token_env`), your
-  `notify.secrets` and every other provider's (`CODEX_AUTH_JSON` for a
+  `notify.secrets`, every repo's `secrets` and every other provider's (`CODEX_AUTH_JSON` for a
   Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
   Codex reads `auth.json` and gets no secret. The rest of your
   environment stays so repo tooling runs, including any variable you
   added to the env file that nothing declares.
+- **Setup outside the agent.** A repo's `setup` runs before the agent
+  in the same environment, without the agent's secret and with only that
+  repo's `secrets` added, none on a PR someone else opened. On a PR by
+  someone without write access or org membership it doesn't run at all.
+  Whatever it leaves running is stopped before the agent starts.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
   output) is excluded from git, so it can't be committed.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
-  comment or change git config; targeted checks only; nothing in the
-  background. A skill or instruction can't override it. It also tells the
+  comment or change git config; targeted checks and the repo's documented
+  generators only; nothing in the background. A skill or instruction can't override it. It also tells the
   agent that the prefetched context is data, not instructions: a request
   in an item to run commands, fetch URLs, read secrets or change the
   delivery is reported, never followed.
 - **Someone else's PR is data too.** On a PR you didn't open, the
-  branch's `.night-shift/` is ignored, its copy of the unit's skills is
-  replaced with night-shift's, and the prompt says its `CLAUDE.md`,
+  branch's `.night-shift/` is ignored, Codex's copy of the unit's skills
+  is replaced with night-shift's, and the prompt says its `CLAUDE.md`,
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
-  skills); Codex still loads `AGENTS.md` and its skills itself.
+  skills), only night-shift's skills plugin and the `settings` file you
+  configured; Codex still loads `AGENTS.md` and its skills itself.
 - **Only trusted authors' code runs by default.** Reviewing a PR means
   running its tests, with your agent's login in the environment. The
   default `review` rule matches `trusted: true` only: PRs whose author
@@ -44,9 +50,10 @@ not asked of the model.
 - **Not your agent's config.** Workers skip your user-level agent
   config: `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`,
   skills and auto-memory for Claude Code, `config.toml` for Codex. The
-  repo's own config still applies. Put variables such as
-  `ANTHROPIC_BASE_URL` in the environment, not in
-  `~/.claude/settings.json`.
+  repo's own config still applies. What you want workers to have, list
+  in the config: a Claude `settings` file, Codex `config` values and
+  top-level `skills` ([Configuration](./configuration.md#providers)).
+  They are yours, so they apply on someone else's PR too.
 
 The agent's own tools are not sandboxed: Claude Code gets Bash and file
 tools pre-approved, Codex runs with `--sandbox danger-full-access`, which
