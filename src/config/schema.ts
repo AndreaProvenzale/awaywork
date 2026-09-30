@@ -14,6 +14,8 @@ const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
+const units = z.int().positive()
+
 const branch = z.string().superRefine((template, ctx) => {
   const problem = templateProblem(template)
   if (problem) ctx.addIssue({ code: 'custom', message: problem })
@@ -130,7 +132,9 @@ const step = z
       .pipe(stepObject),
     stepObject,
   ])
-  .describe('A skill name, or a map with the rule keys other than source, where, order and then')
+  .describe(
+    'A skill name, or a map with the rule keys other than source, where, order, units and then',
+  )
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -147,6 +151,9 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    units: units
+      .optional()
+      .describe('At most this many units per night from this rule, its then steps included'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, z.array(step).min(1)])
@@ -180,10 +187,12 @@ export const configSchema = z
       .strictObject({
         start: time.describe('When a scheduled run starts, local time'),
         end: time.describe('No unit starts after this'),
+        units: units.optional().describe('At most this many units per night'),
+        units_per_repo: units.optional().describe('At most this many units per night in one repo'),
       })
       .refine((n) => n.start !== n.end, 'start and end must differ')
       .default({ start: '01:00', end: '07:00' })
-      .describe('Local hours a scheduled run may start units in'),
+      .describe('Local hours a scheduled run may start units in, and how many'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -198,6 +207,7 @@ export const configSchema = z
       .default({})
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+    skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
     queue: z
       .array(rule)
       .optional()

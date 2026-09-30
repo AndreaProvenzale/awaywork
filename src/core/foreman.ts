@@ -1,4 +1,5 @@
 import type { Config } from '../config/schema.js'
+import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -15,6 +16,8 @@ export interface PlannedUnit {
   passed: string[]
   /** The unit this one chains after, by id: it runs only on what that unit delivered. */
   after?: string
+  /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
+  capped?: string
 }
 
 export interface NightPlan {
@@ -31,6 +34,8 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
+  attempts?: Attempts
 }): NightPlan {
   const { config, allowances } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
@@ -38,6 +43,8 @@ export function planNight(input: {
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
+  const perRepo: Record<string, number> = {}
+  const perRule: Record<number, number> = {}
 
   for (const group of dedupe(ranked)) {
     const items = group.map((e) => e.item)
@@ -48,6 +55,15 @@ export function planNight(input: {
     const ours = prs.find((p) => p.ours)
     if (ours) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
+    if (since.every(Boolean)) {
+      skip(`unchanged since run ${since.sort().at(-1)}`)
+      continue
+    }
+    if (items.every((i) => failedAttempts(i, rule.skill, input.attempts ?? {}) >= MAX_ATTEMPTS)) {
+      skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
     const pr = prs[0]
@@ -67,7 +83,11 @@ export function planNight(input: {
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
       const { provider, passed } = route(providers, allowances, routed)
-      if (provider) routed[provider] = (routed[provider] ?? 0) + 1
+      if (provider) {
+        routed[provider] = (routed[provider] ?? 0) + 1
+        perRepo[repo] = (perRepo[repo] ?? 0) + 1
+        perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
+      }
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
@@ -75,7 +95,7 @@ export function planNight(input: {
         repo,
         rule: step,
         skill: step.skill,
-        skills: step.skills,
+        skills: [...config.skills, ...step.skills],
         providers,
         instructions: [
           ...config.instructions,
@@ -95,6 +115,22 @@ export function planNight(input: {
       })
       return unit
     }
+    const overCap = () => {
+      const cap = [
+        {
+          name: 'night.units',
+          max: config.night.units,
+          count: units.filter((u) => u.provider).length,
+        },
+        {
+          name: 'night.units_per_repo',
+          max: config.night.units_per_repo,
+          count: perRepo[repo] ?? 0,
+        },
+        { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
+      ].find((c) => c.max !== undefined && c.count >= c.max)
+      return cap && `over the cap: ${cap.name} is ${cap.max}`
+    }
 
     const chain = [rule, ...(rule.then ?? [])]
     const pushed: string[] = []
@@ -113,6 +149,11 @@ export function planNight(input: {
       )
       continue
     }
+    const capped = overCap()
+    if (capped) {
+      skip(capped)
+      continue
+    }
     const id = slug(items[0]?.key ?? '')
     let previous = add(rule, {
       id,
@@ -121,6 +162,12 @@ export function planNight(input: {
       branch: branches[0] as string,
     })
     for (const [j, step] of (rule.then ?? []).entries()) {
+      const capped = overCap()
+      if (capped) {
+        const last = units.at(-1) as PlannedUnit
+        last.capped = `then ${step.skill}: ${capped}`
+        break
+      }
       const stacked = previous.deliver === 'draft_pr'
       previous = add(
         step,

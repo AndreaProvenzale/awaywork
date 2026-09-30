@@ -141,7 +141,7 @@ interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>              // null = fixed budget
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
-  skillsDir: string                              // where skills go in the clone
+  skillsDir?: string                             // where skills go in the clone; unset: job.plugin
   instructionsFile: string                       // CLAUDE.md, AGENTS.md, …
 }
 
@@ -249,6 +249,17 @@ Semantics, fixed so every milestone agrees:
   PR stacks on it; after a report the base is unchanged. A step's branch
   gets `-<skill>` appended when an earlier draft PR in the chain renders
   the same name. A skill runs at most once per chain.
+- **Attempts.** A unit whose worker finished records each item's
+  `updated` time and the unit's skill in
+  `~/.local/state/night-shift/attempts.json`; a unit of the same skill
+  none of whose items changed since is skipped as unchanged since that
+  run. A chain records its items once, when every unit finished or
+  the chain ended at a unit that made nothing; commits left unpushed
+  retry, and a step is never skipped on its own. A unit picked with
+  `run --unit` isn't skipped. A chain that ran but didn't finish counts
+  one failure on each item instead; after 3 in a row on the same
+  `updated` time and skill the unit is skipped as gave up. Not persisted
+  in Actions.
 - **Branch.** The rule's `branch`, else the repo's, else the global one,
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
@@ -282,13 +293,14 @@ Semantics, fixed so every milestone agrees:
 - **Skills.** `skill` is the main skill, and `skills` are extras available
   to the worker. A name is looked up in `~/.config/night-shift/skills/`,
   then in-repo `.night-shift/skills/`, then the built-ins. Skills are
-  copied into the clone at the provider's `skillsDir`. Check each
+  copied into the clone at the provider's `skillsDir`, or into a plugin
+  folder outside it for a provider without one (Claude). Check each
   provider's skill location in its docs and tag it as in `providers.md`.
 - **Prompt**, in order: `harness.md`, the main skill, global
   `instructions`, repo `setup`/`test`/`instructions`, in-repo
   `.night-shift/instructions.md`, the rule's `instructions`.
 - **Workspace.** A unit runs in a fresh clone on its new branch, cut
-  from `base`. Skills go to the provider's `skillsDir`; `.nightshift/`
+  from `base`. Skills go to the provider's `skillsDir` or plugin; `.nightshift/`
   holds `context/<item key slug>/`, `prompt.md` and `out/`, where the
   model writes `pr.md` (first line the title) or `report.md`. Both are
   in `.git/info/exclude`, so the model can't commit them. The model's

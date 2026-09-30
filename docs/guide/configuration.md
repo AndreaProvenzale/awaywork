@@ -30,15 +30,19 @@ version.
 ## A full example
 
 ```yaml
-night: { start: "01:00", end: "07:00" }
+night:
+  start: "01:00"
+  end: "07:00"
+  units: 8                      # caps, unset by default
+  units_per_repo: 3
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_night: 15%                # at most this share of the long window per night
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
-  - claude: { model: opus }     # default: the binary's own model
-  - codex: { budget: { per_night: 5% } }
+  - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
+  - codex: { budget: { per_night: 5% }, config: { model_reasoning_effort: high } }
 sources:
   github: { repos: [acme/*] }
   asana:
@@ -54,6 +58,7 @@ repos:
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
+skills: [house-style]           # every unit, next to a rule's skills
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
@@ -62,6 +67,7 @@ queue:                          # first matching rule wins; top = highest priori
     source: github
     where: { type: issue, label: night-shift, repo: acme/api }
     order: oldest
+    units: 2                    # at most 2 of these per night
   - skill: review
     where: { type: pr, review_requested: true, trusted: true }
     model: { claude: sonnet }
@@ -79,6 +85,15 @@ queue:                          # first matching rule wins; top = highest priori
 `night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
+A readable quota decides how much work fits, not how much you can review
+in a morning. `night.units` caps the units planned per night,
+`night.units_per_repo` those in any one repo, and a rule's `units` those
+from that rule. None is set by default. Units past a cap are skipped in
+queue order, with the cap named in `nightshift plan` and the report. A
+[`then`](#then) step counts as a unit of the rule that started its chain.
+Only units routed to a provider count, and caps apply to each `nightshift
+run`, like `fallback.units`.
+
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
 `per_night: 5%` for a week shows what a unit costs you before you raise it.
@@ -89,6 +104,15 @@ A list, in routing order. A bare name uses the defaults; a map overrides
 the budget for that provider or sets its `model`, passed as is to the
 binary (`claude --model`, `codex exec -m`). Without one, the binary picks
 its own default.
+
+Workers skip your user-level agent config. To give them the hooks, env
+or settings you do want, list them here; they apply on every unit,
+including someone else's PR:
+
+- `claude: { settings: <file> }`: a Claude Code settings file, relative
+  to the config file, passed as `--settings`. Auto-memory stays off.
+- `codex: { config: { <key>: <value> } }`: each key passed as
+  `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
 ## Sources
 
@@ -135,6 +159,9 @@ level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
+`skills` at the top level adds skills to every unit, like a rule's
+`skills`; see [Skills](./skills.md#where-skills-come-from).
+
 PR titles, bodies and commit messages have no config: the agent follows
 the repo's PR template, its recent commit style and your instructions
 (e.g. "prefix PR titles with the task key").
@@ -153,6 +180,7 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr` or `report`; default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
+| `units` | At most this many units per night from this rule, its `then` steps included |
 | `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
 
 ### `where`
@@ -198,9 +226,10 @@ queue:
       - { skill: review, provider: codex }
 ```
 
-- A step takes the rule keys except `source`, `where`, `order` and
-  `then`. It inherits none of the rule's: an unset key has the same
-  default as on a rule.
+- A step takes the rule keys except `source`, `where`, `order`, `units`
+  and `then`. It inherits none of the rule's: an unset key has the same
+  default as on a rule. Top-level `instructions` and `skills` still
+  apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it. After a report, it starts from the
   same base.
@@ -216,6 +245,10 @@ queue:
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
 - A skill runs at most once per chain.
+- Steps count against the [caps](#night-and-budget) like any unit, and
+  against their rule's `units`. A chain whose first unit is over a cap
+  doesn't start; a step over a cap is left out with the rest of the chain,
+  and the unit before it names the cap.
 
 ## Notify
 

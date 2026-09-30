@@ -89,6 +89,11 @@ export interface Job {
   model?: string
   /** The worker's whole environment, from `workerEnv`: providers spawn with it and nothing else. */
   env: NodeJS.ProcessEnv
+  /** The provider's entry in the config; its relative paths resolve against `configDir`. */
+  config?: Record<string, unknown>
+  configDir?: string
+  /** A plugin folder outside the clone with the unit's skills when the provider has no `skillsDir`. */
+  plugin?: string
 }
 
 export interface Provider {
@@ -104,7 +109,8 @@ export interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
-  skillsDir: string
+  /** Where the binary finds skills in the clone; unset, they come in `Job.plugin`. */
+  skillsDir?: string
   instructionsFile: string
 }
 
@@ -141,6 +147,7 @@ export interface Rule extends Step {
   source?: string
   where: Record<string, WhereValue>
   order?: Order
+  units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
   then?: Step[]
 }
