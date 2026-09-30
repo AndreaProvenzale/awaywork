@@ -158,7 +158,9 @@ tail of its output in the report.
 token: setup gets them and no other secret, the agent never sees them,
 and the GitHub Actions workflow passes them from repository secrets.
 Their values are masked in setup's output. On a PR someone else opened,
-setup runs the author's install scripts, so it gets none of them. Read
+setup runs the author's install scripts, so it gets none of them, and
+it runs only when the author has write access or org membership;
+otherwise the agent is told it didn't run. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 

@@ -17,6 +17,7 @@ const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
   repo: 'acme/api',
   base: 'feature-1',
   foreign: false,
+  untrusted: false,
   branch: 'night/FAKE-1',
   rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
   skill: 'fix-ci',

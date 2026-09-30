@@ -78,6 +78,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     instructions: await Promise.all(w.config.instructions.map(read)),
     repo: {
       setup: repo.setup,
+      setupSkipped: unit.untrusted,
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
