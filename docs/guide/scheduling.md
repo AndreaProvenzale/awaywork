@@ -34,6 +34,8 @@ nightshift schedule remove
   `loginctl enable-linger` lifts that.
 - Output goes to `~/.local/state/night-shift/schedule.log`; the morning
   report is `nightshift report`.
+- The job bakes in `night.start`. When you change it, `config edit` and
+  `doctor` warn until `schedule install` runs again.
 
 The machine must be awake at `night.start`. On a laptop, a sleep schedule
 that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that

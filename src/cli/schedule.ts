@@ -11,7 +11,7 @@ import { clock } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
-import { defaultScheduler, schedulers } from '../scheduler/index.js'
+import { defaultScheduler, type Schedule, type Scheduler, schedulers } from '../scheduler/index.js'
 import { sources } from '../sources/index.js'
 import { Cancelled, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
@@ -60,11 +60,8 @@ export function scheduleCommand(program: Command): void {
         const job = await scheduler.read()
         if (!job) continue
         found = true
-        const at = [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
-        const flag = job.command.indexOf('--config')
-        const config = flag >= 0 ? job.command[flag + 1] : 'the default'
-        console.log(`Scheduled with ${scheduler.id} at ${at}`)
-        console.log(`Config: ${config}`)
+        console.log(`Scheduled with ${scheduler.id} at ${startsAt(job)}`)
+        console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
         console.log(`Log: ${job.log}`)
       }
       const root = await gitRoot()
@@ -77,6 +74,33 @@ export function scheduleCommand(program: Command): void {
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
+const startsAt = (job: Schedule) =>
+  [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
+
+function jobConfig(job: Schedule): string | undefined {
+  const flag = job.command.indexOf('--config')
+  return flag >= 0 ? job.command[flag + 1] : undefined
+}
+
+/** Warns about each installed job for this config that no longer starts at night.start. */
+export async function staleSchedules(
+  config: string,
+  start: string,
+  all: Record<string, Scheduler> = localSchedulers(),
+): Promise<string[]> {
+  const warnings = []
+  for (const scheduler of Object.values(all)) {
+    const job = await scheduler.read()
+    if (!job || jobConfig(job) !== resolve(config)) continue
+    const [hour, minute] = clock(start)
+    if (job.hour !== hour || job.minute !== minute)
+      warnings.push(
+        `the ${scheduler.id} job starts at ${startsAt(job)}, night.start is ${start}; run \`nightshift schedule install\``,
+      )
+  }
+  return warnings
+}
+
 const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */

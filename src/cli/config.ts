@@ -8,6 +8,7 @@ import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load
 import { configSchema } from '../config/schema.js'
 import { unknownSkills } from '../config/skills.js'
 import { terminalAsk } from './ask.js'
+import { staleSchedules } from './schedule.js'
 
 export function configCommand(program: Command): void {
   const config = program.command('config').description('inspect and validate the config')
@@ -63,6 +64,11 @@ export function configCommand(program: Command): void {
           discarded: `Not saved; the draft is in ${draft}`,
         }[outcome],
       )
+      if (outcome === 'saved') {
+        const { night } = await loadConfig(path)
+        for (const warning of await staleSchedules(path, night.start))
+          console.error(`warning: ${warning}`)
+      }
     })
 }
 
