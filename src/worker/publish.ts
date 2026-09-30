@@ -7,7 +7,7 @@ import { outputFile, WORK_DIR } from './workspace.js'
 export type Outcome =
   | { kind: 'pr'; url: string; commits: number }
   | { kind: 'report'; text: string }
-  | { kind: 'none'; reason: string }
+  | { kind: 'none'; reason: string; unpublished?: true }
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, '-c', 'core.hooksPath=/dev/null', ...args])).stdout
@@ -28,9 +28,18 @@ export async function publish(
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits.at(-1)
   if (!oldest) return { kind: 'none', reason: 'no commits' }
-  if (!text) return { kind: 'none', reason: `${commits.length} commits but no PR body, not pushed` }
+  if (!text)
+    return {
+      kind: 'none',
+      reason: `${commits.length} commits but no PR body, not pushed`,
+      unpublished: true,
+    }
   if (await forge.branchExists(unit.repo, unit.branch))
-    return { kind: 'none', reason: `${unit.branch} already exists on ${unit.repo}, not pushed` }
+    return {
+      kind: 'none',
+      reason: `${unit.branch} already exists on ${unit.repo}, not pushed`,
+      unpublished: true,
+    }
 
   const trailer = `git commit -q --amend --no-edit --no-verify --trailer 'Night-shift: ${runId}'`
   await git(dir, 'rebase', '-q', '--exec', trailer, `${oldest}^`)
