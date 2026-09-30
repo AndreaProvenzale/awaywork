@@ -1,0 +1,64 @@
+import { execa } from 'execa'
+
+const TIMEOUT_MS = 15 * 60_000
+const TAIL_LINES = 5
+
+export interface SetupOptions {
+  /** Names in the env whose values are masked in the output. */
+  secrets: string[]
+  signal?: AbortSignal
+  /** Stop setup at this time. */
+  until?: Date
+}
+
+/**
+ * Runs the repo's setup command in the clone; returns why it failed with its output's tail, never throws.
+ * It runs in its own process group, killed when the command exits or is stopped, so nothing it started outlives it.
+ */
+export async function runSetup(
+  command: string,
+  dir: string,
+  env: NodeJS.ProcessEnv,
+  log: (line: string) => void,
+  { secrets, signal, until }: SetupOptions,
+): Promise<string | undefined> {
+  const nightEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
+  const deadline = AbortSignal.timeout(
+    Math.max(0, nightEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
+  )
+  const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
+  const subprocess = execa(command, {
+    shell: true,
+    cwd: dir,
+    env,
+    extendEnv: false,
+    stdin: 'ignore',
+    detached: true,
+    reject: false,
+    all: true,
+  })
+  const killGroup = () => {
+    try {
+      if (subprocess.pid) process.kill(-subprocess.pid, 'SIGKILL')
+    } catch {}
+  }
+  subprocess.nodeChildProcess.once('exit', killGroup)
+  stop.addEventListener('abort', killGroup, { once: true })
+  if (stop.aborted) killGroup()
+  const result = await subprocess
+  stop.removeEventListener('abort', killGroup)
+
+  const values = secrets.flatMap((name) => env[name] || [])
+  const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
+  if (output) log(`setup: ${output}`)
+  if (!result.failed) return undefined
+  const why = signal?.aborted
+    ? 'interrupted'
+    : deadline.aborted
+      ? nightEnds
+        ? 'the night window ended'
+        : `timed out after ${TIMEOUT_MS / 60_000} min`
+      : result.shortMessage
+  const tail = output.split('\n').slice(-TAIL_LINES).join('\n')
+  return [`setup failed: ${why}`, tail].filter(Boolean).join('\n')
+}

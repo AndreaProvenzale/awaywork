@@ -1,4 +1,4 @@
-// Writes docs/reference/{cli,config}.md and docs/public/config.schema.json from the built CLI.
+// Writes docs/reference/{cli,config}.md and docs/public/config.schema.json from the CLI's source, no build needed.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 
@@ -8,10 +8,21 @@ const header = (description) =>
 const schemaUrl = 'https://andreaprovenzale.github.io/night-shift/config.schema.json'
 
 const cli = (...args) =>
-  execFileSync('node', ['dist/index.js', ...args], {
-    encoding: 'utf8',
-    env: { ...process.env, HOME, COLUMNS: '80' },
-  })
+  execFileSync(
+    'node',
+    [
+      '--experimental-transform-types',
+      '--disable-warning=ExperimentalWarning',
+      '--import',
+      './scripts/ts-resolve.mjs',
+      'src/cli/index.ts',
+      ...args,
+    ],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, HOME, COLUMNS: '80' },
+    },
+  )
     .replaceAll(HOME, '~')
     .trimEnd()
 
