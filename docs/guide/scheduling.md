@@ -87,8 +87,9 @@ A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you
 `schedule remove` and `schedule install --with github-actions` again.
 
-A runner starts with an empty state dir, so it keeps no attempts: an
-item unchanged since last night runs again, and none is given up on.
+A runner starts with an empty state dir, so it keeps no attempts or
+skips: an item unchanged since last night runs again, none is given up
+on, and `nightshift skip` on your machine doesn't reach it.
 
 ### Credentials on a runner
 

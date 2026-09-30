@@ -525,6 +525,26 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
   })
+
+  it('skips every item of a feature when one of them is skipped, and says why', () => {
+    const pr = githubPr(1, { checks: 'failing' })
+    const task = asanaTask(7, {}, { linkedPrs: pr.linkedPrs })
+    const yaml =
+      'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix-ci, where: { type: [pr, task] } }]'
+    const result = planNight({
+      config: parseConfig(yaml),
+      items: [pr, task, issue],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+      skips: { 'asana:T-7': { reason: 'blocked on design' }, 'linear:acme/api#1': {} },
+    })
+    expect(result.units).toEqual([])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#5', expect.stringContaining('matched no rule')],
+      ['acme/api#1', 'skipped with nightshift skip asana:T-7: blocked on design'],
+      ['T-7', 'skipped with nightshift skip asana:T-7: blocked on design'],
+    ])
+  })
 })
 
 describe('attempts', () => {
