@@ -20,7 +20,7 @@ export const defaultQueue: Rule[] = [
     type: 'pr',
     mine: true,
     ours: true,
-    unresolved_human_threads: { not: 0 },
+    my_unresolved_threads: { not: 0 },
   }),
   rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('continue', 'asana', { section: 'In progress' }),

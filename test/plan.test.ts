@@ -684,7 +684,7 @@ queue:
   })
 
   it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {
-    const ours = githubPr(9, { ours: true, unresolved_threads: 1, unresolved_human_threads: 1 })
+    const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
     const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
     const linked = { ...issue, linkedPrs: [pr] }
     const yaml = `
@@ -706,7 +706,7 @@ queue:
   })
 
   it('loops on the draft PR stacked on a night-shift PR it takes up', () => {
-    const ours = githubPr(9, { ours: true, unresolved_threads: 1, unresolved_human_threads: 1 })
+    const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
     const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
     const yaml = `
 providers: [claude: {}]
@@ -726,16 +726,39 @@ queue:
     expect(result.units[0]?.unit.stackedOn).toBe('https://github.com/acme/api/pull/9')
   })
 
-  it("addresses people's threads on a night-shift PR by default, not a bot's", () => {
+  it('stacks a draft PR or a loop after a report on a night-shift PR it takes up', () => {
+    const ours = githubPr(9, { ours: true })
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const planned = (then: string) =>
+      plan(
+        `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
+        [{ ...ours, linkedPrs: [pr] }],
+        {},
+      ).units.map(({ unit }) => [unit.id, unit.base, unit.stackedOn])
+    const url = 'https://github.com/acme/api/pull/9'
+    expect(planned('address-review')).toEqual([
+      ['acme-api-9', 'night/acme-api-5', undefined],
+      ['acme-api-9-address-review', 'night/acme-api-5', url],
+    ])
+    expect(planned('{ loop: [fix-ci], until: { verdict: approve }, max: 1 }')).toEqual([
+      ['acme-api-9', 'night/acme-api-5', undefined],
+      ['acme-api-9-fix-ci-1', 'night/acme-api-5', url],
+    ])
+  })
+
+  it('addresses the threads you started on a night-shift PR by default, not anyone else', () => {
     const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
-    const ours = (n: number, human: number) => {
-      const pr = githubPr(n, { ours: true, unresolved_threads: 2, unresolved_human_threads: human })
+    const ours = (n: number, mine: number) => {
+      const pr = githubPr(n, { ours: true, unresolved_threads: 2, my_unresolved_threads: mine })
       return { ...pr, linkedPrs: [{ ...(pr.linkedPrs[0] as PrRef), ours: true }] }
     }
     const result = plan(yaml, [ours(1, 1), ours(2, 0)], {})
     expect(rows(result)).toEqual([['acme-api-1', 3, 'address-review', 'claude', 'draft_pr']])
     expect(result.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: night-shift PR https://github.com/acme/api/pull/2 is open; closest #3 address-review: unresolved_human_threads is 0, wants not 0',
+      'waiting for review: night-shift PR https://github.com/acme/api/pull/2 is open; closest #3 address-review: my_unresolved_threads is 0, wants not 0',
     ])
   })
 

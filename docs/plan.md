@@ -231,7 +231,7 @@ Semantics, fixed so every milestone agrees:
   reproduces the prototype's order (`design.md`), keeping only rules for
   configured sources: `fix-ci` (GitHub, my PR, checks failing),
   `qa-feedback` (Asana section `QA`), `address-review` (my PR, unresolved
-  threads; then my night-shift PR, unresolved threads a person started),
+  threads; then my night-shift PR, unresolved threads I started),
   `review` (review requested), `continue` (Asana `In progress`),
   `plan` (Asana `Current sprint`).
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one

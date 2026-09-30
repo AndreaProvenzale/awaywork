@@ -192,6 +192,8 @@ export function planNight(input: {
       continue
     }
     const id = slug(items[0]?.key ?? '')
+    // A draft PR cut from the night-shift PR a rule took up stacks on it.
+    const onPickup = (base: string) => (pickup && base === pr?.branch ? { stackedOn: pr.url } : {})
     /** Plans every round; the host is the draft PR unit before, else the loop's first unit on a fresh clone. */
     const addLoop = (loop: Loop, before: Unit, branch: string | undefined): Unit => {
       let host = branch === undefined ? before : undefined
@@ -207,6 +209,7 @@ export function planNight(input: {
               foreign: on.foreign,
               untrusted: on.untrusted,
               branch: host ? host.branch : (branch as string),
+              ...(!host && onPickup(before.base)),
             },
             host ? undefined : before.id,
             {
@@ -228,7 +231,7 @@ export function planNight(input: {
       foreign: pr ? !pr.mine : false,
       untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
-      ...(pickup && deliverOf(rule) === 'draft_pr' && { stackedOn: pr?.url }),
+      ...(deliverOf(rule) === 'draft_pr' && onPickup(pr?.branch ?? '')),
     })
     for (const [j, entry] of (rule.then ?? []).entries()) {
       const capped = overCap()
@@ -250,6 +253,7 @@ export function planNight(input: {
           foreign: previous.foreign,
           untrusted: previous.untrusted,
           branch: branches[j + 1] as string,
+          ...(!stacked && deliverOf(entry) === 'draft_pr' && onPickup(previous.base)),
         },
         previous.id,
       )

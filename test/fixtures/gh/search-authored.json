@@ -37,15 +37,15 @@
             "nodes": [
               {
                 "isResolved": false,
-                "comments": { "nodes": [{ "author": { "__typename": "Bot" } }] }
+                "comments": { "nodes": [{ "viewerDidAuthor": false }] }
               },
               {
                 "isResolved": false,
-                "comments": { "nodes": [{ "author": { "__typename": "User" } }] }
+                "comments": { "nodes": [{ "viewerDidAuthor": true }] }
               },
               {
                 "isResolved": true,
-                "comments": { "nodes": [{ "author": { "__typename": "User" } }] }
+                "comments": { "nodes": [{ "viewerDidAuthor": true }] }
               }
             ]
           },

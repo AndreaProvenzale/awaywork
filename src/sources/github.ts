@@ -38,7 +38,7 @@ const searchQuery = `query($q: String!) {
       ... on PullRequest { ${common}
         isDraft headRefName viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
-        reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { author { __typename } } } } }
+        reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { viewerDidAuthor } } } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
     }
@@ -95,7 +95,7 @@ interface Node extends PrLink {
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
   reviewThreads?: Nodes<{
     isResolved: boolean
-    comments: Nodes<{ author: { __typename: string } | null }>
+    comments: Nodes<{ viewerDidAuthor: boolean }>
   }>
   commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
 }
@@ -140,7 +140,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
       ours: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
-      unresolved_human_threads: z.number().int().min(0),
+      my_unresolved_threads: z.number().int().min(0),
       review_requested: z.boolean(),
       created: z.iso.datetime(),
       updated: z.iso.datetime(),
@@ -233,9 +233,7 @@ function toItem(node: Node): Item {
       draft: node.isDraft,
       ours: isOurs(node.body),
       unresolved_threads: unresolved.length,
-      unresolved_human_threads: unresolved.filter(
-        (t) => t.comments.nodes[0]?.author?.__typename !== 'Bot',
-      ).length,
+      my_unresolved_threads: unresolved.filter((t) => t.comments.nodes[0]?.viewerDidAuthor).length,
       review_requested: false,
       ...(checks && { checks }),
     })

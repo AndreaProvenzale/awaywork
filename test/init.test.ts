@@ -68,7 +68,7 @@ describe('init', () => {
           where: {type: pr, mine: true, unresolved_threads: {not: 0}}
         - skill: address-review
           source: github
-          where: {type: pr, mine: true, ours: true, unresolved_human_threads: {not: 0}}
+          where: {type: pr, mine: true, ours: true, my_unresolved_threads: {not: 0}}
         - skill: review
           source: github
           where: {type: pr, review_requested: true, trusted: true}

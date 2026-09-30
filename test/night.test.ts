@@ -1269,7 +1269,7 @@ repos:
     setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
     secrets: [NPM_TOKEN]
 `)
-  const pr = githubPr(9, { ours: true, unresolved_threads: 1, unresolved_human_threads: 1 })
+  const pr = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
   const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
   const plan = planNight({
     config,

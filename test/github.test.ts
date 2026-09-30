@@ -42,7 +42,7 @@ describe('github source', () => {
       ours: false,
       checks: 'failing',
       unresolved_threads: 2,
-      unresolved_human_threads: 1,
+      my_unresolved_threads: 1,
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
