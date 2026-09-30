@@ -125,9 +125,10 @@ describe('jira source', () => {
   })
 
   it('renders headings, links, quotes and ordered lists from ADF', () => {
-    const text = (t: string, marks?: object[]) => ({ type: 'text', text: t, marks })
-    const para = (...content: object[]) => ({ type: 'paragraph', content })
-    const doc = {
+    type Adf = Parameters<typeof adfToMarkdown>[0]
+    const text = (t: string, marks?: Adf['marks']): Adf => ({ type: 'text', text: t, marks })
+    const para = (...content: Adf[]): Adf => ({ type: 'paragraph', content })
+    const doc: Adf = {
       type: 'doc',
       content: [
         { type: 'heading', attrs: { level: 2 }, content: [text('Steps')] },
