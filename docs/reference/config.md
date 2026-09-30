@@ -23,24 +23,27 @@ with:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in |
+| `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in, and how many |
 | `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from; configure at least one |
 | `branch` | string | `"night/{key}"` | Branch name template; {key} is required, {title} optional |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
+| `skills` | string[] | `[]` | Extra skills available to every unit |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Run after each night with the morning report; a failure is only logged |
 
 ## `night`
 
-Local hours a scheduled run may start units in.
+Local hours a scheduled run may start units in, and how many.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `start` (required) | time |  | When a scheduled run starts, local time |
 | `end` (required) | time |  | No unit starts after this |
+| `units` | integer |  | At most this many units per night |
+| `units_per_repo` | integer |  | At most this many units per night in one repo |
 
 ## `budget`
 
@@ -75,6 +78,7 @@ claude settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `settings` | string |  | Settings file for every worker, relative to the config file; passed as --settings |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
@@ -104,6 +108,7 @@ codex settings.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `config` | map |  | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
@@ -158,7 +163,8 @@ My open Linear issues.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `branch` | string |  | Branch name template for this repo |
-| `setup` | string |  | Setup command, given to the worker in its prompt |
+| `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
+| `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 
@@ -178,6 +184,8 @@ First matching rule wins; top = highest priority.
 | `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
+| `units` | integer |  | At most this many units per night from this rule, its then steps included |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered |
 
 ## `queue[].where.<key>`
 
@@ -206,6 +214,22 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 |---|---|---|---|
 | `older_than` | string |  | Longer ago than this span |
 | `newer_than` | string |  | More recent than this span |
+
+## `queue[].then`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `skill` (required) | string |  | The skill that does the work |
+| `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
+| `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
+| `skills` | string[] | `[]` | Extra skills available to the worker |
+| `instructions` | string \| string[] |  | Instruction files added for this rule |
+| `deliver` | "draft_pr" \| "report" |  | Output: a draft PR or the morning report; default the skill's |
+| `branch` | string |  | Branch name template for this rule |
+
+## `queue[].then[]`
+
+Same keys as `queue[].then`.
 
 ## `notify`
 

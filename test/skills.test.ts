@@ -57,7 +57,7 @@ describe('prompt', () => {
       'HARNESS',
       'SKILL',
       'GLOBAL',
-      'Setup: `pnpm i`\nTest: `pnpm vitest run {files}`',
+      'Setup, already run: `pnpm i`\nTest: `pnpm vitest run {files}`',
       'REPO',
       'IN-REPO',
       'RULE',

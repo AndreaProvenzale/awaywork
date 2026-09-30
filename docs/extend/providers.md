@@ -40,7 +40,7 @@ interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>         // null = fixed budget (fallback)
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
-  skillsDir: string                         // where skills go in the clone
+  skillsDir?: string                        // where skills go in the clone; unset: job.plugin
   instructionsFile: string                  // CLAUDE.md, AGENTS.md, …
 }
 ```
@@ -50,7 +50,9 @@ interface Provider {
   (`extendEnv: false`): night-shift has already removed the forge tokens
   and the other providers' and sources' secrets. It yields `log` lines,
   `quota` whenever the stream reports one, and exactly one `done`. It
-  stops when `signal` aborts.
+  stops when `signal` aborts. `job.config` is the provider's entry in
+  the config, its paths relative to `job.configDir`; without a
+  `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h
   session and `long` for the week or month. Return `null` when the quota
   can't be read; night-shift then applies `fallback`.

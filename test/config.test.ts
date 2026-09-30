@@ -138,6 +138,36 @@ describe('config', () => {
     )
   })
 
+  it('takes then as one step or a list, each a skill name or a map', () => {
+    const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
+  - { skill: implement, then: review }
+  - { skill: plan, then: [implement, { skill: review, provider: codex }] }
+  - { skill: fix-ci }
+`)
+    expect(cfg.queue?.map((r) => r.then?.map((s) => [s.skill, s.provider]))).toEqual([
+      [['review', []]],
+      [
+        ['implement', []],
+        ['review', ['codex']],
+      ],
+      [],
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: plan, then: [implement, { skill: plan, provider: codex }] }]`,
+      ),
+    ).toEqual([
+      'queue[0].then[1].skill: "plan" already runs earlier in this chain',
+      'queue[0].then[1].provider: provider "codex" is not configured',
+    ])
+    expect(
+      problems(`${minimal}queue: [{ skill: plan, then: { skill: review, where: {} } }]`),
+    ).toEqual(['queue[0].then: Unrecognized key: "where"'])
+    expect(
+      problems(`${minimal}queue: [{ skill: plan, then: { skill: review, units: 1 } }]`),
+    ).toEqual(['queue[0].then: Unrecognized key: "units"'])
+  })
+
   it('takes bare provider names next to overrides', () => {
     const cfg = parseConfig(
       minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),
@@ -172,5 +202,19 @@ describe('skills', () => {
       '---\nname: our-api-conventions\n---\n',
     )
     expect(await unknownSkills(cfg, userDir)).toEqual([])
+    const top = parseConfig(`${minimal}skills: [house-style]`)
+    expect(await unknownSkills(top, userDir)).toEqual([
+      `skills: unknown skill "house-style" (not built in, not in ${userDir})`,
+    ])
+  })
+
+  it('checks the skills of every step in a chain', async () => {
+    const cfg = parseConfig(
+      `${minimal}queue: [{ skill: implement, then: [review, { skill: our-review, skills: [house-style] }] }]`,
+    )
+    expect(await unknownSkills(cfg, '/none')).toEqual([
+      'queue[0].then[1]: unknown skill "our-review" (not built in, not in /none)',
+      'queue[0].then[1]: unknown skill "house-style" (not built in, not in /none)',
+    ])
   })
 })

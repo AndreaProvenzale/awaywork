@@ -14,6 +14,8 @@ const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
+const units = z.int().positive()
+
 const branch = z.string().superRefine((template, ctx) => {
   const problem = templateProblem(template)
   if (problem) ctx.addIssue({ code: 'custom', message: problem })
@@ -111,9 +113,40 @@ const whereValue = z.union([
     .describe('Matches items whose date field is this long before now, e.g. { older_than: 3d }'),
 ])
 
+const skill = z.string().min(1).describe('The skill that does the work')
+const stepSettings = {
+  provider: oneOrMany
+    .default([])
+    .describe('Providers for this rule, in order; default the providers order'),
+  model: z
+    .record(z.string(), model)
+    .optional()
+    .describe("Model per provider for this rule, e.g. { claude: sonnet }; default the provider's"),
+  skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
+  instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
+  deliver: z
+    .enum(['draft_pr', 'report'])
+    .optional()
+    .describe("Output: a draft PR or the morning report; default the skill's"),
+  branch: branch.optional().describe('Branch name template for this rule'),
+}
+const stepObject = z.strictObject({ skill, ...stepSettings })
+const step = z
+  .union([
+    z
+      .string()
+      .min(1)
+      .transform((name) => ({ skill: name }))
+      .pipe(stepObject),
+    stepObject,
+  ])
+  .describe(
+    'A skill name, or a map with the rule keys other than source, where, order, units and then',
+  )
+
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
-    skill: z.string().min(1).describe('The skill that does the work'),
+    skill,
     source: z.enum(Object.keys(sources)).optional().describe('Match only items from this source'),
     where: z
       .record(z.string(), whereValue)
@@ -121,32 +154,35 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now',
       ),
-    provider: oneOrMany
-      .default([])
-      .describe('Providers for this rule, in order; default the providers order'),
-    model: z
-      .record(z.string(), model)
-      .optional()
-      .describe(
-        "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
-      ),
-    skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
-    instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
-    deliver: z
-      .enum(['draft_pr', 'report'])
-      .optional()
-      .describe("Output: a draft PR or the morning report; default the skill's"),
-    branch: branch.optional().describe('Branch name template for this rule'),
+    ...stepSettings,
     order: z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    units: units
+      .optional()
+      .describe('At most this many units per night from this rule, its then steps included'),
+    // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
+    then: z
+      .union([step, z.array(step).min(1)])
+      .transform((steps) => [steps].flat())
+      .default([])
+      .describe(
+        "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
+      ),
   })
   .describe('First matching rule wins; top = highest priority')
 
 const repo = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
-  setup: z.string().optional().describe('Setup command, given to the worker in its prompt'),
+  setup: z
+    .string()
+    .optional()
+    .describe('Setup command, run in the clone before the worker; a failure skips the unit'),
+  secrets: z
+    .array(z.string().min(1))
+    .default([])
+    .describe('Env vars setup needs; withheld from workers, listed in Actions'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
 })
@@ -159,10 +195,12 @@ export const configSchema = z
       .strictObject({
         start: time.describe('When a scheduled run starts, local time'),
         end: time.describe('No unit starts after this'),
+        units: units.optional().describe('At most this many units per night'),
+        units_per_repo: units.optional().describe('At most this many units per night in one repo'),
       })
       .refine((n) => n.start !== n.end, 'start and end must differ')
       .default({ start: '01:00', end: '07:00' })
-      .describe('Local hours a scheduled run may start units in'),
+      .describe('Local hours a scheduled run may start units in, and how many'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -177,6 +215,7 @@ export const configSchema = z
       .default({})
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
+    skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
     queue: z
       .array(rule)
       .optional()
@@ -210,20 +249,30 @@ export const configSchema = z
           path: [...at, 'source'],
           message: `source "${r.source}" is not configured`,
         })
-      for (const p of r.provider)
-        if (!providerIds.includes(p))
+      const chain = [r, ...(r.then ?? [])]
+      chain.forEach((s, j) => {
+        const stepAt = j === 0 ? at : [...at, 'then', j - 1]
+        if (chain.findIndex((c) => c.skill === s.skill) < j)
           ctx.addIssue({
             code: 'custom',
-            path: [...at, 'provider'],
-            message: `provider "${p}" is not configured`,
+            path: [...stepAt, 'skill'],
+            message: `"${s.skill}" already runs earlier in this chain`,
           })
-      for (const p of Object.keys(r.model ?? {}))
-        if (!providerIds.includes(p))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...at, 'model', p],
-            message: `provider "${p}" is not configured`,
-          })
+        for (const p of s.provider)
+          if (!providerIds.includes(p))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...stepAt, 'provider'],
+              message: `provider "${p}" is not configured`,
+            })
+        for (const p of Object.keys(s.model ?? {}))
+          if (!providerIds.includes(p))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...stepAt, 'model', p],
+              message: `provider "${p}" is not configured`,
+            })
+      })
       const scope = r.source ? [r.source] : sourceIds
       for (const [key, value] of Object.entries(r.where)) {
         const field = key === 'type' ? itemType : fieldFor(scope, key)
