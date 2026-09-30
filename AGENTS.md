@@ -22,5 +22,5 @@ subscription quota. Read `README.md`, then `docs/`: `guide/` and
   evidence; research tags claims [V]/[C]/[I] as in `docs/providers.md`.
 - **No dates in docs.** Git history owns time.
 - **Docs follow the code.** A change to the CLI or the config schema runs
-  `pnpm build && pnpm docs:gen` and updates the guides it touches; CI
-  fails on stale generated docs.
+  `pnpm docs:gen` (from source, no build) and updates the guides it
+  touches; CI fails on stale generated docs.

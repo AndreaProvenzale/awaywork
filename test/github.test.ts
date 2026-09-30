@@ -75,11 +75,12 @@ describe('github source', () => {
       branch: 'rate-limits',
       ours: false,
       mine: true,
+      trusted: true,
     }
     expect(pr1?.linkedPrs).toEqual([link])
     expect(issue5?.linkedPrs).toEqual([link])
     expect(issue6?.linkedPrs).toEqual([])
-    expect(pr2?.linkedPrs[0]?.mine).toBe(false)
+    expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })
   })
 
   it('warns when a search has more results than one page', async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { closestRule, failedKeys, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
@@ -41,6 +41,36 @@ describe('where', () => {
     ['no keys match everything', {}, true],
   ] as const)('%s', (_, where, expected) => {
     expect(matches(rule(where as Rule['where']), pr)).toBe(expected)
+  })
+
+  describe('relative dates', () => {
+    const item = githubPr(2, { created: '2026-09-20T12:00:00Z', updated: '2026-09-29T06:00:00Z' })
+    const at = (where: Rule['where']) => matches(rule(where), item)
+    beforeAll(() => {
+      vi.useFakeTimers({ now: Date.parse('2026-09-29T12:00:00Z') })
+    })
+    afterAll(() => {
+      vi.useRealTimers()
+    })
+
+    it.each([
+      ['older_than passes an older date', { created: { older_than: '3d' } }, true],
+      ['older_than fails a recent date', { updated: { older_than: '12h' } }, false],
+      ['newer_than passes a recent date', { updated: { newer_than: '7h' } }, true],
+      ['newer_than fails an older date', { created: { newer_than: '1w' } }, false],
+      ['both combine into a window', { created: { older_than: '1w', newer_than: '2w' } }, true],
+      ['minutes count', { updated: { newer_than: '300m' } }, false],
+      ['a missing field is never old', { merged: { older_than: '1m' } }, false],
+      ['a non-date string is never old', { checks: { older_than: '1m' } }, false],
+    ] as const)('%s', (_, where, expected) => {
+      expect(at(where as Rule['where'])).toBe(expected)
+    })
+
+    it('reads a date without a time as midnight UTC', () => {
+      const task = asanaTask(3, { due: '2026-09-27' })
+      expect(matches(rule({ due: { older_than: '2d' } }, 'asana'), task)).toBe(true)
+      expect(matches(rule({ due: { older_than: '3d' } }, 'asana'), task)).toBe(false)
+    })
   })
 
   it('restricts a rule to its source', () => {

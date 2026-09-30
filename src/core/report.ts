@@ -89,7 +89,8 @@ export function runLine(runId: string, report: string | undefined): string {
 
 function status(u: UnitResult): string {
   const turns = u.turns ? `, ${u.turns} turns` : ''
-  return `${u.status}${turns}${u.reason && u.status !== 'skipped' ? ` (${u.reason})` : ''}`
+  const why = [u.status !== 'skipped' && u.reason, u.planned.capped].filter(Boolean)
+  return `${u.status}${turns}${why.length > 0 ? ` (${why.join('; ')})` : ''}`
 }
 
 function result(u: UnitResult): string {

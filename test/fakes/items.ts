@@ -37,6 +37,7 @@ export function githubPr(n: number, fields: Item['fields'] = {}): Item {
         branch,
         ours: false,
         mine: fields.mine !== false,
+        trusted: fields.trusted !== false,
       },
     ],
     fields: { repo: 'acme/api', mine: true, checks: 'passing', unresolved_threads: 0, ...fields },

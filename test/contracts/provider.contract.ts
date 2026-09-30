@@ -16,7 +16,7 @@ export function providerContract(provider: Provider, job: () => Job): void {
     it('declares a usable id, config and file locations', () => {
       expect(provider.id).toMatch(/^[a-z][a-z0-9-]*$/)
       expect(provider.configSchema.safeParse({}).success).toBe(true)
-      expect(isAbsolute(provider.skillsDir)).toBe(false)
+      if (provider.skillsDir) expect(isAbsolute(provider.skillsDir)).toBe(false)
       expect(provider.instructionsFile).not.toBe('')
       expect(provider.package).not.toBe('')
       for (const name of provider.secrets) expect(name).toMatch(/^[A-Z][A-Z0-9_]*$/)
