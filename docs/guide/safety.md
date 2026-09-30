@@ -23,8 +23,9 @@ not asked of the model.
   added to the env file that nothing declares.
 - **Setup outside the agent.** A repo's `setup` runs before the agent
   in the same environment, without the agent's secret and with only that
-  repo's `secrets` added, none on a PR someone else opened. On a PR by
-  someone without write access or org membership it doesn't run at all.
+  repo's `secrets` added, none on a PR someone else opened or on a
+  branch a worker wrote earlier that night. On a PR by someone without
+  write access or org membership it doesn't run at all.
   Whatever it leaves running is stopped before the agent starts.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
@@ -98,7 +99,8 @@ what your user can read.
 - Only a branch that **doesn't exist** on the remote, checked before the
   worker starts and again at push. Never force, never someone else's
   branch.
-- Only a **draft** PR, into your own PR's branch or the default branch.
+- Only a **draft** PR, into your own PR's branch, the default branch or
+  a draft PR night-shift opened earlier the same night.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body. A run killed before that
   publishes nothing.

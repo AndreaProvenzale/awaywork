@@ -173,6 +173,8 @@ export interface Unit {
   untrusted: boolean
   /** Whether the worker's commands may reach the network. */
   network: boolean
+  /** The URL of tonight's earlier draft PR whose branch `base` is. */
+  stackedOn?: string
   branch: string
   rule: Step
   skill: string
