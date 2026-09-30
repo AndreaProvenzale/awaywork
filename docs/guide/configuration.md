@@ -161,7 +161,9 @@ and the GitHub Actions workflow passes them from repository secrets.
 Their values are masked in setup's output. On a PR someone else opened,
 setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
-otherwise the agent is told it didn't run. Read
+otherwise the agent is told it didn't run. It gets none of them either
+on a branch a worker wrote earlier that night: a `then` step's after a
+draft PR, or a stacked draft PR's. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -245,7 +247,9 @@ queue:
   apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it: its body names that PR to merge
-  first. After a report, it starts from the same base.
+  first. After a report, it starts from the same base, except that a
+  draft PR it would open off the default branch stacks on the repo's
+  last one that night, as any unit's does.
 - The step finds what the one before delivered in
   `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
   `report.md`.

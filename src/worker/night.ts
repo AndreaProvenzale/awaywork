@@ -70,7 +70,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const { repo, base, deliver } = p.unit
     const stacks = deliver === 'draft_pr' && (base === '' || base === tips[repo])
     const onto = stacks ? (tips[repo] ?? '') : base
-    const stackedOn = deliver === 'draft_pr' ? opened[`${repo} ${onto}`] : undefined
+    const tonight = opened[`${repo} ${onto}`]
+    const stackedOn = deliver === 'draft_pr' ? tonight : undefined
     const unit = stackedOn ? { ...p.unit, base: onto, stackedOn } : p.unit
     const skip = (reason: string) => results.push({ planned: p, status: 'skipped', reason })
     if (n.signal?.aborted) {
@@ -126,8 +127,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const repo = n.config.repos[unit.repo]
       if (repo?.setup && !unit.untrusted) {
-        // A PR someone else opened runs its author's install scripts: they get none of the repo's secrets.
-        const own = unit.foreign ? [] : repo.secrets
+        // A PR someone else opened, or a branch a worker wrote tonight, runs install scripts you didn't write: they get none of the repo's secrets.
+        const own = unit.foreign || tonight ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,

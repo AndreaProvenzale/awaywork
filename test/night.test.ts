@@ -525,12 +525,11 @@ it("stops a unit at its provider's unit_minutes", async () => {
   }
 })
 
-it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
+/** Clones from and pushes to a local `origin` on `main`, recording each draft PR it opens. */
+async function originForge(root: string) {
   const origin = join(root, 'origin')
   await execa('git', ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
-  await git(origin, 'branch', 'feature-4')
   const opened: { head: string; base: string; body: string }[] = []
   const fake = fakeForge()
   const forge = {
@@ -547,6 +546,38 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
       return `https://example.com/${repo}/pull/${head}`
     },
   }
+  return { origin, opened, forge }
+}
+
+/** Commits `<unit id>.txt` and writes a PR body, or writes a report. */
+const committer: Provider = {
+  ...fakeProvider('claude'),
+  async *run(job) {
+    const out = join(job.dir, '.nightshift/out')
+    if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
+    else {
+      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+      await git(job.dir, 'add', `${job.unit.id}.txt`)
+      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+      await writeFile(join(out, 'pr.md'), `Work on ${job.unit.id}\n\nDone.`)
+    }
+    yield { type: 'done', ok: true, turns: 1 }
+  },
+}
+
+const issue = (n: number) =>
+  fakeItem({
+    source: 'github',
+    id: String(n),
+    key: `acme/api#${n}`,
+    type: 'issue',
+    fields: { repo: 'acme/api' },
+  })
+
+it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-4')
   const prompts: string[] = []
   const implementer: Provider = {
     ...fakeProvider('claude'),
@@ -561,14 +592,6 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
-  const issue = (n: number) =>
-    fakeItem({
-      source: 'github',
-      id: String(n),
-      key: `acme/api#${n}`,
-      type: 'issue',
-      fields: { repo: 'acme/api' },
-    })
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
   )
@@ -620,42 +643,7 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
 
 it("stacks a chain's draft PRs on each other, and the repo's next unit on the chain's last", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-chain-'))
-  const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
-  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
-  const opened: { head: string; base: string; body: string }[] = []
-  const fake = fakeForge()
-  const forge = {
-    ...fake,
-    clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
-    },
-    push: async (dir: string, branch: string, opts: { repo: string }) => {
-      await fake.push(dir, branch, opts)
-      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
-    },
-    draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
-      opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
-      return `https://example.com/${repo}/pull/${head}`
-    },
-  }
-  const implementer: Provider = {
-    ...fakeProvider('claude'),
-    async *run(job) {
-      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
-      await git(job.dir, 'add', '.')
-      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
-      await writeFile(join(job.dir, '.nightshift/out/pr.md'), `Work on ${job.unit.id}\n\nDone.`)
-      yield { type: 'done', ok: true, turns: 1 }
-    },
-  }
-  const issue = (n: number) =>
-    fakeItem({
-      source: 'github',
-      key: `acme/api#${n}`,
-      type: 'issue',
-      fields: { repo: 'acme/api' },
-    })
+  const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -674,7 +662,7 @@ queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
     runId: 'r1',
     runDir: join(root, 'run'),
     dryRun: false,
-    providers: { claude: implementer },
+    providers: { claude: committer },
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: {}, log: () => {} },
@@ -693,4 +681,87 @@ queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
   expect(opened[2]?.body).toContain(
     `Stacked on ${url('night/acme-api-1-review')}: merge that first.`,
   )
+})
+
+it("keeps a chain on your own PR off the stack, and stacks the repo's next units as if it weren't there", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-past-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-4')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: implement, where: { type: pr }, then: { skill: review, deliver: draft_pr } }
+  - { skill: implement }
+`)
+  const plan = planNight({
+    config,
+    items: [issue(1), githubPr(4), issue(3)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
+    ['night/acme-api-4', 'feature-4'],
+    ['night/acme-api-4-review', 'night/acme-api-4'],
+    ['night/acme-api-1', ''],
+    ['night/acme-api-3', 'night/acme-api-1'],
+  ])
+  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
+  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+})
+
+it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-setup-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: implement, then: review }]
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const plan = planNight({
+    config,
+    items: [issue(1), issue(2)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const ids = report.results.map((u) => u.planned.unit.id)
+  expect(ids).toEqual(['acme-api-1', 'acme-api-1-review', 'acme-api-2', 'acme-api-2-review'])
+  const setups = await Promise.all(
+    ids.map((id) => readFile(join(root, 'run/units', id, 'setup.txt'), 'utf8')),
+  )
+  expect(setups).toEqual(['npm\n', '\n', '\n', '\n'])
 })
