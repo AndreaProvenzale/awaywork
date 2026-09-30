@@ -111,7 +111,8 @@ what your user can read.
   worker starts and again at push. Never force, never someone else's
   branch.
 - Only a **draft** PR, into your own PR's branch, the default branch or
-  a draft PR night-shift opened earlier the same night.
+  a draft PR night-shift opened: earlier the same night, or one a rule
+  naming `ours` took up again.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body. A run killed before that
   publishes nothing.

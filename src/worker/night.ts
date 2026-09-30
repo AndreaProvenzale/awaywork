@@ -317,8 +317,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const repo = n.config.repos[unit.repo]
       if (repo?.setup && !unit.untrusted && !round) {
-        // A PR someone else opened, or a branch a worker wrote tonight, runs install scripts you didn't write: they get none of the repo's secrets.
-        const own = unit.foreign || tonight ? [] : repo.secrets
+        // A PR someone else opened, or a branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
+        const written = unit.items.some((i) =>
+          i.linkedPrs.some((pr) => pr.ours && pr.branch === unit.base),
+        )
+        const own = unit.foreign || tonight || written ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,

@@ -12,7 +12,7 @@ import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Forge, Item, Provider, Quota, Source } from '../src/core/types.js'
+import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
 import { type NightInput, runNight } from '../src/worker/night.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -641,7 +641,7 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
   )
   expect(prompts[0]).toContain('cut from the default branch.')
-  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is tonight's earlier draft PR ${first}`
+  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift draft PR ${first}`
   expect([prompts[1], prompts[3]]).toEqual([
     expect.stringContaining(stacked),
     expect.stringContaining(stacked),
@@ -1255,6 +1255,51 @@ queue:
   ])
   expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
   expect(opened[0]?.body).toContain('acme-api-1-review-2 says comments.')
+})
+
+it('stacks a draft PR on a night-shift PR it takes up, and runs setup there without secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'night/acme-api-5')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const pr = githubPr(9, { ours: true, unresolved_threads: 1, unresolved_human_threads: 1 })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const plan = planNight({
+    config,
+    items: [{ ...pr, linkedPrs: [link] }],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(opened).toEqual([
+    {
+      head: 'night/acme-api-9',
+      base: 'night/acme-api-5',
+      body: expect.stringContaining(`Stacked on ${link.url}: merge that first.`),
+    },
+  ])
+  expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
 })
 
 /** Plans `yaml` for `items` and runs the night against a local origin. */

@@ -236,6 +236,17 @@ anything; spans count back from when the plan runs. An unknown key is a config e
 lists the keys each source offers. The [field table](./how-it-works.md#items)
 lists them too.
 
+A PR night-shift opened only matches a rule whose `where` names `ours`,
+so rules written for your own PRs leave it waiting for your review. To
+act on it once you've reviewed it:
+
+```yaml
+- skill: address-review
+  where: { type: pr, mine: true, ours: true, unresolved_human_threads: { not: 0 } }
+```
+
+The unit's draft PR stacks on the night-shift PR.
+
 ### `order`
 
 Within a rule, units run in the order the source returns items; for

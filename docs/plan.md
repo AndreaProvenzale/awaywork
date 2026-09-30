@@ -231,15 +231,18 @@ Semantics, fixed so every milestone agrees:
   reproduces the prototype's order (`design.md`), keeping only rules for
   configured sources: `fix-ci` (GitHub, my PR, checks failing),
   `qa-feedback` (Asana section `QA`), `address-review` (my PR, unresolved
-  threads), `review` (review requested), `continue` (Asana `In progress`),
+  threads; then my night-shift PR, unresolved threads a person started),
+  `review` (review requested), `continue` (Asana `In progress`),
   `plan` (Asana `Current sprint`).
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one
   unit, placed at its best-ranked item's rule. The unit works in the
   linked PR's repo, else the item's `repo` field; with neither it is
   skipped. A tracker source fills `repo` from its own mapping, e.g.
   Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
-  an open night-shift PR (`ours`) is skipped as waiting for review; such
-  a PR is never a unit's base.
+  an open night-shift PR (`ours`) is skipped as waiting for review. A
+  night-shift PR item only matches rules whose `where` names `ours`; one
+  that did leads its unit (its rule and key win over better-ranked items)
+  and is the unit's base, and setup there gets none of the repo's secrets.
 - **Chains.** A rule's `then` is a step or a list of steps: a skill
   name, or a map with the rule keys other than `source`, `where`, `order`
   and `then`, plus `when`, inheriting none of the rule's. Each step is a unit planned
