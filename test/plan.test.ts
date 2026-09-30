@@ -714,14 +714,14 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - skill: address-review
     where: { type: pr, ours: true }
-    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }`
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }`
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }], {})
     expect(result.units.map(({ unit, loop }) => [unit.id, unit.base, loop?.host])).toEqual([
       ['acme-api-9', 'night/acme-api-5', undefined],
       ['acme-api-9-review-1', 'night/acme-api-5', 'acme-api-9'],
-      ['acme-api-9-implement-1', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-1', 'night/acme-api-5', 'acme-api-9'],
       ['acme-api-9-review-2', 'night/acme-api-5', 'acme-api-9'],
-      ['acme-api-9-implement-2', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-2', 'night/acme-api-5', 'acme-api-9'],
     ])
     expect(result.units[0]?.unit.stackedOn).toBe('https://github.com/acme/api/pull/9')
   })
