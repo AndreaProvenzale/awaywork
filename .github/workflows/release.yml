@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']
 
 permissions:
   contents: write
@@ -29,6 +29,12 @@ jobs:
       # Trusted publishing (OIDC): no token, provenance attached by npm.
       - run: npm install -g npm@latest
       - run: npm publish --tag ${{ contains(github.ref_name, '-') && 'next' || 'latest' }}
+      # Generated workflows call the action at v1; moved right after npm publish, so nothing fails in between.
+      - name: Move the v1 tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          git tag -f v1
+          git push -f origin refs/tags/v1
       - run: >-
           gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
           ${{ contains(github.ref_name, '-') && '--prerelease' || '' }}
