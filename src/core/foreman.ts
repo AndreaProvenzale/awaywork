@@ -5,6 +5,7 @@ import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
 import { closestRule, defaultRules, describeComparison, fieldValue, rank } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
+import { describeSkip, type Skip } from './skips.js'
 import type { Item, Rule, Step, Unit, WhereValue } from './types.js'
 
 export interface PlannedUnit {
@@ -34,10 +35,11 @@ export function planNight(input: {
   items: Item[]
   allowances: Record<string, Allowance>
   skills: SkillCatalog
+  skips?: Record<string, Skip>
   /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
   attempts?: Attempts
 }): NightPlan {
-  const { config, allowances } = input
+  const { config, allowances, skips = {} } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
@@ -51,6 +53,13 @@ export function planNight(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
+    const skippedByUser = items
+      .map((item) => `${item.source}:${item.key}`)
+      .find((key) => skips[key])
+    if (skippedByUser) {
+      skip(describeSkip(skippedByUser, skips[skippedByUser] as Skip))
+      continue
+    }
     const prs = items.flatMap((i) => i.linkedPrs)
     const ours = prs.find((p) => p.ours)
     if (ours) {
