@@ -53,7 +53,8 @@ branch: night/{key}             # default; {key} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
-    setup: pnpm install --frozen-lockfile
+    setup: pnpm install --frozen-lockfile   # run before the worker
+    secrets: [NPM_TOKEN]        # only setup sees these
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
@@ -146,8 +147,22 @@ branch that doesn't exist on the remote yet.
 
 ## Repos and instructions
 
-`repos.<owner/name>` holds the `setup` and `test` commands the agent
-should use there, plus an instructions file. `instructions` at the top
+`repos.<owner/name>` holds the `setup` and `test` commands for that
+repo, plus an instructions file. `setup` runs in the clone before the
+agent starts, outside the model; the agent is told it already ran.
+Anything it leaves running is stopped when it exits. A setup that fails,
+takes over 15 minutes or reaches `night.end` skips the unit, with the
+tail of its output in the report.
+
+`secrets` names the env vars setup needs, such as a private registry
+token: setup gets them and no other secret, the agent never sees them,
+and the GitHub Actions workflow passes them from repository secrets.
+Their values are masked in setup's output. On a PR someone else opened,
+setup runs the author's install scripts, so it gets none of them. Read
+them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
+than writing them to your home directory, which the agent shares.
+
+`test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
@@ -279,3 +294,4 @@ or `~/.config/night-shift/env` (the environment wins).
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |
+| Your `repos.<owner/name>.secrets` | That repo's `setup` |

@@ -1,0 +1,59 @@
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { runSetup } from '../src/worker/setup.js'
+
+const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+describe('runSetup', () => {
+  it('stops at the deadline even when a background process holds its output', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    const started = Date.now()
+    const failed = await runSetup('sleep 30 & echo $! > pid; sleep 30', dir, env, () => {}, {
+      secrets: [],
+      until: new Date(Date.now() + 500),
+    })
+    expect(Date.now() - started).toBeLessThan(5000)
+    expect(failed).toBe('setup failed: the night window ended')
+    expect(alive(Number(await readFile(join(dir, 'pid'), 'utf8')))).toBe(false)
+  })
+
+  it('stops what it started when it exits, and on an interrupt', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    expect(await runSetup('sleep 30 & echo $! > pid', dir, env, () => {}, { secrets: [] })).toBe(
+      undefined,
+    )
+    expect(alive(Number(await readFile(join(dir, 'pid'), 'utf8')))).toBe(false)
+
+    const abort = new AbortController()
+    setTimeout(() => abort.abort(), 200)
+    expect(
+      await runSetup('sleep 30', dir, env, () => {}, { secrets: [], signal: abort.signal }),
+    ).toBe('setup failed: interrupted')
+  })
+
+  it('masks its secrets in the log and the reason', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    const lines: string[] = []
+    const failed = await runSetup(
+      'echo "token $NPM_TOKEN"; exit 1',
+      dir,
+      env,
+      (l) => lines.push(l),
+      {
+        secrets: ['NPM_TOKEN'],
+      },
+    )
+    expect(lines).toEqual(['setup: token ***'])
+    expect(failed).toMatch(/\ntoken \*\*\*$/)
+  })
+})

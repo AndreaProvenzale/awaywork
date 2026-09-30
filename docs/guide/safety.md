@@ -15,11 +15,15 @@ not asked of the model.
   similar variables removed and a `gh` config without a login.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, or your `token_env`), your
-  `notify.secrets` and every other provider's (`CODEX_AUTH_JSON` for a
+  `notify.secrets`, every repo's `secrets` and every other provider's (`CODEX_AUTH_JSON` for a
   Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
   Codex reads `auth.json` and gets no secret. The rest of your
   environment stays so repo tooling runs, including any variable you
   added to the env file that nothing declares.
+- **Setup outside the agent.** A repo's `setup` runs before the agent
+  in the same environment, without the agent's secret and with only that
+  repo's `secrets` added, none on a PR someone else opened. Whatever it
+  leaves running is stopped before the agent starts.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
   output) is excluded from git, so it can't be committed.

@@ -167,7 +167,14 @@ const rule: z.ZodType<Rule, unknown> = z
 
 const repo = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
-  setup: z.string().optional().describe('Setup command, given to the worker in its prompt'),
+  setup: z
+    .string()
+    .optional()
+    .describe('Setup command, run in the clone before the worker; a failure skips the unit'),
+  secrets: z
+    .array(z.string().min(1))
+    .default([])
+    .describe('Env vars setup needs; withheld from workers, listed in Actions'),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
 })

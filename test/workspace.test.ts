@@ -103,7 +103,11 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       'Deliver: a draft PR. Commit on this branch and write `.nightshift/out/pr.md`.',
     )
     expect(parts[1]).toMatch(/^# Fix CI/)
-    expect(parts.slice(2)).toEqual(['GLOBAL NOTE', 'Setup: `pnpm install`', 'REPO NOTE'])
+    expect(parts.slice(2)).toEqual([
+      'GLOBAL NOTE',
+      'Setup, already run: `pnpm install`',
+      'REPO NOTE',
+    ])
     expect(await readFile(join(dir, '.nightshift/prompt.md'), 'utf8')).toBe(prompt)
   })
 
