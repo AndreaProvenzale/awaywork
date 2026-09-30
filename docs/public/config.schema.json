@@ -344,6 +344,50 @@
           },
           "additionalProperties": false,
           "description": "My open Linear issues"
+        },
+        "jira": {
+          "type": "object",
+          "properties": {
+            "site": {
+              "type": "string",
+              "pattern": "^[\\w-]+(\\.[\\w-]+)+$",
+              "description": "Jira Cloud site host, e.g. acme.atlassian.net"
+            },
+            "email": {
+              "type": "string",
+              "description": "Atlassian account email the API token belongs to"
+            },
+            "cloud_id": {
+              "description": "Site cloud id: set for a scoped token, which calls api.atlassian.com",
+              "type": "string"
+            },
+            "jql": {
+              "description": "JQL condition ANDed with my unresolved issues",
+              "type": "string"
+            },
+            "project_repos": {
+              "description": "Project key -> owner/repo where its issues' code lives",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+              }
+            },
+            "token_env": {
+              "default": "JIRA_API_TOKEN",
+              "description": "Env var holding the Atlassian API token",
+              "type": "string"
+            }
+          },
+          "required": [
+            "site",
+            "email"
+          ],
+          "additionalProperties": false,
+          "description": "My unresolved Jira Cloud issues"
         }
       },
       "additionalProperties": false,
@@ -437,7 +481,8 @@
             "enum": [
               "github",
               "asana",
-              "linear"
+              "linear",
+              "jira"
             ]
           },
           "where": {
