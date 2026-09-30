@@ -77,6 +77,15 @@ action frees about 20 GB of preinstalled SDKs first (runners otherwise
 die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
 `v1`; to upgrade night-shift itself, raise `version` in the workflow.
+The action gets the job's env, secrets included: if you'd rather not
+follow `v1`, pin it to a commit SHA of this repo instead.
+
+The workflow works once night-shift has a stable release on npm, which
+also creates the `v1` tag.
+
+A workflow generated before the action existed runs its steps inline and
+misses those fixes; `doctor`, run inside the repo, warns until you
+`schedule remove` and `schedule install --with github-actions` again.
 
 A runner starts with an empty state dir, so it keeps no attempts: an
 item unchanged since last night runs again, and none is given up on.
