@@ -32,7 +32,7 @@ describe('skip', () => {
 
   it('refuses a key without a known source', async () => {
     const path = await statePath()
-    for (const key of ['acme/api#5', 'jira:ENG-12', 'github:'])
+    for (const key of ['acme/api#5', 'trello:ENG-12', 'github:'])
       await expect(skipItem(key, {}, path, now)).rejects.toThrow('name the item as source:key')
     await expect(unskipItem('T-7', path)).rejects.toThrow('name the item as source:key')
   })

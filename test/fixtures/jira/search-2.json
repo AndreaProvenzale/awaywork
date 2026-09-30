@@ -1,0 +1,25 @@
+{
+  "issues": [
+    {
+      "id": "10007",
+      "key": "WEB-7",
+      "fields": {
+        "summary": "Plan the billing export",
+        "description": null,
+        "status": { "name": "To Do" },
+        "labels": [],
+        "priority": null,
+        "issuetype": { "name": "Story" },
+        "project": { "key": "WEB" },
+        "assignee": { "displayName": "Dev" },
+        "created": "2026-01-02T08:00:00.000+0000",
+        "updated": "2026-01-02T09:00:00.000+0000",
+        "customfield_10016": null,
+        "customfield_10020": null,
+        "customfield_10040": null,
+        "customfield_10050": null
+      }
+    }
+  ],
+  "isLast": true
+}

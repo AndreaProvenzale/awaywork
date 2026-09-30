@@ -57,5 +57,9 @@ export function queueYaml(rules: Rule[]): string {
 }
 
 export function flow(value: unknown): string {
-  return stringify(value, { collectionStyle: 'flow', flowCollectionPadding: false }).trim()
+  return stringify(value, {
+    collectionStyle: 'flow',
+    flowCollectionPadding: false,
+    lineWidth: 0,
+  }).trim()
 }

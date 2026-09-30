@@ -1,0 +1,59 @@
+{
+  "issues": [
+    {
+      "id": "10012",
+      "key": "ENG-12",
+      "fields": {
+        "summary": "Refill the rate-limit bucket",
+        "description": {
+          "type": "doc",
+          "version": 1,
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                { "type": "text", "text": "Bursts still return " },
+                { "type": "text", "text": "500", "marks": [{ "type": "code" }] },
+                { "type": "text", "text": "." }
+              ]
+            },
+            {
+              "type": "bulletList",
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph", "content": [{ "type": "text", "text": "30 requests" }] }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [{ "type": "text", "text": "in one second" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "status": { "name": "QA" },
+        "labels": ["backend", "bug"],
+        "priority": { "name": "High" },
+        "issuetype": { "name": "Bug" },
+        "project": { "key": "ENG" },
+        "assignee": { "displayName": "Dev" },
+        "created": "2026-01-01T08:00:00.000+0000",
+        "updated": "2026-01-03T09:30:00.000+0100",
+        "customfield_10016": 3,
+        "customfield_10020": [{ "id": 7, "name": "Sprint 7", "state": "active" }],
+        "customfield_10040": { "value": "Platform" },
+        "customfield_10050": { "type": "doc", "version": 1, "content": [] }
+      }
+    }
+  ],
+  "nextPageToken": "token-2",
+  "isLast": false
+}

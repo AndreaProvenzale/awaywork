@@ -1,0 +1,7 @@
+[
+  { "id": "summary", "name": "Summary", "custom": false },
+  { "id": "customfield_10016", "name": "Story point estimate", "custom": true },
+  { "id": "customfield_10020", "name": "Sprint", "custom": true },
+  { "id": "customfield_10040", "name": "Team", "custom": true },
+  { "id": "customfield_10050", "name": "Notes", "custom": true }
+]

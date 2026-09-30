@@ -1,0 +1,40 @@
+{
+  "startAt": 0,
+  "maxResults": 100,
+  "total": 2,
+  "comments": [
+    {
+      "author": { "displayName": "QA" },
+      "body": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "mention", "attrs": { "id": "5b10", "text": "@Dev" } },
+              { "type": "text", "text": " still returns 500 on " },
+              { "type": "text", "text": "burst", "marks": [{ "type": "strong" }] }
+            ]
+          }
+        ]
+      },
+      "created": "2026-01-01T10:00:00.000+0000"
+    },
+    {
+      "author": null,
+      "body": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "attrs": { "language": "sh" },
+            "content": [{ "type": "text", "text": "ab -n 30 -c 30 /api" }]
+          }
+        ]
+      },
+      "created": "2026-01-02T09:00:00.000+0000"
+    }
+  ]
+}
