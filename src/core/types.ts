@@ -169,6 +169,8 @@ export interface Unit {
   foreign: boolean
   /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
   untrusted: boolean
+  /** The URL of tonight's earlier draft PR whose branch `base` is. */
+  stackedOn?: string
   branch: string
   rule: Step
   skill: string

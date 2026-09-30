@@ -35,6 +35,7 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
+ * A draft PR stacks on tonight's draft PR it follows, or on its repo's last one when it would start from the default branch.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -61,8 +62,17 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...Object.values(n.config.repos).flatMap((r) => r.secrets),
   ]
 
+  // Tonight's draft PRs by repo and branch, and the branch on top of each repo's stack.
+  const opened: Record<string, string> = {}
+  const tips: Record<string, string> = {}
+
   for (const p of planned) {
-    const { unit } = p
+    const { repo, base, deliver } = p.unit
+    const stacks = deliver === 'draft_pr' && (base === '' || base === tips[repo])
+    const onto = stacks ? (tips[repo] ?? '') : base
+    const tonight = opened[`${repo} ${onto}`]
+    const stackedOn = deliver === 'draft_pr' ? tonight : undefined
+    const unit = stackedOn ? { ...p.unit, base: onto, stackedOn } : p.unit
     const skip = (reason: string) => results.push({ planned: p, status: 'skipped', reason })
     if (n.signal?.aborted) {
       skip('interrupted')
@@ -117,8 +127,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const repo = n.config.repos[unit.repo]
       if (repo?.setup && !unit.untrusted) {
-        // A PR someone else opened runs its author's install scripts: they get none of the repo's secrets.
-        const own = unit.foreign ? [] : repo.secrets
+        // A PR someone else opened, or a branch a worker wrote tonight, runs install scripts you didn't write: they get none of the repo's secrets.
+        const own = unit.foreign || tonight ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,
@@ -164,6 +174,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       }
       if (worker.status !== 'stopped: aborted')
         result.outcome = await publish(unit, dir, n.forge, n.runId)
+      if (result.outcome?.kind === 'pr') {
+        opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
+        if (stacks) tips[unit.repo] = unit.branch
+      }
     } catch (e) {
       Object.assign(result, { status: 'error', reason: (e as Error).message })
       log(`error: ${(e as Error).stack}`)

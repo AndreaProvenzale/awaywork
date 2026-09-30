@@ -246,9 +246,11 @@ Semantics, fixed so every milestone agrees:
   after the rule's, id `<unit>-<skill slug>`, that runs only when the one
   before delivered and gets its `out/` in `.nightshift/context/previous/`.
   After a draft PR the step's base is that PR's branch, so its own draft
-  PR stacks on it; after a report the base is unchanged. A step's branch
-  gets `-<skill>` appended when an earlier draft PR in the chain renders
-  the same name. A skill runs at most once per chain.
+  PR stacks on it; after a report the base is unchanged, except that a
+  draft PR step off the default branch stacks at run time on the repo's
+  last stacked draft PR that night. A step's branch gets `-<skill>`
+  appended when an earlier draft PR in the chain renders the same name.
+  A skill runs at most once per chain.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill

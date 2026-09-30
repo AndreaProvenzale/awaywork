@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Forge, Unit } from '../core/types.js'
@@ -48,6 +48,8 @@ export async function publish(
     `${await git(dir, 'diff', `${oldest}^`)}\n`,
   )
   await forge.push(dir, unit.branch, { repo: unit.repo })
+  if (unit.stackedOn)
+    await appendFile(file, `\n\nStacked on ${unit.stackedOn}: merge that first.\n`)
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
   return { kind: 'pr', url, commits: commits.length }
 }
