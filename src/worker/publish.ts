@@ -109,12 +109,13 @@ async function deliver(
   return { kind: 'pr', url, commits: commits.length }
 }
 
-/** Rewrites `commits`, oldest first, each with `trailer` and its author kept; returns the new tip. */
+/** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */
 async function withTrailer(repo: string, commits: string[], trailer: string): Promise<string> {
   const fresh = new Map<string, string>()
   for (const sha of commits) {
-    const meta = await git(repo, 'log', '-1', '--format=%T%n%P%n%an%n%ae%n%ad', '--date=raw', sha)
-    const [tree = '', parents = '', name, email, date] = meta.split('\n')
+    const format = '--format=%T%n%P%n%an%n%ae%n%ad%n%cn%n%ce%n%cd'
+    const meta = await git(repo, 'log', '-1', format, '--date=raw', sha)
+    const [tree = '', parents = '', name, email, date, cname, cemail, cdate] = meta.split('\n')
     const message = await git(repo, 'log', '-1', '--format=%B', sha)
     const input = (
       await execa('git', ['-C', repo, 'interpret-trailers', '--no-divider', '--trailer', trailer], {
@@ -125,7 +126,14 @@ async function withTrailer(repo: string, commits: string[], trailer: string): Pr
       .split(' ')
       .filter(Boolean)
       .flatMap((p) => ['-p', fresh.get(p) ?? p])
-    const env = { GIT_AUTHOR_NAME: name, GIT_AUTHOR_EMAIL: email, GIT_AUTHOR_DATE: date }
+    const env = {
+      GIT_AUTHOR_NAME: name,
+      GIT_AUTHOR_EMAIL: email,
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_NAME: cname,
+      GIT_COMMITTER_EMAIL: cemail,
+      GIT_COMMITTER_DATE: cdate,
+    }
     const made = await execa('git', ['-C', repo, ...safely, 'commit-tree', tree, ...onto], {
       input,
       env,
