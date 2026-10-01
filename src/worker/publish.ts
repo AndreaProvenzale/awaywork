@@ -1,10 +1,10 @@
-import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { trailerKey } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import { outputFile, refuseSymlinks, WORK_DIR } from './workspace.js'
+import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
 export type Outcome =
   | { kind: 'pr'; url: string; commits: number }
@@ -33,11 +33,11 @@ export async function publish(
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
-  const text = (await readFile(file, 'utf8').catch(() => '')).trim()
+  await refuseSymlinks(dir, [`${out}/${outputFile[unit.deliver]}`, `${out}/diff.patch`])
+  const text = (await readOutput(file)).trim()
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
-  await refuseSymlinks(dir, [`${out}/${outputFile[unit.deliver]}`, `${out}/diff.patch`])
   const repo = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
   try {
     await execa('git', ['init', '-q', '--bare', repo])
@@ -93,7 +93,7 @@ async function deliver(
 
   const head = await withTrailer(repo, commits, `${trailerKey}: ${runId}`)
   await git(repo, 'update-ref', 'HEAD', head)
-  await writeFile(
+  await writeOutput(
     join(dirname(file), 'diff.patch'),
     `${await git(repo, 'diff', '--no-ext-diff', '--no-textconv', `${oldest}^`, head)}\n`,
   )
@@ -104,7 +104,7 @@ async function deliver(
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })
   if (unit.stackedOn)
-    await appendFile(file, `\n\nStacked on ${unit.stackedOn}: merge that first.\n`)
+    await writeOutput(file, `\n\nStacked on ${unit.stackedOn}: merge that first.\n`, true)
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
   return { kind: 'pr', url, commits: commits.length }
 }

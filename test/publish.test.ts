@@ -264,6 +264,19 @@ describe('publish', () => {
     expect(forge.branches.size).toBe(0)
   })
 
+  it('reads a FIFO left as the PR body as no body, without waiting on it', async () => {
+    await commit('first')
+    await mkdir(join(dir, '.nightshift/out'), { recursive: true })
+    await execa('mkfifo', [join(dir, '.nightshift/out/pr.md')])
+    const forge = fakeForge()
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: '1 commits but no PR body, not pushed',
+      unpublished: true,
+    })
+    expect(forge.branches.size).toBe(0)
+  })
+
   it('returns the report for report delivery and pushes nothing', async () => {
     const forge = fakeForge()
     await commit('stray')

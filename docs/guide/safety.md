@@ -135,8 +135,11 @@ what your user can read.
   the agent ran. The clone's config, attributes, hooks and refs, which
   the agent can write, neither steer where a push goes, nor pick which
   commits get the trailer, nor run anything. In the clone, publishing
-  only reads the PR body or report and writes `diff.patch` next to it,
-  and refuses if either is a symlink.
+  only reads the PR body or report, writes `diff.patch` next to it, and
+  appends a stacked PR's "merge that first" line to the body. It refuses
+  if either is a symlink, and reads or writes only regular files. The
+  symlink check runs just before, so a worker process that outlived the
+  watchdog could still swap a path in between.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from night-shift: a footer with the run id in
   the body and a `Night-shift: <run id>` commit trailer. Pushed commits

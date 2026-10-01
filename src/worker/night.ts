@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
@@ -587,7 +587,7 @@ function maxReached(max: number): string {
 
 /** Whether the unit wrote `out/<file>` with more than whitespace, as publish needs. */
 async function hasOutput(dir: string, file: string): Promise<boolean> {
-  return (await readFile(join(dir, WORK_DIR, 'out', file), 'utf8').catch(() => '')).trim() !== ''
+  return (await readOutput(join(dir, WORK_DIR, 'out', file))).trim() !== ''
 }
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */
