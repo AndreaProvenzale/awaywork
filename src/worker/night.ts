@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
@@ -146,7 +146,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       facts.command = !ran.failed
       await refuseSymlinks(dir, [relative(dir, logFile)])
       await mkdir(dirname(logFile), { recursive: true })
-      await writeFile(logFile, checkLog(ran))
+      await writeOutput(logFile, checkLog(ran))
     }
     if (condition.changed) facts.changed = await changes(dir, condition.changed, starts[unit.id])
     return { facts, check: ran }
