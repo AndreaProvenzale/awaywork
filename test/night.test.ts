@@ -1907,6 +1907,8 @@ queue: [{ skill: implement, then: ${then} }]
   expect(loop.report.results[0]?.loop).toBe(
     `1 round of address-review; until \`true\` passes not checked: ${noNetwork}`,
   )
+  expect(loop.opened[0]?.body).toContain('until `true` passes not checked')
+  expect(loop.opened[0]?.body).not.toContain('Last check')
 
   const dirty = await loopNight(
     `queue:
@@ -2027,5 +2029,91 @@ it('skips a when step whose check was interrupted without passing over it, so th
     reason: `when \`touch ${started}; sleep 5\` passes not checked: interrupted`,
   })
   expect(report.results[1]?.passedOver).toBeUndefined()
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
+it("ends a loop at a refused when, instead of repeating its other steps on code that can't change", async () => {
+  const { report, opened } = await loopNight(
+    `repos: { acme/api: { network: false } }
+queue:
+  - skill: implement
+    then:
+      loop: [review, { skill: address-review, when: { command: '! false' } }]
+      until: { verdict: approve }
+      max: 3
+`,
+    [issue(1)],
+    looper({
+      'acme-api-1-review-1': 'changes',
+      'acme-api-1-review-2': 'changes',
+      'acme-api-1-review-3': 'changes',
+    }),
+  )
+
+  const refused = "when `! false` passes didn't hold (not run without network: it has no sandbox)"
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-review-1', 'done', undefined],
+    ['acme-api-1-address-review-1', 'skipped', refused],
+  ])
+  expect(report.results[0]?.loop).toBe(`1 round of review ⇄ address-review; ${refused}`)
+  expect(opened).toHaveLength(1)
+})
+
+it("doesn't run a loop whose first step after a report has a refused when, and finishes the chain", async () => {
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report, opened } = await loopNight(
+    `repos: { acme/api: { network: false } }
+queue:
+  - skill: plan
+    then: { loop: [{ skill: review, when: { command: 'true' } }, implement], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    looper({}),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.passedOver])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-review-1', 'skipped', true],
+  ])
+  expect(opened).toEqual([])
+  expect(recordAttempts({}, report)['github:acme/api#1']).toEqual({
+    runId: 'r1',
+    skill: 'plan',
+    updated: '2026-09-01T00:00:00Z',
+  })
+})
+
+it('ends a loop whose when check was interrupted, and retries its chain without counting a failure', async () => {
+  const stop = new AbortController()
+  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      loop: [review, { skill: address-review, when: { command: 'touch ${started}; sleep 5' } }]
+      until: { verdict: approve }
+      max: 2
+`,
+    [item],
+    looper({ 'acme-api-1-review-1': 'changes' }),
+    { signal: stop.signal, ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  ).finally(() => clearInterval(watch))
+
+  expect(report.results[2]).toMatchObject({
+    status: 'skipped',
+    reason: `when \`touch ${started}; sleep 5\` passes not checked: interrupted`,
+  })
+  expect(report.results[2]?.passedOver).toBeUndefined()
+  expect(report.results[0]?.outcome).toMatchObject({ reason: 'interrupted', unpublished: true })
+  expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})
 })

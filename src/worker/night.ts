@@ -332,7 +332,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
         const met = await factsFor(when, unit, dir, verdict, log, logFile)
         // A check stopped before it exited says nothing: skip the step without passing over it.
-        if (met.check?.stopped && !met.check.refused) {
+        if (met.check?.stopped) {
           const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
           Object.assign(result, { status: 'skipped', reason })
           routed[id] = (routed[id] ?? 1) - 1
@@ -344,7 +344,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           const reason = `when ${describeCondition(when)} didn't hold${failed}`
           Object.assign(result, { status: 'skipped', reason, passedOver: true })
           routed[id] = (routed[id] ?? 1) - 1
-          if (round && p.loop && isLast(p.loop)) round.ended = maxReached(p.loop.max)
+          // A refused check is refused every round: the loop would repeat without its step.
+          if (round && met.check?.refused) round.ended = reason
+          else if (round && p.loop && isLast(p.loop)) round.ended = maxReached(p.loop.max)
           if (!inRound && after) standIns[unit.id] = { result: after, base: unit.base }
           continue
         }
@@ -406,7 +408,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (aborted || n.signal?.aborted)
           Object.assign(loop, { ended: 'interrupted', interrupted: true })
         else if (!until) loop.ended = `${unit.id} ${worker.status}`
-        else if (until.check?.stopped)
+        else if (until.check?.stopped || until.check?.refused)
           loop.ended = `until ${describeCondition(p.loop.until)} not checked: ${until.check.failed}`
         else if (untilHolds(p.loop.until, until.facts))
           Object.assign(loop, {
@@ -482,15 +484,15 @@ interface OpenLoop {
 interface Check {
   output: string
   failed?: string
-  /** Refused, or stopped before it exited: the condition is unknown, not false. */
+  /** Stopped before it exited: the condition is unknown, not false. */
   stopped?: true
-  /** Never runs on this unit, so a `when` on it can't hold. */
+  /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
   refused?: true
 }
 
 type RanCheck = Check & { command: string }
 
-const refusal = (failed: string): Check => ({ output: '', failed, stopped: true, refused: true })
+const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
@@ -590,12 +592,12 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
       '',
       '</details>',
     )
-  if (check?.failed) {
+  if (check?.failed && !check.refused) {
     const log = checkLog(check).trim()
     const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
     lines.push(
       '',
-      `<details><summary>Last check: \`${check.command}\` failed</summary>`,
+      `<details><summary>Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}</summary>`,
       '',
       fence,
       log,

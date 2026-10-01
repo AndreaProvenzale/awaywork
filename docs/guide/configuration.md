@@ -265,8 +265,8 @@ queue:
 
 - A step takes the rule keys except `source`, `where`, `order`, `units`
   and `then`, plus [`when`](#when). It inherits none of the rule's: an
-  unset key has the same default as on a rule. Top-level `instructions` and `skills` still
-  apply, as to every unit.
+  unset key has the same default as on a rule. Top-level `instructions`
+  and `skills` still apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it: its body names that PR to merge
   first. After a report, it starts from the same base, except that a
@@ -332,10 +332,11 @@ queue:
   `network: false` (it would run the worker's code outside the worker's
   sandbox): config refuses one on a rule with `network: false`, but a
   repo's `network: false` is only known at run time. A command that isn't
-  run ends the loop and doesn't hold for `when`. One stopped by
-  `night.end`, its 15 minutes or Ctrl-C ends the loop too, and skips a
-  `when` step without passing over it, so the chain is tried again the
-  next night.
+  run doesn't hold for `when`, and ends the loop either way. One stopped
+  by `night.end` or its 15 minutes ends the loop too, which publishes
+  what it has; outside a loop it skips a `when` step without passing
+  over it, so the chain is tried again the next night. After Ctrl-C the
+  chain is tried again in both cases.
 - A step finds the one before's output in `.nightshift/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When
@@ -381,7 +382,9 @@ queue:
         max: 3
 ```
 
-- `verdict` is the step before's, matched as in `until`.
+- `verdict` is the step before's or, after a loop, the latest one
+  written in it. It matches as in `until`, except that `{ not: … }` also
+  holds when no verdict was written.
 - `command` runs as in `until`, in the step's clone before its agent
   starts. Prefix `!` to run a step only when a check fails, such as a
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
@@ -391,7 +394,8 @@ queue:
   chain stacked on.
 - Every key set must hold. `plan` shows each step's `when`, and the
   report says which one didn't hold.
-- A skipped step doesn't end a loop. After a report, a loop's first unit
+- A skipped step doesn't end a loop, unless its command didn't run: it
+  wouldn't in a later round either. After a report, a loop's first unit
   opens its clone: when its `when` doesn't hold, the loop doesn't run.
 
 ## Notify

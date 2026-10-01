@@ -279,16 +279,18 @@ Semantics, fixed so every milestone agrees:
   uncommitted changes beyond what setup and earlier checks left, it
   doesn't hold. On an untrusted author's PR or an offline unit
   (night-shift has no sandbox of its own) it doesn't run; config refuses
-  one on a rule with `network: false`. One that didn't run ends a loop
-  and doesn't hold for `when`; one stopped ends a loop, and skips a
-  `when` step without passing over it.
-  Its last 8,000 characters go to `check.log`, or `when.log` for a
-  `when`. A step's `when`
-  (`verdict` of the unit before, `command`, `changed` globs against the
+  one on a rule with `network: false`. One that didn't run doesn't hold
+  for `when` and ends a loop. One stopped by `night.end` or its 15
+  minutes ends a loop, which publishes, and outside a loop skips a
+  `when` step without passing over it; an interrupt retries the chain
+  either way. Its last 8,000 characters go to `check.log`, or `when.log`
+  for a `when`. A step's `when` (`verdict` of the unit before, or the
+  loop's last after a loop, `command`, `changed` globs against the
   branch the chain's commits started from) is checked in its clone
   after setup; when it doesn't hold the step is passed over: the next
   step follows the unit before it and starts from the base it would
-  have, and attempts walk past it. A passed-over step doesn't end a loop.
+  have, and attempts walk past it. A passed-over step doesn't end a loop,
+  unless its command didn't run.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill
