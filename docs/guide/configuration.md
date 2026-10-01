@@ -456,10 +456,11 @@ queue:
   before the loop does.
 - A fast-forward only: night-shift refuses when the branch moved since
   the clone, and never forces. It reads the PR again right before the
-  push and refuses when it is no longer open, lives on a fork, is the
-  default branch, or has auto-merge on, which would merge unreviewed
-  commits. New commits that include a merge aren't pushed either. The
-  commits get the `Night-shift:` trailer.
+  push and refuses when it is no longer yours or open, or has auto-merge
+  on, which would merge unreviewed commits, and when its branch lives on
+  a fork, is the default branch, is protected, or also backs someone
+  else's open PR. New commits that include a merge aren't pushed
+  either. The commits get the `Night-shift:` trailer.
 - The agent writes `.nightshift/out/report.md`; without it nothing is
   pushed. The PR body stays as it is and the report goes into the
   morning report.

@@ -539,7 +539,7 @@ queue:
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `
     expect(formatPlan(plan(yaml, [githubPr(1)], {}))).toMatch(
-      /acme-api-1-implement-1\s+acme\/api .* feature-1\n/,
+      /acme-api-1-implement-1\s+acme\/api .* push\s+feature-1\n/,
     )
   })
 

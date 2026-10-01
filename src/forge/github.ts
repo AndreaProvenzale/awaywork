@@ -27,11 +27,14 @@ const withGhLogin = ['-c', 'credential.helper=', '-c', 'credential.helper=!gh au
 /** Git in the push repo runs no hooks and sees history as it is, not as replace refs say. */
 const pushSafely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 
-const prStateQuery = `query($owner: String!, $name: String!, $number: Int!) {
+const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     pullRequest(number: $number) {
-      state isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+      state viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+    }
+    pullRequests(headRefName: $branch, states: OPEN, first: 20) {
+      nodes { number isCrossRepository viewerDidAuthor }
     }
   }
 }`
@@ -40,10 +43,15 @@ type PrState = {
   defaultBranchRef: { name: string } | null
   pullRequest: {
     state: string
+    viewerDidAuthor: boolean
     isCrossRepository: boolean
     headRefName: string
     headRefOid: string
     autoMergeRequest: unknown
+  }
+  /** Open PRs whose head has the branch's name; the fork ones live elsewhere. */
+  pullRequests: {
+    nodes: { number: number; isCrossRepository: boolean; viewerDidAuthor: boolean }[]
   }
 }
 const remote = (repo: string) => `https://github.com/${repo}.git`
@@ -125,22 +133,27 @@ export function githubForge(run: Exec = exec): Forge {
         owner,
         name,
         number: pr,
+        branch,
       })
       const p = r.pullRequest
+      const shared = r.pullRequests.nodes.find((o) => !o.isCrossRepository && !o.viewerDidAuthor)
+      const moved = `it is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+      const checks: [boolean, string][] = [
+        [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
+        [!p.viewerDidAuthor, `#${pr} isn't yours`],
+        [p.isCrossRepository, `#${pr}'s branch is on a fork`],
+        [p.headRefName !== branch, `#${pr}'s branch is ${p.headRefName}`],
+        [branch === r.defaultBranchRef?.name, `${branch} is the default branch`],
+        [!!shared, `${branch} is also the branch of #${shared?.number}, which isn't yours`],
+        [!!p.autoMergeRequest, `#${pr} has auto-merge on`],
+        [p.headRefOid !== from, moved],
+      ]
+      const path = `repos/${repo}/branches/${branch.split('/').map(encodeURIComponent).join('/')}`
       const refused =
-        p.state !== 'OPEN'
-          ? `#${pr} is ${p.state.toLowerCase()}`
-          : p.isCrossRepository
-            ? `#${pr}'s branch is on a fork`
-            : p.headRefName !== branch
-              ? `#${pr}'s branch is ${p.headRefName}`
-              : branch === r.defaultBranchRef?.name
-                ? `${branch} is the default branch`
-                : p.autoMergeRequest
-                  ? `#${pr} has auto-merge on`
-                  : p.headRefOid !== from
-                    ? `it is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
-                    : undefined
+        checks.find(([no]) => no)?.[1] ??
+        (JSON.parse(await run('gh', ['api', path])).protected
+          ? `${branch} is protected`
+          : undefined)
       if (refused) throw new Error(`refusing to push onto ${branch} on ${repo}: ${refused}`)
       await pushHead(run, dir, repo, branch, from)
     },

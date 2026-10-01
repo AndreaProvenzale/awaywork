@@ -92,6 +92,7 @@ queue:
 ```
 
 - `metadata.deliver` sets the default delivery: `draft_pr` or `report`.
+  `push` is only a rule's to set.
 - A skill that judges can write one lowercase word to
   `.nightshift/out/verdict`, such as `pass` or `fail`. The report shows
   it, and a [loop](./configuration.md#loops)'s `until` can match it.

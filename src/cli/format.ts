@@ -54,7 +54,8 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       `#${p.rule + 1}`,
       `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
-      p.unit.deliver,
+      // A push loop's rounds commit for its push, not for a draft PR.
+      p.loop?.deliver === 'push' && p.unit.deliver === 'draft_pr' ? 'push' : p.unit.deliver,
       p.unit.deliver === 'push' || p.loop?.deliver === 'push' ? p.unit.base : p.unit.branch,
     ])
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']

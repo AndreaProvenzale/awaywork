@@ -275,19 +275,23 @@ describe('github forge', () => {
   })
 
   it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
-    const state = (pr: Record<string, unknown>) =>
+    const theirs = { number: 12, isCrossRepository: false, viewerDidAuthor: false }
+    const fork = { number: 13, isCrossRepository: true, viewerDidAuthor: false }
+    const state = (pr: Record<string, unknown>, others = [fork]) =>
       JSON.stringify({
         data: {
           repository: {
             defaultBranchRef: { name: 'main' },
             pullRequest: {
               state: 'OPEN',
+              viewerDidAuthor: true,
               isCrossRepository: false,
               headRefName: 'feature-1',
               headRefOid: 'abc1234',
               autoMergeRequest: null,
               ...pr,
             },
+            pullRequests: { nodes: others },
           },
         },
       })
@@ -297,7 +301,12 @@ describe('github forge', () => {
       [/number=4 /, state({ headRefName: 'main' })],
       [/number=5 /, state({ autoMergeRequest: { enabledAt: '2026-01-01T00:00:00Z' } })],
       [/number=6 /, state({ headRefOid: 'def5678' })],
+      [/number=7 /, state({ viewerDidAuthor: false })],
+      [/number=8 /, state({}, [theirs])],
+      [/number=9 /, state({ headRefName: 'release/9' })],
       [/number=1 /, state({})],
+      [/branches\/release\/9$/, '{ "protected": true }'],
+      [/branches\/feature-1$/, '{ "protected": false }'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
@@ -313,6 +322,11 @@ describe('github forge', () => {
     await expect(push('feature-1', 6)).rejects.toThrow(
       'it is at def5678, the clone started from abc1234',
     )
+    await expect(push('feature-1', 7)).rejects.toThrow("#7 isn't yours")
+    await expect(push('feature-1', 8)).rejects.toThrow(
+      "feature-1 is also the branch of #12, which isn't yours",
+    )
+    await expect(push('release/9', 9)).rejects.toThrow('release/9 is protected')
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
     await push('feature-1', 1)
     expect(run.calls.at(-1)).toEqual([
@@ -346,6 +360,7 @@ describe('github forge', () => {
     let head = ''
     const pullRequest = () => ({
       state: 'OPEN',
+      viewerDidAuthor: true,
       isCrossRepository: false,
       headRefName: 'night/acme-api-1',
       headRefOid: head,
@@ -359,7 +374,13 @@ describe('github forge', () => {
           )
         : args.includes('graphql')
           ? JSON.stringify({
-              data: { repository: { defaultBranchRef: null, pullRequest: pullRequest() } },
+              data: {
+                repository: {
+                  defaultBranchRef: null,
+                  pullRequest: pullRequest(),
+                  pullRequests: { nodes: [] },
+                },
+              },
             })
           : '[]'
     const forge = githubForge(run)

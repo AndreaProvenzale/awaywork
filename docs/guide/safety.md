@@ -114,9 +114,10 @@ what your user can read.
 - The one exception is a rule with `deliver: push`: it adds commits onto
   **your own open PR's** branch, as a fast-forward, only while the
   branch is still where the clone started. Right before the push,
-  night-shift reads the PR again and refuses when it is closed or
-  merged, its branch is on a fork or is the default branch, or it has
-  auto-merge on. It is refused on someone else's PR, on an item without
+  night-shift reads the PR again and refuses when it isn't yours, is
+  closed or merged, or has auto-merge on, and when its branch is on a
+  fork, is the default branch, is protected, or is also the branch of
+  someone else's open PR. It is refused on someone else's PR, on an item without
   a PR of yours, on any branch night-shift opened that night, and when
   the new commits include a merge. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
