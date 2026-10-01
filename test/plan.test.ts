@@ -445,6 +445,27 @@ queue:
     expect(formatPlan(once)).toContain('at most 1 round;')
   })
 
+  it('counts units against the caps as if every loop ended after round 1', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 3 }
+budget: { fallback: { units: 6, turns: 30 } }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: implement
+    where: { type: pr }
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 3 }
+`
+    const result = plan(yaml, [githubPr(1), githubPr(2), githubPr(3)], {})
+    expect(result.units.filter((u) => !u.loop || u.loop.round === 1).map((u) => u.unit.id)).toEqual(
+      ['acme-api-1', 'acme-api-1-review-1', 'acme-api-1-address-review-1', 'acme-api-2'],
+    )
+    expect(result.units.find((u) => u.unit.id === 'acme-api-2')?.capped).toBe(
+      'then loop: over the cap: night.units is 3',
+    )
+    expect(result.skipped.map((s) => s.reason)).toEqual(['over the cap: night.units is 3'])
+  })
+
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
     const yaml = (step: string) =>
       `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`

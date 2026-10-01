@@ -57,6 +57,7 @@ export function planNight(input: {
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
+  const sure: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
   const perRule: Record<number, number> = {}
   let counted = 0
@@ -108,8 +109,12 @@ export function planNight(input: {
       // Every round is routed, as the run does, so the plan holds fallback units for all of them.
       const { provider, passed } = route(providers, allowances, routed)
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
+      // Caps count what can run when every loop ends after round 1, since the run routes again.
+      const runnable =
+        loop && loop.round > 1 ? undefined : route(providers, allowances, sure).provider
+      if (runnable) sure[runnable] = (sure[runnable] ?? 0) + 1
       // A loop counts once against the caps.
-      if (provider && (!loop || (loop.round === 1 && loop.step === 0))) {
+      if (runnable && (!loop || (loop.round === 1 && loop.step === 0))) {
         counted++
         perRepo[repo] = (perRepo[repo] ?? 0) + 1
         perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1

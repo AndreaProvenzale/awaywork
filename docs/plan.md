@@ -259,7 +259,8 @@ Semantics, fixed so every milestone agrees:
   checked after every step; its `verdict` matches the latest word a step
   in the loop wrote to `out/verdict`, and doesn't hold before one did.
   Every round is routed at plan time, so a loop holds fallback units up
-  to `max`. Before each step `context/previous/` holds the
+  to `max`; the caps count units as if every loop ended after round 1,
+  since the run routes each unit again. Before each step `context/previous/` holds the
   step before's `report.md`, `verdict`, `pr.md` and a `diff.patch` of
   its commits. A round that can't route, reaches `night.end`, fails or
   stops ends the loop, which publishes what it has; night-shift appends

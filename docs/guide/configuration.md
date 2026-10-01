@@ -332,7 +332,9 @@ queue:
   `plan` lists round 1, but routes every round up to `max`, so a loop
   holds fallback units for all of them. A loop counts once against the
   caps, since it opens one draft PR, and once as an attempt: when it
-  published, the item waits for your review.
+  published, the item waits for your review. The caps count every unit
+  that could still route if each loop ended after round 1, so a later
+  item `plan` shows without a provider can still count.
 - A loop's branch comes from its first step's `branch`, and only after a
   report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
