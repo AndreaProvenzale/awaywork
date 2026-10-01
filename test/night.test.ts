@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -1287,6 +1287,110 @@ it('ends a loop whose hand-off failed, and still finishes the night', async () =
     /^1 round of review ⇄ address-review; acme-api-1-review-1 error: /,
   )
   expect(opened).toEqual([])
+})
+
+it("hands a round off without running the clone's diff command or writing through its symlinks", async () => {
+  const stop = new AbortController()
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const marker = join(root, 'ran')
+  const outside = join(root, 'outside')
+  await writeFile(outside, 'mine\n')
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
+  await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        if (job.unit.id === 'acme-api-1-review-1') {
+          await writeFile(join(root, 'diff.sh'), `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 })
+          await git(job.dir, 'config', 'diff.external', join(root, 'diff.sh'))
+        }
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-address-review-1')
+          await symlink(outside, join(job.dir, '.nightshift/out/diff.patch'))
+      },
+    },
+    {
+      runDir: join(root, 'run'),
+      signal: stop.signal,
+      ctx: {
+        env: {},
+        log: (line) => {
+          if (line === 'acme-api-1-address-review-1: done') stop.abort()
+        },
+      },
+    },
+  )
+
+  expect(existsSync(marker)).toBe(false)
+  expect(await readFile(outside, 'utf8')).toBe('mine\n')
+  const patch = join(root, 'run/units/acme-api-1-address-review-1/out/diff.patch')
+  expect(await readFile(patch, 'utf8')).toContain('+++ b/acme-api-1-address-review-1.txt')
+})
+
+it('refuses to publish a loop whose PR body a round turned into a symlink', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const outside = join(root, 'outside')
+  await writeFile(outside, 'mine\n')
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-address-review-1') {
+          const body = join(job.dir, '.nightshift/out/pr.md')
+          await rm(body)
+          await symlink(outside, body)
+        }
+      },
+    },
+  )
+
+  expect(report.results[0]?.status).toBe('error')
+  expect(report.results[0]?.reason).toBe('.nightshift/out/pr.md in the clone is a symlink')
+  expect(opened).toEqual([])
+  expect(await readFile(outside, 'utf8')).toBe('mine\n')
+})
+
+it("ends a loop whose clone a round symlinked, before the next round's workspace touches it", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  await mkdir(join(root, 'previous'))
+  await writeFile(join(root, 'previous', 'keep'), 'mine\n')
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-review-1') {
+          await rm(join(job.dir, '.nightshift/context'), { recursive: true })
+          await symlink(root, join(job.dir, '.nightshift/context'))
+        }
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-review-1', 'done', undefined],
+    ['acme-api-1-address-review-1', 'error', '.nightshift/context in the clone is a symlink'],
+  ])
+  expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
 
 it('ends a loop interrupted between rounds, and retries its chain without counting a failure', async () => {

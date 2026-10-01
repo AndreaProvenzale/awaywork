@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { appendFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { execa } from 'execa'
 import { builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
@@ -52,7 +52,17 @@ interface Previous {
 export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const { unit, dir, provider } = w
   const { foreign } = unit
-  if (!w.reuse) {
+  const names = [...new Set([unit.skill, ...unit.skills])]
+  if (w.reuse) {
+    const skills = names.map((name) => `${provider.skillsDir}/${name}`)
+    await refuseSymlinks(dir, [
+      `${WORK_DIR}/out`,
+      `${WORK_DIR}/context/previous`,
+      `${WORK_DIR}/prompt.md`,
+      '.git/info/exclude',
+      ...(provider.skillsDir ? skills : []),
+    ])
+  } else {
     await w.forge.clone(unit.repo, unit.base, dir)
     await execa('git', ['-C', dir, 'checkout', '-q', '-b', unit.branch])
   }
@@ -61,7 +71,6 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
   const { user, builtin } = w.skillDirs ?? { user: userSkillsDir, builtin: builtinSkillsDir }
   const roots = foreign ? [user, builtin] : [user, join(dir, '.night-shift', 'skills'), builtin]
-  const names = [...new Set([unit.skill, ...unit.skills])]
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
   else await buildPlugin(w.plugin, names, roots)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
@@ -103,6 +112,21 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   await writeFile(join(work, 'prompt.md'), prompt)
   return prompt
 }
+
+/** Throws when a symlink, which a worker may have planted, sits anywhere on one of `paths` in the clone. */
+export async function refuseSymlinks(dir: string, paths: string[]): Promise<void> {
+  for (const path of paths) {
+    const parts = path.split('/')
+    for (let i = 1; i <= parts.length; i++) {
+      const part = parts.slice(0, i).join('/')
+      if ((await lstat(join(dir, part)).catch(() => undefined))?.isSymbolicLink())
+        throw new Error(`${part} in the clone is a symlink`)
+    }
+  }
+}
+
+/** A `cp` filter that leaves symlinks behind, so nothing later writes through one. */
+export const notSymlink = async (src: string) => !(await lstat(src)).isSymbolicLink()
 
 /** The model's environment: no forge token, none of `withheld`, and a gh config dir without the local login. */
 export function workerEnv(
@@ -148,8 +172,10 @@ async function buildPlugin(plugin: string, names: string[], roots: string[]) {
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
-  const { stdout } = await execa('git', ['-C', dir, 'ls-files', '-z', '--', ...paths])
-  await execa('git', ['-C', dir, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  // In a loop's clone, the config is a worker's: run no fsmonitor command from it.
+  const git = ['-C', dir, '-c', 'core.fsmonitor=false']
+  const { stdout } = await execa('git', [...git, 'ls-files', '-z', '--', ...paths])
+  await execa('git', [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

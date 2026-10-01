@@ -11,7 +11,7 @@ import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../co
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runSetup } from './setup.js'
-import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
+import { notSymlink, prepareWorkspace, refuseSymlinks, WORK_DIR, workerEnv } from './workspace.js'
 
 const MAX_TURNS = 200
 
@@ -102,7 +102,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
     } finally {
       const out = join(WORK_DIR, 'out')
-      await cp(join(dir, out), join(loop.unitDir, 'out'), { recursive: true }).catch(() => {})
+      await cp(join(dir, out), join(loop.unitDir, 'out'), {
+        recursive: true,
+        filter: notSymlink,
+      }).catch(() => {})
       await rm(dir, { recursive: true, force: true })
     }
     n.ctx.log(`${unit.id}: loop ${host.loop}`)
@@ -308,7 +311,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       await new Promise((done) => logFile.end(done))
       await cp(join(dir, WORK_DIR), unitDir, {
         recursive: true,
-        filter: (src) => src !== join(dir, WORK_DIR, 'gh'),
+        filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
       }).catch(() => {})
       const kept = open?.dir === dir
       if (kept && start)
@@ -383,10 +386,11 @@ async function roundOutcome(unit: Unit, dir: string, start: string): Promise<Out
 
 /** Saves a unit's own commits for the next round, and clears what only it wrote from the shared clone. */
 async function handOff(dir: string, start: string, unitDir: string): Promise<void> {
-  const diff = await git(dir, 'diff', start, 'HEAD')
+  const diff = await git(dir, 'diff', '--no-ext-diff', '--no-textconv', start, 'HEAD')
   // A round that cleaned the clone left no `out/` to copy.
   await mkdir(join(unitDir, 'out'), { recursive: true })
   if (diff) await writeFile(join(unitDir, 'out', 'diff.patch'), `${diff}\n`)
+  await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
   await Promise.all(['report.md', 'verdict'].map((f) => rm(join(out, f), { force: true })))
 }
@@ -399,6 +403,7 @@ function describeLoop(loop: OpenLoop): string {
 
 /** night-shift's own note in the PR body: how the loop went, and the last report a round wrote. */
 async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
+  await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
   const file = join(dir, WORK_DIR, 'out', 'pr.md')
   const body = (await readFile(file, 'utf8').catch(() => '')).trim()
   if (!body || loop.rounds === 0) return

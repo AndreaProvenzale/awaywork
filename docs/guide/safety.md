@@ -29,7 +29,10 @@ not asked of the model.
   Whatever it leaves running is stopped before the agent starts.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
-  output) is excluded from git, so it can't be committed.
+  output) is excluded from git, so it can't be committed. A loop's rounds
+  share one clone: between them, night-shift runs none of the commands
+  its git config names (diff drivers, fsmonitor), copies no symlink out
+  of it, and ends the loop if a round put one where night-shift writes.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
   comment or change git config; targeted checks and the repo's documented
