@@ -176,7 +176,13 @@ export function formatReportForTerminal(markdown: string): string {
   for (let i = 0; i < lines.length; ) {
     const rows: string[][] = []
     for (let line = lines[i]; line?.startsWith('|'); line = lines[++i])
-      if (!/^\|[-| ]+\|$/.test(line)) rows.push(line.slice(2, -2).split(' | '))
+      if (!/^\|[-| ]+\|$/.test(line))
+        rows.push(
+          line
+            .slice(2, -2)
+            .split(' | ')
+            .map((cell) => cell.replaceAll('\\|', '|')),
+        )
     if (rows.length === 0) out.push(lines[i++] ?? '')
     else {
       const statusCol = rows[0]?.indexOf('Status') ?? -1

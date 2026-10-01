@@ -2117,3 +2117,59 @@ it('ends a loop whose when check was interrupted, and retries its chain without 
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})
 })
+
+it("runs the step after a passed-over draft PR step on the base it would have had, not tonight's tip", async () => {
+  const bases: Record<string, string> = {}
+  const inner = looper({})
+  const provider: Provider = {
+    ...inner,
+    async *run(job, signal) {
+      bases[job.unit.id] = job.unit.base
+      yield* inner.run(job, signal)
+    },
+  }
+  const item = (n: number, label: string) =>
+    fakeItem({ ...issue(n), fields: { repo: 'acme/api', label: [label] } })
+  const { report, opened } = await loopNight(
+    `queue:
+  - { skill: implement, where: { label: first } }
+  - skill: review
+    deliver: report
+    where: { label: second }
+    then:
+      - { skill: address-review, deliver: draft_pr, when: { verdict: go } }
+      - { skill: plan, deliver: report }
+`,
+    [item(1, 'first'), item(2, 'second')],
+    provider,
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-2', 'done'],
+    ['acme-api-2-address-review', 'skipped'],
+    ['acme-api-2-plan', 'done'],
+  ])
+  expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
+  expect(bases['acme-api-2-plan']).toBe('')
+})
+
+it('escapes a pipe in a check command, so the report table keeps its cells', async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { skill: review, when: { command: "git log | grep -q nothing-like-this" } }
+`,
+    [issue(1)],
+    looper({}),
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  const text = formatReport(report)
+  const row = text.split('\n').find((line) => line.startsWith('| 2 |'))
+  expect(row).toBe(
+    "| 2 | acme-api-1-review | review | claude | skipped | when `git log \\| grep -q nothing-like-this` passes didn't hold (Command failed with exit code 1: 'git log \\| grep -q nothing-like-this') |",
+  )
+  expect(runLine('r1', text)).toBe('r1  2 units, 1 draft PRs, 0 reports')
+  expect(formatReportForTerminal(text)).toContain('`git log | grep -q nothing-like-this`')
+})

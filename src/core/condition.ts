@@ -16,7 +16,7 @@ export function holds(condition: Condition, facts: Facts): boolean {
   )
 }
 
-/** E.g. `verdict approve or comments and \`pnpm test\` passes`; never `|`, which splits a table cell. */
+/** E.g. `verdict approve or comments and \`pnpm test\` passes`. */
 export function describeCondition(condition: Condition): string {
   const { verdict, command, changed } = condition
   const parts: string[] = []

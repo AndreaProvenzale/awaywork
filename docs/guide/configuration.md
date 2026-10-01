@@ -332,11 +332,12 @@ queue:
   `network: false` (it would run the worker's code outside the worker's
   sandbox): config refuses one on a rule with `network: false`, but a
   repo's `network: false` is only known at run time. A command that isn't
-  run doesn't hold for `when`, and ends the loop either way. One stopped
-  by `night.end` or its 15 minutes ends the loop too, which publishes
-  what it has; outside a loop it skips a `when` step without passing
-  over it, so the chain is tried again the next night. After Ctrl-C the
-  chain is tried again in both cases.
+  run doesn't hold for `when`, and ends the loop either way. One that
+  runs past its 15 minutes fails, like one that exits non-zero. One
+  stopped by `night.end` ends the loop, which publishes what it has;
+  outside a loop it skips a `when` step without passing over it, so the
+  chain is tried again the next night. After Ctrl-C the chain is tried
+  again in both cases.
 - A step finds the one before's output in `.nightshift/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When
@@ -360,8 +361,8 @@ queue:
   report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
   after a report ended at `until` or `max` with nothing committed, runs
-  as after that report. A loop
-  can't follow another loop directly: put a step between them.
+  where the loop's host ran. A loop can't follow another loop directly:
+  put a step between them.
 
 #### `when`
 
@@ -383,8 +384,9 @@ queue:
 ```
 
 - `verdict` is the step before's or, after a loop, the latest one
-  written in it. It matches as in `until`, except that `{ not: … }` also
-  holds when no verdict was written.
+  written in it, or the host's own when the loop wrote none. It matches
+  as in `until`, except that `{ not: … }` also holds when no verdict was
+  written.
 - `command` runs as in `until`, in the step's clone before its agent
   starts. Prefix `!` to run a step only when a check fails, such as a
   fixer with `when: { command: "! pnpm test" }`; it finds the output in

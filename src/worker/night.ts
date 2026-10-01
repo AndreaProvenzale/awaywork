@@ -347,7 +347,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           // A refused check is refused every round: the loop would repeat without its step.
           if (round && met.check?.refused) round.ended = reason
           else if (round && p.loop && isLast(p.loop)) round.ended = maxReached(p.loop.max)
-          if (!inRound && after) standIns[unit.id] = { result: after, base: unit.base }
+          if (!inRound && after) standIns[unit.id] = { result: after, base }
           continue
         }
       }
@@ -484,7 +484,7 @@ interface OpenLoop {
 interface Check {
   output: string
   failed?: string
-  /** Stopped before it exited: the condition is unknown, not false. */
+  /** Cut short by Ctrl-C or `night.end`: the condition is unknown, not false. */
   stopped?: true
   /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
   refused?: true

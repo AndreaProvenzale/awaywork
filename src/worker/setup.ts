@@ -29,7 +29,7 @@ export async function runSetup(
   return [`setup failed: ${failed}`, tail].filter(Boolean).join('\n')
 }
 
-/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0, and `stopped` that it didn't exit on its own. */
+/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0, and `stopped` that Ctrl-C or `night.end` cut it short. */
 export async function runCommand(
   command: string,
   dir: string,
@@ -66,10 +66,12 @@ export async function runCommand(
   const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
   if (!result.failed) return { output }
   if (!stop.aborted) return { output, failed: result.shortMessage }
-  const failed = signal?.aborted
-    ? 'interrupted'
-    : nightEnds
-      ? 'the night window ended'
-      : `timed out after ${TIMEOUT_MS / 60_000} min`
-  return { output, failed, stopped: true }
+  // A command that hangs fails like one that exits non-zero, so a check doesn't retry it every night.
+  if (!signal?.aborted && !nightEnds)
+    return { output, failed: `timed out after ${TIMEOUT_MS / 60_000} min` }
+  return {
+    output,
+    failed: signal?.aborted ? 'interrupted' : 'the night window ended',
+    stopped: true,
+  }
 }

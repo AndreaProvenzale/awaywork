@@ -280,10 +280,10 @@ Semantics, fixed so every milestone agrees:
   doesn't hold. On an untrusted author's PR or an offline unit
   (night-shift has no sandbox of its own) it doesn't run; config refuses
   one on a rule with `network: false`. One that didn't run doesn't hold
-  for `when` and ends a loop. One stopped by `night.end` or its 15
-  minutes ends a loop, which publishes, and outside a loop skips a
-  `when` step without passing over it; an interrupt retries the chain
-  either way. Its last 8,000 characters go to `check.log`, or `when.log`
+  for `when` and ends a loop. One past its 15 minutes fails. One
+  stopped by `night.end` ends a loop, which publishes, and outside a
+  loop skips a `when` step without passing over it; an interrupt
+  retries the chain either way. Its last 8,000 characters go to `check.log`, or `when.log`
   for a `when`. A step's `when` (`verdict` of the unit before, or the
   loop's last after a loop, `command`, `changed` globs against the
   branch the chain's commits started from) is checked in its clone
