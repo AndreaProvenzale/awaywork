@@ -12,7 +12,7 @@ import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Item, Provider, Quota, Source } from '../src/core/types.js'
+import type { Forge, Item, Provider, Quota, Source } from '../src/core/types.js'
 import { type NightInput, runNight } from '../src/worker/night.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -1012,7 +1012,10 @@ async function loopNight(
   yaml: string,
   items: Item[],
   provider: Provider,
-  input: Partial<NightInput> = {},
+  {
+    forge: overrides,
+    ...input
+  }: Omit<Partial<NightInput>, 'forge'> & { forge?: Partial<Forge> } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
   const { origin, opened, forge } = await originForge(root)
@@ -1035,7 +1038,7 @@ ${yaml}`)
     dryRun: false,
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
-    forge,
+    forge: { ...forge, ...overrides },
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
@@ -1082,6 +1085,58 @@ it('records a loop interrupted after a report as unpublished, so it counts a fai
   })
   expect(opened).toEqual([])
   expect(failedAttempts(item, 'plan', recordAttempts({}, report))).toBe(1)
+})
+
+it("records an interrupted loop as unpublished even when it kept its host's report", async () => {
+  const stop = new AbortController()
+  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        if (job.unit.id === 'acme-api-1-fix-ci-1') stop.abort()
+        else yield* provider.run(job, signal)
+      },
+    },
+    { signal: stop.signal },
+  )
+
+  expect(report.results[1]?.outcome).toEqual({
+    kind: 'none',
+    reason: 'interrupted',
+    unpublished: true,
+  })
+  expect(failedAttempts(item, 'plan', recordAttempts({}, report))).toBe(1)
+})
+
+it('skips the step after a loop whose publish threw, though its host kept a report', async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: plan
+    then:
+      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }
+      - review
+`,
+    [issue(1)],
+    looper({ 'acme-api-1-qa-feedback-1': 'changes' }),
+    { forge: { push: async () => Promise.reject(new Error('push refused')) } },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-qa-feedback-1', 'error', 'push refused'],
+    ['acme-api-1-fix-ci-1', 'done', undefined],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-qa-feedback-1 delivered nothing to follow'],
+  ])
 })
 
 it("runs the step after a loop that kept its host's report on the host's base", async () => {

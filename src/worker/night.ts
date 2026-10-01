@@ -82,10 +82,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const { host, unit, dir } = loop
     host.loop = describeLoop(loop)
     try {
-      if (loop.interrupted) {
-        const kept = host.outcome?.kind === 'report' && (await commitsSince(dir, loop.start)) === 0
-        if (!kept) host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
-      } else {
+      // An interrupted loop retries its chain, even when its host's report is still in `out/`.
+      if (loop.interrupted)
+        host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
+      else {
         await appendLoopSummary(dir, loop)
         const published = await publish({ ...unit, deliver: 'draft_pr' }, dir, n.forge, n.runId)
         // A report host whose loop committed nothing keeps its report.
@@ -97,7 +97,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         }
       }
     } catch (e) {
-      Object.assign(host, { status: 'error', reason: (e as Error).message })
+      Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
     } finally {
       const out = join(WORK_DIR, 'out')
       await cp(join(dir, out), join(loop.unitDir, 'out'), { recursive: true }).catch(() => {})
@@ -308,7 +308,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         filter: (src) => src !== join(dir, WORK_DIR, 'gh'),
       }).catch(() => {})
       const kept = open?.dir === dir
-      if (kept && start) await handOff(dir, start, unitDir)
+      if (kept && start)
+        await handOff(dir, start, unitDir).catch((e) => {
+          if (open) open.ended = `${unit.id} error: ${(e as Error).message}`
+        })
       if (!n.dryRun)
         await Promise.all(
           (kept ? [plugin] : [dir, plugin]).map((d) => rm(d, { recursive: true, force: true })),
