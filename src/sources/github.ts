@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { hasTrailer, isOurs } from '../core/footer.js'
+import { isOurs, isPushedCommit } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
@@ -272,7 +272,7 @@ function toItem(node: Node): Item {
     Object.assign(fields, {
       draft: node.isDraft,
       ours: isOurs(node.body),
-      pushed: hasTrailer(node.commits?.nodes[0]?.commit.message),
+      pushed: isPushedCommit(node.commits?.nodes[0]?.commit.message, node.body),
       unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
       my_unresolved_threads: 0,
       review_requested: false,

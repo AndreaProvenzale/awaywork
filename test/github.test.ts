@@ -84,16 +84,21 @@ describe('github source', () => {
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
-  it('marks a PR whose last commit night-shift pushed', async () => {
-    const authored = fixture('search-authored.json').replace(
-      '"message": "Add a token bucket"',
-      `"message": ${JSON.stringify('Refill the bucket\n\nNight-shift: r1')}`,
-    )
-    const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
-      { repos: ['acme/*'] },
-      ctx,
-    )
-    expect(pr1?.fields.pushed).toBe(true)
+  it('marks a PR whose last commit night-shift pushed, not one it opened with that commit', async () => {
+    const pushed = async (body: string) => {
+      const authored = fixture('search-authored.json')
+        .replace(
+          '"message": "Add a token bucket"',
+          `"message": ${JSON.stringify('Refill the bucket\n\nNight-shift: r1')}`,
+        )
+        .replace('"body": "Adds a token bucket per client."', `"body": ${JSON.stringify(body)}`)
+      const source = githubSource(recorded([[/author:@me/, authored], ...githubRoutes()]))
+      const [pr1] = await source.items({ repos: ['acme/*'] }, ctx)
+      return pr1?.fields.pushed
+    }
+    expect(await pushed('Adds a token bucket per client.')).toBe(true)
+    expect(await pushed(footer('r0'))).toBe(true)
+    expect(await pushed(footer('r1'))).toBe(false)
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {

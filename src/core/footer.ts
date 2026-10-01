@@ -10,5 +10,11 @@ export const isOurs = (body: string | null | undefined): boolean => !!body?.incl
 /** The trailer every commit night-shift publishes carries, keyed `Night-shift: <run id>`. */
 export const trailerKey = 'Night-shift'
 
-export const hasTrailer = (message: string | undefined): boolean =>
-  !!message && new RegExp(`^${trailerKey}: `, 'm').test(message)
+/** Whether night-shift pushed `message`'s commit onto the PR, not opened the PR with it. */
+export function isPushedCommit(
+  message: string | undefined,
+  body: string | null | undefined,
+): boolean {
+  const run = message?.match(new RegExp(`^${trailerKey}: (\\S+)`, 'm'))?.[1]
+  return !!run && !body?.includes(`${marker} run=${run} -->`)
+}
