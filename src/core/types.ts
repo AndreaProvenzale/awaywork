@@ -192,7 +192,7 @@ export interface Unit {
   untrusted: boolean
   /** Whether the worker's commands may reach the network. */
   network: boolean
-  /** The URL of the night-shift draft PR whose branch `base` is: tonight's, or one a rule took up again. */
+  /** The URL of the night-shift PR whose branch `base` is: tonight's draft PR, or one a rule took up again. */
   stackedOn?: string
   branch: string
   rule: Step

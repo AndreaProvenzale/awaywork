@@ -175,8 +175,8 @@ Their values are masked in setup's output. On a PR someone else opened,
 setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
 otherwise the agent is told it didn't run. It gets none of them either
-on a branch a worker wrote earlier that night: a `then` step's after a
-draft PR, or a stacked draft PR's. Read
+on a branch a worker wrote: a `then` step's after a draft PR, a stacked
+draft PR's, or a night-shift PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -245,10 +245,13 @@ act on it once you've reviewed it:
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-The unit's draft PR stacks on the night-shift PR. The rule runs on the
-threads you started, but the agent reads every unresolved thread, as on
-your other PRs. `ours` comes from the GitHub source: a custom source's
-`ours` field holds nothing back.
+The unit's draft PR stacks on the night-shift PR, on a branch named
+after it (`night/acme-api-9` for #9). Delete that branch once you merge
+the stacked PR, since GitHub keeps it by default: while it exists, the
+next pickup of #9 is skipped as `night/acme-api-9 already exists`.
+The rule runs on the threads you started, but the agent reads every
+unresolved thread, as on your other PRs. `ours` comes from the GitHub
+source: a custom source's `ours` field holds nothing back.
 
 ### `order`
 
@@ -407,8 +410,9 @@ queue:
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
   `.nightshift/context/previous/when.log`.
 - `changed` is a glob or a list; it holds when the chain's commits change
-  a matching path: against the repo's default branch, or the draft PR the
-  chain stacked on. Globs are git's, from the repo root, with no leading
+  a matching path, measured from where the chain started: the repo's
+  default branch, the draft PR it stacked on, or the night-shift PR a
+  rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - Every key set must hold. `plan` shows each step's `when`, and the

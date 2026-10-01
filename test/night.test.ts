@@ -641,7 +641,7 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
   )
   expect(prompts[0]).toContain('cut from the default branch.')
-  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift draft PR ${first}`
+  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift PR ${first}`
   expect([prompts[1], prompts[3]]).toEqual([
     expect.stringContaining(stacked),
     expect.stringContaining(stacked),
@@ -1300,6 +1300,52 @@ repos:
     },
   ])
   expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
+})
+
+it("matches changed against a taken-up night-shift PR's branch, not its own commits", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'checkout', '-q', '-b', 'night/acme-api-5')
+  await mkdir(join(origin, 'src/auth'), { recursive: true })
+  await writeFile(join(origin, 'src/auth/a.ts'), 'auth')
+  await git(origin, 'add', '.')
+  await git(origin, 'commit', '-qm', 'Touch auth')
+  await git(origin, 'checkout', '-q', 'main')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: address-review
+    where: { type: pr, ours: true }
+    then: { skill: review, when: { changed: "src/auth/**" } }
+`)
+  const pr = githubPr(9, { ours: true })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const plan = planNight({
+    config,
+    items: [{ ...pr, linkedPrs: [link] }],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-9', 'done', undefined],
+    ['acme-api-9-review', 'skipped', `when the branch changes src/auth/** didn't hold`],
+  ])
 })
 
 /** Plans `yaml` for `items` and runs the night against a local origin. */

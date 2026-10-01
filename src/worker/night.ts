@@ -46,7 +46,8 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
- * A draft PR stacks on tonight's draft PR it follows, or on its repo's last one when it would start from the default branch.
+ * A draft PR stacks on tonight's draft PR it follows, on the night-shift PR a rule took up,
+ * or on its repo's last one when it would start from the default branch.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -242,7 +243,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
       ? (starts[round.unit.id] ?? '')
-      : stacks && !openedPr(after)
+      : (stacks || pickedUp) && !openedPr(after)
         ? onto
         : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
