@@ -173,7 +173,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
           byId.set(node.id, item)
         }
       }
-      await countMyThreads(run, byId)
+      await countMyThreads(run, byId, ctx.log)
       return [...byId.values()]
     },
 
@@ -221,22 +221,31 @@ export function githubSource(run: Exec = exec): Source<Config> {
 
 export const github = githubSource()
 
-/** Sets `my_unresolved_threads` on the PRs that have unresolved threads, in one query per page. */
-async function countMyThreads(run: Exec, byId: Map<string, Item>): Promise<void> {
+/**
+ * Sets `my_unresolved_threads` on the PRs that have unresolved threads, in one query per page.
+ * A page that fails leaves its PRs at 0 rather than losing every item.
+ */
+async function countMyThreads(
+  run: Exec,
+  byId: Map<string, Item>,
+  log: (line: string) => void,
+): Promise<void> {
   const ids = [...byId]
     .filter(([, item]) => Number(item.fields.unresolved_threads) > 0)
     .map(([id]) => id)
   for (let i = 0; i < ids.length; i += PAGE) {
-    const { nodes } = await graphql<{
-      nodes: {
+    const page = await graphql<{
+      nodes: ({
         id: string
         reviewThreads: Nodes<{ isResolved: boolean; comments: Nodes<{ viewerDidAuthor: boolean }> }>
-      }[]
-    }>(run, threadStartersQuery(ids.slice(i, i + PAGE)), {})
-    for (const { id, reviewThreads } of nodes) {
-      const item = byId.get(id)
+      } | null)[]
+    }>(run, threadStartersQuery(ids.slice(i, i + PAGE)), {}).catch((e: Error) => {
+      log(`github: couldn't read who started PR threads, counting none: ${e.message}`)
+    })
+    for (const node of page?.nodes ?? []) {
+      const item = node && byId.get(node.id)
       if (item)
-        item.fields.my_unresolved_threads = reviewThreads.nodes.filter(
+        item.fields.my_unresolved_threads = node.reviewThreads.nodes.filter(
           (t) => !t.isResolved && t.comments.nodes[0]?.viewerDidAuthor,
         ).length
     }
