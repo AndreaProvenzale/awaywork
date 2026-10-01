@@ -332,9 +332,10 @@ queue:
   `network: false` (it would run the worker's code outside the worker's
   sandbox): config refuses one on a rule with `network: false`, but a
   repo's `network: false` is only known at run time. A command that isn't
-  run, or is stopped by `night.end`, its 15 minutes or Ctrl-C, ends the
-  loop, and skips a `when` step without passing over it, so the chain
-  is tried again the next night.
+  run ends the loop and doesn't hold for `when`. One stopped by
+  `night.end`, its 15 minutes or Ctrl-C ends the loop too, and skips a
+  `when` step without passing over it, so the chain is tried again the
+  next night.
 - A step finds the one before's output in `.nightshift/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When

@@ -1143,7 +1143,7 @@ queue:
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planNight({
     config,
-    items: [item, githubPr(4, { mine: false, trusted: false })],
+    items: [item, githubPr(4, { mine: false, trusted: false, updated: '2026-01-01T00:00:00Z' })],
     allowances: { claude: allowance(config.budget, quota(0.36), week) },
     skills: { builtin: builtinSkills },
   })
@@ -1181,7 +1181,7 @@ queue:
     [
       'acme-api-4-qa-feedback',
       'skipped',
-      "when `true` passes not checked: not run on an untrusted author's PR",
+      "when `true` passes didn't hold (not run on an untrusted author's PR)",
     ],
   ])
   const url = 'https://example.com/acme/api/pull/night/acme-api-1'
@@ -1195,9 +1195,15 @@ queue:
   expect(prompt).toContain(
     'Before you started, night-shift ran `test -e acme-api-1-qa-feedback.txt`',
   )
-  expect(recordAttempts({}, report)['github:acme/api#1']).toEqual({
+  const attempts = recordAttempts({}, report)
+  expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
     skill: 'implement',
+    updated: '2026-01-01T00:00:00Z',
+  })
+  expect(attempts['github:acme/api#4']).toEqual({
+    runId: 'r1',
+    skill: 'review',
     updated: '2026-01-01T00:00:00Z',
   })
   expect(formatPlan(plan)).toContain(
@@ -1890,16 +1896,16 @@ queue: [{ skill: implement, then: ${then} }]
       provider,
       env,
     )
-  const noNetwork = 'not checked: not run without network: it has no sandbox'
+  const noNetwork = 'not run without network: it has no sandbox'
   const step = await offline(`{ skill: review, when: { command: 'true' } }`)
   expect(step.report.results[1]).toMatchObject({
     status: 'skipped',
-    reason: `when \`true\` passes ${noNetwork}`,
+    reason: `when \`true\` passes didn't hold (${noNetwork})`,
+    passedOver: true,
   })
-  expect(step.report.results[1]?.passedOver).toBeUndefined()
   const loop = await offline(`{ loop: [address-review], until: { command: 'true' }, max: 3 }`)
   expect(loop.report.results[0]?.loop).toBe(
-    `1 round of address-review; until \`true\` passes ${noNetwork}`,
+    `1 round of address-review; until \`true\` passes not checked: ${noNetwork}`,
   )
 
   const dirty = await loopNight(

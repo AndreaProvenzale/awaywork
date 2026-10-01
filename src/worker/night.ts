@@ -109,11 +109,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     dir: string,
     log: (line: string) => void,
   ): Promise<Check> => {
-    if (unit.untrusted)
-      return { output: '', failed: "not run on an untrusted author's PR", stopped: true }
+    if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     // The worker's sandbox is the provider's: night-shift has none to run worker-written code in.
-    if (!unit.network)
-      return { output: '', failed: 'not run without network: it has no sandbox', stopped: true }
+    if (!unit.network) return refusal('not run without network: it has no sandbox')
     // The published branch holds only commits, so a check must not pass on files left uncommitted.
     const baseline = baselines.get(dir)
     const left = (await uncommitted(dir)).filter((line) => !baseline?.has(line))
@@ -333,8 +331,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
         const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
         const met = await factsFor(when, unit, dir, verdict, log, logFile)
-        // A check that couldn't run says nothing: skip the step without passing over it.
-        if (met.check?.stopped) {
+        // A check stopped before it exited says nothing: skip the step without passing over it.
+        if (met.check?.stopped && !met.check.refused) {
           const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
           Object.assign(result, { status: 'skipped', reason })
           routed[id] = (routed[id] ?? 1) - 1
@@ -486,9 +484,13 @@ interface Check {
   failed?: string
   /** Refused, or stopped before it exited: the condition is unknown, not false. */
   stopped?: true
+  /** Never runs on this unit, so a `when` on it can't hold. */
+  refused?: true
 }
 
 type RanCheck = Check & { command: string }
+
+const refusal = (failed: string): Check => ({ output: '', failed, stopped: true, refused: true })
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
