@@ -154,6 +154,7 @@ describe('publish', () => {
       branch: 'feature-1',
       commits: 1,
       text: 'Fixed the flaky test.',
+      head: expect.stringMatching(/^[0-9a-f]{40}$/),
     })
     expect(forge.fastForwards).toEqual([`acme/api:feature-1 (#1) from ${start}`])
     expect(forge.branches.size).toBe(0)

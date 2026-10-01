@@ -81,11 +81,6 @@ export function isNightShiftPr(item: Item): boolean {
   return item.source === 'github' && item.fields.ours === true
 }
 
-/** A PR whose last commit night-shift pushed: it waits until you push on top of it. */
-export function isPushedOnto(item: Item): boolean {
-  return item.source === 'github' && item.fields.pushed === true
-}
-
 /** The `where` keys the item fails; the rule's source is not checked. */
 export function failedKeys(rule: Rule, item: Item): string[] {
   return Object.keys(rule.where).filter(

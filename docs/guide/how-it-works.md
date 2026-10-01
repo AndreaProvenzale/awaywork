@@ -22,7 +22,7 @@ A source returns your open items with facts about each: a `type` (`pr`,
 
 | Source | Items | Fields a rule can match |
 |---|---|---|
-| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `ours` (night-shift opened it), `pushed` (night-shift pushed its last commit onto the PR), `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `my_unresolved_threads` (the unresolved ones you started), `review_requested`, `created`, `updated` |
+| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `ours` (night-shift opened it), `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads`, `my_unresolved_threads` (the unresolved ones you started), `review_requested`, `created`, `updated` |
 | Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `tags`, `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated`, `due` |
 | Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `project`, `repo` (from `team_repos`), `created`, `updated` |
 | Jira Cloud | Unresolved issues assigned to you, optionally narrowed by `jql` | `project` (key), `status`, `labels`, `priority`, `issuetype` (e.g. `Bug`), `repo` (from `project_repos`), `fields.<custom field>`, `created`, `updated` |
@@ -80,8 +80,9 @@ task linked to your PR becomes one unit with that PR.
   `ours`, like the default `address-review` on threads you left on it:
   that rule then takes the unit, even over a better-ranked item linked to
   the PR, and its draft PR stacks on the night-shift PR.
-- A PR whose last commit night-shift pushed (a `deliver: push` rule) is
-  skipped as **waiting for review** too, until you push a commit on top.
+- A PR night-shift pushed onto (a `deliver: push` rule) is skipped as
+  **waiting for review** too, while its head is still the commit
+  night-shift pushed.
 - A unit none of whose items changed since a worker last finished the
   same skill on it is skipped as **unchanged since run `<id>`**, so a
   review or a unit that gave up isn't redone every night. A rule's `then`

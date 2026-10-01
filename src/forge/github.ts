@@ -7,7 +7,7 @@ import { type Exec, exec, graphql } from './gh.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body headRefName isCrossRepository repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
   }
 }`
 
@@ -17,6 +17,7 @@ type PrNode = {
   title: string
   body: string
   headRefName: string
+  headRefOid: string
   isCrossRepository: boolean
   repository: { nameWithOwner: string }
 }
@@ -96,6 +97,7 @@ export function githubForge(run: Exec = exec): Forge {
           number: pr.number,
           url: pr.url,
           branch: pr.headRefName,
+          head: pr.headRefOid,
           ours: isOurs(pr.body),
           mine: true,
           trusted: true,

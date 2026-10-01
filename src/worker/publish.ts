@@ -9,7 +9,7 @@ import { outputFile, WORK_DIR } from './workspace.js'
 export type Outcome =
   | { kind: 'pr'; url: string; commits: number }
   | { kind: 'report'; text: string }
-  | { kind: 'pushed'; branch: string; commits: number; text: string }
+  | { kind: 'pushed'; branch: string; commits: number; text: string; head: string }
   | { kind: 'none'; reason: string; unpublished?: true }
 
 // No hooks, and history as it is, not as replace refs say.
@@ -106,7 +106,7 @@ async function deliver(
   )
   if (pr && from) {
     await forge.fastForward(repo, unit.base, from, { repo: unit.repo, pr: pr.number })
-    return { kind: 'pushed', branch: unit.base, commits: commits.length, text }
+    return { kind: 'pushed', branch: unit.base, commits: commits.length, text, head }
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })
   if (unit.stackedOn)

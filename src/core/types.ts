@@ -5,6 +5,8 @@ export interface PrRef {
   number: number
   url: string
   branch: string
+  /** Its branch's head commit, when the source reads it. */
+  head?: string
   /** Opened by night-shift: its body carries the footer. */
   ours: boolean
   /** Opened by the developer, by hand or through night-shift. */

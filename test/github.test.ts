@@ -42,7 +42,6 @@ describe('github source', () => {
       mine: true,
       draft: false,
       ours: false,
-      pushed: false,
       checks: 'failing',
       unresolved_threads: 2,
       my_unresolved_threads: 1,
@@ -84,23 +83,6 @@ describe('github source', () => {
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
-  it('marks a PR whose last commit night-shift pushed, not one it opened with that commit', async () => {
-    const pushed = async (body: string) => {
-      const authored = fixture('search-authored.json')
-        .replace(
-          '"message": "Add a token bucket"',
-          `"message": ${JSON.stringify('Refill the bucket\n\nNight-shift: r1')}`,
-        )
-        .replace('"body": "Adds a token bucket per client."', `"body": ${JSON.stringify(body)}`)
-      const source = githubSource(recorded([[/author:@me/, authored], ...githubRoutes()]))
-      const [pr1] = await source.items({ repos: ['acme/*'] }, ctx)
-      return pr1?.fields.pushed
-    }
-    expect(await pushed('Adds a token bucket per client.')).toBe(true)
-    expect(await pushed(footer('r0'))).toBe(true)
-    expect(await pushed(footer('r1'))).toBe(false)
-  })
-
   it('links a PR to itself and an issue to the PR that closes it', async () => {
     const [pr1, , pr2, issue5, issue6] = await items()
     const link = {
@@ -108,6 +90,7 @@ describe('github source', () => {
       number: 1,
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
+      head: 'abc1234',
       ours: false,
       mine: true,
       trusted: true,
@@ -243,9 +226,9 @@ describe('github forge', () => {
     const run = recorded([[/author:@me/, authored]])
     const forge = githubForge(run)
     const prs = await forge.prsFor(fakeItem({ key: 'T-12' }))
-    expect(prs.map((p) => [p.repo, p.number, p.branch, p.ours, p.mine])).toEqual([
-      ['acme/api', 1, 't-12-rate-limits', true, true],
-      ['acme/web', 3, 'billing', false, true],
+    expect(prs.map((p) => [p.repo, p.number, p.branch, p.head, p.ours, p.mine])).toEqual([
+      ['acme/api', 1, 't-12-rate-limits', 'abc1234', true, true],
+      ['acme/web', 3, 'billing', undefined, false, true],
     ])
     expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
     expect(run.calls).toHaveLength(1)

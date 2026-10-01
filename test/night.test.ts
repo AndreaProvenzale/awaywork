@@ -787,7 +787,13 @@ repos:
   })
 
   expect(report.results.map((u) => u.outcome)).toEqual([
-    { kind: 'pushed', branch: 'feature-1', commits: 1, text: 'Work on acme-api-1\n\nDone.' },
+    {
+      kind: 'pushed',
+      branch: 'feature-1',
+      commits: 1,
+      text: 'Work on acme-api-1\n\nDone.',
+      head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
+    },
     { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
   ])
   const pushed = await git(

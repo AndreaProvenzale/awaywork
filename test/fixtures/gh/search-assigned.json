@@ -27,6 +27,7 @@
                 "number": 1,
                 "url": "https://github.com/acme/api/pull/1",
                 "headRefName": "rate-limits",
+                "headRefOid": "abc1234",
                 "viewerDidAuthor": true,
                 "repository": { "nameWithOwner": "acme/api" }
               }

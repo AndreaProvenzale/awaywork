@@ -740,16 +740,29 @@ queue:
     ])
   })
 
-  it('skips a PR night-shift pushed onto until you push on top of it', () => {
+  it('holds a PR night-shift pushed onto while its head is still the one the push left', () => {
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue: [{ skill: fix-ci, deliver: push }]`
-    const result = plan(yaml, [githubPr(1, { pushed: true }), githubPr(2, { pushed: false })], {})
-    expect(result.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
-    expect(result.skipped.map((s) => s.reason)).toEqual([
+    const at = (head: string, updated: string, n = 1) => {
+      const item = githubPr(n, { updated })
+      return { ...item, linkedPrs: [{ ...(item.linkedPrs[0] as PrRef), head }] }
+    }
+    const first = plan(yaml, [at('abc1234', '2026-01-01T00:00:00Z')], {})
+    const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
+    const results = [{ planned: first.units[0], status: 'done', outcome }]
+    const attempts = recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    expect(attempts['github:acme/api#1']?.pushed).toBe('def5678')
+
+    const pushedAt = '2026-01-02T00:00:00Z'
+    const held = plan(yaml, [at('def5678', pushedAt), at('def5678', pushedAt, 2)], {}, {}, attempts)
+    expect(held.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
+    expect(held.skipped.map((s) => s.reason)).toEqual([
       'waiting for review: night-shift pushed onto https://github.com/acme/api/pull/1',
     ])
+    const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
+    expect(movedOn.units).toHaveLength(1)
   })
 
   it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {

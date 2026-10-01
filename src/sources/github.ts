@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { isOurs, isPushedCommit } from '../core/footer.js'
+import { isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
@@ -32,14 +32,14 @@ const searchQuery = `query($q: String!) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
+          nodes { number url headRefName headRefOid isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName isCrossRepository viewerDidAuthor
+        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
-        commits(last: 1) { nodes { commit { message statusCheckRollup { state } } } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
     }
   }
@@ -83,6 +83,7 @@ type PrLink = {
   number: number
   url: string
   headRefName: string
+  headRefOid: string
   isCrossRepository: boolean
   body: string
   viewerDidAuthor: boolean
@@ -105,7 +106,7 @@ interface Node extends PrLink {
   isDraft?: boolean
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
   reviewThreads?: Nodes<{ isResolved: boolean }>
-  commits?: Nodes<{ commit: { message: string; statusCheckRollup: { state: string } | null } }>
+  commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
 }
 interface Thread {
   isResolved: boolean
@@ -146,7 +147,6 @@ export function githubSource(run: Exec = exec): Source<Config> {
       mine: z.boolean(),
       draft: z.boolean(),
       ours: z.boolean(),
-      pushed: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
       my_unresolved_threads: z.number().int().min(0),
@@ -272,7 +272,6 @@ function toItem(node: Node): Item {
     Object.assign(fields, {
       draft: node.isDraft,
       ours: isOurs(node.body),
-      pushed: isPushedCommit(node.commits?.nodes[0]?.commit.message, node.body),
       unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
       my_unresolved_threads: 0,
       review_requested: false,
@@ -307,6 +306,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   number: pr.number,
   url: pr.url,
   branch: pr.headRefName,
+  head: pr.headRefOid,
   ours: isOurs(pr.body),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),

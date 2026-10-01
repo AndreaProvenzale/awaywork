@@ -1,5 +1,11 @@
 import type { Config } from '../config/schema.js'
-import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './attempts.js'
+import {
+  type Attempts,
+  failedAttempts,
+  MAX_ATTEMPTS,
+  pushedOnto,
+  unchangedSince,
+} from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -10,7 +16,6 @@ import {
   fieldValue,
   isLoop,
   isNightShiftPr,
-  isPushedOnto,
   rank,
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
@@ -94,9 +99,9 @@ export function planNight(input: {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
       continue
     }
-    const pushedOnto = items.find(isPushedOnto)
-    if (pushedOnto) {
-      skip(`waiting for review: night-shift pushed onto ${pushedOnto.url}`)
+    const held = pushedOnto(items, input.attempts ?? {})
+    if (held) {
+      skip(`waiting for review: night-shift pushed onto ${held.url}`)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))

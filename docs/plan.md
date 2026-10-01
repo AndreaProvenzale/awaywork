@@ -244,10 +244,9 @@ Semantics, fixed so every milestone agrees:
   night-shift PR item only matches rules whose `where` names `ours`; one
   that did leads its unit (its rule and key win over better-ranked items)
   and is the unit's base, and setup there gets none of the repo's secrets.
-  A PR whose last commit carries the `Night-shift:` trailer of a run
-  other than the one that opened it (`pushed`) waits too, until the
-  developer pushes on top, so a push rule doesn't re-run on the update
-  its own push made.
+  A PR a `push` landed on waits too, while its head is the commit the
+  push left (recorded with the attempt), so a push rule doesn't re-run
+  on the update its own push made.
 - **Chains.** A rule's `then` is a step or a list of steps: a skill
   name, or a map with the rule keys other than `source`, `where`, `order`
   and `then`, plus `when`, inheriting none of the rule's. Each step is a unit planned
