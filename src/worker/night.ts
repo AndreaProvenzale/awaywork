@@ -1,6 +1,6 @@
 import { createWriteStream } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
@@ -144,6 +144,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     if (condition.command) {
       ran = { command: condition.command, ...(await check(condition.command, unit, dir, log)) }
       facts.command = !ran.failed
+      await refuseSymlinks(dir, [relative(dir, logFile)])
       await mkdir(dirname(logFile), { recursive: true })
       await writeFile(logFile, checkLog(ran))
     }
@@ -501,7 +502,9 @@ const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
 /** `git status --porcelain` lines, one per uncommitted path. */
 async function uncommitted(dir: string): Promise<string[]> {
-  return (await git(dir, 'status', '--porcelain')).split('\n').filter(Boolean)
+  return (await git(dir, '-c', 'core.fsmonitor=false', 'status', '--porcelain'))
+    .split('\n')
+    .filter(Boolean)
 }
 
 async function commitsSince(dir: string, start: string): Promise<number> {

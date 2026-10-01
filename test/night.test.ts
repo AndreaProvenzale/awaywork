@@ -2173,3 +2173,30 @@ it('escapes a pipe in a check command, so the report table keeps its cells', asy
   expect(runLine('r1', text)).toBe('r1  2 units, 1 draft PRs, 0 reports')
   expect(formatReportForTerminal(text)).toContain('`git log | grep -q nothing-like-this`')
 })
+
+it("doesn't write a check's log through a symlink a round left in the clone", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const outside = join(root, 'outside')
+  await writeFile(outside, 'mine\n')
+  const provider = looper({})
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: address-review, until: { command: 'true' }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-address-review-1')
+          await symlink(outside, join(job.dir, '.nightshift/out/check.log'))
+      },
+    },
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(report.results[1]?.status).toBe('error')
+  expect(report.results[1]?.reason).toBe('.nightshift/out/check.log in the clone is a symlink')
+  expect(await readFile(outside, 'utf8')).toBe('mine\n')
+})
