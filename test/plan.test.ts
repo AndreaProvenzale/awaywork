@@ -699,7 +699,6 @@ queue:
     expect(result.units[0]?.unit).toMatchObject({
       base: 'night/acme-api-5',
       branch: 'night/acme-api-9',
-      stackedOn: 'https://github.com/acme/api/pull/9',
       foreign: false,
     })
     expect(result.units[0]?.unit.items.map((i) => i.key)).toEqual(['acme/api#9', 'acme/api#5'])
@@ -722,30 +721,6 @@ queue:
       ['acme-api-9-address-review-1', 'night/acme-api-5', 'acme-api-9'],
       ['acme-api-9-review-2', 'night/acme-api-5', 'acme-api-9'],
       ['acme-api-9-address-review-2', 'night/acme-api-5', 'acme-api-9'],
-    ])
-    expect(result.units[0]?.unit.stackedOn).toBe('https://github.com/acme/api/pull/9')
-  })
-
-  it('stacks a draft PR or a loop after a report on a night-shift PR it takes up', () => {
-    const ours = githubPr(9, { ours: true })
-    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
-    const planned = (then: string) =>
-      plan(
-        `
-providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
-        [{ ...ours, linkedPrs: [pr] }],
-        {},
-      ).units.map(({ unit }) => [unit.id, unit.base, unit.stackedOn])
-    const url = 'https://github.com/acme/api/pull/9'
-    expect(planned('address-review')).toEqual([
-      ['acme-api-9', 'night/acme-api-5', undefined],
-      ['acme-api-9-address-review', 'night/acme-api-5', url],
-    ])
-    expect(planned('{ loop: [fix-ci], until: { verdict: approve }, max: 1 }')).toEqual([
-      ['acme-api-9', 'night/acme-api-5', undefined],
-      ['acme-api-9-fix-ci-1', 'night/acme-api-5', url],
     ])
   })
 

@@ -1314,6 +1314,8 @@ async function loopNight(
 ) {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
   const { origin, opened, forge } = await originForge(root)
+  for (const branch of new Set(items.flatMap((i) => i.linkedPrs.map((pr) => pr.branch))))
+    await git(origin, 'branch', branch)
   const config = parseConfig(`providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 ${yaml}`)
@@ -2397,4 +2399,26 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
   expect(report.results[1]?.status).toBe('error')
   expect(report.results[1]?.reason).toBe('.nightshift/out/check.log in the clone is a symlink')
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
+})
+
+it('stacks on a night-shift PR a rule took up whenever a draft PR starts from its branch at run time', async () => {
+  const pr = githubPr(9, { ours: true })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const stackedOn = async (then: string) => {
+    const { opened } = await loopNight(
+      `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
+      [{ ...pr, linkedPrs: [link] }],
+      looper({ 'acme-api-9-qa-feedback-1': 'approve' }),
+    )
+    return opened.map((o) => [o.head, o.base, o.body.includes(`Stacked on ${link.url}`)])
+  }
+
+  expect(
+    await stackedOn('[{ skill: fix-ci, when: { verdict: changes } }, address-review]'),
+  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
+  expect(
+    await stackedOn(
+      '[{ loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }, address-review]',
+    ),
+  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
 })

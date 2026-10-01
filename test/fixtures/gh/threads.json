@@ -1,0 +1,16 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "PR_kwDOAAAAAc4AAAA1",
+        "reviewThreads": {
+          "nodes": [
+            { "isResolved": false, "comments": { "nodes": [{ "viewerDidAuthor": false }] } },
+            { "isResolved": false, "comments": { "nodes": [{ "viewerDidAuthor": true }] } },
+            { "isResolved": true, "comments": { "nodes": [{ "viewerDidAuthor": true }] } }
+          ]
+        }
+      }
+    ]
+  }
+}

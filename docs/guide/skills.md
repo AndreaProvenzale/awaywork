@@ -13,7 +13,7 @@ same folder works for Claude Code and Codex.
 | Skill | For | Delivers |
 |---|---|---|
 | `fix-ci` | Your PR with failing checks | draft PR |
-| `address-review` | Your PR with unresolved review threads, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
+| `address-review` | Your PR with unresolved review threads, a night-shift PR with unresolved threads you started, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |

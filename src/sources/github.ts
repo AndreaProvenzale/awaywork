@@ -38,9 +38,19 @@ const searchQuery = `query($q: String!) {
       ... on PullRequest { ${common}
         isDraft headRefName viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
-        reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { viewerDidAuthor } } } }
+        reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
+    }
+  }
+}`
+
+/** Who started each thread; nested in every search, it would cost each one ~100 points instead of ~6. */
+const threadStartersQuery = (ids: string[]) => `{
+  nodes(ids: ${JSON.stringify(ids)}) {
+    ... on PullRequest {
+      id
+      reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { viewerDidAuthor } } } }
     }
   }
 }`
@@ -93,10 +103,7 @@ interface Node extends PrLink {
   closedByPullRequestsReferences?: Nodes<PrLink>
   isDraft?: boolean
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
-  reviewThreads?: Nodes<{
-    isResolved: boolean
-    comments: Nodes<{ viewerDidAuthor: boolean }>
-  }>
+  reviewThreads?: Nodes<{ isResolved: boolean }>
   commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
 }
 interface Thread {
@@ -166,6 +173,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
           byId.set(node.id, item)
         }
       }
+      await countMyThreads(run, byId)
       return [...byId.values()]
     },
 
@@ -213,6 +221,28 @@ export function githubSource(run: Exec = exec): Source<Config> {
 
 export const github = githubSource()
 
+/** Sets `my_unresolved_threads` on the PRs that have unresolved threads, in one query per page. */
+async function countMyThreads(run: Exec, byId: Map<string, Item>): Promise<void> {
+  const ids = [...byId]
+    .filter(([, item]) => Number(item.fields.unresolved_threads) > 0)
+    .map(([id]) => id)
+  for (let i = 0; i < ids.length; i += PAGE) {
+    const { nodes } = await graphql<{
+      nodes: {
+        id: string
+        reviewThreads: Nodes<{ isResolved: boolean; comments: Nodes<{ viewerDidAuthor: boolean }> }>
+      }[]
+    }>(run, threadStartersQuery(ids.slice(i, i + PAGE)), {})
+    for (const { id, reviewThreads } of nodes) {
+      const item = byId.get(id)
+      if (item)
+        item.fields.my_unresolved_threads = reviewThreads.nodes.filter(
+          (t) => !t.isResolved && t.comments.nodes[0]?.viewerDidAuthor,
+        ).length
+    }
+  }
+}
+
 function toItem(node: Node): Item {
   const repo = node.repository.nameWithOwner
   const isPr = node.__typename === 'PullRequest'
@@ -228,12 +258,11 @@ function toItem(node: Node): Item {
   }
   if (isPr) {
     const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)
-    const unresolved = node.reviewThreads?.nodes.filter((t) => !t.isResolved) ?? []
     Object.assign(fields, {
       draft: node.isDraft,
       ours: isOurs(node.body),
-      unresolved_threads: unresolved.length,
-      my_unresolved_threads: unresolved.filter((t) => t.comments.nodes[0]?.viewerDidAuthor).length,
+      unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
+      my_unresolved_threads: 0,
       review_requested: false,
       ...(checks && { checks }),
     })

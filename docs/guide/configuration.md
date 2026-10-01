@@ -245,7 +245,10 @@ act on it once you've reviewed it:
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-The unit's draft PR stacks on the night-shift PR.
+The unit's draft PR stacks on the night-shift PR. The rule runs on the
+threads you started, but the agent reads every unresolved thread, as on
+your other PRs. `ours` comes from the GitHub source: a custom source's
+`ours` field holds nothing back.
 
 ### `order`
 

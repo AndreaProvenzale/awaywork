@@ -3,7 +3,15 @@ import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './a
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { closestRule, defaultRules, describeComparison, fieldValue, isLoop, rank } from './queue.js'
+import {
+  closestRule,
+  defaultRules,
+  describeComparison,
+  fieldValue,
+  isLoop,
+  isNightShiftPr,
+  rank,
+} from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type { Condition, Item, Loop, Rule, Step, Unit, WhereValue } from './types.js'
@@ -65,7 +73,7 @@ export function planNight(input: {
   for (const found of dedupe(ranked)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // A night-shift PR taken by a rule leads its feature: that rule decides, its key names the unit.
-    const pickup = ours && found.find((e) => e.item.fields.ours === true)
+    const pickup = ours && found.find((e) => isNightShiftPr(e.item))
     const group = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
@@ -103,7 +111,7 @@ export function planNight(input: {
       step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
     const add = (
       step: Step,
-      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch' | 'stackedOn'>,
+      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch'>,
       after?: string,
       loop?: LoopRound,
     ) => {
@@ -192,8 +200,6 @@ export function planNight(input: {
       continue
     }
     const id = slug(items[0]?.key ?? '')
-    // A draft PR cut from the night-shift PR a rule took up stacks on it.
-    const onPickup = (base: string) => (pickup && base === pr?.branch ? { stackedOn: pr.url } : {})
     /** Plans every round; the host is the draft PR unit before, else the loop's first unit on a fresh clone. */
     const addLoop = (loop: Loop, before: Unit, branch: string | undefined): Unit => {
       let host = branch === undefined ? before : undefined
@@ -209,7 +215,6 @@ export function planNight(input: {
               foreign: on.foreign,
               untrusted: on.untrusted,
               branch: host ? host.branch : (branch as string),
-              ...(!host && onPickup(before.base)),
             },
             host ? undefined : before.id,
             {
@@ -231,7 +236,6 @@ export function planNight(input: {
       foreign: pr ? !pr.mine : false,
       untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
-      ...(deliverOf(rule) === 'draft_pr' && onPickup(pr?.branch ?? '')),
     })
     for (const [j, entry] of (rule.then ?? []).entries()) {
       const capped = overCap()
@@ -253,7 +257,6 @@ export function planNight(input: {
           foreign: previous.foreign,
           untrusted: previous.untrusted,
           branch: branches[j + 1] as string,
-          ...(!stacked && deliverOf(entry) === 'draft_pr' && onPickup(previous.base)),
         },
         previous.id,
       )
@@ -269,10 +272,9 @@ function firstStep(entry: Step | Loop): Step {
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
 function noRuleReason(item: Item, queue: Rule[]): string {
   const closest = closestRule(item, queue)
-  const why =
-    item.fields.ours === true
-      ? `waiting for review: night-shift PR ${item.url} is open`
-      : 'matched no rule'
+  const why = isNightShiftPr(item)
+    ? `waiting for review: night-shift PR ${item.url} is open`
+    : 'matched no rule'
   if (!closest) return why
   const rule = queue[closest.rule] as Rule
   const failed = closest.failed.map((key) => {

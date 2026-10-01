@@ -34,20 +34,7 @@
             "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]
           },
           "reviewThreads": {
-            "nodes": [
-              {
-                "isResolved": false,
-                "comments": { "nodes": [{ "viewerDidAuthor": false }] }
-              },
-              {
-                "isResolved": false,
-                "comments": { "nodes": [{ "viewerDidAuthor": true }] }
-              },
-              {
-                "isResolved": true,
-                "comments": { "nodes": [{ "viewerDidAuthor": true }] }
-              }
-            ]
+            "nodes": [{ "isResolved": false }, { "isResolved": false }, { "isResolved": true }]
           },
           "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
         },
