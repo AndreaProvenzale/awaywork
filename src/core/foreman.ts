@@ -10,6 +10,7 @@ import {
   fieldValue,
   isLoop,
   isNightShiftPr,
+  isPushedOnto,
   rank,
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
@@ -91,6 +92,11 @@ export function planNight(input: {
     const prs = items.flatMap((i) => i.linkedPrs)
     if (ours && !pickup) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const pushedOnto = items.find(isPushedOnto)
+    if (pushedOnto) {
+      skip(`waiting for review: night-shift pushed onto ${pushedOnto.url}`)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))

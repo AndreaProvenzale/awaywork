@@ -42,6 +42,7 @@ describe('github source', () => {
       mine: true,
       draft: false,
       ours: false,
+      pushed: false,
       checks: 'failing',
       unresolved_threads: 2,
       my_unresolved_threads: 1,
@@ -81,6 +82,18 @@ describe('github source', () => {
     )
     expect(pr1?.fields.ours).toBe(true)
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
+  })
+
+  it('marks a PR whose last commit night-shift pushed', async () => {
+    const authored = fixture('search-authored.json').replace(
+      '"message": "Add a token bucket"',
+      `"message": ${JSON.stringify('Refill the bucket\n\nNight-shift: r1')}`,
+    )
+    const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
+      { repos: ['acme/*'] },
+      ctx,
+    )
+    expect(pr1?.fields.pushed).toBe(true)
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {

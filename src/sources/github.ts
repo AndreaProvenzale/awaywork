@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { isOurs } from '../core/footer.js'
+import { hasTrailer, isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
@@ -39,7 +39,7 @@ const searchQuery = `query($q: String!) {
         isDraft headRefName isCrossRepository viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+        commits(last: 1) { nodes { commit { message statusCheckRollup { state } } } }
       }
     }
   }
@@ -105,7 +105,7 @@ interface Node extends PrLink {
   isDraft?: boolean
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
   reviewThreads?: Nodes<{ isResolved: boolean }>
-  commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
+  commits?: Nodes<{ commit: { message: string; statusCheckRollup: { state: string } | null } }>
 }
 interface Thread {
   isResolved: boolean
@@ -146,6 +146,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
       mine: z.boolean(),
       draft: z.boolean(),
       ours: z.boolean(),
+      pushed: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
       my_unresolved_threads: z.number().int().min(0),
@@ -271,6 +272,7 @@ function toItem(node: Node): Item {
     Object.assign(fields, {
       draft: node.isDraft,
       ours: isOurs(node.body),
+      pushed: hasTrailer(node.commits?.nodes[0]?.commit.message),
       unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
       my_unresolved_threads: 0,
       review_requested: false,

@@ -464,6 +464,9 @@ queue:
   pushed. The PR body stays as it is and the report goes into the
   morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
+- After a push, the PR waits for your review: no rule takes it until a
+  commit of yours lands on top of night-shift's. Without that, the push
+  itself would update the PR and run the rule again every night.
 
 ## Notify
 

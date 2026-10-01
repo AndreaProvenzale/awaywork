@@ -29,7 +29,13 @@
             ]
           },
           "reviewThreads": { "nodes": [] },
-          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "PENDING" } } }] }
+          "commits": {
+            "nodes": [
+              {
+                "commit": { "message": "Check tokens", "statusCheckRollup": { "state": "PENDING" } }
+              }
+            ]
+          }
         }
       ]
     }

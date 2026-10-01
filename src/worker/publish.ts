@@ -1,6 +1,7 @@
 import { appendFile, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
+import { trailerKey } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import { outputFile, WORK_DIR } from './workspace.js'
 
@@ -68,7 +69,7 @@ export async function publish(
       unpublished: true,
     }
 
-  const trailer = `git commit -q --amend --no-edit --no-verify --trailer 'Night-shift: ${runId}'`
+  const trailer = `git commit -q --amend --no-edit --no-verify --trailer '${trailerKey}: ${runId}'`
   await git(dir, 'rebase', '-q', '--exec', trailer, `${oldest}^`)
   await writeFile(
     join(dir, WORK_DIR, 'out', 'diff.patch'),

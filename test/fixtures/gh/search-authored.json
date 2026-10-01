@@ -36,7 +36,16 @@
           "reviewThreads": {
             "nodes": [{ "isResolved": false }, { "isResolved": false }, { "isResolved": true }]
           },
-          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "message": "Add a token bucket",
+                  "statusCheckRollup": { "state": "FAILURE" }
+                }
+              }
+            ]
+          }
         },
         {
           "__typename": "PullRequest",
@@ -82,7 +91,16 @@
           "viewerDidAuthor": true,
           "reviewRequests": { "nodes": [] },
           "reviewThreads": { "nodes": [] },
-          "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] }
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "message": "Sketch the billing page",
+                  "statusCheckRollup": { "state": "SUCCESS" }
+                }
+              }
+            ]
+          }
         }
       ]
     }

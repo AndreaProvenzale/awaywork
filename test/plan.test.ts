@@ -740,6 +740,18 @@ queue:
     ])
   })
 
+  it('skips a PR night-shift pushed onto until you push on top of it', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push }]`
+    const result = plan(yaml, [githubPr(1, { pushed: true }), githubPr(2, { pushed: false })], {})
+    expect(result.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'waiting for review: night-shift pushed onto https://github.com/acme/api/pull/1',
+    ])
+  })
+
   it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {
     const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
     const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
