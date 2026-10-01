@@ -118,10 +118,7 @@ what your user can read.
   merged, its branch is on a fork or is the default branch, or it has
   auto-merge on. It is refused on someone else's PR, on an item without
   a PR of yours, on any branch night-shift opened that night, and when
-  the new commits include a merge. Every push runs from a repo
-  night-shift creates for it, which fetches only the clone's `HEAD`: the
-  clone's config, hooks and refs, which the agent can write, can't steer
-  where it goes or run anything. The commits land unreviewed on a
+  the new commits include a merge. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
   A `then` step on that branch the same night runs `setup` without the
   repo's `secrets`.
@@ -131,6 +128,10 @@ what your user can read.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body, or its report for `push`. A run
   killed before that publishes nothing.
+- Publishing reads the clone only to fetch its commits into a repo
+  night-shift creates for it, where it adds the trailer, writes the diff
+  and pushes. The clone's config, attributes, hooks and refs, which the
+  agent can write, neither steer where a push goes nor run anything.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from night-shift: a footer with the run id in
   the body and a `Night-shift: <run id>` commit trailer. Pushed commits

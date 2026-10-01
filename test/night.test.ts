@@ -330,7 +330,7 @@ it('runs a chain on what the unit before delivered, and skips it after nothing',
       await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
-      await git(dir, 'push', '-q', 'origin', `HEAD:refs/heads/${branch}`)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
       await base.push(dir, branch, opts)
     },
   }

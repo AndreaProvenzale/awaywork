@@ -48,9 +48,8 @@ type PrState = {
 const remote = (repo: string) => `https://github.com/${repo}.git`
 
 /**
- * Pushes the clone's HEAD from a bare repo night-shift owns: the clone's config, hooks and refs,
- * which the model can write, steer neither where the push goes nor what runs. With `from`, only a
- * fast-forward from it.
+ * Pushes `dir`'s HEAD from a bare repo of its own, so `dir`'s config, hooks and refs steer neither
+ * where the push goes nor what runs. With `from`, only a fast-forward from it.
  */
 async function pushHead(run: Exec, dir: string, repo: string, branch: string, from?: string) {
   const bare = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
