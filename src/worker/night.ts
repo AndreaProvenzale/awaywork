@@ -91,6 +91,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   // The branch each unit's chain started its commits from, which `changed` diffs against.
   const starts: Record<string, string> = {}
   const checks = new Map<string, Check>()
+  // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
+  const baselines = new Map<string, Set<string>>()
+  // A loop's latest verdict by its host, for the `when` of the step after it.
+  const loopVerdicts: Record<string, string> = {}
+
+  /** Whether `r`, or a unit of the chain before it, opened a draft PR. */
+  const openedPr = (r: UnitResult | undefined): boolean =>
+    !!r &&
+    (r.outcome?.kind === 'pr' ||
+      openedPr(results.find((x) => r.planned.after && x.planned.unit.id === r.planned.after)))
 
   /** Runs a condition's command in the clone outside the model, once per commit, with none of the secrets. */
   const check = async (
@@ -99,12 +109,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     dir: string,
     log: (line: string) => void,
   ): Promise<Check> => {
-    if (unit.untrusted) return { output: '', failed: "not run on an untrusted author's PR" }
+    if (unit.untrusted)
+      return { output: '', failed: "not run on an untrusted author's PR", stopped: true }
     // The worker's sandbox is the provider's: night-shift has none to run worker-written code in.
-    if (!unit.network) return { output: '', failed: 'not run without network: it has no sandbox' }
+    if (!unit.network)
+      return { output: '', failed: 'not run without network: it has no sandbox', stopped: true }
     // The published branch holds only commits, so a check must not pass on files left uncommitted.
-    const dirty = await git(dir, 'status', '--porcelain')
-    if (dirty) return { output: dirty, failed: 'uncommitted changes in the clone' }
+    const baseline = baselines.get(dir)
+    const left = (await uncommitted(dir)).filter((line) => !baseline?.has(line))
+    if (left.length) return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
     const key = `${dir} ${await head(dir)} ${command}`
     const known = checks.get(key)
     if (known) return known
@@ -114,7 +127,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       until: n.until,
     })
     log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
-    checks.set(key, result)
+    baselines.set(dir, new Set(await uncommitted(dir)))
+    if (!result.stopped) checks.set(key, result)
     return result
   }
 
@@ -144,8 +158,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     open = undefined
     const { host, unit, dir } = loop
     host.loop = describeLoop(loop)
-    // A step after the loop reads the loop's verdict through its host.
-    host.verdict = loop.verdict ?? host.verdict
+    if (loop.verdict) loopVerdicts[host.planned.unit.id] = loop.verdict
     try {
       // An interrupted loop retries its chain, even when its host's report is still in `out/`.
       if (loop.interrupted)
@@ -220,7 +233,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
       ? (starts[round.unit.id] ?? '')
-      : stacks && after?.outcome?.kind !== 'pr'
+      : stacks && !openedPr(after)
         ? onto
         : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
@@ -314,10 +327,20 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           continue
         }
       }
+      if (!round) baselines.set(dir, new Set(await uncommitted(dir)))
       const { when } = unit.rule
       if (when) {
         const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
-        const met = await factsFor(when, unit, dir, before?.verdict, log, logFile)
+        const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
+        const met = await factsFor(when, unit, dir, verdict, log, logFile)
+        // A check that couldn't run says nothing: skip the step without passing over it.
+        if (met.check?.stopped) {
+          const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
+          Object.assign(result, { status: 'skipped', reason })
+          routed[id] = (routed[id] ?? 1) - 1
+          if (round) Object.assign(round, { ended: reason, interrupted: n.signal?.aborted })
+          continue
+        }
         if (!holds(when, met.facts)) {
           const failed = met.check?.failed ? ` (${met.check.failed})` : ''
           const reason = `when ${describeCondition(when)} didn't hold${failed}`
@@ -382,8 +405,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (result.outcome.kind === 'report')
           loop.report = { id: unit.id, text: result.outcome.text }
         if (until?.check) loop.check = until.check
-        if (aborted) Object.assign(loop, { ended: 'interrupted', interrupted: true })
+        if (aborted || n.signal?.aborted)
+          Object.assign(loop, { ended: 'interrupted', interrupted: true })
         else if (!until) loop.ended = `${unit.id} ${worker.status}`
+        else if (until.check?.stopped)
+          loop.ended = `until ${describeCondition(p.loop.until)} not checked: ${until.check.failed}`
         else if (untilHolds(p.loop.until, until.facts))
           Object.assign(loop, {
             ended: `until held: ${describeCondition(p.loop.until)}`,
@@ -458,6 +484,8 @@ interface OpenLoop {
 interface Check {
   output: string
   failed?: string
+  /** Refused, or stopped before it exited: the condition is unknown, not false. */
+  stopped?: true
 }
 
 type RanCheck = Check & { command: string }
@@ -466,6 +494,11 @@ const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
+
+/** `git status --porcelain` lines, one per uncommitted path. */
+async function uncommitted(dir: string): Promise<string[]> {
+  return (await git(dir, 'status', '--porcelain')).split('\n').filter(Boolean)
+}
 
 async function commitsSince(dir: string, start: string): Promise<number> {
   return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
@@ -476,7 +509,6 @@ function untilHolds(until: Condition, facts: Facts): boolean {
   return (until.verdict === undefined || facts.verdict !== undefined) && holds(until, facts)
 }
 
-/** Whether the branch changes a path matching one of `globs`, against the default branch. */
 /** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
 async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
   const paths = globs.map((glob) => `:(glob)${glob}`)

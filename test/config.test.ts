@@ -257,6 +257,18 @@ describe('config', () => {
       'queue[0].then.until: Unrecognized key: "changed"',
       'queue[0].then.until: expected verdict or command',
     ])
+    expect(
+      problems(`${minimal}queue:
+  - skill: implement
+    network: false
+    then:
+      - { skill: review, when: { command: pnpm test } }
+      - { loop: [fix-ci], until: { command: pnpm test }, max: 1 }
+`),
+    ).toEqual([
+      "queue[0].then[1].until.command: a command can't run with network: false: night-shift has no sandbox for it",
+      "queue[0].then[0].when.command: a command can't run with network: false: night-shift has no sandbox for it",
+    ])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {

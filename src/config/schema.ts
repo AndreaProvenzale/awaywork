@@ -161,7 +161,9 @@ const when = z
     ),
     changed: oneOrMany
       .optional()
-      .describe('Globs; holds when the branch changes a matching path against the default branch'),
+      .describe(
+        "Globs; holds when the chain's commits change a matching path, against where the chain started",
+      ),
   })
   .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
 const stepObject = z.strictObject({
@@ -304,6 +306,7 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
+      const offline = "a command can't run with network: false: night-shift has no sandbox for it"
       // Back-to-back loops would share one host, and the second would never run.
       if (Array.isArray(r.then))
         r.then.forEach((entry, j, then) => {
@@ -314,6 +317,12 @@ export const configSchema = z
               path: [...at, 'then', j, 'loop'],
               message: "a loop can't follow another loop directly; put a step between them",
             })
+          if (r.network === false && isLoop(entry) && entry.until.command)
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j, 'until', 'command'],
+              message: offline,
+            })
         })
       // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
       const inLoop = (path: (string | number)[]) => path[2] === 'loop'
@@ -322,6 +331,8 @@ export const configSchema = z
         const earlier = chain.findIndex(
           (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
         )
+        if (r.network === false && s.when?.command)
+          ctx.addIssue({ code: 'custom', path: [...stepAt, 'when', 'command'], message: offline })
         if (earlier < j)
           ctx.addIssue({
             code: 'custom',

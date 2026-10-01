@@ -29,13 +29,13 @@ export async function runSetup(
   return [`setup failed: ${failed}`, tail].filter(Boolean).join('\n')
 }
 
-/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0. */
+/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0, and `stopped` that it didn't exit on its own. */
 export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
   { secrets, signal, until }: SetupOptions,
-): Promise<{ output: string; failed?: string }> {
+): Promise<{ output: string; failed?: string; stopped?: true }> {
   const nightEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
   const deadline = AbortSignal.timeout(
     Math.max(0, nightEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
@@ -65,12 +65,11 @@ export async function runCommand(
   const values = secrets.flatMap((name) => env[name] || [])
   const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
   if (!result.failed) return { output }
+  if (!stop.aborted) return { output, failed: result.shortMessage }
   const failed = signal?.aborted
     ? 'interrupted'
-    : deadline.aborted
-      ? nightEnds
-        ? 'the night window ended'
-        : `timed out after ${TIMEOUT_MS / 60_000} min`
-      : result.shortMessage
-  return { output, failed }
+    : nightEnds
+      ? 'the night window ended'
+      : `timed out after ${TIMEOUT_MS / 60_000} min`
+  return { output, failed, stopped: true }
 }

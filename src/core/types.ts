@@ -155,7 +155,7 @@ export interface Condition {
   verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
   /** A shell command night-shift runs in the clone, outside the model; exit 0 holds. */
   command?: string
-  /** `when` only: globs, holding when the branch changes a matching path against the default branch. */
+  /** `when` only: globs, holding when the chain's commits change a matching path, against where the chain started. */
   changed?: string[]
 }
 

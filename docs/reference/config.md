@@ -265,7 +265,7 @@ Run this step only when every key holds; otherwise skip it.
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
 | `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
-| `changed` | string \| string[] |  | Globs; holds when the branch changes a matching path against the default branch |
+| `changed` | string \| string[] |  | Globs; holds when the chain's commits change a matching path, against where the chain started |
 
 ## `queue[].then.when.verdict`
 

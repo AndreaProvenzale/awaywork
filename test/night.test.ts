@@ -846,7 +846,7 @@ queue:
 
   const url = 'https://example.com/acme/api/pull/night/acme-api-1'
   expect(report.results.map((u) => [u.planned.unit.id, u.outcome, u.verdict])).toEqual([
-    ['acme-api-1', { kind: 'pr', url, commits: 2 }, 'approve'],
+    ['acme-api-1', { kind: 'pr', url, commits: 2 }, undefined],
     [
       'acme-api-1-review-1',
       { kind: 'report', text: 'acme-api-1-review-1 says changes.' },
@@ -902,7 +902,7 @@ queue:
   expect(prompts[4]).toContain(`which opened ${url} tonight; you start from its branch.`)
   const text = formatReport(report)
   expect(text).toContain(
-    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
+    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits) |`,
   )
   expect(text).toContain(
     '| 4 | acme-api-1-review-2 | review | claude | done, 1 turns | report below, verdict approve |',
@@ -1181,7 +1181,7 @@ queue:
     [
       'acme-api-4-qa-feedback',
       'skipped',
-      "when `true` passes didn't hold (not run on an untrusted author's PR)",
+      "when `true` passes not checked: not run on an untrusted author's PR",
     ],
   ])
   const url = 'https://example.com/acme/api/pull/night/acme-api-1'
@@ -1872,7 +1872,7 @@ it("reads a loop's last verdict in the when of the step after it", async () => {
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.verdict])).toEqual([
-    ['acme-api-1', 'done', 'approve'],
+    ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', 'approve'],
     ['acme-api-1-plan', 'done', undefined],
   ])
@@ -1881,18 +1881,25 @@ it("reads a loop's last verdict in the when of the step after it", async () => {
 it("doesn't run a check without network, or while the clone has uncommitted changes", async () => {
   const provider = looper({})
   const env = { ctx: { env: { PATH: process.env.PATH }, log: () => {} } }
-  const offline = await loopNight(
-    `queue:
-  - skill: implement
-    network: false
-    then: { skill: review, when: { command: 'true' } }
+  const offline = (then: string) =>
+    loopNight(
+      `repos: { acme/api: { network: false } }
+queue: [{ skill: implement, then: ${then} }]
 `,
-    [issue(1)],
-    provider,
-    env,
-  )
-  expect(offline.report.results[1]?.reason).toBe(
-    "when `true` passes didn't hold (not run without network: it has no sandbox)",
+      [issue(1)],
+      provider,
+      env,
+    )
+  const noNetwork = 'not checked: not run without network: it has no sandbox'
+  const step = await offline(`{ skill: review, when: { command: 'true' } }`)
+  expect(step.report.results[1]).toMatchObject({
+    status: 'skipped',
+    reason: `when \`true\` passes ${noNetwork}`,
+  })
+  expect(step.report.results[1]?.passedOver).toBeUndefined()
+  const loop = await offline(`{ loop: [address-review], until: { command: 'true' }, max: 3 }`)
+  expect(loop.report.results[0]?.loop).toBe(
+    `1 round of address-review; until \`true\` passes ${noNetwork}`,
   )
 
   const dirty = await loopNight(
@@ -1945,4 +1952,79 @@ it('matches changed against the draft PR a chain stacked on, not the default bra
     ['acme-api-2', 'done', undefined],
     ['acme-api-2-review', 'skipped', "when the branch changes acme-api-1.txt didn't hold"],
   ])
+})
+
+it("matches changed against the chain's draft PR after a report step", async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      - { skill: review, deliver: report }
+      - { skill: address-review, when: { changed: acme-api-1.txt } }
+`,
+    [issue(1)],
+    looper({}),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-review', 'done'],
+    ['acme-api-1-address-review', 'done'],
+  ])
+})
+
+it('checks a clone for uncommitted changes beyond what setup and earlier checks left', async () => {
+  const { report } = await loopNight(
+    `repos: { acme/api: { setup: 'echo x > setup.out' } }
+queue:
+  - skill: implement
+    then:
+      - { skill: review, when: { command: 'true' } }
+      - loop: [address-review]
+        until: { command: 'touch artifact.out; test -e acme-api-1-address-review-2.txt' }
+        max: 3
+`,
+    [issue(1)],
+    looper({}),
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-review', 'done'],
+    ['acme-api-1-address-review-1', 'done'],
+    ['acme-api-1-address-review-2', 'done'],
+  ])
+  expect(report.results[2]?.loop).toMatch(/^2 rounds of address-review; until held/)
+})
+
+it('skips a when step whose check was interrupted without passing over it, so the chain retries', async () => {
+  const stop = new AbortController()
+  const provider = looper({})
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { skill: review, when: { command: 'sleep 5' } }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        setTimeout(() => stop.abort(), 500)
+      },
+    },
+    { signal: stop.signal, ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(report.results[1]).toMatchObject({
+    status: 'skipped',
+    reason: 'when `sleep 5` passes not checked: interrupted',
+  })
+  expect(report.results[1]?.passedOver).toBeUndefined()
+  expect(recordAttempts({}, report)).toEqual({})
 })
