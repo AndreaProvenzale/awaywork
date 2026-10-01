@@ -32,11 +32,11 @@ const searchQuery = `query($q: String!) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName body viewerDidAuthor authorAssociation repository { nameWithOwner } }
+          nodes { number url headRefName isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName viewerDidAuthor
+        isDraft headRefName isCrossRepository viewerDidAuthor
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -83,6 +83,7 @@ type PrLink = {
   number: number
   url: string
   headRefName: string
+  isCrossRepository: boolean
   body: string
   viewerDidAuthor: boolean
   authorAssociation: string
@@ -307,6 +308,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   ours: isOurs(pr.body),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
+  fork: pr.isCrossRepository,
 })
 
 const toComment = (c: Comment) => ({

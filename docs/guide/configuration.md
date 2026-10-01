@@ -446,8 +446,8 @@ queue:
 ```
 
 - Only onto an open PR you authored, night-shift's own included (they
-  are opened with your login). On someone else's PR, or an item with no
-  PR of yours, the unit is skipped with the reason.
+  are opened with your login). On someone else's PR, a PR from a fork,
+  or an item with no PR of yours, the unit is skipped with the reason.
 - A `then` step can push only onto the rule's own PR. After a draft PR,
   even with a report in between, its base is that night's new branch,
   not your PR: the step is left out with the rest of the chain.

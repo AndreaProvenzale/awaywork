@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync } from 'node:fs'
+import { createWriteStream } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
@@ -450,7 +450,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         worker.status === 'done' &&
         (await commitsSince(dir, start)) > 0 &&
         // A push loop publishes its host's report, so a host without one has nothing to loop on.
-        (unit.deliver !== 'push' || existsSync(join(dir, WORK_DIR, 'out', outputFile.push)))
+        (unit.deliver !== 'push' || (await hasOutput(dir, outputFile.push)))
       ) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
         open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
@@ -568,6 +568,11 @@ function isLast(loop: { round: number; max: number; step: number; skills: string
 
 function maxReached(max: number): string {
   return `max ${max} ${max === 1 ? 'round' : 'rounds'} reached`
+}
+
+/** Whether the unit wrote `out/<file>` with more than whitespace, as publish needs. */
+async function hasOutput(dir: string, file: string): Promise<boolean> {
+  return (await readFile(join(dir, WORK_DIR, 'out', file), 'utf8').catch(() => '')).trim() !== ''
 }
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */

@@ -2669,3 +2669,30 @@ it('stacks on a night-shift PR a rule took up whenever a draft PR starts from it
     ),
   ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
 })
+
+it("doesn't open a push loop on a host whose report is blank", async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`,
+    [githubPr(1)],
+    {
+      ...committer,
+      async *run(job, signal) {
+        yield* committer.run(job, signal)
+        await writeFile(join(job.dir, '.nightshift/out/report.md'), '\n')
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome ?? u.reason])).toEqual([
+    [
+      'acme-api-1',
+      'done',
+      { kind: 'none', reason: '1 commits but no report, not pushed', unpublished: true },
+    ],
+    ['acme-api-1-review-1', 'skipped', 'acme-api-1 left nothing to loop on'],
+  ])
+})

@@ -30,11 +30,15 @@ export async function publish(
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
-  const log = await git(dir, 'rev-list', 'HEAD', '--not', '--remotes')
+  const push = unit.deliver === 'push'
+  // The forge checks the PR's head is still `from`, so the range doesn't trust the clone's other refs.
+  const from =
+    push && unit.base ? await git(dir, 'rev-parse', `refs/remotes/origin/${unit.base}`) : undefined
+  const since = from ? [`^${from}`] : ['--not', '--remotes']
+  const log = await git(dir, 'rev-list', 'HEAD', ...since)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits.at(-1)
   if (!oldest) return { kind: 'none', reason: 'no commits' }
-  const push = unit.deliver === 'push'
   if (!text)
     return {
       kind: 'none',
@@ -51,7 +55,7 @@ export async function publish(
       unpublished: true,
     }
   // The trailer rebase would flatten a merge, replaying the merged branch's commits as night-shift's.
-  if (push && (await git(dir, 'rev-list', '--merges', 'HEAD', '--not', '--remotes')))
+  if (push && (await git(dir, 'rev-list', '--merges', 'HEAD', ...since)))
     return {
       kind: 'none',
       reason: `${commits.length} commits include a merge, not pushed`,
@@ -70,8 +74,7 @@ export async function publish(
     join(dir, WORK_DIR, 'out', 'diff.patch'),
     `${await git(dir, 'diff', `${oldest}^`)}\n`,
   )
-  if (pr && push) {
-    const from = await git(dir, 'rev-parse', `refs/remotes/origin/${unit.base}`)
+  if (pr && from) {
     await forge.fastForward(dir, unit.base, from, { repo: unit.repo, pr: pr.number })
     return { kind: 'pushed', branch: unit.base, commits: commits.length, text }
   }

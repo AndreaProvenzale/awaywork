@@ -198,7 +198,8 @@ export function planNight(input: {
     }
     const base = pr?.branch ?? ''
     const foreign = pr ? !pr.mine : false
-    const refused = deliverOf(rule) === 'push' && pushRefusal(base, foreign, false)
+    const fork = !!pr?.fork
+    const refused = deliverOf(rule) === 'push' && pushRefusal(base, foreign, fork, false)
     if (refused) {
       skip(refused)
       continue
@@ -255,7 +256,7 @@ export function planNight(input: {
       const refused =
         !isLoop(entry) &&
         deliverOf(entry) === 'push' &&
-        pushRefusal(onto, previous.foreign, onto !== base)
+        pushRefusal(onto, previous.foreign, fork, onto !== base)
       const left = refused || overCap()
       if (left) {
         const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit
@@ -287,10 +288,16 @@ function firstStep(entry: Step | Loop): Step {
 }
 
 /** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened tonight. */
-function pushRefusal(base: string, foreign: boolean, tonight: boolean): string | undefined {
+function pushRefusal(
+  base: string,
+  foreign: boolean,
+  fork: boolean,
+  tonight: boolean,
+): string | undefined {
   if (tonight) return `deliver push: ${base} is a draft PR opened tonight, not your own PR`
   if (!base) return 'deliver push: no PR of yours to push onto'
   if (foreign) return `deliver push: ${base} is someone else's PR`
+  if (fork) return `deliver push: ${base} is on a fork`
 }
 
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */

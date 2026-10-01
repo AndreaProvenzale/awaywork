@@ -11,6 +11,8 @@ export interface PrRef {
   mine: boolean
   /** Its author has write access or org membership; always, when it's mine. */
   trusted: boolean
+  /** Its branch lives on a fork, not in `repo`. */
+  fork: boolean
 }
 
 export interface Item {

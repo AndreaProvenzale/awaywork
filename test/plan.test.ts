@@ -522,6 +522,25 @@ queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver
     expect(relayed.units.at(-1)?.capped).toBe(
       'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
     )
+    const forked = githubPr(3)
+    const fork = { ...(forked.linkedPrs[0] as PrRef), fork: true }
+    expect(plan(yaml, [{ ...forked, linkedPrs: [fork] }], {}).skipped[0]?.reason).toBe(
+      'deliver push: feature-3 is on a fork',
+    )
+  })
+
+  it("lists a push loop's rounds on the PR branch they push onto", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`
+    expect(formatPlan(plan(yaml, [githubPr(1)], {}))).toMatch(
+      /acme-api-1-implement-1\s+acme\/api .* feature-1\n/,
+    )
   })
 
   it('gathers every instruction file for the unit in prompt order', () => {

@@ -55,7 +55,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
       p.unit.deliver,
-      p.unit.deliver === 'push' ? p.unit.base : p.unit.branch,
+      p.unit.deliver === 'push' || p.loop?.deliver === 'push' ? p.unit.base : p.unit.branch,
     ])
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
     const lines = table([header, ...rows])

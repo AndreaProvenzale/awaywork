@@ -19,6 +19,7 @@ const pr: PrRef = {
   ours: false,
   mine: true,
   trusted: true,
+  fork: false,
 }
 
 const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
@@ -167,6 +168,24 @@ describe('publish', () => {
       unpublished: true,
     })
     expect(forge.fastForwards).toEqual([])
+  })
+
+  it('refuses a merge on a push even when the clone has a remote ref past it', async () => {
+    const forge = fakeForge()
+    const start = await git(dir, 'rev-parse', 'HEAD')
+    await commit('first')
+    await git(dir, 'checkout', '-qb', 'side', start)
+    await commit('side')
+    await git(dir, 'checkout', '-q', '-')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
+    await git(dir, 'update-ref', 'refs/remotes/origin/sneaky', 'HEAD')
+    await commit('after')
+    await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
+    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+      kind: 'none',
+      reason: '4 commits include a merge, not pushed',
+      unpublished: true,
+    })
   })
 
   it('returns the report for report delivery and pushes nothing', async () => {

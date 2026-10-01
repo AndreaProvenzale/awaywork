@@ -1,11 +1,13 @@
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { footer, isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql } from './gh.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body headRefName repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body headRefName isCrossRepository repository { nameWithOwner } } }
   }
 }`
 
@@ -15,12 +17,13 @@ type PrNode = {
   title: string
   body: string
   headRefName: string
+  isCrossRepository: boolean
   repository: { nameWithOwner: string }
 }
 
 /** Git uses gh's login only for the command it is passed to; the clone keeps no helper. */
 const withGhLogin = ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential']
-/** A push runs none of the clone's hooks and sees its history as it is, not as replace refs say. */
+/** Git in the push repo runs no hooks and sees history as it is, not as replace refs say. */
 const pushSafely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 
 const prStateQuery = `query($owner: String!, $name: String!, $number: Int!) {
@@ -43,6 +46,33 @@ type PrState = {
   }
 }
 const remote = (repo: string) => `https://github.com/${repo}.git`
+
+/**
+ * Pushes the clone's HEAD from a bare repo night-shift owns: the clone's config, hooks and refs,
+ * which the model can write, steer neither where the push goes nor what runs. With `from`, only a
+ * fast-forward from it.
+ */
+async function pushHead(run: Exec, dir: string, repo: string, branch: string, from?: string) {
+  const bare = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
+  const git = (...args: string[]) => run('git', ['-C', bare, ...pushSafely, ...args])
+  try {
+    await run('git', ['init', '-q', '--bare', bare])
+    await git('fetch', '-q', '--no-tags', dir, 'HEAD')
+    if (
+      from &&
+      !(await git('merge-base', '--is-ancestor', from, 'FETCH_HEAD').then(
+        () => true,
+        () => false,
+      ))
+    )
+      throw new Error(
+        `refusing to push onto ${branch} on ${repo}: not a fast-forward from ${from.slice(0, 7)}`,
+      )
+    await git(...withGhLogin, 'push', remote(repo), `FETCH_HEAD:refs/heads/${branch}`)
+  } finally {
+    await rm(bare, { recursive: true, force: true })
+  }
+}
 
 export function githubForge(run: Exec = exec): Forge {
   let myPrs: Promise<PrNode[]> | undefined
@@ -70,6 +100,7 @@ export function githubForge(run: Exec = exec): Forge {
           ours: isOurs(pr.body),
           mine: true,
           trusted: true,
+          fork: pr.isCrossRepository,
         }))
     },
 
@@ -83,15 +114,7 @@ export function githubForge(run: Exec = exec): Forge {
     async push(dir, branch, { repo }) {
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)
-      await run('git', [
-        '-C',
-        dir,
-        ...pushSafely,
-        ...withGhLogin,
-        'push',
-        remote(repo),
-        `HEAD:refs/heads/${branch}`,
-      ])
+      await pushHead(run, dir, repo, branch)
     },
 
     /** Reads the PR live: hours may have passed since planning. */
@@ -118,15 +141,7 @@ export function githubForge(run: Exec = exec): Forge {
                     ? `it is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
                     : undefined
       if (refused) throw new Error(`refusing to push onto ${branch} on ${repo}: ${refused}`)
-      await run('git', [
-        '-C',
-        dir,
-        ...pushSafely,
-        ...withGhLogin,
-        'push',
-        remote(repo),
-        `HEAD:refs/heads/${branch}`,
-      ])
+      await pushHead(run, dir, repo, branch, from)
     },
 
     /** The body file's first line is the title; the rest, plus the footer, is the body. */

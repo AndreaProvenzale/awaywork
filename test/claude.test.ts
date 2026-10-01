@@ -127,6 +127,7 @@ describe('claude provider', () => {
         ours: false,
         mine,
         trusted: true,
+        fork: false,
       }
       const unit = {
         ...job().unit,
