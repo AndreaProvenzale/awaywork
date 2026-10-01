@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
@@ -11,7 +11,15 @@ import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../co
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runSetup } from './setup.js'
-import { notSymlink, prepareWorkspace, refuseSymlinks, WORK_DIR, workerEnv } from './workspace.js'
+import {
+  notSymlink,
+  prepareWorkspace,
+  readOutput,
+  refuseSymlinks,
+  WORK_DIR,
+  workerEnv,
+  writeOutput,
+} from './workspace.js'
 
 const MAX_TURNS = 200
 
@@ -365,7 +373,7 @@ function untilHolds(until: Condition, verdict: string | undefined): boolean {
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */
 async function readVerdict(dir: string): Promise<string | undefined> {
-  const text = await readFile(join(dir, WORK_DIR, 'out', 'verdict'), 'utf8').catch(() => '')
+  const text = await readOutput(join(dir, WORK_DIR, 'out', 'verdict'))
   const word = text.trim().toLowerCase()
   return /^[a-z][a-z_-]*$/.test(word) ? word : undefined
 }
@@ -374,7 +382,7 @@ async function readVerdict(dir: string): Promise<string | undefined> {
 async function roundOutcome(unit: Unit, dir: string, start: string): Promise<Outcome> {
   if (unit.deliver === 'report') {
     const file = join(dir, WORK_DIR, 'out', 'report.md')
-    const text = (await readFile(file, 'utf8').catch(() => '')).trim()
+    const text = (await readOutput(file)).trim()
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
   }
   const commits = await commitsSince(dir, start)
@@ -405,7 +413,7 @@ function describeLoop(loop: OpenLoop): string {
 async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
   await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
   const file = join(dir, WORK_DIR, 'out', 'pr.md')
-  const body = (await readFile(file, 'utf8').catch(() => '')).trim()
+  const body = (await readOutput(file)).trim()
   if (!body || loop.rounds === 0) return
   const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}.`]
   const { report } = loop
@@ -418,7 +426,7 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
       '',
       '</details>',
     )
-  await writeFile(file, `${body}${lines.join('\n')}\n`)
+  await writeOutput(file, `${body}${lines.join('\n')}\n`)
 }
 
 /** Like the worker's, with every secret withheld except the repo's own. */

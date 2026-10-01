@@ -1,5 +1,15 @@
-import { existsSync } from 'node:fs'
-import { appendFile, cp, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
+import {
+  appendFile,
+  cp,
+  type FileHandle,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { execa } from 'execa'
 import { builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
@@ -104,12 +114,10 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
-    inRepo: foreign
-      ? ''
-      : await readFile(join(dir, '.night-shift', 'instructions.md'), 'utf8').catch(() => ''),
+    inRepo: foreign ? '' : await readOutput(join(dir, '.night-shift', 'instructions.md')),
     rule: await Promise.all(unit.rule.instructions.map(read)),
   })
-  await writeFile(join(work, 'prompt.md'), prompt)
+  await writeOutput(join(work, 'prompt.md'), prompt)
   return prompt
 }
 
@@ -122,6 +130,36 @@ export async function refuseSymlinks(dir: string, paths: string[]): Promise<void
       if ((await lstat(join(dir, part)).catch(() => undefined))?.isSymbolicLink())
         throw new Error(`${part} in the clone is a symlink`)
     }
+  }
+}
+
+/** Opens a file in the clone without blocking on a FIFO a worker planted, and refuses anything but a regular file. */
+async function openRegular(path: string, flags: number): Promise<FileHandle> {
+  const file = await open(path, flags | constants.O_NONBLOCK)
+  if ((await file.stat()).isFile()) return file
+  await file.close()
+  throw new Error(`${path} isn't a regular file`)
+}
+
+/** A file a worker wrote, or '' when it's missing or isn't a regular file. */
+export async function readOutput(path: string): Promise<string> {
+  const file = await openRegular(path, constants.O_RDONLY).catch(() => undefined)
+  if (!file) return ''
+  try {
+    return await file.readFile('utf8')
+  } finally {
+    await file.close()
+  }
+}
+
+/** Writes, or with `append` appends, `text` to a file in the clone, refusing anything but a regular file. */
+export async function writeOutput(path: string, text: string, append = false): Promise<void> {
+  const mode = append ? constants.O_APPEND : constants.O_TRUNC
+  const file = await openRegular(path, constants.O_WRONLY | constants.O_CREAT | mode)
+  try {
+    await file.writeFile(text)
+  } finally {
+    await file.close()
   }
 }
 
@@ -158,7 +196,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
     excluded.push(`/${skillsDir}/${name}/`)
   }
   if (excluded.length > 0)
-    await appendFile(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`)
+    await writeOutput(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`, true)
   if (replaced.length > 0) await hideFromGit(w.dir, replaced)
 }
 

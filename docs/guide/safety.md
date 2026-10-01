@@ -30,9 +30,12 @@ not asked of the model.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
   output) is excluded from git, so it can't be committed. A loop's rounds
-  share one clone: between them, night-shift runs none of the commands
-  its git config names (diff drivers, fsmonitor), copies no symlink out
-  of it, and ends the loop if a round put one where night-shift writes.
+  share one clone: between them, night-shift runs no diff driver or
+  fsmonitor its git config names, copies no symlink out of it, ends the
+  loop if a round left a symlink where night-shift writes, and reads or
+  writes only regular files there, so a FIFO can't hang it. Each check
+  runs just before its write, so a worker process that outlived the
+  watchdog could still swap a path in between.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
   comment or change git config; targeted checks and the repo's documented

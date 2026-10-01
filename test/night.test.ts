@@ -1393,6 +1393,35 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
 
+it('reads past FIFOs a round left as its verdict or report, and finishes the night', async () => {
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-review-1')
+          for (const name of ['verdict', 'report.md']) {
+            const file = join(job.dir, '.nightshift/out', name)
+            await rm(file, { force: true })
+            await execa('mkfifo', [file])
+          }
+      },
+    },
+  )
+
+  const round = report.results.find((u) => u.planned.unit.id === 'acme-api-1-review-1')
+  expect(round?.verdict).toBeUndefined()
+  expect(round?.outcome).toEqual({ kind: 'none', reason: 'no report written' })
+  expect(report.results[0]?.loop).toBe('1 round of review ⇄ address-review; max 1 round reached')
+  expect(opened).toHaveLength(1)
+}, 60_000)
+
 it('ends a loop interrupted between rounds, and retries its chain without counting a failure', async () => {
   const stop = new AbortController()
   const { report, opened } = await loopNight(
