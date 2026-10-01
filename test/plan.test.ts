@@ -416,6 +416,35 @@ queue:
     ])
   })
 
+  it('routes every round, so a loop holds fallback units up to max', () => {
+    const yaml = `
+budget: { fallback: { units: 4, turns: 30 } }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: implement
+    where: { type: pr }
+    then: { loop: [review, address-review], until: { verdict: [approve, comments] }, max: 3 }
+`
+    const result = plan(yaml, [githubPr(1), githubPr(2)], {})
+    const routed = result.units.map((u) => [u.unit.id, u.provider ?? '-'])
+    expect(routed.slice(0, 8)).toEqual([
+      ['acme-api-1', 'claude'],
+      ['acme-api-1-review-1', 'claude'],
+      ['acme-api-1-address-review-1', 'claude'],
+      ['acme-api-1-review-2', 'claude'],
+      ['acme-api-1-address-review-2', '-'],
+      ['acme-api-1-review-3', '-'],
+      ['acme-api-1-address-review-3', '-'],
+      ['acme-api-2', '-'],
+    ])
+    expect(formatPlan(result)).toContain(
+      'loop review ⇄ address-review until verdict approve or comments, at most 3 rounds',
+    )
+    const once = plan(yaml.replace('max: 3', 'max: 1'), [githubPr(1)], {})
+    expect(formatPlan(once)).toContain('at most 1 round;')
+  })
+
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
     const yaml = (step: string) =>
       `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
@@ -774,10 +803,12 @@ describe('attempts', () => {
         failedRound,
       ),
     ).toEqual({ 'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at } })
-    const interrupted = { kind: 'none', reason: 'interrupted', unpublished: true }
-    expect(record({ ...host, status: 'done', outcome: interrupted }, failedRound)).toEqual({
+    const unpublished = { kind: 'none', reason: 'push failed', unpublished: true }
+    expect(record({ ...host, status: 'done', outcome: unpublished }, failedRound)).toEqual({
       'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at, failed: 1 },
     })
+    const interrupted = { kind: 'none', reason: 'interrupted', unpublished: true }
+    expect(record({ ...host, status: 'done', outcome: interrupted }, failedRound)).toEqual({})
   })
 
   it('gives up on an item after three chains that did not finish, until it changes', () => {

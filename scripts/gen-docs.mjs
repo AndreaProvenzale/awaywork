@@ -51,7 +51,7 @@ const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
 function typeOf(s) {
   if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(' \\| ')
-  if (s.anyOf) return [...new Set(s.anyOf.map(typeOf))].join(' \\| ')
+  if (s.anyOf) return [...new Set(variants(s))].join(' \\| ')
   if (s.pattern?.endsWith('%$')) return 'percent'
   if (s.pattern?.includes('[0-5]\\d$')) return 'time'
   if (s.type === 'array') {
@@ -61,6 +61,9 @@ function typeOf(s) {
   if (s.type === 'object') return s.properties ? 'object' : 'map'
   return [s.type].flat().join(' \\| ')
 }
+
+/** A union's types, with nested unions flattened so each type shows once. */
+const variants = (s) => (s.anyOf ? s.anyOf.flatMap(variants) : [typeOf(s)])
 
 /** Every object schema with properties, keyed by its YAML path, in document order. */
 function objects(s, path, out) {

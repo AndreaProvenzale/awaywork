@@ -7,7 +7,7 @@ import { route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
+import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runSetup } from './setup.js'
@@ -74,6 +74,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const opened: Record<string, string> = {}
   const tips: Record<string, string> = {}
   const hosts = new Set(planned.flatMap((p) => (p.loop ? [p.loop.host] : [])))
+  // The base each unit ran on: a step after one that opened no PR runs there too.
+  const ranOn: Record<string, string> = {}
   let open: OpenLoop | undefined
 
   /** Publishes the loop's clone once, as its host's draft PR, with how the loop went. */
@@ -127,10 +129,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     }
     const hosting = hosts.has(p.unit.id)
     const after = results.find((r) => p.after && r.planned.unit.id === p.after)
-    // A loop that kept its host's report opened no branch: follow it as a report.
-    const keptReport = after?.outcome?.kind === 'report' && hosts.has(after.planned.unit.id)
     const { repo } = p.unit
-    const base = keptReport ? after.planned.unit.base : p.unit.base
+    const base =
+      after && after.outcome?.kind !== 'pr'
+        ? (ranOn[after.planned.unit.id] ?? p.unit.base)
+        : p.unit.base
     // A loop publishes its host as a draft PR, whatever the host's own delivery.
     const deliver = hosting ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
@@ -142,6 +145,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       : stackedOn
         ? { ...p.unit, base: onto, stackedOn }
         : { ...p.unit, base }
+    ranOn[p.unit.id] = unit.base
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
       if (round) round.ended = reason
@@ -270,7 +274,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           unit,
           dir,
           unitDir,
-          start,
           stacks,
           skills: p.loop.skills,
           rounds: 0,
@@ -283,13 +286,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           loop.report = { id: unit.id, text: result.outcome.text }
         if (aborted) Object.assign(loop, { ended: 'interrupted', interrupted: true })
         else if (worker.status !== 'done') loop.ended = `${unit.id} ${worker.status}`
-        else if (holds(p.loop.until, { verdict: loop.verdict }))
+        else if (untilHolds(p.loop.until, loop.verdict))
           loop.ended = `until held: ${describeCondition(p.loop.until)}`
         else if (p.loop.round === p.loop.max && p.loop.step === p.loop.skills.length - 1)
-          loop.ended = `max ${p.loop.max} rounds reached`
+          loop.ended = `max ${p.loop.max} ${p.loop.max === 1 ? 'round' : 'rounds'} reached`
       } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
-        open = { host: result, unit, dir, unitDir, start, stacks, skills, rounds: 0, last: result }
+        open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
       } else if (!aborted) {
         result.outcome = await publish(unit, dir, n.forge, n.runId)
         if (result.outcome?.kind === 'pr') {
@@ -332,8 +335,6 @@ interface OpenLoop {
   unit: Unit
   dir: string
   unitDir: string
-  /** The clone's head before the host ran. */
-  start: string
   stacks: boolean
   skills: string[]
   rounds: number
@@ -352,6 +353,11 @@ const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
 async function commitsSince(dir: string, start: string): Promise<number> {
   return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
+}
+
+/** `until` waits for a verdict written inside the loop, even one it only wants `{ not }` of. */
+function untilHolds(until: Condition, verdict: string | undefined): boolean {
+  return (until.verdict === undefined || verdict !== undefined) && holds(until, { verdict })
 }
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */

@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
-import { failedAttempts, recordAttempts } from '../src/core/attempts.js'
+import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
@@ -1047,7 +1047,7 @@ ${yaml}`)
   return { report, opened, origin }
 }
 
-it('records a loop interrupted after a report as unpublished, so it counts a failure', async () => {
+it('records a loop interrupted after a report as unpublished, so its chain retries without counting a failure', async () => {
   const stop = new AbortController()
   const provider = looper({})
   const item = fakeItem({
@@ -1084,7 +1084,7 @@ it('records a loop interrupted after a report as unpublished, so it counts a fai
     unpublished: true,
   })
   expect(opened).toEqual([])
-  expect(failedAttempts(item, 'plan', recordAttempts({}, report))).toBe(1)
+  expect(recordAttempts({}, report)).toEqual({})
 })
 
 it("records an interrupted loop as unpublished even when it kept its host's report", async () => {
@@ -1115,7 +1115,7 @@ it("records an interrupted loop as unpublished even when it kept its host's repo
     reason: 'interrupted',
     unpublished: true,
   })
-  expect(failedAttempts(item, 'plan', recordAttempts({}, report))).toBe(1)
+  expect(recordAttempts({}, report)).toEqual({})
 })
 
 it('skips the step after a loop whose publish threw, though its host kept a report', async () => {
@@ -1200,4 +1200,126 @@ it("names why a loop didn't start after a host that failed", async () => {
     ['acme-api-1', 'error', 'crashed'],
     ['acme-api-1-review-1', 'skipped', 'acme-api-1 error, loop not started'],
   ])
+})
+
+it("runs the steps after a loop that kept its host's report where that report ran", async () => {
+  const kept = { 'acme-api-1-qa-feedback-1': 'approve' }
+  const draft = await loopNight(
+    `queue:
+  - skill: plan
+    then:
+      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - review
+      - implement
+`,
+    [issue(1)],
+    looper(kept),
+  )
+  expect(draft.report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
+    ['acme-api-1', 'done', 'report'],
+    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review', 'done', 'report'],
+    ['acme-api-1-implement', 'done', 'pr'],
+  ])
+  expect(draft.opened.map((pr) => pr.base)).toEqual([''])
+
+  const loop = await loopNight(
+    `queue:
+  - skill: plan
+    then:
+      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - review
+      - { loop: [implement, { skill: address-review, deliver: report }], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    looper({ ...kept, 'acme-api-1-address-review-1': 'approve' }),
+  )
+  expect(loop.report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
+    ['acme-api-1', 'done', 'report'],
+    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review', 'done', 'report'],
+    ['acme-api-1-implement-1', 'done', 'pr'],
+    ['acme-api-1-address-review-1', 'done', 'report'],
+  ])
+  expect(loop.opened.map((pr) => pr.base)).toEqual([''])
+})
+
+it('waits for a verdict written in the loop before `until: { verdict: { not } }` holds', async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [address-review, review], until: { verdict: { not: changes } }, max: 2 }
+`,
+    [issue(1)],
+    looper({ 'acme-api-1-review-1': 'approve' }),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.loop])).toEqual([
+    ['acme-api-1', 'done', '1 round of address-review ⇄ review; until held: verdict not changes'],
+    ['acme-api-1-address-review-1', 'done', undefined],
+    ['acme-api-1-review-1', 'done', undefined],
+  ])
+})
+
+it('ends a loop whose hand-off failed, and still finishes the night', async () => {
+  const provider = looper({})
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        if (job.unit.id === 'acme-api-1-review-1')
+          await git(job.dir, 'checkout', '-q', '--orphan', 'gone')
+        yield* provider.run(job, signal)
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'error'],
+    ['acme-api-1-review-1', 'done'],
+  ])
+  expect(report.results[0]?.loop).toMatch(
+    /^1 round of review ⇄ address-review; acme-api-1-review-1 error: /,
+  )
+  expect(opened).toEqual([])
+})
+
+it('ends a loop interrupted between rounds, and retries its chain without counting a failure', async () => {
+  const stop = new AbortController()
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    looper({ 'acme-api-1-review-1': 'changes' }),
+    {
+      signal: stop.signal,
+      ctx: {
+        env: {},
+        log: (line) => {
+          if (line === 'acme-api-1-review-1: done') stop.abort()
+        },
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-review-1', 'done', undefined],
+    ['acme-api-1-address-review-1', 'skipped', 'interrupted'],
+  ])
+  expect(report.results[0]?.loop).toBe('1 round of review ⇄ address-review; interrupted')
+  expect(report.results[0]?.outcome).toEqual({
+    kind: 'none',
+    reason: 'interrupted',
+    unpublished: true,
+  })
+  expect(opened).toEqual([])
+  expect(recordAttempts({}, report)).toEqual({})
 })

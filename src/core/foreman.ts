@@ -105,13 +105,9 @@ export function planNight(input: {
     ) => {
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      const same =
-        loop && units.find((u) => u.loop?.host === loop.host && u.loop.step === loop.step)
-      // Later rounds take round 1's route: the run re-routes each round anyway.
-      const { provider, passed } = same
-        ? { provider: same.provider, passed: same.passed }
-        : route(providers, allowances, routed)
-      if (provider && !same) routed[provider] = (routed[provider] ?? 0) + 1
+      // Every round is routed, as the run does, so the plan holds fallback units for all of them.
+      const { provider, passed } = route(providers, allowances, routed)
+      if (provider) routed[provider] = (routed[provider] ?? 0) + 1
       // A loop counts once against the caps.
       if (provider && (!loop || (loop.round === 1 && loop.step === 0))) {
         counted++

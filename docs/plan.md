@@ -257,13 +257,17 @@ Semantics, fixed so every milestone agrees:
   before the loop, whose publish waits for the loop's end; after a
   report the loop's first unit clones afresh and hosts it. `until` is
   checked after every step; its `verdict` matches the latest word a step
-  wrote to `out/verdict`. Before each step `context/previous/` holds the
+  in the loop wrote to `out/verdict`, and doesn't hold before one did.
+  Every round is routed at plan time, so a loop holds fallback units up
+  to `max`. Before each step `context/previous/` holds the
   step before's `report.md`, `verdict`, `pr.md` and a `diff.patch` of
   its commits. A round that can't route, reaches `night.end`, fails or
   stops ends the loop, which publishes what it has; night-shift appends
-  the loop's summary and last report to the PR body. A loop counts once
-  against the caps and as an attempt through its host; a step after the
-  loop follows the host.
+  the loop's summary and last report to the PR body. An interrupted loop
+  publishes nothing and records no attempt, like an aborted unit. A loop
+  counts once against the caps and as an attempt through its host; a
+  step after the loop follows the host, or runs where the host ran when
+  the host kept its report.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill

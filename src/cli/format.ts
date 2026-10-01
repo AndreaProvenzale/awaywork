@@ -66,7 +66,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       if (p.loop?.step === 0) {
         const { skills, until, max, host } = p.loop
         out.push(
-          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} rounds; one draft PR from ${host}`,
+          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; one draft PR from ${host}`,
         )
       }
       const [top, ...merged] = p.unit.items

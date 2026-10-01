@@ -310,24 +310,31 @@ queue:
 - Every round works in the clone of the draft PR unit before the loop,
   on its branch, and nothing is pushed until the loop ends: then that
   unit opens one draft PR with every round's commits. Its body ends with
-  how the loop went and the last report a round wrote. After a report,
-  the loop starts from a fresh clone on the same base, and its first
-  unit opens the draft PR.
+  how the loop went and the last report a round wrote. If that unit
+  doesn't finish `done` with commits, it publishes as usual and the loop
+  doesn't run. After a report, the loop starts from a fresh clone on the
+  same base, and its first unit opens the draft PR.
 - `until` is checked after every step and ends the loop as soon as it
   holds. `verdict` is the latest word a step wrote to
   `.nightshift/out/verdict` (built-in `review` writes `approve`,
   `comments` or `changes`); it takes a word, a list for any of, or
-  `{ not: … }`. `max` is at most 5.
+  `{ not: … }`. It waits for a step in the loop to write a verdict, so
+  `{ not: changes }` doesn't hold after a step that wrote none. `max` is
+  at most 5.
 - A step finds the one before's output in `.nightshift/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, and its
   commits in `diff.patch`.
 - Each round is routed and budgeted live. No provider left, `night.end`,
   or a step that fails or stops ends the loop, which still publishes what
-  it has and says why.
+  it has and says why. An interrupt (Ctrl-C) publishes nothing, and the
+  chain runs again the next night without counting as a failure.
 - Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
-  `plan` lists round 1. A loop counts once against the caps, since it
-  opens one draft PR, and once as an attempt: when it published, the item
-  waits for your review.
+  `plan` lists round 1, but routes every round up to `max`, so a loop
+  holds fallback units for all of them. A loop counts once against the
+  caps, since it opens one draft PR, and once as an attempt: when it
+  published, the item waits for your review.
+- A loop's branch comes from its first step's `branch`, and only after a
+  report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
   after a report committed nothing, runs as after that report. A loop
   can't follow another loop directly: put a step between them.

@@ -213,7 +213,7 @@ First matching rule wins; top = highest priority.
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
-| `then` | string \| object \| object \| (string \| object \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 
 ## `queue[].where.<key>`

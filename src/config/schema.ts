@@ -146,7 +146,7 @@ const step = z
   .describe(
     'A skill name, or a map with the rule keys other than source, where, order, units and then',
   )
-export const MAX_ROUNDS = 5
+const MAX_ROUNDS = 5
 const verdict = z.string().regex(/^[a-z][a-z_-]*$/, 'expected one lowercase word like approve')
 const verdicts = z.union([verdict, z.array(verdict).min(1)])
 const condition = z
