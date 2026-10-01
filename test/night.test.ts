@@ -2000,7 +2000,8 @@ queue:
 
 it('skips a when step whose check was interrupted without passing over it, so the chain retries', async () => {
   const stop = new AbortController()
-  const provider = looper({})
+  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
@@ -2008,22 +2009,16 @@ it('skips a when step whose check was interrupted without passing over it, so th
   const { report } = await loopNight(
     `queue:
   - skill: implement
-    then: { skill: review, when: { command: 'sleep 5' } }
+    then: { skill: review, when: { command: 'touch ${started}; sleep 5' } }
 `,
     [item],
-    {
-      ...provider,
-      async *run(job, signal) {
-        yield* provider.run(job, signal)
-        setTimeout(() => stop.abort(), 500)
-      },
-    },
+    looper({}),
     { signal: stop.signal, ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
-  )
+  ).finally(() => clearInterval(watch))
 
   expect(report.results[1]).toMatchObject({
     status: 'skipped',
-    reason: 'when `sleep 5` passes not checked: interrupted',
+    reason: `when \`touch ${started}; sleep 5\` passes not checked: interrupted`,
   })
   expect(report.results[1]?.passedOver).toBeUndefined()
   expect(recordAttempts({}, report)).toEqual({})
