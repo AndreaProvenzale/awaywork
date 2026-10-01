@@ -82,7 +82,7 @@ task linked to your PR becomes one unit with that PR.
   the PR, and its draft PR stacks on the night-shift PR.
 - A PR night-shift pushed onto (a `deliver: push` rule) is skipped as
   **waiting for review** too, while its head is still the commit
-  night-shift pushed.
+  night-shift pushed (kept in the state dir, so not on a runner).
 - A unit none of whose items changed since a worker last finished the
   same skill on it is skipped as **unchanged since run `<id>`**, so a
   review or a unit that gave up isn't redone every night. A rule's `then`
@@ -165,7 +165,7 @@ the clone of the unit the loop started from.
 |---|---|
 | `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
 | `report` | The worker writes `.nightshift/out/report.md`; nothing is pushed. It goes into the morning report. |
-| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.nightshift/out/report.md`; night-shift adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. |
+| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.nightshift/out/report.md`; night-shift adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. |
 
 Either way, a skill that defines verdicts also writes one word to
 `.nightshift/out/verdict`, such as `approve`. The report shows it next to

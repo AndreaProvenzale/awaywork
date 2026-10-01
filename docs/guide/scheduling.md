@@ -91,7 +91,10 @@ misses those fixes; `doctor`, run inside the repo, warns until you
 
 A runner starts with an empty state dir, so it keeps no attempts or
 skips: an item unchanged since last night runs again, none is given up
-on, and `nightshift skip` on your machine doesn't reach it.
+on, and `nightshift skip` on your machine doesn't reach it. Nor does it
+keep the head a [`deliver: push`](./configuration.md#push) left, so the
+PR doesn't wait for your review: the rule pushes again every night its
+`where` holds.
 
 ### Credentials on a runner
 

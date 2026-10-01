@@ -459,7 +459,7 @@ queue:
   push and refuses when it is no longer yours or open, or has auto-merge
   on, which would merge unreviewed commits, and when its branch lives on
   a fork, is the default branch, is protected, or also backs someone
-  else's open PR. New commits that include a merge aren't pushed
+  else's open PR in the repo. New commits that include a merge aren't pushed
   either. The commits get the `Night-shift:` trailer.
 - The agent writes `.nightshift/out/report.md`; without it nothing is
   pushed. The PR body stays as it is and the report goes into the
@@ -469,7 +469,10 @@ queue:
   its head is still the commit night-shift pushed. Any commit on top
   releases it, yours or a bot's, and so does a rebase or an amend.
   Without that, the push itself would update the PR and run the rule
-  again every night.
+  again every night. The pushed head is kept in night-shift's state dir,
+  which a [GitHub Actions runner](./scheduling.md#in-github-actions)
+  doesn't keep: there, a push rule pushes again every night its `where`
+  holds.
 
 ## Notify
 

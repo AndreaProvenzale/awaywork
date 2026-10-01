@@ -379,11 +379,13 @@ Semantics, fixed so every milestone agrees:
   in (never a skill's default), the unit's base is an open PR the
   developer authored (night-shift's own included), and the push is a
   fast-forward from the commit the clone started at, checked again at
-  push time along with the PR being open, in the repo, not the default
-  branch and without auto-merge; no merge commits. Pushes run from a bare
-  repo night-shift owns that fetches the clone's `HEAD`, so the clone's
-  config, hooks and replace refs can't redirect them. `plan` refuses a
-  push onto a fork's PR up front. A `then` step can push only onto the rule's own PR, never onto a
+  push time along with the PR being the developer's, open, in the repo,
+  without auto-merge, and its branch not the default branch, not
+  protected and not the branch of someone else's open PR in the repo; no
+  merge commits. Pushes run from a bare repo night-shift owns that
+  fetches the clone's `HEAD`, so the clone's config, hooks and refs can't
+  redirect them. `plan` refuses a push onto a fork's PR up front. A
+  `then` step can push only onto the rule's own PR, never onto a
   branch opened tonight. The model writes
   `report.md`, required to push; the PR body is untouched. Never someone
   else's branch, never force, never merge, never a comment.

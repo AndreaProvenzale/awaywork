@@ -33,7 +33,7 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
     pullRequest(number: $number) {
       state viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
     }
-    pullRequests(headRefName: $branch, states: OPEN, first: 20) {
+    pullRequests(headRefName: $branch, states: OPEN, first: 100) {
       nodes { number isCrossRepository viewerDidAuthor }
     }
   }

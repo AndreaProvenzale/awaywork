@@ -93,15 +93,20 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
     // A push stays recorded even when what followed it was aborted.
     if (aborted && !pushed) continue
     const { skill } = head.unit
-    for (const item of head.unit.items)
-      if (typeof item.fields.updated === 'string')
-        next[attemptKey(item)] = {
+    for (const item of head.unit.items) {
+      if (typeof item.fields.updated !== 'string') continue
+      const key = attemptKey(item)
+      // Aborted after a push: only the push's head is new, and an empty `updated` never reads as unchanged.
+      if (aborted) next[key] = { runId: report.runId, skill, updated: '', ...attempts[key], pushed }
+      else
+        next[key] = {
           runId: report.runId,
           skill,
           updated: item.fields.updated,
-          ...(!finished && !aborted && { failed: failedAttempts(item, skill, attempts) + 1 }),
+          ...(!finished && { failed: failedAttempts(item, skill, attempts) + 1 }),
           ...(pushed && { pushed }),
         }
+    }
   }
   return next
 }

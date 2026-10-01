@@ -4,7 +4,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
-import { type Attempts, loadAttempts, recordAttempts, saveAttempts } from '../src/core/attempts.js'
+import {
+  type Attempts,
+  loadAttempts,
+  recordAttempts,
+  saveAttempts,
+  unchangedSince,
+} from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { type PlannedUnit, planNight } from '../src/core/foreman.js'
@@ -763,6 +769,32 @@ queue: [{ skill: fix-ci, deliver: push }]`
     ])
     const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
     expect(movedOn.units).toHaveLength(1)
+  })
+
+  it('records the push of a chain aborted after it, without finishing the chain', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push, then: review }]`
+    const item = githubPr(1, { updated: '2026-01-01T00:00:00Z' })
+    const night = plan(yaml, [item], {})
+    const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
+    const [push, review] = night.units
+    const results = [
+      { planned: push, status: 'done', outcome },
+      { planned: review, status: 'stopped: aborted' },
+    ]
+    const report = { runId: 'r2', plan: night, results } as NightReport
+    const key = 'github:acme/api#1'
+
+    const fresh = recordAttempts({}, report)
+    expect(fresh[key]).toEqual({ runId: 'r2', skill: 'fix-ci', updated: '', pushed: 'def5678' })
+    expect(unchangedSince(item, 'fix-ci', fresh)).toBeUndefined()
+    const earlier = { runId: 'r1', skill: 'fix-ci', updated: '2026-01-01T00:00:00Z', failed: 1 }
+    expect(recordAttempts({ [key]: earlier }, report)[key]).toEqual({
+      ...earlier,
+      pushed: 'def5678',
+    })
   })
 
   it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {
