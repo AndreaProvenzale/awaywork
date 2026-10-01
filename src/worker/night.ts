@@ -183,7 +183,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (deliver === 'push')
           await cp(join(loop.unitDir, 'out', outputFile.push), file).catch(() => {})
         await appendLoopSummary(file, loop)
-        const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId)
+        const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId, loop.start)
         // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
         const kept =
           host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
@@ -324,6 +324,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         reuse: !!round,
         loop: p.loop,
       })
+      // Before setup or any worker touched the clone: the unit's commits are the ones after it.
+      const cloned = round ? round.start : await head(dir)
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
@@ -417,10 +419,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           worker.status === 'done'
             ? await factsFor(p.loop.until, unit, dir, verdict, log, logFile, true)
             : undefined
-        const loop = round ?? {
+        const loop: OpenLoop = round ?? {
           host: result,
           unit,
           dir,
+          start: cloned,
           unitDir,
           stacks,
           skills: p.loop.skills,
@@ -453,9 +456,19 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         (unit.deliver !== 'push' || (await hasOutput(dir, outputFile.push)))
       ) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
-        open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
+        open = {
+          host: result,
+          unit,
+          dir,
+          start: cloned,
+          unitDir,
+          stacks,
+          skills,
+          rounds: 0,
+          last: result,
+        }
       } else if (!aborted) {
-        result.outcome = await publish(unit, dir, n.forge, n.runId)
+        result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
         if (result.outcome?.kind === 'pr') {
           opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
           if (stacks) tips[unit.repo] = unit.branch
@@ -500,6 +513,8 @@ interface OpenLoop {
   host: UnitResult
   unit: Unit
   dir: string
+  /** The commit the clone held before its host ran; the loop publishes what's after it. */
+  start: string
   unitDir: string
   stacks: boolean
   skills: string[]

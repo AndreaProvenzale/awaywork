@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -64,6 +64,7 @@ const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
 
 describe('publish', () => {
   let dir: string
+  let start: string
   const commit = async (message: string) => {
     await writeFile(join(dir, `${message}.txt`), message)
     await git(dir, 'add', '.')
@@ -94,6 +95,7 @@ describe('publish', () => {
     await git(dir, 'config', 'core.hooksPath', '.husky')
     await git(dir, 'checkout', '-q', '-b', 'night/FAKE-1')
     await mkdir(join(dir, '.nightshift/out'), { recursive: true })
+    start = await git(dir, 'rev-parse', 'HEAD')
   })
 
   it('pushes the new branch with trailers and opens a draft PR into the base', async () => {
@@ -101,7 +103,7 @@ describe('publish', () => {
     await commit('second')
     await body('Fix the thing\n\nChecked: tests pass.')
     const forge = pushingForge()
-    expect(await publish(unit(), dir, forge, '20260925-010000')).toEqual({
+    expect(await publish(unit(), dir, forge, '20260925-010000', start)).toEqual({
       kind: 'pr',
       url: 'https://example.com/acme/api/pull/night/FAKE-1',
       commits: 2,
@@ -113,17 +115,20 @@ describe('publish', () => {
   it('publishes nothing without commits, without a PR body, or onto an existing branch', async () => {
     const forge = fakeForge()
     await body('Title')
-    expect(await publish(unit(), dir, forge, 'r1')).toEqual({ kind: 'none', reason: 'no commits' })
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: 'no commits',
+    })
     await commit('first')
     await body('')
-    expect(await publish(unit(), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '1 commits but no PR body, not pushed',
       unpublished: true,
     })
     await body('Title')
     forge.branches.add('acme/api:night/FAKE-1')
-    expect(await publish(unit(), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'night/FAKE-1 already exists on acme/api, not pushed',
       unpublished: true,
@@ -133,23 +138,22 @@ describe('publish', () => {
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
     const report = (text: string) => writeFile(join(dir, '.nightshift/out/report.md'), text)
     const forge = pushingForge()
-    const start = await git(dir, 'rev-parse', 'HEAD')
     await commit('first')
-    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '1 commits but no report, not pushed',
       unpublished: true,
     })
     await report('Fixed the flaky test.\n')
     for (const refused of [{ base: '' }, { foreign: true }])
-      expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1')).toEqual({
+      expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1', start)).toEqual({
         kind: 'none',
         reason: "push goes only onto your own PR's branch, not pushed",
         unpublished: true,
       })
     expect(forge.fastForwards).toEqual([])
 
-    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'pushed',
       branch: 'feature-1',
       commits: 1,
@@ -163,14 +167,13 @@ describe('publish', () => {
 
   it('refuses to push commits that include a merge', async () => {
     const forge = fakeForge()
-    const start = await git(dir, 'rev-parse', 'HEAD')
     await commit('first')
     await git(dir, 'checkout', '-qb', 'side', start)
     await commit('side')
     await git(dir, 'checkout', '-q', '-')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
     await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
-    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '3 commits include a merge, not pushed',
       unpublished: true,
@@ -180,7 +183,6 @@ describe('publish', () => {
 
   it('refuses a merge on a push even when the clone has a remote ref past it', async () => {
     const forge = fakeForge()
-    const start = await git(dir, 'rev-parse', 'HEAD')
     await commit('first')
     await git(dir, 'checkout', '-qb', 'side', start)
     await commit('side')
@@ -189,7 +191,7 @@ describe('publish', () => {
     await git(dir, 'update-ref', 'refs/remotes/origin/sneaky', 'HEAD')
     await commit('after')
     await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
-    expect(await publish(unit('push'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '4 commits include a merge, not pushed',
       unpublished: true,
@@ -206,9 +208,9 @@ describe('publish', () => {
     await writeFile(join(dir, 'uncommitted.txt'), 'left behind')
     await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
     const forge = pushingForge()
-    expect(await publish(unit('push'), dir, forge, 'r1')).toMatchObject({ kind: 'pushed' })
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toMatchObject({ kind: 'pushed' })
     await body('Title')
-    await publish(unit(), dir, forge, 'r1')
+    await publish(unit(), dir, forge, 'r1', start)
     expect(forge.pushed).toEqual([
       ['first|r1', 'init|'],
       ['first|r1', 'init|'],
@@ -219,15 +221,58 @@ describe('publish', () => {
     expect(diff).not.toContain('uncommitted')
   })
 
+  it('marks every commit since the clone started, whatever remote refs the clone gained', async () => {
+    await commit('first')
+    await git(dir, 'update-ref', 'refs/remotes/origin/zzz', 'HEAD')
+    await commit('second')
+    await body('Title')
+    const forge = pushingForge()
+    expect(await publish(unit(), dir, forge, 'r1', start)).toMatchObject({ kind: 'pr', commits: 2 })
+    expect(forge.pushed).toEqual([['second|r1', 'first|r1', 'init|']])
+  })
+
+  it('adds the trailer at the end of a message with a `---` line', async () => {
+    await writeFile(join(dir, 'a.txt'), 'a')
+    await git(dir, 'add', '.')
+    await git(dir, 'commit', '-qm', 'Fix it\n\nBefore\n---\nAfter')
+    await body('Title')
+    let message = ''
+    const forge = fakeForge()
+    forge.push = async (repo) => {
+      message = await git(repo, 'log', '-1', '--format=%B', 'HEAD')
+    }
+    await publish(unit(), dir, forge, 'r1', start)
+    expect(message).toBe('Fix it\n\nBefore\n---\nAfter\n\nNight-shift: r1')
+  })
+
+  it('refuses to write through a symlink in the clone', async () => {
+    const outside = join(dir, '..', 'outside')
+    await writeFile(outside, 'mine\n')
+    await commit('first')
+    await body('Title')
+    await symlink(outside, join(dir, '.nightshift/out/diff.patch'))
+    const forge = fakeForge()
+    await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
+      '.nightshift/out/diff.patch in the clone is a symlink',
+    )
+    await rm(join(dir, '.nightshift/out/pr.md'))
+    await symlink(outside, join(dir, '.nightshift/out/pr.md'))
+    await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
+      '.nightshift/out/pr.md in the clone is a symlink',
+    )
+    expect(await readFile(outside, 'utf8')).toBe('mine\n')
+    expect(forge.branches.size).toBe(0)
+  })
+
   it('returns the report for report delivery and pushes nothing', async () => {
     const forge = fakeForge()
     await commit('stray')
-    expect(await publish(unit('report'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('report'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: 'no report written',
     })
     await writeFile(join(dir, '.nightshift/out/report.md'), 'Approve.\n')
-    expect(await publish(unit('report'), dir, forge, 'r1')).toEqual({
+    expect(await publish(unit('report'), dir, forge, 'r1', start)).toEqual({
       kind: 'report',
       text: 'Approve.',
     })

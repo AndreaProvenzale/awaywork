@@ -117,7 +117,7 @@ what your user can read.
   night-shift reads the PR again and refuses when it isn't yours, is
   closed or merged, or has auto-merge on, and when its branch is on a
   fork, is the default branch, is protected, or is also the branch of
-  someone else's open PR. It is refused on someone else's PR, on an item without
+  someone else's open PR in the repo. It is refused on someone else's PR, on an item without
   a PR of yours, on any branch night-shift opened that night, and when
   the new commits include a merge. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
@@ -129,10 +129,14 @@ what your user can read.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body, or its report for `push`. A run
   killed before that publishes nothing.
-- Publishing reads the clone only to fetch its commits into a repo
-  night-shift creates for it, where it adds the trailer, writes the diff
-  and pushes. The clone's config, attributes, hooks and refs, which the
-  agent can write, neither steer where a push goes nor run anything.
+- Publishing fetches the clone's HEAD into a repo night-shift creates
+  for it, where it adds the trailer, diffs and pushes. The unit's
+  commits are those after the commit the clone held before setup and
+  the agent ran. The clone's config, attributes, hooks and refs, which
+  the agent can write, neither steer where a push goes, nor pick which
+  commits get the trailer, nor run anything. In the clone, publishing
+  only reads the PR body or report and writes `diff.patch` next to it,
+  and refuses if either is a symlink.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from night-shift: a footer with the run id in
   the body and a `Night-shift: <run id>` commit trailer. Pushed commits

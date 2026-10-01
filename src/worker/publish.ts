@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { trailerKey } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import { outputFile, WORK_DIR } from './workspace.js'
+import { outputFile, refuseSymlinks, WORK_DIR } from './workspace.js'
 
 export type Outcome =
   | { kind: 'pr'; url: string; commits: number }
@@ -20,33 +20,29 @@ const git = async (dir: string, ...args: string[]) =>
 /**
  * Delivers a finished unit: a draft PR only with commits, a PR body and a branch new to the remote;
  * a push only with commits, a report, and a fast-forward onto the developer's own PR branch.
- * Git reads the clone only to fetch its commits into a repo of night-shift's own: the clone's
- * config, attributes and hooks, which the model can write, run nothing here.
+ * The unit's commits are those after `start`, the commit its clone held before any worker ran.
+ * Git reads the clone only to fetch its HEAD into a repo of night-shift's own, so the clone's
+ * config, attributes, hooks and refs, which the model can write, neither run nor count here.
  */
 export async function publish(
   unit: Unit,
   dir: string,
   forge: Forge,
   runId: string,
+  start: string,
 ): Promise<Outcome> {
-  const file = join(dir, WORK_DIR, 'out', outputFile[unit.deliver])
+  const out = `${WORK_DIR}/out`
+  const file = join(dir, out, outputFile[unit.deliver])
   const text = (await readFile(file, 'utf8').catch(() => '')).trim()
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
+  await refuseSymlinks(dir, [`${out}/${outputFile[unit.deliver]}`, `${out}/diff.patch`])
   const repo = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
   try {
     await execa('git', ['init', '-q', '--bare', repo])
-    await git(
-      repo,
-      'fetch',
-      '-q',
-      '--no-tags',
-      dir,
-      'HEAD:refs/heads/work',
-      '+refs/remotes/*:refs/remotes/*',
-    )
-    return await deliver(unit, repo, forge, runId, file, text)
+    await git(repo, 'fetch', '-q', '--no-tags', dir, 'HEAD:refs/heads/work')
+    return await deliver(unit, repo, forge, runId, start, file, text)
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
@@ -57,15 +53,12 @@ async function deliver(
   repo: string,
   forge: Forge,
   runId: string,
+  start: string,
   file: string,
   text: string,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
-  // The forge checks the PR's head is still `from`, so the range doesn't trust the clone's other refs.
-  const from =
-    push && unit.base ? await git(repo, 'rev-parse', `refs/remotes/origin/${unit.base}`) : undefined
-  const since = from ? [`^${from}`] : ['--not', '--remotes']
-  const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', ...since)
+  const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
   if (!oldest) return { kind: 'none', reason: 'no commits' }
@@ -85,7 +78,7 @@ async function deliver(
       unpublished: true,
     }
   // Merged history would carry other people's commits onto the PR, with night-shift's trailer.
-  if (push && (await git(repo, 'rev-list', '--merges', 'work', ...since)))
+  if (push && (await git(repo, 'rev-list', '--merges', 'work', `^${start}`)))
     return {
       kind: 'none',
       reason: `${commits.length} commits include a merge, not pushed`,
@@ -104,8 +97,9 @@ async function deliver(
     join(dirname(file), 'diff.patch'),
     `${await git(repo, 'diff', '--no-ext-diff', '--no-textconv', `${oldest}^`, head)}\n`,
   )
-  if (pr && from) {
-    await forge.fastForward(repo, unit.base, from, { repo: unit.repo, pr: pr.number })
+  if (push && pr) {
+    // The forge refuses unless the PR's head is still `start`.
+    await forge.fastForward(repo, unit.base, start, { repo: unit.repo, pr: pr.number })
     return { kind: 'pushed', branch: unit.base, commits: commits.length, text, head }
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })
@@ -123,7 +117,7 @@ async function withTrailer(repo: string, commits: string[], trailer: string): Pr
     const [tree = '', parents = '', name, email, date] = meta.split('\n')
     const message = await git(repo, 'log', '-1', '--format=%B', sha)
     const input = (
-      await execa('git', ['-C', repo, 'interpret-trailers', '--trailer', trailer], {
+      await execa('git', ['-C', repo, 'interpret-trailers', '--no-divider', '--trailer', trailer], {
         input: message,
       })
     ).stdout
