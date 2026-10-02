@@ -5,6 +5,7 @@ import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
+import { footerItems } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
@@ -25,6 +26,7 @@ import {
 
 const MAX_TURNS = 200
 const CHECK_LOG_CHARS = 8000
+const MAX_SUFFIX = 10
 
 export interface NightInput {
   config: Config
@@ -236,11 +238,14 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const hosting = hosts.has(p.unit.id)
     const standIn = p.after ? standIns[p.after] : undefined
     const after = standIn?.result ?? results.find((r) => p.after && r.planned.unit.id === p.after)
+    // After a draft PR, a step starts from its branch: the planned one, or the free name it got.
     const base =
       standIn?.base ??
-      (after && after.outcome?.kind !== 'pr'
-        ? (ranOn[after.planned.unit.id] ?? p.unit.base)
-        : p.unit.base)
+      (after?.outcome?.kind === 'pr'
+        ? after.planned.unit.branch
+        : after
+          ? (ranOn[after.planned.unit.id] ?? p.unit.base)
+          : p.unit.base)
     const { repo } = p.unit
     // A loop publishes its host as a draft PR, unless the host pushes onto your PR.
     const deliver = hosting && p.unit.deliver !== 'push' ? 'draft_pr' : p.unit.deliver
@@ -253,7 +258,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       .find((pr) => pr.ours && pr.branch === base)
     const stackedOn = deliver === 'draft_pr' ? (tonight ?? pickedUp?.url) : undefined
     const unit = round
-      ? { ...p.unit, base: round.unit.base, stackedOn: round.unit.stackedOn }
+      ? {
+          ...p.unit,
+          base: round.unit.base,
+          branch: round.unit.branch,
+          stackedOn: round.unit.stackedOn,
+        }
       : { ...p.unit, base: onto, stackedOn }
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
@@ -288,9 +298,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       skip(`no provider left: ${passed.join('; ') || 'none configured'}`)
       continue
     }
-    if (!round && deliver === 'draft_pr' && (await n.forge.branchExists(unit.repo, unit.branch))) {
-      skip(`${unit.branch} already exists on ${unit.repo}`)
-      continue
+    if (!round && deliver === 'draft_pr') {
+      const free = await freeBranch(n.forge, unit)
+      if ('skip' in free) {
+        skip(free.skip)
+        continue
+      }
+      if (free.branch !== unit.branch)
+        n.ctx.log(`${unit.id}: ${unit.branch} is taken on ${unit.repo}, using ${free.branch}`)
+      unit.branch = free.branch
     }
     routed[id] = (routed[id] ?? 0) + 1
     const entry = n.config.providers.find((c) => c.id === id)
@@ -303,7 +319,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     await mkdir(unitDir, { recursive: true })
     const logFile = createWriteStream(join(unitDir, 'worker.log'))
     const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
-    const result: UnitResult = { planned: p, provider: id, status: 'prepared' }
+    const result: UnitResult = {
+      planned: { ...p, unit: { ...p.unit, branch: unit.branch } },
+      provider: id,
+      status: 'prepared',
+    }
     results.push(result)
     let start: string | undefined
     try {
@@ -516,6 +536,28 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
+}
+
+/**
+ * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
+ * whose PR, in any state, night-shift opened for one of the unit's items means it tried already:
+ * the unit is skipped until that branch is deleted, even where no attempts are kept.
+ */
+async function freeBranch(
+  forge: Forge,
+  unit: Unit,
+): Promise<{ branch: string } | { skip: string }> {
+  const items = unit.items.map((i) => `${i.source}:${i.key}`)
+  for (let n = 1; n <= MAX_SUFFIX; n++) {
+    const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
+    if (!(await forge.branchExists(unit.repo, branch))) return { branch }
+    const tried = (await forge.prsOn(unit.repo, branch)).find((pr) =>
+      footerItems(pr.body).some((item) => items.includes(item)),
+    )
+    if (tried)
+      return { skip: `night-shift tried this in ${tried.url}; delete ${branch} to run it again` }
+  }
+  return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
 }
 
 /** A loop's clone, kept open for its rounds until it publishes. */

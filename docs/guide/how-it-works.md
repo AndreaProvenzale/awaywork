@@ -70,7 +70,10 @@ Linear state and Jira status names, so you can edit it.
 
 Items that share a key or a linked PR (repo and branch) are one unit, one
 piece of work on one feature, ranked at its best item's rule. An Asana
-task linked to your PR becomes one unit with that PR.
+task linked to your PR becomes one unit with that PR. A night-shift PR
+is linked to the items its footer names; one you wrote, by the key in
+its branch or title, or the source's [`link`](./configuration.md#linking-prs)
+line in its body.
 
 - The unit works in its linked PR's repo, else the item's `repo` field;
   with neither it is skipped.
@@ -140,8 +143,10 @@ unit goes to the next provider.
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
 draft PR a `then` step follows, else your PR's branch, else tonight's
-last draft PR on the repo, else the default branch. A loop's rounds reuse
-the clone of the unit the loop started from.
+last draft PR on the repo, else the default branch. A branch name
+that's taken on the remote gets a `-2` to `-10` suffix, unless
+night-shift already tried there ([Branch names](./configuration.md#branch-names)).
+A loop's rounds reuse the clone of the unit the loop started from.
 
 - `.nightshift/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -172,8 +177,10 @@ Either way, a skill that defines verdicts also writes one word to
 the unit's result, and a [loop](./configuration.md#loops) can end on it.
 
 `review` and `plan` default to `report`, every other skill to `draft_pr`;
-a rule can override either. `push` is never a skill's default. Every PR body ends with a footer naming
-night-shift and the run, which is how the next plan recognises it.
+a rule can override either. `push` is never a skill's default. A draft
+PR's body gets its items' [`link`](./configuration.md#linking-prs) lines,
+and ends with a footer naming night-shift, the run and the unit's items,
+which is how the next plan recognises it and links it to them.
 
 ## The morning report
 

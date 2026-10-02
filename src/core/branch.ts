@@ -16,7 +16,8 @@ export function renderBranch(template: string, item: Pick<Item, 'key' | 'title'>
 
 /** Why a template can't make branch names, or undefined when it can. */
 export function templateProblem(template: string): string | undefined {
-  if (!template.includes('{key}')) return 'must contain {key}'
+  if (!template.includes('{key}') && !template.includes('{title}'))
+    return 'must contain {key} or {title}'
   const unknown = template.match(/\{(?!key\}|title\})[^}]*\}/)
   if (unknown) return `unknown placeholder ${unknown[0]}`
   const sample = renderBranch(template, { key: 'ABC-1', title: 'Sample title' })

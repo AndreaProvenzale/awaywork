@@ -114,9 +114,11 @@ async function deliver(
     return { kind: 'pushed', branch: unit.base, commits: commits.length, text, head }
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })
-  if (unit.stackedOn)
-    await writeOutput(file, `\n\nStacked on ${unit.stackedOn}: merge that first.\n`, true)
-  const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId)
+  // The items' link lines let their trackers link the PR, whatever its branch is called.
+  const notes = [...new Set(unit.items.flatMap((i) => i.link ?? []))]
+  if (unit.stackedOn) notes.push(`Stacked on ${unit.stackedOn}: merge that first.`)
+  if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
+  const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId, unit.items)
   return { kind: 'pr', url, commits: commits.length }
 }
 

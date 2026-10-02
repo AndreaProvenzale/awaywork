@@ -5,6 +5,7 @@ import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
+import { renderLink } from '../core/footer.js'
 import { type NightPlan, planNight } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -57,14 +58,15 @@ export async function planTonight(
   return { plan: planNight({ config, items, allowances, skills, attempts, skips }), warnings, ctx }
 }
 
-/** Items from every configured source, tasks linked to their PRs; a failing source is logged. */
+/** Items from every configured source with their link lines, tasks linked to their PRs; a failing source is logged. */
 export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
   const items: Item[] = []
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     if (!source) continue
+    const link = (cfg as { link?: string }).link ?? source.link
     await source.items(cfg, ctx).then(
-      (found) => items.push(...found),
+      (found) => items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i))),
       (e: Error) => ctx.log(`source ${id}: ${e.message}`),
     )
   }
@@ -72,7 +74,7 @@ export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
   return items
 }
 
-/** Tracker tasks link no PR natively, so the forge finds my PRs carrying the task key. */
+/** Tracker tasks link no PR natively, so the forge finds my PRs that name the task. */
 export async function linkTasks(items: Item[], forge: Forge, ctx: Ctx): Promise<void> {
   for (const item of items.filter((i) => i.type === 'task' && i.linkedPrs.length === 0))
     item.linkedPrs = await forge.prsFor(item).catch((e: Error) => {

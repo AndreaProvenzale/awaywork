@@ -102,6 +102,8 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
   return {
     id: 'asana',
     configSchema: config,
+    // Asana links a PR whose description holds the task's URL.
+    link: '{url}',
     fields: {
       project: z.string(),
       section: z.string(),

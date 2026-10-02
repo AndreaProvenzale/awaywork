@@ -47,7 +47,9 @@ interface Source {
   without a linked PR or a `repo` the item is skipped. Set `created` and
   `updated` (ISO timestamps) so a rule's `order` can sort the items.
 - **Linked PRs**: the forge finds the user's PRs that carry the item's
-  key in their branch or title, so most trackers need nothing more.
+  key in their branch or title, or the source's `link` line in their
+  body. Set `link` on the source when the tracker links PRs by a phrase
+  in their description (Linear's `Part of {key}`, Asana's `{url}`).
 - **`prefetch`** writes one Markdown file (`task.md`, `issue.md`) with
   the item and all its comments; it's all the worker will see.
 - **`init`** asks for what the config needs and returns real values for

@@ -698,7 +698,8 @@ describe('branch', () => {
 
   it('rejects templates that cannot make a branch name', () => {
     expect(templateProblem('night/{key}')).toBeUndefined()
-    expect(templateProblem('night/{title}')).toBe('must contain {key}')
+    expect(templateProblem('feat/{title}')).toBeUndefined()
+    expect(templateProblem('feat/work')).toBe('must contain {key} or {title}')
     expect(templateProblem('night/{key}/{user}')).toBe('unknown placeholder {user}')
     expect(templateProblem('night..{key}')).toMatch(/invalid branch name/)
     expect(templateProblem('{key}.lock')).toMatch(/invalid branch name/)
