@@ -102,7 +102,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
-  const skill = await readFile(join(findSkill(unit.skill, roots), 'SKILL.md'), 'utf8')
+  const skill = await readOutput(join(findSkill(unit.skill, roots), 'SKILL.md'))
   const prompt = assemblePrompt({
     harness: `${await readFile(harnessPath, 'utf8')}\n${unitSection(unit, items, w.previous, w.loop)}`,
     skill: skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),

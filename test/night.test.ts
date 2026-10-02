@@ -1145,6 +1145,34 @@ it("counts a failed loop as a failure even when it kept its host's report", asyn
   ])
 })
 
+it("retries a loop that kept its host's report and reached night.end without counting a failure", async () => {
+  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const until = new Date(Date.now() + 60 * 60 * 1000)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id === 'acme-api-1-qa-feedback-1') until.setTime(0)
+      },
+    },
+    { until },
+  )
+
+  expect(report.results[1]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
+  expect(report.results[2]).toMatchObject({ status: 'skipped', reason: 'the night window ended' })
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
 it('skips the step after a loop whose publish threw, though its host kept a report', async () => {
   const { report } = await loopNight(
     `queue:

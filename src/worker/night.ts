@@ -333,7 +333,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const kept = open?.dir === dir
       if (kept && start)
         await handOff(dir, start, unitDir).catch((e) => {
-          if (open) open.ended = `${unit.id} error: ${(e as Error).message}`
+          if (open)
+            Object.assign(open, {
+              ended: `${unit.id} error: ${(e as Error).message}`,
+              completed: false,
+            })
         })
       if (!n.dryRun)
         await Promise.all(

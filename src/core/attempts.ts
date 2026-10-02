@@ -49,8 +49,8 @@ export function failedAttempts(item: Item, skill: string, attempts: Attempts): n
  * were each done, up to the end or to a unit that made nothing. A stopped or failed unit, or
  * work left unpublished, retries its chain and counts one failure; a unit that didn't run
  * (skipped, a dry run, aborted) counts nothing. A loop counts through its host, which holds
- * the loop's draft PR: its rounds don't count on their own, and an interrupted loop counts
- * nothing, like an aborted unit.
+ * the loop's draft PR: its rounds don't count on their own, and a loop that ended on a
+ * round that didn't run (interrupted, skipped) counts nothing, like an aborted unit.
  */
 export function recordAttempts(attempts: Attempts, report: NightReport): Attempts {
   const next = { ...attempts }
@@ -68,7 +68,11 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
       }
       at = finished && (r?.outcome?.kind ?? 'none') !== 'none' ? step(at.unit.id) : undefined
     }
-    if (!finished && !ran(short)) continue
+    // A loop ends on its last round: one that didn't run counts nothing, as a plain chain's step.
+    const ended = short?.loop
+      ? report.results.findLast((r) => r.planned.loop?.host === short?.planned.unit.id)
+      : short
+    if (!finished && !ran(ended)) continue
     const { skill } = head.unit
     for (const item of head.unit.items)
       if (typeof item.fields.updated === 'string')
