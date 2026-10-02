@@ -2,17 +2,18 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { PlannedUnit } from './foreman.js'
 import type { NightReport, UnitResult } from './report.js'
-import type { Item } from './types.js'
+import type { Item, PrRef } from './types.js'
 
 export const MAX_ATTEMPTS = 3
 
 /**
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
- * then; `failed` counts the attempts in a row that didn't finish, absent once one did.
+ * then; `failed` counts the attempts in a row that didn't finish, absent once one did; `pushed` is
+ * the head a `push` left on a PR branch.
  */
 export type Attempts = Record<
   string,
-  { runId: string; skill: string; updated: string; failed?: number }
+  { runId: string; skill: string; updated: string; failed?: number; pushed?: string }
 >
 
 export async function loadAttempts(path: string): Promise<Attempts> {
@@ -44,6 +45,12 @@ export function failedAttempts(item: Item, skill: string, attempts: Attempts): n
   return last?.skill === skill && item.fields.updated === last.updated ? (last.failed ?? 0) : 0
 }
 
+/** The PR a chain pushed onto, while its head is still the one the push left: it waits for you. */
+export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined {
+  const heads = items.map((item) => attempts[attemptKey(item)]?.pushed)
+  return items.flatMap((i) => i.linkedPrs).find((pr) => pr.head && heads.includes(pr.head))
+}
+
 /**
  * Attempts plus the items of every chain that ran: finished when its unit and `then` steps
  * were each done, up to the end or to a unit that made nothing. A stopped or failed unit, or
@@ -61,12 +68,14 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
     let at: PlannedUnit | undefined = head
     let short: UnitResult | undefined
     let finished = true
+    let pushed: string | undefined
     while (at) {
       const r = result(at.unit.id)
       if (r?.passedOver) {
         at = step(at.unit.id)
         continue
       }
+      if (r?.outcome?.kind === 'pushed') pushed = r.outcome.head
       if (r?.status !== 'done' || (r.outcome?.kind === 'none' && r.outcome.unpublished)) {
         finished = false
         short = r
@@ -80,16 +89,24 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
     const ended = unfinished
       ? (report.results.findLast((r) => r.planned.loop?.host === short?.planned.unit.id) ?? short)
       : short
-    if (!finished && (!ran(short) || (!ran(ended) && !ended?.passedOver))) continue
+    const aborted = !finished && (!ran(short) || (!ran(ended) && !ended?.passedOver))
+    // A push stays recorded even when what followed it was aborted.
+    if (aborted && !pushed) continue
     const { skill } = head.unit
-    for (const item of head.unit.items)
-      if (typeof item.fields.updated === 'string')
-        next[attemptKey(item)] = {
+    for (const item of head.unit.items) {
+      if (typeof item.fields.updated !== 'string') continue
+      const key = attemptKey(item)
+      // Aborted after a push: only the push's head is new, and an empty `updated` never reads as unchanged.
+      if (aborted) next[key] = { runId: report.runId, skill, updated: '', ...attempts[key], pushed }
+      else
+        next[key] = {
           runId: report.runId,
           skill,
           updated: item.fields.updated,
           ...(!finished && { failed: failedAttempts(item, skill, attempts) + 1 }),
+          ...(pushed && { pushed }),
         }
+    }
   }
   return next
 }

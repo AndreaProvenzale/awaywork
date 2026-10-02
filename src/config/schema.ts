@@ -128,9 +128,11 @@ const stepSettings = {
   skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   deliver: z
-    .enum(['draft_pr', 'report'])
+    .enum(['draft_pr', 'report', 'push'])
     .optional()
-    .describe("Output: a draft PR or the morning report; default the skill's"),
+    .describe(
+      "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
+    ),
   branch: branch.optional().describe('Branch name template for this rule'),
 }
 const MAX_ROUNDS = 5
@@ -192,7 +194,9 @@ const loop = z
     until: condition.describe('Ends the loop as soon as it holds; checked after every step'),
     max: z.int().min(1).max(MAX_ROUNDS).describe(`At most this many rounds, up to ${MAX_ROUNDS}`),
   })
-  .describe('Steps repeated until a condition holds; the loop publishes one draft PR at the end')
+  .describe(
+    'Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push',
+  )
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -354,6 +358,12 @@ export const configSchema = z
             message: inLoop(path)
               ? `"${s.skill}" already runs in a loop of this chain`
               : `"${s.skill}" already runs earlier in this chain`,
+          })
+        if (s.deliver === 'push' && path.includes('loop'))
+          ctx.addIssue({
+            code: 'custom',
+            path: [...stepAt, 'deliver'],
+            message: 'a loop publishes through the unit before it: set deliver push there',
           })
         for (const p of s.provider)
           if (!providerIds.includes(p))

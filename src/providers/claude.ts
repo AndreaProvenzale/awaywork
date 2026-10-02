@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { killGroupWhenDone } from '../core/group.js'
 import type { Job, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
@@ -67,8 +68,10 @@ export function claudeProvider(bin = 'claude'): Provider {
         env: job.env,
         extendEnv: false,
         cancelSignal: signal,
+        killDescendants: true,
         reject: false,
       })
+      killGroupWhenDone(child)
       let done: WorkerEvent | undefined
       for await (const line of child)
         for (const event of toEvents(line)) {

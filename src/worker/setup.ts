@@ -1,4 +1,5 @@
 import { execa } from 'execa'
+import { killGroupWhenDone } from '../core/group.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -47,20 +48,13 @@ export async function runCommand(
     env,
     extendEnv: false,
     stdin: 'ignore',
-    detached: true,
+    killDescendants: true,
     reject: false,
     all: true,
   })
-  const killGroup = () => {
-    try {
-      if (subprocess.pid) process.kill(-subprocess.pid, 'SIGKILL')
-    } catch {}
-  }
-  subprocess.nodeChildProcess.once('exit', killGroup)
-  stop.addEventListener('abort', killGroup, { once: true })
-  if (stop.aborted) killGroup()
+  const release = killGroupWhenDone(subprocess, stop)
   const result = await subprocess
-  stop.removeEventListener('abort', killGroup)
+  release()
 
   const values = secrets.flatMap((name) => env[name] || [])
   const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())

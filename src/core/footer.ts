@@ -6,3 +6,6 @@ export function footer(runId: string): string {
 }
 
 export const isOurs = (body: string | null | undefined): boolean => !!body?.includes(marker)
+
+/** The trailer every commit night-shift publishes carries, keyed `Night-shift: <run id>`. */
+export const trailerKey = 'Night-shift'

@@ -146,6 +146,7 @@ describe('asana config and linking', () => {
       ours: false,
       mine: true,
       trusted: true,
+      fork: false,
     }
     const task = asanaTask(12, {}, { key: 'ENG-12' })
     const issue = fakeItem({ key: 'ENG-12', type: 'issue' })

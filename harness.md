@@ -43,6 +43,10 @@ The unit section below says which delivery this unit has.
   similar).
 - **Report.** Write `.nightshift/out/report.md` early and refine it as
   you go, so a run cut short still leaves one. Commit nothing.
+- **Push.** Commit as for a draft PR; night-shift pushes your commits
+  onto the developer's own pull request. Write `.nightshift/out/report.md`
+  right after your first commit and keep it current: it says what you
+  changed, and without it nothing is pushed.
 - **Verdict.** When the skill defines verdicts, also write the one word
   that fits to `.nightshift/out/verdict`. night-shift reads it, e.g. to
   end a loop.

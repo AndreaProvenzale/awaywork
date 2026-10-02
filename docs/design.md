@@ -49,8 +49,8 @@ issue trackers through thin read-only adapters (`sources.md`).
 - The model gets no forge token; context is prefetched into files.
 - Output defaults to a draft PR from a new branch into the developer's
   branch. Safety comes from pushing only branches that don't exist yet,
-  never from the branch name, so the name can follow team conventions. Pushing onto the developer's own branch is a per-rule opt-in
-  (after v1). Never someone else's branch, never force, merge or comment.
+  never from the branch name, so the name can follow team conventions. Pushing onto the developer's own PR branch is a per-rule opt-in
+  (`deliver: push`), fast-forward only. Never someone else's branch, never force, merge or comment.
 - Resource watchdog and descendant kill on every worker.
 
 ## Watchdog

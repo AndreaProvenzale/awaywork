@@ -23,7 +23,7 @@ features:
   - title: Vendor binaries, your login
     details: Runs the stock agent CLIs (Claude Code, Codex, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
   - title: Drafts, never merges
-    details: Workers get no forge token. night-shift pushes only new branches and opens draft PRs; it never force-pushes, merges or comments.
+    details: Workers get no forge token. night-shift pushes only new branches and opens draft PRs, unless you opt in to fast-forward your own PR; it never force-pushes, merges or comments.
 ---
 
 ```sh

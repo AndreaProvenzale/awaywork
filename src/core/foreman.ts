@@ -1,5 +1,11 @@
 import type { Config } from '../config/schema.js'
-import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './attempts.js'
+import {
+  type Attempts,
+  failedAttempts,
+  MAX_ATTEMPTS,
+  pushedOnto,
+  unchangedSince,
+} from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
@@ -39,6 +45,8 @@ export interface LoopRound {
   skills: string[]
   until: Condition
   max: number
+  /** How the loop publishes: its host's draft PR, or a push onto the developer's PR. */
+  deliver: 'draft_pr' | 'push'
 }
 
 export interface NightPlan {
@@ -89,6 +97,11 @@ export function planNight(input: {
     const prs = items.flatMap((i) => i.linkedPrs)
     if (ours && !pickup) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      continue
+    }
+    const held = pushedOnto(items, input.attempts ?? {})
+    if (held) {
+      skip(`waiting for review: night-shift pushed onto ${held.url}`)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
@@ -176,8 +189,8 @@ export function planNight(input: {
     const pushed: string[] = []
     let delivers: Unit['deliver'] | undefined
     const branches = chain.map((entry) => {
-      // A loop after a draft PR works on that unit's branch.
-      if (isLoop(entry) && delivers === 'draft_pr') return undefined
+      // A loop after a draft PR or a push works on that unit's branch.
+      if (isLoop(entry) && (delivers === 'draft_pr' || delivers === 'push')) return undefined
       const step = firstStep(entry)
       const rendered = renderBranch(templateFor(step), items[0] as Item)
       const branch = pushed.includes(rendered) ? `${rendered}-${step.skill}` : rendered
@@ -194,15 +207,24 @@ export function planNight(input: {
       )
       continue
     }
+    const base = pr?.branch ?? ''
+    const foreign = pr ? !pr.mine : false
+    const fork = !!pr?.fork
+    const refused = deliverOf(rule) === 'push' && pushRefusal(base, foreign, fork, false)
+    if (refused) {
+      skip(refused)
+      continue
+    }
     const capped = overCap()
     if (capped) {
       skip(capped)
       continue
     }
     const id = slug(items[0]?.key ?? '')
-    /** Plans every round; the host is the draft PR unit before, else the loop's first unit on a fresh clone. */
+    /** Plans every round; the host is the draft PR or push unit before, else the loop's first unit on a fresh clone. */
     const addLoop = (loop: Loop, before: Unit, branch: string | undefined): Unit => {
       let host = branch === undefined ? before : undefined
+      const deliver = host?.deliver === 'push' ? 'push' : 'draft_pr'
       const skills = loop.loop.map((s) => s.skill)
       for (let round = 1; round <= loop.max; round++)
         for (const [s, step] of loop.loop.entries()) {
@@ -224,36 +246,43 @@ export function planNight(input: {
               skills,
               until: loop.until,
               max: loop.max,
+              deliver,
             },
           )
           host ??= unit
         }
-      return { ...(host as Unit), deliver: 'draft_pr' }
+      return { ...(host as Unit), deliver }
     }
     let previous = add(rule, {
       id,
-      base: pr?.branch ?? '',
-      foreign: pr ? !pr.mine : false,
+      base,
+      foreign,
       untrusted: pr ? !pr.trusted : false,
       branch: branches[0] as string,
     })
     for (const [j, entry] of (rule.then ?? []).entries()) {
-      const capped = overCap()
-      if (capped) {
+      const stacked = previous.deliver === 'draft_pr'
+      const onto = stacked ? previous.branch : previous.base
+      // Only the rule's own PR branch takes a push, not one a step opened tonight.
+      const refused =
+        !isLoop(entry) &&
+        deliverOf(entry) === 'push' &&
+        pushRefusal(onto, previous.foreign, fork, onto !== base)
+      const left = refused || overCap()
+      if (left) {
         const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit
-        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${capped}`
+        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${left}`
         break
       }
       if (isLoop(entry)) {
         previous = addLoop(entry, previous, branches[j + 1])
         continue
       }
-      const stacked = previous.deliver === 'draft_pr'
       previous = add(
         entry,
         {
           id: `${id}-${slug(entry.skill)}`,
-          base: stacked ? previous.branch : previous.base,
+          base: onto,
           foreign: previous.foreign,
           untrusted: previous.untrusted,
           branch: branches[j + 1] as string,
@@ -267,6 +296,19 @@ export function planNight(input: {
 
 function firstStep(entry: Step | Loop): Step {
   return isLoop(entry) ? (entry.loop[0] as Step) : entry
+}
+
+/** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened tonight. */
+function pushRefusal(
+  base: string,
+  foreign: boolean,
+  fork: boolean,
+  tonight: boolean,
+): string | undefined {
+  if (tonight) return `deliver push: ${base} is a draft PR opened tonight, not your own PR`
+  if (!base) return 'deliver push: no PR of yours to push onto'
+  if (foreign) return `deliver push: ${base} is someone else's PR`
+  if (fork) return `deliver push: ${base} is on a fork`
 }
 
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */

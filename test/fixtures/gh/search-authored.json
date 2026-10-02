@@ -29,6 +29,7 @@
           },
           "isDraft": false,
           "headRefName": "rate-limits",
+          "headRefOid": "abc1234",
           "viewerDidAuthor": true,
           "reviewRequests": {
             "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]

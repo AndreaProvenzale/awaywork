@@ -157,7 +157,8 @@ item's title as a slug of at most 40 characters.
 | Jira issue `ENG-12` | `ENG-12` |
 
 The name is cosmetic. The guardrail is that night-shift only pushes a
-branch that doesn't exist on the remote yet.
+branch that doesn't exist on the remote yet, unless a rule opts in to
+[`push`](#push).
 
 ## Repos and instructions
 
@@ -175,8 +176,8 @@ Their values are masked in setup's output. On a PR someone else opened,
 setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
 otherwise the agent is told it didn't run. It gets none of them either
-on a branch a worker wrote: a `then` step's after a draft PR, a stacked
-draft PR's, or a night-shift PR's a rule took up again. Read
+on a branch a worker wrote: a `then` step's after a draft PR or a push,
+a stacked draft PR's, or a night-shift PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -211,7 +212,7 @@ the repo's PR template, its recent commit style and your instructions
 | `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
 | `skills` | Extra skills the agent may use |
 | `instructions` | One or more instruction files for this rule |
-| `deliver` | `draft_pr` or `report`; default from the skill |
+| `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per night from this rule, its `then` steps included |
@@ -290,10 +291,11 @@ queue:
   draft PR it opens is stacked on it: its body names that PR to merge
   first. After a report, it starts from the same base, except that a
   draft PR it would open off the default branch stacks on the repo's
-  last one that night, as any unit's does.
+  last one that night, as any unit's does. After a push, it starts from
+  your PR's branch, pushed commits included.
 - The step finds what the one before delivered in
-  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, or
-  `report.md`.
+  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
+  or both `report.md` and `diff.patch` after a push.
 - A step runs only when the one before delivered; otherwise the rest of
   the chain is skipped, with the reason in the report. Once a unit in the
   chain opened a draft PR, the next night doesn't retry: the item waits
@@ -331,9 +333,11 @@ queue:
   unit opens one draft PR with every round's commits. Its body ends with
   how the loop went, the last verdict and the last report a round
   wrote. If that unit doesn't finish `done` with commits, it publishes
-  as usual and the loop doesn't run. After a report, the loop starts
-  from a fresh clone on the same base, and its first unit opens the
-  draft PR.
+  as usual and the loop doesn't run. After a [`push`](#push) unit, the
+  loop works in that unit's clone the same way and ends with one push
+  onto your PR, the summary in its report. After a report, the loop
+  starts from a fresh clone on the same base, and its first unit opens
+  the draft PR.
 - `until` is checked after every step and ends the loop as soon as it
   holds; with both keys, both must. `verdict` is the latest word a step
   wrote to `.nightshift/out/verdict` (built-in `review` writes `approve`,
@@ -427,6 +431,50 @@ queue:
 - The step right before a loop can't have a `when` unless it sets
   `deliver: report`, since the loop works in its clone: gate the loop's
   steps, or put a step between.
+
+### `push`
+
+By default night-shift only pushes branches that don't exist yet. `deliver:
+push` is the opt-in to add commits onto your own open PR instead of
+stacking a draft PR on it, e.g. to have review threads addressed in place:
+
+```yaml
+queue:
+  - skill: address-review
+    where: { type: pr, mine: true, unresolved_threads: { gt: 0 } }
+    deliver: push
+```
+
+- Only onto an open PR you authored, night-shift's own included (they
+  are opened with your login). On someone else's PR, a PR from a fork,
+  or an item with no PR of yours, the unit is skipped with the reason.
+- A `then` step can push only onto the rule's own PR. After a draft PR,
+  even with a report in between, its base is that night's new branch,
+  not your PR: the step is left out with the rest of the chain.
+- A [loop](#loops) after a push unit pushes every round's commits once,
+  when it ends. A loop's own steps can't set `deliver: push`: the unit
+  before the loop does.
+- A fast-forward only: night-shift pushes only commits on top of where
+  the clone started, and refuses when the branch moved since, so it
+  never rewrites history. It reads the PR again right before the
+  push and refuses when it is no longer yours or open, or has auto-merge
+  on, which would merge unreviewed commits, and when its branch lives on
+  a fork, is the default branch, is protected, or also backs someone
+  else's open PR in the repo. New commits that include a merge aren't pushed
+  either. The commits get the `Night-shift:` trailer, which drops a
+  commit's signature.
+- The agent writes `.nightshift/out/report.md`; without it nothing is
+  pushed. The PR body stays as it is and the report goes into the
+  morning report.
+- A skill's frontmatter can't default to `push`: only a rule opts in.
+- After a push, the PR waits for your review: no rule takes it while
+  its head is still the commit night-shift pushed. Any commit on top
+  releases it, yours or a bot's, and so does a rebase or an amend.
+  Without that, the push itself would update the PR and run the rule
+  again every night. The pushed head is kept in night-shift's state dir,
+  which a [GitHub Actions runner](./scheduling.md#in-github-actions)
+  doesn't keep: there, a push rule pushes again every night its `where`
+  holds.
 
 ## Notify
 

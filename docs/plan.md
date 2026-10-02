@@ -155,7 +155,8 @@ interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
-  push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
+  push(dir, branch, opts): Promise<void>         // only while the branch is absent on the remote (a lease)
+  fastForward(dir, branch, from, opts): Promise<void>   // only descendants of `from`, while the remote head is `from` (a lease)
   draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
@@ -167,7 +168,7 @@ interface Unit {
   rule: Rule; skill: string; skills: string[]; providers: string[]
   instructions: string[]; deliver: Deliver
 }
-type Deliver = 'draft_pr' | 'report'             // 'push' after v1, see Delivery
+type Deliver = 'draft_pr' | 'report' | 'push'    // see Delivery
 interface Rule {            // a queue entry, normalized: one-or-many fields are lists
   skill: string; source?: string; where: Record<string, WhereValue>
   provider: string[]; skills: string[]; instructions: string[]; deliver?: Deliver
@@ -243,6 +244,9 @@ Semantics, fixed so every milestone agrees:
   night-shift PR item only matches rules whose `where` names `ours`; one
   that did leads its unit (its rule and key win over better-ranked items)
   and is the unit's base, and setup there gets none of the repo's secrets.
+  A PR a `push` landed on waits too, while its head is the commit the
+  push left (recorded with the attempt), so a push rule doesn't re-run
+  on the update its own push made.
 - **Chains.** A rule's `then` is a step or a list of steps: a skill
   name, or a map with the rule keys other than `source`, `where`, `order`
   and `then`, plus `when`, inheriting none of the rule's. Each step is a unit planned
@@ -256,9 +260,10 @@ Semantics, fixed so every milestone agrees:
   A skill runs at most once outside loops, and once across the chain's loops.
 - **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
   steps round after round, planned as units `<unit>-<skill>-<round>` up
-  to `max` (at most 5). Rounds work in the clone of the draft PR unit
-  before the loop, whose publish waits for the loop's end; after a
-  report the loop's first unit clones afresh and hosts it. `until` is
+  to `max` (at most 5). Rounds work in the clone of the draft PR or
+  `push` unit before the loop, whose publish waits for the loop's end;
+  after a report the loop's first unit clones afresh and hosts it. A
+  loop step can't `deliver: push`. `until` is
   checked after every step; its `verdict` matches the latest word a step
   in the loop wrote to `out/verdict`, and doesn't hold before one did;
   its `command` holds when it exits 0 in the clone. Every round is routed
@@ -269,15 +274,15 @@ Semantics, fixed so every milestone agrees:
   and the command's `check.log`. A round that can't route, reaches
   `night.end`, fails or stops ends the loop, which publishes what it
   has; night-shift appends the loop's summary, last verdict and last
-  report to the PR body. A host's kept report finishes the chain only
-  when the loop ended at `until`, `max` or a round where no step's
-  `when` held; otherwise the host is unpublished, and counts a failure
-  unless a round couldn't run for `night.end` or no provider left. An
-  interrupted loop publishes nothing and records no attempt, like an
-  aborted unit. A loop counts once against the caps and as an attempt
-  through its host; a step after the loop follows the host, or runs
-  where the host ran when the host kept its report, and its `when`
-  reads the loop's last verdict.
+  report to the PR body, or to a push host's report. A host's kept
+  report finishes the chain only when the loop ended at `until`, `max`
+  or a round where no step's `when` held; otherwise the host is
+  unpublished, and counts a failure unless a round couldn't run for
+  `night.end` or no provider left. An interrupted loop publishes nothing
+  and records no attempt, like an aborted unit. A loop counts once
+  against the caps and as an attempt through its host; a step after the
+  loop follows the host, or runs where the host ran when the host kept
+  its report, and its `when` reads the loop's last verdict.
 - **Conditions.** A condition's `command` runs outside the model like
   `setup` on a branch a worker wrote (no repo secrets, 15 minutes, not
   past `night.end`), once per commit per clone. In `until`, it doesn't
@@ -370,10 +375,24 @@ Semantics, fixed so every milestone agrees:
   into the developer's branch when the unit has one, else into the
   default branch.
 - `report`: nothing is pushed; the output goes into the morning report.
-- `push` (after v1): commit onto the developer's own branch, only when
-  a rule opts in, the branch is the developer's own PR head, and the push
-  is a fast-forward. Never someone else's branch, never force, never
-  merge, never a comment.
+- `push`: commit onto the developer's own branch, only when a rule opts
+  in (never a skill's default), the unit's base is an open PR the
+  developer authored (night-shift's own included), and the push is a
+  fast-forward from the commit the clone started at, checked again at
+  push time, where a lease also requires the branch to still be at it,
+  along with the PR being the developer's, open, in the repo,
+  without auto-merge, and its branch not the default branch, not
+  protected and not the branch of someone else's open PR in the repo; no
+  merge commits. Pushes run from a bare repo night-shift owns that
+  fetches the clone's `HEAD`, so the clone's config, hooks and refs can't
+  redirect them; the fetch runs only after night-shift put back the
+  clone's config as cloned, so it can't run a command either. `plan` refuses a push onto a fork's PR up front. A
+  `then` step can push only onto the rule's own PR, never onto a
+  branch opened tonight. The model writes
+  `report.md`, required to push; the PR body is untouched. Never someone
+  else's branch, never a push that rewrites history, never merge, never
+  a comment. No delivery publishes merge commits, or a branch that
+  dropped the commit its clone started at.
 
 ## Milestones
 

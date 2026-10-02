@@ -118,8 +118,9 @@ stream and stops at the ceiling, or when the short session window passes
 - **The model sees only its own agent's token.** No forge token, no
   tracker token, no other agent's login. PR diffs, threads and CI logs are
   prefetched into files. night-shift itself does the push.
-- **It only pushes branches it creates** (`night/<key>`). No force pushes,
-  merges or comments, and it never touches anyone else's branch.
+- **It only pushes branches it creates** (`night/<key>`), unless a rule
+  opts in to fast-forward your own PR. No force pushes, merges or
+  comments, and it never touches anyone else's branch.
 - **It runs the vendor's own binary with your login.** It never calls the
   backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all

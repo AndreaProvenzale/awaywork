@@ -5,12 +5,16 @@ export interface PrRef {
   number: number
   url: string
   branch: string
+  /** Its branch's head commit, when the source reads it. */
+  head?: string
   /** Opened by night-shift: its body carries the footer. */
   ours: boolean
   /** Opened by the developer, by hand or through night-shift. */
   mine: boolean
   /** Its author has write access or org membership; always, when it's mine. */
   trusted: boolean
+  /** Its branch lives on a fork, not in `repo`. */
+  fork: boolean
 }
 
 export interface Item {
@@ -121,6 +125,17 @@ export interface Forge {
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
+  /**
+   * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
+   * auto-merge, and still at `from`, and the branch is unprotected and backs no one else's PR;
+   * never forced.
+   */
+  fastForward(
+    dir: string,
+    branch: string,
+    from: string,
+    opts: { repo: string; pr: number },
+  ): Promise<void>
   draftPr(
     repo: string,
     head: string,
@@ -203,4 +218,4 @@ export interface Unit {
   deliver: Deliver
 }
 
-export type Deliver = 'draft_pr' | 'report'
+export type Deliver = 'draft_pr' | 'report' | 'push'

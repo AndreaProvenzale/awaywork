@@ -22,7 +22,11 @@ import type { Outcome } from './publish.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
 export const WORK_DIR = '.nightshift'
-export const outputFile: Record<Deliver, string> = { draft_pr: 'pr.md', report: 'report.md' }
+export const outputFile: Record<Deliver, string> = {
+  draft_pr: 'pr.md',
+  report: 'report.md',
+  push: 'report.md',
+}
 
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 
@@ -119,6 +123,20 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   })
   await writeOutput(join(work, 'prompt.md'), prompt)
   return prompt
+}
+
+/**
+ * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
+ * steers night-shift's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere.
+ */
+export async function restoreGitConfig(dir: string, config: string): Promise<void> {
+  const git = join(dir, '.git')
+  if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
+  for (const path of ['commondir', 'objects/info/alternates'])
+    if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
+      throw new Error(`.git/${path} in the clone points elsewhere`)
+  await rm(join(git, 'config'), { recursive: true, force: true })
+  await writeFile(join(git, 'config'), config, { flag: 'wx' })
 }
 
 /** Throws when a symlink, which a worker may have planted, sits anywhere on one of `paths` in the clone. */
@@ -230,10 +248,14 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
   // A loop's PR body exists once its host, or a round before, wrote one.
   const continues = loop !== undefined && loop.host !== unit.id
   const body = continues && !!previous && existsSync(join(previous.out, outputFile.draft_pr))
-  const deliver =
-    unit.deliver === 'draft_pr'
-      ? `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`
-      : `a report. Write \`${output}\` and commit nothing.`
+  const deliver = {
+    draft_pr:
+      loop?.deliver === 'push'
+        ? `commits for the loop. Commit on this branch; night-shift pushes them onto ${base}, the developer's own pull request, when the loop ends.`
+        : `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`,
+    report: `a report. Write \`${output}\` and commit nothing.`,
+    push: `commits pushed onto ${base}, the developer's own pull request. Commit on this branch and write \`${output}\`.`,
+  }[unit.deliver]
   return [
     `## Tonight's unit`,
     `Unit \`${unit.id}\`, skill \`${unit.skill}\`. You are on the new branch \`${unit.branch}\`, cut from ${base}.`,
@@ -261,7 +283,11 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
 
 function loopSection(loop: LoopRound, unit: Unit): string {
   const ends = describeCondition(loop.until)
-  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift publishes the branch as one draft PR when the loop ends.`
+  const publish =
+    loop.deliver === 'push'
+      ? `pushes the branch's commits onto \`${unit.base}\``
+      : 'publishes the branch as one draft PR'
+  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift ${publish} when the loop ends.`
 }
 
 function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean): string {
@@ -274,6 +300,8 @@ function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean):
 
 function followUp({ skill, outcome }: Previous): string {
   const context = `\`${WORK_DIR}/context/previous/\``
+  if (outcome?.kind === 'pushed')
+    return `This unit follows \`${skill}\` on the same items, which pushed ${outcome.commits} commits onto \`${outcome.branch}\` tonight; you start from them. Its report and diff are \`${outputFile.push}\` and \`diff.patch\` in ${context}.`
   if (outcome?.kind !== 'pr')
     return `This unit follows \`${skill}\` on the same items, which wrote a report tonight: \`${outputFile.report}\` in ${context}.`
   return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} tonight; you start from its branch. Its body and diff are \`${outputFile.draft_pr}\` and \`diff.patch\` in ${context}.`

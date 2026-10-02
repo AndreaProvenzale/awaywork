@@ -1,9 +1,11 @@
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { footer } from '../src/core/footer.js'
 import type { Ctx } from '../src/core/types.js'
+import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
 import { githubSource } from '../src/sources/github.js'
 import { fixture, githubRoutes, recorded } from './fakes/gh.js'
@@ -88,6 +90,7 @@ describe('github source', () => {
       number: 1,
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
+      head: 'abc1234',
       ours: false,
       mine: true,
       trusted: true,
@@ -223,9 +226,9 @@ describe('github forge', () => {
     const run = recorded([[/author:@me/, authored]])
     const forge = githubForge(run)
     const prs = await forge.prsFor(fakeItem({ key: 'T-12' }))
-    expect(prs.map((p) => [p.repo, p.number, p.branch, p.ours, p.mine])).toEqual([
-      ['acme/api', 1, 't-12-rate-limits', true, true],
-      ['acme/web', 3, 'billing', false, true],
+    expect(prs.map((p) => [p.repo, p.number, p.branch, p.head, p.ours, p.mine])).toEqual([
+      ['acme/api', 1, 't-12-rate-limits', 'abc1234', true, true],
+      ['acme/web', 3, 'billing', undefined, false, true],
     ])
     expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
     expect(run.calls).toHaveLength(1)
@@ -241,10 +244,11 @@ describe('github forge', () => {
     expect(await forge.branchExists('acme/api', 'night/acme-api-1-old')).toBe(true)
   })
 
-  it('pushes only branches absent on the remote, never forced', async () => {
+  it('pushes only branches absent on the remote, and only while they are', async () => {
     const run = recorded([
       [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
       [/matching-refs/, '[]'],
+      [/rev-parse/, 'f00d000\n'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
@@ -256,16 +260,160 @@ describe('github forge', () => {
     expect(push).toEqual([
       'git',
       '-C',
-      '/work/u1',
+      expect.stringContaining('nightshift-push-'),
+      '--no-replace-objects',
+      '-c',
+      'core.hooksPath=/dev/null',
       '-c',
       'credential.helper=',
       '-c',
       'credential.helper=!gh auth git-credential',
       'push',
+      '--force-with-lease=refs/heads/night/acme-api-1:',
       'https://github.com/acme/api.git',
-      'HEAD:refs/heads/night/acme-api-1',
+      'f00d000:refs/heads/night/acme-api-1',
     ])
-    expect(push.join(' ')).not.toMatch(/force|\+HEAD/)
+    expect(push.join(' ')).not.toMatch(/\+/)
+  })
+
+  it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
+    const theirs = { number: 12, isCrossRepository: false, viewerDidAuthor: false }
+    const fork = { number: 13, isCrossRepository: true, viewerDidAuthor: false }
+    const state = (pr: Record<string, unknown>, others = [fork]) =>
+      JSON.stringify({
+        data: {
+          repository: {
+            defaultBranchRef: { name: 'main' },
+            pullRequest: {
+              state: 'OPEN',
+              viewerDidAuthor: true,
+              isCrossRepository: false,
+              headRefName: 'feature-1',
+              headRefOid: 'abc1234',
+              autoMergeRequest: null,
+              ...pr,
+            },
+            pullRequests: { nodes: others },
+          },
+        },
+      })
+    const run = recorded([
+      [/number=2 /, state({ state: 'MERGED' })],
+      [/number=3 /, state({ isCrossRepository: true })],
+      [/number=4 /, state({ headRefName: 'main' })],
+      [/number=5 /, state({ autoMergeRequest: { enabledAt: '2026-01-01T00:00:00Z' } })],
+      [/number=6 /, state({ headRefOid: 'def5678' })],
+      [/number=7 /, state({ viewerDidAuthor: false })],
+      [/number=8 /, state({}, [theirs])],
+      [/number=9 /, state({ headRefName: 'release/9' })],
+      [/number=1 /, state({})],
+      [/branches\/release\/9$/, '{ "protected": true }'],
+      [/branches\/feature-1$/, '{ "protected": false }'],
+      [/rev-parse/, 'f00d000\n'],
+      [/^git /, ''],
+    ])
+    const forge = githubForge(run)
+    const push = (branch: string, pr: number) =>
+      forge.fastForward('/work/u1', branch, 'abc1234', { repo: 'acme/api', pr })
+    await expect(push('feature-1', 2)).rejects.toThrow(
+      'refusing to push onto feature-1 on acme/api: #2 is merged',
+    )
+    await expect(push('feature-1', 3)).rejects.toThrow("#3's branch is on a fork")
+    await expect(push('main', 4)).rejects.toThrow('main is the default branch')
+    await expect(push('feature-1', 4)).rejects.toThrow("#4's branch is main")
+    await expect(push('feature-1', 5)).rejects.toThrow('#5 has auto-merge on')
+    await expect(push('feature-1', 6)).rejects.toThrow(
+      'it is at def5678, the clone started from abc1234',
+    )
+    await expect(push('feature-1', 7)).rejects.toThrow("#7 isn't yours")
+    await expect(push('feature-1', 8)).rejects.toThrow(
+      "feature-1 is also the branch of #12, which isn't yours",
+    )
+    await expect(push('release/9', 9)).rejects.toThrow('release/9 is protected')
+    expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
+    await push('feature-1', 1)
+    expect(run.calls.at(-1)).toEqual([
+      'git',
+      '-C',
+      expect.stringContaining('nightshift-push-'),
+      '--no-replace-objects',
+      '-c',
+      'core.hooksPath=/dev/null',
+      '-c',
+      'credential.helper=',
+      '-c',
+      'credential.helper=!gh auth git-credential',
+      'push',
+      '--force-with-lease=refs/heads/feature-1:abc1234',
+      'https://github.com/acme/api.git',
+      'f00d000:refs/heads/feature-1',
+    ])
+  })
+
+  it("pushes from a repo of its own, which the clone's config can't redirect, and only a fast-forward", async () => {
+    const root = await tmp()
+    const origin = join(root, 'origin')
+    const elsewhere = join(root, 'elsewhere')
+    const clone = join(root, 'clone')
+    const git = (dir: string, ...args: string[]) =>
+      execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    for (const bare of [origin, elsewhere]) await execa('git', ['init', '-q', '--bare', bare])
+    await execa('git', ['init', '-q', clone])
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'init')
+    await git(clone, 'config', `url.${elsewhere}.pushInsteadOf`, origin)
+    let head = ''
+    let branch = 'night/acme-api-1'
+    const pullRequest = () => ({
+      state: 'OPEN',
+      viewerDidAuthor: true,
+      isCrossRepository: false,
+      headRefName: branch,
+      headRefOid: head,
+      autoMergeRequest: null,
+    })
+    const run: Exec = async (cmd, args) =>
+      cmd !== 'gh'
+        ? exec(
+            cmd,
+            args.map((a) => (a === 'https://github.com/acme/api.git' ? origin : a)),
+          )
+        : args.includes('graphql')
+          ? JSON.stringify({
+              data: {
+                repository: {
+                  defaultBranchRef: null,
+                  pullRequest: pullRequest(),
+                  pullRequests: { nodes: [] },
+                },
+              },
+            })
+          : '[]'
+    const forge = githubForge(run)
+    await forge.push(clone, 'night/acme-api-1', { repo: 'acme/api' })
+    const refs = async (dir: string) =>
+      (await git(dir, 'for-each-ref', '--format=%(refname)')).stdout
+    expect(await refs(origin)).toBe('refs/heads/night/acme-api-1')
+    expect(await refs(elsewhere)).toBe('')
+
+    head = (await git(origin, 'rev-parse', 'night/acme-api-1')).stdout
+    await git(clone, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten')
+    const onto = forge.fastForward(clone, 'night/acme-api-1', head, { repo: 'acme/api', pr: 1 })
+    await expect(onto).rejects.toThrow(`not a fast-forward from ${head.slice(0, 7)}`)
+
+    // The branch moved back after the PR was read: the push would bring back what was dropped.
+    const rewritten = (await git(clone, 'rev-parse', 'HEAD')).stdout
+    branch = 'night/acme-api-2'
+    head = rewritten
+    await forge.push(clone, branch, { repo: 'acme/api' })
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'dropped')
+    await forge.fastForward(clone, branch, rewritten, { repo: 'acme/api', pr: 1 })
+    head = (await git(clone, 'rev-parse', 'HEAD')).stdout
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'tonight')
+    await git(origin, 'update-ref', 'refs/heads/night/acme-api-2', rewritten)
+    const back = forge.fastForward(clone, 'night/acme-api-2', head, { repo: 'acme/api', pr: 1 })
+    await expect(back).rejects.toThrow()
+    expect((await git(origin, 'rev-parse', 'night/acme-api-2')).stdout).toBe(rewritten)
+    await expect(forge.push(clone, 'night/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
   })
 
   it('opens a draft PR titled by the body file first line', async () => {

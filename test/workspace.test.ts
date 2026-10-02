@@ -144,6 +144,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         ours: false,
         mine,
         trusted: true,
+        fork: false,
       }
       const prompt = await prepareWorkspace({
         unit: {

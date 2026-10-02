@@ -4,7 +4,13 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
-import { type Attempts, loadAttempts, recordAttempts, saveAttempts } from '../src/core/attempts.js'
+import {
+  type Attempts,
+  loadAttempts,
+  recordAttempts,
+  saveAttempts,
+  unchangedSince,
+} from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { type PlannedUnit, planNight } from '../src/core/foreman.js'
@@ -486,6 +492,63 @@ queue:
     ])
   })
 
+  it("pushes only onto your own PR's branch, never onto someone else's or tonight's draft PR", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: address-review, where: { type: pr }, deliver: push, then: [{ skill: review, deliver: push }, { skill: implement, deliver: draft_pr }, { skill: fix-ci, deliver: push }] }
+  - { skill: implement, where: { type: issue }, deliver: push }
+`
+    const mine = githubPr(1)
+    const theirs = githubPr(2, { mine: false })
+    const result = plan(yaml, [mine, theirs, issue], {})
+    expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base])).toEqual([
+      ['acme-api-1', 'push', 'feature-1'],
+      ['acme-api-1-review', 'push', 'feature-1'],
+      ['acme-api-1-implement', 'draft_pr', 'feature-1'],
+    ])
+    expect(result.units[2]?.capped).toBe(
+      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+    )
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
+      ['acme/api#5', 'deliver push: no PR of yours to push onto'],
+    ])
+    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+    const relayed = plan(
+      `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver: report }, { skill: fix-ci, deliver: push }] }]
+`,
+      [mine],
+      {},
+    )
+    expect(relayed.units.at(-1)?.capped).toBe(
+      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+    )
+    const forked = githubPr(3)
+    const fork = { ...(forked.linkedPrs[0] as PrRef), fork: true }
+    expect(plan(yaml, [{ ...forked, linkedPrs: [fork] }], {}).skipped[0]?.reason).toBe(
+      'deliver push: feature-3 is on a fork',
+    )
+  })
+
+  it("lists a push loop's rounds on the PR branch they push onto", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`
+    expect(formatPlan(plan(yaml, [githubPr(1)], {}))).toMatch(
+      /acme-api-1-implement-1\s+acme\/api .* push\s+feature-1\n/,
+    )
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
@@ -681,6 +744,57 @@ queue:
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
     ])
+  })
+
+  it('holds a PR night-shift pushed onto while its head is still the one the push left', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push }]`
+    const at = (head: string, updated: string, n = 1) => {
+      const item = githubPr(n, { updated })
+      return { ...item, linkedPrs: [{ ...(item.linkedPrs[0] as PrRef), head }] }
+    }
+    const first = plan(yaml, [at('abc1234', '2026-01-01T00:00:00Z')], {})
+    const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
+    const results = [{ planned: first.units[0], status: 'done', outcome }]
+    const attempts = recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    expect(attempts['github:acme/api#1']?.pushed).toBe('def5678')
+
+    const pushedAt = '2026-01-02T00:00:00Z'
+    const held = plan(yaml, [at('def5678', pushedAt), at('def5678', pushedAt, 2)], {}, {}, attempts)
+    expect(held.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
+    expect(held.skipped.map((s) => s.reason)).toEqual([
+      'waiting for review: night-shift pushed onto https://github.com/acme/api/pull/1',
+    ])
+    const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
+    expect(movedOn.units).toHaveLength(1)
+  })
+
+  it('records the push of a chain aborted after it, without finishing the chain', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push, then: review }]`
+    const item = githubPr(1, { updated: '2026-01-01T00:00:00Z' })
+    const night = plan(yaml, [item], {})
+    const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
+    const [push, review] = night.units
+    const results = [
+      { planned: push, status: 'done', outcome },
+      { planned: review, status: 'stopped: aborted' },
+    ]
+    const report = { runId: 'r2', plan: night, results } as NightReport
+    const key = 'github:acme/api#1'
+
+    const fresh = recordAttempts({}, report)
+    expect(fresh[key]).toEqual({ runId: 'r2', skill: 'fix-ci', updated: '', pushed: 'def5678' })
+    expect(unchangedSince(item, 'fix-ci', fresh)).toBeUndefined()
+    const earlier = { runId: 'r1', skill: 'fix-ci', updated: '2026-01-01T00:00:00Z', failed: 1 }
+    expect(recordAttempts({ [key]: earlier }, report)[key]).toEqual({
+      ...earlier,
+      pushed: 'def5678',
+    })
   })
 
   it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {

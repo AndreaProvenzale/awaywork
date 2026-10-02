@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { claudeProvider, toEvents } from '../src/providers/claude.js'
 import { workerEnv } from '../src/worker/workspace.js'
@@ -127,6 +127,7 @@ describe('claude provider', () => {
         ours: false,
         mine,
         trusted: true,
+        fork: false,
       }
       const unit = {
         ...job().unit,
@@ -194,5 +195,16 @@ describe('claude provider', () => {
   it('reports a failed run when the binary exits without a result', async () => {
     const events = await collect(claudeProvider('false').run(job(), new AbortController().signal))
     expect(events).toEqual([{ type: 'done', ok: false, turns: 0 }])
+  })
+
+  it('kills what the binary left running once it exits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-left-'))
+    const pid = join(root, 'left.pid')
+    const script = join(root, 'leaves.sh')
+    const leaves = `/bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}`
+    await writeFile(script, `#!/bin/sh\n${leaves}\n`, { mode: 0o755 })
+    await collect(claudeProvider(script).run(job(), new AbortController().signal))
+    const left = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
 })

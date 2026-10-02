@@ -330,7 +330,7 @@ it('runs a chain on what the unit before delivered, and skips it after nothing',
       await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
-      await git(dir, 'push', '-q', 'origin', `HEAD:refs/heads/${branch}`)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
       await base.push(dir, branch, opts)
     },
   }
@@ -547,6 +547,11 @@ async function originForge(root: string) {
       await fake.push(dir, branch, opts)
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
+    fastForward: async (dir: string, branch: string, from: string) => {
+      const head = await git(origin, 'rev-parse', `refs/heads/${branch}`)
+      if (head.stdout !== from) throw new Error(`${branch} moved`)
+      await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
+    },
     draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
       opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
       return `https://example.com/${repo}/pull/${head}`
@@ -732,6 +737,208 @@ queue:
   ])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+})
+
+it('pushes onto your own PR, and runs what follows on it without setup secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix-ci, deliver: push, then: { skill: implement, deliver: draft_pr } }]
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const prompts: string[] = []
+  const pusher: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+      await git(job.dir, 'add', `${job.unit.id}.txt`)
+      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+      const out = job.unit.deliver === 'push' ? 'report.md' : 'pr.md'
+      await writeFile(join(job.dir, '.nightshift/out', out), `Work on ${job.unit.id}\n\nDone.`)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: pusher },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => u.outcome)).toEqual([
+    {
+      kind: 'pushed',
+      branch: 'feature-1',
+      commits: 1,
+      text: 'Work on acme-api-1\n\nDone.',
+      head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
+    },
+    { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+  ])
+  const pushed = await git(
+    origin,
+    'log',
+    '--format=%s|%(trailers:key=Night-shift,valueonly)',
+    'feature-1',
+  )
+  expect(pushed.stdout.split('\n').filter(Boolean)).toEqual(['Work on acme-api-1|r1', 'init|'])
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['night/acme-api-1', 'feature-1']])
+  expect(opened[0]?.body).not.toContain('Stacked on')
+  const setups = await Promise.all(
+    ['acme-api-1', 'acme-api-1-implement'].map((id) =>
+      readFile(join(root, 'run/units', id, 'setup.txt'), 'utf8'),
+    ),
+  )
+  expect(setups).toEqual(['npm\n', '\n'])
+  expect(prompts[0]).toContain(
+    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.nightshift/out/report.md`.",
+  )
+  expect(prompts[1]).toContain(
+    'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` tonight; you start from them.',
+  )
+  expect(formatReport(report)).toContain(
+    '| 1 | acme-api-1 | fix-ci | claude | done, 1 turns | 1 commits pushed onto feature-1, report below |',
+  )
+  expect(formatReport(report)).toContain('### acme-api-1: PR 1 (fix-ci)')
+})
+
+it("loops in the push unit's clone and pushes every round's commits onto your PR once", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  expect(formatPlan(plan)).toContain(
+    'loop review ⇄ implement until verdict approve, at most 2 rounds; one push onto feature-1 from acme-api-1',
+  )
+  const prompts: string[] = []
+  const verdicts: Record<string, string> = {
+    'acme-api-1-review-1': 'changes',
+    'acme-api-1-review-2': 'approve',
+  }
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      const out = join(job.dir, '.nightshift/out')
+      if (job.unit.deliver === 'report') {
+        await writeFile(join(out, 'report.md'), `${job.unit.id} review.`)
+        await writeFile(join(out, 'verdict'), verdicts[job.unit.id] ?? '')
+      } else {
+        await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+        await git(job.dir, 'add', '.')
+        await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+        if (job.unit.deliver === 'push') await writeFile(join(out, 'report.md'), 'Fixed CI.')
+      }
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: provider },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(opened).toEqual([])
+  const host = report.results[0]
+  expect(host?.outcome).toMatchObject({ kind: 'pushed', branch: 'feature-1', commits: 2 })
+  expect(host?.outcome && 'text' in host.outcome && host.outcome.text).toContain(
+    'Fixed CI.\n\n## Night-shift loop\n\n2 rounds of review ⇄ implement; until held: verdict approve; last verdict approve.',
+  )
+  const log = await git(origin, 'log', '--format=%s', 'feature-1')
+  expect(log.stdout.split('\n')).toEqual([
+    'Work on acme-api-1-implement-1',
+    'Work on acme-api-1',
+    'init',
+  ])
+  expect(prompts[2]).toContain(
+    "Deliver: commits for the loop. Commit on this branch; night-shift pushes them onto `feature-1`, the developer's own pull request, when the loop ends.",
+  )
+})
+
+it("doesn't open a push loop when the push unit wrote no report", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-bare-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`)
+  const plan = planNight({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome ?? u.reason])).toEqual([
+    [
+      'acme-api-1',
+      'done',
+      { kind: 'none', reason: '1 commits but no report, not pushed', unpublished: true },
+    ],
+    ['acme-api-1-review-1', 'skipped', 'acme-api-1 left nothing to loop on'],
+  ])
 })
 
 it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
@@ -2467,4 +2674,60 @@ it('stacks on a night-shift PR a rule took up whenever a draft PR starts from it
       '[{ loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }, address-review]',
     ),
   ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
+})
+
+it("doesn't open a push loop on a host whose report is blank", async () => {
+  const { report } = await loopNight(
+    `queue:
+  - skill: fix-ci
+    deliver: push
+    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
+`,
+    [githubPr(1)],
+    {
+      ...committer,
+      async *run(job, signal) {
+        yield* committer.run(job, signal)
+        await writeFile(join(job.dir, '.nightshift/out/report.md'), '\n')
+      },
+    },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome ?? u.reason])).toEqual([
+    [
+      'acme-api-1',
+      'done',
+      { kind: 'none', reason: '1 commits but no report, not pushed', unpublished: true },
+    ],
+    ['acme-api-1-review-1', 'skipped', 'acme-api-1 left nothing to loop on'],
+  ])
+})
+
+it("puts back a loop clone's git config after each worker, and refuses a borrowed object store", async () => {
+  const provider = looper({})
+  const seen: Record<string, string> = {}
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        const config = join(job.dir, '.git', 'config')
+        seen[job.unit.id] = await readFile(config, 'utf8')
+        if (job.unit.id === 'acme-api-1-review-1')
+          await writeFile(config, '[core]\n\tsshCommand = touch pwned\n', { flag: 'a' })
+        if (job.unit.id === 'acme-api-1-address-review-1')
+          await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '/elsewhere\n')
+        yield* provider.run(job, signal)
+      },
+    },
+  )
+
+  expect(seen['acme-api-1-address-review-1']).toBe(seen['acme-api-1-review-1'])
+  expect(report.results[0]?.loop).toBe(
+    '1 round of review ⇄ address-review; acme-api-1-address-review-1 error: .git/objects/info/alternates in the clone points elsewhere',
+  )
 })

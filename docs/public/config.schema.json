@@ -670,11 +670,12 @@
             ]
           },
           "deliver": {
-            "description": "Output: a draft PR or the morning report; default the skill's",
+            "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
             "type": "string",
             "enum": [
               "draft_pr",
-              "report"
+              "report",
+              "push"
             ]
           },
           "branch": {
@@ -762,11 +763,12 @@
                         ]
                       },
                       "deliver": {
-                        "description": "Output: a draft PR or the morning report; default the skill's",
+                        "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                         "type": "string",
                         "enum": [
                           "draft_pr",
-                          "report"
+                          "report",
+                          "push"
                         ]
                       },
                       "branch": {
@@ -924,11 +926,12 @@
                                 ]
                               },
                               "deliver": {
-                                "description": "Output: a draft PR or the morning report; default the skill's",
+                                "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                 "type": "string",
                                 "enum": [
                                   "draft_pr",
-                                  "report"
+                                  "report",
+                                  "push"
                                 ]
                               },
                               "branch": {
@@ -1083,11 +1086,12 @@
                                   ]
                                 },
                                 "deliver": {
-                                  "description": "Output: a draft PR or the morning report; default the skill's",
+                                  "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                   "type": "string",
                                   "enum": [
                                     "draft_pr",
-                                    "report"
+                                    "report",
+                                    "push"
                                   ]
                                 },
                                 "branch": {
@@ -1251,7 +1255,7 @@
                   "max"
                 ],
                 "additionalProperties": false,
-                "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
+                "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
               },
               {
                 "minItems": 1,
@@ -1321,11 +1325,12 @@
                               ]
                             },
                             "deliver": {
-                              "description": "Output: a draft PR or the morning report; default the skill's",
+                              "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                               "type": "string",
                               "enum": [
                                 "draft_pr",
-                                "report"
+                                "report",
+                                "push"
                               ]
                             },
                             "branch": {
@@ -1483,11 +1488,12 @@
                                       ]
                                     },
                                     "deliver": {
-                                      "description": "Output: a draft PR or the morning report; default the skill's",
+                                      "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                       "type": "string",
                                       "enum": [
                                         "draft_pr",
-                                        "report"
+                                        "report",
+                                        "push"
                                       ]
                                     },
                                     "branch": {
@@ -1642,11 +1648,12 @@
                                         ]
                                       },
                                       "deliver": {
-                                        "description": "Output: a draft PR or the morning report; default the skill's",
+                                        "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                         "type": "string",
                                         "enum": [
                                           "draft_pr",
-                                          "report"
+                                          "report",
+                                          "push"
                                         ]
                                       },
                                       "branch": {
@@ -1810,7 +1817,7 @@
                         "max"
                       ],
                       "additionalProperties": false,
-                      "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
+                      "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
                     }
                   ]
                 }
