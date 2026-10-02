@@ -275,9 +275,9 @@ Semantics, fixed so every milestone agrees:
   the host kept its report, and its `when` reads the loop's last verdict.
 - **Conditions.** A condition's `command` runs outside the model like
   `setup` on a branch a worker wrote (no repo secrets, 15 minutes, not
-  past `night.end`), once per commit per clone. In a clone with
-  uncommitted changes beyond what setup and earlier checks left, it
-  doesn't hold. On an untrusted author's PR or an offline unit
+  past `night.end`), once per commit per clone. In `until`, it doesn't
+  hold in a clone with uncommitted changes beyond what setup and earlier
+  checks left; in `when`, it runs on them and isn't kept for the commit. On an untrusted author's PR or an offline unit
   (night-shift has no sandbox of its own) it doesn't run; config refuses
   one on a rule with `network: false`. One that didn't run doesn't hold
   for `when` and ends a loop. One past its 15 minutes fails. One

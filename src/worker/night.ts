@@ -102,22 +102,27 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     (r.outcome?.kind === 'pr' ||
       openedPr(results.find((x) => r.planned.after && x.planned.unit.id === r.planned.after)))
 
-  /** Runs a condition's command in the clone outside the model, once per commit, with none of the secrets. */
+  /**
+   * Runs a condition's command in the clone outside the model, once per commit, with none of the
+   * secrets. When it decides what is published (`until`), files left uncommitted fail it.
+   */
   const check = async (
     command: string,
     unit: Unit,
     dir: string,
     log: (line: string) => void,
+    published: boolean,
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     // The worker's sandbox is the provider's: night-shift has none to run worker-written code in.
     if (!unit.network) return refusal('not run without network: it has no sandbox')
-    // The published branch holds only commits, so a check must not pass on files left uncommitted.
-    const baseline = baselines.get(dir)
-    const left = (await uncommitted(dir)).filter((line) => !baseline?.has(line))
-    if (left.length) return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
+    const before = await uncommitted(dir)
+    const baseline = baselines.get(dir) ?? new Set()
+    const left = before.filter((line) => !baseline.has(line))
+    if (left.length && published)
+      return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
     const key = `${dir} ${await head(dir)} ${command}`
-    const known = checks.get(key)
+    const known = left.length ? undefined : checks.get(key)
     if (known) return known
     const result = await runCommand(command, dir, setupEnv(n.ctx.env, dir, secrets, []), {
       secrets: [],
@@ -125,8 +130,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       until: n.until,
     })
     log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
-    baselines.set(dir, new Set(await uncommitted(dir)))
-    if (!result.stopped) checks.set(key, result)
+    // Only what the check itself left joins the baseline, never what a worker left before it.
+    for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
+    baselines.set(dir, baseline)
+    if (!result.stopped && !left.length) checks.set(key, result)
     return result
   }
 
@@ -138,11 +145,13 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     verdict: string | undefined,
     log: (line: string) => void,
     logFile: string,
+    published = false,
   ) => {
     const facts: Facts = { verdict }
     let ran: RanCheck | undefined
     if (condition.command) {
-      ran = { command: condition.command, ...(await check(condition.command, unit, dir, log)) }
+      const result = await check(condition.command, unit, dir, log, published)
+      ran = { command: condition.command, ...result }
       facts.command = !ran.failed
       await refuseSymlinks(dir, [relative(dir, logFile)])
       await mkdir(dirname(logFile), { recursive: true })
@@ -388,7 +397,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const verdict = result.verdict ?? round?.verdict
         const until =
           worker.status === 'done'
-            ? await factsFor(p.loop.until, unit, dir, verdict, log, logFile)
+            ? await factsFor(p.loop.until, unit, dir, verdict, log, logFile, true)
             : undefined
         const loop = round ?? {
           host: result,

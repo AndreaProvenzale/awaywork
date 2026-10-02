@@ -1884,7 +1884,7 @@ it("reads a loop's last verdict in the when of the step after it", async () => {
   ])
 })
 
-it("doesn't run a check without network, or while the clone has uncommitted changes", async () => {
+it("doesn't run a check without network, or end a loop while the clone has uncommitted changes", async () => {
   const provider = looper({})
   const env = { ctx: { env: { PATH: process.env.PATH }, log: () => {} } }
   const offline = (then: string) =>
@@ -1928,6 +1928,30 @@ queue: [{ skill: implement, then: ${then} }]
   )
   expect(dirty.report.results[0]?.loop).toBe('1 round of address-review; max 1 round reached')
   expect(dirty.opened[0]?.body).toContain('failed: uncommitted changes in the clone')
+
+  const leftForNextStep = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      loop: [address-review, { skill: fix-ci, when: { command: 'test -e fixed.txt' } }]
+      until: { verdict: approve }
+      max: 1
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        if (job.unit.id !== 'acme-api-1-address-review-1') return yield* provider.run(job, signal)
+        await writeFile(join(job.dir, 'fixed.txt'), 'uncommitted')
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    },
+    env,
+  )
+  expect(leftForNextStep.report.results[2]).toMatchObject({
+    planned: { unit: { id: 'acme-api-1-fix-ci-1' } },
+    status: 'done',
+  })
 })
 
 it("fences a failed check's output in the PR body past any backticks in it", async () => {
