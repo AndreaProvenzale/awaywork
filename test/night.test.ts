@@ -2011,7 +2011,7 @@ it('checks a clone for uncommitted changes beyond what setup and earlier checks 
 queue:
   - skill: implement
     then:
-      - { skill: review, when: { command: 'true' } }
+      - review
       - loop: [address-review]
         until: { command: 'touch artifact.out; test -e acme-api-1-address-review-2.txt' }
         max: 3
@@ -2111,6 +2111,32 @@ queue:
   })
 })
 
+it('counts a failure for a loop after a report that a refused when ended, since it would end there again', async () => {
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `repos: { acme/api: { network: false } }
+queue:
+  - skill: plan
+    then:
+      loop: [{ skill: qa-feedback, deliver: report }, { skill: fix-ci, when: { command: 'true' } }]
+      until: { verdict: approve }
+      max: 2
+`,
+    [item],
+    looper({ 'acme-api-1-qa-feedback-1': 'changes' }),
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.passedOver])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-1-qa-feedback-1', 'done', undefined],
+    ['acme-api-1-fix-ci-1', 'skipped', true],
+  ])
+  expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
+})
+
 it('ends a loop whose when check was interrupted, and retries its chain without counting a failure', async () => {
   const stop = new AbortController()
   const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
@@ -2137,6 +2163,33 @@ it('ends a loop whose when check was interrupted, and retries its chain without 
     reason: `when \`touch ${started}; sleep 5\` passes not checked: interrupted`,
   })
   expect(report.results[2]?.passedOver).toBeUndefined()
+  expect(report.results[0]?.outcome).toMatchObject({ reason: 'interrupted', unpublished: true })
+  expect(opened).toEqual([])
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
+it('ends a loop whose until check was interrupted, and retries its chain without counting a failure', async () => {
+  const stop = new AbortController()
+  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review], until: { command: 'touch ${started}; sleep 5' }, max: 2 }
+`,
+    [item],
+    looper({}),
+    { signal: stop.signal, ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  ).finally(() => clearInterval(watch))
+
+  expect(report.results[1]).toMatchObject({
+    planned: { unit: { id: 'acme-api-1-review-1' } },
+    status: 'done',
+  })
   expect(report.results[0]?.outcome).toMatchObject({ reason: 'interrupted', unpublished: true })
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})

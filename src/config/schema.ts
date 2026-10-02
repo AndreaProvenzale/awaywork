@@ -317,6 +317,20 @@ export const configSchema = z
               path: [...at, 'then', j, 'loop'],
               message: "a loop can't follow another loop directly; put a step between them",
             })
+          // The step before a loop hosts it unless it reports: passed over, the loop would never run.
+          if (
+            before &&
+            !isLoop(before) &&
+            before.when &&
+            before.deliver !== 'report' &&
+            isLoop(entry)
+          )
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j - 1, 'when'],
+              message:
+                "a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
+            })
           if (r.network === false && isLoop(entry) && entry.until.command)
             ctx.addIssue({
               code: 'custom',

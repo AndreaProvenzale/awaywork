@@ -376,12 +376,12 @@ queue:
   - skill: implement
     where: { type: issue, label: night-shift }
     then:
-      - { skill: security-review, when: { changed: "src/auth/**" } }
       - loop:
           - review
           - { skill: address-review, when: { verdict: changes } }
         until: { verdict: [approve, comments], command: pnpm test }
         max: 3
+      - { skill: security-review, when: { changed: "src/auth/**" } }
 ```
 
 - `verdict` is the step before's or, after a loop, the latest one
@@ -400,6 +400,9 @@ queue:
 - A skipped step doesn't end a loop, unless its command didn't run: it
   wouldn't in a later round either. After a report, a loop's first unit
   opens its clone: when its `when` doesn't hold, the loop doesn't run.
+- The step right before a loop can't have a `when` unless it sets
+  `deliver: report`, since the loop works in its clone: gate the loop's
+  steps, or put a step between.
 
 ## Notify
 

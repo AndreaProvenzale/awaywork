@@ -223,18 +223,36 @@ describe('config', () => {
       "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
     ])
     expect(loops('\n      - plan')).toEqual([])
+    expect(
+      problems(`${minimal}queue:
+  - skill: implement
+    then:
+      - { skill: review, when: { verdict: approve } }
+      - { loop: [address-review], until: { verdict: approve }, max: 2 }
+`),
+    ).toEqual([
+      "queue[0].then[0].when: a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
+    ])
+    expect(
+      problems(`${minimal}queue:
+  - skill: implement
+    then:
+      - { skill: review, deliver: report, when: { verdict: approve } }
+      - { loop: [address-review], until: { verdict: approve }, max: 2 }
+`),
+    ).toEqual([])
   })
 
   it('takes a command in until, and when on then and loop steps but not on a rule', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
     then:
-      - { skill: review, when: { changed: "src/auth/**" } }
       - loop: [{ skill: address-review, when: { verdict: changes, command: "! pnpm test" } }, qa-feedback]
         until: { verdict: approve, command: pnpm test }
         max: 2
+      - { skill: review, when: { changed: "src/auth/**" } }
 `)
-    const [step, loop] = cfg.queue?.[0]?.then ?? []
+    const [loop, step] = cfg.queue?.[0]?.then ?? []
     expect(step).toMatchObject({ skill: 'review', when: { changed: ['src/auth/**'] } })
     expect(loop).toMatchObject({
       loop: [
@@ -262,12 +280,12 @@ describe('config', () => {
   - skill: implement
     network: false
     then:
-      - { skill: review, when: { command: pnpm test } }
       - { loop: [fix-ci], until: { command: pnpm test }, max: 1 }
+      - { skill: review, when: { command: pnpm test } }
 `),
     ).toEqual([
-      "queue[0].then[1].until.command: a command can't run with network: false: night-shift has no sandbox for it",
-      "queue[0].then[0].when.command: a command can't run with network: false: night-shift has no sandbox for it",
+      "queue[0].then[0].until.command: a command can't run with network: false: night-shift has no sandbox for it",
+      "queue[0].then[1].when.command: a command can't run with network: false: night-shift has no sandbox for it",
     ])
   })
 
