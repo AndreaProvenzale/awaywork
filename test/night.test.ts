@@ -1194,6 +1194,65 @@ it('skips the step after a loop whose publish threw, though its host kept a repo
   ])
 })
 
+it('counts a failure when a loop that reached night.end fails to publish', async () => {
+  const provider = looper({})
+  const until = new Date(Date.now() + 60 * 60 * 1000)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        until.setTime(0)
+      },
+    },
+    { until, forge: { push: async () => Promise.reject(new Error('push refused')) } },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'error', 'push refused'],
+    ['acme-api-1-review-1', 'skipped', 'the night window ended'],
+  ])
+  expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
+})
+
+it('counts a failure for a loop host whose publish was refused, though a round reached night.end', async () => {
+  const provider = looper({})
+  const until = new Date(Date.now() + 60 * 60 * 1000)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review], until: { verdict: approve }, max: 1 }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        await rm(join(job.dir, '.nightshift/out/pr.md'), { force: true })
+        until.setTime(0)
+      },
+    },
+    { until },
+  )
+
+  expect(report.results[0]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
+  expect(report.results[1]).toMatchObject({ status: 'skipped', reason: 'the night window ended' })
+  expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
+})
+
 it("runs the step after a loop that kept its host's report on the host's base", async () => {
   const { report, opened } = await loopNight(
     `queue:

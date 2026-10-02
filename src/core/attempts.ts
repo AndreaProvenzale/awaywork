@@ -68,11 +68,13 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
       }
       at = finished && (r?.outcome?.kind ?? 'none') !== 'none' ? step(at.unit.id) : undefined
     }
-    // A loop ends on its last round: one that didn't run counts nothing, as a plain chain's step.
-    const ended = short?.loop
-      ? report.results.findLast((r) => r.planned.loop?.host === short?.planned.unit.id)
+    // A kept report its loop left unpublished (`loop …`) counts by the round the loop ended on:
+    // one that didn't run counts nothing, as a plain chain's step.
+    const unfinished = short?.outcome?.kind === 'none' && short.outcome.reason.startsWith('loop ')
+    const ended = unfinished
+      ? (report.results.findLast((r) => r.planned.loop?.host === short?.planned.unit.id) ?? short)
       : short
-    if (!finished && !ran(ended)) continue
+    if (!finished && (!ran(short) || !ran(ended))) continue
     const { skill } = head.unit
     for (const item of head.unit.items)
       if (typeof item.fields.updated === 'string')

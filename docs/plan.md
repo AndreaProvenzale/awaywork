@@ -266,8 +266,8 @@ Semantics, fixed so every milestone agrees:
   stops ends the loop, which publishes what it has; night-shift appends
   the loop's summary and last report to the PR body. A host's kept
   report finishes the chain only when the loop ended at `until` or
-  `max`; otherwise the host is unpublished, and counts a failure only
-  when the loop ended on a round that ran. An interrupted loop
+  `max`; otherwise the host is unpublished, and counts a failure unless
+  a round couldn't run for `night.end` or no provider left. An interrupted loop
   publishes nothing and records no attempt, like an aborted unit. A loop
   counts once against the caps and as an attempt through its host; a
   step after the loop follows the host, or runs where the host ran when

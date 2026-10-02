@@ -87,8 +87,8 @@ task linked to your PR becomes one unit with that PR.
   commits left unpushed) is skipped as **gave up after 3 attempts** until
   one of its items changes or it matches another skill. A plan report
   followed by a failed implement is one failure; a finished attempt
-  clears the count, and skipped, dry-run and aborted units, and loops
-  that ended on one, don't count.
+  clears the count, and skipped, dry-run and aborted units don't count,
+  nor does a loop after a report that ended on one.
   `run --unit` runs it anyway.
 - `nightshift skip <source:key>` (e.g. `github:acme/api#5`) leaves an
   item, and any unit it joins, alone until `nightshift unskip` or the

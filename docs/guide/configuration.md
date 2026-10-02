@@ -327,9 +327,10 @@ queue:
 - Each round is routed and budgeted live. No provider left, `night.end`,
   or a step that fails or stops ends the loop, which still publishes what
   it has and says why; a loop after a report that ends this way with no
-  commits runs again, counting a failure only when a step failed or
-  stopped. An interrupt (Ctrl-C) publishes nothing, and the chain runs
-  again the next night without counting as a failure.
+  commits runs again, counting a failure unless a round couldn't run
+  for `night.end` or no provider left. An interrupt (Ctrl-C) publishes
+  nothing, and the chain runs again the next night without counting as
+  a failure.
 - Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
   `plan` lists round 1, but routes every round up to `max`, so a loop
   holds fallback units for all of them. A loop counts once against the
