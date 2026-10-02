@@ -356,7 +356,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           routed[id] = (routed[id] ?? 1) - 1
           // A refused check is refused every round: the loop would repeat without its step.
           if (round && met.check?.refused) round.ended = reason
-          else if (round && p.loop && isLast(p.loop)) round.ended = maxReached(p.loop.max)
+          else if (round && p.loop && isLast(p.loop))
+            Object.assign(round, { ended: maxReached(p.loop.max), completed: true })
           if (!inRound && after) standIns[unit.id] = { result: after, base }
           continue
         }
