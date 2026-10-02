@@ -133,7 +133,44 @@ const stepSettings = {
     .describe("Output: a draft PR or the morning report; default the skill's"),
   branch: branch.optional().describe('Branch name template for this rule'),
 }
-const stepObject = z.strictObject({ skill, ...stepSettings })
+const MAX_ROUNDS = 5
+const verdict = z.string().regex(/^[a-z][a-z_-]*$/, 'expected one lowercase word like approve')
+const verdicts = z.union([verdict, z.array(verdict).min(1)])
+const conditionKeys = {
+  verdict: z
+    .union([
+      verdicts,
+      z.strictObject({ not: verdicts }).describe('Matches every verdict but these'),
+    ])
+    .optional()
+    .describe('The latest verdict a loop step wrote; a list means any of, {not} negates'),
+  command: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('A shell command night-shift runs in the clone, outside the model; exit 0 holds'),
+}
+const condition = z
+  .strictObject(conditionKeys)
+  .refine((c) => Object.keys(c).length > 0, 'expected verdict or command')
+const when = z
+  .strictObject({
+    ...conditionKeys,
+    verdict: conditionKeys.verdict.describe(
+      "The step before's verdict; a list means any of, {not} negates",
+    ),
+    changed: oneOrMany
+      .optional()
+      .describe(
+        "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
+      ),
+  })
+  .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
+const stepObject = z.strictObject({
+  skill,
+  ...stepSettings,
+  when: when.optional().describe('Run this step only when every key holds; otherwise skip it'),
+})
 const step = z
   .union([
     z
@@ -144,22 +181,8 @@ const step = z
     stepObject,
   ])
   .describe(
-    'A skill name, or a map with the rule keys other than source, where, order, units and then',
+    'A skill name, or a map with the rule keys other than source, where, order, units and then, plus when',
   )
-const MAX_ROUNDS = 5
-const verdict = z.string().regex(/^[a-z][a-z_-]*$/, 'expected one lowercase word like approve')
-const verdicts = z.union([verdict, z.array(verdict).min(1)])
-const condition = z
-  .strictObject({
-    verdict: z
-      .union([
-        verdicts,
-        z.strictObject({ not: verdicts }).describe('Matches every verdict but these'),
-      ])
-      .optional()
-      .describe('The latest verdict a loop step wrote; a list means any of, {not} negates'),
-  })
-  .refine((c) => Object.keys(c).length > 0, 'expected verdict')
 const loop = z
   .strictObject({
     loop: z
@@ -283,6 +306,7 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
+      const offline = "a command can't run with network: false: night-shift has no sandbox for it"
       // Back-to-back loops would share one host, and the second would never run.
       if (Array.isArray(r.then))
         r.then.forEach((entry, j, then) => {
@@ -293,6 +317,26 @@ export const configSchema = z
               path: [...at, 'then', j, 'loop'],
               message: "a loop can't follow another loop directly; put a step between them",
             })
+          // The step before a loop hosts it unless it reports: passed over, the loop would never run.
+          if (
+            before &&
+            !isLoop(before) &&
+            before.when &&
+            before.deliver !== 'report' &&
+            isLoop(entry)
+          )
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j - 1, 'when'],
+              message:
+                "a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
+            })
+          if (r.network === false && isLoop(entry) && entry.until.command)
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j, 'until', 'command'],
+              message: offline,
+            })
         })
       // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
       const inLoop = (path: (string | number)[]) => path[2] === 'loop'
@@ -301,6 +345,8 @@ export const configSchema = z
         const earlier = chain.findIndex(
           (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
         )
+        if (r.network === false && s.when?.command)
+          ctx.addIssue({ code: 'custom', path: [...stepAt, 'when', 'command'], message: offline })
         if (earlier < j)
           ctx.addIssue({
             code: 'custom',

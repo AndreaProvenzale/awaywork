@@ -13,6 +13,8 @@ export interface UnitResult {
   outcome?: Outcome
   /** The one word the unit wrote to `out/verdict`. */
   verdict?: string
+  /** Skipped because its `when` didn't hold: its chain goes on from the unit before. */
+  passedOver?: true
   /** How the loop this unit hosts went, e.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
   loop?: string
 }
@@ -44,7 +46,8 @@ export function formatReport(r: NightReport): string {
     r.results.forEach((u, i) => {
       const { unit } = u.planned
       const cells = [i + 1, unit.id, unit.skill, u.provider ?? '-', status(u), result(u)]
-      out.push(`| ${cells.join(' | ').replaceAll('\n', ' ')} |`)
+      const escaped = cells.map((c) => String(c).replaceAll('|', '\\|'))
+      out.push(`| ${escaped.join(' | ').replaceAll('\n', ' ')} |`)
     })
   }
   if (r.plan.skipped.length > 0) {

@@ -63,6 +63,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
     units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
       if (p.after) out.push(`     after ${p.after}`)
+      if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}`)
       if (p.loop?.step === 0) {
         const { skills, until, max, host } = p.loop
         out.push(
@@ -175,7 +176,13 @@ export function formatReportForTerminal(markdown: string): string {
   for (let i = 0; i < lines.length; ) {
     const rows: string[][] = []
     for (let line = lines[i]; line?.startsWith('|'); line = lines[++i])
-      if (!/^\|[-| ]+\|$/.test(line)) rows.push(line.slice(2, -2).split(' | '))
+      if (!/^\|[-| ]+\|$/.test(line))
+        rows.push(
+          line
+            .slice(2, -2)
+            .split(' | ')
+            .map((cell) => cell.replaceAll('\\|', '|')),
+        )
     if (rows.length === 0) out.push(lines[i++] ?? '')
     else {
       const statusCol = rows[0]?.indexOf('Status') ?? -1

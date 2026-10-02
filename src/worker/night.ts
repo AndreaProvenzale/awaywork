@@ -1,16 +1,16 @@
 import { createWriteStream } from 'node:fs'
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
-import { describeCondition, holds } from '../core/condition.js'
+import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { runSetup } from './setup.js'
+import { runCommand, runSetup } from './setup.js'
 import {
   notSymlink,
   prepareWorkspace,
@@ -22,6 +22,7 @@ import {
 } from './workspace.js'
 
 const MAX_TURNS = 200
+const CHECK_LOG_CHARS = 8000
 
 export interface NightInput {
   config: Config
@@ -85,12 +86,87 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   // The base each unit ran on: a step after one that opened no PR runs there too.
   const ranOn: Record<string, string> = {}
   let open: OpenLoop | undefined
+  // A step skipped by its `when` stands for the unit it followed, and the base a step after that starts from.
+  const standIns: Record<string, { result: UnitResult; base: string }> = {}
+  // The branch each unit's chain started its commits from, which `changed` diffs against.
+  const starts: Record<string, string> = {}
+  const checks = new Map<string, Check>()
+  // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
+  const baselines = new Map<string, Set<string>>()
+  // A loop's latest verdict by its host, for the `when` of the step after it.
+  const loopVerdicts: Record<string, string> = {}
+
+  /** Whether `r`, or a unit of the chain before it, opened a draft PR. */
+  const openedPr = (r: UnitResult | undefined): boolean =>
+    !!r &&
+    (r.outcome?.kind === 'pr' ||
+      openedPr(results.find((x) => r.planned.after && x.planned.unit.id === r.planned.after)))
+
+  /**
+   * Runs a condition's command in the clone outside the model, once per commit, with none of the
+   * secrets. When it decides what is published (`until`), files left uncommitted fail it.
+   */
+  const check = async (
+    command: string,
+    unit: Unit,
+    dir: string,
+    log: (line: string) => void,
+    published: boolean,
+  ): Promise<Check> => {
+    if (unit.untrusted) return refusal("not run on an untrusted author's PR")
+    // The worker's sandbox is the provider's: night-shift has none to run worker-written code in.
+    if (!unit.network) return refusal('not run without network: it has no sandbox')
+    const before = await uncommitted(dir)
+    const baseline = baselines.get(dir) ?? new Set()
+    const left = before.filter((line) => !baseline.has(line))
+    if (left.length && published)
+      return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
+    const key = `${dir} ${await head(dir)} ${command}`
+    const known = left.length ? undefined : checks.get(key)
+    if (known) return known
+    const result = await runCommand(command, dir, setupEnv(n.ctx.env, dir, secrets, []), {
+      secrets: [],
+      signal: n.signal,
+      until: n.until,
+    })
+    log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
+    // Only what the check itself left joins the baseline, never what a worker left before it.
+    for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
+    baselines.set(dir, baseline)
+    if (!result.stopped && !left.length) checks.set(key, result)
+    return result
+  }
+
+  /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
+  const factsFor = async (
+    condition: Condition,
+    unit: Unit,
+    dir: string,
+    verdict: string | undefined,
+    log: (line: string) => void,
+    logFile: string,
+    published = false,
+  ) => {
+    const facts: Facts = { verdict }
+    let ran: RanCheck | undefined
+    if (condition.command) {
+      const result = await check(condition.command, unit, dir, log, published)
+      ran = { command: condition.command, ...result }
+      facts.command = !ran.failed
+      await refuseSymlinks(dir, [relative(dir, logFile)])
+      await mkdir(dirname(logFile), { recursive: true })
+      await writeOutput(logFile, checkLog(ran))
+    }
+    if (condition.changed) facts.changed = await changes(dir, condition.changed, starts[unit.id])
+    return { facts, check: ran }
+  }
 
   /** Publishes the loop's clone once, as its host's draft PR, with how the loop went. */
   const closeLoop = async (loop: OpenLoop) => {
     open = undefined
     const { host, unit, dir } = loop
     host.loop = describeLoop(loop)
+    if (loop.verdict) loopVerdicts[host.planned.unit.id] = loop.verdict
     try {
       // An interrupted loop retries its chain, even when its host's report is still in `out/`.
       if (loop.interrupted)
@@ -142,12 +218,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     const hosting = hosts.has(p.unit.id)
-    const after = results.find((r) => p.after && r.planned.unit.id === p.after)
-    const { repo } = p.unit
+    const standIn = p.after ? standIns[p.after] : undefined
+    const after = standIn?.result ?? results.find((r) => p.after && r.planned.unit.id === p.after)
     const base =
-      after && after.outcome?.kind !== 'pr'
+      standIn?.base ??
+      (after && after.outcome?.kind !== 'pr'
         ? (ranOn[after.planned.unit.id] ?? p.unit.base)
-        : p.unit.base
+        : p.unit.base)
+    const planUnit = { ...p.unit, base }
+    const { repo } = planUnit
     // A loop publishes its host as a draft PR, whatever the host's own delivery.
     const deliver = hosting ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
@@ -157,9 +236,14 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const unit = round
       ? { ...p.unit, base: round.unit.base, stackedOn: round.unit.stackedOn }
       : stackedOn
-        ? { ...p.unit, base: onto, stackedOn }
-        : { ...p.unit, base }
+        ? { ...planUnit, base: onto, stackedOn }
+        : planUnit
     ranOn[p.unit.id] = unit.base
+    starts[unit.id] = round
+      ? (starts[round.unit.id] ?? '')
+      : stacks && !openedPr(after)
+        ? onto
+        : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
       if (round) round.ended = reason
@@ -251,6 +335,37 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           continue
         }
       }
+      if (!round) baselines.set(dir, new Set(await uncommitted(dir)))
+      const { when } = unit.rule
+      if (when) {
+        const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
+        const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
+        const met = await factsFor(when, unit, dir, verdict, log, logFile)
+        // A check stopped before it exited says nothing: skip the step without passing over it.
+        if (met.check?.stopped) {
+          const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
+          Object.assign(result, { status: 'skipped', reason })
+          routed[id] = (routed[id] ?? 1) - 1
+          if (round) Object.assign(round, { ended: reason, interrupted: n.signal?.aborted })
+          continue
+        }
+        if (!holds(when, met.facts)) {
+          const failed = met.check?.failed ? ` (${met.check.failed})` : ''
+          const reason = `when ${describeCondition(when)} didn't hold${failed}`
+          Object.assign(result, { status: 'skipped', reason, passedOver: true })
+          routed[id] = (routed[id] ?? 1) - 1
+          // A refused check is refused every round: the loop would repeat without its step.
+          if (round && met.check?.refused) round.ended = reason
+          else if (round && p.loop && p.loop.step === p.loop.skills.length - 1) {
+            // A round where no step ran changed nothing: the next one would pass over the same.
+            const idle = round.rounds < p.loop.round
+            const ended = idle ? "no step's when held" : isLast(p.loop) && maxReached(p.loop.max)
+            if (ended) Object.assign(round, { ended, completed: true })
+          }
+          if (!inRound && after) standIns[unit.id] = { result: after, base }
+          continue
+        }
+      }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
       const withheld = secrets.filter((name) => !provider.secrets.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
@@ -283,6 +398,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       const aborted = worker.status === 'stopped: aborted'
       if (p.loop) {
         result.outcome = await roundOutcome(unit, dir, start)
+        const logFile = join(dir, WORK_DIR, 'out', 'check.log')
+        const verdict = result.verdict ?? round?.verdict
+        const until =
+          worker.status === 'done'
+            ? await factsFor(p.loop.until, unit, dir, verdict, log, logFile, true)
+            : undefined
         const loop = round ?? {
           host: result,
           unit,
@@ -298,18 +419,19 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (result.verdict) loop.verdict = result.verdict
         if (result.outcome.kind === 'report')
           loop.report = { id: unit.id, text: result.outcome.text }
-        if (aborted) Object.assign(loop, { ended: 'interrupted', interrupted: true })
-        else if (worker.status !== 'done') loop.ended = `${unit.id} ${worker.status}`
-        else if (untilHolds(p.loop.until, loop.verdict))
+        if (until?.check) loop.check = until.check
+        if (aborted || n.signal?.aborted)
+          Object.assign(loop, { ended: 'interrupted', interrupted: true })
+        else if (!until) loop.ended = `${unit.id} ${worker.status}`
+        else if (until.check?.stopped || until.check?.refused)
+          loop.ended = `until ${describeCondition(p.loop.until)} not checked: ${until.check.failed}`
+        else if (untilHolds(p.loop.until, until.facts))
           Object.assign(loop, {
             ended: `until held: ${describeCondition(p.loop.until)}`,
             completed: true,
           })
-        else if (p.loop.round === p.loop.max && p.loop.step === p.loop.skills.length - 1)
-          Object.assign(loop, {
-            ended: `max ${p.loop.max} ${p.loop.max === 1 ? 'round' : 'rounds'} reached`,
-            completed: true,
-          })
+        else if (isLast(p.loop))
+          Object.assign(loop, { ended: maxReached(p.loop.max), completed: true })
       } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
         open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
@@ -366,24 +488,66 @@ interface OpenLoop {
   last?: UnitResult
   verdict?: string
   report?: { id: string; text: string }
+  /** The last run of `until`'s command. */
+  check?: RanCheck
   ended?: string
-  /** It ended at `until` or `max`, not on a failure, a skip or an interrupt. */
+  /** It ended at `until`, `max` or a round where no step ran, not on a failure, a skip or an interrupt. */
   completed?: boolean
   interrupted?: boolean
 }
+
+interface Check {
+  output: string
+  failed?: string
+  /** Cut short by Ctrl-C or `night.end`: the condition is unknown, not false. */
+  stopped?: true
+  /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
+  refused?: true
+}
+
+type RanCheck = Check & { command: string }
+
+const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa('git', ['-C', dir, ...args])).stdout
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
+/** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
+async function uncommitted(dir: string): Promise<string[]> {
+  const status = ['status', '--porcelain', '--ignore-submodules=dirty']
+  return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
+}
+
 async function commitsSince(dir: string, start: string): Promise<number> {
   return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
 }
 
 /** `until` waits for a verdict written inside the loop, even one it only wants `{ not }` of. */
-function untilHolds(until: Condition, verdict: string | undefined): boolean {
-  return (until.verdict === undefined || verdict !== undefined) && holds(until, { verdict })
+function untilHolds(until: Condition, facts: Facts): boolean {
+  return (until.verdict === undefined || facts.verdict !== undefined) && holds(until, facts)
+}
+
+/** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
+async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
+  const paths = globs.map((glob) => `:(glob)${glob}`)
+  const since = `origin/${start || 'HEAD'}...HEAD`
+  return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
+}
+
+/** The command and the tail of its output, for the step after it. */
+function checkLog({ command, output, failed }: RanCheck): string {
+  const tail = output.slice(-CHECK_LOG_CHARS)
+  return `$ ${command}\n${tail}\n${failed ? `failed: ${failed}` : 'passed'}\n`
+}
+
+function isLast(loop: { round: number; max: number; step: number; skills: string[] }): boolean {
+  return loop.round === loop.max && loop.step === loop.skills.length - 1
+}
+
+function maxReached(max: number): string {
+  return `max ${max} ${max === 1 ? 'round' : 'rounds'} reached`
 }
 
 /** The one lowercase word a skill wrote to `out/verdict`, if any. */
@@ -415,7 +579,9 @@ async function handOff(dir: string, start: string, unitDir: string): Promise<voi
   if (diff) await writeFile(join(unitDir, 'out', 'diff.patch'), `${diff}\n`)
   await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
-  await Promise.all(['report.md', 'verdict'].map((f) => rm(join(out, f), { force: true })))
+  await Promise.all(
+    ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
+  )
 }
 
 /** E.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
@@ -429,10 +595,10 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
   await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
   const file = join(dir, WORK_DIR, 'out', 'pr.md')
   const body = (await readOutput(file)).trim()
-  if (!body || loop.rounds === 0) return
+  if (!body) return
   const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
   const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}${verdict}.`]
-  const { report } = loop
+  const { report, check } = loop
   if (report)
     lines.push(
       '',
@@ -442,6 +608,20 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
       '',
       '</details>',
     )
+  if (check?.failed && !check.refused) {
+    const log = checkLog(check).trim()
+    const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+    lines.push(
+      '',
+      `<details><summary>Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}</summary>`,
+      '',
+      fence,
+      log,
+      fence,
+      '',
+      '</details>',
+    )
+  }
   await writeOutput(file, `${body}${lines.join('\n')}\n`)
 }
 

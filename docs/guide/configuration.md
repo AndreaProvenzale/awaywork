@@ -264,9 +264,9 @@ queue:
 ```
 
 - A step takes the rule keys except `source`, `where`, `order`, `units`
-  and `then`. It inherits none of the rule's: an unset key has the same
-  default as on a rule. Top-level `instructions` and `skills` still
-  apply, as to every unit.
+  and `then`, plus [`when`](#when). It inherits none of the rule's: an
+  unset key has the same default as on a rule. Top-level `instructions`
+  and `skills` still apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it: its body names that PR to merge
   first. After a report, it starts from the same base, except that a
@@ -316,15 +316,34 @@ queue:
   from a fresh clone on the same base, and its first unit opens the
   draft PR.
 - `until` is checked after every step and ends the loop as soon as it
-  holds. `verdict` is the latest word a step wrote to
-  `.nightshift/out/verdict` (built-in `review` writes `approve`,
+  holds; with both keys, both must. `verdict` is the latest word a step
+  wrote to `.nightshift/out/verdict` (built-in `review` writes `approve`,
   `comments` or `changes`); it takes a word, a list for any of, or
   `{ not: … }`. It waits for a step in the loop to write a verdict, so
-  `{ not: changes }` doesn't hold after a step that wrote none. `max` is
-  at most 5.
+  `{ not: changes }` doesn't hold after a step that wrote none.
+  `command` is a shell command night-shift runs in the clone after the
+  step, outside the model; it holds when it exits 0. `max` is at most 5.
+- A command runs like `setup` on a branch a worker wrote: without the
+  repo's `secrets`, for at most 15 minutes, and not past `night.end`. It
+  runs again only once a step committed. In `until` it doesn't hold
+  while the clone has uncommitted changes beyond what `setup` and earlier
+  checks left, since the branch wouldn't publish them; a `when` command
+  sees them, as the step will.
+- A command isn't run on a PR whose author isn't trusted, or with
+  `network: false` (it would run the worker's code outside the worker's
+  sandbox): config refuses one on a rule with `network: false`, but a
+  repo's `network: false` is only known at run time. A command that isn't
+  run doesn't hold for `when`, and ends the loop either way. One that
+  runs past its 15 minutes fails, like one that exits non-zero. One
+  stopped by `night.end` ends the loop, which publishes what it has;
+  outside a loop it skips a `when` step without passing over it, so the
+  chain is tried again the next night. After Ctrl-C the chain is tried
+  again in both cases.
 - A step finds the one before's output in `.nightshift/context/previous/`:
-  its `report.md` and `verdict`, the PR body so far in `pr.md`, and its
-  commits in `diff.patch`.
+  its `report.md` and `verdict`, the PR body so far in `pr.md`, its
+  commits in `diff.patch`, and the command's output in `check.log`. When
+  the loop ends with the command failing, the tail of its output goes
+  into the PR body too.
 - Each round is routed and budgeted live. No provider left, `night.end`,
   or a step that fails or stops ends the loop, which still publishes what
   it has and says why; a loop after a report that ends this way with no
@@ -342,9 +361,52 @@ queue:
 - A loop's branch comes from its first step's `branch`, and only after a
   report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
-  after a report ended at `until` or `max` with nothing committed, runs
-  as after that report. A loop
-  can't follow another loop directly: put a step between them.
+  after a report ended at `until`, `max` or a round where no step's
+  `when` held, with nothing committed, runs where the loop's host ran.
+  A loop can't follow another loop directly: put a step between them.
+
+#### `when`
+
+A step, in a chain or a loop, runs only when its `when` holds. Otherwise
+it is skipped and the chain goes on from the unit before, as if the step
+weren't there:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    then:
+      - loop:
+          - review
+          - { skill: address-review, when: { verdict: changes } }
+        until: { verdict: [approve, comments], command: pnpm test }
+        max: 3
+      - { skill: security-review, when: { changed: "src/auth/**" } }
+```
+
+- `verdict` is the step before's or, after a loop, the latest one
+  written in it, or the host's own when the loop wrote none. It matches
+  as in `until`, except that `{ not: … }` also holds when no verdict was
+  written.
+- `command` runs as in `until`, in the step's clone before its agent
+  starts. Prefix `!` to run a step only when a check fails, such as a
+  fixer with `when: { command: "! pnpm test" }`; it finds the output in
+  `.nightshift/context/previous/when.log`.
+- `changed` is a glob or a list; it holds when the chain's commits change
+  a matching path: against the repo's default branch, or the draft PR the
+  chain stacked on. Globs are git's, from the repo root, with no leading
+  `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
+  `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
+- Every key set must hold. `plan` shows each step's `when`, and the
+  report says which one didn't hold.
+- A skipped step doesn't end a loop, unless its command didn't run: it
+  wouldn't in a later round either. A round whose steps were all passed
+  over ends it too, since the next would be the same. After a report, a
+  loop's first unit opens its clone: when its `when` doesn't hold, the
+  loop doesn't run.
+- The step right before a loop can't have a `when` unless it sets
+  `deliver: report`, since the loop works in its clone: gate the loop's
+  steps, or put a step between.
 
 ## Notify
 

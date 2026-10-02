@@ -27,6 +27,11 @@ not asked of the model.
   branch a worker wrote earlier that night. On a PR by someone without
   write access or org membership it doesn't run at all.
   Whatever it leaves running is stopped before the agent starts.
+- **Checks outside the agent.** An `until` or `when` command runs the
+  code a worker wrote, like `setup` on a branch a worker wrote: none of
+  the repo's `secrets`, but on your machine, outside the worker's
+  sandbox. So it doesn't run on an untrusted author's PR, or for a unit
+  with `network: false`.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.nightshift/` (context, prompt,
   output) is excluded from git, so it can't be committed. A loop's rounds
