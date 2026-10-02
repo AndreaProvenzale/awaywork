@@ -245,7 +245,7 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
       : []),
     ...(unit.stackedOn
       ? [
-          `${base} is tonight's earlier draft PR ${unit.stackedOn}: your PR stacks on it, so leave its commits as they are.`,
+          `${base} is the earlier night-shift PR ${unit.stackedOn}: your PR stacks on it, so leave its commits as they are.`,
         ]
       : []),
     `Items:\n${items.join('\n')}`,

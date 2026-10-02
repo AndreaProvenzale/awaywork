@@ -21,6 +21,7 @@ export const githubRoutes = (): [RegExp, string][] => [
   [/q=is:pr is:open archived:false author:@me/, fixture('search-authored.json')],
   [/q=is:pr is:open archived:false review-requested:@me/, fixture('search-review-requested.json')],
   [/q=is:issue is:open archived:false assignee:@me/, fixture('search-assigned.json')],
+  [/nodes\(ids: \["PR_kwDOAAAAAc4AAAA1"\]\)/, fixture('threads.json')],
   [/owner=acme -f name=api -F number=1 /, fixture('pr-1.json')],
   [/^gh pr diff 1 -R acme\/api$/, fixture('pr-1.diff')],
   [/^gh run view -R acme\/api --job 201 --log-failed$/, fixture('job-201.txt')],

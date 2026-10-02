@@ -116,7 +116,12 @@ describe('plan', () => {
     ]
     const result = plan(yaml, items, { claude: week(0.1) })
     expect(result.defaultQueue).toBe(true)
-    expect(result.queue.map((r) => r.skill)).toEqual(['fix-ci', 'address-review', 'review'])
+    expect(result.queue.map((r) => r.skill)).toEqual([
+      'fix-ci',
+      'address-review',
+      'address-review',
+      'review',
+    ])
     expect(rows(result).map((r) => [r[0], r[2]])).toEqual([
       ['acme-api-3', 'fix-ci'],
       ['acme-api-2', 'address-review'],
@@ -665,7 +670,7 @@ queue:
   })
 
   it('skips a feature whose night-shift PR waits for review, whatever item links it', () => {
-    const ours = githubPr(9, { checks: 'failing' })
+    const ours = githubPr(9, { checks: 'failing', ours: true })
     const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
     const task = asanaTask(4, {}, { linkedPrs: [pr] })
     const yaml =
@@ -675,6 +680,60 @@ queue:
     expect(result.skipped.map((s) => s.reason)).toEqual([
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
       'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
+    ])
+  })
+
+  it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {
+    const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const linked = { ...issue, linkedPrs: [pr] }
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: implement, where: { type: issue } }
+  - { skill: address-review, where: { type: pr, unresolved_threads: { gt: 0 } } }
+  - { skill: address-review, where: { type: pr, ours: true, unresolved_threads: { gt: 0 } } }`
+    const result = plan(yaml, [linked, { ...ours, linkedPrs: [pr] }], {})
+    expect(rows(result)).toEqual([['acme-api-9', 3, 'address-review', 'claude', 'draft_pr']])
+    expect(result.units[0]?.unit).toMatchObject({
+      base: 'night/acme-api-5',
+      branch: 'night/acme-api-9',
+      foreign: false,
+    })
+    expect(result.units[0]?.unit.items.map((i) => i.key)).toEqual(['acme/api#9', 'acme/api#5'])
+  })
+
+  it('loops on the draft PR stacked on a night-shift PR it takes up', () => {
+    const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: address-review
+    where: { type: pr, ours: true }
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }`
+    const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }], {})
+    expect(result.units.map(({ unit, loop }) => [unit.id, unit.base, loop?.host])).toEqual([
+      ['acme-api-9', 'night/acme-api-5', undefined],
+      ['acme-api-9-review-1', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-1', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-review-2', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-2', 'night/acme-api-5', 'acme-api-9'],
+    ])
+  })
+
+  it('addresses the threads you started on a night-shift PR by default, not anyone else', () => {
+    const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
+    const ours = (n: number, mine: number) => {
+      const pr = githubPr(n, { ours: true, unresolved_threads: 2, my_unresolved_threads: mine })
+      return { ...pr, linkedPrs: [{ ...(pr.linkedPrs[0] as PrRef), ours: true }] }
+    }
+    const result = plan(yaml, [ours(1, 1), ours(2, 0)], {})
+    expect(rows(result)).toEqual([['acme-api-1', 3, 'address-review', 'claude', 'draft_pr']])
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'waiting for review: night-shift PR https://github.com/acme/api/pull/2 is open; closest #3 address-review: my_unresolved_threads is 0, wants not 0',
     ])
   })
 

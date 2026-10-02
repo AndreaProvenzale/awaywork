@@ -3,7 +3,15 @@ import { type Attempts, failedAttempts, MAX_ATTEMPTS, unchangedSince } from './a
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, route } from './budget.js'
 import { dedupe } from './dedupe.js'
-import { closestRule, defaultRules, describeComparison, fieldValue, isLoop, rank } from './queue.js'
+import {
+  closestRule,
+  defaultRules,
+  describeComparison,
+  fieldValue,
+  isLoop,
+  isNightShiftPr,
+  rank,
+} from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type { Condition, Item, Loop, Rule, Step, Unit, WhereValue } from './types.js'
@@ -62,7 +70,11 @@ export function planNight(input: {
   const perRule: Record<number, number> = {}
   let counted = 0
 
-  for (const group of dedupe(ranked)) {
+  for (const found of dedupe(ranked)) {
+    const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
+    // A night-shift PR taken by a rule leads its feature: that rule decides, its key names the unit.
+    const pickup = ours && found.find((e) => isNightShiftPr(e.item))
+    const group = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
@@ -75,8 +87,7 @@ export function planNight(input: {
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
-    const ours = prs.find((p) => p.ours)
-    if (ours) {
+    if (ours && !pickup) {
       skip(`waiting for review: night-shift PR ${ours.url} is open`)
       continue
     }
@@ -261,13 +272,16 @@ function firstStep(entry: Step | Loop): Step {
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
 function noRuleReason(item: Item, queue: Rule[]): string {
   const closest = closestRule(item, queue)
-  if (!closest) return 'matched no rule'
+  const why = isNightShiftPr(item)
+    ? `waiting for review: night-shift PR ${item.url} is open`
+    : 'matched no rule'
+  if (!closest) return why
   const rule = queue[closest.rule] as Rule
   const failed = closest.failed.map((key) => {
     const want = rule.where[key] as WhereValue
     return `${key} is ${describeValue(fieldValue(item, key))}, wants ${describeWant(want)}`
   })
-  return `matched no rule; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
+  return `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
 }
 
 function describeWant(want: WhereValue): string {

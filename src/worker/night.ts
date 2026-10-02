@@ -46,7 +46,8 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
- * A draft PR stacks on tonight's draft PR it follows, or on its repo's last one when it would start from the default branch.
+ * A draft PR stacks on tonight's draft PR it follows, on the night-shift PR a rule took up,
+ * or on its repo's last one when it would start from the default branch.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -225,23 +226,24 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       (after && after.outcome?.kind !== 'pr'
         ? (ranOn[after.planned.unit.id] ?? p.unit.base)
         : p.unit.base)
-    const planUnit = { ...p.unit, base }
-    const { repo } = planUnit
+    const { repo } = p.unit
     // A loop publishes its host as a draft PR, whatever the host's own delivery.
     const deliver = hosting ? 'draft_pr' : p.unit.deliver
     const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
     const onto = stacks ? (tips[repo] ?? '') : base
     const tonight = opened[`${repo} ${onto}`]
-    const stackedOn = deliver === 'draft_pr' ? tonight : undefined
+    // A night-shift PR a rule took up, when this unit works on its branch.
+    const pickedUp = p.unit.items
+      .flatMap((i) => i.linkedPrs)
+      .find((pr) => pr.ours && pr.branch === base)
+    const stackedOn = deliver === 'draft_pr' ? (tonight ?? pickedUp?.url) : undefined
     const unit = round
       ? { ...p.unit, base: round.unit.base, stackedOn: round.unit.stackedOn }
-      : stackedOn
-        ? { ...planUnit, base: onto, stackedOn }
-        : planUnit
+      : { ...p.unit, base: onto, stackedOn }
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
       ? (starts[round.unit.id] ?? '')
-      : stacks && !openedPr(after)
+      : (stacks || pickedUp) && !openedPr(after)
         ? onto
         : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
@@ -317,8 +319,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       if (!a) continue
       const repo = n.config.repos[unit.repo]
       if (repo?.setup && !unit.untrusted && !round) {
-        // A PR someone else opened, or a branch a worker wrote tonight, runs install scripts you didn't write: they get none of the repo's secrets.
-        const own = unit.foreign || tonight ? [] : repo.secrets
+        // A PR someone else opened, or a branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
+        const own = unit.foreign || tonight || pickedUp ? [] : repo.secrets
         const failed = await runSetup(
           repo.setup,
           dir,

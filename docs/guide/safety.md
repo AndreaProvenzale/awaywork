@@ -24,7 +24,8 @@ not asked of the model.
 - **Setup outside the agent.** A repo's `setup` runs before the agent
   in the same environment, without the agent's secret and with only that
   repo's `secrets` added, none on a PR someone else opened or on a
-  branch a worker wrote earlier that night. On a PR by someone without
+  branch a worker wrote: earlier that night, or a night-shift PR a rule
+  took up again. On a PR by someone without
   write access or org membership it doesn't run at all.
   Whatever it leaves running is stopped before the agent starts.
 - **Checks outside the agent.** An `until` or `when` command runs the
@@ -111,7 +112,8 @@ what your user can read.
   worker starts and again at push. Never force, never someone else's
   branch.
 - Only a **draft** PR, into your own PR's branch, the default branch or
-  a draft PR night-shift opened earlier the same night.
+  a PR night-shift opened: earlier the same night, or one a rule naming
+  `ours` took up again.
   It never merges, approves, requests reviewers or comments.
 - Only when the agent wrote a PR body. A run killed before that
   publishes nothing.

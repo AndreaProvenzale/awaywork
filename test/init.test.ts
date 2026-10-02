@@ -66,6 +66,9 @@ describe('init', () => {
         - skill: address-review
           source: github
           where: {type: pr, mine: true, unresolved_threads: {not: 0}}
+        - skill: address-review
+          source: github
+          where: {type: pr, mine: true, ours: true, my_unresolved_threads: {not: 0}}
         - skill: review
           source: github
           where: {type: pr, review_requested: true, trusted: true}
@@ -249,7 +252,12 @@ describe('init --yes', () => {
     const cfg = parseConfig(text)
     expect(cfg.providers.map((p) => p.id)).toEqual(['codex'])
     expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] } })
-    expect(cfg.queue?.map((r) => r.skill)).toEqual(['fix-ci', 'address-review', 'review'])
+    expect(cfg.queue?.map((r) => r.skill)).toEqual([
+      'fix-ci',
+      'address-review',
+      'address-review',
+      'review',
+    ])
     expect(cfg.night).toEqual({ start: '01:00', end: '07:00' })
   })
 

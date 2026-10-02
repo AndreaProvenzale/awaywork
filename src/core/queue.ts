@@ -16,6 +16,12 @@ export const defaultQueue: Rule[] = [
   rule('qa-feedback', 'linear', { state: 'QA' }),
   rule('qa-feedback', 'jira', { status: 'QA' }),
   rule('address-review', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
+  rule('address-review', 'github', {
+    type: 'pr',
+    mine: true,
+    ours: true,
+    my_unresolved_threads: { not: 0 },
+  }),
   rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('continue', 'asana', { section: 'In progress' }),
   rule('continue', 'linear', { state: 'In Progress' }),
@@ -61,8 +67,18 @@ export function byOrder(order: Order | undefined): (a: Item, b: Item) => number 
 }
 
 export function matches(rule: Rule, item: Item): boolean {
+  return eligible(rule, item) && failedKeys(rule, item).length === 0
+}
+
+/** A night-shift PR waits for review unless a rule names `ours`. */
+function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
-  return failedKeys(rule, item).length === 0
+  return !isNightShiftPr(item) || 'ours' in rule.where
+}
+
+/** A PR night-shift opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
+export function isNightShiftPr(item: Item): boolean {
+  return item.source === 'github' && item.fields.ours === true
 }
 
 /** The `where` keys the item fails; the rule's source is not checked. */
@@ -76,14 +92,14 @@ export function fieldValue(item: Item, key: string): unknown {
   return key === 'type' ? item.type : item.fields[key]
 }
 
-/** Among rules for the item's source, the one it misses by the fewest keys; the earlier on a tie. */
+/** Among rules the item is eligible for, the one it misses by the fewest keys; the earlier on a tie. */
 export function closestRule(
   item: Item,
   queue: Rule[],
 ): { rule: number; failed: string[] } | undefined {
   let best: { rule: number; failed: string[] } | undefined
   queue.forEach((r, i) => {
-    if (r.source && r.source !== item.source) return
+    if (!eligible(r, item)) return
     const failed = failedKeys(r, item)
     if (!best || failed.length < best.failed.length) best = { rule: i, failed }
   })

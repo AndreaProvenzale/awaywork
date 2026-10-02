@@ -39,8 +39,10 @@ describe('github source', () => {
       trusted: true,
       mine: true,
       draft: false,
+      ours: false,
       checks: 'failing',
       unresolved_threads: 2,
+      my_unresolved_threads: 1,
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
@@ -64,6 +66,19 @@ describe('github source', () => {
       updated: '2026-02-01T08:00:00Z',
     })
     expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
+  })
+
+  it('marks a PR night-shift opened as ours', async () => {
+    const authored = fixture('search-authored.json').replace(
+      '"body": "Adds a token bucket per client."',
+      `"body": ${JSON.stringify(footer('r0'))}`,
+    )
+    const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
+      { repos: ['acme/*'] },
+      ctx,
+    )
+    expect(pr1?.fields.ours).toBe(true)
+    expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
@@ -91,6 +106,43 @@ describe('github source', () => {
     expect(log).toEqual([
       'github: "is:issue is:open archived:false assignee:@me" found 150, reading the first 100',
     ])
+  })
+
+  it('counts no threads of mine when reading who started them fails, and keeps every item', async () => {
+    const routes = githubRoutes()
+    const failing = async (cmd: string, args: string[]) => {
+      if (args.join(' ').includes('nodes(ids:')) throw new Error('gh: Could not resolve to a node')
+      return recorded(routes)(cmd, args)
+    }
+    log.length = 0
+    const found = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
+    expect(found).toHaveLength(5)
+    expect(found[0]?.fields.my_unresolved_threads).toBe(0)
+    expect(log).toEqual([
+      "github: couldn't read who started PR threads, counting none: gh: Could not resolve to a node",
+    ])
+
+    const missing = recorded([[/nodes\(ids:/, '{ "data": { "nodes": [null] } }'], ...routes])
+    const [pr1] = await githubSource(missing).items({ repos: ['acme/*'] }, ctx)
+    expect(pr1?.fields.my_unresolved_threads).toBe(0)
+  })
+
+  it('reads who started the threads in pages of 100 PRs', async () => {
+    const authored = JSON.parse(fixture('search-authored.json'))
+    const [pr] = authored.data.search.nodes
+    authored.data.search.nodes = Array.from({ length: 101 }, (_, i) => ({
+      ...pr,
+      id: `PR_${i}`,
+      number: i + 1,
+    }))
+    const run = recorded([
+      [/author:@me/, JSON.stringify(authored)],
+      [/nodes\(ids:/, '{ "data": { "nodes": [] } }'],
+      ...githubRoutes(),
+    ])
+    await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const pages = run.calls.filter((call) => call.join(' ').includes('nodes(ids:'))
+    expect(pages.map((call) => call.join(' ').match(/PR_\d+/g)?.length)).toEqual([100, 1])
   })
 
   it('prefetches a PR: view, diff, deduped threads, failed-check logs', async () => {

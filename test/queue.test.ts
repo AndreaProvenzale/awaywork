@@ -77,6 +77,12 @@ describe('where', () => {
     expect(matches(rule({}, 'asana'), pr)).toBe(false)
     expect(matches(rule({}, 'github'), pr)).toBe(true)
   })
+
+  it("holds a night-shift PR for rules that name ours, but not another source's ours field", () => {
+    expect(matches(rule({}), githubPr(2, { ours: true }))).toBe(false)
+    expect(matches(rule({ ours: true }), githubPr(2, { ours: true }))).toBe(true)
+    expect(matches(rule({}), asanaTask(3, { ours: true }))).toBe(true)
+  })
 })
 
 describe('rank', () => {

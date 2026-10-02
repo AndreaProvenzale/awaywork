@@ -12,7 +12,7 @@ import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Forge, Item, Provider, Quota, Source } from '../src/core/types.js'
+import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
 import { type NightInput, runNight } from '../src/worker/night.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -641,7 +641,7 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
   )
   expect(prompts[0]).toContain('cut from the default branch.')
-  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is tonight's earlier draft PR ${first}`
+  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift PR ${first}`
   expect([prompts[1], prompts[3]]).toEqual([
     expect.stringContaining(stacked),
     expect.stringContaining(stacked),
@@ -1257,6 +1257,97 @@ queue:
   expect(opened[0]?.body).toContain('acme-api-1-review-2 says comments.')
 })
 
+it('stacks a draft PR on a night-shift PR it takes up, and runs setup there without secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+  const { origin, opened, forge } = await originForge(root)
+  await git(origin, 'branch', 'night/acme-api-5')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos:
+  acme/api:
+    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    secrets: [NPM_TOKEN]
+`)
+  const pr = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const plan = planNight({
+    config,
+    items: [{ ...pr, linkedPrs: [link] }],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(opened).toEqual([
+    {
+      head: 'night/acme-api-9',
+      base: 'night/acme-api-5',
+      body: expect.stringContaining(`Stacked on ${link.url}: merge that first.`),
+    },
+  ])
+  expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
+})
+
+it("matches changed against a taken-up night-shift PR's branch, not its own commits", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'checkout', '-q', '-b', 'night/acme-api-5')
+  await mkdir(join(origin, 'src/auth'), { recursive: true })
+  await writeFile(join(origin, 'src/auth/a.ts'), 'auth')
+  await git(origin, 'add', '.')
+  await git(origin, 'commit', '-qm', 'Touch auth')
+  await git(origin, 'checkout', '-q', 'main')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: address-review
+    where: { type: pr, ours: true }
+    then: { skill: review, when: { changed: "src/auth/**" } }
+`)
+  const pr = githubPr(9, { ours: true })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const plan = planNight({
+    config,
+    items: [{ ...pr, linkedPrs: [link] }],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-9', 'done', undefined],
+    ['acme-api-9-review', 'skipped', `when the branch changes src/auth/** didn't hold`],
+  ])
+})
+
 /** Plans `yaml` for `items` and runs the night against a local origin. */
 async function loopNight(
   yaml: string,
@@ -1269,6 +1360,8 @@ async function loopNight(
 ) {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
   const { origin, opened, forge } = await originForge(root)
+  for (const branch of new Set(items.flatMap((i) => i.linkedPrs.map((pr) => pr.branch))))
+    await git(origin, 'branch', branch)
   const config = parseConfig(`providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 ${yaml}`)
@@ -2352,4 +2445,26 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
   expect(report.results[1]?.status).toBe('error')
   expect(report.results[1]?.reason).toBe('.nightshift/out/check.log in the clone is a symlink')
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
+})
+
+it('stacks on a night-shift PR a rule took up whenever a draft PR starts from its branch at run time', async () => {
+  const pr = githubPr(9, { ours: true })
+  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const stackedOn = async (then: string) => {
+    const { opened } = await loopNight(
+      `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
+      [{ ...pr, linkedPrs: [link] }],
+      looper({ 'acme-api-9-qa-feedback-1': 'approve' }),
+    )
+    return opened.map((o) => [o.head, o.base, o.body.includes(`Stacked on ${link.url}`)])
+  }
+
+  expect(
+    await stackedOn('[{ skill: fix-ci, when: { verdict: changes } }, address-review]'),
+  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
+  expect(
+    await stackedOn(
+      '[{ loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }, address-review]',
+    ),
+  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
 })

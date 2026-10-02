@@ -83,6 +83,7 @@ defaults:
 | your PR has red checks | `fix-ci` | draft PR |
 | a task lands in `QA` | `qa-feedback` | draft PR |
 | your PR has unresolved threads | `address-review` | draft PR |
+| you left threads on a night-shift PR | `address-review` | draft PR on it |
 | someone requested your review | `review` | report |
 | a task is `In progress` | `continue` | draft PR |
 | a task is in `Current sprint` | `plan` | report |
