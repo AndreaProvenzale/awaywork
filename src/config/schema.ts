@@ -162,7 +162,7 @@ const when = z
     changed: oneOrMany
       .optional()
       .describe(
-        "Globs; holds when the chain's commits change a matching path, against where the chain started",
+        "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
       ),
   })
   .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')

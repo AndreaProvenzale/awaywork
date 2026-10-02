@@ -356,8 +356,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           routed[id] = (routed[id] ?? 1) - 1
           // A refused check is refused every round: the loop would repeat without its step.
           if (round && met.check?.refused) round.ended = reason
-          else if (round && p.loop && isLast(p.loop))
-            Object.assign(round, { ended: maxReached(p.loop.max), completed: true })
+          else if (round && p.loop && p.loop.step === p.loop.skills.length - 1) {
+            // A round where no step ran changed nothing: the next one would pass over the same.
+            const idle = round.rounds < p.loop.round
+            const ended = idle ? "no step's when held" : isLast(p.loop) && maxReached(p.loop.max)
+            if (ended) Object.assign(round, { ended, completed: true })
+          }
           if (!inRound && after) standIns[unit.id] = { result: after, base }
           continue
         }
@@ -487,7 +491,7 @@ interface OpenLoop {
   /** The last run of `until`'s command. */
   check?: RanCheck
   ended?: string
-  /** It ended at `until` or `max`, not on a failure, a skip or an interrupt. */
+  /** It ended at `until`, `max` or a round where no step ran, not on a failure, a skip or an interrupt. */
   completed?: boolean
   interrupted?: boolean
 }
@@ -591,7 +595,7 @@ async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
   await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
   const file = join(dir, WORK_DIR, 'out', 'pr.md')
   const body = (await readOutput(file)).trim()
-  if (!body || loop.rounds === 0) return
+  if (!body) return
   const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
   const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}${verdict}.`]
   const { report, check } = loop

@@ -266,13 +266,15 @@ Semantics, fixed so every milestone agrees:
   and the command's `check.log`. A round that can't route, reaches
   `night.end`, fails or stops ends the loop, which publishes what it
   has; night-shift appends the loop's summary, last verdict and last
-  report to the PR body. A host's kept report finishes the chain only when the loop
-  ended at `until` or `max`; otherwise the host is unpublished, and
-  counts a failure unless a round couldn't run for `night.end` or no
-  provider left. An interrupted loop publishes nothing and records no attempt, like an aborted unit. A loop
-  counts once against the caps and as an attempt through its host; a
-  step after the loop follows the host, or runs where the host ran when
-  the host kept its report, and its `when` reads the loop's last verdict.
+  report to the PR body. A host's kept report finishes the chain only
+  when the loop ended at `until`, `max` or a round where no step's
+  `when` held; otherwise the host is unpublished, and counts a failure
+  unless a round couldn't run for `night.end` or no provider left. An
+  interrupted loop publishes nothing and records no attempt, like an
+  aborted unit. A loop counts once against the caps and as an attempt
+  through its host; a step after the loop follows the host, or runs
+  where the host ran when the host kept its report, and its `when`
+  reads the loop's last verdict.
 - **Conditions.** A condition's `command` runs outside the model like
   `setup` on a branch a worker wrote (no repo secrets, 15 minutes, not
   past `night.end`), once per commit per clone. In `until`, it doesn't
@@ -290,7 +292,7 @@ Semantics, fixed so every milestone agrees:
   after setup; when it doesn't hold the step is passed over: the next
   step follows the unit before it and starts from the base it would
   have, and attempts walk past it. A passed-over step doesn't end a loop,
-  unless its command didn't run.
+  unless its command didn't run or its whole round was passed over.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill

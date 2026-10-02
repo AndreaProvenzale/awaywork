@@ -361,9 +361,9 @@ queue:
 - A loop's branch comes from its first step's `branch`, and only after a
   report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
-  after a report ended at `until` or `max` with nothing committed, runs
-  where the loop's host ran. A loop can't follow another loop directly:
-  put a step between them.
+  after a report ended at `until`, `max` or a round where no step's
+  `when` held, with nothing committed, runs where the loop's host ran.
+  A loop can't follow another loop directly: put a step between them.
 
 #### `when`
 
@@ -394,12 +394,16 @@ queue:
   `.nightshift/context/previous/when.log`.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path: against the repo's default branch, or the draft PR the
-  chain stacked on.
+  chain stacked on. Globs are git's, from the repo root, with no leading
+  `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
+  `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - Every key set must hold. `plan` shows each step's `when`, and the
   report says which one didn't hold.
 - A skipped step doesn't end a loop, unless its command didn't run: it
-  wouldn't in a later round either. After a report, a loop's first unit
-  opens its clone: when its `when` doesn't hold, the loop doesn't run.
+  wouldn't in a later round either. A round whose steps were all passed
+  over ends it too, since the next would be the same. After a report, a
+  loop's first unit opens its clone: when its `when` doesn't hold, the
+  loop doesn't run.
 - The step right before a loop can't have a `when` unless it sets
   `deliver: report`, since the loop works in its clone: gate the loop's
   steps, or put a step between.

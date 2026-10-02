@@ -2005,6 +2005,49 @@ it("matches changed against the chain's draft PR after a report step", async () 
   ])
 })
 
+it('ends a loop on a round where every step was passed over, and says so in the PR body', async () => {
+  const { report, opened } = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      loop: [{ skill: address-review, when: { command: 'false' } }]
+      until: { command: 'true' }
+      max: 3
+`,
+    [issue(1)],
+    looper({}),
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-address-review-1', 'skipped'],
+  ])
+  expect(report.results[0]?.loop).toBe("0 rounds of address-review; no step's when held")
+  expect(opened[0]?.body).toContain(
+    "## Night-shift loop\n\n0 rounds of address-review; no step's when held.",
+  )
+
+  const fixedOnce = await loopNight(
+    `queue:
+  - skill: implement
+    then:
+      loop: [{ skill: address-review, when: { command: 'test ! -e acme-api-1-address-review-1.txt' } }]
+      until: { command: 'false' }
+      max: 3
+`,
+    [issue(1)],
+    looper({}),
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+  expect(fixedOnce.report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-address-review-1', 'done'],
+    ['acme-api-1-address-review-2', 'skipped'],
+  ])
+  expect(fixedOnce.report.results[0]?.loop).toBe("1 round of address-review; no step's when held")
+})
+
 it('checks a clone for uncommitted changes beyond what setup and earlier checks left', async () => {
   const { report } = await loopNight(
     `repos: { acme/api: { setup: 'echo x > setup.out' } }
