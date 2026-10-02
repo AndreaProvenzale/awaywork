@@ -510,11 +510,10 @@ const git = async (dir: string, ...args: string[]) =>
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
-/** `git status --porcelain` lines, one per uncommitted path. */
+/** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
 async function uncommitted(dir: string): Promise<string[]> {
-  return (await git(dir, '-c', 'core.fsmonitor=false', 'status', '--porcelain'))
-    .split('\n')
-    .filter(Boolean)
+  const status = ['status', '--porcelain', '--ignore-submodules=dirty']
+  return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
 }
 
 async function commitsSince(dir: string, start: string): Promise<number> {

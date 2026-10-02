@@ -2030,6 +2030,39 @@ queue:
   expect(report.results[2]?.loop).toMatch(/^2 rounds of address-review; until held/)
 })
 
+it("doesn't run a nested repo's filter when it checks the clone for uncommitted changes", async () => {
+  const ran = join(await mkdtemp(join(tmpdir(), 'nightshift-filter-')), 'ran')
+  const provider = looper({})
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [address-review], until: { command: 'test ! -e ${ran}' }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        if (job.unit.id !== 'acme-api-1-address-review-1') return
+        const sub = join(job.dir, 'sub')
+        const git = (dir: string, ...args: string[]) => execa('git', ['-C', dir, ...args])
+        await git(job.dir, 'init', '-q', 'sub')
+        await writeFile(join(sub, 'f'), 'a')
+        await git(sub, 'add', 'f')
+        await git(sub, '-c', 'user.name=a', '-c', 'user.email=a@a', 'commit', '-qm', 'sub')
+        await git(job.dir, 'add', 'sub')
+        await git(job.dir, '-c', 'user.name=a', '-c', 'user.email=a@a', 'commit', '-qm', 'sub')
+        await writeFile(join(sub, '.gitattributes'), '* filter=evil')
+        await git(sub, 'config', 'filter.evil.clean', `touch ${ran}; cat`)
+        await writeFile(join(sub, 'f'), 'b')
+      },
+    },
+    { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  )
+
+  expect(report.results[0]?.loop).toMatch(/^1 round of address-review; until held/)
+})
+
 it('skips a when step whose check was interrupted without passing over it, so the chain retries', async () => {
   const stop = new AbortController()
   const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
