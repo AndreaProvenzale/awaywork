@@ -310,10 +310,11 @@ queue:
 - Every round works in the clone of the draft PR unit before the loop,
   on its branch, and nothing is pushed until the loop ends: then that
   unit opens one draft PR with every round's commits. Its body ends with
-  how the loop went and the last report a round wrote. If that unit
-  doesn't finish `done` with commits, it publishes as usual and the loop
-  doesn't run. After a report, the loop starts from a fresh clone on the
-  same base, and its first unit opens the draft PR.
+  how the loop went, the last verdict and the last report a round
+  wrote. If that unit doesn't finish `done` with commits, it publishes
+  as usual and the loop doesn't run. After a report, the loop starts
+  from a fresh clone on the same base, and its first unit opens the
+  draft PR.
 - `until` is checked after every step and ends the loop as soon as it
   holds. `verdict` is the latest word a step wrote to
   `.nightshift/out/verdict` (built-in `review` writes `approve`,

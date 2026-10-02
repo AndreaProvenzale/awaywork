@@ -874,7 +874,7 @@ queue:
       '',
       '## Night-shift loop',
       '',
-      '2 rounds of review ⇄ address-review; until held: verdict approve.',
+      '2 rounds of review ⇄ address-review; until held: verdict approve; last verdict approve.',
       '',
       '<details><summary>Last report: acme-api-1-review-2</summary>',
       '',
@@ -1046,6 +1046,51 @@ ${yaml}`)
   })
   return { report, opened, origin }
 }
+
+it('tells a loop to write the PR body until a unit wrote one, and to keep it after', async () => {
+  const provider = looper({ 'acme-api-1-review-1': 'approve' })
+  const prompts: Record<string, string> = {}
+  await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [implement, review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      run(job, signal) {
+        prompts[job.unit.id] = job.prompt
+        return provider.run(job, signal)
+      },
+    },
+  )
+
+  const first = prompts['acme-api-1-implement-1']
+  expect(first).toContain('Commit on this branch and write `.nightshift/out/pr.md`.')
+  expect(first).toContain('follows `plan` on the same items, which wrote a report tonight')
+  expect(first).not.toContain('PR body so far')
+  expect(prompts['acme-api-1-review-1']).toContain('the PR body so far in `pr.md`')
+
+  const reviewFirst = looper({ 'acme-api-1-review-2': 'approve' })
+  await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+`,
+    [issue(1)],
+    {
+      ...reviewFirst,
+      run(job, signal) {
+        prompts[job.unit.id] = job.prompt
+        return reviewFirst.run(job, signal)
+      },
+    },
+  )
+  const fix = prompts['acme-api-1-address-review-1']
+  expect(fix).toContain('Commit on this branch and write `.nightshift/out/pr.md`.')
+  expect(fix).not.toContain('PR body so far')
+  expect(prompts['acme-api-1-review-2']).toContain('the PR body so far in `pr.md`')
+})
 
 it('records a loop interrupted after a report as unpublished, so its chain retries without counting a failure', async () => {
   const stop = new AbortController()

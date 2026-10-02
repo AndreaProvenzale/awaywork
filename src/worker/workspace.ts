@@ -227,9 +227,12 @@ function findSkill(name: string, roots: string[]): string {
 function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: LoopRound): string {
   const base = unit.base ? `\`${unit.base}\`` : 'the default branch'
   const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
+  // A loop's PR body exists once its host, or a round before, wrote one.
+  const continues = loop !== undefined && loop.host !== unit.id
+  const body = continues && !!previous && existsSync(join(previous.out, outputFile.draft_pr))
   const deliver =
     unit.deliver === 'draft_pr'
-      ? `a draft PR. Commit on this branch and ${loop ? 'keep' : 'write'} \`${output}\`${loop ? ' current: it holds the PR body so far' : ''}.`
+      ? `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`
       : `a report. Write \`${output}\` and commit nothing.`
   return [
     `## Tonight's unit`,
@@ -246,7 +249,7 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
         ]
       : []),
     `Items:\n${items.join('\n')}`,
-    ...(previous ? [loop ? loopFollowUp(previous) : followUp(previous)] : []),
+    ...(previous ? [continues ? loopFollowUp(previous, body) : followUp(previous)] : []),
     `Deliver: ${deliver}`,
   ].join('\n\n')
 }
@@ -256,8 +259,9 @@ function loopSection(loop: LoopRound, unit: Unit): string {
   return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift publishes the branch as one draft PR when the loop ends.`
 }
 
-function loopFollowUp({ skill }: Previous): string {
-  return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them, the PR body so far in \`${outputFile.draft_pr}\`, and its commits in \`diff.patch\`.`
+function loopFollowUp({ skill }: Previous, body: boolean): string {
+  const pr = body ? `, the PR body so far in \`${outputFile.draft_pr}\`` : ''
+  return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${pr}, and its commits in \`diff.patch\`.`
 }
 
 function followUp({ skill, outcome }: Previous): string {

@@ -264,7 +264,7 @@ Semantics, fixed so every milestone agrees:
   step before's `report.md`, `verdict`, `pr.md` and a `diff.patch` of
   its commits. A round that can't route, reaches `night.end`, fails or
   stops ends the loop, which publishes what it has; night-shift appends
-  the loop's summary and last report to the PR body. A host's kept
+  the loop's summary, last verdict and last report to the PR body. A host's kept
   report finishes the chain only when the loop ended at `until` or
   `max`; otherwise the host is unpublished, and counts a failure unless
   a round couldn't run for `night.end` or no provider left. An interrupted loop

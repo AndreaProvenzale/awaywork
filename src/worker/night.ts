@@ -424,13 +424,14 @@ function describeLoop(loop: OpenLoop): string {
   return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`
 }
 
-/** night-shift's own note in the PR body: how the loop went, and the last report a round wrote. */
+/** night-shift's own note in the PR body: how the loop went, its last verdict, and the last report a round wrote. */
 async function appendLoopSummary(dir: string, loop: OpenLoop): Promise<void> {
   await refuseSymlinks(dir, [`${WORK_DIR}/out/pr.md`])
   const file = join(dir, WORK_DIR, 'out', 'pr.md')
   const body = (await readOutput(file)).trim()
   if (!body || loop.rounds === 0) return
-  const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}.`]
+  const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
+  const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}${verdict}.`]
   const { report } = loop
   if (report)
     lines.push(
