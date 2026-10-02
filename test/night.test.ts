@@ -1118,6 +1118,33 @@ it("records an interrupted loop as unpublished even when it kept its host's repo
   expect(recordAttempts({}, report)).toEqual({})
 })
 
+it("counts a failed loop as a failure even when it kept its host's report", async () => {
+  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopNight(
+    `queue:
+  - skill: plan
+    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+`,
+    [item],
+    {
+      ...provider,
+      async *run(job, signal) {
+        if (job.unit.id === 'acme-api-1-fix-ci-1') yield { type: 'done', ok: false, turns: 1 }
+        else yield* provider.run(job, signal)
+      },
+    },
+  )
+
+  expect(report.results[1]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
+  expect(Object.values(recordAttempts({}, report))).toEqual([
+    expect.objectContaining({ skill: 'plan', failed: 1 }),
+  ])
+})
+
 it('skips the step after a loop whose publish threw, though its host kept a report', async () => {
   const { report } = await loopNight(
     `queue:

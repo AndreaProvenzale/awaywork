@@ -326,7 +326,8 @@ queue:
   commits in `diff.patch`.
 - Each round is routed and budgeted live. No provider left, `night.end`,
   or a step that fails or stops ends the loop, which still publishes what
-  it has and says why. An interrupt (Ctrl-C) publishes nothing, and the
+  it has and says why; a loop after a report that ends this way with no
+  commits counts a failure and runs again. An interrupt (Ctrl-C) publishes nothing, and the
   chain runs again the next night without counting as a failure.
 - Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
   `plan` lists round 1, but routes every round up to `max`, so a loop
@@ -338,7 +339,8 @@ queue:
 - A loop's branch comes from its first step's `branch`, and only after a
   report: after a draft PR, the rounds work on that PR's branch.
 - A step after the loop follows the loop's draft PR, or, when a loop
-  after a report committed nothing, runs as after that report. A loop
+  after a report ended at `until` or `max` with nothing committed, runs
+  as after that report. A loop
   can't follow another loop directly: put a step between them.
 
 ## Notify

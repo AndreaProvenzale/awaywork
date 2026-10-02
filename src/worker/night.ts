@@ -98,9 +98,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       else {
         await appendLoopSummary(dir, loop)
         const published = await publish({ ...unit, deliver: 'draft_pr' }, dir, n.forge, n.runId)
-        // A report host whose loop committed nothing keeps its report.
-        if (host.outcome?.kind !== 'report' || published.kind !== 'none' || published.unpublished)
-          host.outcome = published
+        // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
+        const kept =
+          host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
+        if (!kept) host.outcome = published
+        else if (!loop.completed)
+          host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
         if (published.kind === 'pr') {
           opened[`${unit.repo} ${unit.branch}`] = published.url
           if (loop.stacks) tips[unit.repo] = unit.branch
@@ -298,9 +301,15 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (aborted) Object.assign(loop, { ended: 'interrupted', interrupted: true })
         else if (worker.status !== 'done') loop.ended = `${unit.id} ${worker.status}`
         else if (untilHolds(p.loop.until, loop.verdict))
-          loop.ended = `until held: ${describeCondition(p.loop.until)}`
+          Object.assign(loop, {
+            ended: `until held: ${describeCondition(p.loop.until)}`,
+            completed: true,
+          })
         else if (p.loop.round === p.loop.max && p.loop.step === p.loop.skills.length - 1)
-          loop.ended = `max ${p.loop.max} ${p.loop.max === 1 ? 'round' : 'rounds'} reached`
+          Object.assign(loop, {
+            ended: `max ${p.loop.max} ${p.loop.max === 1 ? 'round' : 'rounds'} reached`,
+            completed: true,
+          })
       } else if (hosting && worker.status === 'done' && (await commitsSince(dir, start)) > 0) {
         const skills = planned.find((u) => u.loop?.host === unit.id)?.loop?.skills ?? []
         open = { host: result, unit, dir, unitDir, stacks, skills, rounds: 0, last: result }
@@ -354,6 +363,8 @@ interface OpenLoop {
   verdict?: string
   report?: { id: string; text: string }
   ended?: string
+  /** It ended at `until` or `max`, not on a failure, a skip or an interrupt. */
+  completed?: boolean
   interrupted?: boolean
 }
 
