@@ -109,8 +109,8 @@ what your user can read.
 ## What night-shift publishes
 
 - Only a branch that **doesn't exist** on the remote, checked before the
-  worker starts and again at push. Never force, never someone else's
-  branch.
+  worker starts and again at push. Never someone else's branch, and
+  never a push that rewrites history.
 - The one exception is a rule with `deliver: push`: it adds commits onto
   **your own open PR's** branch, as a fast-forward, only while the
   branch is still where the clone started. Right before the push,
@@ -118,11 +118,20 @@ what your user can read.
   closed or merged, or has auto-merge on, and when its branch is on a
   fork, is the default branch, is protected, or is also the branch of
   someone else's open PR in the repo. It is refused on someone else's PR, on an item without
-  a PR of yours, on any branch night-shift opened that night, and when
-  the new commits include a merge. The commits land unreviewed on a
+  a PR of yours, and on any branch night-shift opened that night. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
   A `then` step on that branch the same night runs `setup` without the
   repo's `secrets`.
+- Both pushes carry git's `--force-with-lease` as a compare-and-swap,
+  not to force: the remote takes the new head only while the branch is
+  still absent, or still at the commit the clone started from, and
+  night-shift checks first that the new head descends from it. A push
+  that would rewrite history, or bring back commits you dropped from
+  your branch in the meantime, is refused.
+- Nothing is published when the new commits include a merge, or when
+  the branch no longer holds the commit the clone started from: the
+  harness forbids both, and either would carry commits that aren't the
+  unit's.
 - Only a **draft** PR, into your own PR's branch, the default branch or
   a PR night-shift opened: earlier the same night, or one a rule naming
   `ours` took up again.
@@ -146,13 +155,20 @@ what your user can read.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from night-shift: a footer with the run id in
   the body and a `Night-shift: <run id>` commit trailer. Pushed commits
-  carry the trailer too.
+  carry the trailer too. Adding it re-creates each commit, so a commit
+  signature doesn't carry over: a branch that requires signed commits
+  refuses the push.
 
 ## Resources
 
 A watchdog polls every 2 s. It stops the unit below 1.5 GB of free
 memory or 2 GB of free disk, and at the end kills every process the
-agent started, including detached ones. Each run also has a turn cap and
+agent started, including detached ones. The agent also runs in a process
+group of its own, killed as soon as it exits or night-shift is stopped
+(short of `SIGKILL`). A process that leaves the group, as an agent's own
+command runner may, is left to the watchdog; one that also detaches
+between two polls escapes both, and could still change the clone after
+night-shift checked it. Each run also has a turn cap and
 stops at the quota ceiling.
 
 ## Vendor terms

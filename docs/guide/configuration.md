@@ -454,13 +454,15 @@ queue:
 - A [loop](#loops) after a push unit pushes every round's commits once,
   when it ends. A loop's own steps can't set `deliver: push`: the unit
   before the loop does.
-- A fast-forward only: night-shift refuses when the branch moved since
-  the clone, and never forces. It reads the PR again right before the
+- A fast-forward only: night-shift pushes only commits on top of where
+  the clone started, and refuses when the branch moved since, so it
+  never rewrites history. It reads the PR again right before the
   push and refuses when it is no longer yours or open, or has auto-merge
   on, which would merge unreviewed commits, and when its branch lives on
   a fork, is the default branch, is protected, or also backs someone
   else's open PR in the repo. New commits that include a merge aren't pushed
-  either. The commits get the `Night-shift:` trailer.
+  either. The commits get the `Night-shift:` trailer, which drops a
+  commit's signature.
 - The agent writes `.nightshift/out/report.md`; without it nothing is
   pushed. The PR body stays as it is and the report goes into the
   morning report.

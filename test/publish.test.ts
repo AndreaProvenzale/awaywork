@@ -165,7 +165,7 @@ describe('publish', () => {
     expect(forge.pushed).toEqual([['first|r1', 'init|']])
   })
 
-  it('refuses to push commits that include a merge', async () => {
+  it('refuses commits that include a merge, pushed or as a draft PR', async () => {
     const forge = fakeForge()
     await commit('first')
     await git(dir, 'checkout', '-qb', 'side', start)
@@ -173,12 +173,31 @@ describe('publish', () => {
     await git(dir, 'checkout', '-q', '-')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
     await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
-    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+    await body('Title')
+    const merged = {
       kind: 'none',
       reason: '3 commits include a merge, not pushed',
       unpublished: true,
-    })
+    }
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual(merged)
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual(merged)
     expect(forge.fastForwards).toEqual([])
+    expect(forge.branches.size).toBe(0)
+  })
+
+  it('refuses a branch that no longer holds the commit the clone started from', async () => {
+    const forge = fakeForge()
+    await commit('first')
+    await git(dir, 'reset', '-q', '--hard', start)
+    await git(dir, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten')
+    await commit('rebased')
+    await body('Title')
+    expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: `the branch no longer holds ${start.slice(0, 7)}, where the clone started, not pushed`,
+      unpublished: true,
+    })
+    expect(forge.branches.size).toBe(0)
   })
 
   it('refuses a merge on a push even when the clone has a remote ref past it', async () => {

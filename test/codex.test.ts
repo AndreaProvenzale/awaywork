@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { codexProvider, lock, seedAuth, toEvents, toQuota } from '../src/providers/codex.js'
 import { providerContract } from './contracts/provider.contract.js'
@@ -194,6 +194,18 @@ describe('codex provider', () => {
       delete process.env.FAKE_CODEX_HANG
     }
     expect(events.at(-1)).toEqual({ type: 'done', ok: false, turns: 1 })
+  })
+
+  it('kills what the binary left running once it exits', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-left-'))
+    const pid = join(root, 'left.pid')
+    const script = join(root, 'leaves.sh')
+    // The quota probe after the run calls it again, as `app-server`.
+    const leaves = `[ "$1" = app-server ] || { /bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}; }`
+    await writeFile(script, `#!/bin/sh\n${leaves}\n`, { mode: 0o755 })
+    await collect(codexProvider(script, lockFile).run(job(), new AbortController().signal))
+    const left = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
 
   it('seeds auth.json only when it is missing', async () => {

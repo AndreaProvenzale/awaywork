@@ -244,10 +244,11 @@ describe('github forge', () => {
     expect(await forge.branchExists('acme/api', 'night/acme-api-1-old')).toBe(true)
   })
 
-  it('pushes only branches absent on the remote, never forced', async () => {
+  it('pushes only branches absent on the remote, and only while they are', async () => {
     const run = recorded([
       [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
       [/matching-refs/, '[]'],
+      [/rev-parse/, 'f00d000\n'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
@@ -268,10 +269,11 @@ describe('github forge', () => {
       '-c',
       'credential.helper=!gh auth git-credential',
       'push',
+      '--force-with-lease=refs/heads/night/acme-api-1:',
       'https://github.com/acme/api.git',
-      'FETCH_HEAD:refs/heads/night/acme-api-1',
+      'f00d000:refs/heads/night/acme-api-1',
     ])
-    expect(push.join(' ')).not.toMatch(/force|\+/)
+    expect(push.join(' ')).not.toMatch(/\+/)
   })
 
   it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
@@ -307,6 +309,7 @@ describe('github forge', () => {
       [/number=1 /, state({})],
       [/branches\/release\/9$/, '{ "protected": true }'],
       [/branches\/feature-1$/, '{ "protected": false }'],
+      [/rev-parse/, 'f00d000\n'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
@@ -341,8 +344,9 @@ describe('github forge', () => {
       '-c',
       'credential.helper=!gh auth git-credential',
       'push',
+      '--force-with-lease=refs/heads/feature-1:abc1234',
       'https://github.com/acme/api.git',
-      'FETCH_HEAD:refs/heads/feature-1',
+      'f00d000:refs/heads/feature-1',
     ])
   })
 
@@ -358,11 +362,12 @@ describe('github forge', () => {
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'init')
     await git(clone, 'config', `url.${elsewhere}.pushInsteadOf`, origin)
     let head = ''
+    let branch = 'night/acme-api-1'
     const pullRequest = () => ({
       state: 'OPEN',
       viewerDidAuthor: true,
       isCrossRepository: false,
-      headRefName: 'night/acme-api-1',
+      headRefName: branch,
       headRefOid: head,
       autoMergeRequest: null,
     })
@@ -394,6 +399,21 @@ describe('github forge', () => {
     await git(clone, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten')
     const onto = forge.fastForward(clone, 'night/acme-api-1', head, { repo: 'acme/api', pr: 1 })
     await expect(onto).rejects.toThrow(`not a fast-forward from ${head.slice(0, 7)}`)
+
+    // The branch moved back after the PR was read: the push would bring back what was dropped.
+    const rewritten = (await git(clone, 'rev-parse', 'HEAD')).stdout
+    branch = 'night/acme-api-2'
+    head = rewritten
+    await forge.push(clone, branch, { repo: 'acme/api' })
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'dropped')
+    await forge.fastForward(clone, branch, rewritten, { repo: 'acme/api', pr: 1 })
+    head = (await git(clone, 'rev-parse', 'HEAD')).stdout
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'tonight')
+    await git(origin, 'update-ref', 'refs/heads/night/acme-api-2', rewritten)
+    const back = forge.fastForward(clone, 'night/acme-api-2', head, { repo: 'acme/api', pr: 1 })
+    await expect(back).rejects.toThrow()
+    expect((await git(origin, 'rev-parse', 'night/acme-api-2')).stdout).toBe(rewritten)
+    await expect(forge.push(clone, 'night/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
   })
 
   it('opens a draft PR titled by the body file first line', async () => {

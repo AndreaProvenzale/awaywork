@@ -155,8 +155,8 @@ interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
   prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
   branchExists(repo, name): Promise<boolean>
-  push(dir, branch, opts): Promise<void>         // only branches absent on the remote, never force
-  fastForward(dir, branch, from, opts): Promise<void>   // only while the remote head is `from`, never force
+  push(dir, branch, opts): Promise<void>         // only while the branch is absent on the remote (a lease)
+  fastForward(dir, branch, from, opts): Promise<void>   // only descendants of `from`, while the remote head is `from` (a lease)
   draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
 }
 
@@ -379,7 +379,8 @@ Semantics, fixed so every milestone agrees:
   in (never a skill's default), the unit's base is an open PR the
   developer authored (night-shift's own included), and the push is a
   fast-forward from the commit the clone started at, checked again at
-  push time along with the PR being the developer's, open, in the repo,
+  push time, where a lease also requires the branch to still be at it,
+  along with the PR being the developer's, open, in the repo,
   without auto-merge, and its branch not the default branch, not
   protected and not the branch of someone else's open PR in the repo; no
   merge commits. Pushes run from a bare repo night-shift owns that
@@ -389,7 +390,9 @@ Semantics, fixed so every milestone agrees:
   `then` step can push only onto the rule's own PR, never onto a
   branch opened tonight. The model writes
   `report.md`, required to push; the PR body is untouched. Never someone
-  else's branch, never force, never merge, never a comment.
+  else's branch, never a push that rewrites history, never merge, never
+  a comment. No delivery publishes merge commits, or a branch that
+  dropped the commit its clone started at.
 
 ## Milestones
 

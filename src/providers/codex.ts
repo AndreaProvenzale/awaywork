@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
+import { killGroupWhenDone } from '../core/group.js'
 import type { Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const AUTH_SECRET = 'CODEX_AUTH_JSON'
@@ -113,8 +114,10 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           extendEnv: false,
           input: job.prompt,
           cancelSignal: AbortSignal.any([signal, capped.signal]),
+          killDescendants: true,
           reject: false,
         })
+        killGroupWhenDone(child)
         for await (const line of child) {
           if (signal.aborted) break
           const event = parseJson(line)

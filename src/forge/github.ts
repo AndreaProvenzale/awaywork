@@ -58,7 +58,9 @@ const remote = (repo: string) => `https://github.com/${repo}.git`
 
 /**
  * Pushes `dir`'s HEAD from a bare repo of its own, so `dir`'s config, hooks and refs steer neither
- * where the push goes nor what runs. With `from`, only a fast-forward from it.
+ * where the push goes nor what runs. With `from`, only a descendant of it, while the branch is
+ * still at it; without, only while the branch doesn't exist. The lease makes that a compare-and-swap
+ * but lifts git's own fast-forward check, so the ancestry check here is what keeps history intact.
  */
 async function pushHead(run: Exec, dir: string, repo: string, branch: string, from?: string) {
   const bare = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
@@ -66,9 +68,11 @@ async function pushHead(run: Exec, dir: string, repo: string, branch: string, fr
   try {
     await run('git', ['init', '-q', '--bare', bare])
     await git('fetch', '-q', '--no-tags', dir, 'HEAD')
+    // One commit, checked and pushed: nothing can move a ref in between.
+    const head = (await git('rev-parse', '--verify', 'FETCH_HEAD^{commit}')).trim()
     if (
       from &&
-      !(await git('merge-base', '--is-ancestor', from, 'FETCH_HEAD').then(
+      !(await git('merge-base', '--is-ancestor', from, head).then(
         () => true,
         () => false,
       ))
@@ -76,7 +80,8 @@ async function pushHead(run: Exec, dir: string, repo: string, branch: string, fr
       throw new Error(
         `refusing to push onto ${branch} on ${repo}: not a fast-forward from ${from.slice(0, 7)}`,
       )
-    await git(...withGhLogin, 'push', remote(repo), `FETCH_HEAD:refs/heads/${branch}`)
+    const lease = `--force-with-lease=refs/heads/${branch}:${from ?? ''}`
+    await git(...withGhLogin, 'push', lease, remote(repo), `${head}:refs/heads/${branch}`)
   } finally {
     await rm(bare, { recursive: true, force: true })
   }

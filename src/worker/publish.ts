@@ -58,6 +58,17 @@ async function deliver(
   text: string,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
+  // The harness forbids rebasing: a branch that dropped `start` holds work that isn't the unit's alone.
+  const holds = await git(repo, 'merge-base', '--is-ancestor', start, 'work').then(
+    () => true,
+    () => false,
+  )
+  if (!holds)
+    return {
+      kind: 'none',
+      reason: `the branch no longer holds ${start.slice(0, 7)}, where the clone started, not pushed`,
+      unpublished: true,
+    }
   const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
@@ -78,7 +89,7 @@ async function deliver(
       unpublished: true,
     }
   // Merged history would carry other people's commits onto the PR, with night-shift's trailer.
-  if (push && (await git(repo, 'rev-list', '--merges', 'work', `^${start}`)))
+  if (await git(repo, 'rev-list', '--merges', 'work', `^${start}`))
     return {
       kind: 'none',
       reason: `${commits.length} commits include a merge, not pushed`,
