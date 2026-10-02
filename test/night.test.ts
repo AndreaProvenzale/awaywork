@@ -1185,6 +1185,47 @@ queue:
   )
 })
 
+it('skips a unit night-shift tried on a suffixed branch, and one with every name taken', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-skip-'))
+  const forge = fakeForge()
+  for (const n of [1, 3])
+    for (const suffix of ['', '-2', '-3', '-4', '-5', '-6', '-7', '-8', '-9', '-10'])
+      forge.branches.add(`acme/api:night/acme-api-${n}${suffix}`)
+  forge.heads['acme/api:night/acme-api-1-2'] = [
+    { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(1)]) },
+  ]
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+  )
+  const plan = planNight({
+    config,
+    items: [issue(1), issue(3)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: true,
+    providers: { claude: worker },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    [
+      'acme-api-1',
+      'skipped',
+      'night-shift tried this in https://github.com/acme/api/pull/8; delete night/acme-api-1-2 to run it again',
+    ],
+    ['acme-api-3', 'skipped', 'night/acme-api-3 to night/acme-api-3-10 already exist on acme/api'],
+  ])
+})
+
 it('ends a loop when no provider is left for a round, and publishes what it has', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-budget-'))
   const { opened, forge } = await originForge(root)

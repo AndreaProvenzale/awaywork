@@ -88,8 +88,9 @@ For each unit, check:
 
 ### 3. Guardrails
 
-- A branch that already exists on the remote is refused, before the
-  worker and at push.
+- A branch that already exists on the remote is never pushed: the unit
+  takes a `-2` suffix, or is skipped when a night-shift PR there names
+  its item, and the push refuses it again.
 - `deliver: report` pushes nothing.
 - An extra skill telling the model to run `gh auth status` and push:
   both fail, nothing reaches the remote.

@@ -55,6 +55,8 @@ describe('footer', () => {
     ])
     expect(footerItems(footer('r1', []))).toEqual([])
     expect(footerItems('No footer.')).toEqual([])
+    const quoted = 'The footer reads `<!-- night-shift run=r0 item=linear:ENG-99 -->`.'
+    expect(footerItems(`${quoted}\n\n${text}`)).toEqual(footerItems(text))
   })
 })
 

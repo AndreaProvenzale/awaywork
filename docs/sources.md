@@ -206,7 +206,7 @@ YouTrack, Shortcut, Plane.
   app's server [V] https://developers.asana.com/reference/attachresource,
   so it may not show in `/attachments` at all [I]. night-shift links
   tasks through the forge instead: my PRs whose branch or title carries
-  the task key.
+  the task key, or whose body holds the task URL.
 - **Repo for a task.** Asana has no notion of a repo, so a task with no
   linked PR takes its repo from `project_repos` (project gid to
   `owner/repo`) in the source config.

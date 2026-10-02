@@ -163,8 +163,8 @@ Per-rule templates follow your repo's conventions:
 
 ```yaml
 queue:
-  - { skill: fix-ci, where: { type: pr, mine: true, checks: failing }, branch: fix/{title} }
-  - { skill: implement, where: { type: issue }, branch: feat/{title} }
+  - { skill: fix-ci, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
+  - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
 ```
 
 The name is cosmetic: night-shift finds its own PRs by their footer, and

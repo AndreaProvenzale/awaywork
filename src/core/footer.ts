@@ -15,9 +15,9 @@ export function footer(runId: string, items: Pick<Item, 'source' | 'key'>[]): st
 
 export const isOurs = (body: string | null | undefined): boolean => !!body?.includes(marker)
 
-/** The items a night-shift PR's footer names, as `<source>:<key>`. */
+/** The items a night-shift PR's footer names, as `<source>:<key>`; a marker the body quotes above it doesn't count. */
 export function footerItems(body: string | null | undefined): string[] {
-  const line = body?.match(/<!-- night-shift ([^>]*)-->/)?.[1] ?? ''
+  const line = [...(body ?? '').matchAll(/<!-- night-shift ([^>]*)-->/g)].at(-1)?.[1] ?? ''
   return [...line.matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(([, source = '', key = '']) => {
     try {
       return [`${decodeURIComponent(source)}:${decodeURIComponent(key)}`]
