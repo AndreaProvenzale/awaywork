@@ -885,7 +885,7 @@ queue:
   const host = report.results[0]
   expect(host?.outcome).toMatchObject({ kind: 'pushed', branch: 'feature-1', commits: 2 })
   expect(host?.outcome && 'text' in host.outcome && host.outcome.text).toContain(
-    'Fixed CI.\n\n## Night-shift loop\n\n2 rounds of review ⇄ implement; until held: verdict approve.',
+    'Fixed CI.\n\n## Night-shift loop\n\n2 rounds of review ⇄ implement; until held: verdict approve; last verdict approve.',
   )
   const log = await git(origin, 'log', '--format=%s', 'feature-1')
   expect(log.stdout.split('\n')).toEqual([
