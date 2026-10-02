@@ -13,11 +13,11 @@ same folder works for Claude Code and Codex.
 | Skill | For | Delivers |
 |---|---|---|
 | `fix-ci` | Your PR with failing checks | draft PR |
-| `address-review` | Your PR with unresolved review threads | draft PR |
+| `address-review` | Your PR with unresolved review threads, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |
-| `review` | A PR awaiting your review, or tonight's own after a `then`; nothing is posted | report |
+| `review` | A PR awaiting your review, or tonight's own after a `then`; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
@@ -92,6 +92,9 @@ queue:
 ```
 
 - `metadata.deliver` sets the default delivery: `draft_pr` or `report`.
+- A skill that judges can write one lowercase word to
+  `.nightshift/out/verdict`, such as `pass` or `fail`. The report shows
+  it, and a [loop](./configuration.md#loops)'s `until` can match it.
 - Say what the output must state, as the built-ins do: what was checked,
   how, and what couldn't be.
 - Context is in `.nightshift/context/<item>/`: `pr.md`, `diff.patch`,

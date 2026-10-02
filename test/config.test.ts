@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { ConfigError, configPath, parseConfig } from '../src/config/load.js'
 import { unknownSkills } from '../src/config/skills.js'
+import type { Step } from '../src/core/types.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
 
@@ -144,7 +145,9 @@ describe('config', () => {
   - { skill: plan, then: [implement, { skill: review, provider: codex }] }
   - { skill: fix-ci }
 `)
-    expect(cfg.queue?.map((r) => r.then?.map((s) => [s.skill, s.provider]))).toEqual([
+    expect(
+      cfg.queue?.map((r) => r.then?.map((s) => [(s as Step).skill, (s as Step).provider])),
+    ).toEqual([
       [['review', []]],
       [
         ['implement', []],
@@ -166,6 +169,58 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue: [{ skill: plan, then: { skill: review, units: 1 } }]`),
     ).toEqual(['queue[0].then: Unrecognized key: "units"'])
+  })
+
+  it('takes a loop in then, with its steps once across loops, a verdict word and a bounded max', () => {
+    const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
+  - skill: implement
+    then:
+      - loop: [{ skill: review, provider: codex }, address-review]
+        until: { verdict: [approve, comments] }
+        max: 3
+  - { skill: plan, then: { loop: implement, until: { verdict: { not: changes } }, max: 1 } }
+`)
+    expect(cfg.queue?.map((r) => r.then)).toEqual([
+      [
+        {
+          loop: [
+            { skill: 'review', provider: ['codex'], skills: [], instructions: [] },
+            { skill: 'address-review', provider: [], skills: [], instructions: [] },
+          ],
+          until: { verdict: ['approve', 'comments'] },
+          max: 3,
+        },
+      ],
+      [
+        {
+          loop: [{ skill: 'implement', provider: [], skills: [], instructions: [] }],
+          until: { verdict: { not: 'changes' } },
+          max: 1,
+        },
+      ],
+    ])
+    const loop = (body: string) =>
+      problems(`${minimal}queue: [{ skill: implement, then: { loop: ${body} } }]`)
+    expect(loop('[review, implement], until: { verdict: approve }, max: 2')).toEqual([])
+    expect(loop('[review, review], until: { verdict: approve }, max: 2')).toEqual([
+      'queue[0].then[0].loop[1].skill: "review" already runs in a loop of this chain',
+    ])
+    expect(loop('[review], until: { verdict: Approve }, max: 6')).toEqual([
+      'queue[0].then.until.verdict: expected one lowercase word like approve',
+      'queue[0].then.max: Too big: expected number to be <=5',
+    ])
+    expect(loop('[review], until: {}, max: 1')).toEqual(['queue[0].then.until: expected verdict'])
+    const loops = (between: string) =>
+      problems(`${minimal}queue:
+  - skill: implement
+    then:
+      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }${between}
+      - { loop: [qa-feedback, fix-ci], until: { verdict: approve }, max: 2 }
+`)
+    expect(loops('')).toEqual([
+      "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
+    ])
+    expect(loops('\n      - plan')).toEqual([])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {
@@ -253,6 +308,12 @@ describe('skills', () => {
     expect(await unknownSkills(cfg, '/none')).toEqual([
       'queue[0].then[1]: unknown skill "our-review" (not built in, not in /none)',
       'queue[0].then[1]: unknown skill "house-style" (not built in, not in /none)',
+    ])
+    const loop = parseConfig(
+      `${minimal}queue: [{ skill: implement, then: { loop: [review, our-fix], until: { verdict: approve }, max: 2 } }]`,
+    )
+    expect(await unknownSkills(loop, '/none')).toEqual([
+      'queue[0].then[0].loop[1]: unknown skill "our-fix" (not built in, not in /none)',
     ])
   })
 })

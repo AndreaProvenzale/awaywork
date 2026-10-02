@@ -697,7 +697,7 @@
             "maximum": 9007199254740991
           },
           "then": {
-            "description": "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
+            "description": "Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps",
             "anyOf": [
               {
                 "anyOf": [
@@ -783,90 +783,588 @@
                 "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
               },
               {
+                "type": "object",
+                "properties": {
+                  "loop": {
+                    "description": "Steps run in turn every round, in the clone of the unit before",
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "skill": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "The skill that does the work"
+                              },
+                              "provider": {
+                                "description": "Providers for this rule, in order; default the providers order",
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                ]
+                              },
+                              "model": {
+                                "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Model passed to the provider's binary; default the binary's"
+                                }
+                              },
+                              "skills": {
+                                "default": [],
+                                "description": "Extra skills available to the worker",
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "instructions": {
+                                "description": "Instruction files added for this rule",
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                ]
+                              },
+                              "deliver": {
+                                "description": "Output: a draft PR or the morning report; default the skill's",
+                                "type": "string",
+                                "enum": [
+                                  "draft_pr",
+                                  "report"
+                                ]
+                              },
+                              "branch": {
+                                "description": "Branch name template for this rule",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "skill"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ],
+                        "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                      },
+                      {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "skill": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "The skill that does the work"
+                                },
+                                "provider": {
+                                  "description": "Providers for this rule, in order; default the providers order",
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "model": {
+                                  "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Model passed to the provider's binary; default the binary's"
+                                  }
+                                },
+                                "skills": {
+                                  "default": [],
+                                  "description": "Extra skills available to the worker",
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "instructions": {
+                                  "description": "Instruction files added for this rule",
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "deliver": {
+                                  "description": "Output: a draft PR or the morning report; default the skill's",
+                                  "type": "string",
+                                  "enum": [
+                                    "draft_pr",
+                                    "report"
+                                  ]
+                                },
+                                "branch": {
+                                  "description": "Branch name template for this rule",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "skill"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                        }
+                      }
+                    ]
+                  },
+                  "until": {
+                    "type": "object",
+                    "properties": {
+                      "verdict": {
+                        "description": "The latest verdict a loop step wrote; a list means any of, {not} negates",
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z_-]*$"
+                              },
+                              {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z_-]*$"
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "not": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z_-]*$"
+                                  },
+                                  {
+                                    "minItems": 1,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z_-]*$"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "not"
+                            ],
+                            "additionalProperties": false,
+                            "description": "Matches every verdict but these"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Ends the loop as soon as it holds; checked after every step"
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 5,
+                    "description": "At most this many rounds, up to 5"
+                  }
+                },
+                "required": [
+                  "loop",
+                  "until",
+                  "max"
+                ],
+                "additionalProperties": false,
+                "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
+              },
+              {
                 "minItems": 1,
                 "type": "array",
                 "items": {
                   "anyOf": [
                     {
-                      "type": "string",
-                      "minLength": 1
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "skill": {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "The skill that does the work"
+                            },
+                            "provider": {
+                              "description": "Providers for this rule, in order; default the providers order",
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            },
+                            "model": {
+                              "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Model passed to the provider's binary; default the binary's"
+                              }
+                            },
+                            "skills": {
+                              "default": [],
+                              "description": "Extra skills available to the worker",
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "instructions": {
+                              "description": "Instruction files added for this rule",
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              ]
+                            },
+                            "deliver": {
+                              "description": "Output: a draft PR or the morning report; default the skill's",
+                              "type": "string",
+                              "enum": [
+                                "draft_pr",
+                                "report"
+                              ]
+                            },
+                            "branch": {
+                              "description": "Branch name template for this rule",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "skill"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ],
+                      "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
                     },
                     {
                       "type": "object",
                       "properties": {
-                        "skill": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "The skill that does the work"
-                        },
-                        "provider": {
-                          "description": "Providers for this rule, in order; default the providers order",
+                        "loop": {
+                          "description": "Steps run in turn every round, in the clone of the unit before",
                           "anyOf": [
                             {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "skill": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "description": "The skill that does the work"
+                                    },
+                                    "provider": {
+                                      "description": "Providers for this rule, in order; default the providers order",
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "model": {
+                                      "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Model passed to the provider's binary; default the binary's"
+                                      }
+                                    },
+                                    "skills": {
+                                      "default": [],
+                                      "description": "Extra skills available to the worker",
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "instructions": {
+                                      "description": "Instruction files added for this rule",
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "deliver": {
+                                      "description": "Output: a draft PR or the morning report; default the skill's",
+                                      "type": "string",
+                                      "enum": [
+                                        "draft_pr",
+                                        "report"
+                                      ]
+                                    },
+                                    "branch": {
+                                      "description": "Branch name template for this rule",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "skill"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ],
+                              "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
                             },
                             {
+                              "minItems": 1,
                               "type": "array",
                               "items": {
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "skill": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "The skill that does the work"
+                                      },
+                                      "provider": {
+                                        "description": "Providers for this rule, in order; default the providers order",
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "model": {
+                                        "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "description": "Model passed to the provider's binary; default the binary's"
+                                        }
+                                      },
+                                      "skills": {
+                                        "default": [],
+                                        "description": "Extra skills available to the worker",
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "instructions": {
+                                        "description": "Instruction files added for this rule",
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      "deliver": {
+                                        "description": "Output: a draft PR or the morning report; default the skill's",
+                                        "type": "string",
+                                        "enum": [
+                                          "draft_pr",
+                                          "report"
+                                        ]
+                                      },
+                                      "branch": {
+                                        "description": "Branch name template for this rule",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "skill"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ],
+                                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
                               }
                             }
                           ]
                         },
-                        "model": {
-                          "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                        "until": {
                           "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {
-                            "type": "string",
-                            "minLength": 1,
-                            "description": "Model passed to the provider's binary; default the binary's"
-                          }
-                        },
-                        "skills": {
-                          "default": [],
-                          "description": "Extra skills available to the worker",
-                          "type": "array",
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "instructions": {
-                          "description": "Instruction files added for this rule",
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "array",
-                              "items": {
-                                "type": "string"
-                              }
+                          "properties": {
+                            "verdict": {
+                              "description": "The latest verdict a loop step wrote; a list means any of, {not} negates",
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[a-z][a-z_-]*$"
+                                    },
+                                    {
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z_-]*$"
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "not": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^[a-z][a-z_-]*$"
+                                        },
+                                        {
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^[a-z][a-z_-]*$"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "not"
+                                  ],
+                                  "additionalProperties": false,
+                                  "description": "Matches every verdict but these"
+                                }
+                              ]
                             }
-                          ]
+                          },
+                          "additionalProperties": false,
+                          "description": "Ends the loop as soon as it holds; checked after every step"
                         },
-                        "deliver": {
-                          "description": "Output: a draft PR or the morning report; default the skill's",
-                          "type": "string",
-                          "enum": [
-                            "draft_pr",
-                            "report"
-                          ]
-                        },
-                        "branch": {
-                          "description": "Branch name template for this rule",
-                          "type": "string"
+                        "max": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 5,
+                          "description": "At most this many rounds, up to 5"
                         }
                       },
                       "required": [
-                        "skill"
+                        "loop",
+                        "until",
+                        "max"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": false,
+                      "description": "Steps repeated until a condition holds; the loop publishes one draft PR at the end"
                     }
-                  ],
-                  "description": "A skill name, or a map with the rule keys other than source, where, order, units and then"
+                  ]
                 }
               }
             ]

@@ -283,11 +283,68 @@ queue:
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
-- A skill runs at most once per chain.
+- A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `address-review` then `loop: [review, address-review]`.
 - Steps count against the [caps](#night-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
   doesn't start; a step over a cap is left out with the rest of the chain,
   and the unit before it names the cap.
+
+#### Loops
+
+A `loop` step repeats its steps, round after round, until a condition
+holds or `max` rounds ran. Review and fix until the review approves, with
+the other agent reviewing:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: night-shift }
+    then:
+      - loop:
+          - { skill: review, provider: codex }
+          - address-review
+        until: { verdict: [approve, comments] }
+        max: 3
+```
+
+- Every round works in the clone of the draft PR unit before the loop,
+  on its branch, and nothing is pushed until the loop ends: then that
+  unit opens one draft PR with every round's commits. Its body ends with
+  how the loop went, the last verdict and the last report a round
+  wrote. If that unit doesn't finish `done` with commits, it publishes
+  as usual and the loop doesn't run. After a report, the loop starts
+  from a fresh clone on the same base, and its first unit opens the
+  draft PR.
+- `until` is checked after every step and ends the loop as soon as it
+  holds. `verdict` is the latest word a step wrote to
+  `.nightshift/out/verdict` (built-in `review` writes `approve`,
+  `comments` or `changes`); it takes a word, a list for any of, or
+  `{ not: … }`. It waits for a step in the loop to write a verdict, so
+  `{ not: changes }` doesn't hold after a step that wrote none. `max` is
+  at most 5.
+- A step finds the one before's output in `.nightshift/context/previous/`:
+  its `report.md` and `verdict`, the PR body so far in `pr.md`, and its
+  commits in `diff.patch`.
+- Each round is routed and budgeted live. No provider left, `night.end`,
+  or a step that fails or stops ends the loop, which still publishes what
+  it has and says why; a loop after a report that ends this way with no
+  commits runs again, counting a failure unless a round couldn't run
+  for `night.end` or no provider left. An interrupt (Ctrl-C) publishes
+  nothing, and the chain runs again the next night without counting as
+  a failure.
+- Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
+  `plan` lists round 1, but routes every round up to `max`, so a loop
+  holds fallback units for all of them. A loop counts once against the
+  caps, since it opens one draft PR, and once as an attempt: when it
+  published, the item waits for your review. The caps count every unit
+  that could still route if each loop ended after round 1, so a later
+  item `plan` shows without a provider can still count.
+- A loop's branch comes from its first step's `branch`, and only after a
+  report: after a draft PR, the rounds work on that PR's branch.
+- A step after the loop follows the loop's draft PR, or, when a loop
+  after a report ended at `until` or `max` with nothing committed, runs
+  as after that report. A loop
+  can't follow another loop directly: put a step between them.
 
 ## Notify
 

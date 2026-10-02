@@ -1,7 +1,8 @@
 import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
+import { describeCondition } from '../core/condition.js'
 import type { NightPlan } from '../core/foreman.js'
-import { bounds, comparisons, isAge, spans } from '../core/queue.js'
+import { bounds, comparisons, isAge, isLoop, spans } from '../core/queue.js'
 import type { Rule, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
@@ -42,9 +43,11 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
   })
 
   out.push('', style('bold', 'Units'))
-  if (plan.units.length === 0) out.push('  none')
+  // A loop's later rounds repeat its first: only round 1 is listed.
+  const units = plan.units.filter((p) => !p.loop || p.loop.round === 1)
+  if (units.length === 0) out.push('  none')
   else {
-    const rows = plan.units.map((p, i) => [
+    const rows = units.map((p, i) => [
       String(i + 1),
       p.unit.id,
       p.unit.repo,
@@ -57,9 +60,15 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
     const lines = table([header, ...rows])
     out.push(`  ${style('bold', lines[0] ?? '')}`)
-    plan.units.forEach((p, i) => {
+    units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
       if (p.after) out.push(`     after ${p.after}`)
+      if (p.loop?.step === 0) {
+        const { skills, until, max, host } = p.loop
+        out.push(
+          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; one draft PR from ${host}`,
+        )
+      }
       const [top, ...merged] = p.unit.items
       out.push(`     ${top?.source} ${top?.key}: ${top?.title}`)
       merged.forEach((item, j) => {
@@ -91,7 +100,8 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
-    r.then?.length && `then=${r.then.map((s) => s.skill).join(',')}`,
+    r.then?.length &&
+      `then=${r.then.map((s) => (isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill)).join(',')}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||

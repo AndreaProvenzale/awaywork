@@ -250,7 +250,28 @@ Semantics, fixed so every milestone agrees:
   draft PR step off the default branch stacks at run time on the repo's
   last stacked draft PR that night. A step's branch gets `-<skill>`
   appended when an earlier draft PR in the chain renders the same name.
-  A skill runs at most once per chain.
+  A skill runs at most once outside loops, and once across the chain's loops.
+- **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
+  steps round after round, planned as units `<unit>-<skill>-<round>` up
+  to `max` (at most 5). Rounds work in the clone of the draft PR unit
+  before the loop, whose publish waits for the loop's end; after a
+  report the loop's first unit clones afresh and hosts it. `until` is
+  checked after every step; its `verdict` matches the latest word a step
+  in the loop wrote to `out/verdict`, and doesn't hold before one did.
+  Every round is routed at plan time, so a loop holds fallback units up
+  to `max`; the caps count units as if every loop ended after round 1,
+  since the run routes each unit again. Before each step `context/previous/` holds the
+  step before's `report.md`, `verdict`, `pr.md` and a `diff.patch` of
+  its commits. A round that can't route, reaches `night.end`, fails or
+  stops ends the loop, which publishes what it has; night-shift appends
+  the loop's summary, last verdict and last report to the PR body. A host's kept
+  report finishes the chain only when the loop ended at `until` or
+  `max`; otherwise the host is unpublished, and counts a failure unless
+  a round couldn't run for `night.end` or no provider left. An interrupted loop
+  publishes nothing and records no attempt, like an aborted unit. A loop
+  counts once against the caps and as an attempt through its host; a
+  step after the loop follows the host, or runs where the host ran when
+  the host kept its report.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
   `~/.local/state/night-shift/attempts.json`; a unit of the same skill

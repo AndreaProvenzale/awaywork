@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { bounds, isAge, spanPattern } from '../core/queue.js'
+import { bounds, isAge, isLoop, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { commandConfig } from '../sources/command.js'
@@ -146,6 +146,30 @@ const step = z
   .describe(
     'A skill name, or a map with the rule keys other than source, where, order, units and then',
   )
+const MAX_ROUNDS = 5
+const verdict = z.string().regex(/^[a-z][a-z_-]*$/, 'expected one lowercase word like approve')
+const verdicts = z.union([verdict, z.array(verdict).min(1)])
+const condition = z
+  .strictObject({
+    verdict: z
+      .union([
+        verdicts,
+        z.strictObject({ not: verdicts }).describe('Matches every verdict but these'),
+      ])
+      .optional()
+      .describe('The latest verdict a loop step wrote; a list means any of, {not} negates'),
+  })
+  .refine((c) => Object.keys(c).length > 0, 'expected verdict')
+const loop = z
+  .strictObject({
+    loop: z
+      .union([step, z.array(step).min(1)])
+      .transform((steps) => [steps].flat())
+      .describe('Steps run in turn every round, in the clone of the unit before'),
+    until: condition.describe('Ends the loop as soon as it holds; checked after every step'),
+    max: z.int().min(1).max(MAX_ROUNDS).describe(`At most this many rounds, up to ${MAX_ROUNDS}`),
+  })
+  .describe('Steps repeated until a condition holds; the loop publishes one draft PR at the end')
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -167,11 +191,11 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe('At most this many units per night from this rule, its then steps included'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
-      .union([step, z.array(step).min(1)])
+      .union([step, loop, z.array(z.union([step, loop])).min(1)])
       .transform((steps) => [steps].flat())
       .default([])
       .describe(
-        "Steps run in turn after this rule's unit the same night, each on what the one before delivered",
+        "Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps",
       ),
     network: z
       .boolean()
@@ -257,14 +281,33 @@ export const configSchema = z
           path: [...at, 'source'],
           message: `source "${r.source}" is not configured`,
         })
-      const chain = [r, ...(r.then ?? [])]
-      chain.forEach((s, j) => {
-        const stepAt = j === 0 ? at : [...at, 'then', j - 1]
-        if (chain.findIndex((c) => c.skill === s.skill) < j)
+      // A `then` that failed to parse is still raw here; its own issues say why.
+      const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
+      // Back-to-back loops would share one host, and the second would never run.
+      if (Array.isArray(r.then))
+        r.then.forEach((entry, j, then) => {
+          const before = then[j - 1]
+          if (before && isLoop(before) && isLoop(entry))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'then', j, 'loop'],
+              message: "a loop can't follow another loop directly; put a step between them",
+            })
+        })
+      // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
+      const inLoop = (path: (string | number)[]) => path[2] === 'loop'
+      chain.forEach(({ step: s, at: path }, j) => {
+        const stepAt = [...at, ...path]
+        const earlier = chain.findIndex(
+          (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
+        )
+        if (earlier < j)
           ctx.addIssue({
             code: 'custom',
             path: [...stepAt, 'skill'],
-            message: `"${s.skill}" already runs earlier in this chain`,
+            message: inLoop(path)
+              ? `"${s.skill}" already runs in a loop of this chain`
+              : `"${s.skill}" already runs earlier in this chain`,
           })
         for (const p of s.provider)
           if (!providerIds.includes(p))

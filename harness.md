@@ -43,6 +43,9 @@ The unit section below says which delivery this unit has.
   similar).
 - **Report.** Write `.nightshift/out/report.md` early and refine it as
   you go, so a run cut short still leaves one. Commit nothing.
+- **Verdict.** When the skill defines verdicts, also write the one word
+  that fits to `.nightshift/out/verdict`. night-shift reads it, e.g. to
+  end a loop.
 
 Either way, state only what you checked: the commands you ran and their
 result, and what you could not verify. Leave out rationale you did not

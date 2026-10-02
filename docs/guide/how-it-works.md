@@ -87,7 +87,8 @@ task linked to your PR becomes one unit with that PR.
   commits left unpushed) is skipped as **gave up after 3 attempts** until
   one of its items changes or it matches another skill. A plan report
   followed by a failed implement is one failure; a finished attempt
-  clears the count, and skipped, dry-run and aborted units don't count.
+  clears the count, and skipped, dry-run and aborted units don't count,
+  nor does a loop after a report that ended on one.
   `run --unit` runs it anyway.
 - `nightshift skip <source:key>` (e.g. `github:acme/api#5`) leaves an
   item, and any unit it joins, alone until `nightshift unskip` or the
@@ -95,7 +96,9 @@ task linked to your PR becomes one unit with that PR.
   Skips live in `~/.local/state/night-shift/skips.json`, and
   `run --unit` runs the item anyway.
 - Units run one at a time, in queue order; a rule's
-  [`then`](./configuration.md#then) steps run right after its unit.
+  [`then`](./configuration.md#then) steps run right after its unit. A
+  [loop](./configuration.md#loops) repeats its steps in one clone and
+  publishes once, when it ends.
 - A draft PR that would start from the default branch stacks on the last
   one published on its repo that night instead, so a night's PRs don't
   conflict with each other. A chain counts as one: the next unit stacks
@@ -129,7 +132,8 @@ unit goes to the next provider.
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
 draft PR a `then` step follows, else your PR's branch, else tonight's
-last draft PR on the repo, else the default branch.
+last draft PR on the repo, else the default branch. A loop's rounds reuse
+the clone of the unit the loop started from.
 
 - `.nightshift/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -153,6 +157,10 @@ last draft PR on the repo, else the default branch.
 |---|---|
 | `draft_pr` | The worker commits and writes `.nightshift/out/pr.md` (first line the title). night-shift adds a `Night-shift: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
 | `report` | The worker writes `.nightshift/out/report.md`; nothing is pushed. It goes into the morning report. |
+
+Either way, a skill that defines verdicts also writes one word to
+`.nightshift/out/verdict`, such as `approve`. The report shows it next to
+the unit's result, and a [loop](./configuration.md#loops) can end on it.
 
 `review` and `plan` default to `report`, every other skill to `draft_pr`;
 a rule can override either. Every PR body ends with a footer naming

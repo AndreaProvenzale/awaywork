@@ -314,6 +314,158 @@ queue:
     )
   })
 
+  it('plans every round of a loop on the draft PR before it, or on a fresh clone after a report, and counts it once', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 5 }
+providers: [claude, codex]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: implement
+    where: { type: issue }
+    then:
+      - loop: [{ skill: review, provider: codex }, address-review]
+        until: { verdict: approve }
+        max: 2
+      - qa-feedback
+  - skill: plan
+    where: { checks: failing }
+    then: { loop: [implement, review], until: { verdict: approve }, max: 1 }
+`
+    const items = [issue, githubPr(3, { checks: 'failing' }), githubPr(4, { checks: 'failing' })]
+    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
+    const onBranch = (id: string, provider: string, deliver: string, round: string) => [
+      id,
+      provider,
+      deliver,
+      '',
+      'night/acme-api-5',
+      undefined,
+      `acme-api-5 ${round}`,
+    ]
+    expect(
+      result.units.map(({ unit, provider, after, loop }) => [
+        unit.id,
+        provider,
+        unit.deliver,
+        unit.base,
+        unit.branch,
+        after,
+        loop && `${loop.host} ${loop.round}.${loop.step}`,
+      ]),
+    ).toEqual([
+      ['acme-api-5', 'claude', 'draft_pr', '', 'night/acme-api-5', undefined, undefined],
+      onBranch('acme-api-5-review-1', 'codex', 'report', '1.0'),
+      onBranch('acme-api-5-address-review-1', 'claude', 'draft_pr', '1.1'),
+      onBranch('acme-api-5-review-2', 'codex', 'report', '2.0'),
+      onBranch('acme-api-5-address-review-2', 'claude', 'draft_pr', '2.1'),
+      [
+        'acme-api-5-qa-feedback',
+        'claude',
+        'draft_pr',
+        'night/acme-api-5',
+        'night/acme-api-5-qa-feedback',
+        'acme-api-5',
+        undefined,
+      ],
+      ['acme-api-3', 'claude', 'report', 'feature-3', 'night/acme-api-3', undefined, undefined],
+      [
+        'acme-api-3-implement-1',
+        'claude',
+        'draft_pr',
+        'feature-3',
+        'night/acme-api-3',
+        'acme-api-3',
+        'acme-api-3-implement-1 1.0',
+      ],
+      [
+        'acme-api-3-review-1',
+        'claude',
+        'report',
+        'feature-3',
+        'night/acme-api-3',
+        undefined,
+        'acme-api-3-implement-1 1.1',
+      ],
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#4', 'over the cap: night.units is 5'],
+    ])
+    const text = formatPlan(result)
+    expect(text).toContain('then=loop(review,address-review),qa-feedback')
+    expect(text).toContain(
+      '     loop review ⇄ address-review until verdict approve, at most 2 rounds; one draft PR from acme-api-5',
+    )
+    expect(text).not.toContain('acme-api-5-review-2')
+  })
+
+  it('lets a loop repeat the skill of the unit it follows', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00" }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: address-review
+    where: { type: pr, unresolved_threads: { gt: 0 } }
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`
+    const result = plan(yaml, [githubPr(3, { unresolved_threads: 2 })], { claude: week(0.1) })
+    expect(result.units.map(({ unit, loop }) => [unit.id, unit.branch, loop?.host])).toEqual([
+      ['acme-api-3', 'night/acme-api-3', undefined],
+      ['acme-api-3-review-1', 'night/acme-api-3', 'acme-api-3'],
+      ['acme-api-3-address-review-1', 'night/acme-api-3', 'acme-api-3'],
+    ])
+  })
+
+  it('routes every round, so a loop holds fallback units up to max', () => {
+    const yaml = `
+budget: { fallback: { units: 4, turns: 30 } }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: implement
+    where: { type: pr }
+    then: { loop: [review, address-review], until: { verdict: [approve, comments] }, max: 3 }
+`
+    const result = plan(yaml, [githubPr(1), githubPr(2)], {})
+    const routed = result.units.map((u) => [u.unit.id, u.provider ?? '-'])
+    expect(routed.slice(0, 8)).toEqual([
+      ['acme-api-1', 'claude'],
+      ['acme-api-1-review-1', 'claude'],
+      ['acme-api-1-address-review-1', 'claude'],
+      ['acme-api-1-review-2', 'claude'],
+      ['acme-api-1-address-review-2', '-'],
+      ['acme-api-1-review-3', '-'],
+      ['acme-api-1-address-review-3', '-'],
+      ['acme-api-2', '-'],
+    ])
+    expect(formatPlan(result)).toContain(
+      'loop review ⇄ address-review until verdict approve or comments, at most 3 rounds',
+    )
+    const once = plan(yaml.replace('max: 3', 'max: 1'), [githubPr(1)], {})
+    expect(formatPlan(once)).toContain('at most 1 round;')
+  })
+
+  it('counts units against the caps as if every loop ended after round 1', () => {
+    const yaml = `
+night: { start: "01:00", end: "07:00", units: 3 }
+budget: { fallback: { units: 6, turns: 30 } }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: implement
+    where: { type: pr }
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 3 }
+`
+    const result = plan(yaml, [githubPr(1), githubPr(2), githubPr(3)], {})
+    expect(result.units.filter((u) => !u.loop || u.loop.round === 1).map((u) => u.unit.id)).toEqual(
+      ['acme-api-1', 'acme-api-1-review-1', 'acme-api-1-address-review-1', 'acme-api-2'],
+    )
+    expect(result.units.find((u) => u.unit.id === 'acme-api-2')?.capped).toBe(
+      'then loop: over the cap: night.units is 3',
+    )
+    expect(result.skipped.map((s) => s.reason)).toEqual(['over the cap: night.units is 3'])
+  })
+
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
     const yaml = (step: string) =>
       `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
@@ -653,6 +805,31 @@ describe('attempts', () => {
     const again = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
     expect(again.units).toEqual([])
     expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
+  })
+
+  it("counts a loop through its host's draft PR, whatever its rounds did", () => {
+    const chain = yaml.replace(
+      '{ skill: fix-ci }',
+      '{ skill: implement, then: { loop: [review, address-review], until: { verdict: approve }, max: 2 } }',
+    )
+    const first = plan(chain, [githubPr(1, { updated: at })], {})
+    const [host, review] = first.units.map((planned) => ({ planned }))
+    const record = (...results: object[]) =>
+      recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    const failedRound = { ...review, status: 'failed' }
+
+    expect(
+      record(
+        { ...host, status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } },
+        failedRound,
+      ),
+    ).toEqual({ 'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at } })
+    const unpublished = { kind: 'none', reason: 'push failed', unpublished: true }
+    expect(record({ ...host, status: 'done', outcome: unpublished }, failedRound)).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at, failed: 1 },
+    })
+    const interrupted = { kind: 'none', reason: 'interrupted', unpublished: true }
+    expect(record({ ...host, status: 'done', outcome: interrupted }, failedRound)).toEqual({})
   })
 
   it('gives up on an item after three chains that did not finish, until it changes', () => {

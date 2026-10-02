@@ -51,7 +51,7 @@ const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
 function typeOf(s) {
   if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(' \\| ')
-  if (s.anyOf) return [...new Set(s.anyOf.map(typeOf))].join(' \\| ')
+  if (s.anyOf) return [...new Set(variants(s))].join(' \\| ')
   if (s.pattern?.endsWith('%$')) return 'percent'
   if (s.pattern?.includes('[0-5]\\d$')) return 'time'
   if (s.type === 'array') {
@@ -61,6 +61,9 @@ function typeOf(s) {
   if (s.type === 'object') return s.properties ? 'object' : 'map'
   return [s.type].flat().join(' \\| ')
 }
+
+/** A union's types, with nested unions flattened so each type shows once. */
+const variants = (s) => (s.anyOf ? s.anyOf.flatMap(variants) : [typeOf(s)])
 
 /** Every object schema with properties, keyed by its YAML path, in document order. */
 function objects(s, path, out) {
@@ -78,11 +81,16 @@ function objects(s, path, out) {
 
 function configDoc(schema) {
   const seen = new Map()
+  const shapes = new Map()
   const sections = objects(schema, '', []).map(({ path, schema: s }) => {
-    const title = `## ${path ? `\`${path}\`` : 'Top level'}`
     const key = JSON.stringify(s)
-    if (seen.has(key)) return `${title}\n\nSame keys as \`${seen.get(key)}\`.`
-    seen.set(key, path)
+    // A second shape at one path, e.g. a loop where a step goes, is named by its first key.
+    if (!shapes.has(path)) shapes.set(path, key)
+    const variant = shapes.get(path) === key ? '' : ` (${Object.keys(s.properties)[0]})`
+    const name = path ? `\`${path}\`${variant}` : 'Top level'
+    const title = `## ${name}`
+    if (seen.has(key)) return `${title}\n\nSame keys as ${seen.get(key)}.`
+    seen.set(key, name)
     const required = new Set(s.required ?? [])
     const rows = Object.entries(s.properties).map(([name, p]) => {
       const def = p.default === undefined ? '' : `\`${JSON.stringify(p.default)}\``
@@ -92,6 +100,8 @@ function configDoc(schema) {
     const intro = s.description ? `${s.description}.\n\n` : ''
     return `${title}\n\n${intro}| Key | Type | Default | Description |\n|---|---|---|---|\n${rows.join('\n')}`
   })
+  // A union can reach one object twice at a path, e.g. a step alone or in a list.
+  const unique = [...new Set(sections)]
   return `${header('Every config key with its type, default and meaning, from the JSON Schema.')}
 # Config reference
 
@@ -108,7 +118,7 @@ with:
 \`nightshift config check\` validates what the schema cannot, such as
 \`where\` keys and skill names.
 
-${sections.join('\n\n')}
+${unique.join('\n\n')}
 `
 }
 
