@@ -249,6 +249,8 @@ The unit's draft PR stacks on the night-shift PR, on a branch named
 after it (`night/acme-api-9` for #9). Delete that branch once you merge
 the stacked PR, since GitHub keeps it by default: while it exists, the
 next pickup of #9 is skipped as `night/acme-api-9 already exists`.
+Resolve the threads it answered too: merging moves #9, and with your
+threads still open the rule takes it up again for the same threads.
 The rule runs on the threads you started, but the agent reads every
 unresolved thread, as on your other PRs. `ours` comes from the GitHub
 source: a custom source's `ours` field holds nothing back.
