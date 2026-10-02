@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs'
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
@@ -17,6 +17,7 @@ import {
   prepareWorkspace,
   readOutput,
   refuseSymlinks,
+  restoreGitConfig,
   WORK_DIR,
   workerEnv,
   writeOutput,
@@ -96,6 +97,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   const checks = new Map<string, Check>()
   // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
   const baselines = new Map<string, Set<string>>()
+  // Each clone's git config as cloned, put back after anything ran the worker's code in it.
+  const gitConfigs = new Map<string, string>()
+  const restoreGit = (dir: string) => restoreGitConfig(dir, gitConfigs.get(dir) ?? '')
   // A loop's latest verdict by its host, for the `when` of the step after it.
   const loopVerdicts: Record<string, string> = {}
 
@@ -133,6 +137,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       until: n.until,
     })
     log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
+    await restoreGit(dir)
     // Only what the check itself left joins the baseline, never what a worker left before it.
     for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
     baselines.set(dir, baseline)
@@ -326,6 +331,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       })
       // Before setup or any worker touched the clone: the unit's commits are the ones after it.
       const cloned = round ? round.start : await head(dir)
+      if (!round) gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
@@ -349,6 +355,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           Object.assign(result, { status: 'skipped', reason: failed })
           continue
         }
+        await restoreGit(dir)
       }
       if (!round) baselines.set(dir, new Set(await uncommitted(dir)))
       const { when } = unit.rule
@@ -404,6 +411,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         maxMinutes: entry?.budget.unit_minutes,
         watch: n.watch,
       })
+      await restoreGit(dir)
       Object.assign(result, worker)
       if (worker.quota) {
         quotas[id] = worker.quota
@@ -487,13 +495,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       }).catch(() => {})
       const kept = open?.dir === dir
       if (kept && start)
-        await handOff(dir, start, unitDir).catch((e) => {
+        try {
+          await restoreGit(dir)
+          await handOff(dir, start, unitDir)
+        } catch (e) {
           if (open)
             Object.assign(open, {
               ended: `${unit.id} error: ${(e as Error).message}`,
               completed: false,
             })
-        })
+        }
       if (!n.dryRun)
         await Promise.all(
           (kept ? [plugin] : [dir, plugin]).map((d) => rm(d, { recursive: true, force: true })),

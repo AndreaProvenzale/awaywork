@@ -134,7 +134,10 @@ what your user can read.
   commits are those after the commit the clone held before setup and
   the agent ran. The clone's config, attributes, hooks and refs, which
   the agent can write, neither steer where a push goes, nor pick which
-  commits get the trailer, nor run anything. In the clone, publishing
+  commits get the trailer, nor run anything: after `setup`, each agent
+  run and each check, night-shift puts back the config the clone had
+  when it was cloned, and refuses a `.git` that borrows a repo or
+  objects from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
   appends a stacked PR's "merge that first" line to the body. It refuses
   if either is a symlink, and reads or writes only regular files. The

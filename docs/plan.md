@@ -384,7 +384,8 @@ Semantics, fixed so every milestone agrees:
   protected and not the branch of someone else's open PR in the repo; no
   merge commits. Pushes run from a bare repo night-shift owns that
   fetches the clone's `HEAD`, so the clone's config, hooks and refs can't
-  redirect them. `plan` refuses a push onto a fork's PR up front. A
+  redirect them; the fetch runs only after night-shift put back the
+  clone's config as cloned, so it can't run a command either. `plan` refuses a push onto a fork's PR up front. A
   `then` step can push only onto the rule's own PR, never onto a
   branch opened tonight. The model writes
   `report.md`, required to push; the PR body is untouched. Never someone

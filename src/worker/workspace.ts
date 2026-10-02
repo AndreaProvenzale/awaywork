@@ -125,6 +125,20 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   return prompt
 }
 
+/**
+ * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
+ * steers night-shift's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere.
+ */
+export async function restoreGitConfig(dir: string, config: string): Promise<void> {
+  const git = join(dir, '.git')
+  if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
+  for (const path of ['commondir', 'objects/info/alternates'])
+    if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
+      throw new Error(`.git/${path} in the clone points elsewhere`)
+  await rm(join(git, 'config'), { recursive: true, force: true })
+  await writeFile(join(git, 'config'), config, { flag: 'wx' })
+}
+
 /** Throws when a symlink, which a worker may have planted, sits anywhere on one of `paths` in the clone. */
 export async function refuseSymlinks(dir: string, paths: string[]): Promise<void> {
   for (const path of paths) {

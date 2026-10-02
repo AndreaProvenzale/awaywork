@@ -2702,3 +2702,32 @@ it("doesn't open a push loop on a host whose report is blank", async () => {
     ['acme-api-1-review-1', 'skipped', 'acme-api-1 left nothing to loop on'],
   ])
 })
+
+it("puts back a loop clone's git config after each worker, and refuses a borrowed object store", async () => {
+  const provider = looper({})
+  const seen: Record<string, string> = {}
+  const { report } = await loopNight(
+    `queue:
+  - skill: implement
+    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+`,
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        const config = join(job.dir, '.git', 'config')
+        seen[job.unit.id] = await readFile(config, 'utf8')
+        if (job.unit.id === 'acme-api-1-review-1')
+          await writeFile(config, '[core]\n\tsshCommand = touch pwned\n', { flag: 'a' })
+        if (job.unit.id === 'acme-api-1-address-review-1')
+          await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '/elsewhere\n')
+        yield* provider.run(job, signal)
+      },
+    },
+  )
+
+  expect(seen['acme-api-1-address-review-1']).toBe(seen['acme-api-1-review-1'])
+  expect(report.results[0]?.loop).toBe(
+    '1 round of review ⇄ address-review; acme-api-1-address-review-1 error: .git/objects/info/alternates in the clone points elsewhere',
+  )
+})
