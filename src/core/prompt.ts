@@ -1,6 +1,7 @@
 export interface PromptParts {
   harness: string
   skill: string
+  params?: Record<string, string | number | boolean>
   instructions: string[]
   repo: {
     setup?: string
@@ -13,7 +14,7 @@ export interface PromptParts {
   rule: string[]
 }
 
-/** The worker prompt in its fixed order: harness, main skill, global, repo, in-repo, then rule instructions. */
+/** The worker prompt in its fixed order: harness, main skill, its parameters, global, repo, in-repo, then rule instructions. */
 export function assemblePrompt(p: PromptParts): string {
   const commands = [
     p.repo.setup &&
@@ -24,9 +25,11 @@ export function assemblePrompt(p: PromptParts): string {
       "No network: your commands can't reach it, so don't install dependencies or download anything.",
     p.repo.test && `Test: \`${p.repo.test}\``,
   ].filter(Boolean)
+  const params = Object.entries(p.params ?? {}).map(([key, value]) => `- ${key}: ${value}`)
   return [
     p.harness,
     p.skill,
+    params.length > 0 ? `## Parameters\n\n${params.join('\n')}` : undefined,
     ...p.instructions,
     commands.join('\n'),
     p.repo.instructions,

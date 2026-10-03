@@ -137,6 +137,12 @@ const stepSettings = {
     .describe("Model per provider for this rule, e.g. { claude: sonnet }; default the provider's"),
   skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
+  with: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .optional()
+    .describe(
+      "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+    ),
   deliver: z
     .enum(['draft_pr', 'report', 'push'])
     .optional()

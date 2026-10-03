@@ -93,6 +93,10 @@ queue:
 
 - `metadata.deliver` sets the default delivery: `draft_pr` or `report`.
   `push` is only a rule's to set.
+- `with: { key: value }` on a rule or step lists those values in a
+  Parameters section of the prompt, after the skill. Document the keys
+  your skill reads under `metadata`, e.g. `metadata: { depth: "quick or
+  thorough" }`; night-shift doesn't check them.
 - A skill that judges can write one lowercase word to
   `.nightshift/out/verdict`, such as `pass` or `fail`. The report shows
   it, and a [loop](./configuration.md#loops)'s `until` can match it.

@@ -685,6 +685,20 @@
               }
             ]
           },
+          "with": {
+            "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "deliver": {
             "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
             "type": "string",
@@ -777,6 +791,20 @@
                             }
                           }
                         ]
+                      },
+                      "with": {
+                        "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        }
                       },
                       "deliver": {
                         "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
@@ -941,6 +969,20 @@
                                   }
                                 ]
                               },
+                              "with": {
+                                "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ]
+                                }
+                              },
                               "deliver": {
                                 "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                 "type": "string",
@@ -1100,6 +1142,20 @@
                                       }
                                     }
                                   ]
+                                },
+                                "with": {
+                                  "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {
+                                    "type": [
+                                      "string",
+                                      "number",
+                                      "boolean"
+                                    ]
+                                  }
                                 },
                                 "deliver": {
                                   "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
@@ -1340,6 +1396,20 @@
                                 }
                               ]
                             },
+                            "with": {
+                              "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": [
+                                  "string",
+                                  "number",
+                                  "boolean"
+                                ]
+                              }
+                            },
                             "deliver": {
                               "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                               "type": "string",
@@ -1503,6 +1573,20 @@
                                         }
                                       ]
                                     },
+                                    "with": {
+                                      "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                                      "type": "object",
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "additionalProperties": {
+                                        "type": [
+                                          "string",
+                                          "number",
+                                          "boolean"
+                                        ]
+                                      }
+                                    },
                                     "deliver": {
                                       "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
                                       "type": "string",
@@ -1662,6 +1746,20 @@
                                             }
                                           }
                                         ]
+                                      },
+                                      "with": {
+                                        "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string"
+                                        },
+                                        "additionalProperties": {
+                                          "type": [
+                                            "string",
+                                            "number",
+                                            "boolean"
+                                          ]
+                                        }
                                       },
                                       "deliver": {
                                         "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",

@@ -170,6 +170,8 @@ export interface Step {
   model?: Record<string, string>
   skills: string[]
   instructions: string[]
+  /** Parameters listed in the prompt next to the skill. */
+  with?: Record<string, string | number | boolean>
   deliver?: Deliver
   branch?: string
   /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */

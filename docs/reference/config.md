@@ -213,6 +213,7 @@ First matching rule wins; top = highest priority.
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
+| `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
@@ -257,6 +258,7 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
+| `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |

@@ -33,6 +33,17 @@ describe('config', () => {
     })
   })
 
+  it('parses `with` on a rule and a step, and rejects nested values', () => {
+    const cfg = parseConfig(
+      `${minimal}\nqueue:\n  - skill: review\n    with: { depth: quick }\n    then:\n      - skill: fix-ci\n        with: { tries: 2 }\n`,
+    )
+    expect(cfg.queue?.[0]?.with).toEqual({ depth: 'quick' })
+    expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ with: { tries: 2 } })
+    expect(() =>
+      parseConfig(`${minimal}\nqueue:\n  - skill: review\n    with: { a: [1] }\n`),
+    ).toThrow()
+  })
+
   it('applies budget defaults and per-provider overrides', () => {
     const [claude, codex] = parseConfig(example).providers
     expect(claude?.budget).toEqual({
