@@ -218,8 +218,39 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     n.ctx.log(`${unit.id}: loop ${host.loop}`)
   }
 
+  let fired = 0
+  /** Runs after_unit for each result now final: those before the open loop's host and rounds. Once interrupted, none starts. */
+  const afterUnits = async () => {
+    const hook = n.config.after_unit
+    if (!hook || n.dryRun) return
+    for (const r of results.slice(fired)) {
+      const { id, skill, deliver } = r.planned.unit
+      const host = r.planned.loop?.host ?? id
+      if (n.signal?.aborted || host === open?.unit.id) return
+      fired++
+      const { outcome } = r
+      const failure = await afterUnit(
+        hook.command,
+        {
+          runId: n.runId,
+          id,
+          skill,
+          status: r.status,
+          pr: outcome?.kind === 'pr' ? outcome.url : undefined,
+          report:
+            outcome?.kind === 'report' || outcome?.kind === 'pushed'
+              ? join(n.runDir, 'units', id, 'out', outputFile[deliver])
+              : undefined,
+        },
+        n.signal,
+      )
+      if (failure) n.ctx.log(`after_unit failed for ${id}: ${failure}`)
+    }
+  }
+
   for (const p of planned) {
     if (open && p.loop?.host !== open.unit.id) await closeLoop(open)
+    await afterUnits()
     const inRound = !!p.loop && p.loop.host !== p.unit.id
     const round = inRound ? open : undefined
     if (p.loop && inRound && (!round || round.ended)) {
@@ -537,36 +568,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     n.ctx.log(`${unit.id}: ${result.status}`)
   }
   if (open) await closeLoop(open)
-
-  const hook = n.config.after_unit
-  if (hook && !n.dryRun)
-    // Run once the loops are closed, when every result is final.
-    for (const r of results) {
-      if (n.signal?.aborted) break
-      const { outcome } = r
-      const failure = await afterUnit(
-        hook.command,
-        {
-          runId: n.runId,
-          id: r.planned.unit.id,
-          skill: r.planned.unit.skill,
-          status: r.status,
-          pr: outcome?.kind === 'pr' ? outcome.url : undefined,
-          report:
-            outcome?.kind === 'report' || outcome?.kind === 'pushed'
-              ? join(
-                  n.runDir,
-                  'units',
-                  r.planned.unit.id,
-                  'out',
-                  outputFile[r.planned.unit.deliver],
-                )
-              : undefined,
-        },
-        n.signal,
-      )
-      if (failure) n.ctx.log(`after_unit failed for ${r.planned.unit.id}: ${failure}`)
-    }
+  await afterUnits()
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }

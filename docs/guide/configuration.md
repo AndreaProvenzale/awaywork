@@ -548,7 +548,8 @@ To get the morning report where you already look, `notify.command` runs
 in a shell after every run, dry runs included, with the report's path in
 `NIGHTSHIFT_REPORT` and the run id in `NIGHTSHIFT_RUN_ID`. There are no
 built-in integrations. A command that fails or takes over a minute is
-logged; the run still succeeds.
+logged; the run still succeeds. Anything it leaves running in the
+background is stopped when it exits.
 
 ```yaml
 notify:                         # ntfy
@@ -568,9 +569,10 @@ and the GitHub Actions workflow passes them from repository secrets.
 ## After each unit
 
 To act as units finish, say to post to your own tools or record metrics,
-`after_unit.command` runs in a shell once for every unit of a run, after
-all the units have run, so a loop's result is final. A dry run runs none,
-and Ctrl-C stops the running one and starts no more.
+`after_unit.command` runs in a shell once for every unit of a run, as
+soon as its result is final, before the next unit starts. A loop's host
+and rounds wait for the loop to publish, so the host gets its PR. A dry
+run runs none, and Ctrl-C stops the running one and starts no more.
 Its env has `NIGHTSHIFT_RUN_ID`, `NIGHTSHIFT_UNIT`, `NIGHTSHIFT_SKILL` and
 `NIGHTSHIFT_STATUS` (`done`, `failed`, `skipped`...), plus
 `NIGHTSHIFT_PR_URL` when the unit opened a draft PR and `NIGHTSHIFT_REPORT`,

@@ -1,24 +1,36 @@
 import { execa } from 'execa'
+import { killGroupWhenDone } from '../core/group.js'
 
 const TIMEOUT_MS = 60_000
 
-/** Runs a user command in a shell with `env` added, stopped on `signal`; returns why it failed, never throws. */
+/**
+ * Runs a user command in a shell with `env` added, stopped on `signal`; returns why it failed, never throws.
+ * Like setup, it runs in its own process group, killed when it exits or is stopped.
+ */
 export async function runHook(
   command: string,
   env: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
-  const result = await execa(command, {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  const stop = signal ? AbortSignal.any([signal, timeout]) : timeout
+  const subprocess = execa(command, {
     shell: true,
     env,
     stdin: 'ignore',
-    timeout: TIMEOUT_MS,
-    cancelSignal: signal,
+    killDescendants: true,
     reject: false,
     all: true,
   })
+  const release = killGroupWhenDone(subprocess, stop)
+  const result = await subprocess
+  release()
   if (!result.failed) return undefined
-  const why = result.timedOut ? `timed out after ${TIMEOUT_MS / 1000}s` : result.shortMessage
+  const why = !stop.aborted
+    ? result.shortMessage
+    : signal?.aborted
+      ? 'canceled'
+      : `timed out after ${TIMEOUT_MS / 1000}s`
   return [why, result.all?.trim()].filter(Boolean).join('\n')
 }
 

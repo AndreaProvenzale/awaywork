@@ -2913,7 +2913,7 @@ it('runs after_unit once per unit with its PR or report, and goes on past a fail
   ])
 })
 
-it('runs no after_unit on a dry run or once interrupted', async () => {
+it('runs no after_unit on a dry run, nor once interrupted, past those of the units that finished', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
   const items = [githubPr(1), issue(2)]
   await loopNight(afterUnitQueue(out), items, pusher, { dryRun: true })
@@ -2923,11 +2923,65 @@ it('runs no after_unit on a dry run or once interrupted', async () => {
     ctx: {
       env: { PATH: process.env.PATH },
       log: (line) => {
-        if (line === 'acme-api-1: done') stop.abort()
+        if (line.startsWith('acme-api-1-implement: ')) stop.abort()
       },
     },
   })
 
-  expect(report.results.map((u) => u.reason)).toEqual([undefined, 'interrupted', 'interrupted'])
-  expect(existsSync(out)).toBe(false)
+  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-implement', 'stopped: aborted'],
+    ['acme-api-2', 'skipped'],
+  ])
+  expect(await readFile(out, 'utf8')).toMatch(/^acme-api-1 done \|[^\n]+\n$/)
+})
+
+it("runs a loop's after_unit once it closes, with its host's PR and each round's report, before the next unit runs", async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-loop-')), 'out.txt')
+  const yaml = `queue:
+  - skill: implement
+    then:
+      - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
+      - { skill: qa-feedback, deliver: report }
+after_unit:
+  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL|$NIGHTSHIFT_REPORT" >> '${out}'
+`
+  const provider = looper({ 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' })
+  const firedBefore: Record<string, number> = {}
+  await loopNight(yaml, [issue(1)], {
+    ...provider,
+    async *run(job, signal) {
+      const lines = await readFile(out, 'utf8').catch(() => '')
+      firedBefore[job.unit.id] = lines.split('\n').filter(Boolean).length
+      yield* provider.run(job, signal)
+    },
+  })
+
+  expect(firedBefore).toEqual({
+    'acme-api-1': 0,
+    'acme-api-1-review-1': 0,
+    'acme-api-1-address-review-1': 0,
+    'acme-api-1-review-2': 0,
+    'acme-api-1-qa-feedback': 4,
+  })
+  const lines = (await readFile(out, 'utf8')).trim().split('\n')
+  expect(lines).toEqual([
+    'acme-api-1 done https://example.com/acme/api/pull/night/acme-api-1|',
+    expect.stringMatching(
+      /^acme-api-1-review-1 done \|\/.+\/units\/acme-api-1-review-1\/out\/report\.md$/,
+    ),
+    'acme-api-1-address-review-1 done |',
+    expect.stringMatching(
+      /^acme-api-1-review-2 done \|\/.+\/units\/acme-api-1-review-2\/out\/report\.md$/,
+    ),
+    expect.stringMatching(
+      /^acme-api-1-qa-feedback done \|\/.+\/units\/acme-api-1-qa-feedback\/out\/report\.md$/,
+    ),
+  ])
+  const reports = lines.flatMap((line) => line.split('|')[1] || [])
+  expect(await Promise.all(reports.map((file) => readFile(file, 'utf8')))).toEqual([
+    'acme-api-1-review-1 says changes.',
+    'acme-api-1-review-2 says approve.',
+    'acme-api-1-qa-feedback says nothing.',
+  ])
 })
