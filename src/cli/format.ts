@@ -112,12 +112,13 @@ export function describeRule(r: Rule): string {
   )
 }
 
-function describeConditions(where: Where): string[] {
-  return Object.entries(where).map(([k, v]) =>
-    k === 'any'
-      ? `any(${(v as Where[]).map((w) => describeConditions(w).join(' ')).join(' | ')})`
-      : describeWhere(k, v as WhereValue),
-  )
+function describeConditions({ any, ...where }: Where): string[] {
+  const conditions = Object.entries(where).map(([k, v]) => describeWhere(k, v as WhereValue))
+  if (any)
+    conditions.push(
+      `any(${(any as Where[]).map((w) => describeConditions(w).join(' ')).join(' | ')})`,
+    )
+  return conditions
 }
 
 function describeWhere(key: string, value: WhereValue): string {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { closestRule, failedKeys, matches, rank, ruleMatches } from '../src/core/queue.js'
+import { closestRule, failedIn, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
 
 import { asanaTask, githubPr } from './fakes/items.js'
@@ -115,7 +115,7 @@ describe('rank', () => {
 describe('closestRule', () => {
   it('names the keys an item fails', () => {
     const where = { type: 'pr', checks: 'failing', mine: true } as const
-    expect(failedKeys(rule(where), githubPr(1, { mine: false }))).toEqual(['checks', 'mine'])
+    expect(failedIn(where, githubPr(1, { mine: false }))).toEqual(['checks', 'mine'])
   })
 
   it('picks the rule with the fewest failed keys, the earlier on a tie, for the item source', () => {

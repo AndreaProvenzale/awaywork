@@ -16,7 +16,7 @@ sources:
   github: { repos: [acme/*] }
   board:                                # any name; rules use it as `source: board`
     command: python3 sources/board.py   # runs in the config file's folder
-    fields: [column, board]             # what `where` may match on
+    fields: [column, board]             # what `where` may match on; `any` is reserved
     secrets: [BOARD_TOKEN]              # env vars the command reads
     setup: pip install -r sources/requirements.txt   # GitHub Actions only
     link: "Refs {key}"                  # optional: the line that links a PR, see below

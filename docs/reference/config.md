@@ -259,7 +259,7 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 
 ## `queue[].where.<key>` (matches)
 
-Matches items whose text field contains a match, e.g. { matches: "^\[bug\]" }.
+Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 
 | Key | Type | Default | Description |
 |---|---|---|---|

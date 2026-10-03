@@ -79,7 +79,7 @@ export function byOrder(order: Order | undefined): (a: Item, b: Item) => number 
 }
 
 export function matches(rule: Rule, item: Item): boolean {
-  return eligible(rule, item) && failedKeys(rule, item).length === 0
+  return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
 /** A night-shift PR waits for review unless a rule names `ours`. */
@@ -91,11 +91,6 @@ function eligible(rule: Rule, item: Item): boolean {
 /** A PR night-shift opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
 export function isNightShiftPr(item: Item): boolean {
   return item.source === 'github' && item.fields.ours === true
-}
-
-/** The `where` keys the item fails; the rule's source is not checked. */
-export function failedKeys(rule: Rule, item: Item): string[] {
-  return failedIn(rule.where, item)
 }
 
 /** The keys of `where` the item fails; `any` fails when every entry fails. */
@@ -120,7 +115,7 @@ export function closestRule(
   let best: { rule: number; failed: string[] } | undefined
   queue.forEach((r, i) => {
     if (!eligible(r, item)) return
-    const failed = failedKeys(r, item)
+    const failed = failedIn(r.where, item)
     if (!best || failed.length < best.failed.length) best = { rule: i, failed }
   })
   return best

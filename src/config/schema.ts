@@ -434,7 +434,22 @@ export const configSchema = z
       function checkWhere(where: Where, path: (string | number)[]) {
         for (const [key, value] of Object.entries(where)) {
           if (key === 'any') {
-            for (const [i, w] of (value as Where[]).entries()) checkWhere(w, [...path, key, i])
+            for (const [i, w] of (value as Where[]).entries())
+              if (Object.keys(w).length === 0)
+                ctx.addIssue({
+                  code: 'custom',
+                  path: [...path, key, i],
+                  message: 'an empty entry matches everything',
+                })
+              else checkWhere(w, [...path, key, i])
+            continue
+          }
+          if (key === 'ours' && path.includes('any')) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...path, key],
+              message: 'ours only lifts the night-shift PR wait at the top of where',
+            })
             continue
           }
           const v = value as WhereValue
