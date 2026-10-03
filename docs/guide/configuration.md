@@ -284,7 +284,7 @@ where:
   review_requested: { not: true }   # not
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
   updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
-  title: { matches: "^\\[bug\\]" }   # on title, description or a text field: case-insensitive regex
+  title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
   label: night-shift                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
 ```

@@ -646,7 +646,7 @@
                     "matches"
                   ],
                   "additionalProperties": false,
-                  "description": "Matches items whose text field contains a match, e.g. { matches: \"^\\[bug\\]\" }"
+                  "description": "Matches items whose text field contains a match, e.g. `{ matches: '^\\[bug\\]' }`"
                 }
               ]
             }

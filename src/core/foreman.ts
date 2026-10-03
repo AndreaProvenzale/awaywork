@@ -15,6 +15,7 @@ import {
   describeComparison,
   fieldValue,
   isLoop,
+  isMatch,
   isNightShiftPr,
   rank,
 } from './queue.js'
@@ -321,6 +322,9 @@ function noRuleReason(item: Item, queue: Rule[]): string {
   const rule = queue[closest.rule] as Rule
   const failed = closest.failed.map((key) => {
     const want = rule.where[key] as WhereValue
+    // A text field can be a whole Markdown body; the plan keeps one line per item.
+    if (typeof want === 'object' && !Array.isArray(want) && isMatch(want))
+      return `${key} wants ${describeWant(want)}`
     return `${key} is ${describeValue(fieldValue(item, key))}, wants ${describeWant(want)}`
   })
   return `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`

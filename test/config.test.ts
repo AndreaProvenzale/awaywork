@@ -66,7 +66,7 @@ describe('config', () => {
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix-ci, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description or .*github: repo, label/,
       ),
     ])
   })
@@ -330,6 +330,12 @@ describe('config', () => {
       secrets: [],
     })
     expect(problems(rule('{ column: Ready, repo: acme/api }'))).toEqual([])
+    expect(problems(rule('{ repo: { matches: "^acme/" }, column: { matches: ready } }'))).toEqual(
+      [],
+    )
+    expect(problems(rule('{ created: { matches: "2024" } }'))).toEqual([
+      'queue[0].where.created: matches needs a text field',
+    ])
     expect(problems(rule('{ colour: red }'))).toEqual([
       expect.stringMatching(/unknown key "colour"; .*tracker: repo, created, updated, column/),
     ])

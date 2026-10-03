@@ -167,10 +167,12 @@ queue: [{ skill: fix-ci, where: { updated: { older_than: 3d } } }]`
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
-queue: [{ skill: fix-ci, where: { title: { matches: '^\\[bug\\]' } } }]`
-    const result = plan(yaml, [githubPr(1, {})], { claude: week(0.1) })
-    expect(result.skipped.map((s) => s.reason)).toEqual([expect.stringContaining('title is ')])
-    expect(result.skipped[0]?.reason).toContain('wants matches /^\\[bug\\]/i')
+queue: [{ skill: fix-ci, where: { description: { matches: '^\\[bug\\]' } } }]`
+    const item = { ...githubPr(1, {}), description: 'Line one\nLine two' }
+    const result = plan(yaml, [item], { claude: week(0.1) })
+    expect(result.skipped.map((s) => s.reason)).toEqual([
+      'matched no rule; closest #1 fix-ci: description wants matches /^\\[bug\\]/i',
+    ])
   })
 
   it('routes past a provider at its ceiling and caps fallback units', () => {

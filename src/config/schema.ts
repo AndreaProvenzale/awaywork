@@ -131,7 +131,7 @@ const whereValue = z.union([
         .refine(isRegex, 'invalid regular expression')
         .describe('A regular expression, case-insensitive'),
     })
-    .describe('Matches items whose text field contains a match, e.g. { matches: "^\\[bug\\]" }'),
+    .describe("Matches items whose text field contains a match, e.g. `{ matches: '^\\[bug\\]' }`"),
 ])
 
 function isRegex(source: string): boolean {
@@ -430,7 +430,7 @@ export const configSchema = z
           continue
         }
         if (typeof value === 'object' && !Array.isArray(value) && isMatch(value)) {
-          if (!field.safeParse('').success)
+          if (!isText(field))
             ctx.addIssue({
               code: 'custom',
               path: [...at, 'where', key],
@@ -489,8 +489,14 @@ function whereValues(value: WhereValue): Scalar[] {
   return isAge(value) || isMatch(value) ? [] : bounds(value).map(([, bound]) => bound)
 }
 
+/** A field `matches` can test: a string, dates aside, or a union holding one. */
+function isText(field: z.core.$ZodType): boolean {
+  return field instanceof z.ZodString || (field instanceof z.ZodUnion && field.options.some(isText))
+}
+
 function unknownKey(configured: Sources, scope: string[], key: string): string {
   const known = scope.map((id) => `${id}: ${Object.keys(fieldsOf(configured, id)).join(', ')}`)
-  return `unknown key "${key}"; use type or a source field (${known.join('; ')})`
+  const items = Object.keys(itemFields).join(', ')
+  return `unknown key "${key}"; use ${items} or a source field (${known.join('; ')})`
 }
 export type Budget = Config['providers'][number]['budget']
