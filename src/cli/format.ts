@@ -3,7 +3,7 @@ import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import type { NightPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, spans } from '../core/queue.js'
-import type { Rule, WhereValue } from '../core/types.js'
+import type { Rule, Where, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: NightPlan, warnings: string[] = []): string {
@@ -94,7 +94,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
 }
 
 export function describeRule(r: Rule): string {
-  const where = Object.entries(r.where).map(([k, v]) => describeWhere(k, v))
+  const where = describeConditions(r.where)
   const extras = [
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
     r.model &&
@@ -109,6 +109,14 @@ export function describeRule(r: Rule): string {
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||
     'every item'
+  )
+}
+
+function describeConditions(where: Where): string[] {
+  return Object.entries(where).map(([k, v]) =>
+    k === 'any'
+      ? `any(${(v as Where[]).map((w) => describeConditions(w).join(' ')).join(' | ')})`
+      : describeWhere(k, v as WhereValue),
   )
 }
 

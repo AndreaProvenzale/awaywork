@@ -13,6 +13,7 @@ import {
   closestRule,
   defaultRules,
   describeComparison,
+  failedIn,
   fieldValue,
   isLoop,
   isMatch,
@@ -21,7 +22,7 @@ import {
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
-import type { Condition, Item, Loop, Rule, Step, Unit, WhereValue } from './types.js'
+import type { Condition, Item, Loop, Rule, Step, Unit, Where, WhereValue } from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -320,14 +321,24 @@ function noRuleReason(item: Item, queue: Rule[]): string {
     : 'matched no rule'
   if (!closest) return why
   const rule = queue[closest.rule] as Rule
-  const failed = closest.failed.map((key) => {
-    const want = rule.where[key] as WhereValue
+  const failed = describeFailed(rule.where, item, closest.failed)
+  return `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
+}
+
+function describeFailed(where: Where, item: Item, keys: string[]): string[] {
+  return keys.map((key) => {
+    if (key === 'any') {
+      const entries = (where[key] as Where[]).map((w) =>
+        describeFailed(w, item, failedIn(w, item)).join(', '),
+      )
+      return `none of any matched: (${entries.join(') (')})`
+    }
+    const want = where[key] as WhereValue
     // A text field can be a whole Markdown body; the plan keeps one line per item.
     if (typeof want === 'object' && !Array.isArray(want) && isMatch(want))
       return `${key} wants ${describeWant(want)}`
     return `${key} is ${describeValue(fieldValue(item, key))}, wants ${describeWant(want)}`
   })
-  return `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
 }
 
 function describeWant(want: WhereValue): string {

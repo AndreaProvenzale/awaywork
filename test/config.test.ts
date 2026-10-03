@@ -113,6 +113,11 @@ describe('config', () => {
     expect(problems(rule('{ unresolved_threads: { matches: x } }'))).toEqual([
       'queue[0].where.unresolved_threads: matches needs a text field',
     ])
+    expect(problems(rule('{ any: [{ checks: failing }, { label: urgent }] }'))).toEqual([])
+    expect(problems(rule('{ any: [{ checks: failing }, { nope: 1 }] }'))).toEqual([
+      expect.stringContaining('queue[0].where.any[1].nope'),
+    ])
+    expect(problems(rule('{ any: [] }'))).toHaveLength(1)
     expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
       'queue[0].where.checks: older_than and newer_than need a date field',
     ])

@@ -8,10 +8,11 @@ import type {
   Rule,
   Scalar,
   Step,
+  Where,
   WhereValue,
 } from './types.js'
 
-const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
+const rule = (skill: string, source: string, where: Where): Rule => ({
   skill,
   source,
   where,
@@ -94,8 +95,15 @@ export function isNightShiftPr(item: Item): boolean {
 
 /** The `where` keys the item fails; the rule's source is not checked. */
 export function failedKeys(rule: Rule, item: Item): string[] {
-  return Object.keys(rule.where).filter(
-    (key) => !matchesValue(rule.where[key] as WhereValue, fieldValue(item, key)),
+  return failedIn(rule.where, item)
+}
+
+/** The keys of `where` the item fails; `any` fails when every entry fails. */
+export function failedIn(where: Where, item: Item): string[] {
+  return Object.keys(where).filter((key) =>
+    key === 'any'
+      ? !(where[key] as Where[]).some((w) => failedIn(w, item).length === 0)
+      : !matchesValue(where[key] as WhereValue, fieldValue(item, key)),
   )
 }
 

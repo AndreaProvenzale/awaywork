@@ -175,6 +175,18 @@ queue: [{ skill: fix-ci, where: { description: { matches: '^\\[bug\\]' } } }]`
     ])
   })
 
+  it('names the failing entries of any', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix-ci, where: { any: [{ checks: failing }, { title: { matches: zzz } }] } }]`
+    const result = plan(yaml, [githubPr(1, {})], { claude: week(0.1) })
+    const reason = result.skipped[0]?.reason
+    expect(reason).toContain('none of any matched')
+    expect(reason).toContain('checks is passing, wants failing')
+    expect(reason).toContain('wants matches /zzz/i')
+  })
+
   it('routes past a provider at its ceiling and caps fallback units', () => {
     const yaml = `
 budget: { fallback: { units: 1, turns: 30 } }

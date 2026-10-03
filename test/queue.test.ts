@@ -41,6 +41,10 @@ describe('where', () => {
     ['matches fails when nothing matches', { title: { matches: 'zzz' } }, false],
     ['matches reads a list field', { label: { matches: '^night' } }, true],
     ['matches ignores a number', { unresolved_threads: { matches: '3' } }, false],
+    ['any holds when one entry does', { any: [{ checks: 'passing' }, { label: 'bug' }] }, true],
+    ['any fails when no entry holds', { any: [{ checks: 'passing' }, { type: 'issue' }] }, false],
+    ['any is ANDed with the other keys', { type: 'issue', any: [{ checks: 'failing' }] }, false],
+    ['an entry ANDs its own keys', { any: [{ checks: 'failing', label: 'docs' }] }, false],
     ['every key must match', { type: 'pr', checks: 'passing' }, false],
     ['no keys match everything', {}, true],
   ] as const)('%s', (_, where, expected) => {

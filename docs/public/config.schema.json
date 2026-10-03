@@ -533,123 +533,8 @@
           },
           "where": {
             "default": {},
-            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source",
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "anyOf": [
-                    {
-                      "type": [
-                        "string",
-                        "number",
-                        "boolean"
-                      ]
-                    },
-                    {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": [
-                          "string",
-                          "number",
-                          "boolean"
-                        ]
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "not": {
-                      "anyOf": [
-                        {
-                          "type": [
-                            "string",
-                            "number",
-                            "boolean"
-                          ]
-                        },
-                        {
-                          "minItems": 1,
-                          "type": "array",
-                          "items": {
-                            "type": [
-                              "string",
-                              "number",
-                              "boolean"
-                            ]
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "not"
-                  ],
-                  "additionalProperties": false,
-                  "description": "Matches items whose field has none of these values"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "gt": {
-                      "description": "Greater than",
-                      "type": "number"
-                    },
-                    "gte": {
-                      "description": "Greater than or equal to",
-                      "type": "number"
-                    },
-                    "lt": {
-                      "description": "Less than",
-                      "type": "number"
-                    },
-                    "lte": {
-                      "description": "Less than or equal to",
-                      "type": "number"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "description": "Matches items whose number field passes every comparison"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "older_than": {
-                      "description": "Longer ago than this span",
-                      "type": "string",
-                      "pattern": "^\\d+[mhdw]$"
-                    },
-                    "newer_than": {
-                      "description": "More recent than this span",
-                      "type": "string",
-                      "pattern": "^\\d+[mhdw]$"
-                    }
-                  },
-                  "additionalProperties": false,
-                  "description": "Matches items whose date field is this long before now, e.g. { older_than: 3d }"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "matches": {
-                      "type": "string",
-                      "description": "A regular expression, case-insensitive"
-                    }
-                  },
-                  "required": [
-                    "matches"
-                  ],
-                  "additionalProperties": false,
-                  "description": "Matches items whose text field contains a match, e.g. `{ matches: '^\\[bug\\]' }`"
-                }
-              ]
-            }
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source",
+            "$ref": "#/$defs/__schema0"
           },
           "provider": {
             "description": "Providers for this rule, in order; default the providers order",
@@ -2000,5 +1885,132 @@
     "providers",
     "sources"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "any": {
+          "description": "Matches when at least one of these conditions does; each is a where of its own",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "not": {
+                "anyOf": [
+                  {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "not"
+            ],
+            "additionalProperties": false,
+            "description": "Matches items whose field has none of these values"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "gt": {
+                "description": "Greater than",
+                "type": "number"
+              },
+              "gte": {
+                "description": "Greater than or equal to",
+                "type": "number"
+              },
+              "lt": {
+                "description": "Less than",
+                "type": "number"
+              },
+              "lte": {
+                "description": "Less than or equal to",
+                "type": "number"
+              }
+            },
+            "additionalProperties": false,
+            "description": "Matches items whose number field passes every comparison"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "older_than": {
+                "description": "Longer ago than this span",
+                "type": "string",
+                "pattern": "^\\d+[mhdw]$"
+              },
+              "newer_than": {
+                "description": "More recent than this span",
+                "type": "string",
+                "pattern": "^\\d+[mhdw]$"
+              }
+            },
+            "additionalProperties": false,
+            "description": "Matches items whose date field is this long before now, e.g. { older_than: 3d }"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "matches": {
+                "type": "string",
+                "description": "A regular expression, case-insensitive"
+              }
+            },
+            "required": [
+              "matches"
+            ],
+            "additionalProperties": false,
+            "description": "Matches items whose text field contains a match, e.g. `{ matches: '^\\[bug\\]' }`"
+          }
+        ]
+      }
+    }
+  }
 }
