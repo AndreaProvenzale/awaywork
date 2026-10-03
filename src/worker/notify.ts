@@ -2,16 +2,18 @@ import { execa } from 'execa'
 
 const TIMEOUT_MS = 60_000
 
-/** Runs a user command in a shell with `env` added; returns why it failed, never throws. */
+/** Runs a user command in a shell with `env` added, stopped on `signal`; returns why it failed, never throws. */
 export async function runHook(
   command: string,
   env: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<string | undefined> {
   const result = await execa(command, {
     shell: true,
     env,
     stdin: 'ignore',
     timeout: TIMEOUT_MS,
+    cancelSignal: signal,
     reject: false,
     all: true,
   })
@@ -32,13 +34,18 @@ export function notify(
 export function afterUnit(
   command: string,
   unit: { runId: string; id: string; skill: string; status: string; pr?: string; report?: string },
+  signal?: AbortSignal,
 ): Promise<string | undefined> {
-  return runHook(command, {
-    NIGHTSHIFT_RUN_ID: unit.runId,
-    NIGHTSHIFT_UNIT: unit.id,
-    NIGHTSHIFT_SKILL: unit.skill,
-    NIGHTSHIFT_STATUS: unit.status,
-    ...(unit.pr && { NIGHTSHIFT_PR_URL: unit.pr }),
-    ...(unit.report && { NIGHTSHIFT_REPORT: unit.report }),
-  })
+  return runHook(
+    command,
+    {
+      NIGHTSHIFT_RUN_ID: unit.runId,
+      NIGHTSHIFT_UNIT: unit.id,
+      NIGHTSHIFT_SKILL: unit.skill,
+      NIGHTSHIFT_STATUS: unit.status,
+      ...(unit.pr && { NIGHTSHIFT_PR_URL: unit.pr }),
+      ...(unit.report && { NIGHTSHIFT_REPORT: unit.report }),
+    },
+    signal,
+  )
 }

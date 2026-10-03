@@ -568,8 +568,9 @@ and the GitHub Actions workflow passes them from repository secrets.
 ## After each unit
 
 To act as units finish, say to post to your own tools or record metrics,
-`after_unit.command` runs in a shell once for every unit of a run, dry
-runs included, after all the units have run, so a loop's result is final.
+`after_unit.command` runs in a shell once for every unit of a run, after
+all the units have run, so a loop's result is final. A dry run runs none,
+and Ctrl-C stops the running one and starts no more.
 Its env has `NIGHTSHIFT_RUN_ID`, `NIGHTSHIFT_UNIT`, `NIGHTSHIFT_SKILL` and
 `NIGHTSHIFT_STATUS` (`done`, `failed`, `skipped`...), plus
 `NIGHTSHIFT_PR_URL` when the unit opened a draft PR and `NIGHTSHIFT_REPORT`,

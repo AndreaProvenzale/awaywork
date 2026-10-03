@@ -25,3 +25,10 @@ it('runs the after_unit command with the unit, status and PR in its env, and non
   expect(await afterUnit(command, { ...unit, pr: 'https://x/pull/2' })).toBeUndefined()
   expect(await readFile(out, 'utf8')).toBe('a-1 fix-ci done https://x/pull/2|\n')
 })
+
+it('stops a running after_unit command on abort', async () => {
+  const unit = { runId: '1', id: 'a-1', skill: 'fix-ci', status: 'done' }
+  const started = Date.now()
+  expect(await afterUnit('sleep 30', unit, AbortSignal.timeout(100))).toMatch(/canceled/)
+  expect(Date.now() - started).toBeLessThan(5000)
+})

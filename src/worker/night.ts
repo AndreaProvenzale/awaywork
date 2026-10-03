@@ -539,21 +539,32 @@ export async function runNight(n: NightInput): Promise<NightReport> {
   if (open) await closeLoop(open)
 
   const hook = n.config.after_unit
-  if (hook)
+  if (hook && !n.dryRun)
     // Run once the loops are closed, when every result is final.
     for (const r of results) {
+      if (n.signal?.aborted) break
       const { outcome } = r
-      const failure = await afterUnit(hook.command, {
-        runId: n.runId,
-        id: r.planned.unit.id,
-        skill: r.planned.unit.skill,
-        status: r.status,
-        pr: outcome?.kind === 'pr' ? outcome.url : undefined,
-        report:
-          outcome?.kind === 'report' || outcome?.kind === 'pushed'
-            ? join(n.runDir, 'units', r.planned.unit.id, 'out', outputFile[r.planned.unit.deliver])
-            : undefined,
-      })
+      const failure = await afterUnit(
+        hook.command,
+        {
+          runId: n.runId,
+          id: r.planned.unit.id,
+          skill: r.planned.unit.skill,
+          status: r.status,
+          pr: outcome?.kind === 'pr' ? outcome.url : undefined,
+          report:
+            outcome?.kind === 'report' || outcome?.kind === 'pushed'
+              ? join(
+                  n.runDir,
+                  'units',
+                  r.planned.unit.id,
+                  'out',
+                  outputFile[r.planned.unit.deliver],
+                )
+              : undefined,
+        },
+        n.signal,
+      )
       if (failure) n.ctx.log(`after_unit failed for ${r.planned.unit.id}: ${failure}`)
     }
 

@@ -2864,3 +2864,70 @@ it("puts back a loop clone's git config after each worker, and refuses a borrowe
     '1 round of review ⇄ address-review; acme-api-1-address-review-1 error: .git/objects/info/alternates in the clone points elsewhere',
   )
 })
+
+/** Pushes onto PR 1 and opens a draft PR after it, reports on issue 2, and runs a failing after_unit. */
+const afterUnitQueue = (out: string) => `queue:
+  - { skill: fix-ci, deliver: push, where: { type: pr }, then: implement }
+  - { skill: plan, where: { type: issue } }
+after_unit:
+  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL|$NIGHTSHIFT_REPORT" >> '${out}'; exit 3
+`
+
+/** Commits unless it reports, and writes a PR body or a report as its unit delivers. */
+const pusher: Provider = {
+  ...fakeProvider('claude'),
+  async *run(job) {
+    if (job.unit.deliver !== 'report') {
+      await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+      await git(job.dir, 'add', `${job.unit.id}.txt`)
+      await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
+    }
+    const file = job.unit.deliver === 'draft_pr' ? 'pr.md' : 'report.md'
+    await writeFile(join(job.dir, '.nightshift/out', file), `Work on ${job.unit.id}\n\nDone.`)
+    yield { type: 'done', ok: true, turns: 1 }
+  },
+}
+
+it('runs after_unit once per unit with its PR or report, and goes on past a failing one', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
+  const logs: string[] = []
+  const { report } = await loopNight(afterUnitQueue(out), [githubPr(1), issue(2)], pusher, {
+    ctx: { env: { PATH: process.env.PATH }, log: (line) => logs.push(line) },
+  })
+
+  expect(report.results.map((u) => [u.planned.unit.id, u.outcome?.kind])).toEqual([
+    ['acme-api-1', 'pushed'],
+    ['acme-api-1-implement', 'pr'],
+    ['acme-api-2', 'report'],
+  ])
+  expect((await readFile(out, 'utf8')).split('\n')).toEqual([
+    expect.stringMatching(/^acme-api-1 done \|\/.+\/run\/units\/acme-api-1\/out\/report\.md$/),
+    'acme-api-1-implement done https://example.com/acme/api/pull/night/acme-api-1|',
+    expect.stringMatching(/^acme-api-2 done \|\/.+\/run\/units\/acme-api-2\/out\/report\.md$/),
+    '',
+  ])
+  expect(logs.filter((line) => line.startsWith('after_unit'))).toEqual([
+    expect.stringMatching(/^after_unit failed for acme-api-1: .*exit code 3/),
+    expect.stringMatching(/^after_unit failed for acme-api-1-implement: /),
+    expect.stringMatching(/^after_unit failed for acme-api-2: /),
+  ])
+})
+
+it('runs no after_unit on a dry run or once interrupted', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
+  const items = [githubPr(1), issue(2)]
+  await loopNight(afterUnitQueue(out), items, pusher, { dryRun: true })
+  const stop = new AbortController()
+  const { report } = await loopNight(afterUnitQueue(out), items, pusher, {
+    signal: stop.signal,
+    ctx: {
+      env: { PATH: process.env.PATH },
+      log: (line) => {
+        if (line === 'acme-api-1: done') stop.abort()
+      },
+    },
+  })
+
+  expect(report.results.map((u) => u.reason)).toEqual([undefined, 'interrupted', 'interrupted'])
+  expect(existsSync(out)).toBe(false)
+})
