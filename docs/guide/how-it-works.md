@@ -18,7 +18,7 @@ inspect with `nightshift plan` before a night.
 ## Items
 
 A source returns your open items with facts about each: a `type` (`pr`,
-`issue`, `task`) and source fields.
+`issue`, `task`), a `title` and `description`, and source fields.
 
 | Source | Items | Fields a rule can match |
 |---|---|---|
