@@ -68,7 +68,13 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         network: true,
         untrusted: false,
         branch: 'night/acme-api-1',
-        rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
+        rule: {
+          skill: 'fix-ci',
+          provider: [],
+          skills: [],
+          instructions: [],
+          with: { tries: 2 },
+        },
         skill: 'fix-ci',
         skills: ['house-style'],
         providers: ['claude'],
@@ -106,6 +112,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     )
     expect(parts[1]).toMatch(/^# Fix CI/)
     expect(parts.slice(2)).toEqual([
+      '## Parameters\n\n- tries: 2',
       'GLOBAL NOTE',
       'Setup, already run: `pnpm install`',
       'REPO NOTE',

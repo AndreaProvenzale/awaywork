@@ -138,7 +138,7 @@ const stepSettings = {
   skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   with: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+    .record(z.string().min(1), scalar)
     .optional()
     .describe(
       "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",

@@ -83,6 +83,18 @@ describe('prompt', () => {
     ])
   })
 
+  it('quotes a multi-line parameter so it stays in the list', () => {
+    const prompt = assemblePrompt({
+      harness: 'H',
+      skill: 'S',
+      params: { note: 'line one\n## Rogue\n' },
+      instructions: [],
+      repo: {},
+      rule: [],
+    })
+    expect(prompt.split('\n\n---\n\n')[2]).toBe('## Parameters\n\n- note: "line one\\n## Rogue\\n"')
+  })
+
   it('tells an offline agent not to install anything', () => {
     const prompt = (offline: boolean) =>
       assemblePrompt({ harness: 'H', skill: 'S', instructions: [], repo: { offline }, rule: [] })

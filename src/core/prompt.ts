@@ -1,7 +1,9 @@
+import type { Scalar } from './types.js'
+
 export interface PromptParts {
   harness: string
   skill: string
-  params?: Record<string, string | number | boolean>
+  params?: Record<string, Scalar>
   instructions: string[]
   repo: {
     setup?: string
@@ -25,7 +27,11 @@ export function assemblePrompt(p: PromptParts): string {
       "No network: your commands can't reach it, so don't install dependencies or download anything.",
     p.repo.test && `Test: \`${p.repo.test}\``,
   ].filter(Boolean)
-  const params = Object.entries(p.params ?? {}).map(([key, value]) => `- ${key}: ${value}`)
+  // A raw multi-line value would break the list and could add its own headings.
+  const params = Object.entries(p.params ?? {}).map(
+    ([key, value]) =>
+      `- ${key}: ${typeof value === 'string' && value.includes('\n') ? JSON.stringify(value) : value}`,
+  )
   return [
     p.harness,
     p.skill,

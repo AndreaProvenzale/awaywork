@@ -689,7 +689,8 @@
             "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
             "type": "object",
             "propertyNames": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "additionalProperties": {
               "type": [
@@ -796,7 +797,8 @@
                         "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                         "type": "object",
                         "propertyNames": {
-                          "type": "string"
+                          "type": "string",
+                          "minLength": 1
                         },
                         "additionalProperties": {
                           "type": [
@@ -973,7 +975,8 @@
                                 "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                                 "type": "object",
                                 "propertyNames": {
-                                  "type": "string"
+                                  "type": "string",
+                                  "minLength": 1
                                 },
                                 "additionalProperties": {
                                   "type": [
@@ -1147,7 +1150,8 @@
                                   "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                                   "type": "object",
                                   "propertyNames": {
-                                    "type": "string"
+                                    "type": "string",
+                                    "minLength": 1
                                   },
                                   "additionalProperties": {
                                     "type": [
@@ -1400,7 +1404,8 @@
                               "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                               "type": "object",
                               "propertyNames": {
-                                "type": "string"
+                                "type": "string",
+                                "minLength": 1
                               },
                               "additionalProperties": {
                                 "type": [
@@ -1577,7 +1582,8 @@
                                       "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                                       "type": "object",
                                       "propertyNames": {
-                                        "type": "string"
+                                        "type": "string",
+                                        "minLength": 1
                                       },
                                       "additionalProperties": {
                                         "type": [
@@ -1751,7 +1757,8 @@
                                         "description": "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
                                         "type": "object",
                                         "propertyNames": {
-                                          "type": "string"
+                                          "type": "string",
+                                          "minLength": 1
                                         },
                                         "additionalProperties": {
                                           "type": [
