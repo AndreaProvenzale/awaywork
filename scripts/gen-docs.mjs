@@ -49,7 +49,13 @@ ${sections.join('\n\n')}
 
 const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ')
 
+let defs = {}
+
+/** A $ref replaced by its definition, keeping the description and default set beside it. */
+const resolve = ({ $ref, ...rest }) => ($ref ? { ...defs[$ref.split('/').pop()], ...rest } : rest)
+
 function typeOf(s) {
+  if (s.$ref) return typeOf(resolve(s))
   if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(' \\| ')
   if (s.anyOf) return [...new Set(variants(s))].join(' \\| ')
   if (s.pattern?.endsWith('%$')) return 'percent'
@@ -66,20 +72,26 @@ function typeOf(s) {
 const variants = (s) => (s.anyOf ? s.anyOf.flatMap(variants) : [typeOf(s)])
 
 /** Every object schema with properties, keyed by its YAML path, in document order. */
-function objects(s, path, out) {
+function objects(s, path, out, open = []) {
+  if (s.$ref) {
+    // A recursive schema, e.g. where inside any, is documented once.
+    if (open.includes(s.$ref)) return out
+    return objects(resolve(s), path, out, [...open, s.$ref])
+  }
   if (s.properties) {
     out.push({ path, schema: s })
     for (const [key, sub] of Object.entries(s.properties))
-      objects(sub, path ? `${path}.${key}` : key, out)
+      objects(sub, path ? `${path}.${key}` : key, out, open)
   }
-  if (s.items) objects(s.items, `${path}[]`, out)
+  if (s.items) objects(s.items, `${path}[]`, out, open)
   if (s.additionalProperties && typeof s.additionalProperties === 'object')
-    objects(s.additionalProperties, `${path}.<key>`, out)
-  for (const variant of s.anyOf ?? []) objects(variant, path, out)
+    objects(s.additionalProperties, `${path}.<key>`, out, open)
+  for (const variant of s.anyOf ?? []) objects(variant, path, out, open)
   return out
 }
 
 function configDoc(schema) {
+  defs = schema.$defs
   const seen = new Map()
   const shapes = new Map()
   const sections = objects(schema, '', []).map(({ path, schema: s }) => {
