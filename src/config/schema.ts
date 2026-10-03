@@ -86,9 +86,9 @@ const providerEntry = z.union([providerName, providerOverride], {
     typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
 })
 
-/** A built-in source's config with its `link`; GitHub's items are PRs and issues, which link their PRs themselves. */
+/** A built-in source's config with its `link`, unless its items link their PRs themselves. */
 function builtinConfig(s: Source): z.ZodObject {
-  if (s.id === 'github') return s.configSchema
+  if (s.link === false) return s.configSchema
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
   return s.configSchema.extend({ link }).describe(s.configSchema.description ?? '')

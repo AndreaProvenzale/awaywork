@@ -97,7 +97,7 @@ async function pushHead(run: Exec, dir: string, repo: string, branch: string, fr
 }
 
 export function githubForge(run: Exec = exec): Forge {
-  let myPrs: Promise<PrNode[]> | undefined
+  let myPrs: Promise<(PrNode & { items: string[] })[]> | undefined
 
   const forge: Forge = {
     async clone(repo, branch, dir) {
@@ -107,19 +107,19 @@ export function githubForge(run: Exec = exec): Forge {
     },
 
     /**
-     * My open PRs for the item: night-shift's by the items its footer names, whatever their names;
+     * My open PRs for the item: those whose footer names items by those items, whatever their names;
      * the others by the key in their branch or title, or the item's link line in their body.
      */
     async prsFor(item: Item): Promise<PrRef[]> {
-      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then(
-        (d) => d.search.nodes,
+      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then((d) =>
+        d.search.nodes.map((pr) => ({ ...pr, items: footerItems(pr.body) })),
       )
       const key = bounded(item.key)
       const link = item.link ? bounded(item.link) : undefined
       return (await myPrs)
         .filter((pr) =>
-          isOurs(pr.body)
-            ? footerItems(pr.body).includes(`${item.source}:${item.key}`)
+          pr.items.length
+            ? pr.items.includes(`${item.source}:${item.key}`)
             : key.test(pr.headRefName) || key.test(pr.title) || !!link?.test(pr.body),
         )
         .map((pr) => ({

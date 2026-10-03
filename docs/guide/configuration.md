@@ -180,7 +180,9 @@ Not when night-shift already tried there: when a PR on the taken branch,
 open, closed or merged, has a footer naming one of the unit's items, the
 unit is skipped as `night-shift tried this in <PR>; delete <branch> to
 run it again`. That record lives on GitHub, so it holds on a runner that
-keeps no [attempts](./how-it-works.md#units).
+keeps no [attempts](./how-it-works.md#units). A taken branch with no PR
+at all may be a push whose PR failed, so it skips the unit too, until
+you delete it.
 
 ## Linking PRs
 
@@ -189,7 +191,8 @@ through your open PRs:
 
 - One night-shift opened is linked by the items its footer names,
   whatever its branch or title. It never falls back to names, so a
-  night-shift PR for ENG-13 that mentions ENG-12 isn't ENG-12's.
+  night-shift PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
+  footer naming no items counts as none, so it is linked like yours.
 - One you wrote is linked when its branch or title holds the item's key
   as a whole word, in any case, or its body holds the source's `link`
   line. A bare key in the body doesn't count: "follow-up to ENG-12"

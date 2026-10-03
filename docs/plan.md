@@ -326,7 +326,8 @@ Semantics, fixed so every milestone agrees:
   invalid ref, is a config error. The name is cosmetic: the push
   guardrail is that the branch doesn't exist on the remote. A taken name
   gets `-2` to `-10`, unless a PR on it carries a footer naming one of
-  the unit's items: night-shift tried there, and the unit is skipped.
+  the unit's items (night-shift tried there) or it has no PR at all (a
+  push whose PR failed): then the unit is skipped.
 - **Conventions.** PR title, body and commit messages have no config.
   The harness has the model follow the repo's PR template, recent commit
   style and any rule in the instructions (e.g. "prefix titles with the

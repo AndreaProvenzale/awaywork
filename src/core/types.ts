@@ -72,8 +72,11 @@ export interface Source<C = unknown> {
   configSchema: z.ZodObject
   /** What `where` may match on; each schema validates one scalar a rule compares against. */
   fields: Record<string, z.ZodType>
-  /** The default `link` template: how the tracker links a PR from its body, e.g. `Part of {key}`. */
-  link?: string
+  /**
+   * The default `link` template: how the tracker links a PR from its body, e.g. `Part of {key}`;
+   * false when its items link their PRs themselves, so there is no `link` to configure.
+   */
+  link?: string | false
   secrets(cfg: C): string[]
   items(cfg: C, ctx: Ctx): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>

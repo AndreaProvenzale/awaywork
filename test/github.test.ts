@@ -279,7 +279,7 @@ describe('github forge', () => {
     expect(run.calls).toHaveLength(1)
   })
 
-  it("links night-shift's PRs by their footer alone, and yours by the key in branch or title or the link line in the body", async () => {
+  it('links PRs whose footer names items by those alone, and the others by the key in branch or title or the link line in the body', async () => {
     const run = recorded([
       [
         /author:@me/,
@@ -296,6 +296,8 @@ describe('github forge', () => {
           { body: 'Context: https://app.asana.com/0/1/1205/f' },
           { body: 'Context: https://app.asana.com/0/1/12050' },
           { headRefName: 'eng-13-extra', body: ours('jira', 'ENG-13') },
+          { headRefName: 'eng-12-footer', body: 'Adds `<!-- night-shift run=<id> -->`.' },
+          { title: 'ENG-12: older', body: 'Done.\n\n---\n<!-- night-shift run=r0 -->' },
         ),
       ],
     ])
@@ -304,10 +306,10 @@ describe('github forge', () => {
       (await forge.prsFor(fakeItem({ type: 'task', ...item }))).map((pr) => pr.number)
     const linear = (key: string) => ({ source: 'linear', key, link: `Part of ${key}` })
     expect(await linked(linear('ENG-13'))).toEqual([1])
-    expect(await linked(linear('ENG-12'))).toEqual([2, 3])
+    expect(await linked(linear('ENG-12'))).toEqual([2, 3, 9, 10])
     const url = 'https://app.asana.com/0/1/1205/f'
     expect(await linked({ source: 'asana', id: '1205', key: '1205', url, link: url })).toEqual([6])
-    expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2])
+    expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
   it('reads PRs on a branch in any state', async () => {

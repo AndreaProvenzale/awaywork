@@ -1,3 +1,4 @@
+import { placeholderProblem } from './branch.js'
 import type { Item } from './types.js'
 
 const marker = '<!-- night-shift'
@@ -33,11 +34,8 @@ export function renderLink(template: string, item: Pick<Item, 'key' | 'id' | 'ur
 }
 
 /** Why a `link` template can't link a PR, or undefined when it can. */
-export function linkProblem(template: string): string | undefined {
-  const unknown = template.match(/\{(?!key\}|id\}|url\})[^}]*\}/)
-  if (unknown) return `unknown placeholder ${unknown[0]}`
-  if (!/\{(key|id|url)\}/.test(template)) return 'must contain {key}, {id} or {url}'
-}
+export const linkProblem = (template: string): string | undefined =>
+  placeholderProblem(template, ['key', 'id', 'url'])
 
 /** The trailer every commit night-shift publishes carries, keyed `Night-shift: <run id>`. */
 export const trailerKey = 'Night-shift'

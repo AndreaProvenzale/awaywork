@@ -299,7 +299,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       continue
     }
     if (!round && deliver === 'draft_pr') {
-      const free = await freeBranch(n.forge, unit)
+      const free = await freeBranch(n.forge, unit).catch((e: Error) => ({
+        skip: `couldn't check ${unit.branch} on ${unit.repo}: ${e.message}`,
+      }))
       if ('skip' in free) {
         skip(free.skip)
         continue
@@ -540,8 +542,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
 /**
  * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
- * whose PR, in any state, night-shift opened for one of the unit's items means it tried already:
- * the unit is skipped until that branch is deleted, even where no attempts are kept.
+ * whose PR, in any state, night-shift opened for one of the unit's items means it tried already, and
+ * one with no PR may be a push whose PR failed: either way the unit is skipped until that branch is
+ * deleted, even where no attempts are kept.
  */
 async function freeBranch(
   forge: Forge,
@@ -551,9 +554,10 @@ async function freeBranch(
   for (let n = 1; n <= MAX_SUFFIX; n++) {
     const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
     if (!(await forge.branchExists(unit.repo, branch))) return { branch }
-    const tried = (await forge.prsOn(unit.repo, branch)).find((pr) =>
-      footerItems(pr.body).some((item) => items.includes(item)),
-    )
+    const prs = await forge.prsOn(unit.repo, branch)
+    if (prs.length === 0)
+      return { skip: `${branch} exists on ${unit.repo} without a PR; delete it to run again` }
+    const tried = prs.find((pr) => footerItems(pr.body).some((item) => items.includes(item)))
     if (tried)
       return { skip: `night-shift tried this in ${tried.url}; delete ${branch} to run it again` }
   }

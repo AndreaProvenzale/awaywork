@@ -1124,6 +1124,9 @@ it('suffixes a taken branch, and carries the name through its loop rounds and th
   const { opened, forge } = await originForge(root)
   forge.branches.add('acme/api:night/acme-api-1')
   forge.branches.add('acme/api:night/acme-api-1-2')
+  forge.heads['acme/api:night/acme-api-1'] = [
+    { url: 'https://github.com/acme/api/pull/9', body: 'Mine.' },
+  ]
   const other = { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(2)]) }
   forge.heads['acme/api:night/acme-api-1-2'] = [other]
   const config = parseConfig(`
@@ -1185,12 +1188,23 @@ queue:
   )
 })
 
-it('skips a unit night-shift tried on a suffixed branch, and one with every name taken', async () => {
+it('skips a unit night-shift tried on a suffixed branch, one with every name taken, on a branch without a PR, or that it cannot check', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-skip-'))
   const forge = fakeForge()
   for (const n of [1, 3])
-    for (const suffix of ['', '-2', '-3', '-4', '-5', '-6', '-7', '-8', '-9', '-10'])
+    for (const suffix of ['', '-2', '-3', '-4', '-5', '-6', '-7', '-8', '-9', '-10']) {
       forge.branches.add(`acme/api:night/acme-api-${n}${suffix}`)
+      forge.heads[`acme/api:night/acme-api-${n}${suffix}`] = [
+        { url: 'https://github.com/acme/api/pull/9', body: 'Mine.' },
+      ]
+    }
+  forge.branches.add('acme/api:night/acme-api-5')
+  forge.branches.add('acme/api:night/acme-api-7')
+  const { prsOn } = forge
+  forge.prsOn = async (repo, branch) => {
+    if (branch === 'night/acme-api-7') throw new Error('rate limited')
+    return prsOn(repo, branch)
+  }
   forge.heads['acme/api:night/acme-api-1-2'] = [
     { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(1)]) },
   ]
@@ -1199,7 +1213,7 @@ it('skips a unit night-shift tried on a suffixed branch, and one with every name
   )
   const plan = planNight({
     config,
-    items: [issue(1), issue(3)],
+    items: [issue(1), issue(3), issue(5), issue(7)],
     allowances: { claude: allowance(config.budget, null, 0) },
     skills: { builtin: builtinSkills },
   })
@@ -1223,6 +1237,12 @@ it('skips a unit night-shift tried on a suffixed branch, and one with every name
       'night-shift tried this in https://github.com/acme/api/pull/8; delete night/acme-api-1-2 to run it again',
     ],
     ['acme-api-3', 'skipped', 'night/acme-api-3 to night/acme-api-3-10 already exist on acme/api'],
+    [
+      'acme-api-5',
+      'skipped',
+      'night/acme-api-5 exists on acme/api without a PR; delete it to run again',
+    ],
+    ['acme-api-7', 'skipped', "couldn't check night/acme-api-7 on acme/api: rate limited"],
   ])
 })
 
