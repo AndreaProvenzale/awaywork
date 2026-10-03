@@ -18,7 +18,7 @@ export const isOurs = (body: string | null | undefined): boolean => !!body?.incl
 
 /** The items a night-shift PR's footer names, as `<source>:<key>`; a marker the body quotes above it doesn't count. */
 export function footerItems(body: string | null | undefined): string[] {
-  const line = [...(body ?? '').matchAll(/<!-- night-shift ([^>]*)-->/g)].at(-1)?.[1] ?? ''
+  const line = [...(body ?? '').matchAll(/<!-- night-shift ([^<>]*)-->/g)].at(-1)?.[1] ?? ''
   return [...line.matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(([, source = '', key = '']) => {
     try {
       return [`${decodeURIComponent(source)}:${decodeURIComponent(key)}`]
@@ -39,3 +39,6 @@ export const linkProblem = (template: string): string | undefined =>
 
 /** The trailer every commit night-shift publishes carries, keyed `Night-shift: <run id>`. */
 export const trailerKey = 'Night-shift'
+
+export const hasTrailer = (message: string): boolean =>
+  new RegExp(`^${trailerKey}: `, 'm').test(message)

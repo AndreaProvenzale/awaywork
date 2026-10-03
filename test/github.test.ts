@@ -57,6 +57,13 @@ describe('footer', () => {
     expect(footerItems('No footer.')).toEqual([])
     const quoted = 'The footer reads `<!-- night-shift run=r0 item=linear:ENG-99 -->`.'
     expect(footerItems(`${quoted}\n\n${text}`)).toEqual(footerItems(text))
+    const unclosed = footer('r1', [{ source: 'linear', key: 'ENG-12' }])
+    expect(footerItems(`Done.\n\n<!-- night-shift item=linear:ENG-99 \n\n${unclosed}`)).toEqual([
+      'linear:ENG-12',
+    ])
+    expect(footerItems(`Quotes \`<!-- night-shift item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
+      'linear:ENG-12',
+    ])
   })
 })
 
@@ -312,18 +319,35 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
-  it('reads PRs on a branch in any state', async () => {
-    const nodes = [{ url: 'https://github.com/acme/api/pull/7', body: 'Closed.' }]
+  it('reads PRs on a branch in any state, not the ones from forks', async () => {
+    const nodes = [
+      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', isCrossRepository: false },
+      { url: 'https://github.com/acme/api/pull/8', body: 'Fork.', isCrossRepository: true },
+    ]
     const run = recorded([
       [
         /headRefName: \$branch, states: \[OPEN, CLOSED, MERGED\]/,
         JSON.stringify({ data: { repository: { pullRequests: { nodes } } } }),
       ],
     ])
-    expect(await githubForge(run).prsOn('acme/api', 'night/eng-12')).toEqual(nodes)
+    expect(await githubForge(run).prsOn('acme/api', 'night/eng-12')).toEqual([
+      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.' },
+    ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=night/eng-12']),
     )
+  })
+
+  it("reads the message of a branch's tip", async () => {
+    const target = { message: 'Fix it\n\nNight-shift: r0' }
+    const run = recorded([
+      [
+        /ref\(qualifiedName: \$ref\)/,
+        JSON.stringify({ data: { repository: { ref: { target } } } }),
+      ],
+    ])
+    expect(await githubForge(run).tipMessage('acme/api', 'night/eng-12')).toBe(target.message)
+    expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/night/eng-12']))
   })
 
   it('checks branch existence by exact name, not prefix', async () => {

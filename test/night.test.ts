@@ -1119,7 +1119,7 @@ queue:
   )
 })
 
-it('suffixes a taken branch, and carries the name through its loop rounds and the step after', async () => {
+it("suffixes a taken branch, even one without a PR that night-shift didn't push, and carries the name through its loop rounds and the step after", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-'))
   const { opened, forge } = await originForge(root)
   forge.branches.add('acme/api:night/acme-api-1')
@@ -1129,6 +1129,8 @@ it('suffixes a taken branch, and carries the name through its loop rounds and th
   ]
   const other = { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(2)]) }
   forge.heads['acme/api:night/acme-api-1-2'] = [other]
+  forge.branches.add('acme/api:night/acme-api-1-3')
+  forge.tips['acme/api:night/acme-api-1-3'] = 'Work in progress'
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -1171,24 +1173,24 @@ queue:
   })
 
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-1-3', ''],
-    ['night/acme-api-1-qa-feedback', 'night/acme-api-1-3'],
+    ['night/acme-api-1-4', ''],
+    ['night/acme-api-1-qa-feedback', 'night/acme-api-1-4'],
   ])
   expect(report.results.map((u) => [u.planned.unit.id, u.planned.unit.branch])).toEqual([
-    ['acme-api-1', 'night/acme-api-1-3'],
-    ['acme-api-1-review-1', 'night/acme-api-1-3'],
-    ['acme-api-1-address-review-1', 'night/acme-api-1-3'],
-    ['acme-api-1-review-2', 'night/acme-api-1-3'],
+    ['acme-api-1', 'night/acme-api-1-4'],
+    ['acme-api-1-review-1', 'night/acme-api-1-4'],
+    ['acme-api-1-address-review-1', 'night/acme-api-1-4'],
+    ['acme-api-1-review-2', 'night/acme-api-1-4'],
     ['acme-api-1-qa-feedback', 'night/acme-api-1-qa-feedback'],
   ])
-  expect(prompts[1]).toContain('Every round works in this clone on `night/acme-api-1-3`')
-  expect(prompts[4]).toContain('cut from `night/acme-api-1-3`')
+  expect(prompts[1]).toContain('Every round works in this clone on `night/acme-api-1-4`')
+  expect(prompts[4]).toContain('cut from `night/acme-api-1-4`')
   expect(logged).toContain(
-    'acme-api-1: night/acme-api-1 is taken on acme/api, using night/acme-api-1-3',
+    'acme-api-1: night/acme-api-1 is taken on acme/api, using night/acme-api-1-4',
   )
 })
 
-it('skips a unit night-shift tried on a suffixed branch, one with every name taken, on a branch without a PR, or that it cannot check', async () => {
+it('skips a unit night-shift tried on a suffixed branch, one with every name taken, on its own branch without a PR, or that it cannot check', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-skip-'))
   const forge = fakeForge()
   for (const n of [1, 3])
@@ -1199,6 +1201,7 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
       ]
     }
   forge.branches.add('acme/api:night/acme-api-5')
+  forge.tips['acme/api:night/acme-api-5'] = 'Fix it\n\nNight-shift: r0'
   forge.branches.add('acme/api:night/acme-api-7')
   const { prsOn } = forge
   forge.prsOn = async (repo, branch) => {

@@ -58,8 +58,14 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { url body }
+      nodes { url body isCrossRepository }
     }
+  }
+}`
+
+const tipQuery = `query($owner: String!, $name: String!, $ref: String!) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $ref) { target { ... on Commit { message } } }
   }
 }`
 
@@ -145,9 +151,21 @@ export function githubForge(run: Exec = exec): Forge {
     async prsOn(repo, branch) {
       const [owner = '', name = ''] = repo.split('/')
       const { repository } = await graphql<{
-        repository: { pullRequests: { nodes: { url: string; body: string }[] } }
+        repository: {
+          pullRequests: { nodes: { url: string; body: string; isCrossRepository: boolean }[] }
+        }
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
+        .filter((pr) => !pr.isCrossRepository)
+        .map(({ url, body }) => ({ url, body }))
+    },
+
+    async tipMessage(repo, branch) {
+      const [owner = '', name = ''] = repo.split('/')
+      const { repository } = await graphql<{
+        repository: { ref: { target: { message?: string } } | null }
+      }>(run, tipQuery, { owner, name, ref: `refs/heads/${branch}` })
+      return repository.ref?.target.message ?? ''
     },
 
     async push(dir, branch, { repo }) {

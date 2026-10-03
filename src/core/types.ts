@@ -131,8 +131,10 @@ export interface Forge {
   clone(repo: string, branch: string, dir: string): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
-  /** PRs whose head is `branch` in the repo, open, closed or merged. */
+  /** PRs whose head is `branch` in the repo, not a fork, open, closed or merged. */
   prsOn(repo: string, branch: string): Promise<{ url: string; body: string }[]>
+  /** The message of the commit at the tip of `branch` in the repo. */
+  tipMessage(repo: string, branch: string): Promise<string>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without

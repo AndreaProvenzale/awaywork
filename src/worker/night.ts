@@ -5,7 +5,7 @@ import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
-import { footerItems } from '../core/footer.js'
+import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
@@ -543,8 +543,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 /**
  * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
  * whose PR, in any state, night-shift opened for one of the unit's items means it tried already, and
- * one with no PR may be a push whose PR failed: either way the unit is skipped until that branch is
- * deleted, even where no attempts are kept.
+ * one with no PR whose tip has night-shift's trailer is a push whose PR failed: either way the unit
+ * is skipped until that branch is deleted, even where no attempts are kept.
  */
 async function freeBranch(
   forge: Forge,
@@ -555,7 +555,7 @@ async function freeBranch(
     const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
     if (!(await forge.branchExists(unit.repo, branch))) return { branch }
     const prs = await forge.prsOn(unit.repo, branch)
-    if (prs.length === 0)
+    if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
       return { skip: `${branch} exists on ${unit.repo} without a PR; delete it to run again` }
     const tried = prs.find((pr) => footerItems(pr.body).some((item) => items.includes(item)))
     if (tried)

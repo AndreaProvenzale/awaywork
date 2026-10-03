@@ -181,8 +181,9 @@ open, closed or merged, has a footer naming one of the unit's items, the
 unit is skipped as `night-shift tried this in <PR>; delete <branch> to
 run it again`. That record lives on GitHub, so it holds on a runner that
 keeps no [attempts](./how-it-works.md#units). A taken branch with no PR
-at all may be a push whose PR failed, so it skips the unit too, until
-you delete it.
+whose tip has the `Night-shift:` trailer is a push whose PR failed, so
+it skips the unit too, until you delete it; one without the trailer,
+your own work in progress, is passed over for a suffix.
 
 ## Linking PRs
 
