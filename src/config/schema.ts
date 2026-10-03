@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
-import { bounds, isAge, isLoop, ruleSteps, spanPattern } from '../core/queue.js'
+import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, Source, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { commandConfig, linkTemplate } from '../sources/command.js'
@@ -124,7 +124,24 @@ const whereValue = z.union([
     })
     .refine((a) => Object.keys(a).length > 0, 'expected older_than or newer_than')
     .describe('Matches items whose date field is this long before now, e.g. { older_than: 3d }'),
+  z
+    .strictObject({
+      matches: z
+        .string()
+        .refine(isRegex, 'invalid regular expression')
+        .describe('A regular expression, case-insensitive'),
+    })
+    .describe('Matches items whose text field contains a match, e.g. { matches: "^\\[bug\\]" }'),
 ])
+
+function isRegex(source: string): boolean {
+  try {
+    new RegExp(source, 'i')
+    return true
+  } catch {
+    return false
+  }
+}
 
 const skill = z.string().min(1).describe('The skill that does the work')
 const stepSettings = {
@@ -222,7 +239,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .record(z.string(), whereValue)
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source',
       ),
     ...stepSettings,
     order: z
@@ -263,6 +280,11 @@ const repo = z.strictObject({
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])
+const itemFields: Record<string, z.ZodType> = {
+  type: itemType,
+  title: z.string(),
+  description: z.string(),
+}
 
 export const configSchema = z
   .strictObject({
@@ -398,13 +420,22 @@ export const configSchema = z
       })
       const scope = r.source ? [r.source] : sourceIds
       for (const [key, value] of Object.entries(r.where)) {
-        const field = key === 'type' ? itemType : fieldFor(cfg.sources, scope, key)
+        const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
         if (!field) {
           ctx.addIssue({
             code: 'custom',
             path: [...at, 'where', key],
             message: unknownKey(cfg.sources, scope, key),
           })
+          continue
+        }
+        if (typeof value === 'object' && !Array.isArray(value) && isMatch(value)) {
+          if (!field.safeParse('').success)
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'where', key],
+              message: 'matches needs a text field',
+            })
           continue
         }
         if (typeof value === 'object' && !Array.isArray(value) && isAge(value)) {
@@ -455,7 +486,7 @@ function fieldFor(configured: Sources, scope: string[], key: string): z.ZodType 
 function whereValues(value: WhereValue): Scalar[] {
   if (typeof value !== 'object' || Array.isArray(value)) return [value].flat()
   if ('not' in value) return [value.not].flat()
-  return isAge(value) ? [] : bounds(value).map(([, bound]) => bound)
+  return isAge(value) || isMatch(value) ? [] : bounds(value).map(([, bound]) => bound)
 }
 
 function unknownKey(configured: Sources, scope: string[], key: string): string {

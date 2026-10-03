@@ -533,7 +533,7 @@
           },
           "where": {
             "default": {},
-            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now",
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -633,6 +633,20 @@
                   },
                   "additionalProperties": false,
                   "description": "Matches items whose date field is this long before now, e.g. { older_than: 3d }"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "matches": {
+                      "type": "string",
+                      "description": "A regular expression, case-insensitive"
+                    }
+                  },
+                  "required": [
+                    "matches"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Matches items whose text field contains a match, e.g. { matches: \"^\\[bug\\]\" }"
                 }
               ]
             }

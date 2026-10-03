@@ -208,7 +208,7 @@ First matching rule wins; top = highest priority.
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
 | `source` | string |  | Match only items from this source |
-| `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now |
+| `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
@@ -248,6 +248,14 @@ Matches items whose date field is this long before now, e.g. { older_than: 3d }.
 |---|---|---|---|
 | `older_than` | string |  | Longer ago than this span |
 | `newer_than` | string |  | More recent than this span |
+
+## `queue[].where.<key>` (matches)
+
+Matches items whose text field contains a match, e.g. { matches: "^\[bug\]" }.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `matches` (required) | string |  | A regular expression, case-insensitive |
 
 ## `queue[].then`
 

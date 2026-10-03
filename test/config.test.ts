@@ -104,6 +104,15 @@ describe('config', () => {
     expect(problems(rule('{ created: { older_than: 3 days } }'))).toEqual([
       expect.stringContaining('queue[0].where.created'),
     ])
+    expect(
+      problems(rule('{ title: { matches: "^\\\\[bug\\\\]" }, description: { matches: api } }')),
+    ).toEqual([])
+    expect(problems(rule('{ title: { matches: "[" } }'))).toEqual([
+      expect.stringContaining('queue[0].where.title'),
+    ])
+    expect(problems(rule('{ unresolved_threads: { matches: x } }'))).toEqual([
+      'queue[0].where.unresolved_threads: matches needs a text field',
+    ])
     expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
       'queue[0].where.checks: older_than and newer_than need a date field',
     ])

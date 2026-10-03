@@ -1,4 +1,15 @@
-import type { Age, Comparison, Item, Loop, Order, Rule, Scalar, Step, WhereValue } from './types.js'
+import type {
+  Age,
+  Comparison,
+  Item,
+  Loop,
+  Match,
+  Order,
+  Rule,
+  Scalar,
+  Step,
+  WhereValue,
+} from './types.js'
 
 const rule = (skill: string, source: string, where: Rule['where']): Rule => ({
   skill,
@@ -89,7 +100,8 @@ export function failedKeys(rule: Rule, item: Item): string[] {
 }
 
 export function fieldValue(item: Item, key: string): unknown {
-  return key === 'type' ? item.type : item.fields[key]
+  if (key === 'type' || key === 'title' || key === 'description') return item[key]
+  return item.fields[key]
 }
 
 /** Among rules the item is eligible for, the one it misses by the fewest keys; the earlier on a tie. */
@@ -136,6 +148,10 @@ export function spanMs(span: string): number {
   return Number(span.slice(0, -1)) * (spanUnits[span.slice(-1)] ?? Number.NaN)
 }
 
+export function isMatch(want: object): want is Match {
+  return 'matches' in want
+}
+
 export function isAge(want: object): want is Age {
   return 'older_than' in want || 'newer_than' in want
 }
@@ -144,8 +160,9 @@ export function spans(want: Age): [keyof Age, string][] {
   return Object.entries(want) as [keyof Age, string][]
 }
 
-/** E.g. `>= 2 and < 5`, or `older than 3d`. */
-export function describeComparison(want: Comparison | Age): string {
+/** E.g. `>= 2 and < 5`, `older than 3d`, or `matches /bug/i`. */
+export function describeComparison(want: Comparison | Age | Match): string {
+  if (isMatch(want)) return `matches /${want.matches}/i`
   const parts = isAge(want)
     ? spans(want).map(([op, span]) => `${ages[op].words} ${span}`)
     : bounds(want).map(([op, bound]) => `${comparisons[op].symbol} ${bound}`)
@@ -163,6 +180,10 @@ export function matchesValue(want: WhereValue, actual: unknown): boolean {
   const values = Array.isArray(actual) ? actual : [actual]
   if (typeof want === 'object' && !Array.isArray(want)) {
     if ('not' in want) return !matchesValue(want.not, actual)
+    if (isMatch(want)) {
+      const pattern = new RegExp(want.matches, 'i')
+      return values.some((v) => typeof v === 'string' && pattern.test(v))
+    }
     if (isAge(want)) {
       const now = Date.now()
       return values.some((v) => {

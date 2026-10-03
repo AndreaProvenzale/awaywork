@@ -163,6 +163,16 @@ queue: [{ skill: fix-ci, where: { updated: { older_than: 3d } } }]`
     expect(formatPlan(result)).toContain('#1  fix-ci  updated:older_than=3d')
   })
 
+  it('names the failed text match', () => {
+    const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix-ci, where: { title: { matches: '^\\[bug\\]' } } }]`
+    const result = plan(yaml, [githubPr(1, {})], { claude: week(0.1) })
+    expect(result.skipped.map((s) => s.reason)).toEqual([expect.stringContaining('title is ')])
+    expect(result.skipped[0]?.reason).toContain('wants matches /^\\[bug\\]/i')
+  })
+
   it('routes past a provider at its ceiling and caps fallback units', () => {
     const yaml = `
 budget: { fallback: { units: 1, turns: 30 } }

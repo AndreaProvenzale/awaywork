@@ -37,6 +37,10 @@ describe('where', () => {
     ['comparisons combine into a range', { unresolved_threads: { gt: 1, lte: 5 } }, true],
     ['a comparison never matches a missing field', { review_requested: { lt: 1 } }, false],
     ['a comparison never matches a string', { checks: { gt: 0 } }, false],
+    ['matches tests the title, case-insensitively', { title: { matches: '^PR 1$|pr' } }, true],
+    ['matches fails when nothing matches', { title: { matches: 'zzz' } }, false],
+    ['matches reads a list field', { label: { matches: '^night' } }, true],
+    ['matches ignores a number', { unresolved_threads: { matches: '3' } }, false],
     ['every key must match', { type: 'pr', checks: 'passing' }, false],
     ['no keys match everything', {}, true],
   ] as const)('%s', (_, where, expected) => {
