@@ -160,13 +160,21 @@ async function installWorkflow(config: string | undefined): Promise<void> {
   }
   try {
     const path = configPath(config)
-    const { night, providers: picked, sources: configured, notify, repos } = await loadConfig(path)
+    const {
+      night,
+      providers: picked,
+      sources: configured,
+      notify,
+      after_unit,
+      repos,
+    } = await loadConfig(path)
     const used = picked.flatMap((p) => providers[p.id] ?? [])
     const secrets = new Set([
       'GH_TOKEN',
       ...used.flatMap((p) => p.secrets),
       ...Object.entries(configured).flatMap(([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? []),
       ...(notify?.secrets ?? []),
+      ...(after_unit?.secrets ?? []),
       ...Object.values(repos).flatMap((r) => r.secrets),
     ])
     await mkdir(dirname(file), { recursive: true })

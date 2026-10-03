@@ -341,6 +341,21 @@ export const configSchema = z
       })
       .optional()
       .describe('Run after each night with the morning report; a failure is only logged'),
+    after_unit: z
+      .strictObject({
+        command: z
+          .string()
+          .min(1)
+          .describe(
+            'Shell command; NIGHTSHIFT_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env',
+          ),
+        secrets: z
+          .array(z.string().min(1))
+          .default([])
+          .describe('Env vars the command needs; withheld from workers, listed in Actions'),
+      })
+      .optional()
+      .describe('Run after each unit, once its result is final; a failure is only logged'),
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)

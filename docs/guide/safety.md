@@ -15,7 +15,7 @@ not asked of the model.
   similar variables removed and a `gh` config without a login.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your
-  `token_env`), your `notify.secrets`, every repo's `secrets` and every
+  `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets` and every
   other provider's (`CODEX_AUTH_JSON` for a
   Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
   Codex reads `auth.json` and gets no secret. The rest of your

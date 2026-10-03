@@ -9,6 +9,7 @@ import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
 import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
+import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
@@ -81,6 +82,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...Object.values(n.providers).flatMap((p) => p.secrets),
     ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
     ...(n.config.notify?.secrets ?? []),
+    ...(n.config.after_unit?.secrets ?? []),
     ...Object.values(n.config.repos).flatMap((r) => r.secrets),
   ]
 
@@ -535,6 +537,25 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     n.ctx.log(`${unit.id}: ${result.status}`)
   }
   if (open) await closeLoop(open)
+
+  const hook = n.config.after_unit
+  if (hook)
+    // Run once the loops are closed, when every result is final.
+    for (const r of results) {
+      const { outcome } = r
+      const failure = await afterUnit(hook.command, {
+        runId: n.runId,
+        id: r.planned.unit.id,
+        skill: r.planned.unit.skill,
+        status: r.status,
+        pr: outcome?.kind === 'pr' ? outcome.url : undefined,
+        report:
+          outcome?.kind === 'report' || outcome?.kind === 'pushed'
+            ? join(n.runDir, 'units', r.planned.unit.id, 'out', outputFile[r.planned.unit.deliver])
+            : undefined,
+      })
+      if (failure) n.ctx.log(`after_unit failed for ${r.planned.unit.id}: ${failure}`)
+    }
 
   const { runId, dryRun, plan } = n
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
