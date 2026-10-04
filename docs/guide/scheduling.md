@@ -61,7 +61,7 @@ are never printed. Then:
 
 1. Commit the workflow and `.night-shift/config.yml`.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
    repos' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 

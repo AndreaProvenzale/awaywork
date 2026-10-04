@@ -548,7 +548,8 @@ To get the morning report where you already look, `notify.command` runs
 in a shell after every run, dry runs included, with the report's path in
 `NIGHTSHIFT_REPORT` and the run id in `NIGHTSHIFT_RUN_ID`. There are no
 built-in integrations. A command that fails or takes over a minute is
-logged; the run still succeeds.
+logged; the run still succeeds. Anything it leaves running in the
+background is stopped when it exits.
 
 ```yaml
 notify:                         # ntfy
@@ -565,6 +566,25 @@ notify:                         # a Slack incoming webhook
 `secrets` names the env vars the command reads: workers never see them,
 and the GitHub Actions workflow passes them from repository secrets.
 
+## After each unit
+
+To act as units finish, say to post to your own tools or record metrics,
+`after_unit.command` runs in a shell once for every unit of a run, as
+soon as its result is final, before the next unit starts. A loop's host
+and rounds wait for the loop to publish, so the host gets its PR. A dry
+run runs none, and Ctrl-C stops the running one and starts no more.
+Its env has `NIGHTSHIFT_RUN_ID`, `NIGHTSHIFT_UNIT`, `NIGHTSHIFT_SKILL` and
+`NIGHTSHIFT_STATUS` (`done`, `failed`, `skipped`...), plus
+`NIGHTSHIFT_PR_URL` when the unit opened a draft PR and `NIGHTSHIFT_REPORT`,
+the path of its report, when it wrote one. Like `notify`, a command that
+fails or takes over a minute is logged and the run goes on, and `secrets`
+are withheld from workers.
+
+```yaml
+after_unit:
+  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL" >> ~/night-shift.log
+```
+
 ## Secrets
 
 The config holds env var **names** only. Values come from the environment
@@ -580,4 +600,5 @@ or `~/.config/night-shift/env` (the environment wins).
 | A custom source's `secrets` | That source's command |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |
+| Your `after_unit.secrets` | The after-unit command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |

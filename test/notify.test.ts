@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { notify } from '../src/worker/notify.js'
+import { afterUnit, notify } from '../src/worker/notify.js'
 
 it('runs the command in a shell with the report path and run id in its env', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'nightshift-notify-')), 'out.txt')
@@ -17,3 +17,21 @@ it('returns why a failing command failed, with its output, instead of throwing',
   expect(failure).toMatch(/exit code 7/)
   expect(failure).toMatch(/\nno route$/)
 })
+
+it('runs the after_unit command with the unit, status and PR in its env, and none of what is absent', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
+  const command = `echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_SKILL $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL|$NIGHTSHIFT_REPORT" > '${out}'`
+  const unit = { runId: '1', id: 'a-1', skill: 'fix-ci', status: 'done' }
+  expect(await afterUnit(command, { ...unit, pr: 'https://x/pull/2' })).toBeUndefined()
+  expect(await readFile(out, 'utf8')).toBe('a-1 fix-ci done https://x/pull/2|\n')
+})
+
+it.each(['sleep 30', 'sleep 30; true'])(
+  'stops a running after_unit command and what it started on abort: %s',
+  async (command) => {
+    const unit = { runId: '1', id: 'a-1', skill: 'fix-ci', status: 'done' }
+    const started = Date.now()
+    expect(await afterUnit(command, unit, AbortSignal.timeout(100))).toMatch(/canceled/)
+    expect(Date.now() - started).toBeLessThan(5000)
+  },
+)

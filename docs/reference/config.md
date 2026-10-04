@@ -33,6 +33,7 @@ with:
 | `skills` | string[] | `[]` | Extra skills available to every unit |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Run after each night with the morning report; a failure is only logged |
+| `after_unit` | object |  | Run after each unit, once its result is final; a failure is only logged |
 
 ## `night`
 
@@ -399,4 +400,13 @@ Run after each night with the morning report; a failure is only logged.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `command` (required) | string |  | Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env |
+| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
+
+## `after_unit`
+
+Run after each unit, once its result is final; a failure is only logged.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command; NIGHTSHIFT_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
