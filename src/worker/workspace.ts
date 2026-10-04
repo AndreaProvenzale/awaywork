@@ -110,6 +110,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const prompt = assemblePrompt({
     harness: `${await readFile(harnessPath, 'utf8')}\n${unitSection(unit, items, w.previous, w.loop)}`,
     skill: skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
+    params: unit.rule.with,
     instructions: await Promise.all(w.config.instructions.map(read)),
     repo: {
       setup: repo.setup,

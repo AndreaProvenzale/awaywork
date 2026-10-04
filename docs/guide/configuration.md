@@ -267,6 +267,7 @@ the repo's PR template, its recent commit style and your instructions
 | `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
 | `skills` | Extra skills the agent may use |
 | `instructions` | One or more instruction files for this rule |
+| `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
 | `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |

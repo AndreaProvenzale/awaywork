@@ -67,6 +67,34 @@ describe('prompt', () => {
     )
   })
 
+  it("lists a rule's parameters after the skill", () => {
+    const prompt = assemblePrompt({
+      harness: 'H',
+      skill: 'S',
+      params: { depth: 'quick', max_files: 5, strict: true },
+      instructions: [],
+      repo: {},
+      rule: [],
+    })
+    expect(prompt.split('\n\n---\n\n')).toEqual([
+      'H',
+      'S',
+      '## Parameters\n\n- depth: quick\n- max_files: 5\n- strict: true',
+    ])
+  })
+
+  it('quotes a multi-line parameter so it stays in the list', () => {
+    const prompt = assemblePrompt({
+      harness: 'H',
+      skill: 'S',
+      params: { note: 'line one\n## Rogue\n' },
+      instructions: [],
+      repo: {},
+      rule: [],
+    })
+    expect(prompt.split('\n\n---\n\n')[2]).toBe('## Parameters\n\n- note: "line one\\n## Rogue\\n"')
+  })
+
   it('tells an offline agent not to install anything', () => {
     const prompt = (offline: boolean) =>
       assemblePrompt({ harness: 'H', skill: 'S', instructions: [], repo: { offline }, rule: [] })
