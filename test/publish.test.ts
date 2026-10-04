@@ -112,6 +112,27 @@ describe('publish', () => {
     expect(forge.pushed).toEqual([['second|20260925-010000', 'first|20260925-010000', 'init|']])
   })
 
+  it("appends its items' link lines, once each, before the stack note, and names the items to the forge", async () => {
+    await commit('first')
+    await body('Fix the thing\n\nChecked: tests pass.')
+    const forge = fakeForge()
+    const drafted: { body: string; items: string[] }[] = []
+    forge.draftPr = async (_repo, head, _base, bodyFile, _runId, items) => {
+      drafted.push({ body: await readFile(bodyFile, 'utf8'), items: items.map((i) => i.key) })
+      return head
+    }
+    const linked = (key: string) => fakeItem({ source: 'linear', key, link: `Part of ${key}` })
+    const items = [linked('ENG-12'), linked('ENG-12'), linked('ENG-13'), fakeItem()]
+    const stacked = { ...unit(), items, stackedOn: 'https://github.com/acme/api/pull/9' }
+    await publish(stacked, dir, forge, 'r1', start)
+    expect(drafted).toEqual([
+      {
+        body: 'Fix the thing\n\nChecked: tests pass.\n\nPart of ENG-12\n\nPart of ENG-13\n\nStacked on https://github.com/acme/api/pull/9: merge that first.\n',
+        items: ['ENG-12', 'ENG-12', 'ENG-13', 'FAKE-1'],
+      },
+    ])
+  })
+
   it('publishes nothing without commits, without a PR body, or onto an existing branch', async () => {
     const forge = fakeForge()
     await body('Title')

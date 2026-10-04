@@ -1,5 +1,5 @@
 ---
-description: The night-shift config file by example, covering the night window, budgets, providers, sources, per-repo settings, branch names, instructions and queue rules with where matching.
+description: The night-shift config file by example, covering the night window, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
 ---
 
 # Configuration
@@ -50,7 +50,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
-branch: night/{key}             # default; {key} is required
+branch: night/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
@@ -125,6 +125,8 @@ including someone else's PR:
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `project_repos` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
 
+Every source but `github` also takes a [`link`](#linking-prs).
+
 Asana has no read-only personal token: the token can do anything you can.
 night-shift only reads with it and never hands it to the agent. Create
 one just for night-shift so you can revoke it alone.
@@ -146,8 +148,9 @@ Jira custom fields that share a name are keyed by name and id, such as
 ## Branch names
 
 `branch` is a template rendered per unit, set globally, per repo or per
-rule (the most specific wins). `{key}` is required; `{title}` is the
-item's title as a slug of at most 40 characters.
+rule (the most specific wins). It needs `{key}`, `{title}` (the item's
+title as a slug of at most 40 characters) or both: `feat/work` would name
+every unit the same, so it's refused.
 
 | Item | `{key}` |
 |---|---|
@@ -156,9 +159,61 @@ item's title as a slug of at most 40 characters.
 | Linear issue `ENG-12` | `ENG-12` |
 | Jira issue `ENG-12` | `ENG-12` |
 
-The name is cosmetic. The guardrail is that night-shift only pushes a
-branch that doesn't exist on the remote yet, unless a rule opts in to
-[`push`](#push).
+Per-rule templates follow your repo's conventions:
+
+```yaml
+queue:
+  - { skill: fix-ci, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
+  - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
+```
+
+The name is cosmetic: night-shift finds its own PRs by their footer, and
+yours as [Linking PRs](#linking-prs) says. Jira is the exception, since
+it links a PR only by the key in its branch or title: for Jira items keep
+the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
+
+The guardrail is that night-shift only pushes a branch that doesn't
+exist on the remote yet, unless a rule opts in to [`push`](#push). When
+the name is taken, the unit takes the first free one of `<branch>-2` to
+`<branch>-10`, and the `then` steps and loop rounds after it follow.
+Not when night-shift already tried there: when a PR on the taken branch,
+open, closed or merged, has a footer naming one of the unit's items, the
+unit is skipped as `night-shift tried this in <PR>; delete <branch> to
+run it again`. That record lives on GitHub, so it holds on a runner that
+keeps no [attempts](./how-it-works.md#units). A taken branch with no PR
+whose tip has the `Night-shift:` trailer is a push whose PR failed, so
+it skips the unit too, until you delete it; one without the trailer,
+your own work in progress, is passed over for a suffix.
+
+## Linking PRs
+
+Trackers don't tell night-shift which PR is a task's, so it looks
+through your open PRs:
+
+- One night-shift opened is linked by the items its footer names,
+  whatever its branch or title. It never falls back to names, so a
+  night-shift PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
+  footer naming no items counts as none, so it is linked like yours.
+- One you wrote is linked when its branch or title holds the item's key
+  as a whole word, in any case, or its body holds the source's `link`
+  line. A bare key in the body doesn't count: "follow-up to ENG-12"
+  would mark ENG-12 as taken.
+
+`link` is one line in the tracker's own words, rendered from the item's
+`{key}`, `{id}` and `{url}`. night-shift writes it into its draft PRs
+too, so the tracker links them whatever the branch is called.
+
+| Source | Default `link` | Why |
+|---|---|---|
+| `linear` | `Part of {key}` | A non-closing magic word: merging leaves the issue to your workflow |
+| `asana` | `{url}` | Asana links a PR whose description holds the task URL |
+| `jira` | none | Jira links on the branch or title only |
+| custom | none | Whatever your tracker reads, e.g. `Refs {key}` or `{url}` |
+
+```yaml
+sources:
+  linear: { link: "Closes {key}" }   # merging closes the issue
+```
 
 ## Repos and instructions
 
@@ -249,7 +304,9 @@ act on it once you've reviewed it:
 The unit's draft PR stacks on the night-shift PR, on a branch named
 after it (`night/acme-api-9` for #9). Delete that branch once you merge
 the stacked PR, since GitHub keeps it by default: while it exists, the
-next pickup of #9 is skipped as `night/acme-api-9 already exists`.
+next pickup of #9 is skipped as `night-shift tried this in <PR>; delete
+night/acme-api-9 to run it again`, not moved to a `-2` branch
+([#144](https://github.com/AndreaProvenzale/night-shift/issues/144)).
 Resolve the threads it answered too: merging moves #9, and with your
 threads still open the rule takes it up again for the same threads.
 The rule runs on the threads you started, but the agent reads every

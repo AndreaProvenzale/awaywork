@@ -19,6 +19,7 @@ sources:
     fields: [column, board]             # what `where` may match on
     secrets: [BOARD_TOKEN]              # env vars the command reads
     setup: pip install -r sources/requirements.txt   # GitHub Actions only
+    link: "Refs {key}"                  # optional: the line that links a PR, see below
 
 queue:
   - skill: qa-feedback
@@ -53,15 +54,20 @@ shows up when it fails.
 
 | Key | |
 |---|---|
-| `id`, `key`, `title`, `url` | Required. `key` is the tracker's own reference; branches and PRs are matched by it |
+| `id`, `key`, `title`, `url` | Required. `key` is the tracker's own reference; branch names use it, and your PRs are matched by it |
 | `type` | `task` (default) or `issue` |
 | `description`, `status`, `assignee`, `reviewers`, `labels`, `comments` | Optional |
 | `fields` | Strings, numbers, booleans or lists of them. Every key must be listed in `fields` in the config, except `repo`, `created` and `updated` |
 | `context` | Optional Markdown the worker reads instead of `description`: attachments, linked specs, whatever helps |
 
 - **`fields.repo`** (`owner/name`) says where the code lives. Without it,
-  a task is picked up only when you already have a PR whose branch or
-  title carries its `key`, and an issue not at all.
+  a task is picked up only when you already have a PR linked to it, and
+  an issue not at all.
+- **`link`** in the config is the line, in your tracker's own words, that
+  links a PR to an item: night-shift writes it into its draft PRs, and
+  links a PR of yours whose body holds it, on top of the key in its
+  branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no
+  default. See [Linking PRs](./configuration.md#linking-prs).
 - **`created` and `updated`** are ISO timestamps, and a rule's `order`
   sorts by them.
 - The command gets 10 minutes before it is killed.

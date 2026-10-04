@@ -153,11 +153,12 @@ type WorkerEvent = { type: 'quota'; quota: Quota } | { type: 'log'; line: string
 
 interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
-  prsFor(item): Promise<PrRef[]>                 // fallback link by key in branch/title
+  prsFor(item): Promise<PrRef[]>                 // fallback link: ours by footer items, else key in branch/title or link line
   branchExists(repo, name): Promise<boolean>
+  prsOn(repo, branch): Promise<{ url; body }[]>  // PRs on that head in any state
   push(dir, branch, opts): Promise<void>         // only while the branch is absent on the remote (a lease)
   fastForward(dir, branch, from, opts): Promise<void>   // only descendants of `from`, while the remote head is `from` (a lease)
-  draftPr(repo, head, base, bodyFile, runId): Promise<string>   // title = the body's first line; adds the footer
+  draftPr(repo, head, base, bodyFile, runId, items): Promise<string>   // title = the body's first line; adds the footer
 }
 
 interface Job { unit: Unit; dir: string; prompt: string; maxTurns: number; model?: string; env: ProcessEnv }  // env from workerEnv
@@ -199,7 +200,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
-branch: night/{key}             # default; {key} is required
+branch: night/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
@@ -321,14 +322,19 @@ Semantics, fixed so every milestone agrees:
   rendered per unit. `{key}` is the top item's key in its own case, runs
   outside `[A-Za-z0-9._-]` replaced by `-` (`acme-api-12`, `ABC-123`);
   `{title}` is the title as a lowercase slug of at most 40 characters.
-  A template without `{key}`, or one that renders an invalid ref, is a
-  config error. The name is cosmetic: the push guardrail is that the
-  branch doesn't exist on the remote.
+  A template without `{key}` or `{title}`, or one that renders an
+  invalid ref, is a config error. The name is cosmetic: the push
+  guardrail is that the branch doesn't exist on the remote. A taken name
+  gets `-2` to `-10`, unless a PR on it carries a footer naming one of
+  the unit's items (night-shift tried there) or it has no PR and its
+  tip has the `Night-shift:` trailer (a push whose PR failed): then the
+  unit is skipped. Fork PRs with the same head name don't count.
 - **Conventions.** PR title, body and commit messages have no config.
   The harness has the model follow the repo's PR template, recent commit
   style and any rule in the instructions (e.g. "prefix titles with the
-  key"). The publisher appends a footer naming night-shift and the run
-  id; it discloses the author and marks the PR as `ours`.
+  key"). The publisher appends the items' `link` lines and a footer
+  naming night-shift, the run id and the unit's items; it discloses the
+  author, marks the PR as `ours` and links it to its items.
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
   Against a list-valued field (labels, tags) equals means contains. A

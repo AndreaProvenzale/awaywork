@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { footer } from '../src/core/footer.js'
-import type { Ctx } from '../src/core/types.js'
+import { footer, footerItems, isOurs } from '../src/core/footer.js'
+import type { Ctx, Item } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
 import { githubSource } from '../src/sources/github.js'
@@ -14,6 +14,58 @@ import { fakeItem } from './fakes/items.js'
 const log: string[] = []
 const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
 const tmp = () => mkdtemp(join(tmpdir(), 'nightshift-'))
+
+/** A search for my PRs on acme/api, numbered from 1. */
+const authored = (...prs: Record<string, string>[]) =>
+  JSON.stringify({
+    data: {
+      search: {
+        nodes: prs.map((pr, i) => ({
+          number: i + 1,
+          url: `https://github.com/acme/api/pull/${i + 1}`,
+          title: 'Some change',
+          body: '',
+          headRefName: `change-${i + 1}`,
+          headRefOid: 'abc1234',
+          isCrossRepository: false,
+          repository: { nameWithOwner: 'acme/api' },
+          ...pr,
+        })),
+      },
+    },
+  })
+
+const ours = (source: string, key: string) => `Done.\n\n${footer('r0', [{ source, key }])}`
+
+describe('footer', () => {
+  it('names every item, URI-encoded, and reads them back', () => {
+    const items = [
+      { source: 'linear', key: 'ENG-12' },
+      { source: 'my tracker', key: 'odd key --> <!-- night-shift item=x:y' },
+    ]
+    const text = footer('r1', items)
+    expect(text).toContain(
+      '<!-- night-shift run=r1 item=linear:ENG-12 item=my%20tracker:odd%20key%20--%3E',
+    )
+    expect(text.split('-->')).toHaveLength(2)
+    expect(isOurs(text)).toBe(true)
+    expect(footerItems(`Body.\n\n${text}`)).toEqual([
+      'linear:ENG-12',
+      'my tracker:odd key --> <!-- night-shift item=x:y',
+    ])
+    expect(footerItems(footer('r1', []))).toEqual([])
+    expect(footerItems('No footer.')).toEqual([])
+    const quoted = 'The footer reads `<!-- night-shift run=r0 item=linear:ENG-99 -->`.'
+    expect(footerItems(`${quoted}\n\n${text}`)).toEqual(footerItems(text))
+    const unclosed = footer('r1', [{ source: 'linear', key: 'ENG-12' }])
+    expect(footerItems(`Done.\n\n<!-- night-shift item=linear:ENG-99 \n\n${unclosed}`)).toEqual([
+      'linear:ENG-12',
+    ])
+    expect(footerItems(`Quotes \`<!-- night-shift item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
+      'linear:ENG-12',
+    ])
+  })
+})
 
 describe('github source', () => {
   const source = githubSource(recorded(githubRoutes()))
@@ -73,7 +125,7 @@ describe('github source', () => {
   it('marks a PR night-shift opened as ours', async () => {
     const authored = fixture('search-authored.json').replace(
       '"body": "Adds a token bucket per client."',
-      `"body": ${JSON.stringify(footer('r0'))}`,
+      `"body": ${JSON.stringify(footer('r0', []))}`,
     )
     const [pr1] = await githubSource(recorded([[/author:@me/, authored], ...githubRoutes()])).items(
       { repos: ['acme/*'] },
@@ -220,7 +272,7 @@ describe('github forge', () => {
       .replace('"headRefName": "rate-limits"', '"headRefName": "t-12-rate-limits"')
       .replace(
         '"body": "Adds a token bucket per client."',
-        `"body": ${JSON.stringify(footer('r0'))}`,
+        `"body": ${JSON.stringify(footer('r0', [{ source: 'fake', key: 'T-12' }]))}`,
       )
       .replace('"title": "WIP: new billing page"', '"title": "WIP: billing (T-12)"')
     const run = recorded([[/author:@me/, authored]])
@@ -232,6 +284,70 @@ describe('github forge', () => {
     ])
     expect(await forge.prsFor(fakeItem({ key: 'T-1' }))).toEqual([])
     expect(run.calls).toHaveLength(1)
+  })
+
+  it('links PRs whose footer names items by those alone, and the others by the key in branch or title or the link line in the body', async () => {
+    const run = recorded([
+      [
+        /author:@me/,
+        authored(
+          {
+            headRefName: 'feat/add-limits',
+            title: 'Limits, after ENG-12',
+            body: ours('linear', 'ENG-13'),
+          },
+          { headRefName: 'eng-12-cache' },
+          { title: 'fix(api): handle null', body: 'Handles null.\n\npart of eng-12' },
+          { body: 'A follow-up to ENG-12.' },
+          { body: 'Part of ENG-123' },
+          { body: 'Context: https://app.asana.com/0/1/1205/f' },
+          { body: 'Context: https://app.asana.com/0/1/12050' },
+          { headRefName: 'eng-13-extra', body: ours('jira', 'ENG-13') },
+          { headRefName: 'eng-12-footer', body: 'Adds `<!-- night-shift run=<id> -->`.' },
+          { title: 'ENG-12: older', body: 'Done.\n\n---\n<!-- night-shift run=r0 -->' },
+        ),
+      ],
+    ])
+    const forge = githubForge(run)
+    const linked = async (item: Partial<Item>) =>
+      (await forge.prsFor(fakeItem({ type: 'task', ...item }))).map((pr) => pr.number)
+    const linear = (key: string) => ({ source: 'linear', key, link: `Part of ${key}` })
+    expect(await linked(linear('ENG-13'))).toEqual([1])
+    expect(await linked(linear('ENG-12'))).toEqual([2, 3, 9, 10])
+    const url = 'https://app.asana.com/0/1/1205/f'
+    expect(await linked({ source: 'asana', id: '1205', key: '1205', url, link: url })).toEqual([6])
+    expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
+  })
+
+  it('reads PRs on a branch in any state, not the ones from forks', async () => {
+    const nodes = [
+      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', isCrossRepository: false },
+      { url: 'https://github.com/acme/api/pull/8', body: 'Fork.', isCrossRepository: true },
+    ]
+    const run = recorded([
+      [
+        /headRefName: \$branch, states: \[OPEN, CLOSED, MERGED\]/,
+        JSON.stringify({ data: { repository: { pullRequests: { nodes } } } }),
+      ],
+    ])
+    expect(await githubForge(run).prsOn('acme/api', 'night/eng-12')).toEqual([
+      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.' },
+    ])
+    expect(run.calls[0]).toEqual(
+      expect.arrayContaining(['owner=acme', 'name=api', 'branch=night/eng-12']),
+    )
+  })
+
+  it("reads the message of a branch's tip", async () => {
+    const target = { message: 'Fix it\n\nNight-shift: r0' }
+    const run = recorded([
+      [
+        /ref\(qualifiedName: \$ref\)/,
+        JSON.stringify({ data: { repository: { ref: { target } } } }),
+      ],
+    ])
+    expect(await githubForge(run).tipMessage('acme/api', 'night/eng-12')).toBe(target.message)
+    expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/night/eng-12']))
   })
 
   it('checks branch existence by exact name, not prefix', async () => {
@@ -421,12 +537,14 @@ describe('github forge', () => {
     const body = join(dir, 'PR_BODY.md')
     await writeFile(body, '# Refill the rate-limit bucket\n\nChecked: src/limit.test.ts passes.\n')
     const run = recorded([[/^gh pr create/, 'https://github.com/acme/api/pull/10\n']])
+    const items = [fakeItem({ source: 'linear', key: 'ENG-12' })]
     const url = await githubForge(run).draftPr(
       'acme/api',
       'night/acme-api-1',
       'rate-limits',
       body,
       'r1',
+      items,
     )
     expect(url).toBe('https://github.com/acme/api/pull/10')
     expect(run.calls[0]).toEqual([
@@ -443,9 +561,10 @@ describe('github forge', () => {
       '--title',
       'Refill the rate-limit bucket',
       '--body',
-      `Checked: src/limit.test.ts passes.\n\n${footer('r1')}`,
+      `Checked: src/limit.test.ts passes.\n\n${footer('r1', items)}`,
     ])
-    await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1')
+    expect(footerItems(run.calls[0]?.at(-1))).toEqual(['linear:ENG-12'])
+    await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1', items)
     expect(run.calls[1]).not.toContain('--base')
   })
 })

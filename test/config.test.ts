@@ -312,6 +312,23 @@ describe('config', () => {
     ])
   })
 
+  it('takes a link template on tracker and custom sources, with known placeholders', () => {
+    const sources = (yaml: string) => minimal.replace('{ github: { repos: [acme/api] } }', yaml)
+    const linear = parseConfig(sources('{ linear: { link: "Refs {key}" } }'))
+    expect(linear.sources.linear).toMatchObject({ link: 'Refs {key}' })
+    expect(
+      problems(
+        sources('{ jira: { site: acme.atlassian.net, email: me@acme.com, link: "See {ticket}" } }'),
+      ),
+    ).toEqual(['sources.jira.link: unknown placeholder {ticket}'])
+    expect(problems(sources('{ tracker: { command: ./tracker, link: Refs } }'))).toEqual([
+      'sources.tracker.link: must contain {key}, {id} or {url}',
+    ])
+    expect(problems(sources('{ github: { repos: [acme/api], link: "{url}" } }'))).toEqual([
+      expect.stringContaining('Unrecognized key: "link"'),
+    ])
+  })
+
   it('rejects an unknown source that has no command', () => {
     expect(problems(minimal.replace('github:', 'githb:'))).toEqual([
       'sources.githb.command: not a built-in source; a custom source needs a `command`',

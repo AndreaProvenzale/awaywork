@@ -32,6 +32,8 @@ export interface Item {
   comments: { author: string; body: string; at: string }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
+  /** The line a PR body carries to link this item, rendered from its source's `link`. */
+  link?: string
   fields: Record<string, unknown>
   raw: unknown
 }
@@ -70,6 +72,11 @@ export interface Source<C = unknown> {
   configSchema: z.ZodObject
   /** What `where` may match on; each schema validates one scalar a rule compares against. */
   fields: Record<string, z.ZodType>
+  /**
+   * The default `link` template: how the tracker links a PR from its body, e.g. `Part of {key}`;
+   * false when its items link their PRs themselves, so there is no `link` to configure.
+   */
+  link?: string | false
   secrets(cfg: C): string[]
   items(cfg: C, ctx: Ctx): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
@@ -124,6 +131,10 @@ export interface Forge {
   clone(repo: string, branch: string, dir: string): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
+  /** PRs whose head is `branch` in the repo, not a fork, open, closed or merged. */
+  prsOn(repo: string, branch: string): Promise<{ url: string; body: string }[]>
+  /** The message of the commit at the tip of `branch` in the repo. */
+  tipMessage(repo: string, branch: string): Promise<string>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
@@ -142,6 +153,7 @@ export interface Forge {
     base: string,
     bodyFile: string,
     runId: string,
+    items: Pick<Item, 'source' | 'key'>[],
   ): Promise<string>
 }
 

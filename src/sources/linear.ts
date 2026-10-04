@@ -113,6 +113,8 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
   return {
     id: 'linear',
     configSchema: config,
+    // A non-closing magic word: merging leaves the issue's state to the team's workflow.
+    link: 'Part of {key}',
     fields: {
       team: z.string(),
       state: z.string(),

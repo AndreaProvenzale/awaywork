@@ -109,8 +109,9 @@ what your user can read.
 ## What night-shift publishes
 
 - Only a branch that **doesn't exist** on the remote, checked before the
-  worker starts and again at push. Never someone else's branch, and
-  never a push that rewrites history.
+  worker starts and again at push. A taken name gets a `-2` to `-10`
+  suffix instead, never the taken branch. Never someone else's branch,
+  and never a push that rewrites history.
 - The one exception is a rule with `deliver: push`: it adds commits onto
   **your own open PR's** branch, as a fast-forward, only while the
   branch is still where the clone started. Right before the push,
@@ -148,14 +149,15 @@ what your user can read.
   when it was cloned, and refuses a `.git` that borrows a repo or
   objects from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
-  appends a stacked PR's "merge that first" line to the body. It refuses
-  if either is a symlink, and reads or writes only regular files. The
+  appends the items' link lines and a stacked PR's "merge that first"
+  line to the body. It refuses if either is a symlink, and reads or
+  writes only regular files. The
   symlink check runs just before, so a worker process that outlived the
   watchdog could still swap a path in between.
 - `report` delivery pushes nothing at all.
-- Every PR says it came from night-shift: a footer with the run id in
-  the body and a `Night-shift: <run id>` commit trailer. Pushed commits
-  carry the trailer too. Adding it re-creates each commit, so a commit
+- Every PR says it came from night-shift: a footer with the run id and
+  the items it's for in the body, and a `Night-shift: <run id>` commit
+  trailer. Pushed commits carry the trailer too. Adding it re-creates each commit, so a commit
   signature doesn't carry over: a branch that requires signed commits
   refuses the push.
 

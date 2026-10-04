@@ -14,11 +14,19 @@ export function renderBranch(template: string, item: Pick<Item, 'key' | 'title'>
   return template.replaceAll('{key}', key).replaceAll('{title}', title)
 }
 
+/** Why a template using only these placeholders, and at least one of them, isn't one. */
+export function placeholderProblem(template: string, names: string[]): string | undefined {
+  const unknown = template.match(/\{[^}]*\}/g)?.find((p) => !names.includes(p.slice(1, -1)))
+  if (unknown) return `unknown placeholder ${unknown}`
+  const all = names.map((n) => `{${n}}`)
+  if (!all.some((p) => template.includes(p)))
+    return `must contain ${all.slice(0, -1).join(', ')} or ${all.at(-1)}`
+}
+
 /** Why a template can't make branch names, or undefined when it can. */
 export function templateProblem(template: string): string | undefined {
-  if (!template.includes('{key}')) return 'must contain {key}'
-  const unknown = template.match(/\{(?!key\}|title\})[^}]*\}/)
-  if (unknown) return `unknown placeholder ${unknown[0]}`
+  const problem = placeholderProblem(template, ['key', 'title'])
+  if (problem) return problem
   const sample = renderBranch(template, { key: 'ABC-1', title: 'Sample title' })
   if (!isValidRef(sample)) return `renders an invalid branch name, e.g. "${sample}"`
 }

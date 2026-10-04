@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { footer, isOurs } from '../core/footer.js'
+import { footer, footerItems, isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql } from './gh.js'
 
@@ -54,6 +54,21 @@ type PrState = {
     nodes: { number: number; isCrossRepository: boolean; viewerDidAuthor: boolean }[]
   }
 }
+
+const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
+      nodes { url body isCrossRepository }
+    }
+  }
+}`
+
+const tipQuery = `query($owner: String!, $name: String!, $ref: String!) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $ref) { target { ... on Commit { message } } }
+  }
+}`
+
 const remote = (repo: string) => `https://github.com/${repo}.git`
 
 /**
@@ -88,7 +103,7 @@ async function pushHead(run: Exec, dir: string, repo: string, branch: string, fr
 }
 
 export function githubForge(run: Exec = exec): Forge {
-  let myPrs: Promise<PrNode[]> | undefined
+  let myPrs: Promise<(PrNode & { items: string[] })[]> | undefined
 
   const forge: Forge = {
     async clone(repo, branch, dir) {
@@ -97,14 +112,22 @@ export function githubForge(run: Exec = exec): Forge {
       await run('git', ['-C', dir, 'config', 'credential.helper', ''])
     },
 
-    /** My open PRs whose branch or title carries the item key. */
+    /**
+     * My open PRs for the item: those whose footer names items by those items, whatever their names;
+     * the others by the key in their branch or title, or the item's link line in their body.
+     */
     async prsFor(item: Item): Promise<PrRef[]> {
-      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then(
-        (d) => d.search.nodes,
+      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then((d) =>
+        d.search.nodes.map((pr) => ({ ...pr, items: footerItems(pr.body) })),
       )
-      const key = new RegExp(`(^|[^a-z0-9])${escapeRegExp(item.key)}($|[^a-z0-9])`, 'i')
+      const key = bounded(item.key)
+      const link = item.link ? bounded(item.link) : undefined
       return (await myPrs)
-        .filter((pr) => key.test(pr.headRefName) || key.test(pr.title))
+        .filter((pr) =>
+          pr.items.length
+            ? pr.items.includes(`${item.source}:${item.key}`)
+            : key.test(pr.headRefName) || key.test(pr.title) || !!link?.test(pr.body),
+        )
         .map((pr) => ({
           repo: pr.repository.nameWithOwner,
           number: pr.number,
@@ -123,6 +146,26 @@ export function githubForge(run: Exec = exec): Forge {
         await run('gh', ['api', `repos/${repo}/git/matching-refs/heads/${name}`]),
       )
       return refs.some((r: { ref: string }) => r.ref === `refs/heads/${name}`)
+    },
+
+    async prsOn(repo, branch) {
+      const [owner = '', name = ''] = repo.split('/')
+      const { repository } = await graphql<{
+        repository: {
+          pullRequests: { nodes: { url: string; body: string; isCrossRepository: boolean }[] }
+        }
+      }>(run, headPrsQuery, { owner, name, branch })
+      return repository.pullRequests.nodes
+        .filter((pr) => !pr.isCrossRepository)
+        .map(({ url, body }) => ({ url, body }))
+    },
+
+    async tipMessage(repo, branch) {
+      const [owner = '', name = ''] = repo.split('/')
+      const { repository } = await graphql<{
+        repository: { ref: { target: { message?: string } } | null }
+      }>(run, tipQuery, { owner, name, ref: `refs/heads/${branch}` })
+      return repository.ref?.target.message ?? ''
     },
 
     async push(dir, branch, { repo }) {
@@ -164,10 +207,10 @@ export function githubForge(run: Exec = exec): Forge {
     },
 
     /** The body file's first line is the title; the rest, plus the footer, is the body. */
-    async draftPr(repo, head, base, bodyFile, runId) {
+    async draftPr(repo, head, base, bodyFile, runId, items) {
       const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
       const title = first.replace(/^#+\s*/, '').trim() || head
-      const body = `${rest.join('\n').trim()}\n\n${footer(runId)}`
+      const body = `${rest.join('\n').trim()}\n\n${footer(runId, items)}`
       const into = base ? ['--base', base] : []
       const args = ['pr', 'create', '-R', repo, '--draft', '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
@@ -178,3 +221,6 @@ export function githubForge(run: Exec = exec): Forge {
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** `text` anywhere, in any case, but not inside a longer word or number. */
+const bounded = (text: string) => new RegExp(`(^|[^a-z0-9])${escapeRegExp(text)}($|[^a-z0-9])`, 'i')

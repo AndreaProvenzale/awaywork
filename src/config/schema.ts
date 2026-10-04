@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { bounds, isAge, isLoop, ruleSteps, spanPattern } from '../core/queue.js'
-import type { Rule, Scalar, WhereValue } from '../core/types.js'
+import type { Rule, Scalar, Source, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
-import { commandConfig } from '../sources/command.js'
+import { commandConfig, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -86,8 +86,18 @@ const providerEntry = z.union([providerName, providerOverride], {
     typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
 })
 
+/** A built-in source's config with its `link`, unless its items link their PRs themselves. */
+function builtinConfig(s: Source): z.ZodObject {
+  if (s.link === false) return s.configSchema
+  const fallback = s.link ? `\`${s.link}\`` : 'none'
+  const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
+  return s.configSchema.extend({ link }).describe(s.configSchema.description ?? '')
+}
+
 const sourcesConfig = z
-  .object(Object.fromEntries(Object.values(sources).map((s) => [s.id, s.configSchema.optional()])))
+  .object(
+    Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
+  )
   .catchall(commandConfig)
   .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
   .describe('Where work comes from: built-in sources or your own commands; at least one')
@@ -268,7 +278,7 @@ export const configSchema = z
     sources: sourcesConfig,
     branch: branch
       .default(defaultBranch)
-      .describe('Branch name template; {key} is required, {title} optional'),
+      .describe('Branch name template; {key} or {title} is required'),
     repos: z
       .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
       .default({})

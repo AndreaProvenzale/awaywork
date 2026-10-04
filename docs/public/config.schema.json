@@ -314,6 +314,10 @@
               "default": "ASANA_TOKEN",
               "description": "Env var holding the Asana token",
               "type": "string"
+            },
+            "link": {
+              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
+              "type": "string"
             }
           },
           "required": [
@@ -339,6 +343,10 @@
             "token_env": {
               "default": "LINEAR_API_KEY",
               "description": "Env var holding the Linear personal API key",
+              "type": "string"
+            },
+            "link": {
+              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
               "type": "string"
             }
           },
@@ -380,6 +388,10 @@
               "default": "JIRA_API_TOKEN",
               "description": "Env var holding the Atlassian API token",
               "type": "string"
+            },
+            "link": {
+              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",
+              "type": "string"
             }
           },
           "required": [
@@ -418,6 +430,10 @@
           "setup": {
             "description": "Runs in the config file's folder before night-shift on GitHub Actions",
             "type": "string"
+          },
+          "link": {
+            "type": "string",
+            "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
           }
         },
         "required": [
@@ -430,7 +446,7 @@
     },
     "branch": {
       "default": "night/{key}",
-      "description": "Branch name template; {key} is required, {title} optional",
+      "description": "Branch name template; {key} or {title} is required",
       "type": "string"
     },
     "repos": {

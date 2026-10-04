@@ -2,7 +2,18 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
+import { linkProblem } from '../core/footer.js'
 import type { Item, Source } from '../core/types.js'
+
+export const linkTemplate = z
+  .string()
+  .superRefine((template, ctx) => {
+    const problem = linkProblem(template)
+    if (problem) ctx.addIssue({ code: 'custom', message: problem })
+  })
+  .describe(
+    "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's",
+  )
 
 export const commandConfig = z
   .strictObject({
@@ -21,6 +32,7 @@ export const commandConfig = z
       .string()
       .optional()
       .describe("Runs in the config file's folder before night-shift on GitHub Actions"),
+    link: linkTemplate.optional(),
   })
   .describe('A custom source: any command that prints your open items as JSON')
 

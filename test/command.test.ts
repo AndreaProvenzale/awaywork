@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { loadConfig } from '../src/config/load.js'
+import { collectItems } from '../src/cli/plan.js'
+import { loadConfig, parseConfig } from '../src/config/load.js'
 import type { Ctx, Source } from '../src/core/types.js'
 import { type CommandConfig, commandConfig, commandSource } from '../src/sources/command.js'
 import { sourceContract } from './contracts/source.contract.js'
@@ -37,6 +38,21 @@ describe('command source', () => {
       linkedPrs: [],
       fields: { column: 'QA', repo: 'acme/api' },
     })
+  })
+
+  it('renders its link template on every item it collects', async () => {
+    const item = {
+      id: '7',
+      key: 'AI 7',
+      type: 'issue',
+      title: 'Export',
+      url: 'https://t.example/7',
+    }
+    const command = `echo '${JSON.stringify([item])}'`
+    const tracker = { command, link: 'Refs {key} ({url}, #{id})' }
+    const config = parseConfig(JSON.stringify({ providers: ['claude'], sources: { tracker } }))
+    const [collected] = await collectItems(config, ctx())
+    expect(collected?.link).toBe('Refs AI 7 (https://t.example/7, #7)')
   })
 
   it("runs in the config file's folder once the config loads", async () => {

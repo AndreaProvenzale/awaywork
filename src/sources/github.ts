@@ -139,6 +139,8 @@ export function githubSource(run: Exec = exec): Source<Config> {
   return {
     id: 'github',
     configSchema: config,
+    // PRs and issues link their PRs themselves.
+    link: false,
     fields: {
       repo: z.string(),
       label: z.string(),
