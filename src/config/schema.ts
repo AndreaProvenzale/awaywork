@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
-import type { Rule, Scalar, Source, WhereValue } from '../core/types.js'
+import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 import { commandConfig, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
@@ -143,6 +143,18 @@ function isRegex(source: string): boolean {
   }
 }
 
+const where: z.ZodType<Where, unknown> = z.lazy(() =>
+  z
+    .object({
+      any: z
+        .array(where)
+        .min(1)
+        .optional()
+        .describe('Matches when at least one of these conditions does; each is a where of its own'),
+    })
+    .catchall(whereValue),
+)
+
 const skill = z.string().min(1).describe('The skill that does the work')
 const stepSettings = {
   provider: oneOrMany
@@ -235,11 +247,10 @@ const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
     skill,
     source: z.string().min(1).optional().describe('Match only items from this source'),
-    where: z
-      .record(z.string(), whereValue)
+    where: where
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source',
       ),
     ...stepSettings,
     order: z
@@ -419,41 +430,64 @@ export const configSchema = z
             })
       })
       const scope = r.source ? [r.source] : sourceIds
-      for (const [key, value] of Object.entries(r.where)) {
-        const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
-        if (!field) {
-          ctx.addIssue({
-            code: 'custom',
-            path: [...at, 'where', key],
-            message: unknownKey(cfg.sources, scope, key),
-          })
-          continue
-        }
-        if (typeof value === 'object' && !Array.isArray(value) && isMatch(value)) {
-          if (!isText(field))
+      checkWhere(r.where, [...at, 'where'])
+      function checkWhere(where: Where, path: (string | number)[]) {
+        for (const [key, value] of Object.entries(where)) {
+          if (key === 'any') {
+            for (const [i, w] of (value as Where[]).entries())
+              if (Object.keys(w).length === 0)
+                ctx.addIssue({
+                  code: 'custom',
+                  path: [...path, key, i],
+                  message: 'an empty entry matches everything',
+                })
+              else checkWhere(w, [...path, key, i])
+            continue
+          }
+          if (key === 'ours' && path.includes('any')) {
             ctx.addIssue({
               code: 'custom',
-              path: [...at, 'where', key],
-              message: 'matches needs a text field',
+              path: [...path, key],
+              message: 'ours only lifts the night-shift PR wait at the top of where',
             })
-          continue
-        }
-        if (typeof value === 'object' && !Array.isArray(value) && isAge(value)) {
-          if (!field.safeParse(new Date().toISOString()).success)
+            continue
+          }
+          const v = value as WhereValue
+          const field = itemFields[key] ?? fieldFor(cfg.sources, scope, key)
+          if (!field) {
             ctx.addIssue({
               code: 'custom',
-              path: [...at, 'where', key],
-              message: 'older_than and newer_than need a date field',
+              path: [...path, key],
+              message: unknownKey(cfg.sources, scope, key),
             })
-          continue
+            continue
+          }
+          if (typeof v === 'object' && !Array.isArray(v) && isMatch(v)) {
+            if (!isText(field))
+              ctx.addIssue({
+                code: 'custom',
+                path: [...path, key],
+                message: 'matches needs a text field',
+              })
+            continue
+          }
+          if (typeof v === 'object' && !Array.isArray(v) && isAge(v)) {
+            if (!field.safeParse(new Date().toISOString()).success)
+              ctx.addIssue({
+                code: 'custom',
+                path: [...path, key],
+                message: 'older_than and newer_than need a date field',
+              })
+            continue
+          }
+          for (const scalar of whereValues(v))
+            if (!field.safeParse(scalar).success)
+              ctx.addIssue({
+                code: 'custom',
+                path: [...path, key],
+                message: `invalid value ${JSON.stringify(scalar)}`,
+              })
         }
-        for (const v of whereValues(value))
-          if (!field.safeParse(v).success)
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'where', key],
-              message: `invalid value ${JSON.stringify(v)}`,
-            })
       }
     })
   })

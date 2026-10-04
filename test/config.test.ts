@@ -113,6 +113,17 @@ describe('config', () => {
     expect(problems(rule('{ unresolved_threads: { matches: x } }'))).toEqual([
       'queue[0].where.unresolved_threads: matches needs a text field',
     ])
+    expect(problems(rule('{ any: [{ checks: failing }, { label: urgent }] }'))).toEqual([])
+    expect(problems(rule('{ any: [{ checks: failing }, { nope: 1 }] }'))).toEqual([
+      expect.stringContaining('queue[0].where.any[1].nope'),
+    ])
+    expect(problems(rule('{ any: [] }'))).toHaveLength(1)
+    expect(problems(rule('{ any: [{ checks: failing }, {}] }'))).toEqual([
+      'queue[0].where.any[1]: an empty entry matches everything',
+    ])
+    expect(problems(rule('{ any: [{ ours: true }, { label: urgent }] }'))).toEqual([
+      'queue[0].where.any[0].ours: ours only lifts the night-shift PR wait at the top of where',
+    ])
     expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
       'queue[0].where.checks: older_than and newer_than need a date field',
     ])
@@ -338,6 +349,9 @@ describe('config', () => {
     ])
     expect(problems(rule('{ colour: red }'))).toEqual([
       expect.stringMatching(/unknown key "colour"; .*tracker: repo, created, updated, column/),
+    ])
+    expect(problems(cfg.replace('fields: [column]', 'fields: [column, any]'))).toEqual([
+      'sources.tracker.fields[1]: `any` is reserved in where',
     ])
   })
 

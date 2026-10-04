@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { closestRule, failedKeys, matches, rank, ruleMatches } from '../src/core/queue.js'
+import { closestRule, failedIn, matches, rank, ruleMatches } from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
 
 import { asanaTask, githubPr } from './fakes/items.js'
@@ -41,6 +41,10 @@ describe('where', () => {
     ['matches fails when nothing matches', { title: { matches: 'zzz' } }, false],
     ['matches reads a list field', { label: { matches: '^night' } }, true],
     ['matches ignores a number', { unresolved_threads: { matches: '3' } }, false],
+    ['any holds when one entry does', { any: [{ checks: 'passing' }, { label: 'bug' }] }, true],
+    ['any fails when no entry holds', { any: [{ checks: 'passing' }, { type: 'issue' }] }, false],
+    ['any is ANDed with the other keys', { type: 'issue', any: [{ checks: 'failing' }] }, false],
+    ['an entry ANDs its own keys', { any: [{ checks: 'failing', label: 'docs' }] }, false],
     ['every key must match', { type: 'pr', checks: 'passing' }, false],
     ['no keys match everything', {}, true],
   ] as const)('%s', (_, where, expected) => {
@@ -111,7 +115,7 @@ describe('rank', () => {
 describe('closestRule', () => {
   it('names the keys an item fails', () => {
     const where = { type: 'pr', checks: 'failing', mine: true } as const
-    expect(failedKeys(rule(where), githubPr(1, { mine: false }))).toEqual(['checks', 'mine'])
+    expect(failedIn(where, githubPr(1, { mine: false }))).toEqual(['checks', 'mine'])
   })
 
   it('picks the rule with the fewest failed keys, the earlier on a tie, for the item source', () => {

@@ -23,7 +23,10 @@ export const commandConfig = z
       .describe(
         "Shell command printing the items as a JSON array; runs in the config file's folder",
       ),
-    fields: z.array(z.string()).default([]).describe('Item fields rules may match on'),
+    fields: z
+      .array(z.string().refine((name) => name !== 'any', '`any` is reserved in where'))
+      .default([])
+      .describe('Item fields rules may match on'),
     secrets: z
       .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
       .default([])

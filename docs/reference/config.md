@@ -208,7 +208,7 @@ First matching rule wins; top = highest priority.
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
 | `source` | string |  | Match only items from this source |
-| `where` | map | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex; title and description are on every source |
+| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
@@ -220,6 +220,14 @@ First matching rule wins; top = highest priority.
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
+
+## `queue[].where`
+
+Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `any` | object[] |  | Matches when at least one of these conditions does; each is a where of its own |
 
 ## `queue[].where.<key>`
 

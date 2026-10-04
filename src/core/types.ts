@@ -166,6 +166,8 @@ export interface Match {
   matches: string
 }
 export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Comparison | Age | Match
+/** Item facts that must all hold; `any` holds when one of its entries does. */
+export type Where = Record<string, WhereValue | Where[]>
 
 /** What a unit runs: a rule's own settings, or a step it chains after its unit. */
 export interface Step {
@@ -201,7 +203,7 @@ export interface Loop {
 
 export interface Rule extends Step {
   source?: string
-  where: Record<string, WhereValue>
+  where: Where
   order?: Order
   units?: number
   /** Units run in turn after the rule's unit, each on what the one before delivered. */
