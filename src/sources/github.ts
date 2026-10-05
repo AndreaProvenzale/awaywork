@@ -14,6 +14,8 @@ type Config = z.infer<typeof config>
 
 const PAGE = 100
 const LOG_TAIL = 200
+/** Paths read per PR: a rule routes on where a change lands, and a huge one is huge wherever it lands. */
+const MAX_FILES = 500
 /** Author associations with write access or org membership; the rest can be anyone. */
 const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
 
@@ -37,6 +39,8 @@ const searchQuery = `query($q: String!) {
       }
       ... on PullRequest { ${common}
         isDraft headRefName headRefOid isCrossRepository viewerDidAuthor
+        additions deletions
+        files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
@@ -51,6 +55,14 @@ const threadStartersQuery = (ids: string[]) => `{
     ... on PullRequest {
       id
       reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { viewerDidAuthor } } } }
+    }
+  }
+}`
+
+const filesQuery = `query($owner: String!, $name: String!, $number: Int!, $after: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      files(first: ${PAGE}, after: $after) { pageInfo { hasNextPage endCursor } nodes { path } }
     }
   }
 }`
@@ -77,6 +89,7 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
 }`
 
 type Nodes<T> = { nodes: T[] }
+type Files = Nodes<{ path: string }> & { pageInfo: { hasNextPage: boolean; endCursor: string } }
 type Login = { login: string } | null
 type Comment = { author: Login; body: string; createdAt: string }
 type PrLink = {
@@ -104,6 +117,9 @@ interface Node extends PrLink {
   comments: Nodes<Comment>
   closedByPullRequestsReferences?: Nodes<PrLink>
   isDraft?: boolean
+  additions?: number
+  deletions?: number
+  files?: Files
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
   reviewThreads?: Nodes<{ isResolved: boolean }>
   commits?: Nodes<{ commit: { statusCheckRollup: { state: string } | null } }>
@@ -151,6 +167,8 @@ export function githubSource(run: Exec = exec): Source<Config> {
       ours: z.boolean(),
       checks: z.enum(['failing', 'pending', 'passing']),
       unresolved_threads: z.number().int().min(0),
+      files: z.string(),
+      changed_lines: z.number().int().min(0),
       my_unresolved_threads: z.number().int().min(0),
       review_requested: z.boolean(),
       created: z.iso.datetime(),
@@ -178,6 +196,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
         }
       }
       await countMyThreads(run, byId, ctx.log)
+      await readFiles(run, byId, ctx.log)
       return [...byId.values()]
     },
 
@@ -256,6 +275,36 @@ async function countMyThreads(
   }
 }
 
+/** Sets `files` on each PR, following pages past the first until MAX_FILES; a PR whose next page fails keeps the paths read. */
+async function readFiles(
+  run: Exec,
+  byId: Map<string, Item>,
+  log: (line: string) => void,
+): Promise<void> {
+  for (const item of byId.values()) {
+    const first = (item.raw as Node).files
+    if (!first) continue
+    const paths = first.nodes.map((f) => f.path)
+    let page = first.pageInfo
+    const [owner = '', name = ''] = (item.fields.repo as string).split('/')
+    const number = Number(item.key.split('#')[1])
+    try {
+      while (page.hasNextPage && paths.length < MAX_FILES) {
+        const next = await graphql<{ repository: { pullRequest: { files: Files } } }>(
+          run,
+          filesQuery,
+          { owner, name, number, after: page.endCursor },
+        )
+        paths.push(...next.repository.pullRequest.files.nodes.map((f) => f.path))
+        page = next.repository.pullRequest.files.pageInfo
+      }
+    } catch (e) {
+      log(`github: couldn't read every file of ${item.key}: ${(e as Error).message}`)
+    }
+    item.fields.files = paths.slice(0, MAX_FILES)
+  }
+}
+
 function toItem(node: Node): Item {
   const repo = node.repository.nameWithOwner
   const isPr = node.__typename === 'PullRequest'
@@ -277,6 +326,9 @@ function toItem(node: Node): Item {
       unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
       my_unresolved_threads: 0,
       review_requested: false,
+      ...(node.additions !== undefined && {
+        changed_lines: node.additions + (node.deletions ?? 0),
+      }),
       ...(checks && { checks }),
     })
   }

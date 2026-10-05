@@ -31,6 +31,12 @@
           "headRefName": "rate-limits",
           "headRefOid": "abc1234",
           "viewerDidAuthor": true,
+          "additions": 30,
+          "deletions": 12,
+          "files": {
+            "pageInfo": { "hasNextPage": false, "endCursor": "c1" },
+            "nodes": [{ "path": "src/auth/token.ts" }, { "path": "README.md" }]
+          },
           "reviewRequests": {
             "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]
           },
