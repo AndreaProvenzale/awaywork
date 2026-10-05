@@ -192,3 +192,10 @@ in the job summary.
 `nightshift report --list` lists recent runs with their units, draft PRs
 and reports; `nightshift report <id>` prints one of them. A
 [`notify` command](./configuration.md#notify) can send it elsewhere.
+
+`nightshift stats` adds up every run since this feature, kept in each run's
+`units.json`: per rule (by its position in the queue that night), skill and
+provider, the units, how many were done, failed or stopped, the share of the
+long quota window their workers used, and the draft PRs opened. `--json`
+prints the same totals. Runs from before have no `units.json` and are left
+out.

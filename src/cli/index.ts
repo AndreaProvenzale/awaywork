@@ -10,6 +10,7 @@ import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
 import { skillsCommand } from './skills.js'
 import { skipCommand } from './skip.js'
+import { statsCommand } from './stats.js'
 
 // The environment wins over the file; scheduled jobs start without a login shell's variables.
 if (existsSync(envFile)) process.loadEnvFile(envFile)
@@ -29,6 +30,7 @@ queueCommand(program)
 skipCommand(program)
 skillsCommand(program)
 runCommand(program)
+statsCommand(program)
 scheduleCommand(program)
 doctorCommand(program)
 

@@ -10,6 +10,9 @@ export interface UnitResult {
   status: WorkerStatus | 'prepared' | 'skipped' | 'error'
   reason?: string
   turns?: number
+  /** The worker's first and last quota reading, to tell what the unit used. */
+  firstQuota?: Quota
+  quota?: Quota
   outcome?: Outcome
   /** The one word the unit wrote to `out/verdict`. */
   verdict?: string
