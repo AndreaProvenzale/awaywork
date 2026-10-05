@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeRule, statusMarker } from '../src/cli/format.js'
+import { describeRule, listedUnits, statusMarker } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Rule } from '../src/core/types.js'
 
@@ -29,5 +29,13 @@ queue:
     expect(describeRule(cfg.queue?.[0] as Rule)).toBe(
       'type=pr draft=false any(checks=failing label=urgent | any(mine=true))',
     )
+  })
+})
+
+describe('listedUnits', () => {
+  it('lists only round 1 of a loop', () => {
+    const unit = (loop?: { round: number }) => ({ loop })
+    const units = [unit(), unit({ round: 1 }), unit({ round: 2 }), unit({ round: 3 })]
+    expect(listedUnits({ units } as never)).toEqual([units[0], units[1]])
   })
 })
