@@ -7,7 +7,8 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
-import type { Provider, Quota, WorkerEvent } from '../core/types.js'
+import { headerSecret } from '../core/mcp.js'
+import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const AUTH_SECRET = 'CODEX_AUTH_JSON'
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
@@ -107,7 +108,8 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         ])
         // After the developer's overrides, so theirs of the same keys lose.
         const sandbox = job.unit.network ? ONLINE : offline(job.dir)
-        const args = [...EXEC, ...model, ...overrides, ...sandbox, '-C', job.dir, '-']
+        const mcp = mcpOverrides(job.mcp ?? {})
+        const args = [...EXEC, ...model, ...overrides, ...mcp, ...sandbox, '-C', job.dir, '-']
         const child = execa(bin, args, {
           cwd: job.dir,
           env,
@@ -164,6 +166,51 @@ export function offline(dir: string): string[] {
   ]
 }
 
+/** `-c` overrides for the unit's MCP servers; their secrets reach them by name, kept out of the shell's env. */
+export function mcpOverrides(servers: Record<string, McpServer>): string[] {
+  const set = (key: string, value: unknown) => ['-c', `${key}=${toml(value)}`]
+  const secrets = Object.values(servers).flatMap((s) => s.secrets)
+  const perServer = Object.entries(servers).flatMap(([name, s]) => {
+    const headers = Object.entries(s.headers ?? {}).map(
+      ([h, v]) => [h, v, headerSecret(h, v)] as const,
+    )
+    const plain = headers.flatMap(([h, v, secret]) => (secret ? [] : [[h, v]]))
+    const fromEnv = headers.flatMap(([h, , secret]) =>
+      secret && !secret.bearer ? [[h, secret.name]] : [],
+    )
+    const fields = {
+      command: s.command,
+      args: s.args,
+      env: s.env,
+      env_vars: s.command && s.secrets.length > 0 ? s.secrets : undefined,
+      url: s.url,
+      bearer_token_env_var: headers.find(([, , secret]) => secret?.bearer)?.[2]?.name,
+      http_headers: plain.length > 0 ? Object.fromEntries(plain) : undefined,
+      env_http_headers: fromEnv.length > 0 ? Object.fromEntries(fromEnv) : undefined,
+      enabled_tools: s.tools,
+      // The default 10 s drops a server silently, e.g. an `npx -y` download on a fresh runner.
+      startup_timeout_sec: 60,
+      // The offline profile refuses tools not annotated read-only without it.
+      default_tools_approval_mode: 'approve',
+    }
+    return Object.entries(fields).flatMap(([k, v]) =>
+      v === undefined ? [] : set(`mcp_servers.${name}.${k}`, v),
+    )
+  })
+  return [
+    ...perServer,
+    ...(secrets.length > 0 ? set('shell_environment_policy.exclude', secrets) : []),
+  ]
+}
+
+/** A string, string array or table of strings as a TOML value. */
+function toml(value: unknown): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return JSON.stringify(value)
+  const pairs = Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}=${JSON.stringify(v)}`)
+  return `{${pairs.join(',')}}`
+}
+
 /** Worker events in one `codex exec --json` event: tool calls and errors as log lines, and the turn's end. */
 export function toEvents(
   // biome-ignore lint/suspicious/noExplicitAny: an untyped JSON event
@@ -176,6 +223,10 @@ export function toEvents(
     return [
       { type: 'log', line: `edit: ${item.changes.map((c: { path: string }) => c.path).join(' ')}` },
     ]
+  if (event?.type === 'item.completed' && item?.type === 'mcp_tool_call') {
+    const args = JSON.stringify(item.arguments ?? {}).slice(0, 200)
+    return [{ type: 'log', line: `mcp_tool_call: ${item.server}/${item.tool}: ${args}` }]
+  }
   if (event?.type === 'item.completed' && TOOL_ITEMS.includes(item?.type))
     return [{ type: 'log', line: `${item.type}: ${item.tool ?? item.query ?? ''}` }]
   if (event?.type === 'item.completed' && item?.type === 'error')

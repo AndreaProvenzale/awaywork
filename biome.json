@@ -4,6 +4,12 @@
   "files": { "includes": ["**", "!docs/public/config.schema.json"] },
   "formatter": { "indentStyle": "space", "lineWidth": 100 },
   "linter": { "rules": { "preset": "recommended" } },
+  "overrides": [
+    {
+      "includes": ["test/**"],
+      "linter": { "rules": { "suspicious": { "noTemplateCurlyInString": "off" } } }
+    }
+  ],
   "javascript": { "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" } },
   "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }

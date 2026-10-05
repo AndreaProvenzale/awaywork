@@ -111,7 +111,9 @@ or settings you do want, list them here; they apply on every unit,
 including someone else's PR:
 
 - `claude: { settings: <file> }`: a Claude Code settings file, relative
-  to the config file, passed as `--settings`. Auto-memory stays off.
+  to the config file, passed as `--settings`. Auto-memory stays off, and
+  workers run in `dontAsk` mode: a tool that isn't pre-approved, by
+  night-shift or by your `permissions.allow`, is denied.
 - `codex: { config: { <key>: <value> } }`: each key passed as
   `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
@@ -128,12 +130,14 @@ including someone else's PR:
 Every source but `github` also takes a [`link`](#linking-prs).
 
 Asana has no read-only personal token: the token can do anything you can.
-night-shift only reads with it and never hands it to the agent. Create
-one just for night-shift so you can revoke it alone.
+night-shift only reads with it and never hands it to the agent, unless
+you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just
+for night-shift so you can revoke it alone.
 
 Linear takes a personal API key (Settings > Account > Security & access).
-night-shift only reads with it and never hands it to the agent: when
-Linear offers the choice, give the key read access only.
+night-shift only reads with it and never hands it to the agent, unless
+you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear
+offers the choice, give the key read access only.
 
 Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
 API tokens). Prefer "Create API token with scopes", app Jira, scope
@@ -266,6 +270,7 @@ the repo's PR template, its recent commit style and your instructions
 | `provider` | One or a list; overrides the global order for this rule |
 | `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
 | `skills` | Extra skills the agent may use |
+| `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
 | `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
@@ -585,6 +590,54 @@ after_unit:
   command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL" >> ~/night-shift.log
 ```
 
+## MCP servers
+
+Declare servers once under `mcp`, then give them to the rules or steps
+that need them with `mcp: [names]`. No unit gets a server its rule or
+step doesn't name, and a `then` step doesn't inherit its rule's.
+
+```yaml
+mcp:
+  sentry:                       # HTTP
+    url: https://mcp.sentry.dev/mcp
+    headers: { Authorization: "Bearer ${SENTRY_TOKEN}" }
+    secrets: [SENTRY_TOKEN]
+  db:                           # stdio
+    command: npx
+    args: [-y, some-postgres-mcp]
+    env: { READ_ONLY: "1" }
+    secrets: [DATABASE_URL]     # in the server's env as DATABASE_URL
+    tools: [query]              # default: all the server's tools
+
+queue:
+  - skill: implement
+    where: { type: issue, labels: bug }
+    mcp: [sentry]
+    then:
+      - { skill: review, mcp: [db] }
+```
+
+The shape is a subset of Claude Code's `.mcp.json`, translated for each
+agent: a `command` with `args` and `env`, or a `url` with `headers`.
+`secrets` names the env vars the server needs. A stdio server receives
+its secrets in its env under those same names. An HTTP server gets each
+one in a header, as `${NAME}`, or as `Bearer ${NAME}` for
+`Authorization`. A secret can't appear in `command`, `args` or `url`,
+where it would show in the process list, nor in `env`, where Codex takes
+only literal values. Names starting
+with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and
+Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything
+outside the list is refused. Only units whose rule names a server get
+its secrets. `nightshift schedule` maps them into the Actions workflow,
+and `nightshift doctor` shows whether each one is set.
+
+Servers start for your own PRs and for issues and tasks, but not on
+someone else's PR or an issue it closes, nor when one of their secrets
+is unset. Only token-based servers work unattended: OAuth-only servers,
+such as claude.ai connectors, need a login a runner doesn't have. A server's secret is one the agent can read. A server's
+tools are tools that injected instructions can call. See
+[Safety](./safety.md#mcp-servers).
+
 ## Secrets
 
 The config holds env var **names** only. Values come from the environment
@@ -602,3 +655,4 @@ or `~/.config/night-shift/env` (the environment wins).
 | Your `notify.secrets` | The notify command |
 | Your `after_unit.secrets` | The after-unit command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |
+| Your `mcp.<name>.secrets` | That MCP server, for the units whose rule names it |

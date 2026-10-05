@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { killGroupWhenDone } from '../core/group.js'
-import type { Job, Provider, Quota, WorkerEvent } from '../core/types.js'
+import type { Job, McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
@@ -63,7 +63,12 @@ export function claudeProvider(bin = 'claude'): Provider {
       if (job.model) args.push('--model', job.model)
       args.push(...(job.unit.foreign ? isolated : repoOnly), '--settings', await settings(job))
       if (job.plugin) args.push('--plugin-dir', job.plugin)
-      const child = execa(bin, [...args, '--allowedTools', TOOLS], {
+      const servers = Object.entries(job.mcp ?? {})
+      if (servers.length > 0) args.push('--mcp-config', mcpConfig(servers))
+      const tools = [TOOLS, ...servers.flatMap(([name, s]) => mcpTools(name, s.tools))]
+      // Denies whatever isn't allowed, whatever mode the binary would default to.
+      args.push('--permission-mode', 'dontAsk', '--allowedTools', tools.join(' '))
+      const child = execa(bin, args, {
         cwd: job.dir,
         env: job.env,
         extendEnv: false,
@@ -95,6 +100,19 @@ async function settings(job: Job): Promise<string> {
   return JSON.stringify({ ...theirs, ...(job.unit.network ? noMemory : offline) })
 }
 
+/** The servers as `.mcp.json`; the binary expands `${NAME}` from the worker's env. */
+function mcpConfig(servers: [string, McpServer][]): string {
+  const entries = servers.map(([name, { command, args, env, url, headers }]) => [
+    name,
+    command ? { command, args, env } : { type: 'http', url, headers },
+  ])
+  return JSON.stringify({ mcpServers: Object.fromEntries(entries) })
+}
+
+function mcpTools(server: string, tools?: string[]): string[] {
+  return tools ? tools.map((t) => `mcp__${server}__${t}`) : [`mcp__${server}`]
+}
+
 /** Worker events in one stream-json line: tool calls as log lines, quota, and the final result. */
 export function toEvents(line: string): WorkerEvent[] {
   const event = parseJson(line)
@@ -111,7 +129,8 @@ export function toEvents(line: string): WorkerEvent[] {
     return (event.message?.content ?? [])
       .filter((block: { type: string }) => block.type === 'tool_use')
       .map((block: { name: string; input: Record<string, unknown> }) => {
-        const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? ''
+        const mcp = block.name.startsWith('mcp__') ? JSON.stringify(block.input).slice(0, 200) : ''
+        const arg = block.input.command ?? block.input.file_path ?? block.input.pattern ?? mcp
         return { type: 'log', line: `${block.name}: ${String(arg)}` }
       })
   if (event?.type === 'result')

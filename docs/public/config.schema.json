@@ -515,6 +515,75 @@
         "type": "string"
       }
     },
+    "mcp": {
+      "default": {},
+      "description": "MCP servers a rule or step names in its mcp",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "description": "Command that starts a stdio server",
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "description": "The command's arguments",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "description": "The server's env vars, besides its secrets; plain values",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "description": "URL of an HTTP server",
+            "type": "string",
+            "format": "uri"
+          },
+          "headers": {
+            "description": "HTTP headers; a value may be ${NAME}, or Bearer ${NAME} for Authorization",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "secrets": {
+            "default": [],
+            "description": "Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "tools": {
+            "description": "Tools the worker may call; default all the server's",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[\\w-]+$"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "queue": {
       "description": "Rules mapping items to skills; default the built-in queue",
       "type": "array",
@@ -565,6 +634,14 @@
           "skills": {
             "default": [],
             "description": "Extra skills available to the worker",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mcp": {
+            "description": "MCP servers the worker gets, by their name under the top-level mcp",
+            "minItems": 1,
             "type": "array",
             "items": {
               "type": "string"
@@ -673,6 +750,14 @@
                       "skills": {
                         "default": [],
                         "description": "Extra skills available to the worker",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "mcp": {
+                        "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                        "minItems": 1,
                         "type": "array",
                         "items": {
                           "type": "string"
@@ -856,6 +941,14 @@
                                   "type": "string"
                                 }
                               },
+                              "mcp": {
+                                "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
                               "instructions": {
                                 "description": "Instruction files added for this rule",
                                 "anyOf": [
@@ -1026,6 +1119,14 @@
                                 "skills": {
                                   "default": [],
                                   "description": "Extra skills available to the worker",
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "mcp": {
+                                  "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                                  "minItems": 1,
                                   "type": "array",
                                   "items": {
                                     "type": "string"
@@ -1285,6 +1386,14 @@
                                 "type": "string"
                               }
                             },
+                            "mcp": {
+                              "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
                             "instructions": {
                               "description": "Instruction files added for this rule",
                               "anyOf": [
@@ -1463,6 +1572,14 @@
                                         "type": "string"
                                       }
                                     },
+                                    "mcp": {
+                                      "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
                                     "instructions": {
                                       "description": "Instruction files added for this rule",
                                       "anyOf": [
@@ -1633,6 +1750,14 @@
                                       "skills": {
                                         "default": [],
                                         "description": "Extra skills available to the worker",
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "mcp": {
+                                        "description": "MCP servers the worker gets, by their name under the top-level mcp",
+                                        "minItems": 1,
                                         "type": "array",
                                         "items": {
                                           "type": "string"

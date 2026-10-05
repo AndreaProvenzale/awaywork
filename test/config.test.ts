@@ -150,6 +150,66 @@ describe('config', () => {
     ])
   })
 
+  it('takes MCP servers named on rules and steps, with secrets only in headers or by name', () => {
+    const servers = `mcp:
+  sentry:
+    url: https://mcp.sentry.dev/mcp
+    headers: { Authorization: "Bearer \${SENTRY_TOKEN}", X-Org: acme }
+    secrets: [SENTRY_TOKEN]
+  db:
+    command: npx
+    args: [-y, db-mcp]
+    env: { READ_ONLY: "1" }
+    secrets: [DATABASE_URL]
+    tools: [query]
+`
+    const cfg = parseConfig(
+      `${minimal}${servers}queue:\n  - { skill: fix-ci, mcp: [sentry], then: [{ skill: review, mcp: [db] }] }\n`,
+    )
+    expect(cfg.mcp.db).toMatchObject({
+      command: 'npx',
+      secrets: ['DATABASE_URL'],
+      tools: ['query'],
+    })
+    expect(cfg.queue?.[0]?.mcp).toEqual(['sentry'])
+    expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ mcp: ['db'] })
+    expect(problems(`${minimal}queue: [{ skill: fix-ci, mcp: [jira] }]`)).toEqual([
+      'queue[0].mcp: MCP server "jira" is not configured',
+    ])
+    const server = (yaml: string) => problems(`${minimal}mcp: { s: ${yaml} }`)
+    expect(server('{ command: x, url: "https://a.b" }')).toEqual([
+      'mcp.s.command: expected command (stdio) or url (HTTP), not both',
+    ])
+    expect(server('{ secrets: [T] }')).toEqual([
+      'mcp.s.command: expected command (stdio) or url (HTTP)',
+    ])
+    expect(server('{ url: "https://a.b", secrets: [T] }')).toEqual([
+      'mcp.s.secrets: T: an HTTP server gets a secret only in a header, like Bearer ${T}',
+    ])
+    expect(server('{ command: x, args: ["${T}"], secrets: [T] }')).toEqual([
+      expect.stringMatching(/^mcp.s.args: a secret can't go in command, args, env or url/),
+    ])
+    expect(server('{ command: x, env: { T: "${T}" }, secrets: [T] }')).toEqual([
+      expect.stringMatching(/^mcp.s.env: /),
+    ])
+    expect(server('{ command: x, secrets: [GITHUB_TOKEN] }')).toEqual([
+      expect.stringMatching(/^mcp.s.secrets\[0\]: GH_ and GITHUB_ names are reserved/),
+    ])
+    expect(server('{ url: "file:///x" }')).toHaveLength(1)
+    expect(server('{ command: x, tools: ["a, b"] }')).toEqual([
+      'mcp.s.tools[0]: expected a tool name like search_issues',
+    ])
+    expect(problems(`${minimal}mcp: { My_DB: { command: x } }`)).toEqual([
+      'mcp.My_DB: expected a lowercase name like sentry',
+    ])
+    expect(server('{ url: "https://a.b", headers: { A: "${T}" } }')).toEqual([
+      "mcp.s.headers: A: ${T} is not one of this server's secrets",
+    ])
+    expect(server('{ url: "https://a.b", headers: { X: "Bearer ${T}" }, secrets: [T] }')).toEqual([
+      'mcp.s.headers: X: expected ${NAME}, or Bearer ${NAME} for Authorization',
+    ])
+  })
+
   it('expands a leading ~/ in the config path', () => {
     expect(configPath('~/night.yml')).toBe(join(homedir(), 'night.yml'))
     expect(configPath('/etc/~/night.yml')).toBe('/etc/~/night.yml')

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
+import { headerSecret } from '../core/mcp.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
@@ -165,6 +166,11 @@ const stepSettings = {
     .optional()
     .describe("Model per provider for this rule, e.g. { claude: sonnet }; default the provider's"),
   skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
+  mcp: z
+    .array(z.string())
+    .min(1)
+    .optional()
+    .describe('MCP servers the worker gets, by their name under the top-level mcp'),
   instructions: oneOrMany.default([]).describe('Instruction files added for this rule'),
   with: z
     .record(z.string().min(1), scalar)
@@ -275,6 +281,78 @@ const rule: z.ZodType<Rule, unknown> = z
   })
   .describe('First matching rule wins; top = highest priority')
 
+const mcpServer = z
+  .strictObject({
+    command: z.string().min(1).optional().describe('Command that starts a stdio server'),
+    args: z.array(z.string()).optional().describe("The command's arguments"),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe("The server's env vars, besides its secrets; plain values"),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .optional()
+      .describe('URL of an HTTP server'),
+    headers: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(`HTTP headers; a value may be \${NAME}, or Bearer \${NAME} for Authorization`),
+    secrets: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .refine(
+            (name) => !/^(GH|GITHUB)_/.test(name),
+            'GH_ and GITHUB_ names are reserved: workers never get GitHub tokens and Actions refuses GITHUB_ secrets; use another, like MCP_GITHUB_TOKEN',
+          ),
+      )
+      .default([])
+      .describe(
+        'Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions',
+      ),
+    tools: z
+      .array(z.string().regex(/^[\w-]+$/, 'expected a tool name like search_issues'))
+      .min(1)
+      .optional()
+      .describe("Tools the worker may call; default all the server's"),
+  })
+  .superRefine((s, ctx) => {
+    const issue = (path: string, message: string) =>
+      ctx.addIssue({ code: 'custom', path: [path], message })
+    if (s.command && s.url) issue('command', 'expected command (stdio) or url (HTTP), not both')
+    if (!s.command && !s.url) issue('command', 'expected command (stdio) or url (HTTP)')
+    if (s.url && (s.args || s.env)) issue(s.args ? 'args' : 'env', 'args and env need a command')
+    if (s.command && s.headers) issue('headers', 'headers need a url')
+    const plain = {
+      command: [s.command],
+      args: s.args,
+      env: Object.values(s.env ?? {}),
+      url: [s.url],
+    }
+    const leak = Object.entries(plain).find(([, values]) => values?.some((v) => v?.includes('${')))
+    if (leak)
+      issue(
+        leak[0],
+        "a secret can't go in command, args, env or url: list it in secrets, and it reaches the server's env under its own name",
+      )
+    for (const [header, value] of Object.entries(s.headers ?? {})) {
+      if (!value.includes('${')) continue
+      const secret = headerSecret(header, value)
+      if (!secret)
+        issue('headers', `${header}: expected \${NAME}, or Bearer \${NAME} for Authorization`)
+      else if (!s.secrets.includes(secret.name))
+        issue('headers', `${header}: \${${secret.name}} is not one of this server's secrets`)
+    }
+    const headers = Object.values(s.headers ?? {})
+    for (const name of s.url ? s.secrets : [])
+      if (!headers.some((v) => v.includes(`\${${name}}`)))
+        issue(
+          'secrets',
+          `${name}: an HTTP server gets a secret only in a header, like Bearer \${${name}}`,
+        )
+  })
+
 const repo = z.strictObject({
   branch: branch.optional().describe('Branch name template for this repo'),
   setup: z
@@ -324,6 +402,10 @@ export const configSchema = z
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
     skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
+    mcp: z
+      .record(z.string(), mcpServer)
+      .default({})
+      .describe('MCP servers a rule or step names in its mcp'),
     queue: z
       .array(rule)
       .optional()
@@ -359,6 +441,13 @@ export const configSchema = z
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)
+    for (const name of Object.keys(cfg.mcp))
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['mcp', name],
+          message: 'expected a lowercase name like sentry',
+        })
     const sourceIds = Object.keys(cfg.sources)
     providerIds.forEach((id, i) => {
       if (providerIds.indexOf(id) !== i)
@@ -435,6 +524,13 @@ export const configSchema = z
               code: 'custom',
               path: [...stepAt, 'provider'],
               message: `provider "${p}" is not configured`,
+            })
+        for (const name of s.mcp ?? [])
+          if (!Object.hasOwn(cfg.mcp, name))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...stepAt, 'mcp'],
+              message: `MCP server "${name}" is not configured`,
             })
         for (const p of Object.keys(s.model ?? {}))
           if (!providerIds.includes(p))

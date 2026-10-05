@@ -167,6 +167,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       notify,
       after_unit,
       repos,
+      mcp,
     } = await loadConfig(path)
     const used = picked.flatMap((p) => providers[p.id] ?? [])
     const secrets = new Set([
@@ -176,6 +177,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       ...(notify?.secrets ?? []),
       ...(after_unit?.secrets ?? []),
       ...Object.values(repos).flatMap((r) => r.secrets),
+      ...Object.values(mcp).flatMap((s) => s.secrets),
     ])
     await mkdir(dirname(file), { recursive: true })
     await writeFile(

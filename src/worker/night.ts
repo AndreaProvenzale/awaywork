@@ -8,7 +8,16 @@ import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
 import type { NightReport, UnitResult } from '../core/report.js'
-import type { Condition, Ctx, Forge, Provider, Quota, Source, Unit } from '../core/types.js'
+import type {
+  Condition,
+  Ctx,
+  Forge,
+  McpServer,
+  Provider,
+  Quota,
+  Source,
+  Unit,
+} from '../core/types.js'
 import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
 import { runWorker, type WorkerOptions } from './run.js'
@@ -84,6 +93,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...(n.config.notify?.secrets ?? []),
     ...(n.config.after_unit?.secrets ?? []),
     ...Object.values(n.config.repos).flatMap((r) => r.secrets),
+    ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
   ]
 
   // Tonight's draft PRs by repo and branch, the branch on top of each repo's stack, and the PR branches pushed onto.
@@ -444,7 +454,18 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         }
       }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
-      const withheld = secrets.filter((name) => !provider.secrets.includes(name))
+      const named = unit.rule.mcp ?? []
+      if (named.length > 0 && unit.foreign)
+        log(`mcp: ${named.join(', ')} not started on someone else's PR`)
+      const mcp: Record<string, McpServer> = {}
+      for (const name of unit.foreign ? [] : named) {
+        const server = n.config.mcp[name] as McpServer
+        const unset = server.secrets.filter((secret) => !n.ctx.env[secret])
+        if (unset.length > 0) log(`mcp: ${name} not started, unset: ${unset.join(', ')}`)
+        else mcp[name] = server
+      }
+      const given = [...provider.secrets, ...Object.values(mcp).flatMap((s) => s.secrets)]
+      const withheld = secrets.filter((name) => !given.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
       const config = entry?.config
       const job = {
@@ -457,6 +478,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         config,
         configDir: n.configDir,
         plugin,
+        mcp,
       }
       start = await head(dir)
       const worker = await runWorker(provider, job, a, {

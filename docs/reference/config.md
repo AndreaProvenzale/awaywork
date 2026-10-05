@@ -31,6 +31,7 @@ with:
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit |
+| `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Run after each night with the morning report; a failure is only logged |
 | `after_unit` | object |  | Run after each unit, once its result is final; a failure is only logged |
@@ -201,6 +202,18 @@ A custom source: any command that prints your open items as JSON.
 | `instructions` | string |  | Instruction file for units in this repo |
 | `network` | boolean |  | Network for the worker's commands; default on |
 
+## `mcp.<key>`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` | string |  | Command that starts a stdio server |
+| `args` | string[] |  | The command's arguments |
+| `env` | map |  | The server's env vars, besides its secrets; plain values |
+| `url` | string |  | URL of an HTTP server |
+| `headers` | map |  | HTTP headers; a value may be ${NAME}, or Bearer ${NAME} for Authorization |
+| `secrets` | string[] | `[]` | Env vars the server reads, in its env under their own names or in headers; given only to units whose rule names it, listed in Actions |
+| `tools` | string[] |  | Tools the worker may call; default all the server's |
+
 ## `queue[]`
 
 First matching rule wins; top = highest priority.
@@ -213,6 +226,7 @@ First matching rule wins; top = highest priority.
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
+| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
@@ -274,6 +288,7 @@ Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker |
+| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
