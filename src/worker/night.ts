@@ -428,8 +428,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
         const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
         const met = await factsFor(when, unit, dir, verdict, log, logFile)
-        // A check stopped before it exited says nothing: skip the step without passing over it.
-        if (met.check?.stopped) {
+        // A check stopped or timed out before it exited says nothing: skip the step without passing over it.
+        if (met.check?.stopped || met.check?.timedOut) {
           const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
           Object.assign(result, { status: 'skipped', reason })
           routed[id] = (routed[id] ?? 1) - 1
@@ -649,6 +649,8 @@ interface Check {
   failed?: string
   /** Cut short by Ctrl-C or `night.end`: the condition is unknown, not false. */
   stopped?: true
+  /** Hit the time limit: a `when` can't tell it from a negated check that passed, so it isn't false either. */
+  timedOut?: true
   /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
   refused?: true
 }

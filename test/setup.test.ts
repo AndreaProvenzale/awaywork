@@ -1,8 +1,8 @@
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { runSetup } from '../src/worker/setup.js'
+import { describe, expect, it, vi } from 'vitest'
+import { runCommand, runSetup } from '../src/worker/setup.js'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
 const alive = (pid: number) => {
@@ -55,5 +55,20 @@ describe('runSetup', () => {
     )
     expect(lines).toEqual(['setup: token ***'])
     expect(failed).toMatch(/\ntoken \*\*\*$/)
+  })
+})
+
+describe('runCommand', () => {
+  it('marks a command that hit the time limit, not one stopped by the night window', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'nightshift-command-'))
+    const real = AbortSignal.timeout.bind(AbortSignal)
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(200))
+    try {
+      const result = await runCommand('sleep 30', dir, env, { secrets: [] })
+      expect(result).toMatchObject({ failed: 'timed out after 15 min', timedOut: true })
+      expect(result.stopped).toBeUndefined()
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
