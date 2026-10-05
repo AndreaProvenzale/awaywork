@@ -1290,6 +1290,11 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
   forge.heads['acme/api:night/acme-api-1-2'] = [
     { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(1)]) },
   ]
+  forge.branches.add('acme/api:night/acme-api-11')
+  forge.heads['acme/api:night/acme-api-11'] = [
+    { url: 'https://github.com/acme/api/pull/11', body: footer('r0', [issue(11)]), merged: true },
+    { url: 'https://github.com/acme/api/pull/12', body: footer('r0', [issue(11)]) },
+  ]
   forge.branches.add('acme/api:night/acme-api-9')
   forge.heads['acme/api:night/acme-api-9'] = [
     { url: 'https://github.com/acme/api/pull/10', body: footer('r0', [issue(9)]), merged: true },
@@ -1299,7 +1304,7 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
   )
   const plan = planNight({
     config,
-    items: [issue(1), issue(3), issue(5), issue(7), issue(9)],
+    items: [issue(1), issue(3), issue(5), issue(7), issue(11), issue(9)],
     allowances: { claude: allowance(config.budget, null, 0) },
     skills: { builtin: builtinSkills },
   })
@@ -1333,6 +1338,11 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
       'night/acme-api-5 exists on acme/api without a PR; delete it to run again',
     ],
     ['acme-api-7', 'skipped', "couldn't check night/acme-api-7 on acme/api: rate limited"],
+    [
+      'acme-api-11',
+      'skipped',
+      'night-shift tried this in https://github.com/acme/api/pull/12; delete night/acme-api-11 to run it again',
+    ],
   ])
 })
 

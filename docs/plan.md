@@ -155,7 +155,7 @@ interface Forge {
   clone(repo, branch, dir): Promise<void>        // credentials stripped afterwards
   prsFor(item): Promise<PrRef[]>                 // fallback link: ours by footer items, else key in branch/title or link line
   branchExists(repo, name): Promise<boolean>
-  prsOn(repo, branch): Promise<{ url; body }[]>  // PRs on that head in any state
+  prsOn(repo, branch): Promise<{ url; body; merged }[]>  // PRs on that head in any state
   push(dir, branch, opts): Promise<void>         // only while the branch is absent on the remote (a lease)
   fastForward(dir, branch, from, opts): Promise<void>   // only descendants of `from`, while the remote head is `from` (a lease)
   draftPr(repo, head, base, bodyFile, runId, items): Promise<string>   // title = the body's first line; adds the footer
