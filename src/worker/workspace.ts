@@ -212,6 +212,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
       await rm(target, { recursive: true, force: true })
       await cp(findSkill(name, roots), target, { recursive: true })
       w.ctx.log(`skill ${name}: restored night-shift's copy of ${skillsDir}/${name}`)
+      if (w.unit.foreign) replaced.push(target)
       continue
     }
     if (existsSync(target)) {
