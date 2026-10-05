@@ -1207,10 +1207,6 @@ it("suffixes a taken branch, even one without a PR that night-shift didn't push,
     { url: 'https://github.com/acme/api/pull/9', body: 'Mine.' },
   ]
   const other = { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(2)]) }
-  forge.branches.add('acme/api:night/acme-api-9')
-  forge.heads['acme/api:night/acme-api-9'] = [
-    { url: 'https://github.com/acme/api/pull/10', body: footer('r0', [issue(9)]), merged: true },
-  ]
   forge.heads['acme/api:night/acme-api-1-2'] = [other]
   forge.branches.add('acme/api:night/acme-api-1-3')
   forge.tips['acme/api:night/acme-api-1-3'] = 'Work in progress'
@@ -1294,6 +1290,10 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
   forge.heads['acme/api:night/acme-api-1-2'] = [
     { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(1)]) },
   ]
+  forge.branches.add('acme/api:night/acme-api-9')
+  forge.heads['acme/api:night/acme-api-9'] = [
+    { url: 'https://github.com/acme/api/pull/10', body: footer('r0', [issue(9)]), merged: true },
+  ]
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
   )
@@ -1316,10 +1316,11 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
     ctx: { env: {}, log: () => {} },
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
-  const [merged, ...skipped] = [...report.results].reverse()
+  const merged = report.results.at(-1)
   expect(merged?.planned.unit.id).toBe('acme-api-9')
-  expect(merged?.reason ?? '').not.toContain('tried this')
-  expect(skipped.reverse().map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+  expect(merged?.planned.unit.branch).toBe('night/acme-api-9-2')
+  expect(merged?.status).not.toBe('skipped')
+  expect(report.results.slice(0, -1).map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     [
       'acme-api-1',
       'skipped',

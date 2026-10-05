@@ -363,7 +363,12 @@ describe('github forge', () => {
 
   it('reads PRs on a branch in any state, not the ones from forks', async () => {
     const nodes = [
-      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', merged: true, isCrossRepository: false },
+      {
+        url: 'https://github.com/acme/api/pull/7',
+        body: 'Closed.',
+        merged: true,
+        isCrossRepository: false,
+      },
       { url: 'https://github.com/acme/api/pull/8', body: 'Fork.', isCrossRepository: true },
     ]
     const run = recorded([

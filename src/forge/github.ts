@@ -152,7 +152,9 @@ export function githubForge(run: Exec = exec): Forge {
       const [owner = '', name = ''] = repo.split('/')
       const { repository } = await graphql<{
         repository: {
-          pullRequests: { nodes: { url: string; body: string; merged: boolean; isCrossRepository: boolean }[] }
+          pullRequests: {
+            nodes: { url: string; body: string; merged: boolean; isCrossRepository: boolean }[]
+          }
         }
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
