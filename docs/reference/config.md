@@ -198,6 +198,7 @@ A custom source: any command that prints your open items as JSON.
 | `branch` | string |  | Branch name template for this repo |
 | `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
+| `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `network` | boolean |  | Network for the worker's commands; default on |
@@ -235,6 +236,7 @@ First matching rule wins; top = highest priority.
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
+| `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
 ## `queue[].where`
 

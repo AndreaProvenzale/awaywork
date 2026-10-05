@@ -241,6 +241,16 @@ a stacked draft PR's, or a night-shift PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
+`verify` runs in the clone after the agent, outside the model, before
+the work is published; set it on a repo or a rule (the rule wins and
+covers its `then` steps). Use it for lint, format or the repo's tests.
+A failure doesn't stop the publish: the PR body or push report gets the
+tail of its output. It runs once per commit, with none of the secrets,
+and not on a PR by an untrusted author or with `network: false`, where
+it is reported as not run. An empty `verify: ""` on a rule turns the
+repo's off. A `report` delivery has nothing to publish and
+skips it.
+
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
