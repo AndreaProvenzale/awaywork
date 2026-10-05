@@ -60,8 +60,7 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
- * A draft PR stacks on tonight's draft PR it follows, on the night-shift PR a rule took up,
- * or on its repo's last one when it would start from the default branch.
+ * A draft PR stacks on tonight's draft PR it follows, or on the night-shift PR a rule took up.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -96,9 +95,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
   ]
 
-  // Tonight's draft PRs by repo and branch, the branch on top of each repo's stack, and the PR branches pushed onto.
+  // Tonight's draft PRs by repo and branch, and the PR branches pushed onto.
   const opened: Record<string, string> = {}
-  const tips: Record<string, string> = {}
   const pushed = new Set<string>()
   const hosts = new Set(planned.flatMap((p) => (p.loop ? [p.loop.host] : [])))
   // The base each unit ran on: a step after one that opened no PR runs there too.
@@ -211,7 +209,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
         if (published.kind === 'pr') {
           opened[`${unit.repo} ${unit.branch}`] = published.url
-          if (loop.stacks) tips[unit.repo] = unit.branch
         }
         if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
       }
@@ -292,13 +289,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const { repo } = p.unit
     // A loop publishes its host as a draft PR, unless the host pushes onto your PR.
     const deliver = hosting && p.unit.deliver !== 'push' ? 'draft_pr' : p.unit.deliver
-    const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
-    const onto = stacks ? (tips[repo] ?? '') : base
-    const tonight = opened[`${repo} ${onto}`]
+    const tonight = opened[`${repo} ${base}`]
     // A night-shift PR a rule took up, when this unit works on its branch.
     const pickedUp = p.unit.items
       .flatMap((i) => i.linkedPrs)
-      .find((pr) => pr.ours && pr.branch === base)
+      .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)
     const stackedOn = deliver === 'draft_pr' ? (tonight ?? pickedUp?.url) : undefined
     const unit = round
       ? {
@@ -307,12 +302,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           branch: round.unit.branch,
           stackedOn: round.unit.stackedOn,
         }
-      : { ...p.unit, base: onto, stackedOn }
+      : { ...p.unit, base, stackedOn }
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
       ? (starts[round.unit.id] ?? '')
-      : (stacks || pickedUp) && !openedPr(after)
-        ? onto
+      : pickedUp && !openedPr(after)
+        ? base
         : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
@@ -510,7 +505,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           dir,
           start: cloned,
           unitDir,
-          stacks,
           skills: p.loop.skills,
           rounds: 0,
         }
@@ -547,7 +541,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           dir,
           start: cloned,
           unitDir,
-          stacks,
           skills,
           rounds: 0,
           last: result,
@@ -556,7 +549,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
         if (result.outcome?.kind === 'pr') {
           opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
-          if (stacks) tips[unit.repo] = unit.branch
         }
       }
       if (result.outcome?.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
@@ -629,7 +621,6 @@ interface OpenLoop {
   /** The commit the clone held before its host ran; the loop publishes what's after it. */
   start: string
   unitDir: string
-  stacks: boolean
   skills: string[]
   rounds: number
   /** The unit the next round follows. */

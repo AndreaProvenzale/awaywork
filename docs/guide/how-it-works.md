@@ -110,10 +110,12 @@ line in its body.
   [loop](./configuration.md#loops) repeats its steps in one clone and
   publishes once, when it ends. A step with a
   [`when`](./configuration.md#when) runs only when its condition holds.
-- A draft PR that would start from the default branch stacks on the last
-  one published on its repo that night instead, so a night's PRs don't
-  conflict with each other. A chain counts as one: the next unit stacks
-  on its last draft PR. The body names the PR to merge first.
+- A draft PR stacks only on a PR it builds on: the draft PR a `then`
+  step follows, or the night-shift PR a rule took up. Its body names the
+  PR to merge first, and on a repo with GitHub's
+  [stacked PRs](https://gh.io/stacks) night-shift links the two into a
+  stack. Every other draft PR starts from the default branch, so you can
+  merge, park or close each one on its own.
 - Optional [caps](./configuration.md#night-and-budget) limit the units
   per night, per repo and per rule.
 
@@ -142,8 +144,8 @@ unit goes to the next provider.
 ## The worker
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
-draft PR a `then` step follows, else your PR's branch, else tonight's
-last draft PR on the repo, else the default branch. A branch name
+draft PR a `then` step follows, else your PR's branch, else the
+default branch. A branch name
 that's taken on the remote gets a `-2` to `-10` suffix, unless
 night-shift already tried there ([Branch names](./configuration.md#branch-names)).
 A loop's rounds reuse the clone of the unit the loop started from.

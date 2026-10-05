@@ -254,10 +254,9 @@ Semantics, fixed so every milestone agrees:
   after the rule's, id `<unit>-<skill slug>`, that runs only when the one
   before delivered and gets its `out/` in `.nightshift/context/previous/`.
   After a draft PR the step's base is that PR's branch, so its own draft
-  PR stacks on it; after a report the base is unchanged, except that a
-  draft PR step off the default branch stacks at run time on the repo's
-  last stacked draft PR that night. A step's branch gets `-<skill>`
-  appended when an earlier draft PR in the chain renders the same name.
+  PR stacks on it; after a report the base is unchanged. A step's
+  branch gets `-<skill>` appended when an earlier draft PR in the chain
+  renders the same name.
   A skill runs at most once outside loops, and once across the chain's loops.
 - **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
   steps round after round, planned as units `<unit>-<skill>-<round>` up
@@ -379,7 +378,8 @@ Semantics, fixed so every milestone agrees:
 
 - `draft_pr` (default): push the unit's new branch and open a draft PR,
   into the developer's branch when the unit has one, else into the
-  default branch.
+  default branch. A draft PR stacked on a night-shift PR joins its
+  GitHub stack (Stacks API) where the repo has stacked PRs.
 - `report`: nothing is pushed; the output goes into the morning report.
 - `push`: commit onto the developer's own branch, only when a rule opts
   in (never a skill's default), the unit's base is an open PR the

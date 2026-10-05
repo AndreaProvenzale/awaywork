@@ -670,7 +670,7 @@ const issue = (n: number) =>
     fields: { repo: 'acme/api' },
   })
 
-it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
+it("starts each of a repo's draft PRs from the default branch, not on tonight's last one", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
@@ -712,7 +712,6 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const first = 'https://example.com/acme/api/pull/night/acme-api-1'
   expect(report.results.map((u) => u.outcome)).toContainEqual({
     kind: 'pr',
     url: 'https://example.com/acme/api/pull/night/acme-api-3',
@@ -721,23 +720,20 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['night/acme-api-1', ''],
     ['night/acme-api-4', 'feature-4'],
-    ['night/acme-api-3', 'night/acme-api-1'],
+    ['night/acme-api-3', ''],
   ])
-  expect(opened[0]?.body).not.toContain('Stacked on')
-  expect(opened[2]?.body).toBe(
-    `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
-  )
-  expect(prompts[0]).toContain('cut from the default branch.')
-  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift PR ${first}`
-  expect([prompts[1], prompts[3]]).toEqual([
-    expect.stringContaining(stacked),
-    expect.stringContaining(stacked),
+  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
+  expect([prompts[0], prompts[1], prompts[3]]).toEqual([
+    expect.stringContaining('cut from the default branch.'),
+    expect.stringContaining('cut from the default branch.'),
+    expect.stringContaining('cut from the default branch.'),
   ])
+  expect(forge.stacked).toEqual([])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
-it("stacks a chain's draft PRs on each other, and the repo's next unit on the chain's last", async () => {
+it("stacks a chain's draft PRs on each other, and starts the repo's next unit from the default branch", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-chain-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
@@ -770,16 +766,18 @@ queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['night/acme-api-1', ''],
     ['night/acme-api-1-review', 'night/acme-api-1'],
-    ['night/acme-api-2', 'night/acme-api-1-review'],
+    ['night/acme-api-2', ''],
     ['night/acme-api-2-review', 'night/acme-api-2'],
   ])
   expect(opened[1]?.body).toContain(`Stacked on ${url('night/acme-api-1')}: merge that first.`)
-  expect(opened[2]?.body).toContain(
-    `Stacked on ${url('night/acme-api-1-review')}: merge that first.`,
-  )
+  expect(opened[2]?.body).not.toContain('Stacked on')
+  expect(forge.stacked).toEqual([
+    [url('night/acme-api-1'), url('night/acme-api-1-review')],
+    [url('night/acme-api-2'), url('night/acme-api-2-review')],
+  ])
 })
 
-it("keeps a chain on your own PR off the stack, and stacks the repo's next units as if it weren't there", async () => {
+it("stacks a chain on your own PR, and starts the repo's other units from the default branch", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-past-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
@@ -815,10 +813,10 @@ queue:
     ['night/acme-api-4', 'feature-4'],
     ['night/acme-api-4-review', 'night/acme-api-4'],
     ['night/acme-api-1', ''],
-    ['night/acme-api-3', 'night/acme-api-1'],
+    ['night/acme-api-3', ''],
   ])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
 it('pushes onto your own PR, and runs what follows on it without setup secrets', async () => {
@@ -1061,7 +1059,7 @@ repos:
   const setups = await Promise.all(
     ids.map((id) => readFile(join(root, 'run/units', id, 'setup.txt'), 'utf8')),
   )
-  expect(setups).toEqual(['npm\n', '\n', '\n', '\n'])
+  expect(setups).toEqual(['npm\n', '\n', 'npm\n', '\n'])
 })
 
 /** Commits and keeps a PR body current; reviews and QA write a report and a verdict from `verdicts`. */
@@ -1718,6 +1716,7 @@ repos:
       body: expect.stringContaining(`Stacked on ${link.url}: merge that first.`),
     },
   ])
+  expect(forge.stacked).toEqual([[link.url, 'https://example.com/acme/api/pull/night/acme-api-9']])
   expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
 })
 
@@ -2480,7 +2479,7 @@ it("fences a failed check's output in the PR body past any backticks in it", asy
   expect(opened[0]?.body).toContain("`````\n$ echo '````'; false\n````\nfailed:")
 })
 
-it('matches changed against the draft PR a chain stacked on, not the default branch', async () => {
+it("matches changed against the chain's own commits, not another chain's", async () => {
   const { report } = await loopNight(
     `queue:
   - skill: implement

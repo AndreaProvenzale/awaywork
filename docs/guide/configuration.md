@@ -360,10 +360,8 @@ queue:
   and `skills` still apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it: its body names that PR to merge
-  first. After a report, it starts from the same base, except that a
-  draft PR it would open off the default branch stacks on the repo's
-  last one that night, as any unit's does. After a push, it starts from
-  your PR's branch, pushed commits included.
+  first. After a report, it starts from the same base. After a push, it
+  starts from your PR's branch, pushed commits included.
 - The step finds what the one before delivered in
   `.nightshift/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
   or both `report.md` and `diff.patch` after a push.
@@ -488,8 +486,7 @@ queue:
   `.nightshift/context/previous/when.log`.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
-  default branch, the draft PR it stacked on, or the night-shift PR a
-  rule took up. Globs are git's, from the repo root, with no leading
+  default branch or the night-shift PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - Every key set must hold. `plan` shows each step's `when`, and the

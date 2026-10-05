@@ -173,6 +173,11 @@ what your user can read.
   a PR night-shift opened: earlier the same night, or one a rule naming
   `ours` took up again.
   It never merges, approves, requests reviewers or comments.
+- A draft PR stacked on a night-shift PR joins that PR's GitHub stack,
+  or starts one with it, only while that PR tops its stack or has none.
+  Linking edits neither PR, but GitHub then merges a stack bottom-up:
+  merging a PR merges the ones below it too, and GitHub rebases the
+  ones above after a merge.
 - Only when the agent wrote a PR body, or its report for `push`. A run
   killed before that publishes nothing.
 - Publishing fetches the clone's HEAD into a repo night-shift creates

@@ -69,6 +69,11 @@ const tipQuery = `query($owner: String!, $name: String!, $ref: String!) {
   }
 }`
 
+type Stack = {
+  number: number
+  pull_requests: { number: number }[]
+}
+
 const remote = (repo: string) => `https://github.com/${repo}.git`
 
 /**
@@ -215,6 +220,22 @@ export function githubForge(run: Exec = exec): Forge {
       const args = ['pr', 'create', '-R', repo, '--draft', '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
       return out.trim().split('\n').at(-1) ?? ''
+    },
+
+    /** Starts a stack of the two, or adds `pr` to `below`'s while `below` is its top; a stack can't fork. */
+    async stack(repo, below, pr) {
+      const number = (url: string) => Number(url.split('/').at(-1))
+      const [lower, upper] = [number(below), number(pr)]
+      const stacks: Stack[] = JSON.parse(
+        await run('gh', ['api', `repos/${repo}/stacks?pull_request=${lower}`]),
+      )
+      const [found] = stacks
+      if (found && found.pull_requests.at(-1)?.number !== lower) return
+      const [path, prs] = found
+        ? [`repos/${repo}/stacks/${found.number}/add`, [upper]]
+        : [`repos/${repo}/stacks`, [lower, upper]]
+      const fields = prs.flatMap((n) => ['-F', `pull_requests[]=${n}`])
+      await run('gh', ['api', '--method', 'POST', path, ...fields])
     },
   }
   return forge
