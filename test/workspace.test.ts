@@ -11,7 +11,7 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace, writeOutput } from '../src/worker/workspace.js'
+import { prepareWorkspace, readOutput, writeOutput } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -118,6 +118,54 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       'REPO NOTE',
     ])
     expect(await readFile(join(dir, '.nightshift/prompt.md'), 'utf8')).toBe(prompt)
+  })
+
+  it('still reads a symlinked or hard-linked SKILL.md from the user skills dir', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+    await mkdir(join(root, 'skills/linked'), { recursive: true })
+    await writeFile(join(root, 'real.md'), '---\nname: linked\n---\nFollow the link.')
+    await symlink(join(root, 'real.md'), join(root, 'skills/linked/SKILL.md'))
+    await mkdir(join(root, 'skills/hard'), { recursive: true })
+    await link(join(root, 'real.md'), join(root, 'skills/hard/SKILL.md'))
+    for (const skill of ['linked', 'hard']) {
+      const prompt = await prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign: false,
+          network: true,
+          untrusted: false,
+          branch: 'night/acme-api-1',
+          rule: { skill, provider: [], skills: [], instructions: [] },
+          skill,
+          skills: [],
+          providers: ['claude'],
+          instructions: [],
+          deliver: 'draft_pr',
+        },
+        dir: join(root, `clone-${skill}`),
+        plugin: join(root, `plugin-${skill}`),
+        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        configDir: root,
+        forge: {
+          ...fakeForge(),
+          async clone(_repo: string, _branch: string, into: string) {
+            await mkdir(into)
+            await execa('git', ['init', '-q', '-b', 'main', into])
+            await writeFile(join(into, 'README.md'), 'hi')
+            await git(into, 'add', '.')
+            await git(into, 'commit', '-qm', 'init')
+          },
+        },
+        sources: { fake: fakeSource() as Source },
+        provider: claude,
+        ctx: { env: {}, log: () => {} },
+        skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
+      })
+      expect(prompt).toContain('Follow the link.')
+    }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
@@ -295,5 +343,15 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await writeOutput(join(dir, 'plain'), 'one')
     await writeOutput(join(dir, 'plain'), 'two')
     expect(await readFile(join(dir, 'plain'), 'utf8')).toBe('two')
+  })
+
+  it('reads nothing from a symlink or a hard link', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-out-'))
+    const outside = join(dir, 'outside')
+    await writeFile(outside, 'secret')
+    await symlink(outside, join(dir, 'sym'))
+    await link(outside, join(dir, 'hard'))
+    expect(await readOutput(join(dir, 'sym'))).toBe('')
+    expect(await readOutput(join(dir, 'hard'))).toBe('')
   })
 })
