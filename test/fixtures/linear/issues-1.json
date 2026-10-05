@@ -16,7 +16,14 @@
             "state": { "name": "QA" },
             "team": { "key": "ENG" },
             "project": { "name": "Rate limits" },
-            "labels": { "nodes": [{ "name": "backend" }, { "name": "bug" }] }
+            "labels": { "nodes": [{ "name": "backend" }, { "name": "bug" }] },
+            "inverseRelations": {
+              "nodes": [
+                { "type": "related", "issue": { "state": { "type": "started" } } },
+                { "type": "blocks", "issue": { "state": { "type": "completed" } } },
+                { "type": "blocks", "issue": { "state": { "type": "started" } } }
+              ]
+            }
           }
         ],
         "pageInfo": { "hasNextPage": true, "endCursor": "cursor-1" }

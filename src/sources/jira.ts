@@ -57,6 +57,10 @@ interface Issue {
     assignee: { displayName: string } | null
     created: string
     updated: string
+    issuelinks?: {
+      type: { name: string }
+      inwardIssue?: { fields: { status: { statusCategory: { key: string } } } }
+    }[]
     [id: string]: unknown
   }
 }
@@ -129,6 +133,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       status: z.string(),
       labels: z.string(),
       priority: z.string(),
+      blocked: z.boolean(),
       issuetype: z.string(),
       repo: z.string(),
       created: z.iso.datetime(),
@@ -279,6 +284,13 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
       labels: f.labels,
       ...(f.priority && { priority: f.priority.name }),
       issuetype: f.issuetype.name,
+      // On a Blocks link the inward issue is the one blocking this issue.
+      blocked: (f.issuelinks ?? []).some(
+        (l) =>
+          l.type.name === 'Blocks' &&
+          l.inwardIssue &&
+          l.inwardIssue.fields.status.statusCategory.key !== 'done',
+      ),
       ...(repo && { repo }),
       created: iso(f.created),
       updated: iso(f.updated),

@@ -168,6 +168,10 @@ YouTrack, Shortcut, Plane.
   `Retry-After`, as for Asana. Key is the issue key (`ENG-12`).
 - **PR links.** `dev-status` stays unused: night-shift links issues
   through the forge by key, which Jira's own branch names carry [I].
+- **Blocked.** `blocked` is true when `fields.issuelinks` holds a link
+  of type `Blocks` with an `inwardIssue` (the issue blocking this one)
+  whose `status.statusCategory.key` is not `done` [I, not run against the
+  live API]. A site that renamed the `Blocks` link type is not seen.
 - **Repo for an issue.** `project_repos` maps a project key to `owner/repo`.
 
 ### Asana
@@ -196,6 +200,10 @@ YouTrack, Shortcut, Plane.
 - Rate limits: 150/min free, 1,500 paid, 50 concurrent `GET`s, a lower
   60/min on search; every limiter answers `429` with `Retry-After` [V]
   https://developers.asana.com/docs/rate-limits
+- **Blocked.** `GET /tasks/{gid}/dependencies` lists the tasks this one
+  waits on; `blocked` is true when one has `completed: false` [I, not
+  run against the live API]. One extra call per task; when it fails, as
+  it may on a plan without dependencies, the task has no `blocked`.
 - **PR links.** `GET /attachments?parent=<task>` lists a task's
   attachments, including `external` ones with a `view_url` [V]
   https://developers.asana.com/reference/getattachmentsforobject.
@@ -231,6 +239,12 @@ YouTrack, Shortcut, Plane.
 - **PR links.** Not read from `attachments` until the claim below is
   verified: night-shift links issues through the forge by key, which
   matches Linear's own branch names (`dev/eng-12-title`) [I].
+- **Blocked.** `blocked` is true when `inverseRelations` holds a
+  `blocks` relation whose issue's `state.type` is not `completed` or
+  `canceled` [I, not run against the live API]. Only the first 10
+  relations are read: at 50, the issues query would pass the
+  10,000-point complexity limit [V]
+  https://linear.app/developers/rate-limiting.
 - **Repo for an issue.** `team_repos` maps a team key to `owner/repo`.
 
 ### GitHub

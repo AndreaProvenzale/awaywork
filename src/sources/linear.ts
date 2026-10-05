@@ -30,6 +30,7 @@ const issuesQuery = `query Issues($after: String) {
         team { key }
         project { name }
         labels { nodes { name } }
+        inverseRelations(first: 10) { nodes { type issue { state { type } } } }
       }
       pageInfo { hasNextPage endCursor }
     }
@@ -66,6 +67,7 @@ interface Issue {
   team: { key: string }
   project: { name: string } | null
   labels: { nodes: { name: string }[] }
+  inverseRelations: { nodes: { type: string; issue: { state: { type: string } } }[] }
 }
 interface Comment {
   body: string
@@ -120,6 +122,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
       state: z.string(),
       labels: z.string(),
       priority: z.string(),
+      blocked: z.boolean(),
       project: z.string(),
       repo: z.string(),
       created: z.iso.datetime(),
@@ -217,6 +220,9 @@ function toItem(issue: Issue, comments: Comment[], teamRepos: Config['team_repos
       state: issue.state.name,
       labels,
       priority: issue.priorityLabel,
+      blocked: issue.inverseRelations.nodes.some(
+        (r) => r.type === 'blocks' && !['completed', 'canceled'].includes(r.issue.state.type),
+      ),
       ...(issue.project && { project: issue.project.name }),
       ...(repo && { repo }),
       created: issue.createdAt,

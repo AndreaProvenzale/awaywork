@@ -107,6 +107,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     fields: {
       project: z.string(),
       section: z.string(),
+      blocked: z.boolean(),
       repo: z.string(),
       tags: z.string(),
       created: z.iso.datetime(),
@@ -138,7 +139,16 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           { resource_subtype: 'comment_added', opt_fields: 'created_at,created_by.name,text' },
           token,
         )
-        items.push(toItem(task, stories, cfg.project_repos))
+        // Dependencies are a paid Asana feature: without them the task is still listed, just not `blocked`.
+        const dependencies = await getAll<{ completed: boolean }>(
+          `/tasks/${task.gid}/dependencies`,
+          { opt_fields: 'completed' },
+          token,
+        ).catch((e: Error) => {
+          ctx.log(`asana: couldn't read the dependencies of ${task.gid}: ${e.message}`)
+          return undefined
+        })
+        items.push(toItem(task, stories, dependencies, cfg.project_repos))
       }
       return items
     },
@@ -219,7 +229,12 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
   return token
 }
 
-function toItem(task: Task, stories: Story[], projectRepos: Config['project_repos'] = {}): Item {
+function toItem(
+  task: Task,
+  stories: Story[],
+  dependencies: { completed: boolean }[] | undefined,
+  projectRepos: Config['project_repos'] = {},
+): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
   const tags = task.tags.map((t) => t.name)
   const custom = task.custom_fields.flatMap((f) => {
@@ -249,6 +264,7 @@ function toItem(task: Task, stories: Story[], projectRepos: Config['project_repo
     fields: {
       project: task.memberships.map((m) => m.project.name),
       section: sections,
+      ...(dependencies && { blocked: dependencies.some((d) => !d.completed) }),
       ...(repo && { repo }),
       tags,
       ...(task.created_at && { created: task.created_at }),

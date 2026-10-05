@@ -41,6 +41,7 @@ describe('asana source', () => {
     expect(eng12?.fields).toEqual({
       project: ['Backend'],
       section: ['QA'],
+      blocked: true,
       tags: ['backend'],
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
@@ -52,6 +53,7 @@ describe('asana source', () => {
       'fields.Launch': '2026-02-01',
     })
     expect(eng14?.fields).toMatchObject({
+      blocked: false,
       project: ['Backend', 'Roadmap'],
       section: ['Current sprint', 'Q3'],
       tags: ['backend', 'billing'],
@@ -95,6 +97,20 @@ describe('asana source', () => {
     await expect(failing.items(cfg, ctx)).rejects.toThrow('GET /tasks: 401 Not Authorized')
   })
 
+  it('lists a task without `blocked` when its dependencies fail', async () => {
+    const premium = JSON.stringify({ errors: [{ message: 'Payment Required' }] })
+    const free = asanaSource(
+      recordedFetch([[/\/dependencies\?/, { status: 402, body: premium }], ...asanaRoutes()]),
+    )
+    log.length = 0
+    const found = await free.items(cfg, ctx)
+    expect(found).toHaveLength(3)
+    expect(found[0]?.fields).not.toHaveProperty('blocked')
+    expect(log[0]).toBe(
+      "asana: couldn't read the dependencies of 1201: GET /tasks/1201/dependencies: 402 Payment Required",
+    )
+  })
+
   it('waits out a 429 as Retry-After says', async () => {
     const replay = recordedFetch(asanaRoutes())
     let calls = 0
@@ -103,7 +119,7 @@ describe('asana source', () => {
         ? new Response('', { status: 429, headers: { 'Retry-After': '0' } })
         : replay(input, init)
     expect(await asanaSource(limited).items(cfg, ctx)).toHaveLength(3)
-    expect(calls).toBe(6)
+    expect(calls).toBe(9)
   })
 
   it('prefetches task.md with fields and comments', async () => {

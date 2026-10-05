@@ -16,7 +16,13 @@
             "state": { "name": "Todo" },
             "team": { "key": "WEB" },
             "project": null,
-            "labels": { "nodes": [] }
+            "labels": { "nodes": [] },
+            "inverseRelations": {
+              "nodes": [
+                { "type": "related", "issue": { "state": { "type": "started" } } },
+                { "type": "blocks", "issue": { "state": { "type": "canceled" } } }
+              ]
+            }
           }
         ],
         "pageInfo": { "hasNextPage": false, "endCursor": "cursor-2" }

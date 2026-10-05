@@ -292,6 +292,7 @@ where:
   title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
   label: night-shift                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
+  blocked: false                    # Linear, Jira, Asana: no open blocker
   any:                              # at least one entry holds; each is a where, ANDed with the keys above
     - { label: urgent }
     - { checks: failing }

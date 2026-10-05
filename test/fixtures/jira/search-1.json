@@ -44,6 +44,14 @@
         "priority": { "name": "High" },
         "issuetype": { "name": "Bug" },
         "project": { "key": "ENG" },
+        "issuelinks": [
+          {
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "inwardIssue": {
+              "fields": { "status": { "statusCategory": { "key": "indeterminate" } } }
+            }
+          }
+        ],
         "assignee": { "displayName": "Dev" },
         "created": "2026-01-01T08:00:00.000+0000",
         "updated": "2026-01-03T09:30:00.000+0100",
