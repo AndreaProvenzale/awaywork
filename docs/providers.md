@@ -144,6 +144,23 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   [V] https://code.claude.com/docs/en/sandboxing Whether GitHub's
   `ubuntu-latest` runner has them is not checked, so offline there may
   fail to start [I].
+- MCP servers, checked on macOS with a stub API, a stdio echo server
+  and a streamable-HTTP one (2.1.289): `--mcp-config` takes the
+  `{"mcpServers":…}` JSON as a string. Its servers load under
+  `--setting-sources project,local`, and under `--setting-sources ''
+  --strict-mcp-config`, which still drops the clone's `.mcp.json`.
+  `${VAR}` expands from the binary's env in `env` and in `headers`
+  (`Bearer ${VAR}` reached the server). A stdio server inherits the
+  binary's whole env, so a secret meant for one server reaches every
+  server and the worker's Bash. `--allowedTools mcp__<server>` allows
+  all of a server's tools; `mcp__<server>__<tool>` allows just that one.
+  A tool outside the list is denied. In three of the first runs
+  `permissionMode` read `auto` in the `init` event, where a classifier
+  rules on unlisted tools, and `default` in every later one, with
+  identical flags. `--permission-mode dontAsk` denies unlisted tools in
+  every run and still runs the listed ones, so workers pin it. With
+  the offline sandbox, the stdio server fetched a local port and the
+  HTTP server was reached: neither is sandboxed. [V, tested]
 - Routines: cloud, cron (1 h minimum), API `/fire`, GitHub events; plan
   usage plus a daily run cap. [V] https://code.claude.com/docs/en/routines
 
@@ -209,6 +226,29 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   plugins) while auth still comes from `CODEX_HOME` [V, `--help`; tested];
   `--ephemeral` saves no session. A prompt argument plus piped stdin
   appends stdin, so the prompt goes in on stdin as `-`. [V, `--help`]
+- MCP servers (0.160.0, macOS, `codex exec` on a stub Responses API,
+  isolated `CODEX_HOME`, `env -i`):
+  - `-c mcp_servers.<name>.command|args|env|env_vars|url|bearer_token_env_var|http_headers|env_http_headers|enabled_tools`
+    registers a server under `--ignore-user-config`, and TOML arrays and
+    inline tables work through `-c`. A server gets only the variables
+    `env_vars` forwards, plus `HOME` and `PATH`.
+    `shell_environment_policy.exclude` hides those variables from the
+    model's shell while the server still gets them.
+  - `enabled_tools` drops the other tools from the request; a forced
+    call to one is refused.
+  - `exec` never prompts: a call that needs approval fails at once with
+    "MCP tool call requires approval, but approval policy is never".
+    Under `--sandbox danger-full-access` every tool runs. Under the
+    offline permission profile only tools annotated `readOnlyHint` run,
+    unless the server sets `default_tools_approval_mode="approve"`, so
+    workers set it.
+  - Under the offline profile the stdio server still fetched the network
+    and wrote outside the clone, and the HTTP server was reached.
+  - A server that fails to start or times out (default about 10 s) is
+    dropped silently, with exit 0, so workers set `startup_timeout_sec`
+    to 60.
+  - An `item.completed` of type `mcp_tool_call` carries `server`,
+    `tool`, `arguments`, `result`, `error` and `status`. [V, tested]
 - Skills: `.agents/skills` in every directory from the working directory
   up to the repo root [V] https://learn.chatgpt.com/docs/build-skills; a
   `SKILL.md` there was found and followed by a headless `exec`. [V, tested]

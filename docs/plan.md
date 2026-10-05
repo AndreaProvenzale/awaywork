@@ -16,9 +16,9 @@ The shape comes from `design.md`, the facts from `lessons.md`,
   remote is best effort (rotating `auth.json`).
 - **Customization:** which providers and sources to use, an ordered queue
   of rules that map items to skills, per-rule provider, extra skills,
-  instructions and delivery, the branch name template (global, per repo,
-  per rule), and quota allocation per provider.
-- **Out:** vendor cloud schedulers, MCP for workers, GitLab/Jira/Linear,
+  instructions, MCP servers and delivery, the branch name template
+  (global, per repo, per rule), and quota allocation per provider.
+- **Out:** vendor cloud schedulers, GitLab/Jira/Linear,
   web UI, delivery modes other than a draft PR or the report.
 
 Adding a provider, source or skill after v1 must be one file (or folder)

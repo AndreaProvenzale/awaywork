@@ -15,10 +15,12 @@ not asked of the model.
   similar variables removed and a `gh` config without a login.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your
-  `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets` and every
+  `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets`, every
+  MCP server's `secrets` and every
   other provider's (`CODEX_AUTH_JSON` for a
   Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
-  Codex reads `auth.json` and gets no secret. The rest of your
+  Codex reads `auth.json` and gets no secret. A unit also keeps the
+  secrets of the [MCP servers](#mcp-servers) its rule names. The rest of your
   environment stays so repo tooling runs, including any variable you
   added to the env file that nothing declares.
 - **Setup outside the agent.** A repo's `setup` runs before the agent
@@ -54,8 +56,8 @@ not asked of the model.
   is replaced with night-shift's, and the prompt says its `CLAUDE.md`,
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
-  skills), only night-shift's skills plugin and the `settings` file you
-  configured; Codex still loads `AGENTS.md` and its skills itself.
+  skills), only night-shift's skills plugin, the `settings` file you
+  configured and the MCP servers the rule names; Codex still loads `AGENTS.md` and its skills itself.
 - **Only trusted authors' code runs by default.** Reviewing a PR means
   running its tests, with your agent's login in the environment. The
   default `review` rule matches `trusted: true` only: PRs whose author
@@ -65,9 +67,39 @@ not asked of the model.
   config: `~/.claude` settings, hooks, MCP servers, `CLAUDE.md`,
   skills and auto-memory for Claude Code, `config.toml` for Codex. The
   repo's own config still applies. What you want workers to have, list
-  in the config: a Claude `settings` file, Codex `config` values and
-  top-level `skills` ([Configuration](./configuration.md#providers)).
+  in the config: a Claude `settings` file, Codex `config` values,
+  top-level `skills` ([Configuration](./configuration.md#providers)) and
+  [MCP servers](./configuration.md#mcp-servers).
   They are yours, so they apply on someone else's PR too.
+
+## MCP servers
+
+A rule's `mcp` gives its units your servers, and with them more reach,
+so the guide's advice is in three parts:
+
+- **A server's secret is one the agent can read.** The server and the
+  agent run as the same user, in the same process tree. Claude Code
+  starts stdio servers with its whole env, which its Bash also gets.
+  Codex keeps the secrets out of its shell's env
+  (`shell_environment_policy`), but a process running as your user can
+  still read another one's env. So a unit has its agent's secret plus
+  the secrets of the servers its rule names, and nothing else.
+- **Injected instructions can use the tools.** An item's text could ask
+  the agent to call a server's write tools. Give servers read-only
+  tokens where the service has them, and list `tools` to allow only what
+  the skill needs: night-shift has the agent refuse every tool outside
+  the list. For context the worker only reads, prefetching it with a
+  source keeps the token away from the model entirely.
+- **Not on an untrusted author's PR.** Servers start for your PRs and
+  for trusted authors' PRs, since the servers are yours, like the
+  `settings` file. On an untrusted author's PR they don't start, and the
+  unit's log says so.
+
+Servers run outside the agent's sandbox, so `network: false` doesn't cut
+them off: a stdio server can reach the network, and so can the agent's
+own connection to an HTTP server [V, tested, both agents]. `network`
+governs the agent's commands; a server reaches whatever it is built to
+reach.
 
 ## Network
 
@@ -92,7 +124,8 @@ body are pushed without a secret scan.
   comes after your `config` values, so theirs for the same keys lose,
   and a `sandbox_mode` there doesn't switch it off [V, tested].
 
-The agent's own requests to its vendor still go out. `setup` runs before
+The agent's own requests to its vendor still go out, and so do its
+[MCP servers](#mcp-servers). `setup` runs before
 the agent, outside the sandbox, so it can still install dependencies,
 except on an untrusted author's PR, where it doesn't run.
 

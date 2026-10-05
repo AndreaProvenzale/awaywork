@@ -62,7 +62,7 @@ are never printed. Then:
 1. Commit the workflow and `.night-shift/config.yml`.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
-   repos' `secrets` and your custom sources' `secrets`.
+   repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
@@ -88,6 +88,10 @@ also creates the `v1` tag.
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you
 `schedule remove` and `schedule install --with github-actions` again.
+
+A stdio [MCP server](./configuration.md#mcp-servers) runs on the runner,
+so its `command` must be there: `npx` and `node` are, other binaries
+need a setup step. An HTTP server must be reachable from GitHub's runners.
 
 A runner starts with an empty state dir, so it keeps no attempts or
 skips: an item unchanged since last night runs again, none is given up

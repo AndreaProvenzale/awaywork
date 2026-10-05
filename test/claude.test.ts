@@ -192,6 +192,53 @@ describe('claude provider', () => {
     }
   })
 
+  it("passes the unit's MCP servers on someone else's PR too, allowing only their tools", async () => {
+    process.env.FAKE_ARGV = join(dir, 'argv.json')
+    try {
+      const mcp = {
+        db: { command: 'npx', args: ['db-mcp'], secrets: ['DATABASE_URL'], tools: ['query'] },
+        sentry: {
+          url: 'https://mcp.sentry.dev/mcp',
+          headers: { Authorization: 'Bearer ${SENTRY_TOKEN}' },
+          secrets: ['SENTRY_TOKEN'],
+        },
+      }
+      const unit = { ...job().unit, foreign: true }
+      await collect(provider.run({ ...job(), unit, mcp }, new AbortController().signal))
+      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
+      const flag = (name: string) => args[args.indexOf(name) + 1]
+      expect(JSON.parse(flag('--mcp-config') as string)).toEqual({
+        mcpServers: {
+          db: { command: 'npx', args: ['db-mcp'] },
+          sentry: {
+            type: 'http',
+            url: 'https://mcp.sentry.dev/mcp',
+            headers: { Authorization: 'Bearer ${SENTRY_TOKEN}' },
+          },
+        },
+      })
+      expect(flag('--allowedTools')).toBe(
+        'Bash Read Edit Write Grep Glob Skill mcp__db__query mcp__sentry',
+      )
+      expect(flag('--permission-mode')).toBe('dontAsk')
+      expect(args).toContain('--strict-mcp-config')
+    } finally {
+      delete process.env.FAKE_ARGV
+    }
+  })
+
+  it('logs an MCP call with its arguments', () => {
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [{ type: 'tool_use', name: 'mcp__sentry__search', input: { query: 'crash' } }],
+      },
+    })
+    expect(toEvents(line)).toEqual([
+      { type: 'log', line: 'mcp__sentry__search: {"query":"crash"}' },
+    ])
+  })
+
   it('reports a failed run when the binary exits without a result', async () => {
     const events = await collect(claudeProvider('false').run(job(), new AbortController().signal))
     expect(events).toEqual([{ type: 'done', ok: false, turns: 0 }])

@@ -84,6 +84,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     ...(n.config.notify?.secrets ?? []),
     ...(n.config.after_unit?.secrets ?? []),
     ...Object.values(n.config.repos).flatMap((r) => r.secrets),
+    ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
   ]
 
   // Tonight's draft PRs by repo and branch, the branch on top of each repo's stack, and the PR branches pushed onto.
@@ -444,7 +445,14 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         }
       }
       const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
-      const withheld = secrets.filter((name) => !provider.secrets.includes(name))
+      const named = unit.rule.mcp ?? []
+      if (named.length > 0 && unit.untrusted)
+        log(`mcp: ${named.join(', ')} not started on an untrusted author's PR`)
+      const mcp = Object.fromEntries(
+        Object.entries(n.config.mcp).filter(([name]) => !unit.untrusted && named.includes(name)),
+      )
+      const given = [...provider.secrets, ...Object.values(mcp).flatMap((s) => s.secrets)]
+      const withheld = secrets.filter((name) => !given.includes(name))
       const env = workerEnv(n.ctx.env, dir, withheld)
       const config = entry?.config
       const job = {
@@ -457,6 +465,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         config,
         configDir: n.configDir,
         plugin,
+        mcp,
       }
       start = await head(dir)
       const worker = await runWorker(provider, job, a, {

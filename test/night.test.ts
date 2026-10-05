@@ -484,6 +484,79 @@ repos:
   expect(untrusted).toContain("Setup, not run because this PR's author isn't trusted")
 })
 
+it("gives a worker only its step's MCP servers and their secrets, on someone else's PR too, and none on an untrusted one", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-mcp-'))
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa('git', ['init', '-q', dir])
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
+    },
+  }
+  const config = parseConfig(`
+providers: [claude: {}]
+budget: { fallback: { units: 8, turns: 60 } }
+sources: { github: { repos: [acme/*] } }
+mcp:
+  db: { command: db-mcp, secrets: [DB_URL] }
+  sentry: { url: "https://mcp.sentry.dev/mcp", headers: { Authorization: "Bearer \${SENTRY_TOKEN}" }, secrets: [SENTRY_TOKEN] }
+queue:
+  - skill: fix-ci
+    where: { checks: failing }
+    mcp: [db]
+    deliver: report
+    then: [{ skill: address-review, mcp: [sentry], deliver: report }]
+  - { skill: review, mcp: [sentry] }
+`)
+  const plan = planNight({
+    config,
+    items: [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2),
+      githubPr(3, { mine: false, trusted: false }),
+      githubPr(4, { mine: false }),
+    ],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  const jobs: { unit: string; mcp: string[]; env: string[] }[] = []
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: {
+      claude: {
+        ...worker,
+        async *run(job) {
+          const mcp = Object.keys(job.mcp ?? {})
+          jobs.push({ unit: job.unit.id, mcp, env: Object.keys(job.env) })
+          await writeFile(join(job.dir, '.nightshift/out/report.md'), 'Done.')
+          yield { type: 'done', ok: true, turns: 1 }
+        },
+      },
+    },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: '/bin', DB_URL: 'db', SENTRY_TOKEN: 'sentry' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR'] }
+  expect(jobs).toEqual([
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1-address-review', ...sentry },
+    { unit: 'acme-api-2', ...sentry },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-4', ...sentry },
+  ])
+  const log = await readFile(join(root, 'run/units/acme-api-3/worker.log'), 'utf8')
+  expect(log).toContain("mcp: sentry not started on an untrusted author's PR")
+})
+
 it("stops a unit at its provider's unit_minutes", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-time-'))
   const forge = {

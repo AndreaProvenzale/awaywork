@@ -108,5 +108,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (isCommand(cfg) && /(^|\s)(~|\$HOME)\//.test(cfg.command))
       report('warn', id, 'the command reads your home folder, which GitHub Actions lacks')
   }
+  for (const [name, server] of Object.entries(config.mcp)) {
+    const unset = server.secrets.filter((s) => !process.env[s])
+    const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
+    report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
+  }
   return checks
 }

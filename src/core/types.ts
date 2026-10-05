@@ -107,6 +107,20 @@ export interface Job {
   configDir?: string
   /** A plugin folder outside the clone with the unit's skills when the provider has no `skillsDir`. */
   plugin?: string
+  /** The MCP servers the unit's rule names, by name; their secrets are in `env`. */
+  mcp?: Record<string, McpServer>
+}
+
+/** A stdio (`command`) or HTTP (`url`) MCP server; its secrets reach it by name or as `${NAME}` in `headers`. */
+export interface McpServer {
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  secrets: string[]
+  /** The tools a worker may call; unset, all of them. */
+  tools?: string[]
 }
 
 export interface Provider {
@@ -175,6 +189,8 @@ export interface Step {
   provider: string[]
   model?: Record<string, string>
   skills: string[]
+  /** MCP servers the worker gets, by name under the config's `mcp`. */
+  mcp?: string[]
   instructions: string[]
   /** Parameters listed in the prompt next to the skill. */
   with?: Record<string, Scalar>

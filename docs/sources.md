@@ -80,12 +80,13 @@ else stores the user's credential.
   prompt injection from ticket comments. Read-only is enforced server-side
   only by Linear, GitHub and Rovo scopes [V]; elsewhere it is a local flag
   or nothing.
-- Headless client wiring has open bugs: Claude Code sends `${VAR}` in HTTP
-  `headers` literally (#51581) [C]; Copilot CLI disables a Bearer server
+- Headless client wiring has had bugs: Claude Code sent `${VAR}` in HTTP
+  `headers` literally (#51581) [C], though 2.1.289 expands it [V, tested,
+  `providers.md`]; Copilot CLI disables a Bearer server
   after OAuth discovery (#3100) [C].
 
-MCP stays a possible opt-in for the worker, limited to servers with
-server-side read-only and `--strict-mcp-config` [I].
+MCP is an opt-in for the worker, per rule (`mcp` in the config); see
+the configuration guide for the servers' secrets and `tools` lists.
 
 ### Recommendation: thin adapters of our own
 

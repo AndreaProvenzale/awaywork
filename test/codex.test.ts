@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
-import { codexProvider, lock, seedAuth, toEvents, toQuota } from '../src/providers/codex.js'
+import {
+  codexProvider,
+  lock,
+  mcpOverrides,
+  seedAuth,
+  toEvents,
+  toQuota,
+} from '../src/providers/codex.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -169,6 +176,47 @@ describe('codex provider', () => {
     } finally {
       delete process.env.FAKE_ARGV
     }
+  })
+
+  it('passes MCP servers as -c, their secrets forwarded by name and kept out of the shell', () => {
+    const flags = mcpOverrides({
+      db: {
+        command: 'npx',
+        args: ['db-mcp'],
+        env: { READ_ONLY: '1' },
+        secrets: ['DATABASE_URL'],
+        tools: ['query'],
+      },
+      sentry: {
+        url: 'https://mcp.sentry.dev/mcp',
+        headers: { Authorization: 'Bearer ${SENTRY_TOKEN}', 'X-Org': 'acme', 'X-Key': '${KEY}' },
+        secrets: ['SENTRY_TOKEN', 'KEY'],
+      },
+    })
+    expect(flags.filter((f) => f !== '-c')).toEqual([
+      'mcp_servers.db.command="npx"',
+      'mcp_servers.db.args=["db-mcp"]',
+      'mcp_servers.db.env={"READ_ONLY"="1"}',
+      'mcp_servers.db.env_vars=["DATABASE_URL"]',
+      'mcp_servers.db.enabled_tools=["query"]',
+      'mcp_servers.db.startup_timeout_sec=60',
+      'mcp_servers.db.default_tools_approval_mode="approve"',
+      'mcp_servers.sentry.url="https://mcp.sentry.dev/mcp"',
+      'mcp_servers.sentry.bearer_token_env_var="SENTRY_TOKEN"',
+      'mcp_servers.sentry.http_headers={"X-Org"="acme"}',
+      'mcp_servers.sentry.env_http_headers={"X-Key"="KEY"}',
+      'mcp_servers.sentry.startup_timeout_sec=60',
+      'mcp_servers.sentry.default_tools_approval_mode="approve"',
+      'shell_environment_policy.exclude=["DATABASE_URL","SENTRY_TOKEN","KEY"]',
+    ])
+    expect(mcpOverrides({})).toEqual([])
+  })
+
+  it('logs an MCP call with its server and arguments', () => {
+    const item = { type: 'mcp_tool_call', server: 'db', tool: 'query', arguments: { sql: 'x' } }
+    expect(toEvents({ type: 'item.completed', item })).toEqual([
+      { type: 'log', line: 'mcp_tool_call: db/query: {"sql":"x"}' },
+    ])
   })
 
   it('fails a turn the model could not finish', async () => {
