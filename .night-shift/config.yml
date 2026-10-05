@@ -5,7 +5,7 @@ budget:                         # every provider; override one with - <id>: { bu
   reserve: 10%                  # never go past 1 - reserve of any window
   session_max: 90%              # stop a worker past this share of the short window
   # per_night: 15%              # at most this share of the long window per night
-providers: [claude, codex]      # order = routing preference
+providers: [claude]             # codex is out of credits; add it back with its reviewer below
 sources:
   github: {repos: [AndreaProvenzale/*]}
 queue:                          # first matching rule wins; top = highest priority
@@ -23,7 +23,7 @@ queue:                          # first matching rule wins; top = highest priori
     where: {type: issue, label: night-shift}
     then:
       - loop:
-          - {skill: review, provider: [codex, claude]}   # the other agent reviews
+          - review
           - address-review
         until: {verdict: approve}
         max: 3
