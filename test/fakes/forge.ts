@@ -3,12 +3,12 @@ import type { Forge, Item, PrRef } from '../../src/core/types.js'
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>
   fastForwards: string[]
-  heads: Record<string, { url: string; body: string }[]>
+  heads: Record<string, { url: string; body: string; merged?: boolean }[]>
   tips: Record<string, string>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
-  const heads: Record<string, { url: string; body: string }[]> = {}
+  const heads: Record<string, { url: string; body: string; merged?: boolean }[]> = {}
   const tips: Record<string, string> = {}
   return {
     branches,
@@ -18,7 +18,8 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     clone: async () => {},
     prsFor: async (item: Item) => prs.filter((pr) => pr.branch.includes(item.key)),
     branchExists: async (repo, name) => branches.has(`${repo}:${name}`),
-    prsOn: async (repo, branch) => heads[`${repo}:${branch}`] ?? [],
+    prsOn: async (repo, branch) =>
+      (heads[`${repo}:${branch}`] ?? []).map((pr) => ({ ...pr, merged: pr.merged ?? false })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',
     push: async (_dir, branch, { repo }) => {
       if (branches.has(`${repo}:${branch}`)) throw new Error(`${branch} already exists`)
