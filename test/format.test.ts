@@ -35,7 +35,7 @@ queue:
 describe('listedUnits', () => {
   it('lists only round 1 of a loop', () => {
     const unit = (loop?: { round: number }) => ({ loop })
-    const plan = { units: [unit(), unit({ round: 1 }), unit({ round: 2 }), unit({ round: 3 })] }
-    expect(listedUnits(plan as never)).toHaveLength(2)
+    const units = [unit(), unit({ round: 1 }), unit({ round: 2 }), unit({ round: 3 })]
+    expect(listedUnits({ units } as never)).toEqual([units[0], units[1]])
   })
 })

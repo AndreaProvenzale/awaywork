@@ -14,12 +14,12 @@ export function planJson(plan: NightPlan, warnings: string[] = []): string {
   )
 }
 
-/** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 // A loop's later rounds repeat its first: only round 1 is listed.
 export function listedUnits(plan: NightPlan) {
   return plan.units.filter((p) => !p.loop || p.loop.round === 1)
 }
 
+/** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = false): string {
   const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
   const out: string[] = []
