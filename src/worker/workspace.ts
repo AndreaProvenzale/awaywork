@@ -10,7 +10,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
@@ -106,7 +106,10 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
-  const skill = await readOutput(join(findSkill(unit.skill, roots), 'SKILL.md'))
+  const skillFile = join(findSkill(unit.skill, roots), 'SKILL.md')
+  const skill = skillFile.startsWith(`${dir}${sep}`)
+    ? await readOutput(skillFile)
+    : await readFile(skillFile, 'utf8')
   const prompt = assemblePrompt({
     harness: `${await readFile(harnessPath, 'utf8')}\n${unitSection(unit, items, w.previous, w.loop)}`,
     skill: skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
@@ -152,12 +155,13 @@ export async function refuseSymlinks(dir: string, paths: string[]): Promise<void
   }
 }
 
-/** Opens a file in the clone without blocking on a FIFO a worker planted, and refuses anything but a regular file. */
+/** Opens a file in the clone without following a symlink or blocking on a FIFO a worker planted, and refuses anything but a regular file with one link. */
 async function openRegular(path: string, flags: number): Promise<FileHandle> {
-  const file = await open(path, flags | constants.O_NONBLOCK)
-  if ((await file.stat()).isFile()) return file
+  const file = await open(path, flags | constants.O_NONBLOCK | constants.O_NOFOLLOW)
+  const stat = await file.stat()
+  if (stat.isFile() && stat.nlink === 1) return file
   await file.close()
-  throw new Error(`${path} isn't a regular file`)
+  throw new Error(`${path} isn't a regular file with a single link`)
 }
 
 /** A file a worker wrote, or '' when it's missing or isn't a regular file. */
@@ -173,9 +177,12 @@ export async function readOutput(path: string): Promise<string> {
 
 /** Writes, or with `append` appends, `text` to a file in the clone, refusing anything but a regular file. */
 export async function writeOutput(path: string, text: string, append = false): Promise<void> {
-  const mode = append ? constants.O_APPEND : constants.O_TRUNC
-  const file = await openRegular(path, constants.O_WRONLY | constants.O_CREAT | mode)
+  const file = await openRegular(
+    path,
+    constants.O_WRONLY | constants.O_CREAT | (append ? constants.O_APPEND : 0),
+  )
   try {
+    if (!append) await file.truncate()
     await file.writeFile(text)
   } finally {
     await file.close()
