@@ -115,16 +115,15 @@ export function planNight(input: {
       skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
-    const pushes = (rule.deliver ?? resolveSkill(rule.skill, input.skills)?.meta.deliver) === 'push'
-    const pr = (pushes ? prs.find((p) => p.mine) : undefined) ?? prs[0]
+    const deliverOf = (step: Step) =>
+      step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
+    const pr = (deliverOf(rule) === 'push' ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no repo: no linked PR or repo field')
       continue
     }
     const templateFor = (step: Step) => step.branch ?? config.repos[repo]?.branch ?? config.branch
-    const deliverOf = (step: Step) =>
-      step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
     const add = (
       step: Step,
       at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch'>,
