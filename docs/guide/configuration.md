@@ -485,7 +485,9 @@ queue:
 - `command` runs as in `until`, in the step's clone before its agent
   starts. Prefix `!` to run a step only when a check fails, such as a
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
-  `.nightshift/context/previous/when.log`.
+  `.nightshift/context/previous/when.log`. A check that times out says
+  nothing: the step is skipped without being passed over, so the chain
+  retries.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
   default branch, the draft PR it stacked on, or the night-shift PR a
