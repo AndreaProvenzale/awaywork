@@ -41,6 +41,7 @@ describe('asana source', () => {
     expect(eng12?.fields).toEqual({
       project: ['Backend'],
       section: ['QA'],
+      blocked: true,
       tags: ['backend'],
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
@@ -52,6 +53,7 @@ describe('asana source', () => {
       'fields.Launch': '2026-02-01',
     })
     expect(eng14?.fields).toMatchObject({
+      blocked: false,
       project: ['Backend', 'Roadmap'],
       section: ['Current sprint', 'Q3'],
       tags: ['backend', 'billing'],
@@ -103,7 +105,7 @@ describe('asana source', () => {
         ? new Response('', { status: 429, headers: { 'Retry-After': '0' } })
         : replay(input, init)
     expect(await asanaSource(limited).items(cfg, ctx)).toHaveLength(3)
-    expect(calls).toBe(6)
+    expect(calls).toBe(9)
   })
 
   it('prefetches task.md with fields and comments', async () => {

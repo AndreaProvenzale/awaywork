@@ -8,6 +8,16 @@
         "description": null,
         "status": { "name": "To Do" },
         "labels": [],
+        "issuelinks": [
+          {
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "outwardIssue": { "fields": { "status": { "statusCategory": { "key": "new" } } } }
+          },
+          {
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "inwardIssue": { "fields": { "status": { "statusCategory": { "key": "done" } } } }
+          }
+        ],
         "priority": null,
         "issuetype": { "name": "Story" },
         "project": { "key": "WEB" },

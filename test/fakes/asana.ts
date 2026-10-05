@@ -28,6 +28,11 @@ export const asanaRoutes = (): [RegExp, Reply][] => [
   [/\/projects\/300\/sections\?/, asanaFixture('sections-300.json')],
   [/\/tasks\?.*offset=eyJwYWdlIjoyfQ/, asanaFixture('tasks-2.json')],
   [/\/tasks\?/, asanaFixture('tasks-1.json')],
+  [
+    /\/tasks\/1201\/dependencies\?/,
+    '{ "data": [{ "gid": "9", "completed": true }, { "gid": "10", "completed": false }], "next_page": null }',
+  ],
+  [/\/tasks\/\d+\/dependencies\?/, asanaFixture('stories-empty.json')],
   [/\/tasks\/1201\/stories\?/, asanaFixture('stories-1201.json')],
   [/\/tasks\/\d+\/stories\?/, asanaFixture('stories-empty.json')],
 ]

@@ -36,10 +36,12 @@ describe('linear source', () => {
       state: 'QA',
       labels: ['backend', 'bug'],
       priority: 'High',
+      blocked: true,
       project: 'Rate limits',
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
     })
+    expect(web7?.fields).toMatchObject({ blocked: false })
     expect(web7?.fields).not.toHaveProperty('project')
     expect(web7?.description).toBe('')
     expect(eng12?.labels).toEqual(['backend', 'bug'])
