@@ -527,6 +527,12 @@ queue:
       ['push', 'feature-1'],
     ])
     expect(plan(yaml('draft_pr'), [issue], {}).units[0]?.unit.base).toBe('feature-2')
+    const theirs2 = githubPr(3, { mine: false }).linkedPrs[0] as PrRef
+    const none = plan(yaml('push'), [{ ...githubPr(6), linkedPrs: [theirs, theirs2] }], {})
+    expect(none.units).toEqual([])
+    expect(none.skipped.map((s) => s.reason)).toEqual([
+      "deliver push: feature-2 is someone else's PR",
+    ])
   })
 
   it("pushes only onto your own PR's branch, never onto someone else's or tonight's draft PR", () => {
