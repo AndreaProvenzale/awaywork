@@ -169,6 +169,8 @@ export interface Forge {
     runId: string,
     items: Pick<Item, 'source' | 'key'>[],
   ): Promise<string>
+  /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
+  stack(repo: string, below: string, pr: string): Promise<void>
 }
 
 export type Scalar = string | number | boolean
