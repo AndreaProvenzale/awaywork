@@ -196,12 +196,22 @@ export function workerEnv(
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
 }
 
-/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR. */
+/** The skill copies night-shift made in each clone, which a loop's later rounds replace rather than keep. */
+const copied = new Map<string, Set<string>>()
+
+/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or night-shift copied it. */
 async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[], roots: string[]) {
   const excluded: string[] = []
   const replaced: string[] = []
+  const mine = copied.get(w.dir) ?? new Set<string>()
+  copied.set(w.dir, mine)
   for (const name of names) {
     const target = join(w.dir, skillsDir, name)
+    if (mine.has(target)) {
+      await rm(target, { recursive: true, force: true })
+      await cp(findSkill(name, roots), target, { recursive: true })
+      continue
+    }
     if (existsSync(target)) {
       if (!w.unit.foreign) {
         w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
@@ -212,6 +222,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
       replaced.push(target)
     }
     await cp(findSkill(name, roots), target, { recursive: true })
+    mine.add(target)
     excluded.push(`/${skillsDir}/${name}/`)
   }
   if (excluded.length > 0)

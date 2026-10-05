@@ -226,4 +226,60 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       )
     })
   })
+
+  it("replaces the skills night-shift copied when a loop round reuses the clone, and keeps the repo's own", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+    const dir = join(root, 'clone')
+    const forge = {
+      ...fakeForge(),
+      async clone(_repo: string, _branch: string, into: string) {
+        await execa('git', ['init', '-q', '-b', 'main', into])
+        await mkdir(join(into, '.agents/skills/house-style'), { recursive: true })
+        await writeFile(join(into, '.agents/skills/house-style/SKILL.md'), 'REPO SKILL')
+        await git(into, 'add', '.')
+        await git(into, 'commit', '-qm', 'init')
+      },
+    }
+    await mkdir(join(root, 'skills/house-style'), { recursive: true })
+    await writeFile(join(root, 'skills/house-style/SKILL.md'), '---\nname: house-style\n---\nOurs.')
+    const round = (reuse: boolean) =>
+      prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign: false,
+          network: true,
+          untrusted: false,
+          branch: 'night/acme-api-1',
+          rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
+          skill: 'fix-ci',
+          skills: ['house-style'],
+          providers: ['claude'],
+          instructions: [],
+          deliver: 'draft_pr',
+        },
+        dir,
+        plugin: join(root, 'plugin'),
+        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        configDir: root,
+        forge,
+        sources: { fake: fakeSource() as Source },
+        provider: codex,
+        ctx: { env: {}, log: () => {} },
+        skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
+        reuse,
+      })
+    await round(false)
+    const copy = join(dir, '.agents/skills/fix-ci/SKILL.md')
+    const original = await readFile(copy, 'utf8')
+    await writeFile(copy, 'EDITED')
+    await writeFile(join(dir, '.agents/skills/house-style/SKILL.md'), 'EDITED REPO SKILL')
+    await round(true)
+    expect(await readFile(copy, 'utf8')).toBe(original)
+    expect(await readFile(join(dir, '.agents/skills/house-style/SKILL.md'), 'utf8')).toBe(
+      'EDITED REPO SKILL',
+    )
+  })
 })
