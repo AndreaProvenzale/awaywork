@@ -24,7 +24,8 @@ export async function loadStats(dir: string): Promise<UnitStat[]> {
   const lists = await Promise.all(
     runs.map(async (run) => {
       try {
-        return JSON.parse(await readFile(join(dir, run, unitsFile), 'utf8')) as UnitStat[]
+        const parsed: unknown = JSON.parse(await readFile(join(dir, run, unitsFile), 'utf8'))
+        return Array.isArray(parsed) ? (parsed as UnitStat[]) : []
       } catch {
         return []
       }

@@ -8,7 +8,7 @@ export interface UnitStat {
   skill: string
   provider?: string
   status: 'done' | 'failed' | 'stopped'
-  /** Share of the long window the worker used, when it read the quota. */
+  /** Share of the long window used after the first reading; unknown when it reset in between. */
   used?: number
   pr: boolean
 }
@@ -32,6 +32,7 @@ export function unitStats(results: UnitResult[]): UnitStat[] {
       u.status === 'done' ? 'done' : u.status.startsWith('stopped') ? 'stopped' : 'failed'
     const first = u.firstQuota?.windows.find((w) => w.span === 'long')
     const last = u.quota?.windows.find((w) => w.name === first?.name)
+    const sameWindow = first && last && first.resetsAt === last.resetsAt
     return [
       {
         id: unit.id,
@@ -39,7 +40,7 @@ export function unitStats(results: UnitResult[]): UnitStat[] {
         skill: unit.skill,
         provider: u.provider,
         status,
-        used: first && last ? Math.max(0, last.used - first.used) : undefined,
+        used: sameWindow ? Math.max(0, last.used - first.used) : undefined,
         pr: u.outcome?.kind === 'pr',
       },
     ]

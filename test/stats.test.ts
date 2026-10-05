@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { formatStats } from '../src/cli/stats.js'
+import { formatStats, loadStats } from '../src/cli/stats.js'
 import type { UnitResult } from '../src/core/report.js'
 import { tally, type UnitStat, unitStats } from '../src/core/stats.js'
 import type { Quota } from '../src/core/types.js'
@@ -37,6 +40,32 @@ describe('unitStats', () => {
     ])
     expect(stats[0]?.used).toBeCloseTo(0.06)
     expect(stats[1]?.used).toBeUndefined()
+  })
+
+  it('leaves the share unknown when the window reset between the readings', () => {
+    const reset: Quota = {
+      windows: [{ name: 'seven_day', span: 'long', used: 0.02, resetsAt: 1 }],
+    }
+    expect(unitStats([result({ firstQuota: quota(0.9), quota: reset })])[0]?.used).toBeUndefined()
+  })
+})
+
+describe('loadStats', () => {
+  it('reads units.json per run and ignores missing, malformed or non-array files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const unit = { id: 'a', rule: 1, skill: 'implement', status: 'done', pr: false }
+    const files: Record<string, string | undefined> = {
+      a: JSON.stringify([unit]),
+      b: undefined,
+      c: '{not json',
+      d: '{}',
+    }
+    for (const [run, content] of Object.entries(files)) {
+      await mkdir(join(dir, run))
+      if (content) await writeFile(join(dir, run, 'units.json'), content)
+    }
+    expect(await loadStats(dir)).toEqual([unit])
+    expect(await loadStats(join(dir, 'missing'))).toEqual([])
   })
 })
 
