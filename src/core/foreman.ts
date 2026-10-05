@@ -115,7 +115,8 @@ export function planNight(input: {
       skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
-    const pr = prs[0]
+    const pushes = (rule.deliver ?? resolveSkill(rule.skill, input.skills)?.meta.deliver) === 'push'
+    const pr = (pushes ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no repo: no linked PR or repo field')

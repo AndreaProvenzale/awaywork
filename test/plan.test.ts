@@ -516,6 +516,19 @@ queue:
     ])
   })
 
+  it('lets a push rule take the first linked PR that is yours', () => {
+    const theirs = githubPr(2, { mine: false }).linkedPrs[0] as PrRef
+    const mine = githubPr(1).linkedPrs[0] as PrRef
+    const issue = { ...githubPr(5), linkedPrs: [theirs, mine] }
+    const yaml = (deliver: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: implement, deliver: ${deliver} }]`
+    const pushed = plan(yaml('push'), [issue], {})
+    expect(pushed.units.map(({ unit }) => [unit.deliver, unit.base])).toEqual([
+      ['push', 'feature-1'],
+    ])
+    expect(plan(yaml('draft_pr'), [issue], {}).units[0]?.unit.base).toBe('feature-2')
+  })
+
   it("pushes only onto your own PR's branch, never onto someone else's or tonight's draft PR", () => {
     const yaml = `
 providers: [claude]
