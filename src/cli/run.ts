@@ -12,7 +12,7 @@ import { sourceFor } from '../sources/index.js'
 import { runNight } from '../worker/night.js'
 import { notify } from '../worker/notify.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatReportForTerminal } from './format.js'
+import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { planTonight } from './plan.js'
 
 export function runCommand(program: Command): void {
@@ -38,7 +38,7 @@ export function runCommand(program: Command): void {
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
         await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
-        console.log(`Run ${runId}: ${plan.units.length} units planned, state in ${runDir}`)
+        console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
         const abort = new AbortController()
         process.once('SIGINT', () => abort.abort())
