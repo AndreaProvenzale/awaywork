@@ -201,4 +201,5 @@ prints the same totals. The quota share is an estimate: it starts at the
 worker's first reading, includes any other use of the account meanwhile, and
 is `-` when the window reset mid-unit. In a loop only the host unit carries
 the draft PR, so the loop's `review` and `address-review` rows show no PRs.
+`units.json` is written when the run ends, so a run that is killed leaves none.
 Runs from before have no `units.json` and are left out.

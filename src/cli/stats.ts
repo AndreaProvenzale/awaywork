@@ -25,13 +25,20 @@ export async function loadStats(dir: string): Promise<UnitStat[]> {
     runs.map(async (run) => {
       try {
         const parsed: unknown = JSON.parse(await readFile(join(dir, run, unitsFile), 'utf8'))
-        return Array.isArray(parsed) ? (parsed as UnitStat[]) : []
+        return Array.isArray(parsed) ? (parsed as UnitStat[]).filter(isUnitStat) : []
       } catch {
         return []
       }
     }),
   )
   return lists.flat()
+}
+
+const statuses = ['done', 'failed', 'stopped']
+
+function isUnitStat(s: unknown): s is UnitStat {
+  const u = s as Partial<UnitStat> | null
+  return typeof u?.skill === 'string' && statuses.includes(u.status as string)
 }
 
 export function formatStats(stats: UnitStat[], json: boolean): string {
