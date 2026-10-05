@@ -181,13 +181,14 @@ exist on the remote yet, unless a rule opts in to [`push`](#push). When
 the name is taken, the unit takes the first free one of `<branch>-2` to
 `<branch>-10`, and the `then` steps and loop rounds after it follow.
 Not when night-shift already tried there: when a PR on the taken branch,
-open, closed or merged, has a footer naming one of the unit's items, the
+open or closed unmerged, has a footer naming one of the unit's items, the
 unit is skipped as `night-shift tried this in <PR>; delete <branch> to
 run it again`. That record lives on GitHub, so it holds on a runner that
-keeps no [attempts](./how-it-works.md#units). A taken branch with no PR
-whose tip has the `Night-shift:` trailer is a push whose PR failed, so
-it skips the unit too, until you delete it; one without the trailer,
-your own work in progress, is passed over for a suffix.
+keeps no [attempts](./how-it-works.md#units). A merged one landed, so
+the next pickup is a new round and takes a suffix. A taken branch with
+no PR whose tip has the `Night-shift:` trailer is a push whose PR
+failed, so it skips the unit too, until you delete it; one without the
+trailer, your own work in progress, is passed over for a suffix.
 
 ## Linking PRs
 
@@ -317,13 +318,12 @@ PRs leave it waiting for your review. To act on it once you've reviewed it:
 ```
 
 The unit's draft PR stacks on the night-shift PR, on a branch named
-after it (`night/acme-api-9` for #9). Delete that branch once you merge
-the stacked PR, since GitHub keeps it by default: while it exists, the
-next pickup of #9 is skipped as `night-shift tried this in <PR>; delete
-night/acme-api-9 to run it again`, not moved to a `-2` branch
-([#144](https://github.com/AndreaProvenzale/night-shift/issues/144)).
-Resolve the threads it answered too: merging moves #9, and with your
-threads still open the rule takes it up again for the same threads.
+after it (`night/acme-api-9` for #9). Once you merge the stacked PR, the
+next pickup of #9 takes a `-2` branch; while the stacked PR is open or
+closed unmerged, it is skipped as `night-shift tried this in <PR>;
+delete night/acme-api-9 to run it again`. Resolve the threads it
+answered too: merging moves #9, and with your threads still open the
+rule takes it up again for the same threads.
 The rule runs on the threads you started, but the agent reads every
 unresolved thread, as on your other PRs. `ours` comes from the GitHub
 source: a custom source's `ours` field holds nothing back.

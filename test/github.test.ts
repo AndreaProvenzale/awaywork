@@ -363,7 +363,12 @@ describe('github forge', () => {
 
   it('reads PRs on a branch in any state, not the ones from forks', async () => {
     const nodes = [
-      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', isCrossRepository: false },
+      {
+        url: 'https://github.com/acme/api/pull/7',
+        body: 'Closed.',
+        merged: true,
+        isCrossRepository: false,
+      },
       { url: 'https://github.com/acme/api/pull/8', body: 'Fork.', isCrossRepository: true },
     ]
     const run = recorded([
@@ -373,7 +378,7 @@ describe('github forge', () => {
       ],
     ])
     expect(await githubForge(run).prsOn('acme/api', 'night/eng-12')).toEqual([
-      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.' },
+      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', merged: true },
     ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=night/eng-12']),

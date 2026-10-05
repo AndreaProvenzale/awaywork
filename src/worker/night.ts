@@ -590,7 +590,8 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
 /**
  * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
- * whose PR, in any state, night-shift opened for one of the unit's items means it tried already, and
+ * whose PR, open or closed unmerged, night-shift opened for one of the unit's items means it tried
+ * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
  * one with no PR whose tip has night-shift's trailer is a push whose PR failed: either way the unit
  * is skipped until that branch is deleted, even where no attempts are kept.
  */
@@ -605,7 +606,9 @@ async function freeBranch(
     const prs = await forge.prsOn(unit.repo, branch)
     if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
       return { skip: `${branch} exists on ${unit.repo} without a PR; delete it to run again` }
-    const tried = prs.find((pr) => footerItems(pr.body).some((item) => items.includes(item)))
+    const tried = prs.find(
+      (pr) => !pr.merged && footerItems(pr.body).some((item) => items.includes(item)),
+    )
     if (tried)
       return { skip: `night-shift tried this in ${tried.url}; delete ${branch} to run it again` }
   }
