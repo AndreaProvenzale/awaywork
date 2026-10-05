@@ -97,6 +97,20 @@ describe('asana source', () => {
     await expect(failing.items(cfg, ctx)).rejects.toThrow('GET /tasks: 401 Not Authorized')
   })
 
+  it('lists a task without `blocked` when its dependencies fail', async () => {
+    const premium = JSON.stringify({ errors: [{ message: 'Payment Required' }] })
+    const free = asanaSource(
+      recordedFetch([[/\/dependencies\?/, { status: 402, body: premium }], ...asanaRoutes()]),
+    )
+    log.length = 0
+    const found = await free.items(cfg, ctx)
+    expect(found).toHaveLength(3)
+    expect(found[0]?.fields).not.toHaveProperty('blocked')
+    expect(log[0]).toBe(
+      "asana: couldn't read the dependencies of 1201: GET /tasks/1201/dependencies: 402 Payment Required",
+    )
+  })
+
   it('waits out a 429 as Retry-After says', async () => {
     const replay = recordedFetch(asanaRoutes())
     let calls = 0

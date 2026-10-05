@@ -139,11 +139,15 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           { resource_subtype: 'comment_added', opt_fields: 'created_at,created_by.name,text' },
           token,
         )
+        // Dependencies are a paid Asana feature: without them the task is still listed, just not `blocked`.
         const dependencies = await getAll<{ completed: boolean }>(
           `/tasks/${task.gid}/dependencies`,
           { opt_fields: 'completed' },
           token,
-        )
+        ).catch((e: Error) => {
+          ctx.log(`asana: couldn't read the dependencies of ${task.gid}: ${e.message}`)
+          return undefined
+        })
         items.push(toItem(task, stories, dependencies, cfg.project_repos))
       }
       return items
@@ -228,7 +232,7 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
 function toItem(
   task: Task,
   stories: Story[],
-  dependencies: { completed: boolean }[],
+  dependencies: { completed: boolean }[] | undefined,
   projectRepos: Config['project_repos'] = {},
 ): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
@@ -260,7 +264,7 @@ function toItem(
     fields: {
       project: task.memberships.map((m) => m.project.name),
       section: sections,
-      blocked: dependencies.some((d) => !d.completed),
+      ...(dependencies && { blocked: dependencies.some((d) => !d.completed) }),
       ...(repo && { repo }),
       tags,
       ...(task.created_at && { created: task.created_at }),
