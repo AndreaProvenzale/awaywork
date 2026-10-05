@@ -501,7 +501,9 @@ queue:
   loop doesn't run.
 - The step right before a loop can't have a `when` unless it sets
   `deliver: report`, since the loop works in its clone: gate the loop's
-  steps, or put a step between.
+  steps, or put a step between. The check reads `deliver` as written, not
+  the skill's default, so set it even on a skill that reports by default,
+  such as `review`.
 
 ### `push`
 
