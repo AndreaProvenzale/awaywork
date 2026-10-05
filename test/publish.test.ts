@@ -131,6 +131,18 @@ describe('publish', () => {
         items: ['ENG-12', 'ENG-12', 'ENG-13', 'FAKE-1'],
       },
     ])
+    expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'night/FAKE-1']])
+  })
+
+  it('still opens the PR when the forge has no stacks for it', async () => {
+    await commit('first')
+    await body('Fix the thing')
+    const forge = fakeForge()
+    forge.stack = async () => {
+      throw new Error('Stacked PRs are not enabled for this repository')
+    }
+    const stacked = { ...unit(), stackedOn: 'https://github.com/acme/api/pull/9' }
+    expect(await publish(stacked, dir, forge, 'r1', start)).toMatchObject({ kind: 'pr' })
   })
 
   it('publishes nothing without commits, without a PR body, or onto an existing branch', async () => {

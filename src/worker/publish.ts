@@ -119,6 +119,8 @@ async function deliver(
   if (unit.stackedOn) notes.push(`Stacked on ${unit.stackedOn}: merge that first.`)
   if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId, unit.items)
+  // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
+  if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
   return { kind: 'pr', url, commits: commits.length }
 }
 

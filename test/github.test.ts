@@ -609,4 +609,35 @@ describe('github forge', () => {
     await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1', items)
     expect(run.calls[1]).not.toContain('--base')
   })
+
+  it('stacks a PR on the one below it: a new stack, the top of its stack, never mid-stack', async () => {
+    const stack = (prs: number[]) =>
+      JSON.stringify([{ number: 7, pull_requests: prs.map((number) => ({ number })) }])
+    const stackOn = async (found: string) => {
+      const run = recorded([
+        [/stacks\?pull_request=9$/, found],
+        [/--method POST/, '{}'],
+      ])
+      const pr = (n: number) => `https://github.com/acme/api/pull/${n}`
+      await githubForge(run).stack('acme/api', pr(9), pr(10))
+      return run.calls.slice(1)
+    }
+    expect(await stackOn('[]')).toEqual([
+      [
+        'gh',
+        'api',
+        '--method',
+        'POST',
+        'repos/acme/api/stacks',
+        '-F',
+        'pull_requests[]=9',
+        '-F',
+        'pull_requests[]=10',
+      ],
+    ])
+    expect(await stackOn(stack([8, 9]))).toEqual([
+      ['gh', 'api', '--method', 'POST', 'repos/acme/api/stacks/7/add', '-F', 'pull_requests[]=10'],
+    ])
+    expect(await stackOn(stack([9, 11]))).toEqual([])
+  })
 })

@@ -3,16 +3,19 @@ import type { Forge, Item, PrRef } from '../../src/core/types.js'
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>
   fastForwards: string[]
+  stacked: string[][]
   heads: Record<string, { url: string; body: string }[]>
   tips: Record<string, string>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
+  const stacked: string[][] = []
   const heads: Record<string, { url: string; body: string }[]> = {}
   const tips: Record<string, string> = {}
   return {
     branches,
     fastForwards,
+    stacked,
     heads,
     tips,
     clone: async () => {},
@@ -28,5 +31,8 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
       fastForwards.push(`${repo}:${branch} (#${pr}) from ${from}`)
     },
     draftPr: async (repo, head) => `https://example.com/${repo}/pull/${head}`,
+    stack: async (_repo, below, pr) => {
+      stacked.push([below, pr])
+    },
   }
 }
