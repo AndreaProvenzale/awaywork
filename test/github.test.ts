@@ -97,6 +97,8 @@ describe('github source', () => {
       checks: 'failing',
       unresolved_threads: 2,
       my_unresolved_threads: 1,
+      files: ['src/auth/token.ts', 'README.md'],
+      changed_lines: 42,
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
@@ -120,6 +122,46 @@ describe('github source', () => {
       updated: '2026-02-01T08:00:00Z',
     })
     expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
+  })
+
+  it('follows the files of a large PR page by page and stops at the cap', async () => {
+    const authored = JSON.parse(fixture('search-authored.json'))
+    const [pr] = authored.data.search.nodes
+    pr.files = {
+      pageInfo: { hasNextPage: true, endCursor: 'c1' },
+      nodes: Array.from({ length: 100 }, (_, i) => ({ path: `a/${i}` })),
+    }
+    const more = JSON.stringify({
+      data: {
+        repository: {
+          pullRequest: {
+            files: {
+              pageInfo: { hasNextPage: true, endCursor: 'c2' },
+              nodes: Array.from({ length: 100 }, (_, i) => ({ path: `b/${i}` })),
+            },
+          },
+        },
+      },
+    })
+    const run = recorded([
+      [/author:@me/, JSON.stringify(authored)],
+      [/name=api -F number=1 -f after=c\d/, more],
+      ...githubRoutes(),
+    ])
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const calls = run.calls.filter((call) => call.join(' ').includes('after='))
+    expect(calls).toHaveLength(4)
+    expect(pr1?.fields.files).toHaveLength(500)
+  })
+
+  it('keeps the paths read when a later page of files fails', async () => {
+    const authored = JSON.parse(fixture('search-authored.json'))
+    authored.data.search.nodes[0].files.pageInfo.hasNextPage = true
+    const run = recorded([[/author:@me/, JSON.stringify(authored)], ...githubRoutes()])
+    log.length = 0
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(pr1?.fields.files).toEqual(['src/auth/token.ts', 'README.md'])
+    expect(log[0]).toMatch(/^github: couldn't read every file of acme\/api#1: /)
   })
 
   it('marks a PR night-shift opened as ours', async () => {
