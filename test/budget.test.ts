@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Budget } from '../src/config/schema.js'
-import { type Allowance, allowance, route } from '../src/core/budget.js'
+import { type Allowance, allowance, quotaFacts, route } from '../src/core/budget.js'
 import type { Quota } from '../src/core/types.js'
 
 const now = Date.UTC(2026, 0, 1, 1)
@@ -70,5 +70,23 @@ describe('route', () => {
     expect(route(['capped'], allowances, { capped: 1 })).toEqual({
       passed: ['capped used its 1 fallback units'],
     })
+  })
+})
+
+describe('quotaFacts', () => {
+  it('reads nights and the headroom under the ceiling', () => {
+    const a = allowance(budget(), quota(0.36, 10), now)
+    expect(quotaFacts(a).nights).toBe(1)
+    expect(quotaFacts(a).headroom).toBeCloseTo(0.54)
+  })
+
+  it('rounds headroom to 0.1% so a value on the edge holds', () => {
+    const a = { ...allowance(budget(), quota(0.1, 10), now), ceiling: 0.3 }
+    expect(quotaFacts(a).headroom).toBeGreaterThanOrEqual(0.2)
+  })
+
+  it('has headroom 0 past the ceiling and nothing on a fallback', () => {
+    expect(quotaFacts(allowance(budget(), quota(0.95, 60), now)).headroom).toBe(0)
+    expect(quotaFacts(allowance(budget(), null, now))).toEqual({})
   })
 })

@@ -1556,6 +1556,82 @@ queue:
   expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
 })
 
+it('skips a rule and a step whose quota when does not hold', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: implement
+    where: { type: issue }
+    then:
+      - { skill: review, deliver: draft_pr, when: { nights_until_reset: 1 } }
+      - { skill: plan, deliver: draft_pr, when: { headroom: 10% } }
+`)
+  const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
+  const plan = planNight({
+    config,
+    items: [item],
+    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  const [, review, planned] = report.results
+  expect(review?.status).toBe('skipped')
+  expect(review?.reason).toMatch(/^when the window resets within 1 night didn't hold/)
+  expect(planned?.status).toBe('done')
+})
+
+it('records no attempt for a rule whose quota when does not hold', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: implement
+    where: { type: issue }
+    when: { nights_until_reset: 1 }
+`)
+  const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
+  const plan = planNight({
+    config,
+    items: [item],
+    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(report.results[0]?.passedOver).toBe(true)
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
 it("skips a step whose when doesn't hold and goes on from the unit before", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-when-'))
   const { origin, opened, forge } = await originForge(root)

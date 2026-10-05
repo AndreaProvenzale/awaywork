@@ -702,6 +702,24 @@
               "updated"
             ]
           },
+          "when": {
+            "description": "Run this rule's unit only when the quota holds; otherwise skip it",
+            "type": "object",
+            "properties": {
+              "nights_until_reset": {
+                "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "headroom": {
+                "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                "type": "string",
+                "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+              }
+            },
+            "additionalProperties": false
+          },
           "units": {
             "description": "At most this many units per night from this rule, its then steps included",
             "type": "integer",
@@ -864,6 +882,17 @@
                             "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
                             "type": "string",
                             "minLength": 1
+                          },
+                          "nights_until_reset": {
+                            "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "headroom": {
+                            "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                            "type": "string",
+                            "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                           },
                           "changed": {
                             "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
@@ -1051,6 +1080,17 @@
                                     "type": "string",
                                     "minLength": 1
                                   },
+                                  "nights_until_reset": {
+                                    "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                    "type": "integer",
+                                    "exclusiveMinimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "headroom": {
+                                    "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                    "type": "string",
+                                    "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                                  },
                                   "changed": {
                                     "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                     "anyOf": [
@@ -1233,6 +1273,17 @@
                                       "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
                                       "type": "string",
                                       "minLength": 1
+                                    },
+                                    "nights_until_reset": {
+                                      "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "headroom": {
+                                      "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                      "type": "string",
+                                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                     },
                                     "changed": {
                                       "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
@@ -1496,6 +1547,17 @@
                                   "type": "string",
                                   "minLength": 1
                                 },
+                                "nights_until_reset": {
+                                  "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "headroom": {
+                                  "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                  "type": "string",
+                                  "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                                },
                                 "changed": {
                                   "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                   "anyOf": [
@@ -1682,6 +1744,17 @@
                                           "type": "string",
                                           "minLength": 1
                                         },
+                                        "nights_until_reset": {
+                                          "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                          "type": "integer",
+                                          "exclusiveMinimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "headroom": {
+                                          "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                          "type": "string",
+                                          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                                        },
                                         "changed": {
                                           "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                           "anyOf": [
@@ -1864,6 +1937,17 @@
                                             "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
                                             "type": "string",
                                             "minLength": 1
+                                          },
+                                          "nights_until_reset": {
+                                            "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                            "type": "integer",
+                                            "exclusiveMinimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          "headroom": {
+                                            "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                            "type": "string",
+                                            "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                           },
                                           "changed": {
                                             "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
