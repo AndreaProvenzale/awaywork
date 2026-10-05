@@ -202,7 +202,8 @@ YouTrack, Shortcut, Plane.
   https://developers.asana.com/docs/rate-limits
 - **Blocked.** `GET /tasks/{gid}/dependencies` lists the tasks this one
   waits on; `blocked` is true when one has `completed: false` [I, not
-  run against the live API]. One extra call per task.
+  run against the live API]. One extra call per task; when it fails, as
+  it may on a plan without dependencies, the task has no `blocked`.
 - **PR links.** `GET /attachments?parent=<task>` lists a task's
   attachments, including `external` ones with a `view_url` [V]
   https://developers.asana.com/reference/getattachmentsforobject.
@@ -240,8 +241,10 @@ YouTrack, Shortcut, Plane.
   matches Linear's own branch names (`dev/eng-12-title`) [I].
 - **Blocked.** `blocked` is true when `inverseRelations` holds a
   `blocks` relation whose issue's `state.type` is not `completed` or
-  `canceled`; the first 50 relations are read [I, not run against the
-  live API].
+  `canceled` [I, not run against the live API]. Only the first 10
+  relations are read: at 50, the issues query would pass the
+  10,000-point complexity limit [V]
+  https://linear.app/developers/rate-limiting.
 - **Repo for an issue.** `team_repos` maps a team key to `owner/repo`.
 
 ### GitHub

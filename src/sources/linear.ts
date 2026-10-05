@@ -30,7 +30,7 @@ const issuesQuery = `query Issues($after: String) {
         team { key }
         project { name }
         labels { nodes { name } }
-        inverseRelations(first: 50) { nodes { type issue { state { type } } } }
+        inverseRelations(first: 10) { nodes { type issue { state { type } } } }
       }
       pageInfo { hasNextPage endCursor }
     }
