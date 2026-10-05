@@ -2644,6 +2644,35 @@ it('skips a when step whose check was interrupted without passing over it, so th
   expect(recordAttempts({}, report)).toEqual({})
 })
 
+it('skips a when step whose check timed out without passing over it, so the chain retries', async () => {
+  const real = AbortSignal.timeout.bind(AbortSignal)
+  const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(200))
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  try {
+    const { report } = await loopNight(
+      `queue:
+  - skill: implement
+    then: { skill: review, when: { command: '! sleep 30' } }
+`,
+      [item],
+      looper({}),
+      { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+    )
+
+    expect(report.results[1]).toMatchObject({
+      status: 'skipped',
+      reason: 'when `! sleep 30` passes not checked: timed out after 15 min',
+    })
+    expect(report.results[1]?.passedOver).toBeUndefined()
+    expect(recordAttempts({}, report)).toEqual({})
+  } finally {
+    spy.mockRestore()
+  }
+})
+
 it("ends a loop at a refused when, instead of repeating its other steps on code that can't change", async () => {
   const { report, opened } = await loopNight(
     `repos: { acme/api: { network: false } }

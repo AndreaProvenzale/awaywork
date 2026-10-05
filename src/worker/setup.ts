@@ -60,7 +60,7 @@ export async function runCommand(
   const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
   if (!result.failed) return { output }
   if (!stop.aborted) return { output, failed: result.shortMessage }
-  // A command that hangs fails like one that exits non-zero, so a check doesn't retry it every night.
+  // A hang fails like a non-zero exit for `until`; a `when` treats `timedOut` as unchecked.
   if (!signal?.aborted && !nightEnds)
     return { output, failed: `timed out after ${TIMEOUT_MS / 60_000} min`, timedOut: true }
   return {
