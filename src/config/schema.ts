@@ -320,7 +320,8 @@ const mcpServer = z
   .superRefine((s, ctx) => {
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: 'custom', path: [path], message })
-    if (!s.command === !s.url) issue('command', 'expected command (stdio) or url (HTTP), not both')
+    if (s.command && s.url) issue('command', 'expected command (stdio) or url (HTTP), not both')
+    if (!s.command && !s.url) issue('command', 'expected command (stdio) or url (HTTP)')
     if (s.url && (s.args || s.env)) issue(s.args ? 'args' : 'env', 'args and env need a command')
     if (s.command && s.headers) issue('headers', 'headers need a url')
     const plain = {
@@ -343,6 +344,13 @@ const mcpServer = z
       else if (!s.secrets.includes(secret.name))
         issue('headers', `${header}: \${${secret.name}} is not one of this server's secrets`)
     }
+    const headers = Object.values(s.headers ?? {})
+    for (const name of s.url ? s.secrets : [])
+      if (!headers.some((v) => v.includes(`\${${name}}`)))
+        issue(
+          'secrets',
+          `${name}: an HTTP server gets a secret only in a header, like Bearer \${${name}}`,
+        )
   })
 
 const repo = z.strictObject({

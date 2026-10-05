@@ -56,8 +56,8 @@ not asked of the model.
   is replaced with night-shift's, and the prompt says its `CLAUDE.md`,
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
-  skills), only night-shift's skills plugin, the `settings` file you
-  configured and the MCP servers the rule names; Codex still loads `AGENTS.md` and its skills itself.
+  skills), only night-shift's skills plugin and the `settings` file you
+  configured; Codex still loads `AGENTS.md` and its skills itself.
 - **Only trusted authors' code runs by default.** Reviewing a PR means
   running its tests, with your agent's login in the environment. The
   default `review` rule matches `trusted: true` only: PRs whose author
@@ -70,7 +70,8 @@ not asked of the model.
   in the config: a Claude `settings` file, Codex `config` values,
   top-level `skills` ([Configuration](./configuration.md#providers)) and
   [MCP servers](./configuration.md#mcp-servers).
-  They are yours, so they apply on someone else's PR too.
+  They are yours, so they apply on someone else's PR too, except MCP
+  servers, which carry your secrets.
 
 ## MCP servers
 
@@ -90,10 +91,12 @@ so the guide's advice is in three parts:
   the skill needs: night-shift has the agent refuse every tool outside
   the list. For context the worker only reads, prefetching it with a
   source keeps the token away from the model entirely.
-- **Not on an untrusted author's PR.** Servers start for your PRs and
-  for trusted authors' PRs, since the servers are yours, like the
-  `settings` file. On an untrusted author's PR they don't start, and the
-  unit's log says so.
+- **Not on someone else's PR.** The worker runs the PR's code, and on
+  Claude Code that code gets the servers' secrets in its env. So servers
+  start for your own PRs and for issues and tasks, but not on a PR
+  someone else opened, trusted or not, nor on an issue it closes, as
+  with the repo's `secrets` for `setup`. A server with an unset secret doesn't start either. The
+  unit's log says which servers didn't start and why.
 
 Servers run outside the agent's sandbox, so `network: false` doesn't cut
 them off: a stdio server can reach the network, and so can the agent's

@@ -619,21 +619,22 @@ queue:
 
 The shape is a subset of Claude Code's `.mcp.json`, translated for each
 agent: a `command` with `args` and `env`, or a `url` with `headers`.
-`secrets` names the env vars the server needs. A server receives its
-secrets in its env under those same names. A header can also name one,
-as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't
-appear in `command`, `args` or `url`, where it would show in the process
-list, nor in `env`, where Codex takes only literal values. Names starting
+`secrets` names the env vars the server needs. A stdio server receives
+its secrets in its env under those same names. An HTTP server gets each
+one in a header, as `${NAME}`, or as `Bearer ${NAME}` for
+`Authorization`. A secret can't appear in `command`, `args` or `url`,
+where it would show in the process list, nor in `env`, where Codex takes
+only literal values. Names starting
 with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and
 Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything
 outside the list is refused. Only units whose rule names a server get
 its secrets. `nightshift schedule` maps them into the Actions workflow,
 and `nightshift doctor` shows whether each one is set.
 
-Servers start for your PRs and for trusted authors' PRs, but not on an
-untrusted author's PR. Only token-based servers work unattended:
-OAuth-only servers, such as claude.ai connectors, need a login a runner
-doesn't have. A server's secret is one the agent can read. A server's
+Servers start for your own PRs and for issues and tasks, but not on
+someone else's PR or an issue it closes, nor when one of their secrets
+is unset. Only token-based servers work unattended: OAuth-only servers,
+such as claude.ai connectors, need a login a runner doesn't have. A server's secret is one the agent can read. A server's
 tools are tools that injected instructions can call. See
 [Safety](./safety.md#mcp-servers).
 

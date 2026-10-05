@@ -484,7 +484,7 @@ repos:
   expect(untrusted).toContain("Setup, not run because this PR's author isn't trusted")
 })
 
-it("gives a worker only its step's MCP servers and their secrets, on someone else's PR too, and none on an untrusted one", async () => {
+it("gives a worker only its step's MCP servers whose secrets are set, and none on someone else's PR", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-mcp-'))
   const forge = {
     ...fakeForge(),
@@ -499,6 +499,7 @@ budget: { fallback: { units: 8, turns: 60 } }
 sources: { github: { repos: [acme/*] } }
 mcp:
   db: { command: db-mcp, secrets: [DB_URL] }
+  jira: { command: jira-mcp, secrets: [JIRA_TOKEN] }
   sentry: { url: "https://mcp.sentry.dev/mcp", headers: { Authorization: "Bearer \${SENTRY_TOKEN}" }, secrets: [SENTRY_TOKEN] }
 queue:
   - skill: fix-ci
@@ -506,7 +507,7 @@ queue:
     mcp: [db]
     deliver: report
     then: [{ skill: address-review, mcp: [sentry], deliver: report }]
-  - { skill: review, mcp: [sentry] }
+  - { skill: review, mcp: [sentry, jira] }
 `)
   const plan = planNight({
     config,
@@ -540,7 +541,10 @@ queue:
     },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: '/bin', DB_URL: 'db', SENTRY_TOKEN: 'sentry' }, log: () => {} },
+    ctx: {
+      env: { PATH: '/bin', DB_URL: 'db', SENTRY_TOKEN: 'sentry', JIRA_TOKEN: '' },
+      log: () => {},
+    },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -551,10 +555,12 @@ queue:
     { unit: 'acme-api-1-address-review', ...sentry },
     { unit: 'acme-api-2', ...sentry },
     { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-4', ...sentry },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
   ])
-  const log = await readFile(join(root, 'run/units/acme-api-3/worker.log'), 'utf8')
-  expect(log).toContain("mcp: sentry not started on an untrusted author's PR")
+  const log = (unit: string) => readFile(join(root, `run/units/${unit}/worker.log`), 'utf8')
+  expect(await log('acme-api-2')).toContain('mcp: jira not started, unset: JIRA_TOKEN')
+  expect(await log('acme-api-3')).toContain("mcp: sentry, jira not started on someone else's PR")
+  expect(await log('acme-api-4')).toContain("mcp: sentry, jira not started on someone else's PR")
 })
 
 it("stops a unit at its provider's unit_minutes", async () => {

@@ -180,13 +180,19 @@ describe('config', () => {
     expect(server('{ command: x, url: "https://a.b" }')).toEqual([
       'mcp.s.command: expected command (stdio) or url (HTTP), not both',
     ])
+    expect(server('{ secrets: [T] }')).toEqual([
+      'mcp.s.command: expected command (stdio) or url (HTTP)',
+    ])
+    expect(server('{ url: "https://a.b", secrets: [T] }')).toEqual([
+      'mcp.s.secrets: T: an HTTP server gets a secret only in a header, like Bearer ${T}',
+    ])
     expect(server('{ command: x, args: ["${T}"], secrets: [T] }')).toEqual([
       expect.stringMatching(/^mcp.s.args: a secret can't go in command, args, env or url/),
     ])
     expect(server('{ command: x, env: { T: "${T}" }, secrets: [T] }')).toEqual([
       expect.stringMatching(/^mcp.s.env: /),
     ])
-    expect(server('{ url: "https://a.b", secrets: [GITHUB_TOKEN] }')).toEqual([
+    expect(server('{ command: x, secrets: [GITHUB_TOKEN] }')).toEqual([
       expect.stringMatching(/^mcp.s.secrets\[0\]: GH_ and GITHUB_ names are reserved/),
     ])
     expect(server('{ url: "file:///x" }')).toHaveLength(1)
