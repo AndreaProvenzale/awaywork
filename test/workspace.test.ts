@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -11,7 +11,7 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace } from '../src/worker/workspace.js'
+import { prepareWorkspace, writeOutput } from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -281,5 +281,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(await readFile(join(dir, '.agents/skills/house-style/SKILL.md'), 'utf8')).toBe(
       'EDITED REPO SKILL',
     )
+  })
+
+  it('refuses to write through a symlink or a hard link, leaving the target alone', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-out-'))
+    const outside = join(dir, 'outside')
+    await writeFile(outside, 'keep')
+    await symlink(outside, join(dir, 'sym'))
+    await link(outside, join(dir, 'hard'))
+    await expect(writeOutput(join(dir, 'sym'), 'x')).rejects.toThrow()
+    await expect(writeOutput(join(dir, 'hard'), 'x')).rejects.toThrow()
+    expect(await readFile(outside, 'utf8')).toBe('keep')
+    await writeOutput(join(dir, 'plain'), 'one')
+    await writeOutput(join(dir, 'plain'), 'two')
+    expect(await readFile(join(dir, 'plain'), 'utf8')).toBe('two')
   })
 })
