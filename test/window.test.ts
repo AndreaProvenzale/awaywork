@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { nightEnd, runsLeft } from '../src/core/window.js'
+import { nightEnd, runsLeft, startsOf } from '../src/core/window.js'
 
 const at = (day: number, time: string) => new Date(`2026-09-${day}T${time}:00`)
 
@@ -41,4 +41,16 @@ it('counts the windows left before a reset', () => {
   expect(runsLeft(windows, ms(25, '12:00'), ms(28, '12:00'))).toBe(5)
   expect(runsLeft(windows, ms(26, '11:00'), ms(26, '11:30'))).toBe(1)
   expect(runsLeft(windows, ms(25, '12:00'), ms(25, '12:30'))).toBe(1)
+})
+
+it('merges windows opening at the same time into one start, as launchd reads them back', () => {
+  const windows = [
+    { start: '10:00', end: '11:00', days: ['wed' as const] },
+    { start: '10:00', end: '11:00', days: ['mon' as const] },
+    { start: '01:00', end: '07:00' },
+  ]
+  expect(startsOf(windows)).toEqual([
+    { hour: 10, minute: 0, days: [1, 3] },
+    { hour: 1, minute: 0 },
+  ])
 })

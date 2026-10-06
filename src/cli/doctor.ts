@@ -91,7 +91,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
     await provider.probe(ctx).then(
       (quota) => {
-        const a = allowance(budget, quota, Date.now(), undefined, windowsOf(config))
+        const a = allowance(budget, quota, Date.now(), undefined, config.windows)
         report(a.kind === 'quota' ? 'ok' : 'warn', `${id} tonight`, describeAllowance(a))
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),

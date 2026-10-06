@@ -10,7 +10,6 @@ import { type NightPlan, planNight } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item } from '../core/types.js'
-import { windowsOf } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -50,7 +49,7 @@ export async function planTonight(
       reason = `probe failed: ${e.message}`
       return null
     })
-    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), reason, windowsOf(config))
+    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), reason, config.windows)
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }

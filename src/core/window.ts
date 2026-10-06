@@ -12,12 +12,17 @@ export const clock = (time: string) => time.split(':').map(Number) as [number, n
 export const windowsOf = ({ night, windows }: Pick<Config, 'night' | 'windows'>): Window[] =>
   windows ?? [night]
 
-/** Where a window opens (local time) as a scheduler trigger: weekdays are 0 (Sunday) to 6. */
+/** Where a window opens (local time) as a scheduler trigger, same-time windows merged as launchd reads them back: weekdays are 0 (Sunday) to 6. */
 export function startsOf(windows: Window[]): { hour: number; minute: number; days?: number[] }[] {
-  return windows.map((w) => {
+  const starts: { hour: number; minute: number; days?: number[] }[] = []
+  for (const w of windows) {
     const [hour, minute] = clock(w.start)
-    return { hour, minute, ...(w.days && { days: w.days.map((d) => DAYS.indexOf(d)).sort() }) }
-  })
+    const days = w.days?.map((d) => DAYS.indexOf(d))
+    const same = starts.find((s) => s.hour === hour && s.minute === minute && !s.days === !days)
+    if (same?.days && days) same.days = [...new Set([...same.days, ...days])].sort()
+    else starts.push({ hour, minute, ...(days && { days: days.sort() }) })
+  }
+  return starts
 }
 
 /** Each window opening from the day before `from` to `days` days after, as [start, end]; one may cross midnight. */
