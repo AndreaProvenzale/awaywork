@@ -7,7 +7,8 @@ import {
   unchangedSince,
 } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
-import { type Allowance, route } from './budget.js'
+import { type Allowance, quotaFacts, route } from './budget.js'
+import { describeCondition, holds } from './condition.js'
 import { dedupe } from './dedupe.js'
 import {
   closestRule,
@@ -31,6 +32,8 @@ export interface PlannedUnit {
   origin?: Origin
   provider?: string
   passed: string[]
+  /** Its quota `when` fails on the probe: the run checks again as windows fill, and skips it if it still fails. */
+  quotaUnmet?: string
   /** The unit this one chains after, by id: it runs only on what that unit delivered. */
   after?: string
   /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
@@ -163,6 +166,8 @@ export function planNight(input: {
         ],
         deliver: deliverOf(step),
       }
+      const quota = quotaOf(step.when)
+      const facts = provider && allowances[provider] ? quotaFacts(allowances[provider]) : {}
       units.push({
         unit,
         rule: ruleIndex,
@@ -170,6 +175,10 @@ export function planNight(input: {
         origin: skill?.origin,
         provider,
         passed,
+        ...(quota &&
+          !holds(quota, facts) && {
+            quotaUnmet: `when ${describeCondition(quota)} doesn't hold on the probe`,
+          }),
         after,
         ...(loop && { loop }),
       })
@@ -295,6 +304,15 @@ export function planNight(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+function quotaOf(when: Condition | undefined): Condition | undefined {
+  const { nights_until_reset, headroom } = when ?? {}
+  if (nights_until_reset === undefined && headroom === undefined) return undefined
+  return {
+    ...(nights_until_reset !== undefined && { nights_until_reset }),
+    ...(headroom !== undefined && { headroom }),
+  }
 }
 
 function firstStep(entry: Step | Loop): Step {

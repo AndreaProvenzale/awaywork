@@ -69,6 +69,7 @@ export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = fa
       out.push(`  ${lines[i + 1]}`)
       if (p.after) out.push(`     after ${p.after}`)
       if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}`)
+      if (p.quotaUnmet) out.push(`     ${p.quotaUnmet}`)
       if (p.loop?.step === 0) {
         const { skills, until, max, host, deliver } = p.loop
         const publish = deliver === 'push' ? `one push onto ${p.unit.base}` : 'one draft PR'
