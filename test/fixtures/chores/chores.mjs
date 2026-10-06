@@ -12,7 +12,7 @@ const updated = `${monday.toISOString().slice(0, 10)}T00:00:00Z`
 const items = repos.flatMap((repo) =>
   chores.map(({ name, task }) => ({
     id: `${name}:${repo}`,
-    key: `chore-${name}-${repo}`,
+    key: `chore-${name}-${repo.replace('/', '-')}`,
     type: 'task',
     title: `Chore: ${name} in ${repo}`,
     url: `https://example.com/chores/${name}`,

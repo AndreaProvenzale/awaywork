@@ -43,8 +43,8 @@ describe('chores from a custom source', () => {
       ['chore-tests-acme-web', 'implement'],
     ])
     expect(plan.skipped.map((s) => s.item.key)).toEqual([
-      'chore-todos-acme/api',
-      'chore-todos-acme/web',
+      'chore-todos-acme-api',
+      'chore-todos-acme-web',
     ])
   })
 
