@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -49,20 +50,21 @@ export interface ReplayResult extends WorkerResult {
  */
 export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const unitDir = join(r.runDir, 'units', r.unitId)
-  const state: ReplayState = await readFile(join(unitDir, 'replay.json'), 'utf8').then(
-    JSON.parse,
-    () => {
+  const raw = await readFile(join(unitDir, 'replay.json'), 'utf8').catch(
+    (e: NodeJS.ErrnoException) => {
+      if (e.code !== 'ENOENT') throw e
       throw new Error(
-        `unit ${r.unitId} has no replay.json in ${unitDir}: it ran before replay existed`,
+        `no replay.json in ${unitDir}: the unit never started, the run or unit id is wrong, or the run predates replay`,
       )
     },
   )
+  const state: ReplayState = JSON.parse(raw)
   const { unit } = state
   const provider = r.providers[state.provider]
   if (!provider) throw new Error(`provider ${state.provider} is not configured`)
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
-  const root = join(r.runDir, 'replays', `${r.unitId}-${stamp}`)
+  const root = join(r.runDir, 'replays', `${r.unitId}-${stamp}-${randomBytes(2).toString('hex')}`)
   const dir = join(root, 'work')
   const plugin = join(root, 'plugin')
   await mkdir(root, { recursive: true })
