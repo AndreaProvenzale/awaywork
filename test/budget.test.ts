@@ -90,3 +90,9 @@ describe('quotaFacts', () => {
     expect(quotaFacts(allowance(budget(), null, now))).toEqual({})
   })
 })
+
+it('paces over the windows left rather than the days when given windows', () => {
+  const weekly = [{ days: ['sat' as const], start: '10:00', end: '18:00' }]
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now, undefined, weekly))).toBe(0.9)
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now))).toBe(0.54)
+})

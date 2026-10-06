@@ -7,14 +7,14 @@ import { expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { offerSecrets, staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
-import { cron, cronLine, parseCronLine } from '../src/scheduler/cron.js'
+import { cron, cronLine, cronLines, parseCronLines } from '../src/scheduler/cron.js'
 import {
   removeWorkflow,
   staleWorkflow,
   WORKFLOW,
   workflow,
 } from '../src/scheduler/github-actions.js'
-import type { Schedule, Scheduler } from '../src/scheduler/index.js'
+import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
 import { scriptedAsk } from './fakes/ask.js'
@@ -28,8 +28,7 @@ const schedule: Schedule = {
     '--config',
     "/h/it's.yml",
   ],
-  hour: 1,
-  minute: 5,
+  starts: [{ hour: 1, minute: 5 }],
   path: '/opt/bin:/usr/bin',
   log: '/h/state/schedule.log',
 }
@@ -117,10 +116,12 @@ it("adds one tagged crontab line, keeps the user's own and removes only its line
   const scheduler = cron(cronTab.run)
   await scheduler.install(schedule)
   await scheduler.install(schedule)
-  expect(cronLine(schedule)).toBe(
+  expect(cronLine(schedule, schedule.starts[0] as Start)).toBe(
     `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/night shift/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # night-shift`,
   )
-  expect(cronTab.crontab()).toBe(`MAILTO=me\n\n0 9 * * * backup\n${cronLine(schedule)}\n`)
+  expect(cronTab.crontab()).toBe(
+    `MAILTO=me\n\n0 9 * * * backup\n${cronLines(schedule).join('\n')}\n`,
+  )
   expect(await scheduler.read()).toEqual(schedule)
   expect(await scheduler.remove()).toBe(true)
   expect(cronTab.crontab()).toBe('MAILTO=me\n\n0 9 * * * backup\n')
@@ -131,12 +132,12 @@ it("adds one tagged crontab line, keeps the user's own and removes only its line
 it('reads back a job whose paths need escaping', () => {
   expect(parsePlist(plist(awkward))).toEqual(awkward)
   expect(parseUnits(service(awkward), timer(awkward))).toEqual(awkward)
-  expect(parseCronLine(cronLine(awkward))).toEqual(awkward)
+  expect(parseCronLines(cronLines(awkward))).toEqual(awkward)
 })
 
 it('writes a workflow with a local-time cron that calls the action with a pinned version', () => {
   const text = workflow({
-    start: '01:30',
+    starts: [{ hour: 1, minute: 30 }],
     timezone: 'Europe/Rome',
     config: '.night-shift/config.yml',
     version: '0.3.1',
@@ -186,7 +187,7 @@ it('ships an action that installs the pinned version and runs the night', async 
 
 it("runs command sources' setup in the config's folder before night-shift", () => {
   const text = workflow({
-    start: '01:30',
+    starts: [{ hour: 1, minute: 30 }],
     timezone: 'Europe/Rome',
     config: '.night-shift/config.yml',
     version: '0.3.1',
@@ -221,7 +222,12 @@ it('warns about a workflow that runs its steps inline instead of calling the act
   await mkdir(join(root, '.github/workflows'), { recursive: true })
   await writeFile(join(root, WORKFLOW), 'steps:\n  - run: npm install -g nightshift-agent\n')
   expect(await staleWorkflow(root)).toMatch(/doesn't call night-shift's action/)
-  const current = { start: '01:30', timezone: 'UTC', config: 'c.yml', version: '0.3.1' }
+  const current = {
+    starts: [{ hour: 1, minute: 30 }],
+    timezone: 'UTC',
+    config: 'c.yml',
+    version: '0.3.1',
+  }
   await writeFile(
     join(root, WORKFLOW),
     workflow({ ...current, packages: [], secrets: [], setup: [] }),
@@ -250,7 +256,7 @@ it('offers to set only the secrets it has values for, and never prints them', as
   expect(ask.notes.join('\n')).not.toMatch(/_secret/)
 })
 
-it('warns when an installed job for this config no longer starts at night.start', async () => {
+it('warns when an installed job for this config no longer starts when its windows open', async () => {
   const installed = (id: string, job?: Schedule): Scheduler => ({
     id,
     install: async () => '',
@@ -262,8 +268,49 @@ it('warns when an installed job for this config no longer starts at night.start'
     cron: installed('cron', { ...schedule, command: ['nightshift', '--config', '/h/other.yml'] }),
     systemd: installed('systemd'),
   }
-  expect(await staleSchedules("/h/it's.yml", '01:05', all)).toEqual([])
-  expect(await staleSchedules("/h/it's.yml", '02:30', all)).toEqual([
-    'the launchd job starts at 01:05, night.start is 02:30; run `nightshift schedule install`',
+  expect(await staleSchedules("/h/it's.yml", [{ start: '01:05', end: '07:00' }], all)).toEqual([])
+  expect(await staleSchedules("/h/it's.yml", [{ start: '02:30', end: '07:00' }], all)).toEqual([
+    "the launchd job starts at 01:05, the config's windows start at 02:30; run `nightshift schedule install`",
+  ])
+})
+
+const weekly: Schedule = {
+  ...schedule,
+  starts: [
+    { hour: 1, minute: 5 },
+    { hour: 10, minute: 0, days: [0, 6] },
+  ],
+}
+
+it('installs one trigger per window in every scheduler and reads them back', async () => {
+  expect(parsePlist(plist(weekly))).toEqual(weekly)
+  expect(plist(weekly)).toContain('<key>Weekday</key><integer>6</integer>')
+  expect(timer(weekly)).toContain('OnCalendar=Sun,Sat *-*-* 10:00:00')
+  expect(parseUnits(service(weekly), timer(weekly))).toEqual(weekly)
+  expect(cronLines(weekly).map((l) => l.split(' ').slice(0, 5).join(' '))).toEqual([
+    '5 1 * * *',
+    '0 10 * * 0,6',
+  ])
+  expect(parseCronLines(cronLines(weekly))).toEqual(weekly)
+  const cronTab = recorder()
+  const scheduler = cron(cronTab.run)
+  await scheduler.install(weekly)
+  expect(await scheduler.read()).toEqual(weekly)
+  expect(await scheduler.remove()).toBe(true)
+})
+
+it('writes a workflow cron per window', () => {
+  const text = workflow({
+    starts: weekly.starts,
+    timezone: 'UTC',
+    config: 'c.yml',
+    version: '0.3.1',
+    packages: [],
+    secrets: [],
+    setup: [],
+  })
+  expect(parse(text).on.schedule).toEqual([
+    { cron: '5 1 * * *', timezone: 'UTC' },
+    { cron: '0 10 * * 0,6', timezone: 'UTC' },
   ])
 })

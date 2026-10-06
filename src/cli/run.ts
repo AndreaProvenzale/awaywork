@@ -5,7 +5,7 @@ import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, runsDir } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, runLine, summarize } from '../core/report.js'
-import { nightEnd } from '../core/window.js'
+import { describeWindow, nightEnd, windowsOf } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -26,10 +26,10 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        const until = opts.scheduled ? nightEnd(config.night, new Date()) : undefined
+        const until = opts.scheduled ? nightEnd(windowsOf(config), new Date()) : undefined
         if (opts.scheduled && !until) {
           console.log(
-            `Outside the night window (${config.night.start}-${config.night.end}), nothing to do`,
+            `Outside the ${config.windows ? 'run windows' : 'night window'} (${windowsOf(config).map(describeWindow).join(', ')}), nothing to do`,
           )
           return
         }

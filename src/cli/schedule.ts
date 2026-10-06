@@ -7,11 +7,17 @@ import { execa } from 'execa'
 import { configPath, loadConfig } from '../config/load.js'
 import { packageVersion, stateDir } from '../config/paths.js'
 import type { Ask } from '../core/types.js'
-import { clock } from '../core/window.js'
+import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
-import { defaultScheduler, type Schedule, type Scheduler, schedulers } from '../scheduler/index.js'
+import {
+  defaultScheduler,
+  describeStarts,
+  type Schedule,
+  type Scheduler,
+  schedulers,
+} from '../scheduler/index.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { Cancelled, terminalAsk } from './ask.js'
@@ -31,7 +37,7 @@ export function scheduleCommand(program: Command): void {
 
   schedule
     .command('install')
-    .description('start `nightshift run` at night.start; it starts no unit after night.end')
+    .description('start `nightshift run` when a window opens; it starts no unit after it closes')
     .option(
       '--with <scheduler>',
       `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: launchd on macOS, else systemd if it runs, else cron)`,
@@ -61,7 +67,7 @@ export function scheduleCommand(program: Command): void {
         const job = await scheduler.read()
         if (!job) continue
         found = true
-        console.log(`Scheduled with ${scheduler.id} at ${startsAt(job)}`)
+        console.log(`Scheduled with ${scheduler.id} at ${describeStarts(job.starts)}`)
         console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
         console.log(`Log: ${job.log}`)
       }
@@ -75,28 +81,26 @@ export function scheduleCommand(program: Command): void {
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
-const startsAt = (job: Schedule) =>
-  [job.hour, job.minute].map((n) => String(n).padStart(2, '0')).join(':')
 
 function jobConfig(job: Schedule): string | undefined {
   const flag = job.command.indexOf('--config')
   return flag >= 0 ? job.command[flag + 1] : undefined
 }
 
-/** Warns about each installed job for this config that no longer starts at night.start. */
+/** Warns about each installed job for this config that no longer starts when its windows open. */
 export async function staleSchedules(
   config: string,
-  start: string,
+  windows: Window[],
   all: Record<string, Scheduler> = localSchedulers(),
 ): Promise<string[]> {
   const warnings = []
   for (const scheduler of Object.values(all)) {
     const job = await scheduler.read()
     if (!job || jobConfig(job) !== resolve(config)) continue
-    const [hour, minute] = clock(start)
-    if (job.hour !== hour || job.minute !== minute)
+    const wanted = describeStarts(startsOf(windows))
+    if (describeStarts(job.starts) !== wanted)
       warnings.push(
-        `the ${scheduler.id} job starts at ${startsAt(job)}, night.start is ${start}; run \`nightshift schedule install\``,
+        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${wanted}; run \`nightshift schedule install\``,
       )
   }
   return warnings
@@ -118,8 +122,7 @@ export async function installSchedule(config: string | undefined, id?: string): 
   }
   try {
     const path = resolve(configPath(config))
-    const { night } = await loadConfig(path)
-    const [hour, minute] = clock(night.start)
+    const windows = windowsOf(await loadConfig(path))
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
@@ -127,13 +130,12 @@ export async function installSchedule(config: string | undefined, id?: string): 
       if (other !== scheduler && (await other.remove())) console.log(`Removed the ${other.id} job`)
     const where = await scheduler.install({
       command: [process.execPath, bin, 'run', '--scheduled', '--config', path],
-      hour,
-      minute,
+      starts: startsOf(windows),
       path: process.env.PATH ?? '',
       log,
     })
     console.log(
-      `Scheduled with ${scheduler.id} at ${night.start}, window until ${night.end}: ${where}`,
+      `Scheduled with ${scheduler.id} for ${windows.map(describeWindow).join(', ')}: ${where}`,
     )
     console.log(`Log: ${log}. The job keeps this shell's PATH; secrets come from the env file.`)
     if (scheduler.id === 'systemd')
@@ -162,6 +164,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
     const path = configPath(config)
     const {
       night,
+      windows,
       providers: picked,
       sources: configured,
       notify,
@@ -183,7 +186,7 @@ async function installWorkflow(config: string | undefined): Promise<void> {
     await writeFile(
       file,
       workflow({
-        start: night.start,
+        starts: startsOf(windowsOf({ night, windows })),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         config: REPO_CONFIG,
         version: packageVersion,

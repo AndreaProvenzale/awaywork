@@ -86,6 +86,21 @@ queue:                          # first matching rule wins; top = highest priori
 `night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
+`windows` replaces that one window with a list, each with optional
+`days` (`sun` to `sat`, the day it opens on) for quota that idles at
+weekends or over lunch:
+
+```yaml
+windows:
+  - { start: "01:00", end: "07:00" }
+  - { days: [sat, sun], start: "10:00", end: "18:00" }
+```
+
+The scheduler gets one trigger per window, and pacing divides the
+headroom by the runs left before the reset, not the nights. Windows
+should not overlap. `night.units` and `night.units_per_repo` still cap
+each run, and `night.start` and `night.end` are then unused.
+
 A readable quota decides how much work fits, not how much you can review
 in a morning. `night.units` caps the units planned per night,
 `night.units_per_repo` those in any one repo, and a rule's `units` those
