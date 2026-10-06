@@ -342,6 +342,21 @@ describe('config', () => {
     ).toEqual([])
   })
 
+  it('takes a quota when on a rule and on a step, but not on a rule before a loop', () => {
+    const cfg = parseConfig(`${minimal}queue:
+  - skill: implement
+    when: { nights_until_reset: 1 }
+    then: { skill: review, when: { headroom: 20% } }
+`)
+    expect(cfg.queue?.[0]).toMatchObject({ when: { nights_until_reset: 1 } })
+    expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ when: { headroom: 0.2 } })
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: implement, when: { headroom: 20% }, then: { loop: review, until: { verdict: approve }, max: 2 } }]`,
+      ),
+    ).toEqual([expect.stringContaining('queue[0].when: a loop works in the clone')])
+  })
+
   it('takes a command in until, and when on then and loop steps but not on a rule', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
@@ -361,11 +376,16 @@ describe('config', () => {
       until: { verdict: 'approve', command: 'pnpm test' },
     })
     expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
-      ['queue[0]: Unrecognized key: "when"'],
+      [
+        'queue[0].when: Unrecognized key: "verdict"',
+        'queue[0].when: expected nights_until_reset or headroom',
+      ],
     )
     expect(
       problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
-    ).toEqual(['queue[0].then.when: expected verdict, command or changed'])
+    ).toEqual([
+      'queue[0].then.when: expected verdict, command, changed, nights_until_reset or headroom',
+    ])
     expect(
       problems(
         `${minimal}queue: [{ skill: implement, then: { loop: review, until: { changed: src }, max: 1 } }]`,

@@ -210,6 +210,10 @@ export interface Condition {
   command?: string
   /** `when` only: globs, holding when the chain's commits change a matching path, against where the chain started. */
   changed?: string[]
+  /** `when` only: holds when the long window resets within this many nights. */
+  nights_until_reset?: number
+  /** `when` only: holds when at least this share of the long window is left under tonight's ceiling. */
+  headroom?: number
 }
 
 /** Steps run round after round in one clone, until `until` holds or `max` rounds ran; one publish at the end. */

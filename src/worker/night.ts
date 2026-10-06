@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
-import { route, withQuota } from '../core/budget.js'
+import { quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
@@ -438,6 +438,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
         const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
         const met = await factsFor(when, unit, dir, verdict, log, logFile)
+        Object.assign(met.facts, quotaFacts(a))
         // A check stopped or timed out before it exited says nothing: skip the step without passing over it.
         if (met.check?.stopped || met.check?.timedOut) {
           const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`

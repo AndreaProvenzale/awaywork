@@ -70,6 +70,13 @@ export function route(
 
 export const pct = (share: number) => `${Math.round(share * 1000) / 10}%`
 
+/** What a quota condition reads: nights to the reset and the share left under the ceiling; none without a reading. */
+export function quotaFacts(a: Allowance): { nights?: number; headroom?: number } {
+  return a.kind === 'quota'
+    ? { nights: a.nights, headroom: Math.max(0, Math.round((a.ceiling - a.used) * 1000) / 1000) }
+    : {}
+}
+
 /** The same ceiling with usage moved to what a worker last saw. */
 export function withQuota(a: Allowance, quota: Quota): Allowance {
   if (a.kind !== 'quota') return a

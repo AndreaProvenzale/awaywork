@@ -206,9 +206,22 @@ const conditionKeys = {
 const condition = z
   .strictObject(conditionKeys)
   .refine((c) => Object.keys(c).length > 0, 'expected verdict or command')
+const quotaKeys = {
+  nights_until_reset: z
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Holds when the provider's long window resets within this many nights; 1 is the last",
+    ),
+  headroom: percent
+    .optional()
+    .describe("Holds when at least this share of the long window is left under tonight's ceiling"),
+}
 const when = z
   .strictObject({
     ...conditionKeys,
+    ...quotaKeys,
     verdict: conditionKeys.verdict.describe(
       "The step before's verdict; a list means any of, {not} negates",
     ),
@@ -218,7 +231,13 @@ const when = z
         "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
       ),
   })
-  .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
+  .refine(
+    (c) => Object.keys(c).length > 0,
+    'expected verdict, command, changed, nights_until_reset or headroom',
+  )
+const ruleWhen = z
+  .strictObject(quotaKeys)
+  .refine((c) => Object.keys(c).length > 0, 'expected nights_until_reset or headroom')
 const stepObject = z.strictObject({
   skill,
   ...stepSettings,
@@ -263,6 +282,9 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    when: ruleWhen
+      .optional()
+      .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
       .describe('At most this many units per night from this rule, its then steps included'),
@@ -478,6 +500,13 @@ export const configSchema = z
       if (Array.isArray(r.then))
         r.then.forEach((entry, j, then) => {
           const before = then[j - 1]
+          if (j === 0 && isLoop(entry) && r.when && r.deliver !== 'report')
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'when'],
+              message:
+                "a loop works in the clone of the rule's unit, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on the rule",
+            })
           if (before && isLoop(before) && isLoop(entry))
             ctx.addIssue({
               code: 'custom',

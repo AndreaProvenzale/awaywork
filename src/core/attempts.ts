@@ -65,6 +65,8 @@ export function recordAttempts(attempts: Attempts, report: NightReport): Attempt
   const result = (id: string) => report.results.find((r) => r.planned.unit.id === id)
   const step = (id: string) => report.plan.units.find((p) => p.after === id)
   for (const head of report.plan.units.filter((p) => !p.after && !p.loop)) {
+    // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.
+    if (result(head.unit.id)?.passedOver) continue
     let at: PlannedUnit | undefined = head
     let short: UnitResult | undefined
     let finished = true

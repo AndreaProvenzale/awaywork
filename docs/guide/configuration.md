@@ -502,6 +502,13 @@ queue:
   default branch or the night-shift PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
+- `nights_until_reset` holds when the provider's long window resets within
+  that many nights: `1` is the last night before the reset. `headroom`
+  (e.g. `20%`) holds when at least that share of the window is left
+  under tonight's ceiling, so a loop with a high `max` or a second review
+  can run only on spare quota. Both read the quota the run last saw, as
+  the budget does, and don't hold when the quota can't be read. A rule
+  takes a `when` with these two keys only, to skip its own unit.
 - Every key set must hold. `plan` shows each step's `when`, and the
   report says which one didn't hold.
 - A skipped step doesn't end a loop, unless its command didn't run: it
