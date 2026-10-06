@@ -3110,3 +3110,54 @@ after_unit:
     'acme-api-1-qa-feedback says nothing.',
   ])
 })
+
+async function verifiedBody(repoConfig: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-verify-'))
+  const { opened, forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos:
+  acme/api: { ${repoConfig} }
+queue:
+  - skill: implement
+`)
+  const plan = planNight({
+    config,
+    items: [issue(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: looper({}) },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  return opened[0]?.body ?? ''
+}
+
+it("publishes a unit whose verify failed with the command's output in the PR body", async () => {
+  const body = await verifiedBody("verify: 'echo 2 lint errors; false'")
+  expect(body).toContain('## Night-shift verify')
+  expect(body).toContain('`echo 2 lint errors; false` failed: Command failed with exit code 1')
+  expect(body).toContain('2 lint errors')
+})
+
+it('leaves the PR body alone when verify passes', async () => {
+  expect(await verifiedBody("verify: 'true'")).not.toContain('Night-shift verify')
+})
+
+it('notes a refused verify in the PR body', async () => {
+  const body = await verifiedBody("verify: 'true', network: false")
+  expect(body).toContain('not run: not run without network')
+})

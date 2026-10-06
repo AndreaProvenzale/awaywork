@@ -157,6 +157,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     return result
   }
 
+  /** Runs the unit's `verify` before it is published; a failure goes in the PR body or report, and the unit is still published. */
+  const verify = async (unit: Unit, dir: string, start: string, log: (line: string) => void) => {
+    if (!unit.verify || unit.deliver === 'report' || (await commitsSince(dir, start)) === 0) return
+    const result = await check(unit.verify, unit, dir, log, false)
+    if (!result.failed) return
+    const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
+    await refuseSymlinks(dir, [output])
+    await appendVerifyFailure(join(dir, output), { command: unit.verify, ...result })
+  }
+
   /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
   const factsFor = async (
     condition: Condition,
@@ -200,17 +210,22 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (deliver === 'push')
           await cp(join(loop.unitDir, 'out', outputFile.push), file).catch(() => {})
         await appendLoopSummary(file, loop)
-        const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId, loop.start)
-        // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
-        const kept =
-          host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
-        if (!kept) host.outcome = published
-        else if (!loop.completed)
-          host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
-        if (published.kind === 'pr') {
-          opened[`${unit.repo} ${unit.branch}`] = published.url
+        await verify({ ...unit, deliver }, dir, loop.start, n.ctx.log)
+        if (n.signal?.aborted)
+          host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
+        else {
+          const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId, loop.start)
+          // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
+          const kept =
+            host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
+          if (!kept) host.outcome = published
+          else if (!loop.completed)
+            host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
+          if (published.kind === 'pr') {
+            opened[`${unit.repo} ${unit.branch}`] = published.url
+          }
+          if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
         }
-        if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
       }
     } catch (e) {
       Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
@@ -546,9 +561,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           last: result,
         }
       } else if (!aborted) {
-        result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
-        if (result.outcome?.kind === 'pr') {
-          opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
+        await verify(unit, dir, cloned, log)
+        if (!n.signal?.aborted) {
+          result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
+          if (result.outcome?.kind === 'pr') {
+            opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
+          }
         }
       }
       if (result.outcome?.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
@@ -755,21 +773,33 @@ async function appendLoopSummary(file: string, loop: OpenLoop): Promise<void> {
       '',
       '</details>',
     )
-  if (check?.failed && !check.refused) {
-    const log = checkLog(check).trim()
-    const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+  if (check?.failed && !check.refused)
     lines.push(
       '',
-      `<details><summary>Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}</summary>`,
-      '',
-      fence,
-      log,
-      fence,
-      '',
-      '</details>',
+      checkDetails(
+        `Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}`,
+        check,
+      ),
     )
-  }
   await writeOutput(file, `${body}${lines.join('\n')}\n`)
+}
+
+/** A collapsible block with the command and the tail of its output. */
+function checkDetails(summary: string, check: RanCheck): string {
+  const log = checkLog(check).trim()
+  const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+  return [`<details><summary>${summary}</summary>`, '', fence, log, fence, '', '</details>'].join(
+    '\n',
+  )
+}
+
+/** Appends a failed `verify` to the PR body or push report, so the reviewer sees it before the diff. */
+async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
+  const body = (await readOutput(file)).trim()
+  if (!body) return
+  const verb = check.refused ? 'not run' : check.stopped ? 'stopped' : 'failed'
+  const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
+  await writeOutput(file, `${body}\n\n## Night-shift verify\n\n${checkDetails(summary, check)}\n`)
 }
 
 /** Like the worker's, with every secret withheld except the repo's own. */

@@ -228,6 +228,8 @@ export interface Rule extends Step {
   then?: (Step | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
+  /** Command run after the worker, before publishing; unset takes the repo's. */
+  verify?: string
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -245,6 +247,8 @@ export interface Unit {
   untrusted: boolean
   /** Whether the worker's commands may reach the network. */
   network: boolean
+  /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
+  verify?: string
   /** The URL of the night-shift PR whose branch `base` is: tonight's draft PR, or one a rule took up again. */
   stackedOn?: string
   branch: string

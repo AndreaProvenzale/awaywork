@@ -477,6 +477,10 @@
               "minLength": 1
             }
           },
+          "verify": {
+            "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
+            "type": "string"
+          },
           "test": {
             "description": "Targeted test command, given to the worker in its prompt",
             "type": "string"
@@ -1972,6 +1976,10 @@
           "network": {
             "description": "Network for the worker's commands, then steps included; default the repo's",
             "type": "boolean"
+          },
+          "verify": {
+            "description": "Command run before publishing, then steps included; default the repo's",
+            "type": "string"
           }
         },
         "required": [

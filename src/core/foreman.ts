@@ -149,6 +149,7 @@ export function planNight(input: {
       const unit: Unit = {
         ...at,
         network: rule.network ?? config.repos[repo]?.network ?? true,
+        verify: rule.verify ?? config.repos[repo]?.verify,
         items,
         repo,
         rule: step,

@@ -278,6 +278,10 @@ const rule: z.ZodType<Rule, unknown> = z
       .boolean()
       .optional()
       .describe("Network for the worker's commands, then steps included; default the repo's"),
+    verify: z
+      .string()
+      .optional()
+      .describe("Command run before publishing, then steps included; default the repo's"),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -363,6 +367,12 @@ const repo = z.strictObject({
     .array(z.string().min(1))
     .default([])
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
+  verify: z
+    .string()
+    .optional()
+    .describe(
+      'Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published',
+    ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   network: z.boolean().optional().describe("Network for the worker's commands; default on"),
