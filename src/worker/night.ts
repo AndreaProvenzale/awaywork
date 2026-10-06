@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
-import { quotaFacts, route, withQuota } from '../core/budget.js'
+import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
@@ -35,7 +35,6 @@ import {
   writeOutput,
 } from './workspace.js'
 
-export const MAX_TURNS = 200
 const CHECK_LOG_CHARS = 8000
 const MAX_SUFFIX = 10
 

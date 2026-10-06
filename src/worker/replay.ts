@@ -3,9 +3,8 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
-import type { Allowance } from '../core/budget.js'
+import { type Allowance, MAX_TURNS } from '../core/budget.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
-import { MAX_TURNS } from './night.js'
 import type { Outcome } from './publish.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
@@ -54,7 +53,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     (e: NodeJS.ErrnoException) => {
       if (e.code !== 'ENOENT') throw e
       throw new Error(
-        `no replay.json in ${unitDir}: the unit never started, the run or unit id is wrong, or the run predates replay`,
+        `no replay.json in ${unitDir}: the unit never started, the run or unit id is wrong, the run predates replay, or the unit is a later loop round (only a first run replays)`,
       )
     },
   )

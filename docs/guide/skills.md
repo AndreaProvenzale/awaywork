@@ -71,9 +71,10 @@ runs the unit's provider and model once, outside the night's quota ceilings,
 and never pushes or opens a PR. The clone stays on the unit's local branch
 under `replays/` in the run's state directory, with the worker's `out/` next
 to it. The saved context is the post-run copy, so files the worker edited
-under `context/` are replayed as edited. MCP servers are not started, and a
-unit that never started, or one from a run before replay existed, has no
-`replay.json` and can't be replayed.
+under `context/` are replayed as edited. MCP servers are not started. Only a
+unit's first run replays: a [loop](./configuration.md#loops) round after the
+first reuses the first round's clone and records no `replay.json`, so does a
+unit that never started or one from a run before replay existed.
 
 ## Write your own
 
