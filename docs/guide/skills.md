@@ -59,6 +59,20 @@ $EDITOR ~/.config/night-shift/skills/fix-ci/SKILL.md
 
 The ejected copy shadows the built-in from then on.
 
+## Try an edit on a past unit
+
+```sh
+nightshift replay 20261006-020000 acme-api-1
+```
+
+Replay rebuilds a unit of a past run: a clone at the commit the unit started
+from, its saved context, and today's skills, instructions and config. It
+runs the unit's provider and model once, outside the night's quota ceilings,
+and never pushes or opens a PR. The clone stays on the unit's local branch
+under `replays/` in the run's state directory, with the worker's `out/` next
+to it. MCP servers are not started, and a unit from a run before replay
+existed has no `replay.json` and can't be replayed.
+
 ## Write your own
 
 ```

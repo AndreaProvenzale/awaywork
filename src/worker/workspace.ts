@@ -49,6 +49,8 @@ export interface WorkspaceInput {
   /** `dir` is already the clone, on the unit's branch: a loop round after the loop's first unit. */
   reuse?: boolean
   loop?: LoopRound
+  /** A replay: the clone starts at `commit` and its context is copied from a past run's `context/`, with no source asked. */
+  replay?: { commit: string; context: string }
 }
 
 interface Previous {
@@ -78,7 +80,8 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     ])
   } else {
     await w.forge.clone(unit.repo, unit.base, dir)
-    await execa('git', ['-C', dir, 'checkout', '-q', '-b', unit.branch])
+    const from = w.replay ? [w.replay.commit] : []
+    await execa('git', ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
@@ -89,20 +92,21 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   else await buildPlugin(w.plugin, names, roots)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
+  if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
   const items: string[] = []
   for (const item of unit.items) {
     const source = w.sources[item.source]
-    if (!source) throw new Error(`no source "${item.source}" for ${item.key}`)
+    if (!source && !w.replay) throw new Error(`no source "${item.source}" for ${item.key}`)
     const context = join(WORK_DIR, 'context', slug(item.key))
-    if (!w.reuse) {
+    if (!w.reuse && source) {
       await mkdir(join(dir, context), { recursive: true })
       await source.prefetch(item, join(dir, context), w.ctx)
     }
     items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
   }
   const previous = join(work, 'context', 'previous')
-  await rm(previous, { recursive: true, force: true })
-  if (w.previous) await cp(w.previous.out, previous, { recursive: true })
+  if (!w.replay) await rm(previous, { recursive: true, force: true })
+  if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}

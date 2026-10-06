@@ -20,6 +20,7 @@ import type {
 } from '../core/types.js'
 import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
+import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
@@ -34,7 +35,7 @@ import {
   writeOutput,
 } from './workspace.js'
 
-const MAX_TURNS = 200
+export const MAX_TURNS = 200
 const CHECK_LOG_CHARS = 8000
 const MAX_SUFFIX = 10
 
@@ -406,7 +407,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       })
       // Before setup or any worker touched the clone: the unit's commits are the ones after it.
       const cloned = round ? round.start : await head(dir)
-      if (!round) gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+      if (!round) {
+        gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+        const state: ReplayState = {
+          unit,
+          provider: id,
+          commit: cloned,
+          previous: previous && { skill: previous.skill, outcome: previous.outcome },
+        }
+        await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
+      }
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
