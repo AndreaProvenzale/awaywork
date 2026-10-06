@@ -8,7 +8,7 @@ import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
-import { prepareWorkspace, WORK_DIR, workerEnv } from './workspace.js'
+import { prepareWorkspace, restoreGitConfig, WORK_DIR, workerEnv } from './workspace.js'
 
 /** What a unit leaves in `units/<id>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
 export interface ReplayState {
@@ -111,12 +111,14 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     configDir: r.configDir,
     plugin,
   }
+  const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   const worker = await runWorker(provider, job, allowance, {
     log,
     signal: r.signal,
     maxMinutes: entry?.budget.unit_minutes,
     watch: r.watch,
   })
+  await restoreGitConfig(dir, gitConfig)
   const out = join(root, 'out')
   await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true })
   await rm(plugin, { recursive: true, force: true })
