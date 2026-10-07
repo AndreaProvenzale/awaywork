@@ -19,8 +19,9 @@ export function startsOf(windows: Window[]): { hour: number; minute: number; day
     const [hour, minute] = clock(w.start)
     const days = w.days?.map((d) => DAYS.indexOf(d))
     const same = starts.find((s) => s.hour === hour && s.minute === minute && !s.days === !days)
-    if (same?.days && days) same.days = [...new Set([...same.days, ...days])].sort()
-    else starts.push({ hour, minute, ...(days && { days: days.sort() }) })
+    if (same?.days && days) same.days = [...new Set([...same.days, ...days])].sort((a, b) => a - b)
+    else
+      starts.push({ hour, minute, ...(days && { days: [...new Set(days)].sort((a, b) => a - b) }) })
   }
   return starts
 }

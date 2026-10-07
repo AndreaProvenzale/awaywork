@@ -272,6 +272,12 @@ it('warns when an installed job for this config no longer starts when its window
   expect(await staleSchedules("/h/it's.yml", [{ start: '02:30', end: '07:00' }], all)).toEqual([
     "the launchd job starts at 01:05, the config's windows start at 02:30; run `nightshift schedule install`",
   ])
+  const reordered = { launchd: installed('launchd', weekly) }
+  const windows = [
+    { days: ['sun' as const, 'sat' as const], start: '10:00', end: '18:00' },
+    { start: '01:05', end: '07:00' },
+  ]
+  expect(await staleSchedules("/h/it's.yml", windows, reordered)).toEqual([])
 })
 
 const weekly: Schedule = {

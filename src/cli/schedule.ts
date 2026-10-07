@@ -16,6 +16,7 @@ import {
   describeStarts,
   type Schedule,
   type Scheduler,
+  type Start,
   schedulers,
 } from '../scheduler/index.js'
 import { isCommand } from '../sources/command.js'
@@ -87,6 +88,12 @@ function jobConfig(job: Schedule): string | undefined {
   return flag >= 0 ? job.command[flag + 1] : undefined
 }
 
+const startsKey = (starts: Start[]) =>
+  starts
+    .map((s) => describeStarts([s]))
+    .sort()
+    .join()
+
 /** Warns about each installed job for this config that no longer starts when its windows open. */
 export async function staleSchedules(
   config: string,
@@ -97,10 +104,10 @@ export async function staleSchedules(
   for (const scheduler of Object.values(all)) {
     const job = await scheduler.read()
     if (!job || jobConfig(job) !== resolve(config)) continue
-    const wanted = describeStarts(startsOf(windows))
-    if (describeStarts(job.starts) !== wanted)
+    const wanted = startsOf(windows)
+    if (startsKey(job.starts) !== startsKey(wanted))
       warnings.push(
-        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${wanted}; run \`nightshift schedule install\``,
+        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${describeStarts(wanted)}; run \`nightshift schedule install\``,
       )
   }
   return warnings

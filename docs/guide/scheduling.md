@@ -38,7 +38,7 @@ nightshift schedule remove
 - The job bakes in the window starts (`night.start`, or each of `windows`), one trigger each. When you change it, `config edit` and
   `doctor` warn until `schedule install` runs again.
 
-The machine must be awake at `night.start`. On a laptop, a sleep schedule
+The machine must be awake at each window's start (or `night.start`). On a laptop, a sleep schedule
 that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that
 stays on does that.
 

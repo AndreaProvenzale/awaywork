@@ -100,6 +100,8 @@ The scheduler gets one trigger per window, and pacing divides the
 headroom by the runs left before the reset, not the nights. Windows
 should not overlap. `night.units` and `night.units_per_repo` still cap
 each run, and `night.start` and `night.end` are then unused.
+Budgets count runs too: `per_night` caps each run, not each day, so three
+windows a day can spend three times it, and `nights_until_reset` counts runs.
 
 A readable quota decides how much work fits, not how much you can review
 in a morning. `night.units` caps the units planned per night,
