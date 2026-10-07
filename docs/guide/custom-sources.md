@@ -122,17 +122,14 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 - **Attempts** keep a chore from redoing the same work: a unit whose items
   haven't changed since a worker finished it is skipped, see
   [how it works](./how-it-works.md). `updated` is the Monday of the week,
-  so each chore runs once a week; print the date of the day for every night.
+  so a chore runs at most once a week, and not while its last draft PR is
+  still open; print the date of the day for every night.
 - **Weekdays** are the script's call: print nothing on the days a chore
   shouldn't run.
+- **`when`** is checked when the unit starts, not by `plan`: `plan` lists
+  the chore with its gate, and the night skips it without the headroom.
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry
-  no link line. The `key` has no `/`, so its branch can't collide with
-  another `night/chore-...` branch.
-- Tested against a fake source in `test/chores.test.ts`: the units it plans,
-  a finished chore skipped within its week, and offered again the next.
-  The fixture is this script plus a second chore, a `type` and a `CHORE_NOW`
-  clock override.
-  The `when` gate itself is checked when the unit starts, not by `plan`.
+  no link line.
 
 ## On GitHub Actions
 

@@ -1,6 +1,5 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { collectItems } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
@@ -8,12 +7,13 @@ import { planNight } from '../src/core/foreman.js'
 import type { NightReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Ctx, Quota } from '../src/core/types.js'
+import { type CommandConfig, commandSource } from '../src/sources/command.js'
 
 const dir = fileURLToPath(new URL('fixtures/chores', import.meta.url))
 const now = Date.UTC(2026, 0, 1, 1)
-const quota = (used: number): Quota => ({
-  windows: [{ name: 'seven_day', span: 'long', used, resetsAt: now / 1000 + 60 * 3600 }],
-})
+const quota: Quota = {
+  windows: [{ name: 'seven_day', span: 'long', used: 0, resetsAt: now / 1000 + 60 * 3600 }],
+}
 
 const yaml = JSON.stringify({
   providers: [{ claude: {} }],
@@ -27,11 +27,10 @@ const yaml = JSON.stringify({
 
 async function night(date: string, attempts = {}) {
   const config = parseConfig(yaml)
-  const source = config.sources.chores as { dir?: string }
-  source.dir = dir
+  const source = { ...(config.sources.chores as CommandConfig), dir }
   const ctx: Ctx = { env: { ...process.env, CHORE_NOW: date }, log: () => {} }
-  const items = await collectItems(config, ctx)
-  const allowances = { claude: allowance(config.providers[0]?.budget, quota(0), now) }
+  const items = await commandSource('chores', source).items(source, ctx)
+  const allowances = { claude: allowance(config.budget, quota, now) }
   return planNight({ config, items, allowances, skills: { builtin: builtinSkills }, attempts })
 }
 
