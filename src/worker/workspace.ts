@@ -207,6 +207,22 @@ export function workerEnv(
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
 }
 
+/** Every secret the config names, for `workerEnv` to withhold. */
+export function configSecrets(
+  config: Config,
+  providers: Record<string, Provider>,
+  sources: Record<string, Source>,
+): string[] {
+  return [
+    ...Object.values(providers).flatMap((p) => p.secrets),
+    ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+    ...(config.notify?.secrets ?? []),
+    ...(config.after_unit?.secrets ?? []),
+    ...Object.values(config.repos).flatMap((r) => r.secrets),
+    ...Object.values(config.mcp).flatMap((s) => s.secrets),
+  ]
+}
+
 /** The skill copies night-shift made in each clone, which a loop's later rounds replace rather than keep. Per process: a resumed loop starts empty. */
 const copied = new Map<string, Set<string>>()
 

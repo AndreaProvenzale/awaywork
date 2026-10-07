@@ -66,15 +66,20 @@ nightshift replay 20261006-020000 acme-api-1
 ```
 
 Replay rebuilds a unit of a past run: a clone at the commit the unit started
-from, its saved context, and today's skills, instructions and config. It
-runs the unit's provider and model once, outside the night's quota ceilings,
-and never pushes or opens a PR. The clone stays on the unit's local branch
-under `replays/` in the run's state directory, with the worker's `out/` next
-to it. The saved context is the post-run copy, so files the worker edited
-under `context/` are replayed as edited. MCP servers are not started. Only a
-unit's first run replays: a [loop](./configuration.md#loops) round after the
-first reuses the first round's clone and records no `replay.json`, so does a
-unit that never started or one from a run before replay existed.
+from and its saved context. The unit is as recorded that night: its skills
+and its rule's `model`, `with` and `instructions` list, so editing those in
+the config changes nothing. What is read fresh is the files: each
+`SKILL.md`, every instruction file, and the repo's and provider's config.
+It runs the unit's provider and model once, outside the night's quota
+ceilings, and never pushes or opens a PR. The clone stays on the unit's local
+branch under `replays/` in the run's state directory, with the worker's
+`out/` next to it. The saved context is the post-run copy, so files the
+worker edited under `context/` are replayed as edited. Setup gets none of the
+repo's `secrets`, and MCP servers are not started. Only a unit's first run
+replays: a [loop](./configuration.md#loops) round after the first reuses the
+first round's clone and records no `replay.json`, so does a unit that never
+started or one from a run before replay existed. A loop's first round
+replays without the prompt's loop section.
 
 ## Write your own
 

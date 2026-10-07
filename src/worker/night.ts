@@ -24,6 +24,7 @@ import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
+  configSecrets,
   notSymlink,
   outputFile,
   prepareWorkspace,
@@ -86,14 +87,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     }
   }
   const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
-  const secrets = [
-    ...Object.values(n.providers).flatMap((p) => p.secrets),
-    ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
-    ...(n.config.notify?.secrets ?? []),
-    ...(n.config.after_unit?.secrets ?? []),
-    ...Object.values(n.config.repos).flatMap((r) => r.secrets),
-    ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
-  ]
+  const secrets = configSecrets(n.config, n.providers, n.sources)
 
   // Tonight's draft PRs by repo and branch, and the PR branches pushed onto.
   const opened: Record<string, string> = {}

@@ -8,7 +8,14 @@ import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
-import { prepareWorkspace, restoreGitConfig, WORK_DIR, workerEnv } from './workspace.js'
+import {
+  configSecrets,
+  notSymlink,
+  prepareWorkspace,
+  restoreGitConfig,
+  WORK_DIR,
+  workerEnv,
+} from './workspace.js'
 
 /** What a unit leaves in `units/<id>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
 export interface ReplayState {
@@ -68,7 +75,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const plugin = join(root, 'plugin')
   await mkdir(root, { recursive: true })
   const log = (line: string) => r.ctx.log(line)
-  await prepareWorkspace({
+  const prompt = await prepareWorkspace({
     ...r,
     unit,
     dir,
@@ -79,18 +86,11 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     previous: state.previous && { ...state.previous, out: '' },
     replay: { commit: state.commit, context: join(unitDir, 'context') },
   })
-  const prompt = await readFile(join(dir, WORK_DIR, 'prompt.md'), 'utf8')
 
   const entry = r.config.providers.find((c) => c.id === state.provider)
-  const secrets = [
-    ...Object.values(r.providers).flatMap((p) => p.secrets),
-    ...Object.entries(r.config.sources).flatMap(([id, cfg]) => r.sources[id]?.secrets(cfg) ?? []),
-    ...(r.config.notify?.secrets ?? []),
-    ...(r.config.after_unit?.secrets ?? []),
-    ...Object.values(r.config.repos).flatMap((c) => c.secrets),
-    ...Object.values(r.config.mcp).flatMap((s) => s.secrets),
-  ]
+  const secrets = configSecrets(r.config, r.providers, r.sources)
   const withheld = secrets.filter((name) => !provider.secrets.includes(name))
+  const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   const setup = r.config.repos[unit.repo]?.setup
   if (setup && !unit.untrusted) {
     const failed = await runSetup(setup, dir, workerEnv(r.ctx.env, dir, secrets), log, {
@@ -111,7 +111,6 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     configDir: r.configDir,
     plugin,
   }
-  const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   const worker = await runWorker(provider, job, allowance, {
     log,
     signal: r.signal,
@@ -120,7 +119,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   })
   await restoreGitConfig(dir, gitConfig)
   const out = join(root, 'out')
-  await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true })
+  await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink })
   await rm(plugin, { recursive: true, force: true })
   const commits = Number(
     (await execa('git', ['-C', dir, 'rev-list', '--count', `${state.commit}..HEAD`])).stdout,
