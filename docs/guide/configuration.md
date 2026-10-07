@@ -509,9 +509,9 @@ queue:
   can run only on spare quota. Both read the quota the run last saw, as
   the budget does, and don't hold when the quota can't be read. A rule
   takes a `when` with these two keys only, to skip its own unit.
-- Every key set must hold. `plan` shows each step's `when`, names a quota
-  condition that doesn't hold on the probe, and the report says which one
-  didn't hold.
+- Every key set must hold. `plan` shows each step's `when`, notes when its
+  quota part doesn't hold on the probe or has no quota reading, and the
+  report says which one didn't hold.
 - A skipped step doesn't end a loop, unless its command didn't run: it
   wouldn't in a later round either. A round whose steps were all passed
   over ends it too, since the next would be the same. After a report, a
