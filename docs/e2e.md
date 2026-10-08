@@ -43,16 +43,17 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 
 | Source | Live test | Env |
 |---|---|---|
-| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` with write access to it |
+| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues |
 | Asana | Reads what is assigned, seeds nothing | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE` |
 | Linear | Reads what is assigned, seeds nothing | `LINEAR_API_KEY` |
-| Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`, `JIRA_CLOUD_ID` |
+| Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
 The GitHub test polls `items` until search indexes the seeded items, and
 its commit says `[skip ci]` so the sandbox's own CI leaves the checks to
 the seeded status. Each run leaves one closed PR: GitHub cannot delete
-PRs.
+PRs. A cleanup that leaves anything else behind fails the run, naming
+what to delete by hand.
 
 Next:
 

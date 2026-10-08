@@ -8,7 +8,7 @@ import { github } from '../src/sources/github.js'
 import { sourceField } from '../src/sources/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-const repo = process.env.NIGHTSHIFT_GITHUB_SANDBOX ?? ''
+let repo = process.env.NIGHTSHIFT_GITHUB_SANDBOX ?? ''
 const ctx = { env: process.env, log: console.log }
 const gh = (...args: string[]) => exec('gh', args)
 /** Calls the repo's REST API with `fields` as string params, e.g. `{ 'labels[]': 'bug' }`. */
@@ -22,7 +22,7 @@ const api = (path: string, fields: Record<string, string> = {}, ...args: string[
 
 /**
  * Seeds an issue and a PR closing it in a sandbox repo, reads them back for real and deletes them;
- * run with NIGHTSHIFT_GITHUB_SANDBOX set to a repo `gh` can write to.
+ * run with NIGHTSHIFT_GITHUB_SANDBOX set to a repo `gh` can delete issues in (owner, or org admin).
  */
 describe.skipIf(!repo)('github source, live', () => {
   const run = Date.now().toString(36)
@@ -31,11 +31,14 @@ describe.skipIf(!repo)('github source, live', () => {
   const path = `e2e/${run}.md`
   let login = ''
   let issue = 0
+  let branched = false
   let pr = 0
 
   beforeAll(async () => {
     login = (await gh('api', 'user', '--jq', '.login')).trim()
-    const base = (await gh('api', `repos/${repo}`, '--jq', '.default_branch')).trim()
+    const sandbox = JSON.parse(await gh('api', `repos/${repo}`))
+    repo = sandbox.full_name
+    const base = sandbox.default_branch
     await gh('label', 'create', label, '-R', repo, '--force')
     const seed = {
       title: `[e2e ${run}] issue`,
@@ -47,6 +50,7 @@ describe.skipIf(!repo)('github source, live', () => {
     await api(`issues/${issue}/comments`, { body: `e2e comment ${run}` })
     const baseSha = (await api(`git/ref/heads/${base}`, {}, '--jq', '.object.sha')).trim()
     await api('git/refs', { ref: `refs/heads/${branch}`, sha: baseSha })
+    branched = true
     // [skip ci] keeps the repo's own CI off, so the seeded status alone sets the checks.
     const file = { message: 'Add e2e probe [skip ci]', content: btoa('probe\n'), branch }
     const sha = (await api(`contents/${path}`, file, '-X', 'PUT', '--jq', '.commit.sha')).trim()
@@ -61,14 +65,17 @@ describe.skipIf(!repo)('github source, live', () => {
     await api(`pulls/${pr}/comments`, thread, '-F', 'line=1')
   }, 60_000)
 
+  /** Undoes each seeded thing that was created, then fails naming whatever is left behind. */
   afterAll(async () => {
-    await Promise.allSettled([
-      pr &&
-        api(`pulls/${pr}`, { state: 'closed' }, '-X', 'PATCH').then(() =>
-          api(`git/refs/heads/${branch}`, {}, '-X', 'DELETE'),
-        ),
-      issue && gh('issue', 'delete', String(issue), '-R', repo, '--yes'),
-    ])
+    const left: Error[] = []
+    const undo = (what: string, step: Promise<unknown>) =>
+      step.catch((cause) => left.push(new Error(`${what} left in ${repo}`, { cause })))
+    if (pr) await undo(`PR #${pr} open`, api(`pulls/${pr}`, { state: 'closed' }, '-X', 'PATCH'))
+    if (branched)
+      await undo(`branch ${branch}`, api(`git/refs/heads/${branch}`, {}, '-X', 'DELETE'))
+    if (issue)
+      await undo(`issue #${issue}`, gh('issue', 'delete', String(issue), '-R', repo, '--yes'))
+    if (left.length) throw new AggregateError(left, 'cleanup left seeded items behind')
   }, 60_000)
 
   /** Search indexes new items a few seconds late, so read until both show up settled. */
