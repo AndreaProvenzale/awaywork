@@ -30,15 +30,18 @@ const restApi =
 const api = restApi(gh)
 const reviewerApi = restApi(reviewerGh)
 const lines = (text: string) => text.replace(/\n$/, '').split('\n').length
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** Search indexes new items a few seconds late, so read until `pick` finds them settled. */
 async function settled<T>(pick: (items: Item[]) => T | undefined, wait = 90_000): Promise<T> {
-  for (let deadline = Date.now() + wait; ; await new Promise((r) => setTimeout(r, 5_000))) {
+  for (let deadline = Date.now() + wait; ; await sleep(5_000)) {
     const items = await github.items({ repos: [repo] }, ctx)
     const found = pick(items)
     if (found) return found
     if (Date.now() > deadline)
-      throw new Error(`seeded items never settled: ${JSON.stringify(items.map((i) => i.key))}`)
+      throw new Error(
+        `seeded items never settled: ${JSON.stringify(items.map(({ key, fields }) => ({ key, fields })))}`,
+      )
   }
 }
 
@@ -117,10 +120,23 @@ jobs:
     await api(`pulls/${pr}/comments`, thread, '-F', 'line=1')
   }, 60_000)
 
+  /** Waits for the seeded PR's runs to show up, cancels any still going, then deletes them. */
   async function deleteRuns() {
-    const runs = await api(`actions/runs?branch=${branch}`, {}, '--jq', '.workflow_runs[].id')
-    for (const id of runs.split('\n').filter(Boolean))
-      await api(`actions/runs/${id}`, {}, '-X', 'DELETE')
+    for (let deadline = Date.now() + 60_000; ; await sleep(5_000)) {
+      const runs: { id: number; status: string }[] = JSON.parse(
+        await api(`actions/runs?branch=${branch}`, {}, '--jq', '[.workflow_runs[] | {id, status}]'),
+      )
+      if (runs.length && runs.every((r) => r.status === 'completed')) {
+        for (const { id } of runs) await api(`actions/runs/${id}`, {}, '-X', 'DELETE')
+        return
+      }
+      if (Date.now() > deadline)
+        throw new Error(`workflow runs on ${branch} never completed: ${JSON.stringify(runs)}`)
+      // A run can complete between listing and cancelling, which GitHub refuses.
+      for (const { id, status } of runs)
+        if (status !== 'completed')
+          await api(`actions/runs/${id}/cancel`, {}, '-X', 'POST').catch(() => {})
+    }
   }
 
   afterAll(
@@ -137,7 +153,7 @@ jobs:
           !!issue && (() => gh('issue', 'delete', String(issue), '-R', repo, '--yes')),
         ],
       ]),
-    60_000,
+    120_000,
   )
 
   it('reads the seeded issue and PR with their fields and context', async () => {
