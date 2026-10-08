@@ -2,6 +2,7 @@ import { createWriteStream } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
@@ -676,7 +677,7 @@ type RanCheck = Check & { command: string }
 const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
 
 const git = async (dir: string, ...args: string[]) =>
-  (await execa('git', ['-C', dir, ...args])).stdout
+  (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 

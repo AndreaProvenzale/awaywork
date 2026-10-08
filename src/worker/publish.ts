@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import { trailerKey } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
@@ -15,7 +16,7 @@ export type Outcome =
 // No hooks, and history as it is, not as replace refs say.
 const safely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 const git = async (dir: string, ...args: string[]) =>
-  (await execa('git', ['-C', dir, ...safely, ...args])).stdout
+  (await execa(bin('git'), ['-C', dir, ...safely, ...args])).stdout
 
 /**
  * Delivers a finished unit: a draft PR only with commits, a PR body and a branch new to the remote;
@@ -40,7 +41,7 @@ export async function publish(
 
   const repo = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
   try {
-    await execa('git', ['init', '-q', '--bare', repo])
+    await execa(bin('git'), ['init', '-q', '--bare', repo])
     await git(repo, 'fetch', '-q', '--no-tags', dir, 'HEAD:refs/heads/work')
     return await deliver(unit, repo, forge, runId, start, file, text)
   } finally {
@@ -133,9 +134,11 @@ async function withTrailer(repo: string, commits: string[], trailer: string): Pr
     const [tree = '', parents = '', name, email, date, cname, cemail, cdate] = meta.split('\n')
     const message = await git(repo, 'log', '-1', '--format=%B', sha)
     const input = (
-      await execa('git', ['-C', repo, 'interpret-trailers', '--no-divider', '--trailer', trailer], {
-        input: message,
-      })
+      await execa(
+        bin('git'),
+        ['-C', repo, 'interpret-trailers', '--no-divider', '--trailer', trailer],
+        { input: message },
+      )
     ).stdout
     const onto = parents
       .split(' ')
@@ -149,7 +152,7 @@ async function withTrailer(repo: string, commits: string[], trailer: string): Pr
       GIT_COMMITTER_EMAIL: cemail,
       GIT_COMMITTER_DATE: cdate,
     }
-    const made = await execa('git', ['-C', repo, ...safely, 'commit-tree', tree, ...onto], {
+    const made = await execa(bin('git'), ['-C', repo, ...safely, 'commit-tree', tree, ...onto], {
       input,
       env,
     })

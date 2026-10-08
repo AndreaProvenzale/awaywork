@@ -1,9 +1,10 @@
 import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 
 /** Runs a command and returns its stdout; injected so tests replay recorded output. */
 export type Exec = (cmd: string, args: string[]) => Promise<string>
 
-export const exec: Exec = async (cmd, args) => (await execa(cmd, args)).stdout
+export const exec: Exec = async (cmd, args) => (await execa(bin(cmd), args)).stdout
 
 export async function graphql<T>(
   run: Exec,

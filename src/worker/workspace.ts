@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { execa } from 'execa'
-import { builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
+import { bin, builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
@@ -81,7 +81,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   } else {
     await w.forge.clone(unit.repo, unit.base, dir)
     const from = w.replay ? [w.replay.commit] : []
-    await execa('git', ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
@@ -272,8 +272,8 @@ async function buildPlugin(plugin: string, names: string[], roots: string[]) {
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
   // In a loop's clone, the config is a worker's: run no fsmonitor command from it.
   const git = ['-C', dir, '-c', 'core.fsmonitor=false']
-  const { stdout } = await execa('git', [...git, 'ls-files', '-z', '--', ...paths])
-  await execa('git', [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
+  await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

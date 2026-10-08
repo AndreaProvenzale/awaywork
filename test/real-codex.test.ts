@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { bin } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import type { Source, Unit } from '../src/core/types.js'
 import { codex } from '../src/providers/codex.js'
@@ -14,7 +15,7 @@ import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
 
 const git = (dir: string, ...args: string[]) =>
-  execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 /** Spends a few turns of the real subscription; run with NIGHTSHIFT_REAL=1. */
 it.skipIf(!process.env.NIGHTSHIFT_REAL)(
@@ -27,7 +28,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
         await mkdir(into)
-        await execa('git', ['init', '-q', '-b', 'main', into])
+        await execa(bin('git'), ['init', '-q', '-b', 'main', into])
         await writeFile(join(into, 'hello.txt'), 'helo wrld\n')
         await git(into, 'add', '.')
         await git(into, 'commit', '-qm', 'init')
