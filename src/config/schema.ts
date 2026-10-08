@@ -419,6 +419,23 @@ export const configSchema = z
       .refine((n) => n.start !== n.end, 'start and end must differ')
       .default({ start: '01:00', end: '07:00' })
       .describe('Local hours a scheduled run may start units in, and how many'),
+    windows: z
+      .array(
+        z
+          .strictObject({
+            days: z
+              .array(z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']))
+              .min(1)
+              .optional()
+              .describe('Weekdays the window opens on; every day when unset'),
+            start: time.describe('When a scheduled run starts, local time'),
+            end: time.describe('No unit starts after this'),
+          })
+          .refine((w) => w.start !== w.end, 'start and end must differ'),
+      )
+      .min(1)
+      .optional()
+      .describe('Windows a scheduled run may start units in, instead of night.start to night.end'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)

@@ -469,6 +469,21 @@ describe('config', () => {
     ])
   })
 
+  it('takes a list of windows with optional weekdays, and rejects an empty one', () => {
+    const cfg = parseConfig(
+      `${minimal}windows: [{ start: "01:00", end: "07:00" }, { days: [sat, sun], start: "10:00", end: "18:00" }]`,
+    )
+    expect(cfg.windows).toEqual([
+      { start: '01:00', end: '07:00' },
+      { days: ['sat', 'sun'], start: '10:00', end: '18:00' },
+    ])
+    expect(parseConfig(minimal).windows).toBeUndefined()
+    expect(problems(`${minimal}windows: [{ start: "01:00", end: "01:00" }]`)).toEqual([
+      'windows[0]: start and end must differ',
+    ])
+    expect(problems(`${minimal}windows: []`)).toHaveLength(1)
+  })
+
   it('takes unit_minutes globally and per provider', () => {
     const cfg = parseConfig(
       `${minimal.replace('[claude: {}]', '[claude, codex: { budget: { unit_minutes: 30 } }]')}budget: { unit_minutes: 90 }`,

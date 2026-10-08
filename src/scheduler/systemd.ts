@@ -33,6 +33,8 @@ export function systemd(home: string, run: Exec): Scheduler {
   }
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 const quote = (v: string) => `"${v.replace(/[\\"]/g, '\\$&').replace(/%/g, '%%')}"`
 
 export function parseUnits(serviceText: string, timerText: string): Schedule {
@@ -42,11 +44,16 @@ export function parseUnits(serviceText: string, timerText: string): Schedule {
     [...line.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
       (m[1] ?? '').replace(/\\(.)/g, '$1').replace(/%%/g, '%'),
     )
-  const [, hour, minute] = value(timerText, 'OnCalendar').match(/(\d+):(\d+)/) ?? []
-  return {
-    command: unquote(value(serviceText, 'ExecStart')),
+  const starts = [
+    ...timerText.matchAll(/^OnCalendar=(?:([A-Za-z,]+) )?\*-\*-\* (\d+):(\d+)/gm),
+  ].map(([, days, hour, minute]) => ({
     hour: Number(hour),
     minute: Number(minute),
+    ...(days && { days: days.split(',').map((d) => WEEKDAYS.indexOf(d)) }),
+  }))
+  return {
+    command: unquote(value(serviceText, 'ExecStart')),
+    starts,
     path: (unquote(value(serviceText, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
     log: value(serviceText, 'StandardOutput').replace(/^append:/, ''),
   }
@@ -66,12 +73,16 @@ StandardError=append:${s.log}
 }
 
 export function timer(s: Schedule): string {
-  const at = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}:00`
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const calendar = s.starts.map(
+    (start) =>
+      `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
+  )
   return `[Unit]
 Description=night-shift nightly run
 
 [Timer]
-OnCalendar=*-*-* ${at}
+${calendar.join('\n')}
 Persistent=true
 
 [Install]

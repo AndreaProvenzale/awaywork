@@ -49,7 +49,7 @@ export async function planTonight(
       reason = `probe failed: ${e.message}`
       return null
     })
-    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), reason)
+    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), reason, config.windows)
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }

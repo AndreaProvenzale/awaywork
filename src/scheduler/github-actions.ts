@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { clock } from '../core/window.js'
+import type { Start } from './index.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
 export const REPO_CONFIG = '.night-shift/config.yml'
@@ -9,7 +9,7 @@ const ACTION_REPO = 'AndreaProvenzale/night-shift'
 const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
-  start: string
+  starts: Start[]
   /** IANA name; the schedule and the run's night window both use it. */
   timezone: string
   /** Repo path of the config the run reads. */
@@ -24,7 +24,6 @@ export interface Workflow {
 
 /** A nightly workflow calling night-shift's action; secrets appear by name only, their values stay in the repo's settings. */
 export function workflow(w: Workflow): string {
-  const [hour, minute] = clock(w.start)
   const env = [`TZ: ${w.timezone}`, ...w.secrets.map((name) => `${name}: \${{ secrets.${name} }}`)]
   const setup = w.setup.map(
     (script) =>
@@ -34,8 +33,12 @@ export function workflow(w: Workflow): string {
 
 on:
   schedule:
-    - cron: "${minute} ${hour} * * *"
-      timezone: ${w.timezone}
+${w.starts
+  .map(
+    (s) =>
+      `    - cron: "${s.minute} ${s.hour} * * ${s.days?.join(',') ?? '*'}"\n      timezone: ${w.timezone}`,
+  )
+  .join('\n')}
   workflow_dispatch:
 
 concurrency: night-shift

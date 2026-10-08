@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load.js'
 import { configSchema } from '../config/schema.js'
 import { unknownSkills } from '../config/skills.js'
+import { windowsOf } from '../core/window.js'
 import { terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
@@ -65,8 +66,8 @@ export function configCommand(program: Command): void {
         }[outcome],
       )
       if (outcome === 'saved') {
-        const { night } = await loadConfig(path)
-        for (const warning of await staleSchedules(path, night.start))
+        const config = await loadConfig(path)
+        for (const warning of await staleSchedules(path, windowsOf(config)))
           console.error(`warning: ${warning}`)
       }
     })

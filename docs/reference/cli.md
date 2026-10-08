@@ -269,8 +269,8 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  install [options]  start `nightshift run` at night.start; it starts no unit
-                     after night.end
+  install [options]  start `nightshift run` when a window opens; it starts no
+                     unit after it closes
   remove             remove the nightly job, and
                      .github/workflows/night-shift.yml in the current repo
   status             show the installed nightly job
@@ -282,7 +282,7 @@ Commands:
 ```text
 Usage: nightshift schedule install [options]
 
-start `nightshift run` at night.start; it starts no unit after night.end
+start `nightshift run` when a window opens; it starts no unit after it closes
 
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd

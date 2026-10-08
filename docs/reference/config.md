@@ -24,6 +24,7 @@ with:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in, and how many |
+| `windows` | object[] |  | Windows a scheduled run may start units in, instead of night.start to night.end |
 | `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
@@ -46,6 +47,14 @@ Local hours a scheduled run may start units in, and how many.
 | `end` (required) | time |  | No unit starts after this |
 | `units` | integer |  | At most this many units per night |
 | `units_per_repo` | integer |  | At most this many units per night in one repo |
+
+## `windows[]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays the window opens on; every day when unset |
+| `start` (required) | time |  | When a scheduled run starts, local time |
+| `end` (required) | time |  | No unit starts after this |
 
 ## `budget`
 

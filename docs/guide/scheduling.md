@@ -5,8 +5,9 @@ description: Run night-shift every night on your machine with launchd, systemd o
 # Scheduling
 
 A scheduled run is `nightshift run --scheduled`: it does nothing outside
-the `night` window and starts no unit after `night.end`. A unit still
-running at `night.end` stops there with status `stopped: night ended`,
+the `night` window (or, with [`windows`](./configuration.md#night-and-budget),
+every window) and starts no unit after it ends. A unit still
+running at the window's end stops there with status `stopped: night ended`,
 and what it left is published as for a quota stop.
 
 ## On your machine
@@ -34,10 +35,10 @@ nightshift schedule remove
   `loginctl enable-linger` lifts that.
 - Output goes to `~/.local/state/night-shift/schedule.log`; the morning
   report is `nightshift report`.
-- The job bakes in `night.start`. When you change it, `config edit` and
+- The job bakes in the window starts (`night.start`, or each of `windows`), one trigger each. When you change it, `config edit` and
   `doctor` warn until `schedule install` runs again.
 
-The machine must be awake at `night.start`. On a laptop, a sleep schedule
+The machine must be awake at each window's start (or `night.start`). On a laptop, a sleep schedule
 that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that
 stays on does that.
 
