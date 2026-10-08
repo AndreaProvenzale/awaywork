@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { copyFile, cp, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
@@ -100,17 +100,28 @@ export function scheduleCommand(program: Command): void {
     })
 }
 
-/** Deletes a person's workflow; their environment and its secrets stay. */
+/** Deletes a person's workflow; their environment, or suffixed repository secrets, and their values stay. */
 export async function removePersonWorkflow(person: string, run: Exec = exec): Promise<void> {
   const root = await gitRoot(run)
-  if (!root || !PERSON.test(person) || !(await removeWorkflow(root, person))) {
-    console.log(`No ${workflowOf(person)} in this repo`)
+  const file = workflowOf(person)
+  const text =
+    root && PERSON.test(person) && (await readFile(join(root, file), 'utf8').catch(() => ''))
+  if (!root || !text || !(await removeWorkflow(root, person))) {
+    console.log(`No ${file} in this repo`)
     return
   }
-  console.log(`Removed ${workflowOf(person)}`)
-  console.log(
-    `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
-  )
+  console.log(`Removed ${file}`)
+  const suffixed = [
+    ...new Set(text.match(new RegExp(`\\w+${suffixOf(person)}(?=\\s*}})`, 'g')) ?? []),
+  ]
+  if (suffixed.length)
+    console.log(
+      `Its suffixed repository secrets stay, readable from any branch: ${suffixed.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
+    )
+  else
+    console.log(
+      `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
+    )
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
@@ -287,9 +298,7 @@ export async function installWorkflow(
     const skills = await copySkillsToRepo(skillsDirOf(path), root)
     if (skills === 'kept') console.log(`Kept the existing ${REPO_SKILLS}`)
     if (skills === 'copied') console.log(`Copied ${skillsDirOf(path)} to ${REPO_SKILLS}`)
-    const unset = await offerSecrets(secrets, io.env, io.ask, (name, value) =>
-      io.setSecret([name], value),
-    ).catch((e) => {
+    const unset = await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
       if (e instanceof Cancelled) return secrets
       throw e
     })
@@ -342,44 +351,54 @@ async function installForPerson(
     await syncCopy(skills, root, skillsDirOf(config), io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const existing = new Set([
-    ...(await ghLines(io.run, ['secret', 'list', '--json', 'name', '--jq', '.[].name'])),
-    ...(await ghLines(io.run, [
+  const atRepo = new Set(
+    await ghLines(io.run, ['secret', 'list', '--json', 'name', '--jq', '.[].name']),
+  )
+  const atOrg = new Set(
+    await ghLines(io.run, [
       'api',
       '--paginate',
       'repos/{owner}/{repo}/actions/organization-secrets',
       '--jq',
       '.secrets[].name',
-    ])),
-  ])
+    ]),
+  )
+  const existing = new Set([...atRepo, ...atOrg])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
+  const standIns = personal.filter((name) => existing.has(name))
+  const deletions = [
+    ...personal.filter((name) => atRepo.has(name)).map((name) => `\`gh secret delete ${name}\``),
+    ...personal
+      .filter((name) => atOrg.has(name))
+      .map(
+        (name) =>
+          `\`gh secret delete ${name} --org <org>\` (an org secret, or in the org's settings)`,
+      ),
+  ]
+  if (environment && standIns.length)
+    console.log(
+      `Warning: ${standIns.join(', ')} already exist at repo or org level and stand in for any that environment ${person} lacks, so ${person}'s job would run with someone else's. Set them in the environment, and once each person has their own, delete the shared ones: ${deletions.join(', ')}`,
+    )
+  const own: Layer = environment
+    ? {
+        label: (name) => `${name} in environment ${person}`,
+        args: (name) => [name, '--env', person],
+      }
+    : {
+        label: (name) => `the ${suffixed(name)} repository secret`,
+        args: (name) => [suffixed(name)],
+      }
+  const team: Layer = {
+    label: (name) => `the ${name} repository secret, shared with the team,`,
+    args: (name) => [name],
+  }
   let unsetPersonal = personal
   let unsetShared = shared.filter((name) => !existing.has(name))
   try {
-    unsetPersonal = environment
-      ? await offerSecrets(
-          personal,
-          io.env,
-          io.ask,
-          (name, value) => io.setSecret([name, '--env', person], value),
-          (name) => `${name} in environment ${person}`,
-        )
-      : await offerSecrets(
-          personal,
-          io.env,
-          io.ask,
-          (name, value) => io.setSecret([suffixed(name)], value),
-          (name) => `the ${suffixed(name)} repository secret`,
-        )
-    unsetShared = await offerSecrets(
-      unsetShared,
-      io.env,
-      io.ask,
-      (name, value) => io.setSecret([name], value),
-      (name) => `the ${name} repository secret, shared with the team,`,
-    )
+    unsetPersonal = await offerSecrets(personal, io.env, io.ask, io.setSecret, own)
+    unsetShared = await offerSecrets(unsetShared, io.env, io.ask, io.setSecret, team)
   } catch (e) {
     if (!(e instanceof Cancelled)) throw e
   }
@@ -484,6 +503,17 @@ export async function copySkillsToRepo(
   return 'copied'
 }
 
+/** Where `gh secret set` puts a secret, as a prompt names it and as its args. */
+interface Layer {
+  label: (name: string) => string
+  args: (name: string) => string[]
+}
+
+const repository: Layer = {
+  label: (name) => `the ${name} repository secret`,
+  args: (name) => [name],
+}
+
 /**
  * Offers to set each secret whose value is in the env, the env file included;
  * returns the names left unset. Values are never printed.
@@ -492,19 +522,19 @@ export async function offerSecrets(
   names: string[],
   env: NodeJS.ProcessEnv,
   ask: Ask,
-  set: (name: string, value: string) => Promise<void>,
-  label = (name: string) => `the ${name} repository secret`,
+  set: Io['setSecret'],
+  layer: Layer = repository,
 ): Promise<string[]> {
   const unset = []
   for (const name of names) {
     const value = env[name]
-    if (value && (await ask.confirm(`Set ${label(name)} from your env?`))) {
+    if (value && (await ask.confirm(`Set ${layer.label(name)} from your env?`))) {
       try {
-        await set(name, value)
+        await set(layer.args(name), value)
         ask.note(`Set ${name}`)
         continue
       } catch {
-        ask.note(`\`gh secret set ${name}\` failed`)
+        ask.note(`\`gh secret set ${layer.args(name).join(' ')}\` failed`)
       }
     }
     unset.push(name)

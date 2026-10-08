@@ -149,6 +149,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   })
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
+  expect(parsed.name).toBe('night-shift')
   expect(parsed.concurrency).toBe('night-shift')
   expect(parsed.jobs.night.environment).toBeUndefined()
   expect(parsed.jobs.night.env).toEqual({
@@ -223,6 +224,7 @@ const alice: Workflow = {
 
 it("writes a person's workflow with their environment, concurrency and config folder", () => {
   const job = parse(workflow({ ...alice, person: { name: 'alice' } }))
+  expect(job.name).toBe('night-shift-alice')
   expect(job.concurrency).toBe('night-shift-alice')
   expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
   expect(job.jobs.night.env).toEqual({
@@ -235,9 +237,21 @@ it("writes a person's workflow with their environment, concurrency and config fo
   expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/alice/config.yml')
 })
 
+it('keeps a person named like a YAML number a string', () => {
+  const job = parse(
+    workflow({ ...alice, config: '.night-shift/007/config.yml', person: { name: '007' } }),
+  )
+  expect(job.name).toBe('night-shift-007')
+  expect(job.concurrency).toBe('night-shift-007')
+  expect(job.jobs.night.environment).toEqual({ name: '007', deployment: false })
+  expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/007')
+  expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/007/config.yml')
+})
+
 it("reads a person's own secrets from suffixed repository secrets without an environment", () => {
   const person = { name: 'mary-jo', suffixed: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] }
   const job = parse(workflow({ ...alice, person }))
+  expect(job.name).toBe('night-shift-mary-jo')
   expect(job.concurrency).toBe('night-shift-mary-jo')
   expect(job.jobs.night.environment).toBeUndefined()
   expect(job.jobs.night.env).toEqual({
@@ -325,13 +339,14 @@ it('offers to set only the secrets it has values for, and never prints them', as
     ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'ASANA_TOKEN', 'SLACK_WEBHOOK'],
     { GH_TOKEN: 'ghp_secret', ASANA_TOKEN: 'asana_secret', SLACK_WEBHOOK: 'hook_secret' },
     ask,
-    async (name, value) => {
+    async ([name], value) => {
       if (name === 'SLACK_WEBHOOK') throw new Error('gh failed')
-      set.push([name, value])
+      set.push([name ?? '', value])
     },
   )
   expect(set).toEqual([['GH_TOKEN', 'ghp_secret']])
   expect(unset).toEqual(['CLAUDE_CODE_OAUTH_TOKEN', 'ASANA_TOKEN', 'SLACK_WEBHOOK'])
+  expect(ask.notes).toEqual(['Set GH_TOKEN', '`gh secret set SLACK_WEBHOOK` failed'])
   expect(ask.notes.join('\n')).not.toMatch(/_secret/)
 })
 

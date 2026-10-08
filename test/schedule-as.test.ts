@@ -30,7 +30,9 @@ afterEach(() => {
 })
 
 /** A control repo and a user's config with one skill, answered by a fake gh. */
-async function setup(gh: { refuse?: boolean; policies?: string; org?: string } = {}) {
+async function setup(
+  gh: { refuse?: boolean; policies?: string; repo?: string; org?: string; failSet?: boolean } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
   const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
   const config = join(home, 'config.yml')
@@ -49,7 +51,7 @@ async function setup(gh: { refuse?: boolean; policies?: string; org?: string } =
     if (args[0] === 'repo') return 'main'
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
-    if (args[1] === 'list') return 'DATABASE_URL\nOTHER'
+    if (args[1] === 'list') return gh.repo ?? 'DATABASE_URL\nOTHER'
     if (call.includes('organization-secrets')) {
       if (gh.org === undefined) throw new Error('gh: Validation Failed (HTTP 422)')
       return gh.org
@@ -62,12 +64,15 @@ async function setup(gh: { refuse?: boolean; policies?: string; org?: string } =
     run,
     ask: scriptedAsk(script),
     env,
-    setSecret: async (args: string[], value: string) => void set.push([...args, value]),
+    setSecret: async (args: string[], value: string) => {
+      if (gh.failSet) throw new Error('gh failed')
+      set.push([...args, value])
+    },
   })
   const install = (script: [RegExp, unknown][] = []) => installWorkflow(config, 'alice', io(script))
   const job = async () =>
     parse(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).jobs.night
-  return { root, home, config, calls, set, install, job }
+  return { root, home, config, calls, set, io, install, job }
 }
 
 it('splits secrets into personal and shared, a name in both being personal', () => {
@@ -105,6 +110,40 @@ it("installs a person's environment, workflow, config and skills, and offers eac
   )
   expect(out).toContain('  add these repository secrets: HOOK_TOKEN')
   expect(out.join('\n')).not.toMatch(/_secret/)
+  expect(out.join('\n')).not.toMatch(/^Warning/m)
+})
+
+it('warns when a personal name at repo or org level would stand in for the environment', async () => {
+  const { install } = await setup({ repo: 'GH_TOKEN\nDATABASE_URL', org: 'ASANA_TOKEN' })
+  await install([
+    [/GH_TOKEN/, false],
+    [/SLACK_WEBHOOK/, false],
+  ])
+  const warning = out.find((line) => line.startsWith('Warning: '))
+  expect(warning).toMatch(
+    /^Warning: GH_TOKEN, ASANA_TOKEN already exist at repo or org level and stand in for any that environment alice lacks/,
+  )
+  expect(warning).toMatch(
+    /delete the shared ones: `gh secret delete GH_TOKEN`, `gh secret delete ASANA_TOKEN --org <org>` \(an org secret, or in the org's settings\)$/,
+  )
+})
+
+it('names where a failed secret was going, in either mode', async () => {
+  const notes = async (gh: { refuse?: boolean }, prompt: RegExp) => {
+    const { config, io } = await setup({ ...gh, failSet: true })
+    const run = io([
+      [prompt, true],
+      [/SLACK_WEBHOOK/, false],
+    ])
+    await installWorkflow(config, 'alice', run)
+    return run.ask.notes
+  }
+  expect(await notes({}, /^Set GH_TOKEN in environment alice/)).toEqual([
+    '`gh secret set GH_TOKEN --env alice` failed',
+  ])
+  expect(await notes({ refuse: true }, /^Set the GH_TOKEN__ALICE repository secret/)).toEqual([
+    '`gh secret set GH_TOKEN__ALICE` failed',
+  ])
 })
 
 it('adds no branch policy the environment already has', async () => {
@@ -184,9 +223,9 @@ it('copies a file the repo lacks without asking', async () => {
 })
 
 it('refuses a person name that is not lowercase letters, digits and -', async () => {
-  const { calls } = await setup()
+  const { calls, io } = await setup()
   for (const name of ['Alice', '-alice', '../alice', 'a_b']) {
-    await installWorkflow(undefined, name)
+    await installWorkflow(undefined, name, io([]))
     expect(process.exitCode).toBe(1)
   }
   expect(calls).toEqual([])
@@ -211,4 +250,18 @@ it("removes only the person's workflow and says how to delete their environment"
   out = []
   await removePersonWorkflow('alice', run)
   expect(out).toEqual(['No .github/workflows/night-shift-alice.yml in this repo'])
+})
+
+it('names the suffixed repository secrets a removed fallback workflow leaves', async () => {
+  const { root, install } = await setup({ refuse: true })
+  await install([
+    [/GH_TOKEN__ALICE/, false],
+    [/SLACK_WEBHOOK/, false],
+  ])
+  out = []
+  await removePersonWorkflow('alice', async () => root)
+  expect(out).toEqual([
+    'Removed .github/workflows/night-shift-alice.yml',
+    'Its suffixed repository secrets stay, readable from any branch: `gh secret delete GH_TOKEN__ALICE`, `gh secret delete CLAUDE_CODE_OAUTH_TOKEN__ALICE`, `gh secret delete ASANA_TOKEN__ALICE`',
+  ])
 })

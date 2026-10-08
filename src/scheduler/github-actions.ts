@@ -46,7 +46,8 @@ export function workflow(w: Workflow): string {
     (script) =>
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
-  return `name: night-shift
+  const name = person ? `night-shift-${person.name}` : 'night-shift'
+  return `name: ${name}
 
 on:
   schedule:
@@ -58,12 +59,12 @@ ${w.starts
   .join('\n')}
   workflow_dispatch:
 
-concurrency: ${person ? `night-shift-${person.name}` : 'night-shift'}
+concurrency: ${name}
 
 jobs:
   night:
     runs-on: ubuntu-latest
-${person && !person.suffixed ? `    environment: { name: ${person.name}, deployment: false }\n` : ''}    env:
+${person && !person.suffixed ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
 ${env.map((line) => `      ${line}`).join('\n')}
     steps:
       - uses: actions/checkout@v5

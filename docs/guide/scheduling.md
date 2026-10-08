@@ -129,7 +129,7 @@ The name is lowercase letters, digits and `-`. It writes:
 
 | File | What |
 |---|---|
-| `.github/workflows/night-shift-alice.yml` | The same workflow, with `concurrency: night-shift-alice` and `environment: { name: alice, deployment: false }` |
+| `.github/workflows/night-shift-alice.yml` | The same workflow, named `night-shift-alice`, with `concurrency: night-shift-alice` and `environment: { name: "alice", deployment: false }` |
 | `.night-shift/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
 | `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
 
@@ -178,6 +178,14 @@ teammate's token.
   push a workflow that prints the repo's secrets. Each environment's
   default-branch limit is the guard, so protect the default branch:
   required reviews, no direct pushes. The fallback has no such guard.
+- **A repo or org secret stands in for a personal one.** In
+  environment mode the workflow reads `secrets.GH_TOKEN`: if Alice's
+  environment lacks it and the repo still holds yours, as when the repo
+  started as your solo control repo, her job runs as you, pushing as you
+  and spending your quota. Install warns about personal names it finds
+  at repo or org level. Set each in every person's environment, then
+  delete the repo's (`gh secret delete GH_TOKEN`), or the org's in its
+  settings.
 - **The shared layers have no guard.** Repository and org secrets reach
   any branch, so keep there only what the whole team may see.
   Subscription tokens go in personal environments.
@@ -190,12 +198,16 @@ teammate's token.
 Running the same command again is the sync. It rewrites the workflow,
 and when `.night-shift/alice/config.yml` or `.night-shift/alice/skills/`
 differs from yours, it shows the diff and asks before replacing it. The
-skills folder is replaced as a whole, so a skill you deleted goes too.
+skills folder is replaced as a whole, so a skill you deleted goes too,
+as long as you have one left: with none, install leaves the folder
+alone.
 
 `schedule status` lists every `.github/workflows/night-shift*.yml`.
 `schedule remove --as alice` deletes `night-shift-alice.yml` only: the
 environment and its secrets stay until
-`gh api -X DELETE repos/{owner}/{repo}/environments/alice`.
+`gh api -X DELETE repos/{owner}/{repo}/environments/alice`, and a
+fallback's suffixed repository secrets, readable from any branch, until
+`gh secret delete` for each, which it lists.
 
 The action fails before anything else when `GH_TOKEN` is empty, which is
 how a job whose secrets didn't reach it shows.
