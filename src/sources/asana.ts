@@ -17,7 +17,7 @@ const config = z
   .describe('My incomplete Asana tasks')
 type Config = z.infer<typeof config>
 
-const API = 'https://app.asana.com/api/1.0'
+export const API = 'https://app.asana.com/api/1.0'
 const RETRIES = 3
 
 const taskFields = [

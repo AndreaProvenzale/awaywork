@@ -14,8 +14,8 @@ pnpm docs:dev    # the site at http://localhost:5173/night-shift/
 ```
 
 Tests run against fakes and recorded fixtures. Tests against real
-accounts (`test/real-*.test.ts`) are skipped unless `NIGHTSHIFT_REAL=1`,
-the source's token or, for GitHub, `NIGHTSHIFT_GITHUB_SANDBOX` is set;
+accounts (`test/real-*.test.ts`) are skipped unless `NIGHTSHIFT_REAL=1`
+or the source's env (its token, test workspace or sandbox) is set;
 see [docs/e2e.md](docs/e2e.md#live-source-tests).
 
 ## Adding things
