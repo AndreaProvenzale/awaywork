@@ -6,7 +6,7 @@ import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { formatPlan, formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
-import { builtinSkillsDir } from '../src/config/paths.js'
+import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
@@ -25,7 +25,7 @@ process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 
 const git = (dir: string, ...args: string[]) =>
-  execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 const quota = (long: number): Quota => ({
   windows: [
@@ -69,13 +69,13 @@ const worker: Provider = {
 it('runs, publishes and reports a night', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-night-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   for (const n of [1, 2, 3]) await git(origin, 'branch', `feature-${n}`)
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', '--branch', branch, origin, dir])
+      await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
     },
   }
   forge.branches.add('acme/api:night/acme-api-3')
@@ -177,7 +177,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -226,7 +226,7 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -262,12 +262,12 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
 it('stops a unit still running at night.end and publishes what it left', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-end-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', origin, dir])
+      await execa(bin('git'), ['clone', '-q', origin, dir])
     },
   }
   const config = parseConfig(
@@ -324,13 +324,13 @@ it('stops a unit still running at night.end and publishes what it left', async (
 it('runs a chain on what the unit before delivered, and skips it after nothing', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-chain-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const base = fakeForge()
   const forge = {
     ...base,
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
@@ -415,7 +415,7 @@ it('runs setup before the worker with only its own secrets, none on a foreign PR
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
       if (branch === 'feature-2') await writeFile(join(dir, 'broken'), '')
     },
@@ -489,7 +489,7 @@ it("gives a worker only its step's MCP servers whose secrets are set, and none o
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -568,7 +568,7 @@ it("stops a unit at its provider's unit_minutes", async () => {
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -616,14 +616,14 @@ it("stops a unit at its provider's unit_minutes", async () => {
 /** Clones from and pushes to a local `origin` on `main`, recording each draft PR it opens. */
 async function originForge(root: string) {
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const opened: { head: string; base: string; body: string }[] = []
   const fake = fakeForge()
   const forge = {
     ...fake,
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await fake.push(dir, branch, opts)
@@ -2693,7 +2693,7 @@ it("doesn't run a nested repo's filter when it checks the clone for uncommitted 
         yield* provider.run(job, signal)
         if (job.unit.id !== 'acme-api-1-address-review-1') return
         const sub = join(job.dir, 'sub')
-        const git = (dir: string, ...args: string[]) => execa('git', ['-C', dir, ...args])
+        const git = (dir: string, ...args: string[]) => execa(bin('git'), ['-C', dir, ...args])
         await git(job.dir, 'init', '-q', 'sub')
         await writeFile(join(sub, 'f'), 'a')
         await git(sub, 'add', 'f')

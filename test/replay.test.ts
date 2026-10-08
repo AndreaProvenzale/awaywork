@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { builtinSkillsDir } from '../src/config/paths.js'
+import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import { planNight } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
@@ -18,18 +18,18 @@ import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
 
 const git = (dir: string, ...args: string[]) =>
-  execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 it('replays a unit on its base commit and saved context, and publishes nothing', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-replay-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   await git(origin, 'branch', 'feature-1')
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', '--branch', branch, origin, dir])
+      await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
     },
   }
   const prompts: string[] = []

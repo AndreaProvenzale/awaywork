@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { cp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { type Allowance, MAX_TURNS } from '../core/budget.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
@@ -122,7 +123,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink })
   await rm(plugin, { recursive: true, force: true })
   const commits = Number(
-    (await execa('git', ['-C', dir, 'rev-list', '--count', `${state.commit}..HEAD`])).stdout,
+    (await execa(bin('git'), ['-C', dir, 'rev-list', '--count', `${state.commit}..HEAD`])).stdout,
   )
   return { ...worker, dir, out, commits }
 }

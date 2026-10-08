@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { builtinSkillsDir } from '../src/config/paths.js'
+import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { loadSkills } from '../src/config/skills.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
@@ -17,7 +17,7 @@ import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
 
 const git = (dir: string, ...args: string[]) =>
-  execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 describe('workspace', () => {
   it('ships a SKILL.md for every built-in skill', async () => {
@@ -50,7 +50,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
         await mkdir(into)
-        await execa('git', ['init', '-q', '-b', 'main', into])
+        await execa(bin('git'), ['init', '-q', '-b', 'main', into])
         await writeFile(join(into, 'README.md'), 'hi')
         await git(into, 'add', '.')
         await git(into, 'commit', '-qm', 'init')
@@ -153,7 +153,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           ...fakeForge(),
           async clone(_repo: string, _branch: string, into: string) {
             await mkdir(into)
-            await execa('git', ['init', '-q', '-b', 'main', into])
+            await execa(bin('git'), ['init', '-q', '-b', 'main', into])
             await writeFile(join(into, 'README.md'), 'hi')
             await git(into, 'add', '.')
             await git(into, 'commit', '-qm', 'init')
@@ -178,7 +178,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       const forge = {
         ...fakeForge(),
         async clone(_repo: string, _branch: string, into: string) {
-          await execa('git', ['init', '-q', '-b', 'sessions', into])
+          await execa(bin('git'), ['init', '-q', '-b', 'sessions', into])
           await mkdir(join(into, '.night-shift/skills/review'), { recursive: true })
           await writeFile(join(into, '.night-shift/instructions.md'), 'AUTHOR NOTE')
           await writeFile(join(into, '.night-shift/skills/review/SKILL.md'), 'AUTHOR SKILL')
@@ -281,7 +281,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     const forge = {
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
-        await execa('git', ['init', '-q', '-b', 'main', into])
+        await execa(bin('git'), ['init', '-q', '-b', 'main', into])
         await mkdir(join(into, '.agents/skills/house-style'), { recursive: true })
         await writeFile(join(into, '.agents/skills/house-style/SKILL.md'), 'REPO SKILL')
         await git(into, 'add', '.')

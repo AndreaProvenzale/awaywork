@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
+import { bin } from '../src/config/paths.js'
 import { footer, footerItems, isOurs } from '../src/core/footer.js'
 import type { Ctx, Item } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
@@ -519,9 +520,9 @@ describe('github forge', () => {
     const elsewhere = join(root, 'elsewhere')
     const clone = join(root, 'clone')
     const git = (dir: string, ...args: string[]) =>
-      execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
-    for (const bare of [origin, elsewhere]) await execa('git', ['init', '-q', '--bare', bare])
-    await execa('git', ['init', '-q', clone])
+      execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    for (const bare of [origin, elsewhere]) await execa(bin('git'), ['init', '-q', '--bare', bare])
+    await execa(bin('git'), ['init', '-q', clone])
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'init')
     await git(clone, 'config', `url.${elsewhere}.pushInsteadOf`, origin)
     let head = ''
