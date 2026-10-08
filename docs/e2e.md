@@ -55,11 +55,12 @@ the seeded status. Each run leaves one closed PR: GitHub cannot delete
 PRs. A cleanup that leaves anything else behind fails the run, naming
 what to delete by hand.
 
-The Linear test checks only the seeded issues: its config cannot narrow
-what the source reads. It creates and deletes a team label of its own,
-which a workspace that keeps labels to admins refuses [I]. A deleted
-issue sits in the team's archive for 30 days; archived issues should
-not count against the free plan's 250 [I].
+Run the Linear test in a test workspace: `items` reads every open issue
+assigned to the key's user, and its config cannot narrow that, so the
+test checks only the seeded issues. It creates and deletes a team label
+of its own, which a workspace that keeps labels to admins refuses [I].
+A deleted issue sits in the trash for 30 days [C]; trashed issues
+should not count against the free plan's 250 [I].
 
 Next:
 

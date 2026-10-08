@@ -25,7 +25,7 @@ async function gql<T>(query: string, variables: object = {}): Promise<T> {
   return body.data as T
 }
 
-/** Deletes one issue or label by id; a deleted issue goes to the team's archive. */
+/** Deletes one issue or label by id; a deleted issue goes to the trash for 30 days. */
 async function remove(mutation: 'issueDelete' | 'issueLabelDelete', id: string) {
   const data = await gql<Record<string, { success: boolean }>>(
     `mutation Remove($id: String!) { ${mutation}(id: $id) { success } }`,
