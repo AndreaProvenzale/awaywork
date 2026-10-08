@@ -1,6 +1,7 @@
 import type { Budget } from '../config/schema.js'
 import type { Quota } from './types.js'
 
+export const MAX_TURNS = 200
 const DAY = 24 * 60 * 60 * 1000
 
 export type Allowance =

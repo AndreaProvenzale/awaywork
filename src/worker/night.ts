@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
-import { quotaFacts, route, withQuota } from '../core/budget.js'
+import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
@@ -20,9 +20,11 @@ import type {
 } from '../core/types.js'
 import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
+import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
+  configSecrets,
   notSymlink,
   outputFile,
   prepareWorkspace,
@@ -34,7 +36,6 @@ import {
   writeOutput,
 } from './workspace.js'
 
-const MAX_TURNS = 200
 const CHECK_LOG_CHARS = 8000
 const MAX_SUFFIX = 10
 
@@ -86,14 +87,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     }
   }
   const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
-  const secrets = [
-    ...Object.values(n.providers).flatMap((p) => p.secrets),
-    ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
-    ...(n.config.notify?.secrets ?? []),
-    ...(n.config.after_unit?.secrets ?? []),
-    ...Object.values(n.config.repos).flatMap((r) => r.secrets),
-    ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
-  ]
+  const secrets = configSecrets(n.config, n.providers, n.sources)
 
   // Tonight's draft PRs by repo and branch, and the PR branches pushed onto.
   const opened: Record<string, string> = {}
@@ -406,7 +400,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       })
       // Before setup or any worker touched the clone: the unit's commits are the ones after it.
       const cloned = round ? round.start : await head(dir)
-      if (!round) gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+      if (!round) {
+        gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+        const state: ReplayState = {
+          unit,
+          provider: id,
+          commit: cloned,
+          previous: previous && { skill: previous.skill, outcome: previous.outcome },
+        }
+        await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
+      }
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
