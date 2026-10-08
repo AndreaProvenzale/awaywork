@@ -80,6 +80,58 @@ The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source
 - Print only your items: assigned to you, or waiting on your review.
 - Read tokens from env vars and list them in `secrets`.
 
+## Recipe: chores
+
+When the queue is done and quota is left, a source can hand out work that
+needs no tracker item: tests for an untested module, a TODO to clear. Print
+one item per chore and repo, and put its rule last so it only gets what
+the rest leaves:
+
+```yaml
+sources:
+  chores:
+    command: node chores.mjs
+    fields: [chore]
+
+queue:
+  # ...your other rules first
+  - skill: implement
+    source: chores
+    where: { chore: tests }
+    when: { headroom: 20% }   # only on spare quota
+```
+
+```js
+// chores.mjs: the `description` is the brief the worker reads
+const chores = [{ name: 'tests', task: 'Add tests for the least tested module.' }]
+const repos = ['acme/api', 'acme/web']
+const monday = new Date()
+monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+const updated = `${monday.toISOString().slice(0, 10)}T00:00:00Z`
+
+console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) => ({
+  id: `${name}:${repo}`,
+  key: `chore-${name}-${repo.replace('/', '-')}`,
+  title: `Chore: ${name} in ${repo}`,
+  url: `https://example.com/chores/${name}`,
+  description: task,
+  fields: { chore: name, repo, updated },
+})))))
+```
+
+- **Attempts** keep a chore from redoing the same work: a unit whose items
+  haven't changed since a worker finished it is skipped, see
+  [how it works](./how-it-works.md). `updated` is the Monday of the week,
+  so a chore runs at most once a week, and not while its last draft PR is
+  still open; print the date of the day for every night.
+- **Weekdays** are the script's call: print nothing on the days a chore
+  shouldn't run.
+- **`when`** is checked again when the unit starts: `plan` lists the chore
+  with its gate and notes when the probe has no headroom for it, and the
+  night skips it without the headroom.
+- **No `link`** is set: a chore has no tracker page, so its draft PRs carry
+  no link line.
+
 ## On GitHub Actions
 
 The runner has only what's in the repo holding your config, so:
