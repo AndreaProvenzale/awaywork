@@ -1,18 +1,30 @@
 import { existsSync, statSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import type { Command } from 'commander'
+import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
 import { envFile } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { windowsOf } from '../core/window.js'
-import { exec } from '../forge/gh.js'
+import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { staleWorkflow } from '../scheduler/github-actions.js'
+import { staleWorkflow, workflows } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
-import { gitRoot, staleSchedules } from './schedule.js'
+import {
+  gitRoot,
+  type RepoSecrets,
+  reasonOf,
+  repoSecrets,
+  secretNames,
+  secretsOf,
+  staleSchedules,
+  standInWarning,
+} from './schedule.js'
 
 export interface Check {
   status: Status
@@ -74,6 +86,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const root = await gitRoot()
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
+  for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
 
   for (const { id, budget } of config.providers) {
     const provider = providers[id]
@@ -114,5 +127,93 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
   }
+  return checks
+}
+
+/** Checks that every secret each night-shift workflow names exists in its environment, the repo or the org. */
+export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
+  const files = await workflows(root)
+  if (!files.length) return []
+  const listed = await repoSecrets(run).catch((e: Error) => e)
+  if (listed instanceof Error)
+    return [
+      {
+        status: 'warn',
+        what: 'workflow secrets',
+        detail: `couldn't list them: ${reasonOf(listed)}`,
+      },
+    ]
+  const checks: Check[] = []
+  for (const file of files) {
+    const jobs = parse(await readFile(file, 'utf8'))?.jobs
+    for (const job of Object.values<Job>(jobs ?? {}))
+      checks.push(...(await jobSecretChecks(basename(file), job, root, listed, run)))
+  }
+  return checks
+}
+
+/** The parts of a workflow's job these checks read. */
+interface Job {
+  environment?: string | { name?: string }
+  env?: Record<string, unknown>
+  steps?: { with?: { config?: string } }[]
+}
+
+async function jobSecretChecks(
+  what: string,
+  job: Job,
+  root: string,
+  listed: RepoSecrets,
+  run: Exec,
+): Promise<Check[]> {
+  const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name
+  const names = new Set(
+    Object.values(job.env ?? {}).flatMap((value) =>
+      [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
+    ),
+  )
+  const own = environment
+    ? await secretNames(run, environment).catch((e: Error) => e)
+    : new Set<string>()
+  if (own instanceof Error)
+    return [
+      {
+        status: 'warn',
+        what,
+        detail: `couldn't list environment ${environment}'s secrets: ${reasonOf(own)}`,
+      },
+    ]
+  const config = job.steps?.find((step) => step.with?.config)?.with?.config
+  const personal =
+    environment && config
+      ? await loadConfig(join(root, config)).then(
+          (c) => secretsOf(c).personal,
+          () => undefined,
+        )
+      : undefined
+  const shared = (name: string) => listed.repo.has(name) || listed.org.has(name)
+  const missing = [...names].filter((name) => !own.has(name) && !shared(name))
+  // Without the person's config, every missing name goes to the environment, where a shared one is merely redundant.
+  const toEnvironment = environment
+    ? missing.filter((name) => personal?.includes(name) ?? true)
+    : []
+  const toRepo = missing.filter((name) => !toEnvironment.includes(name))
+  const checks: Check[] = [
+    missing.length
+      ? {
+          status: 'FAIL',
+          what,
+          detail: [
+            toEnvironment.length && `add ${toEnvironment.join(', ')} to environment ${environment}`,
+            toRepo.length && `add ${toRepo.join(', ')} to the repository secrets`,
+          ]
+            .filter(Boolean)
+            .join('; '),
+        }
+      : { status: 'ok', what, detail: `${names.size} secrets found` },
+  ]
+  const standIns = (personal ?? []).filter((name) => !own.has(name) && shared(name))
+  if (environment && standIns.length)
+    checks.push({ status: 'warn', what, detail: standInWarning(environment, standIns, listed) })
   return checks
 }

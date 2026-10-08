@@ -74,6 +74,9 @@ value is in your environment or `~/.config/night-shift/env`, with
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
+`doctor`, run inside the repo, checks that every secret the workflow
+names exists in the repo or its org, and fails naming the missing ones.
+
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
 access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
 issues, checks and Actions logs, pushes new branches and opens draft PRs
@@ -183,9 +186,9 @@ teammate's token.
   environment lacks it and the repo still holds yours, as when the repo
   started as your solo control repo, her job runs as you, pushing as you
   and spending your quota. Install warns about personal names it finds
-  at repo or org level. Set each in every person's environment, then
-  delete the repo's (`gh secret delete GH_TOKEN`), or the org's in its
-  settings.
+  at repo or org level, and `doctor` about those an environment lacks.
+  Set each in every person's environment, then delete the repo's
+  (`gh secret delete GH_TOKEN`), or the org's in its settings.
 - **The shared layers have no guard.** Repository and org secrets reach
   any branch, so keep there only what the whole team may see.
   Subscription tokens go in personal environments.
@@ -211,3 +214,16 @@ fallback's suffixed repository secrets, readable from any branch, until
 
 The action fails before anything else when `GH_TOKEN` is empty, which is
 how a job whose secrets didn't reach it shows.
+
+### Checking with doctor
+
+`nightshift doctor`, run inside the repo, reads each
+`night-shift*.yml`: its `environment` and every `secrets.X` its `env:`
+names. Each must exist in that environment, the repo or the org: one
+line per workflow says how many were found, or fails naming the missing
+ones and where they go, the person's own in their environment and the
+rest in the repo. A fallback's suffixed names are checked at repo level.
+It warns when a personal name, per the person's config, is missing from
+their environment but set at repo or org level, since the job would run
+with someone else's. When gh can't list the secrets (no access, no
+remote, not logged in), it warns why instead of failing.
