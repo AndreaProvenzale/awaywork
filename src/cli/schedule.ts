@@ -1,16 +1,27 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { copyFile, cp, mkdir, readdir, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { copyFile, cp, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { configPath, loadConfig } from '../config/load.js'
-import { packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
+import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
+import type { Config } from '../config/schema.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
-import { exec } from '../forge/gh.js'
+import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
+import {
+  configOf,
+  REPO_CONFIG,
+  removeWorkflow,
+  suffixOf,
+  WORKFLOW,
+  type Workflow,
+  workflow,
+  workflowOf,
+  workflows,
+} from '../scheduler/github-actions.js'
 import {
   defaultScheduler,
   describeStarts,
@@ -43,12 +54,20 @@ export function scheduleCommand(program: Command): void {
       '--with <scheduler>',
       `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: launchd on macOS, else systemd if it runs, else cron)`,
     )
-    .action((opts: { with?: string }) => installSchedule(program.opts().config, opts.with))
+    .option(
+      '--as <person>',
+      `with ${GITHUB_ACTIONS}: install for one person of a shared control repo`,
+    )
+    .action((opts: { with?: string; as?: string }) =>
+      installSchedule(program.opts().config, opts.with, opts.as),
+    )
 
   schedule
     .command('remove')
     .description(`remove the nightly job, and ${WORKFLOW} in the current repo`)
-    .action(async () => {
+    .option('--as <person>', "remove only that person's workflow from the current repo")
+    .action(async (opts: { as?: string }) => {
+      if (opts.as !== undefined) return removePersonWorkflow(opts.as)
       const removed = []
       for (const scheduler of Object.values(localSchedulers()))
         if (await scheduler.remove()) removed.push(scheduler.id)
@@ -73,12 +92,25 @@ export function scheduleCommand(program: Command): void {
         console.log(`Log: ${job.log}`)
       }
       const root = await gitRoot()
-      if (root && existsSync(join(root, WORKFLOW))) {
+      for (const file of root ? await workflows(root) : []) {
         found = true
-        console.log(`Scheduled with ${GITHUB_ACTIONS}: ${join(root, WORKFLOW)}`)
+        console.log(`Scheduled with ${GITHUB_ACTIONS}: ${file}`)
       }
       if (!found) console.log('No nightly job installed')
     })
+}
+
+/** Deletes a person's workflow; their environment and its secrets stay. */
+export async function removePersonWorkflow(person: string, run: Exec = exec): Promise<void> {
+  const root = await gitRoot(run)
+  if (!root || !PERSON.test(person) || !(await removeWorkflow(root, person))) {
+    console.log(`No ${workflowOf(person)} in this repo`)
+    return
+  }
+  console.log(`Removed ${workflowOf(person)}`)
+  console.log(
+    `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
+  )
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
@@ -113,11 +145,21 @@ export async function staleSchedules(
   return warnings
 }
 
-export const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+export const gitRoot = (run: Exec = exec) =>
+  run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */
-export async function installSchedule(config: string | undefined, id?: string): Promise<void> {
-  if (id === GITHUB_ACTIONS) return installWorkflow(config)
+export async function installSchedule(
+  config: string | undefined,
+  id?: string,
+  person?: string,
+): Promise<void> {
+  if (id === GITHUB_ACTIONS) return installWorkflow(config, person)
+  if (person !== undefined) {
+    console.error(`--as goes with --with ${GITHUB_ACTIONS}`)
+    process.exitCode = 1
+    return
+  }
   const all = localSchedulers()
   const scheduler = all[id ?? defaultScheduler()]
   if (!scheduler) {
@@ -154,56 +196,86 @@ export async function installSchedule(config: string | undefined, id?: string): 
   }
 }
 
-async function installWorkflow(config: string | undefined): Promise<void> {
-  const root = await gitRoot()
+/** What install reaches outside the repo's files; injected so tests replay gh. */
+export interface Io {
+  run: Exec
+  ask: Ask
+  env: NodeJS.ProcessEnv
+  /** Runs `gh secret set` with these args, the value on stdin. */
+  setSecret: (args: string[], value: string) => Promise<void>
+}
+
+/** Sets a secret of the current repo; the value goes through stdin, never argv. */
+const ghSecretSet = async (args: string[], value: string) =>
+  void (await execa('gh', ['secret', 'set', ...args], { input: value }))
+
+const terminal: Io = { run: exec, ask: terminalAsk, env: process.env, setSecret: ghSecretSet }
+
+const PERSON = /^[a-z0-9][a-z0-9-]*$/
+
+/** The secrets a config needs on a runner: its user's own, and those a team can share. A name in both is personal. */
+export function secretsOf(config: Config): { personal: string[]; shared: string[] } {
+  const personal = new Set([
+    'GH_TOKEN',
+    ...config.providers.flatMap((p) => providers[p.id]?.secrets ?? []),
+    ...Object.entries(config.sources).flatMap(
+      ([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? [],
+    ),
+  ])
+  const shared = new Set(
+    [
+      ...(config.notify?.secrets ?? []),
+      ...(config.after_unit?.secrets ?? []),
+      ...Object.values(config.repos).flatMap((r) => r.secrets),
+      ...Object.values(config.mcp).flatMap((s) => s.secrets),
+    ].filter((name) => !personal.has(name)),
+  )
+  return { personal: [...personal], shared: [...shared] }
+}
+
+/** Writes the workflow and the repo's copy of the config; with `person`, theirs in a shared control repo. */
+export async function installWorkflow(
+  config: string | undefined,
+  person?: string,
+  io: Io = terminal,
+): Promise<void> {
+  if (person !== undefined && !PERSON.test(person)) {
+    console.error(
+      `--as takes lowercase letters, digits and -, starting with a letter or digit, not "${person}"`,
+    )
+    process.exitCode = 1
+    return
+  }
+  const root = await gitRoot(io.run)
   if (!root) {
     console.error('GitHub Actions runs from a repo; run this inside a git repository')
     process.exitCode = 1
     return
   }
   const file = join(root, WORKFLOW)
-  if (existsSync(file)) {
+  if (!person && existsSync(file)) {
     console.error(`${WORKFLOW} already exists; \`nightshift schedule remove\` deletes it`)
     process.exitCode = 1
     return
   }
   try {
     const path = configPath(config)
-    const {
-      night,
-      windows,
-      providers: picked,
-      sources: configured,
-      notify,
-      after_unit,
-      repos,
-      mcp,
-    } = await loadConfig(path)
-    const used = picked.flatMap((p) => providers[p.id] ?? [])
-    const secrets = new Set([
-      'GH_TOKEN',
-      ...used.flatMap((p) => p.secrets),
-      ...Object.entries(configured).flatMap(([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? []),
-      ...(notify?.secrets ?? []),
-      ...(after_unit?.secrets ?? []),
-      ...Object.values(repos).flatMap((r) => r.secrets),
-      ...Object.values(mcp).flatMap((s) => s.secrets),
-    ])
+    const loaded = await loadConfig(path)
+    const used = loaded.providers.flatMap((p) => providers[p.id] ?? [])
+    const base = {
+      starts: startsOf(windowsOf(loaded)),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      version: packageVersion,
+      packages: used.map((p) => p.package),
+      setup: Object.values(loaded.sources).flatMap((cfg) =>
+        isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
+      ),
+    }
+    const { personal, shared } = secretsOf(loaded)
+    if (person) return await installForPerson(root, path, person, base, { personal, shared }, io)
+    const secrets = [...personal, ...shared]
     await mkdir(dirname(file), { recursive: true })
-    await writeFile(
-      file,
-      workflow({
-        starts: startsOf(windowsOf({ night, windows })),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        config: REPO_CONFIG,
-        version: packageVersion,
-        packages: used.map((p) => p.package),
-        secrets: [...secrets],
-        setup: Object.values(configured).flatMap((cfg) =>
-          isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
-        ),
-      }),
-    )
+    await writeFile(file, workflow({ ...base, config: REPO_CONFIG, secrets }))
     console.log(`Wrote ${WORKFLOW}`)
     const repoConfig = join(root, REPO_CONFIG)
     if (existsSync(repoConfig)) console.log(`Kept the existing ${REPO_CONFIG}`)
@@ -215,19 +287,185 @@ async function installWorkflow(config: string | undefined): Promise<void> {
     const skills = await copySkillsToRepo(skillsDirOf(path), root)
     if (skills === 'kept') console.log(`Kept the existing ${REPO_SKILLS}`)
     if (skills === 'copied') console.log(`Copied ${skillsDirOf(path)} to ${REPO_SKILLS}`)
-    const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet).catch(
-      (e) => {
-        if (e instanceof Cancelled) return [...secrets]
-        throw e
-      },
-    )
+    const unset = await offerSecrets(secrets, io.env, io.ask, (name, value) =>
+      io.setSecret([name], value),
+    ).catch((e) => {
+      if (e instanceof Cancelled) return secrets
+      throw e
+    })
     console.log('Before the first night:')
     const commit = [WORKFLOW, REPO_CONFIG, ...(skills === 'copied' ? [REPO_SKILLS] : [])]
     console.log(`  commit ${commit.slice(0, -1).join(', ')} and ${commit.at(-1)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
-    reportConfigError(e)
+    if (!(e instanceof Cancelled)) return reportConfigError(e)
+    console.error('Cancelled')
+    process.exitCode = 1
+  }
+}
+
+async function installForPerson(
+  root: string,
+  path: string,
+  person: string,
+  base: Omit<Workflow, 'config' | 'secrets' | 'person'>,
+  { personal, shared }: { personal: string[]; shared: string[] },
+  io: Io,
+): Promise<void> {
+  const environment = await createEnvironment(io.run, person).then(
+    () => true,
+    (e) => {
+      console.log(`Couldn't create the environment ${person}: ${reasonOf(e)}`)
+      console.log(
+        `So ${person}'s secrets are repository secrets ending in ${suffixOf(person)}, with no branch limit: any branch's workflow can read every teammate's token`,
+      )
+      return false
+    },
+  )
+  const file = workflowOf(person)
+  const config = configOf(person)
+  await mkdir(dirname(join(root, file)), { recursive: true })
+  await writeFile(
+    join(root, file),
+    workflow({
+      ...base,
+      config,
+      secrets: [...personal, ...shared],
+      person: { name: person, suffixed: environment ? undefined : personal },
+    }),
+  )
+  console.log(`Wrote ${file}`)
+  await syncCopy(path, root, config, io.ask)
+  const skills = skillsDirOf(path)
+  if ((await readdir(skills).catch(() => [])).length)
+    await syncCopy(skills, root, skillsDirOf(config), io.ask)
+
+  const suffixed = (name: string) => name + suffixOf(person)
+  const existing = new Set([
+    ...(await ghLines(io.run, ['secret', 'list', '--json', 'name', '--jq', '.[].name'])),
+    ...(await ghLines(io.run, [
+      'api',
+      '--paginate',
+      'repos/{owner}/{repo}/actions/organization-secrets',
+      '--jq',
+      '.secrets[].name',
+    ])),
+  ])
+  const present = shared.filter((name) => existing.has(name))
+  if (present.length)
+    console.log(`Already repository or organization secrets: ${present.join(', ')}`)
+  let unsetPersonal = personal
+  let unsetShared = shared.filter((name) => !existing.has(name))
+  try {
+    unsetPersonal = environment
+      ? await offerSecrets(
+          personal,
+          io.env,
+          io.ask,
+          (name, value) => io.setSecret([name, '--env', person], value),
+          (name) => `${name} in environment ${person}`,
+        )
+      : await offerSecrets(
+          personal,
+          io.env,
+          io.ask,
+          (name, value) => io.setSecret([suffixed(name)], value),
+          (name) => `the ${suffixed(name)} repository secret`,
+        )
+    unsetShared = await offerSecrets(
+      unsetShared,
+      io.env,
+      io.ask,
+      (name, value) => io.setSecret([name], value),
+      (name) => `the ${name} repository secret, shared with the team,`,
+    )
+  } catch (e) {
+    if (!(e instanceof Cancelled)) throw e
+  }
+  console.log('Before the first night:')
+  console.log(`  commit ${file} and ${dirname(config)}/`)
+  if (unsetPersonal.length)
+    console.log(
+      environment
+        ? `  add these secrets to environment ${person}: ${unsetPersonal.join(', ')}`
+        : `  add these suffixed repository secrets: ${unsetPersonal.map(suffixed).join(', ')}`,
+    )
+  if (unsetShared.length) console.log(`  add these repository secrets: ${unsetShared.join(', ')}`)
+  if (unsetPersonal.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
+}
+
+/** Creates the person's environment, deployable from the default branch only; throws when GitHub refuses. */
+async function createEnvironment(run: Exec, person: string): Promise<void> {
+  const environment = `repos/{owner}/{repo}/environments/${person}`
+  await run('gh', [
+    'api',
+    '-X',
+    'PUT',
+    environment,
+    '-F',
+    'deployment_branch_policy[protected_branches]=false',
+    '-F',
+    'deployment_branch_policy[custom_branch_policies]=true',
+  ])
+  const branch = await run('gh', [
+    'repo',
+    'view',
+    '--json',
+    'defaultBranchRef',
+    '--jq',
+    '.defaultBranchRef.name',
+  ])
+  const policies = `${environment}/deployment-branch-policies`
+  const allowed = await run('gh', [
+    'api',
+    '--paginate',
+    policies,
+    '--jq',
+    '.branch_policies[].name',
+  ])
+  if (!allowed.split('\n').includes(branch))
+    await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+}
+
+/** gh's own last line of a failed call, e.g. "gh: Must have admin rights to Repository. (HTTP 403)". */
+const reasonOf = (e: unknown) =>
+  (String((e as { stderr?: string }).stderr ?? '').trim() || String(e)).split('\n').at(-1)
+
+/** The lines a gh call prints, none when it fails. */
+const ghLines = (run: Exec, args: string[]) =>
+  run('gh', args).then(
+    (out) => out.split('\n').filter(Boolean),
+    () => [],
+  )
+
+/**
+ * Copies `from`, a file or a folder replaced as a whole, to `to` under the repo root; when the
+ * repo's copy differs, only after showing the diff and asking.
+ */
+export async function syncCopy(from: string, root: string, to: string, ask: Ask): Promise<void> {
+  const tmp = await mkdtemp(join(tmpdir(), 'nightshift-'))
+  try {
+    const staged = join(tmp, basename(to))
+    // A linked skill is committed as its files, not as a link to this machine.
+    await cp(from, staged, { recursive: true, dereference: true })
+    const target = join(root, to)
+    if (existsSync(target)) {
+      const diff = await execa(bin('git'), ['diff', '--no-index', '--', target, staged], {
+        reject: false,
+      })
+      if (diff.exitCode === 0) return console.log(`${to} is up to date`)
+      if (diff.exitCode !== 1) throw new Error(diff.stderr)
+      console.log(diff.stdout)
+      if (!(await ask.confirm(`Overwrite ${to} with the changes above?`)))
+        return console.log(`Kept ${to}`)
+      await rm(target, { recursive: true })
+    }
+    await mkdir(dirname(target), { recursive: true })
+    await cp(staged, target, { recursive: true })
+    console.log(`Copied ${from} to ${to}`)
+  } finally {
+    await rm(tmp, { recursive: true })
   }
 }
 
@@ -246,10 +484,6 @@ export async function copySkillsToRepo(
   return 'copied'
 }
 
-/** Sets a repository secret of the current repo; the value goes through stdin, never argv. */
-const ghSecretSet = async (name: string, value: string) =>
-  void (await execa('gh', ['secret', 'set', name], { input: value }))
-
 /**
  * Offers to set each secret whose value is in the env, the env file included;
  * returns the names left unset. Values are never printed.
@@ -259,11 +493,12 @@ export async function offerSecrets(
   env: NodeJS.ProcessEnv,
   ask: Ask,
   set: (name: string, value: string) => Promise<void>,
+  label = (name: string) => `the ${name} repository secret`,
 ): Promise<string[]> {
   const unset = []
   for (const name of names) {
     const value = env[name]
-    if (value && (await ask.confirm(`Set the ${name} repository secret from your env?`))) {
+    if (value && (await ask.confirm(`Set ${label(name)} from your env?`))) {
       try {
         await set(name, value)
         ask.note(`Set ${name}`)

@@ -214,6 +214,20 @@ between two polls escapes both, and could still change the clone after
 night-shift checked it. Each run also has a turn cap and
 stops at the quota ceiling.
 
+## Secrets on a runner
+
+In GitHub Actions, your credentials are secrets of your control repo,
+and anyone with write access to it can read them: a branch they push can
+carry a workflow that prints them. So the default is a control repo of
+your own. A [shared control repo](./scheduling.md#shared-control-repo)
+puts each person's credentials in an environment only the default branch
+can deploy to, which makes protecting that branch the guard. Its
+fallback, suffixed repository secrets, has no branch limit, and neither
+do the shared repository and org secrets. The repo then holds
+teammates' subscription credentials, each set by its owner: night-shift
+neither stores nor proxies them, but keeping them together is the
+team's choice.
+
 ## Vendor terms
 
 night-shift runs each vendor's **unmodified CLI** with **your own

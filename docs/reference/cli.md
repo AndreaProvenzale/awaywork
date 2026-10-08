@@ -271,7 +271,7 @@ Options:
 Commands:
   install [options]  start `nightshift run` when a window opens; it starts no
                      unit after it closes
-  remove             remove the nightly job, and
+  remove [options]   remove the nightly job, and
                      .github/workflows/night-shift.yml in the current repo
   status             show the installed nightly job
   help [command]     display help for command
@@ -287,6 +287,8 @@ start `nightshift run` when a window opens; it starts no unit after it closes
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd
                       on macOS, else systemd if it runs, else cron)
+  --as <person>       with github-actions: install for one person of a shared
+                      control repo
   -h, --help          display help for command
 ```
 
@@ -299,7 +301,8 @@ remove the nightly job, and .github/workflows/night-shift.yml in the current
 repo
 
 Options:
-  -h, --help  display help for command
+  --as <person>  remove only that person's workflow from the current repo
+  -h, --help     display help for command
 ```
 
 ## nightshift schedule status

@@ -12,7 +12,9 @@ import {
   removeWorkflow,
   staleWorkflow,
   WORKFLOW,
+  type Workflow,
   workflow,
+  workflows,
 } from '../src/scheduler/github-actions.js'
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
@@ -147,6 +149,8 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   })
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
+  expect(parsed.concurrency).toBe('night-shift')
+  expect(parsed.jobs.night.environment).toBeUndefined()
   expect(parsed.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
     GH_TOKEN: '${{ secrets.GH_TOKEN }}',
@@ -170,7 +174,9 @@ it('ships an action that installs the pinned version and runs the night', async 
   expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages'])
   expect(action.runs.using).toBe('composite')
   const runs = action.runs.steps.map((s: { run?: string }) => s.run ?? '')
-  expect(runs[0]).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
+  expect(runs[0]).toContain('if [ -z "$GH_TOKEN" ]; then')
+  expect(runs[0]).toContain("::error::GH_TOKEN is empty: the job's secrets didn't reach it.")
+  expect(runs[1]).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
   expect(runs).toContain('npm install -g "nightshift-agent@$VERSION" $PACKAGES')
   expect(runs).toContain(
     "nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
@@ -203,6 +209,60 @@ it("runs command sources' setup in the config's folder before night-shift", () =
     run: 'cargo build --release\ncp target/release/tracker bin/\n',
   })
   expect(setup).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('AndreaProvenzale/')))
+})
+
+const alice: Workflow = {
+  starts: [{ hour: 22, minute: 0 }],
+  timezone: 'Europe/Rome',
+  config: '.night-shift/alice/config.yml',
+  version: '0.3.1',
+  packages: [],
+  secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'SLACK_WEBHOOK'],
+  setup: ['make tracker'],
+}
+
+it("writes a person's workflow with their environment, concurrency and config folder", () => {
+  const job = parse(workflow({ ...alice, person: { name: 'alice' } }))
+  expect(job.concurrency).toBe('night-shift-alice')
+  expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
+  expect(job.jobs.night.env).toEqual({
+    TZ: 'Europe/Rome',
+    GH_TOKEN: '${{ secrets.GH_TOKEN }}',
+    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+    SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
+  })
+  expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/alice')
+  expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/alice/config.yml')
+})
+
+it("reads a person's own secrets from suffixed repository secrets without an environment", () => {
+  const person = { name: 'mary-jo', suffixed: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] }
+  const job = parse(workflow({ ...alice, person }))
+  expect(job.concurrency).toBe('night-shift-mary-jo')
+  expect(job.jobs.night.environment).toBeUndefined()
+  expect(job.jobs.night.env).toEqual({
+    TZ: 'Europe/Rome',
+    GH_TOKEN: '${{ secrets.GH_TOKEN__MARY_JO }}',
+    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',
+    SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
+  })
+})
+
+it("lists every night-shift workflow in a repo and removes only one person's", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  expect(await workflows(root)).toEqual([])
+  const dir = join(root, '.github/workflows')
+  await mkdir(dir, { recursive: true })
+  for (const f of ['night-shift.yml', 'night-shift-bob.yml', 'night-shift-alice.yml', 'ci.yml'])
+    await writeFile(join(dir, f), '')
+  expect(await workflows(root)).toEqual(
+    ['night-shift-alice.yml', 'night-shift-bob.yml', 'night-shift.yml'].map((f) => join(dir, f)),
+  )
+  expect(await removeWorkflow(root, 'alice')).toBe(true)
+  expect(await removeWorkflow(root, 'alice')).toBe(false)
+  expect(await workflows(root)).toEqual(
+    ['night-shift-bob.yml', 'night-shift.yml'].map((f) => join(dir, f)),
+  )
 })
 
 it('removes only its own workflow from a repo', async () => {

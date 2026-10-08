@@ -18,6 +18,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check GH_TOKEN
+      shell: bash
+      run: |
+        if [ -z "$GH_TOKEN" ]; then
+          echo "::error::GH_TOKEN is empty: the job's secrets didn't reach it. Set GH_TOKEN in the job's environment or as a repository secret."
+          exit 1
+        fi
     # Preinstalled SDKs the runner doesn't need, about 20 GB (lessons.md, "Runners die quietly").
     - name: Free disk
       shell: bash
