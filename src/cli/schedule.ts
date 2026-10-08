@@ -351,36 +351,18 @@ async function installForPerson(
     await syncCopy(skills, root, skillsDirOf(config), io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const atRepo = new Set(
-    await ghLines(io.run, ['secret', 'list', '--json', 'name', '--jq', '.[].name']),
-  )
-  const atOrg = new Set(
-    await ghLines(io.run, [
-      'api',
-      '--paginate',
-      'repos/{owner}/{repo}/actions/organization-secrets',
-      '--jq',
-      '.secrets[].name',
-    ]),
-  )
-  const existing = new Set([...atRepo, ...atOrg])
+  const listed = await repoSecrets(io.run).catch(() => ({
+    owner: '',
+    repo: new Set<string>(),
+    org: new Set<string>(),
+  }))
+  const existing = new Set([...listed.repo, ...listed.org])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
   const standIns = personal.filter((name) => existing.has(name))
-  const deletions = [
-    ...personal.filter((name) => atRepo.has(name)).map((name) => `\`gh secret delete ${name}\``),
-    ...personal
-      .filter((name) => atOrg.has(name))
-      .map(
-        (name) =>
-          `\`gh secret delete ${name} --org <org>\` (an org secret, or in the org's settings)`,
-      ),
-  ]
   if (environment && standIns.length)
-    console.log(
-      `Warning: ${standIns.join(', ')} already exist at repo or org level and stand in for any that environment ${person} lacks, so ${person}'s job would run with someone else's. Set them in the environment, and once each person has their own, delete the shared ones: ${deletions.join(', ')}`,
-    )
+    console.log(`Warning: ${standInWarning(person, standIns, listed)}`)
   const own: Layer = environment
     ? {
         label: (name) => `${name} in environment ${person}`,
@@ -448,15 +430,64 @@ async function createEnvironment(run: Exec, person: string): Promise<void> {
 }
 
 /** gh's own last line of a failed call, e.g. "gh: Must have admin rights to Repository. (HTTP 403)". */
-const reasonOf = (e: unknown) =>
+export const reasonOf = (e: unknown) =>
   (String((e as { stderr?: string }).stderr ?? '').trim() || String(e)).split('\n').at(-1)
 
-/** The lines a gh call prints, none when it fails. */
-const ghLines = (run: Exec, args: string[]) =>
-  run('gh', args).then(
-    (out) => out.split('\n').filter(Boolean),
-    () => [],
+/** The secrets every workflow of the current repo reads besides an environment's. */
+export interface RepoSecrets {
+  owner: string
+  repo: Set<string>
+  /** The org's secrets shared with the repo. */
+  org: Set<string>
+}
+
+const ghNames = async (run: Exec, args: string[]) =>
+  new Set((await run('gh', args)).split('\n').filter(Boolean))
+
+/** The names of the current repo's secrets, or of one environment's; throws when gh can't list them. */
+export const secretNames = (run: Exec, environment?: string) =>
+  ghNames(run, [
+    'secret',
+    'list',
+    ...(environment ? ['--env', environment] : []),
+    '--json',
+    'name',
+    '--jq',
+    '.[].name',
+  ])
+
+/** Lists the current repo's secrets and its org's; throws when gh can't. */
+export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
+  const owner = JSON.parse(
+    await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner | {login, type}']),
   )
+  // Only an org-owned repo has org secrets; listing a user's fails.
+  const org =
+    owner.type === 'Organization'
+      ? await ghNames(run, [
+          'api',
+          '--paginate',
+          'repos/{owner}/{repo}/actions/organization-secrets',
+          '--jq',
+          '.secrets[].name',
+        ])
+      : new Set<string>()
+  return { owner: owner.login, repo: await secretNames(run), org }
+}
+
+/** Why these personal names, set at repo or org level, put someone else's values in a person's job. */
+export function standInWarning(person: string, names: string[], at: RepoSecrets): string {
+  const deletions = [
+    ...names.filter((name) => at.repo.has(name)).map((name) => `\`gh secret delete ${name}\``),
+    ...names
+      .filter((name) => at.org.has(name))
+      .map(
+        (name) =>
+          `\`gh secret delete ${name} --org ${at.owner}\` (an org secret, or in the org's settings)`,
+      ),
+  ]
+  return `${names.join(', ')} already exist at repo or org level and stand in for any that environment ${person} lacks, so ${person}'s job would run with someone else's. Set them in the environment, and once each person has their own, delete the shared ones: ${deletions.join(', ')}`
+}
 
 /**
  * Copies `from`, a file or a folder replaced as a whole, to `to` under the repo root; when the

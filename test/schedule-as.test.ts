@@ -49,6 +49,8 @@ async function setup(
         stderr: 'gh: Must have admin rights to Repository. (HTTP 403)',
       })
     if (args[0] === 'repo') return 'main'
+    if (args[1] === 'repos/{owner}/{repo}')
+      return JSON.stringify({ login: 'acme', type: gh.org === undefined ? 'User' : 'Organization' })
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
     if (args[1] === 'list') return gh.repo ?? 'DATABASE_URL\nOTHER'
@@ -124,7 +126,7 @@ it('warns when a personal name at repo or org level would stand in for the envir
     /^Warning: GH_TOKEN, ASANA_TOKEN already exist at repo or org level and stand in for any that environment alice lacks/,
   )
   expect(warning).toMatch(
-    /delete the shared ones: `gh secret delete GH_TOKEN`, `gh secret delete ASANA_TOKEN --org <org>` \(an org secret, or in the org's settings\)$/,
+    /delete the shared ones: `gh secret delete GH_TOKEN`, `gh secret delete ASANA_TOKEN --org acme` \(an org secret, or in the org's settings\)$/,
   )
 })
 
