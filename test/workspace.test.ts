@@ -29,7 +29,7 @@ describe('workspace', () => {
     }
   })
 
-  it('clones onto the new branch with skills, context and the prompt, and keeps them out of git', async () => {
+  it('clones onto the new branch with skills from beside the config, context and the prompt, and keeps them out of git', async () => {
     const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
     const dir = join(root, 'clone')
     const plugin = join(root, 'plugin')
@@ -89,7 +89,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       sources: { fake: fakeSource() as Source },
       provider: claude,
       ctx: { env: {}, log: () => {} },
-      skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
     })
 
     expect((await git(dir, 'branch', '--show-current')).stdout).toBe('night/acme-api-1')

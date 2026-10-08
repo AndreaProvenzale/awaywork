@@ -55,12 +55,15 @@ nightshift schedule install --with github-actions
 This writes `.github/workflows/night-shift.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
 manual run; `nightshift schedule remove` deletes it. It also copies your
-config to `.night-shift/config.yml` unless the repo has one, and offers to
-set each repository secret the config needs whose value is in your
-environment or `~/.config/night-shift/env`, with `gh secret set`. Values
-are never printed. Then:
+config to `.night-shift/config.yml` and your
+[skills](./skills.md#where-skills-come-from) to `.night-shift/skills/` next
+to it, each unless the repo has one, so your personal skills reach the
+runner. It offers to set each repository secret the config needs whose
+value is in your environment or `~/.config/night-shift/env`, with
+`gh secret set`. Values are never printed. Then:
 
-1. Commit the workflow and `.night-shift/config.yml`.
+1. Commit the workflow, `.night-shift/config.yml` and, if copied,
+   `.night-shift/skills/`.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.

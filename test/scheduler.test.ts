@@ -1,11 +1,11 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub Actions expressions
-import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, lstatSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse } from 'yaml'
-import { offerSecrets, staleSchedules } from '../src/cli/schedule.js'
+import { copySkillsToRepo, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLine, cronLines, parseCronLines } from '../src/scheduler/cron.js'
 import {
@@ -214,6 +214,25 @@ it('removes only its own workflow from a repo', async () => {
   expect(existsSync(join(root, WORKFLOW))).toBe(false)
   expect(existsSync(join(root, '.github/workflows/ci.yml'))).toBe(true)
   expect(await removeWorkflow(root)).toBe(false)
+})
+
+it("copies the user's skills beside the repo config, linked ones as files, unless the repo has its own", async () => {
+  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  const skills = join(home, 'skills')
+  expect(await copySkillsToRepo(skills, root)).toBeUndefined()
+  await mkdir(join(home, 'elsewhere/linked'), { recursive: true })
+  await writeFile(join(home, 'elsewhere/linked/SKILL.md'), 'LINKED')
+  await mkdir(join(skills, 'mine'), { recursive: true })
+  await writeFile(join(skills, 'mine/SKILL.md'), 'MINE')
+  await symlink(join(home, 'elsewhere/linked'), join(skills, 'linked'))
+  expect(await copySkillsToRepo(skills, root)).toBe('copied')
+  expect(await readFile(join(root, '.night-shift/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
+  expect(lstatSync(join(root, '.night-shift/skills/linked')).isSymbolicLink()).toBe(false)
+  expect(await readFile(join(root, '.night-shift/skills/linked/SKILL.md'), 'utf8')).toBe('LINKED')
+  await writeFile(join(skills, 'mine/SKILL.md'), 'CHANGED')
+  expect(await copySkillsToRepo(skills, root)).toBe('kept')
+  expect(await readFile(join(root, '.night-shift/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
 })
 
 it('warns about a workflow that runs its steps inline instead of calling the action', async () => {

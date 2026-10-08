@@ -1,11 +1,11 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { copyFile, mkdir, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { configPath, loadConfig } from '../config/load.js'
-import { packageVersion, stateDir } from '../config/paths.js'
+import { packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
 import { exec } from '../forge/gh.js'
@@ -212,6 +212,9 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       await copyFile(path, repoConfig)
       console.log(`Copied ${path} to ${REPO_CONFIG}`)
     }
+    const skills = await copySkillsToRepo(skillsDirOf(path), root)
+    if (skills === 'kept') console.log(`Kept the existing ${REPO_SKILLS}`)
+    if (skills === 'copied') console.log(`Copied ${skillsDirOf(path)} to ${REPO_SKILLS}`)
     const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet).catch(
       (e) => {
         if (e instanceof Cancelled) return [...secrets]
@@ -219,12 +222,28 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       },
     )
     console.log('Before the first night:')
-    console.log(`  commit ${WORKFLOW} and ${REPO_CONFIG}`)
+    const commit = [WORKFLOW, REPO_CONFIG, ...(skills === 'copied' ? [REPO_SKILLS] : [])]
+    console.log(`  commit ${commit.slice(0, -1).join(', ')} and ${commit.at(-1)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
     reportConfigError(e)
   }
+}
+
+const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
+
+/** Copies the user's skills, if any, beside the repo's config, unless the repo has its own there. */
+export async function copySkillsToRepo(
+  skills: string,
+  root: string,
+): Promise<'copied' | 'kept' | undefined> {
+  if ((await readdir(skills).catch(() => [])).length === 0) return undefined
+  const to = join(root, REPO_SKILLS)
+  if (existsSync(to)) return 'kept'
+  // A linked skill is committed as its files, not as a link to this machine.
+  await cp(skills, to, { recursive: true, dereference: true })
+  return 'copied'
 }
 
 /** Sets a repository secret of the current repo; the value goes through stdin, never argv. */
