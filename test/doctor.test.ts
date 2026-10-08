@@ -84,7 +84,7 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
     })
     expect(calls).toContain('gh secret list --env alice --json name --jq .[].name')
     expect(checks).toEqual([
-      { status: 'ok', what: 'night-shift-alice.yml', detail: '3 secrets found' },
+      { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
     ])
   })
 
@@ -109,7 +109,7 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
     expect(checks[0]).toEqual({
       status: 'ok',
       what: 'night-shift-alice.yml',
-      detail: '3 secrets found',
+      detail: 'secrets found: 3',
     })
     expect(checks[1]?.status).toBe('warn')
     expect(checks[1]?.detail).toMatch(
@@ -128,7 +128,7 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
     )
     expect(found.calls.some((call) => call.includes('--env'))).toBe(false)
     expect(found.checks).toEqual([
-      { status: 'ok', what: 'night-shift-alice.yml', detail: '3 secrets found' },
+      { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
     ])
     const missing = await check({ repo: ['GH_TOKEN', 'SLACK_WEBHOOK'] }, personal)
     expect(missing.checks).toEqual([
@@ -157,6 +157,29 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
         detail: "couldn't list environment alice's secrets: gh: Not Found (HTTP 404)",
       },
     ])
+  })
+
+  it("fails a workflow that doesn't parse and checks the rest", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+    const dir = join(root, '.github/workflows')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'night-shift-a.yml'), 'jobs: { n: { env: [ }')
+    await writeFile(join(dir, 'night-shift-b.yml'), 'jobs: { n: }')
+    await writeFile(join(dir, 'night-shift-c.yml'), 'jobs: { n: { steps: { a: 1 } } }')
+    await writeFile(
+      join(dir, 'night-shift-d.yml'),
+      'jobs: { n: { env: { A: "${{ secrets.A }}" } } }',
+    )
+    const run: Exec = async (_cmd, args) =>
+      args[1] === 'repos/{owner}/{repo}' ? JSON.stringify({ login: 'acme', type: 'User' }) : 'A'
+    const checks = await workflowSecretChecks(root, run)
+    expect(checks.map((c) => [c.status, c.what])).toEqual([
+      ['FAIL', 'night-shift-a.yml'],
+      ['FAIL', 'night-shift-b.yml'],
+      ['FAIL', 'night-shift-c.yml'],
+      ['ok', 'night-shift-d.yml'],
+    ])
+    expect(checks.every((c) => !c.detail.includes('\n'))).toBe(true)
   })
 
   it('adds no checks to a repo without night-shift workflows', async () => {

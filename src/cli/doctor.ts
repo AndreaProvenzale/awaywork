@@ -145,9 +145,15 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
     ]
   const checks: Check[] = []
   for (const file of files) {
-    const jobs = parse(await readFile(file, 'utf8'))?.jobs
-    for (const job of Object.values<Job>(jobs ?? {}))
-      checks.push(...(await jobSecretChecks(basename(file), job, root, listed, run)))
+    const what = basename(file)
+    // A workflow that doesn't parse won't run either.
+    try {
+      const jobs = parse(await readFile(file, 'utf8'))?.jobs
+      for (const job of Object.values<Job>(jobs ?? {}))
+        checks.push(...(await jobSecretChecks(what, job, root, listed, run)))
+    } catch (e) {
+      checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
+    }
   }
   return checks
 }
@@ -186,10 +192,9 @@ async function jobSecretChecks(
   const config = job.steps?.find((step) => step.with?.config)?.with?.config
   const personal =
     environment && config
-      ? await loadConfig(join(root, config)).then(
-          (c) => secretsOf(c).personal,
-          () => undefined,
-        )
+      ? await loadConfig(join(root, config))
+          .then((c) => secretsOf(c).personal)
+          .catch(() => undefined)
       : undefined
   const shared = (name: string) => listed.repo.has(name) || listed.org.has(name)
   const missing = [...names].filter((name) => !own.has(name) && !shared(name))
@@ -210,7 +215,7 @@ async function jobSecretChecks(
             .filter(Boolean)
             .join('; '),
         }
-      : { status: 'ok', what, detail: `${names.size} secrets found` },
+      : { status: 'ok', what, detail: `secrets found: ${names.size}` },
   ]
   const standIns = (personal ?? []).filter((name) => !own.has(name) && shared(name))
   if (environment && standIns.length)
