@@ -126,8 +126,9 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
   still open; print the date of the day for every night.
 - **Weekdays** are the script's call: print nothing on the days a chore
   shouldn't run.
-- **`when`** is checked when the unit starts, not by `plan`: `plan` lists
-  the chore with its gate, and the night skips it without the headroom.
+- **`when`** is checked again when the unit starts: `plan` lists the chore
+  with its gate and notes when the probe has no headroom for it, and the
+  night skips it without the headroom.
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry
   no link line.
 
