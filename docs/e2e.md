@@ -45,7 +45,7 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 |---|---|---|
 | GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues |
 | Asana | Reads what is assigned, seeds nothing | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE` |
-| Linear | Reads what is assigned, seeds nothing | `LINEAR_API_KEY` |
+| Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `NIGHTSHIFT_LINEAR_TEAM`: the key of a team its user belongs to |
 | Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
@@ -55,17 +55,22 @@ the seeded status. Each run leaves one closed PR: GitHub cannot delete
 PRs. A cleanup that leaves anything else behind fails the run, naming
 what to delete by hand.
 
+The Linear test checks only the seeded issues: its config cannot narrow
+what the source reads. It creates and deletes a team label of its own,
+which a workspace that keeps labels to admins refuses [I]. A deleted
+issue sits in the team's archive for 30 days; archived issues should
+not count against the free plan's 250 [I].
+
 Next:
 
-- Asana, Linear, Jira: seed like GitHub, in a test workspace whose
-  items are assigned to the token's user. One item per mapped section or
-  state, with a comment and a blocker; check `project_repos` or
-  `team_repos`, `blocked`, `fields.*` and `init` offering the real
-  names. Linear's config cannot narrow what it reads, so its test
-  checks only the seeded items. Jira runs twice: a classic token, then
-  a scoped one with `cloud_id`. Asana dependencies and custom fields may
-  need a paid plan [I]; Linear's free plan caps issues, so cleanup
-  matters.
+- Asana, Jira: seed like GitHub, in a test workspace whose items are
+  assigned to the token's user. One item per mapped section or state,
+  with a comment and a blocker; check `project_repos`, `blocked`,
+  `fields.*` and `init` offering the real names. Jira runs twice: a
+  classic token, then a scoped one with `cloud_id`. Asana dependencies
+  and custom fields may need a paid plan [I].
+- Linear: run the seeded test live; its mutations are shaped from the
+  public schema, not run yet.
 - Pipeline, no quota: a config over the seeded items, then `plan --json`
   and `run --dry-run --unit <key>`; each item becomes the expected unit
   and skill with its context files, and a PR whose body carries the
