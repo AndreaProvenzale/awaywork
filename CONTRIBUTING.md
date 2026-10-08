@@ -14,9 +14,10 @@ pnpm docs:dev    # the site at http://localhost:5173/night-shift/
 ```
 
 Tests run against fakes and recorded fixtures. Tests against real
-accounts (`test/real-*.test.ts`) are skipped unless `NIGHTSHIFT_REAL=1`
-or the source's env (its token, test workspace or sandbox) is set;
-see [docs/e2e.md](docs/e2e.md#live-source-tests).
+accounts (`test/real-*.test.ts`) are skipped by default: provider tests
+unless `NIGHTSHIFT_REAL=1`, source tests unless their env (token, test
+workspace or sandbox) is set; see
+[docs/e2e.md](docs/e2e.md#live-source-tests).
 
 ## Adding things
 
