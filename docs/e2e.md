@@ -60,7 +60,8 @@ site URL, then a scoped token with `JIRA_CLOUD_ID` on the gateway, where
 `init` must find the same cloud id. Use a token made only for these
 tests: it writes. A scoped one needs `read:jira-work`, `write:jira-work`
 and `read:jira-user` (for `/myself`). In the project, its user needs
-Create, Assign, Link and Delete issues and Add comments; by default only
+Create, Assign, Link and Delete issues, Add comments and Assignable
+user, since the seeded issues are assigned to it; by default only
 project admins may delete. Jira's search is eventually consistent, so it
 polls like the GitHub test.
 
@@ -75,7 +76,9 @@ Next:
   Linear's free plan caps issues, so cleanup matters.
 - Jira, written but not yet run live: both auth paths, then retag what
   it settles in `sources.md`. Its seeding links with the blocker as
-  `inwardIssue`, which the docs leave ambiguous [C].
+  `inwardIssue`, which the docs leave ambiguous [C]: JRACLOUD-98338
+  shows `POST /issueLink` putting its comment on the inward issue, so
+  inward is the link's source.
 - Pipeline, no quota: a config over the seeded items, then `plan --json`
   and `run --dry-run --unit <key>`; each item becomes the expected unit
   and skill with its context files, and a PR whose body carries the
