@@ -2,12 +2,23 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { bin, packageVersion } from '../src/config/paths.js'
+import {
+  bin,
+  configDir,
+  defaultConfigPath,
+  packageVersion,
+  skillsDirOf,
+} from '../src/config/paths.js'
 
 describe('paths', () => {
   it('reads the version from package.json', async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
     expect(packageVersion).toBe(pkg.version)
+  })
+
+  it('puts the user skills beside the config in use', () => {
+    expect(skillsDirOf(defaultConfigPath)).toBe(join(configDir, 'skills'))
+    expect(skillsDirOf('.night-shift/config.yml')).toBe(join('.night-shift', 'skills'))
   })
 
   it('finds a command on PATH past what is not an executable file, and keeps the bare name when absent', async () => {

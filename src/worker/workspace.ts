@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { execa } from 'execa'
-import { bin, builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
+import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
@@ -35,7 +35,7 @@ export interface WorkspaceInput {
   /** The clone; it must not exist yet. */
   dir: string
   config: Config
-  /** Instruction paths in the config resolve against it. */
+  /** Instruction paths in the config resolve against it; the user's skills are its `skills/`. */
   configDir: string
   forge: Forge
   sources: Record<string, Source>
@@ -86,7 +86,10 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
 
-  const { user, builtin } = w.skillDirs ?? { user: userSkillsDir, builtin: builtinSkillsDir }
+  const { user, builtin } = w.skillDirs ?? {
+    user: skillsDirIn(w.configDir),
+    builtin: builtinSkillsDir,
+  }
   const roots = foreign ? [user, builtin] : [user, join(dir, '.night-shift', 'skills'), builtin]
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
   else await buildPlugin(w.plugin, names, roots)
