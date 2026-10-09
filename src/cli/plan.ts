@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, skipsPath, userSkillsDir } from '../config/paths.js'
+import { attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
@@ -23,8 +23,8 @@ export function planCommand(program: Command): void {
     .option('--json', 'print the plan and warnings as JSON')
     .action(async (opts: { json?: boolean }) => {
       try {
-        const config = await loadConfig(configPath(program.opts().config))
-        const { plan, warnings } = await planTonight(config)
+        const path = configPath(program.opts().config)
+        const { plan, warnings } = await planTonight(await loadConfig(path), skillsDirOf(path))
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
@@ -35,6 +35,7 @@ export function planCommand(program: Command): void {
 /** Collects items from every configured source, probes every provider and plans the night. */
 export async function planTonight(
   config: Config,
+  userSkillsDir: string,
   opts: { retry?: boolean } = {},
 ): Promise<{ plan: NightPlan; warnings: string[]; ctx: Ctx }> {
   const warnings: string[] = []

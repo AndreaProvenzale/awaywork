@@ -21,8 +21,7 @@ From `lessons.md`:
 
 | Area | Gap |
 |---|---|
-| Asana | Never read a live workspace (`real-asana.test.ts`), nor `project_repos`. |
-| Linear | Never read a live workspace (`real-linear.test.ts`), nor `team_repos`; queries shaped from the documented schema, not replayed from real responses. |
+| Asana | Custom fields and dependencies (paid) never read live: `real-asana.test.ts` ran on a free plan only. |
 | Jira | Never read a live site (`real-jira.test.ts`), nor `project_repos`, a scoped token or the gateway; fixtures shaped from the documented responses. |
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
@@ -43,17 +42,29 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 
 | Source | Live test | Env |
 |---|---|---|
-| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues |
-| Asana | Reads what is assigned, seeds nothing | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE` |
+| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `NIGHTSHIFT_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
+| Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`, `NIGHTSHIFT_ASANA_PROJECT` (a project gid there) |
 | Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `NIGHTSHIFT_LINEAR_TEAM`: the key of a team its user belongs to |
 | Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
-The GitHub test polls `items` until search indexes the seeded items, and
-its commit says `[skip ci]` so the sandbox's own CI leaves the checks to
-the seeded status. Each run leaves one closed PR: GitHub cannot delete
-PRs. A cleanup that leaves anything else behind fails the run, naming
-what to delete by hand.
+The GitHub test polls `items` until search indexes the seeded items and
+the seeded job has failed on a hosted runner. Its PR deletes the
+sandbox's own workflows and adds one that fails, so that job is the only
+check; the reviewer's PR says `[skip ci]`. Each run leaves one closed
+PR, two with a reviewer: GitHub cannot delete PRs. A cleanup that leaves
+anything else behind, including the workflow run, fails the run, naming
+what to delete by hand. Locally, the reviewer token is
+`gh auth token --user <second account>`.
+
+The Asana test also creates a section, a tag and, on a paid plan, a
+custom field, then deletes them; deleted tasks stay in the token user's
+trash for 30 days [V]. Its token writes, and an Asana personal access
+token has no scopes: it acts with its user's full access [V], so use a
+test account that can create and delete tasks, sections and tags in the
+project. Dependencies (Starter and up) and custom fields are paid
+features [V]; a free plan refuses both with a 402 [V], so the test logs
+it and skips those checks.
 
 Run the Linear test in a test workspace: `items` reads every open issue
 assigned to the key's user, and its config cannot narrow that, so the
@@ -64,21 +75,15 @@ should not count against the free plan's 250 [I].
 
 Next:
 
-- Asana, Jira: seed like GitHub, in a test workspace whose items are
-  assigned to the token's user. One item per mapped section or state,
-  with a comment and a blocker; check `project_repos`, `blocked`,
-  `fields.*` and `init` offering the real names. Jira runs twice: a
-  classic token, then a scoped one with `cloud_id`. Asana dependencies
-  and custom fields may need a paid plan [I].
-- Linear: run the seeded test live; its mutations are shaped from the
-  public schema, not run yet.
+- Jira: seed like GitHub, in a test project whose issues are assigned
+  to the token's user. One issue per mapped state, with a comment and a
+  blocker; check `project_repos`, `blocked`, `fields.*` and `init`
+  offering the real names. Run twice: a classic token, then a scoped
+  one with `cloud_id`.
 - Pipeline, no quota: a config over the seeded items, then `plan --json`
   and `run --dry-run --unit <key>`; each item becomes the expected unit
   and skill with its context files, and a PR whose body carries the
   source's `link` makes the next `plan` skip the item.
-- GitHub, not yet live: `review_requested`, which needs a second
-  account's token to request the review, and a failing Actions check
-  (`gh run view --log-failed`), which the seeded status stands in for.
 
 ## Before starting
 
