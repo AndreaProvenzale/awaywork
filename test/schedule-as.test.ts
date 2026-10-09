@@ -104,7 +104,9 @@ it("installs a person's environment, workflow, config and skills, and offers eac
     ['SLACK_WEBHOOK', 'hook_secret'],
   ])
   expect(out).toContain('Already repository or organization secrets: DATABASE_URL, MCP_DB_URL')
-  expect(out).toContain('  commit .github/workflows/night-shift-alice.yml and .night-shift/alice/')
+  expect(out).toContain(
+    '  commit .github/workflows/night-shift-alice.yml, .night-shift/alice/config.yml and .night-shift/alice/skills',
+  )
   expect(out).toContain(
     '  add these secrets to environment alice: CLAUDE_CODE_OAUTH_TOKEN, ASANA_TOKEN',
   )
@@ -188,7 +190,7 @@ it('syncs again: unchanged says so, changed shows the diff and asks, declined ke
   await install(secrets())
   await writeFile(join(root, '.github/workflows/night-shift-alice.yml'), 'stale')
   out = []
-  await install(secrets())
+  await install([[/^Overwrite \.github\/workflows\/night-shift-alice\.yml/, true], ...secrets()])
   expect(out).toContain('.night-shift/alice/config.yml is up to date')
   expect(out).toContain('.night-shift/alice/skills is up to date')
   expect(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).not.toBe(
@@ -202,7 +204,7 @@ it('syncs again: unchanged says so, changed shows the diff and asks, declined ke
   out = []
   await install([
     [/^Overwrite \.night-shift\/alice\/config\.yml with the changes above\?$/, false],
-    [/^Overwrite \.night-shift\/alice\/skills with the changes above\?$/, true],
+    [/^Replace all of \.night-shift\/alice\/skills with the changes above/, true],
     ...secrets(),
   ])
   expect(out.join('\n')).toContain('+skills: [mine]')

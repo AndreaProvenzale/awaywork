@@ -8,7 +8,7 @@ export const defaultConfigPath = join(configDir, 'config.yml')
 export const envFile = join(configDir, 'env')
 
 /** The user's skills: `skills/` beside the config in use. */
-export const skillsDirIn = (configDir: string) => join(configDir, 'skills')
+export const skillsDirIn = (dir: string) => join(dir, 'skills')
 export const skillsDirOf = (configPath: string) => skillsDirIn(dirname(configPath))
 
 /** The installed package's root, from src/ in development or dist/ once bundled. */
