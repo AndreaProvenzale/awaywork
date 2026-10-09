@@ -21,7 +21,7 @@ From `lessons.md`:
 
 | Area | Gap |
 |---|---|
-| Asana | Never read a live workspace (`real-asana.test.ts`), nor `project_repos`. |
+| Asana | Custom fields and dependencies (paid) never read live: `real-asana.test.ts` ran on a free plan only. |
 | Linear | Never read a live workspace (`real-linear.test.ts`), nor `team_repos`; queries shaped from the documented schema, not replayed from real responses. |
 | Jira | Never read a live site (`real-jira.test.ts`), nor `project_repos`, a scoped token or the gateway; fixtures shaped from the documented responses. |
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
@@ -61,8 +61,8 @@ trash for 30 days [V]. Its token writes, and an Asana personal access
 token has no scopes: it acts with its user's full access [V], so use a
 test account that can create and delete tasks, sections and tags in the
 project. Dependencies (Starter and up) and custom fields are paid
-features [V]; when Asana refuses one with a 402 [I], the test logs it
-and skips that check.
+features [V]; a free plan refuses both with a 402 [V], so the test logs
+it and skips those checks.
 
 Next:
 
