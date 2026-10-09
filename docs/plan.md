@@ -515,9 +515,9 @@ why a unit is placed where it is.
       field so a task with no PR still gets a unit; `init` asks for one
       per picked project.
 - [x] Contract suite passes on fixtures shaped from Asana's documented
-      responses; `test/real-asana.test.ts` reads a real workspace when
-      `ASANA_TOKEN` and `NIGHTSHIFT_ASANA_WORKSPACE` are set. Not yet
-      run against a live workspace.
+      responses; `test/real-asana.test.ts` seeds tasks in a test project
+      and reads them back when `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`
+      and `NIGHTSHIFT_ASANA_PROJECT` are set; passes live on a free plan.
 
 ### M7 Codex provider
 - [x] `codex exec --json` headless run and its event stream; the turn
