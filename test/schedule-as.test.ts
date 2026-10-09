@@ -85,7 +85,7 @@ it('splits secrets into personal and shared, a name in both being personal', () 
 it("installs a person's environment, workflow, config and skills, and offers each secret in its layer", async () => {
   const { root, calls, set, install, job } = await setup({ org: 'MCP_DB_URL' })
   await install([
-    [/^Set GH_TOKEN in environment alice from your env\?$/, true],
+    [/^Set GH_TOKEN__ALICE in environment alice from your env\?$/, true],
     [/^Set the SLACK_WEBHOOK repository secret, shared with the team, from your env\?$/, true],
   ])
   expect(calls).toContain(
@@ -95,12 +95,13 @@ it("installs a person's environment, workflow, config and skills, and offers eac
     'gh api -X POST repos/{owner}/{repo}/environments/alice/deployment-branch-policies -f name=main',
   )
   expect((await job()).environment).toEqual({ name: 'alice', deployment: false })
-  expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN }}')
+  expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
+  expect((await job()).env.SLACK_WEBHOOK).toBe('${{ secrets.SLACK_WEBHOOK }}')
   expect(await readFile(join(root, '.night-shift/alice/config.yml'), 'utf8')).toBe(CONFIG)
   expect(await readFile(join(root, '.night-shift/alice/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
   expect(existsSync(join(root, '.night-shift/config.yml'))).toBe(false)
   expect(set).toEqual([
-    ['GH_TOKEN', '--env', 'alice', 'ghp_secret'],
+    ['GH_TOKEN__ALICE', '--env', 'alice', 'ghp_secret'],
     ['SLACK_WEBHOOK', 'hook_secret'],
   ])
   expect(out).toContain('Already repository or organization secrets: DATABASE_URL, MCP_DB_URL')
@@ -108,25 +109,23 @@ it("installs a person's environment, workflow, config and skills, and offers eac
     '  commit .github/workflows/night-shift-alice.yml, .night-shift/alice/config.yml and .night-shift/alice/skills',
   )
   expect(out).toContain(
-    '  add these secrets to environment alice: CLAUDE_CODE_OAUTH_TOKEN, ASANA_TOKEN',
+    '  add these secrets to environment alice: CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
   )
   expect(out).toContain('  add these repository secrets: HOOK_TOKEN')
   expect(out.join('\n')).not.toMatch(/_secret/)
   expect(out.join('\n')).not.toMatch(/^Warning/m)
 })
 
-it('warns when a personal name at repo or org level would stand in for the environment', async () => {
-  const { install } = await setup({ repo: 'GH_TOKEN\nDATABASE_URL', org: 'ASANA_TOKEN' })
+it("never lets a repo or org secret of a personal name stand in for the person's", async () => {
+  const { install, job } = await setup({ repo: 'GH_TOKEN\nDATABASE_URL', org: 'ASANA_TOKEN' })
   await install([
-    [/GH_TOKEN/, false],
+    [/^Set GH_TOKEN__ALICE in environment alice/, false],
     [/SLACK_WEBHOOK/, false],
   ])
-  const warning = out.find((line) => line.startsWith('Warning: '))
-  expect(warning).toMatch(
-    /^Warning: GH_TOKEN, ASANA_TOKEN already exist at repo or org level and stand in for any that environment alice lacks/,
-  )
-  expect(warning).toMatch(
-    /delete the shared ones: `gh secret delete GH_TOKEN`, `gh secret delete ASANA_TOKEN --org <org>` \(an org secret, or in the org's settings\)$/,
+  expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
+  expect((await job()).env.ASANA_TOKEN).toBe('${{ secrets.ASANA_TOKEN__ALICE }}')
+  expect(out).toContain(
+    '  add these secrets to environment alice: GH_TOKEN__ALICE, CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
   )
 })
 
@@ -140,8 +139,8 @@ it('names where a failed secret was going, in either mode', async () => {
     await installWorkflow(config, 'alice', run)
     return run.ask.notes
   }
-  expect(await notes({}, /^Set GH_TOKEN in environment alice/)).toEqual([
-    '`gh secret set GH_TOKEN --env alice` failed',
+  expect(await notes({}, /^Set GH_TOKEN__ALICE in environment alice/)).toEqual([
+    '`gh secret set GH_TOKEN__ALICE --env alice` failed',
   ])
   expect(await notes({ refuse: true }, /^Set the GH_TOKEN__ALICE repository secret/)).toEqual([
     '`gh secret set GH_TOKEN__ALICE` failed',

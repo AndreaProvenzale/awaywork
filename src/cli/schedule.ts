@@ -112,18 +112,19 @@ export async function removePersonWorkflow(person: string, run: Exec = exec): Pr
     return
   }
   console.log(`Removed ${file}`)
+  if (hasEnvironment(text))
+    return console.log(
+      `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
+    )
   const suffixed = [
     ...new Set(text.match(new RegExp(`\\w+${suffixOf(person)}(?=\\s*}})`, 'g')) ?? []),
   ]
-  if (suffixed.length)
-    console.log(
-      `Its suffixed repository secrets stay, readable from any branch: ${suffixed.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
-    )
-  else
-    console.log(
-      `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
-    )
+  console.log(
+    `Its suffixed repository secrets stay, readable from any branch: ${suffixed.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
+  )
 }
+
+const hasEnvironment = (workflow: string) => /^\s+environment:/m.test(workflow)
 
 const localSchedulers = () => schedulers(homedir(), exec)
 
@@ -324,7 +325,7 @@ async function installForPerson(
     ...base,
     config,
     secrets: [...personal, ...shared],
-    person: { name: person, suffixed: environment ? undefined : personal },
+    person: { name: person, personal, environment },
   })
   const changed = await syncRepo(root, file, text, path, config, io.ask)
 
@@ -345,24 +346,10 @@ async function installForPerson(
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
-  const standIns = personal.filter((name) => existing.has(name))
-  const deletions = [
-    ...personal.filter((name) => atRepo.has(name)).map((name) => `\`gh secret delete ${name}\``),
-    ...personal
-      .filter((name) => atOrg.has(name))
-      .map(
-        (name) =>
-          `\`gh secret delete ${name} --org <org>\` (an org secret, or in the org's settings)`,
-      ),
-  ]
-  if (environment && standIns.length)
-    console.log(
-      `Warning: ${standIns.join(', ')} already exist at repo or org level and stand in for any that environment ${person} lacks, so ${person}'s job would run with someone else's. Set them in the environment, and once each person has their own, delete the shared ones: ${deletions.join(', ')}`,
-    )
   const own: Layer = environment
     ? {
-        label: (name) => `${name} in environment ${person}`,
-        args: (name) => [name, '--env', person],
+        label: (name) => `${suffixed(name)} in environment ${person}`,
+        args: (name) => [suffixed(name), '--env', person],
       }
     : {
         label: (name) => `the ${suffixed(name)} repository secret`,
@@ -385,7 +372,7 @@ async function installForPerson(
   if (unsetPersonal.length)
     console.log(
       environment
-        ? `  add these secrets to environment ${person}: ${unsetPersonal.join(', ')}`
+        ? `  add these secrets to environment ${person}: ${unsetPersonal.map(suffixed).join(', ')}`
         : `  add these suffixed repository secrets: ${unsetPersonal.map(suffixed).join(', ')}`,
     )
   if (unsetShared.length) console.log(`  add these repository secrets: ${unsetShared.join(', ')}`)

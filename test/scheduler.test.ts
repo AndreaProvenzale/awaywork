@@ -223,16 +223,17 @@ const alice: Workflow = {
   secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'SLACK_WEBHOOK'],
   setup: ['make tracker'],
 }
+const personal = ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']
 
-it("writes a person's workflow with their environment, concurrency and config folder", () => {
-  const job = parse(workflow({ ...alice, person: { name: 'alice' } }))
+it("writes a person's workflow with their environment, suffixed secrets, concurrency and config folder", () => {
+  const job = parse(workflow({ ...alice, person: { name: 'alice', personal, environment: true } }))
   expect(job.name).toBe('night-shift-alice')
   expect(job.concurrency).toBe('night-shift-alice')
   expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
   expect(job.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
-    GH_TOKEN: '${{ secrets.GH_TOKEN }}',
-    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+    GH_TOKEN: '${{ secrets.GH_TOKEN__ALICE }}',
+    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
   expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/alice')
@@ -241,7 +242,11 @@ it("writes a person's workflow with their environment, concurrency and config fo
 
 it('keeps a person named like a YAML number a string', () => {
   const job = parse(
-    workflow({ ...alice, config: '.night-shift/007/config.yml', person: { name: '007' } }),
+    workflow({
+      ...alice,
+      config: '.night-shift/007/config.yml',
+      person: { name: '007', personal, environment: true },
+    }),
   )
   expect(job.name).toBe('night-shift-007')
   expect(job.concurrency).toBe('night-shift-007')
@@ -250,8 +255,8 @@ it('keeps a person named like a YAML number a string', () => {
   expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/007/config.yml')
 })
 
-it("reads a person's own secrets from suffixed repository secrets without an environment", () => {
-  const person = { name: 'mary-jo', suffixed: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] }
+it('differs without an environment only by its environment line', () => {
+  const person = { name: 'mary-jo', personal, environment: false }
   const job = parse(workflow({ ...alice, person }))
   expect(job.name).toBe('night-shift-mary-jo')
   expect(job.concurrency).toBe('night-shift-mary-jo')
@@ -262,6 +267,10 @@ it("reads a person's own secrets from suffixed repository secrets without an env
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
+  const env = workflow({ ...alice, person: { ...person, environment: true } }).split('\n')
+  expect(workflow({ ...alice, person }).split('\n')).toEqual(
+    env.filter((line) => !line.includes('environment:')),
+  )
 })
 
 it("lists every night-shift workflow in a repo and removes only one person's", async () => {
