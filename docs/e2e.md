@@ -85,9 +85,10 @@ polls like the GitHub test.
 
 `real-pipeline.test.ts` needs the GitHub and Asana env and runs the CLI
 from source on a config of its own: an issue labelled for an `implement`
-rule and a task in `Current sprint` for `plan`. `plan --json` must give
-each its unit, skill and deliver on `claude`, and `run --dry-run --unit
-<key>` must leave its context file, prompt and skill in the run dir. A PR
+rule and a task in a section it creates and deletes for `plan`. `plan
+--json` must give each its unit, skill and deliver on `claude`, and `run
+--dry-run --unit <key>` must leave its context file, prompt and skill in
+the run dir. A PR
 of mine whose body carries the task's `link` then links the task without
 skipping it; once the body also carries night-shift's footer, `plan`
 skips the task as waiting for review. A fake `claude` on `PATH` answers

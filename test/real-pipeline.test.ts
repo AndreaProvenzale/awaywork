@@ -47,7 +47,8 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
   const run = Date.now().toString(36)
   const label = 'night-shift-e2e'
   const branch = `night-shift-e2e-${run}`
-  const section = 'Current sprint'
+  const section = `e2e ${run}`
+  let sectionGid = ''
   const env: NodeJS.ProcessEnv = {}
   let config = ''
   let fakeArgv = ''
@@ -112,15 +113,12 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     issue = Number(await api('issues', { ...opened, 'labels[]': label }, '--jq', '.number'))
     issueKey = `${repo}#${issue}`
 
-    const sections = await asana<{ gid: string; name: string }[]>(
-      'GET',
-      `/projects/${project}/sections`,
-    )
-    const sprint = sections.find((s) => s.name === section)
-    if (!sprint) throw new Error(`no section "${section}" in Asana project ${project}`)
+    sectionGid = (
+      await asana<{ gid: string }>('POST', `/projects/${project}/sections`, { name: section })
+    ).gid
     const seed = { name: taskName, notes: 'Seeded.', assignee: 'me', projects: [project] }
     task = (await asana<{ gid: string }>('POST', '/tasks', seed)).gid
-    await asana('POST', `/sections/${sprint.gid}/addTask`, { task })
+    await asana('POST', `/sections/${sectionGid}/addTask`, { task })
 
     config = join(home, 'config.yml')
     const cfg = {
@@ -146,6 +144,10 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
         !!issue && (() => gh('issue', 'delete', String(issue), '-R', repo, '--yes')),
       ],
       [`Asana task ${task}`, !!task && (() => asana('DELETE', `/tasks/${task}`))],
+      [
+        `Asana section "${section}"`,
+        !!sectionGid && (() => asana('DELETE', `/sections/${sectionGid}`)),
+      ],
     ]
     const left: Error[] = []
     for (const [what, undo] of steps)
