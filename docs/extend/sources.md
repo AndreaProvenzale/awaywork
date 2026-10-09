@@ -76,6 +76,7 @@ unknown `where` keys with the list of fields each source declares.
   `sourceContract(source, rawConfig, env, ask)` from
   `test/contracts/source.contract.ts`.
 - A `test/real-<id>.test.ts` against a live account, skipped unless its
-  token is set.
+  token is set; best when it seeds the items it checks and deletes them,
+  like `test/real-github.test.ts`.
 - Document the token's scope, including when the tracker has no
   read-only token.

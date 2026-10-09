@@ -32,6 +32,48 @@ From `lessons.md`:
 | Setup UX | `init`, `queue` and `config edit` never ran against real accounts. |
 | Packaging | Never installed from a packed tarball; `harness.md` and `skills/` resolve from the package root (`src/config/paths.ts`). |
 
+## Live source tests
+
+Sources only read (`items`, `prefetch`, `init`), so each one can be
+tested end to end without a provider: seed known items in a test
+account, read them back through the source, check exact fields and
+context files, then delete them. The seeding is the only code that
+writes to the tracker. Each `test/real-<id>.test.ts` skips unless its
+env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
+
+| Source | Live test | Env |
+|---|---|---|
+| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues |
+| Asana | Reads what is assigned, seeds nothing | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE` |
+| Linear | Reads what is assigned, seeds nothing | `LINEAR_API_KEY` |
+| Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
+| Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
+
+The GitHub test polls `items` until search indexes the seeded items, and
+its commit says `[skip ci]` so the sandbox's own CI leaves the checks to
+the seeded status. Each run leaves one closed PR: GitHub cannot delete
+PRs. A cleanup that leaves anything else behind fails the run, naming
+what to delete by hand.
+
+Next:
+
+- Asana, Linear, Jira: seed like GitHub, in a test workspace whose
+  items are assigned to the token's user. One item per mapped section or
+  state, with a comment and a blocker; check `project_repos` or
+  `team_repos`, `blocked`, `fields.*` and `init` offering the real
+  names. Linear's config cannot narrow what it reads, so its test
+  checks only the seeded items. Jira runs twice: a classic token, then
+  a scoped one with `cloud_id`. Asana dependencies and custom fields may
+  need a paid plan [I]; Linear's free plan caps issues, so cleanup
+  matters.
+- Pipeline, no quota: a config over the seeded items, then `plan --json`
+  and `run --dry-run --unit <key>`; each item becomes the expected unit
+  and skill with its context files, and a PR whose body carries the
+  source's `link` makes the next `plan` skip the item.
+- GitHub, not yet live: `review_requested`, which needs a second
+  account's token to request the review, and a failing Actions check
+  (`gh run view --log-failed`), which the seeded status stands in for.
+
 ## Before starting
 
 - `review_requested` needs a second GitHub account: nobody can request
