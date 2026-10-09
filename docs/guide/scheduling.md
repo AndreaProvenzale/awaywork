@@ -73,6 +73,9 @@ value is in your environment or `~/.config/night-shift/env`, with
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
+`doctor`, run inside the repo, checks that every secret the workflow
+names exists in the repo or its org, and fails naming the missing ones.
+
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
 access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
 issues, checks and Actions logs, pushes new branches and opens draft PRs
@@ -229,3 +232,17 @@ fallback's suffixed repository secrets, readable from any branch, until
 
 The action fails before anything else when `GH_TOKEN` is empty, which is
 how a job whose secrets didn't reach it shows.
+
+### Checking with doctor
+
+`nightshift doctor`, run inside the repo, reads each
+`night-shift*.yml`: its `environment` and every `secrets.X` its `env:`
+names. Each must exist in that environment, the repo or the org: one
+line per workflow says how many were found, or fails naming the missing
+ones and where they go. With an environment, a name with the person's
+suffix goes there and the rest to the repo; without one, all go to the
+repo. Once the person has an environment, it warns about their suffixed
+secrets still at repo level, as install does. A workflow that doesn't
+parse fails, since it won't run either. When gh can't list the repo's or
+the org's secrets (no access, no remote, not logged in), it warns why
+instead of guessing what's missing.

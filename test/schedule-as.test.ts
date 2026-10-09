@@ -77,13 +77,12 @@ async function setup(gh: Gh = {}) {
       return gh.get ? fail(gh.get) : (gh.environment ?? fail('gh: Not Found (HTTP 404)'))
     if (args[2] === 'PUT' && gh.put) fail(gh.put)
     if (args[2] === 'PUT' && gh.refuse) fail('gh: Not Found (HTTP 404)')
-    if (call === 'gh api repos/{owner}/{repo} --jq .owner | {login, type}')
+    if (call === 'gh api repos/{owner}/{repo} --jq .owner.type')
       return gh.owner
         ? fail(gh.owner)
-        : JSON.stringify({
-            login: 'acme',
-            type: gh.org === undefined && !gh.orgList ? 'User' : 'Organization',
-          })
+        : gh.org === undefined && !gh.orgList
+          ? 'User'
+          : 'Organization'
     if (args[2] === 'POST' && gh.post) fail(gh.post)
     if (call === 'gh api user --jq .login')
       return gh.login ?? fail('gh: Bad credentials (HTTP 401)')
