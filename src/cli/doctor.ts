@@ -1,8 +1,10 @@
 import { existsSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { envFile } from '../config/paths.js'
+import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { loadSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { windowsOf } from '../core/window.js'
@@ -60,6 +62,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (mode === 0o600) report('ok', envFile, 'mode 600')
     else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
   }
+  const defaultSkills = skillsDirIn(configDir)
+  if (dirname(resolve(path)) !== configDir && Object.keys(await loadSkills(defaultSkills)).length)
+    report(
+      'warn',
+      defaultSkills,
+      `not used with this config; move or link its skills to ${skillsDirOf(path)}`,
+    )
 
   let config: Config
   try {
