@@ -83,12 +83,17 @@ user, since the seeded issues are assigned to it; by default only
 project admins may delete. Jira's search is eventually consistent, so it
 polls like the GitHub test.
 
-Next:
-
-- Pipeline, no quota: a config over the seeded items, then `plan --json`
-  and `run --dry-run --unit <key>`; each item becomes the expected unit
-  and skill with its context files, and a PR whose body carries the
-  source's `link` makes the next `plan` skip the item.
+`real-pipeline.test.ts` needs the GitHub and Asana env and runs the CLI
+from source on a config of its own: an issue labelled for an `implement`
+rule and a task in `Current sprint` for `plan`. `plan --json` must give
+each its unit, skill and deliver on `claude`, and `run --dry-run --unit
+<key>` must leave its context file, prompt and skill in the run dir. A PR
+of mine whose body carries the task's `link` then links the task without
+skipping it; once the body also carries night-shift's footer, `plan`
+skips the task as waiting for review. A fake `claude` on `PATH` answers
+the quota probe with a recorded reading and a dry run starts no worker,
+so nothing spends quota; `HOME` is a temp dir, so state stays out of
+yours. Its PR commits with `[skip ci]` and leaves one closed PR.
 
 ## Before starting
 
