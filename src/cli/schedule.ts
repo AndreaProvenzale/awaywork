@@ -343,26 +343,19 @@ async function installForPerson(
   const changed = await syncRepo(root, file, text, path, config, io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const existing = new Set([
-    ...(await secretNames(io.run, 'repository', [
-      'secret',
-      'list',
-      '--json',
-      'name',
-      '--jq',
-      '.[].name',
-    ])),
-    ...(await secretNames(io.run, 'organization', [
-      'api',
-      '--paginate',
-      'repos/{owner}/{repo}/actions/organization-secrets',
-      '--jq',
-      '.secrets[].name',
-    ])),
-  ])
+  const listed = await repoSecrets(io.run).catch((e) => {
+    console.log(`Couldn't list the repo's secrets (${reasonOf(e)}), so every shared one is offered`)
+    return { owner: '', repo: new Set<string>(), org: new Set<string>() }
+  })
+  const existing = new Set([...listed.repo, ...listed.org])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
+  const leftovers = personal.map(suffixed).filter((name) => listed.repo.has(name))
+  if (environment && leftovers.length)
+    console.log(
+      `Warning: ${leftovers.join(', ')} are still repository secrets, readable from any branch, and fill in for any that environment ${person} lacks. Once it has its own, delete them: ${leftovers.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
+    )
   const own: Layer = environment
     ? {
         label: (name) => `${suffixed(name)} in environment ${person}`,
@@ -384,7 +377,8 @@ async function installForPerson(
   } catch (e) {
     if (!(e instanceof Cancelled)) throw e
   }
-  console.log('Before the first night:')
+  if (changed.length || unsetPersonal.length || unsetShared.length)
+    console.log('Before the first night:')
   if (changed.length) console.log(`  commit ${and(changed)}`)
   if (unsetPersonal.length)
     console.log(
@@ -421,7 +415,7 @@ async function environmentFor(
     }
     console.log(`GitHub refuses the environment ${person}: ${reasonOf(e)}`)
     const fallback = await io.ask.confirm(
-      `Keep ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
+      `Store ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
       false,
     )
     if (fallback) return false
@@ -441,11 +435,23 @@ async function ensureEnvironment(run: Exec, person: string): Promise<void> {
       if (statusOf(e) !== '404') throw e
     },
   )
+  const policies = `${environment}/deployment-branch-policies`
   if (policy !== undefined) {
     console.log(`Kept the environment ${person}`)
     if (policy === 'null')
       console.log(
         `Warning: any branch can deploy to environment ${person}, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > ${person}`,
+      )
+    else if (JSON.parse(policy).custom_branch_policies)
+      await defaultBranchIn(run, policies).then(
+        ({ allowed }) => {
+          if (!allowed)
+            console.log(
+              `Warning: environment ${person}'s branch policies don't name the default branch, so ${person}'s job can't use it; add it in the repo's Settings > Environments > ${person}`,
+            )
+        },
+        (e) =>
+          console.log(`Couldn't check environment ${person}'s branch policies: ${reasonOf(e)}`),
       )
     return
   }
@@ -460,28 +466,29 @@ async function ensureEnvironment(run: Exec, person: string): Promise<void> {
     'deployment_branch_policy[custom_branch_policies]=true',
   ])
   try {
-    const branch = await run('gh', [
-      'repo',
-      'view',
-      '--json',
-      'defaultBranchRef',
-      '--jq',
-      '.defaultBranchRef.name',
-    ])
-    const policies = `${environment}/deployment-branch-policies`
-    const allowed = await run('gh', [
-      'api',
-      '--paginate',
-      policies,
-      '--jq',
-      '.branch_policies[].name',
-    ])
-    if (!allowed.split('\n').includes(branch))
-      await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+    const { branch, allowed } = await defaultBranchIn(run, policies)
+    if (!allowed) await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
   } catch (e) {
     throw new Error(`it exists, but limiting it to the default branch failed: ${reasonOf(e)}`)
   }
   console.log(`Created the environment ${person}, deployable from the default branch only`)
+}
+
+/** The repo's default branch, and whether an environment's branch policies name it. */
+async function defaultBranchIn(
+  run: Exec,
+  policies: string,
+): Promise<{ branch: string; allowed: boolean }> {
+  const branch = await run('gh', [
+    'repo',
+    'view',
+    '--json',
+    'defaultBranchRef',
+    '--jq',
+    '.defaultBranchRef.name',
+  ])
+  const names = await run('gh', ['api', '--paginate', policies, '--jq', '.branch_policies[].name'])
+  return { branch, allowed: names.split('\n').includes(branch) }
 }
 
 /** The HTTP status gh reports for a failed call, e.g. "403". */
@@ -500,17 +507,46 @@ const reasonOf = (e: unknown) =>
     .split('\n')
     .at(-1)
 
-/** The secret names a gh listing prints; when it fails, says why and returns none. */
-const secretNames = (run: Exec, layer: string, args: string[]) =>
-  run('gh', args).then(
-    (out) => out.split('\n').filter(Boolean),
-    (e) => {
-      console.log(
-        `Couldn't list the ${layer} secrets (${reasonOf(e)}), so a shared one set there is offered anyway`,
-      )
-      return []
-    },
+export interface RepoSecrets {
+  owner: string
+  repo: Set<string>
+  /** The org's secrets shared with the repo. */
+  org: Set<string>
+}
+
+const ghNames = async (run: Exec, args: string[]) =>
+  new Set((await run('gh', args)).split('\n').filter(Boolean))
+
+/** The names of the current repo's secrets, or of one environment's; throws when gh can't list them. */
+export const secretNames = (run: Exec, environment?: string) =>
+  ghNames(run, [
+    'secret',
+    'list',
+    ...(environment ? ['--env', environment] : []),
+    '--json',
+    'name',
+    '--jq',
+    '.[].name',
+  ])
+
+/** Lists the current repo's secrets and its org's; throws when gh can't. */
+export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
+  const owner = JSON.parse(
+    await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner | {login, type}']),
   )
+  // Only an org-owned repo has org secrets; listing a user's fails.
+  const org =
+    owner.type === 'Organization'
+      ? await ghNames(run, [
+          'api',
+          '--paginate',
+          'repos/{owner}/{repo}/actions/organization-secrets',
+          '--jq',
+          '.secrets[].name',
+        ])
+      : new Set<string>()
+  return { owner: owner.login, repo: await secretNames(run), org }
+}
 
 /** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
 async function syncRepo(

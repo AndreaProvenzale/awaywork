@@ -38,8 +38,11 @@ interface Gh {
   post?: string
   /** The PUT fails as for someone without admin rights. */
   refuse?: boolean
+  /** gh's stderr when looking up the repo's owner fails. */
+  owner?: string
   policies?: string
   repo?: string
+  /** The org's secrets; the repo is a user's when unset. */
   org?: string
   failSet?: boolean
   /** gh's stderr when listing the repo's secrets fails. */
@@ -53,7 +56,7 @@ const fail = (stderr: string): never => {
 }
 
 const FALLBACK =
-  /^Keep alice's secrets as repository secrets ending in __ALICE, which any branch's workflow can read\?$/
+  /^Store alice's secrets as repository secrets ending in __ALICE, which any branch's workflow can read\?$/
 
 /** A control repo and a user's config with one skill, answered by a fake gh. */
 async function setup(gh: Gh = {}) {
@@ -71,7 +74,11 @@ async function setup(gh: Gh = {}) {
     if (call === 'gh api repos/{owner}/{repo}/environments/alice --jq .deployment_branch_policy')
       return gh.get ? fail(gh.get) : (gh.environment ?? fail('gh: Not Found (HTTP 404)'))
     if (args[2] === 'PUT' && gh.put) fail(gh.put)
-    if (args[2] === 'PUT' && gh.refuse) fail('gh: Must have admin rights to Repository. (HTTP 403)')
+    if (args[2] === 'PUT' && gh.refuse) fail('gh: Not Found (HTTP 404)')
+    if (call === 'gh api repos/{owner}/{repo} --jq .owner | {login, type}')
+      return gh.owner
+        ? fail(gh.owner)
+        : JSON.stringify({ login: 'acme', type: gh.org === undefined ? 'User' : 'Organization' })
     if (args[2] === 'POST' && gh.post) fail(gh.post)
     if (call === 'gh api user --jq .login')
       return gh.login ?? fail('gh: Bad credentials (HTTP 401)')
@@ -79,18 +86,16 @@ async function setup(gh: Gh = {}) {
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
     if (args[1] === 'list') return gh.list ? fail(gh.list) : (gh.repo ?? 'DATABASE_URL\nOTHER')
-    if (call.includes('organization-secrets')) {
-      if (gh.org === undefined) throw new Error('gh: Validation Failed (HTTP 422)')
-      return gh.org
-    }
+    if (call.includes('organization-secrets'))
+      return gh.org ?? fail('gh: Validation Failed (HTTP 422)')
     return ''
   }
   const set: string[][] = []
   const env = { GH_TOKEN: 'ghp_secret', SLACK_WEBHOOK: 'hook_secret', DATABASE_URL: 'db_secret' }
-  const io = (script: [RegExp, unknown][]) => ({
+  const io = (script: [RegExp, unknown][], more: NodeJS.ProcessEnv = {}) => ({
     run,
     ask: scriptedAsk(script),
-    env,
+    env: { ...env, ...more },
     setSecret: async (args: string[], value: string) => {
       if (gh.failSet) throw new Error('gh failed')
       set.push([...args, value])
@@ -176,19 +181,62 @@ it('names where a failed secret was going, in either mode', async () => {
 })
 
 it("says why it couldn't list secrets, and offers the shared ones it would have skipped", async () => {
-  const { set, install } = await setup({ list: 'error connecting to api.github.com' })
+  for (const gh of [
+    { list: 'error connecting to api.github.com' },
+    { owner: 'error connecting to api.github.com' },
+  ]) {
+    out = []
+    const { set, install } = await setup(gh)
+    await install([
+      [/GH_TOKEN/, false],
+      [/SLACK_WEBHOOK/, false],
+      [/^Set the DATABASE_URL repository secret, shared/, true],
+    ])
+    expect(out).toContain(
+      "Couldn't list the repo's secrets (error connecting to api.github.com), so every shared one is offered",
+    )
+    expect(set).toEqual([['DATABASE_URL', 'db_secret']])
+  }
+})
+
+it("lists org secrets only in an org's repo", async () => {
+  const { calls, install } = await setup()
   await install([
     [/GH_TOKEN/, false],
     [/SLACK_WEBHOOK/, false],
-    [/^Set the DATABASE_URL repository secret, shared/, true],
   ])
-  expect(out).toContain(
-    "Couldn't list the repository secrets (error connecting to api.github.com), so a shared one set there is offered anyway",
-  )
-  expect(out).toContain(
-    "Couldn't list the organization secrets (gh: Validation Failed (HTTP 422)), so a shared one set there is offered anyway",
-  )
-  expect(set).toEqual([['DATABASE_URL', 'db_secret']])
+  expect(calls.filter((c) => c.includes('organization-secrets'))).toEqual([])
+  expect(out.join('\n')).not.toMatch(/Couldn't list/)
+})
+
+it("warns about a fallback's suffixed repository secrets left behind once there is an environment", async () => {
+  const { install } = await setup({
+    repo: 'GH_TOKEN__ALICE\nASANA_TOKEN__ALICE\nGH_TOKEN__BOB\nDATABASE_URL',
+  })
+  await install([
+    [/GH_TOKEN/, false],
+    [/SLACK_WEBHOOK/, false],
+  ])
+  expect(out.filter((line) => line.startsWith('Warning: '))).toEqual([
+    'Warning: GH_TOKEN__ALICE, ASANA_TOKEN__ALICE are still repository secrets, readable from any branch, and fill in for any that environment alice lacks. Once it has its own, delete them: `gh secret delete GH_TOKEN__ALICE`, `gh secret delete ASANA_TOKEN__ALICE`',
+  ])
+})
+
+it('prints no to-do list when nothing is left to do', async () => {
+  const { config, io } = await setup({
+    repo: 'SLACK_WEBHOOK\nHOOK_TOKEN\nDATABASE_URL\nMCP_DB_URL',
+  })
+  const all = { CLAUDE_CODE_OAUTH_TOKEN: 'claude_secret', ASANA_TOKEN: 'asana_secret' }
+  const yes = (): [RegExp, unknown][] => [
+    [/GH_TOKEN__ALICE/, true],
+    [/CLAUDE_CODE_OAUTH_TOKEN__ALICE/, true],
+    [/ASANA_TOKEN__ALICE/, true],
+  ]
+  await installWorkflow(config, 'alice', io(yes(), all))
+  expect(out).toContain('Before the first night:')
+  out = []
+  await installWorkflow(config, 'alice', io(yes(), all))
+  expect(out).not.toContain('Before the first night:')
 })
 
 it('adds no branch policy the environment already has', async () => {
@@ -207,9 +255,7 @@ it('falls back to suffixed repository secrets when GitHub refuses the environmen
     [/^Set the GH_TOKEN__ALICE repository secret from your env\?$/, true],
     [/^Set the SLACK_WEBHOOK repository secret, shared/, false],
   ])
-  expect(out[0]).toBe(
-    'GitHub refuses the environment alice: gh: Must have admin rights to Repository. (HTTP 403)',
-  )
+  expect(out[0]).toBe('GitHub refuses the environment alice: gh: Not Found (HTTP 404)')
   expect(calls.filter((c) => c.includes('branch-policies'))).toEqual([])
   const { environment, env } = await job()
   expect(environment).toBeUndefined()
@@ -269,26 +315,33 @@ it('never turns a workflow with an environment into the fallback', async () => {
   expect(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).toBe(before)
 })
 
-it('keeps an existing environment as it is, warning when any branch can deploy to it', async () => {
-  for (const environment of [
-    '{"custom_branch_policies":true,"protected_branches":false}',
-    'null',
-  ]) {
+it('keeps an existing environment as it is, warning when it lets any branch or not the default one deploy', async () => {
+  const custom = '{"custom_branch_policies":true,"protected_branches":false}'
+  const cases: [Gh, string[]][] = [
+    [{ environment: custom, policies: 'release\nmain' }, []],
+    [
+      { environment: custom, policies: 'release' },
+      [
+        "Warning: environment alice's branch policies don't name the default branch, so alice's job can't use it; add it in the repo's Settings > Environments > alice",
+      ],
+    ],
+    [
+      { environment: 'null' },
+      [
+        "Warning: any branch can deploy to environment alice, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > alice",
+      ],
+    ],
+  ]
+  for (const [gh, warnings] of cases) {
     out = []
-    const { calls, install } = await setup({ environment })
+    const { calls, install } = await setup(gh)
     await install([
       [/GH_TOKEN/, false],
       [/SLACK_WEBHOOK/, false],
     ])
-    expect(calls.filter((c) => /-X (PUT|POST)|repo view/.test(c))).toEqual([])
+    expect(calls.filter((c) => /-X (PUT|POST)/.test(c))).toEqual([])
     expect(out).toContain('Kept the environment alice')
-    expect(out.filter((line) => line.startsWith('Warning: '))).toEqual(
-      environment === 'null'
-        ? [
-            "Warning: any branch can deploy to environment alice, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > alice",
-          ]
-        : [],
-    )
+    expect(out.filter((line) => line.startsWith('Warning: '))).toEqual(warnings)
   }
 })
 

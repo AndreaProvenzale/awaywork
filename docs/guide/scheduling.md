@@ -145,11 +145,13 @@ login. It writes:
 | `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
 
 First it reads the environment `alice`. One that exists is kept as it
-is, with a warning when any branch can deploy to it: limit it to the
-default branch in the repo's Settings > Environments. Otherwise install
-creates it and lets only the default branch deploy to it.
-`deployment: false` keeps the job out of the Deployments panel. The token still decides who "me" is: the config names
-no one, and each job spends its own person's subscription quota.
+is, with a warning when any branch can deploy to it, or when its branch
+policies don't name the default branch, so the job can't use it: fix
+either in the repo's Settings > Environments. Otherwise install creates
+it and lets only the default branch deploy to it. `deployment: false`
+keeps the job out of the Deployments panel. The token still decides who
+"me" is: the config names no one, and each job spends its own person's
+subscription quota.
 
 ### Secrets come in layers
 
@@ -160,7 +162,7 @@ over repository over organization.
 | Layer | Holds | Install |
 |---|---|---|
 | Organization | Company-wide values, like a notify webhook | never sets it |
-| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or the org has it; when it can't list them, it says why and offers each |
+| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or, in an org's repo, the org has it; when it can't list them, it says why and offers each |
 | Environment `alice` | Alice's own: `GH_TOKEN`, the providers' and the sources' `secrets` | offers each |
 
 Alice's own secrets are suffixed, `__` then the name upper-cased with
@@ -176,16 +178,22 @@ personal. To keep a shared value to yourself, set it under its own name
 in your environment: it wins. As for one repo per person, the values
 come from your env and are never printed.
 
+Once you have an environment, a fallback's suffixed repository secrets
+(below) still reach any branch and fill in for any your environment
+lacks: install warns about each and how to delete it.
+
 ### Without an environment
 
 Creating an environment needs admin access to the repo, and GitHub's
-docs reserve environment secrets on private repos for paid plans. When
-GitHub refuses (HTTP 403, 404 or 422), install says why and asks before
-falling back, defaulting to no: the workflow loses its `environment:`
-line, and the same suffixed names become repository secrets. The API's
-answer decides, never a guess at the plan. Any other error, like a
-network one, stops install, and so does a refusal once
-`night-shift-alice.yml` uses the environment: it is never downgraded.
+docs reserve environment secrets on private repos for paid plans. Setting
+repository secrets needs only write access, so the fallback works for
+anyone who can push. When GitHub refuses (HTTP 403, 404 or 422),
+install says why and asks before falling back, defaulting to no: the
+workflow loses its `environment:` line, and the same suffixed names
+become repository secrets. The API's answer decides, never a guess at
+the plan. Any other error, like a network one, stops install, and so
+does a refusal once `night-shift-alice.yml` uses the environment: it is
+never downgraded.
 
 The fallback has no branch limit: any branch's workflow can read every
 teammate's token.
