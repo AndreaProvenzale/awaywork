@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { installWorkflow, removePersonWorkflow, secretsOf, syncCopy } from '../src/cli/schedule.js'
@@ -42,6 +42,8 @@ interface Gh {
   repo?: string
   org?: string
   failSet?: boolean
+  /** What `gh api user` prints; it fails when unset. */
+  login?: string
 }
 
 const fail = (stderr: string): never => {
@@ -69,6 +71,8 @@ async function setup(gh: Gh = {}) {
     if (args[2] === 'PUT' && gh.put) fail(gh.put)
     if (args[2] === 'PUT' && gh.refuse) fail('gh: Must have admin rights to Repository. (HTTP 403)')
     if (args[2] === 'POST' && gh.post) fail(gh.post)
+    if (call === 'gh api user --jq .login')
+      return gh.login ?? fail('gh: Bad credentials (HTTP 401)')
     if (args[0] === 'repo') return 'main'
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
@@ -267,6 +271,27 @@ it('keeps an existing environment as it is, warning when any branch can deploy t
           ]
         : [],
     )
+  }
+})
+
+it('refuses an install without --as in a shared control repo, before writing anything', async () => {
+  const cases: [string, Gh, string][] = [
+    ['.github/workflows/night-shift-bob.yml', { login: 'Alice-Smith' }, 'alice-smith'],
+    ['.night-shift/bob/config.yml', {}, '<name>'],
+  ]
+  for (const [file, gh, name] of cases) {
+    out = []
+    const { root, config, io } = await setup(gh)
+    await mkdir(dirname(join(root, file)), { recursive: true })
+    await writeFile(join(root, file), '')
+    await installWorkflow(config, undefined, io([]))
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([
+      `This is a shared control repo, with a workflow per person; run \`nightshift schedule install --with github-actions --as ${name}\``,
+    ])
+    expect(existsSync(join(root, '.github/workflows/night-shift.yml'))).toBe(false)
+    expect(existsSync(join(root, '.night-shift/config.yml'))).toBe(false)
+    process.exitCode = undefined
   }
 })
 

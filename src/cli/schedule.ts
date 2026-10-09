@@ -1,5 +1,5 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
@@ -268,6 +268,14 @@ export async function installWorkflow(
     process.exitCode = 1
     return
   }
+  if (!person && (await isShared(root))) {
+    const login = await io.run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')
+    console.error(
+      `This is a shared control repo, with a workflow per person; run \`nightshift schedule install --with ${GITHUB_ACTIONS} --as ${login.toLowerCase() || '<name>'}\``,
+    )
+    process.exitCode = 1
+    return
+  }
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
@@ -299,6 +307,15 @@ export async function installWorkflow(
     console.error('Cancelled')
     process.exitCode = 1
   }
+}
+
+/** Whether the repo holds a person's workflow or config, as a shared control repo does. */
+async function isShared(root: string): Promise<boolean> {
+  const people = await readdir(join(root, dirname(REPO_CONFIG))).catch(() => [])
+  return (
+    (await workflows(root)).some((file) => file !== join(root, WORKFLOW)) ||
+    people.some((name) => existsSync(join(root, configOf(name))))
+  )
 }
 
 async function installForPerson(
