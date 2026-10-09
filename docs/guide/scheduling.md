@@ -239,10 +239,10 @@ how a job whose secrets didn't reach it shows.
 `night-shift*.yml`: its `environment` and every `secrets.X` its `env:`
 names. Each must exist in that environment, the repo or the org: one
 line per workflow says how many were found, or fails naming the missing
-ones and where they go, the person's own in their environment and the
-rest in the repo. A fallback's suffixed names are checked in the repo
-and the org. A workflow that doesn't parse fails, since it won't run
-either. It warns when a personal name, per the person's config, is missing from
-their environment but set at repo or org level, since the job would run
-with someone else's. When gh can't list the secrets (no access, no
-remote, not logged in), it warns why instead of failing.
+ones and where they go. With an environment, a name with the person's
+suffix goes there and the rest to the repo; without one, all go to the
+repo. Once the person has an environment, it warns about their suffixed
+secrets still at repo level, as install does. A workflow that doesn't
+parse fails, since it won't run either. When gh can't list the repo's or
+the org's secrets (no access, no remote, not logged in), it warns why
+instead of guessing what's missing.
