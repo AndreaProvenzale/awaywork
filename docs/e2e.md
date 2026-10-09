@@ -43,17 +43,20 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 
 | Source | Live test | Env |
 |---|---|---|
-| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with one file, a failing commit status and a review thread of mine; checks fields, `linkedPrs`, every prefetched file and `init` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues |
+| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `NIGHTSHIFT_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
 | Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`, `NIGHTSHIFT_ASANA_PROJECT` (a project gid there) |
 | Linear | Reads what is assigned, seeds nothing | `LINEAR_API_KEY` |
 | Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
-The GitHub test polls `items` until search indexes the seeded items, and
-its commit says `[skip ci]` so the sandbox's own CI leaves the checks to
-the seeded status. Each run leaves one closed PR: GitHub cannot delete
-PRs. A cleanup that leaves anything else behind fails the run, naming
-what to delete by hand.
+The GitHub test polls `items` until search indexes the seeded items and
+the seeded job has failed on a hosted runner. Its PR deletes the
+sandbox's own workflows and adds one that fails, so that job is the only
+check; the reviewer's PR says `[skip ci]`. Each run leaves one closed
+PR, two with a reviewer: GitHub cannot delete PRs. A cleanup that leaves
+anything else behind, including the workflow run, fails the run, naming
+what to delete by hand. Locally, the reviewer token is
+`gh auth token --user <second account>`.
 
 The Asana test also creates a section, a tag and, on a paid plan, a
 custom field, then deletes them; deleted tasks stay in the token user's
@@ -78,9 +81,6 @@ Next:
   and `run --dry-run --unit <key>`; each item becomes the expected unit
   and skill with its context files, and a PR whose body carries the
   source's `link` makes the next `plan` skip the item.
-- GitHub, not yet live: `review_requested`, which needs a second
-  account's token to request the review, and a failing Actions check
-  (`gh run view --log-failed`), which the seeded status stands in for.
 
 ## Before starting
 

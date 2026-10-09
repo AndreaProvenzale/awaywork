@@ -5,6 +5,7 @@ import type { Command } from 'commander'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load.js'
+import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
 import { unknownSkills } from '../config/skills.js'
 import { windowsOf } from '../core/window.js'
@@ -27,7 +28,7 @@ export function configCommand(program: Command): void {
     .action(async () => {
       const path = configPath(program.opts().config)
       try {
-        const problems = await unknownSkills(await loadConfig(path))
+        const problems = await unknownSkills(await loadConfig(path), skillsDirOf(path))
         if (problems.length > 0) throw new ConfigError(path, problems)
         console.log(`${path}: ok`)
       } catch (e) {
@@ -87,7 +88,7 @@ export async function editUntilValid(input: {
     const text = await readFile(input.draft, 'utf8')
     if (text === input.original) return 'unchanged'
     try {
-      const problems = await unknownSkills(parseConfig(text, input.path))
+      const problems = await unknownSkills(parseConfig(text, input.path), skillsDirOf(input.path))
       if (problems.length > 0) throw new ConfigError(input.path, problems)
       await writeFile(input.path, text)
       return 'saved'

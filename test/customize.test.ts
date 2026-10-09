@@ -201,4 +201,18 @@ describe('config edit', () => {
     )
     expect(await readFile(path, 'utf8')).toBe(original)
   })
+
+  it('knows the skills in skills/ beside the config', async () => {
+    const dir = await tmp()
+    const path = join(dir, 'config.yml')
+    const original = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
+    await mkdir(join(dir, 'skills', 'mine'), { recursive: true })
+    await writeFile(join(dir, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\n---\n')
+    await writeFile(path, original)
+    const draft = join(dir, 'd.yml')
+    const edit = () => writeFile(draft, `${original}queue: [{ skill: mine }]\n`)
+    expect(await editUntilValid({ path, original, draft, edit, retry: async () => false })).toBe(
+      'saved',
+    )
+  })
 })
