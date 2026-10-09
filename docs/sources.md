@@ -156,7 +156,7 @@ YouTrack, Shortcut, Plane.
 - Data Center: bearer PATs, API v2 [V/I].
 - Rovo MCP token auth, admin opt-in [V]
   https://support.atlassian.com/atlassian-rovo-mcp-server/docs/configuring-authentication-via-api-token/
-- **Adapter.** Cloud only. Basic auth with `email:token` [I]; the site
+- **Adapter.** Cloud only. Basic auth with `email:token` [I, tested]; the site
   URL for a classic token, `api.atlassian.com/ex/jira/{cloudId}` for a
   scoped one, with the cloud id from the site's `/_edge/tenant_info` [I].
   `POST /rest/api/3/search/jql` with `assignee = currentUser() AND
@@ -170,9 +170,9 @@ YouTrack, Shortcut, Plane.
   through the forge by key, which Jira's own branch names carry [I].
 - **Blocked.** `blocked` is true when `fields.issuelinks` holds a link
   of type `Blocks` with an `inwardIssue` (the issue blocking this one)
-  whose `status.statusCategory.key` is not `done` [V]
-  `real-jira.test.ts`. A site that renamed the `Blocks` link type is not
-  seen.
+  whose `status.statusCategory.key` is not `done` [I, tested by
+  `real-jira.test.ts`]. A site that renamed the `Blocks` link type is
+  not seen.
 - **Repo for an issue.** `project_repos` maps a project key to `owner/repo`.
 
 ### Asana
@@ -233,7 +233,7 @@ YouTrack, Shortcut, Plane.
   https://linear.app/developers/rate-limiting
 - MCP with Bearer key and read-only endpoint [V] https://linear.app/docs/mcp
 - **Adapter.** One GraphQL endpoint, `https://api.linear.app/graphql`;
-  a personal key goes in `Authorization` without `Bearer` [I].
+  a personal key goes in `Authorization` without `Bearer` [I, tested].
   `viewer.assignedIssues` filtered on `state.type` not in `completed`,
   `canceled`, paged by `pageInfo.endCursor`; comments per issue through
   `issue(id).comments` [I]. Key is the `identifier` (`ENG-12`).
@@ -242,7 +242,7 @@ YouTrack, Shortcut, Plane.
   matches Linear's own branch names (`dev/eng-12-title`) [I].
 - **Blocked.** `blocked` is true when `inverseRelations` holds a
   `blocks` relation whose issue's `state.type` is not `completed` or
-  `canceled` [I, not run against the live API]. Only the first 10
+  `canceled` [I, tested by `real-linear.test.ts`]. Only the first 10
   relations are read: at 50, the issues query would pass the
   10,000-point complexity limit [V]
   https://linear.app/developers/rate-limiting.
@@ -280,12 +280,10 @@ YouTrack, Shortcut, Plane.
 ## Unverified, check before relying on it
 
 - Linear: PRs from the GitHub integration appear in `issue.attachments`.
-- Linear: personal keys limited to read and to teams; the `Authorization`
-  format, the `assignedIssues` filter and comment paging used by
-  `linear.ts`.
-- Jira: basic auth of a scoped token on the gateway, the `tenant_info`
-  cloud id, `-comment` in `fields`, `*all` returning custom fields on
-  `search/jql`.
+- Linear: personal keys limited to read and to teams; comment paging
+  used by `linear.ts`.
+- Jira: basic auth of a scoped token on the gateway, `-comment` in
+  `fields`, `*all` returning custom fields on `search/jql`.
 - Asana: GitHub integration attachments readable via `/attachments`,
   and in which field the PR URL sits.
 - Plane: filtering by assignee and state, PR links.
