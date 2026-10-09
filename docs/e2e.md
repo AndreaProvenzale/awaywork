@@ -22,7 +22,7 @@ From `lessons.md`:
 | Area | Gap |
 |---|---|
 | Asana | Custom fields and dependencies (paid) never read live: `real-asana.test.ts` ran on a free plan only. |
-| Jira | Never read a live site (`real-jira.test.ts`), nor `project_repos`, a scoped token or the gateway; fixtures shaped from the documented responses. |
+| Jira | A scoped token never ran: one token passed on both the site and the gateway, so it is classic [I]. |
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
 | Claude ceiling | Never stopped mid-run: real units stayed below 1% of either window. |
@@ -45,7 +45,7 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 | GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `NIGHTSHIFT_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
 | Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`, `NIGHTSHIFT_ASANA_PROJECT` (a project gid there) |
 | Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `NIGHTSHIFT_LINEAR_TEAM`: the key of a team its user belongs to |
-| Jira | Reads what is assigned, seeds nothing | `JIRA_API_TOKEN`, `JIRA_SITE`, `JIRA_EMAIL`; `JIRA_CLOUD_ID` for a scoped token |
+| Jira | Seeds two issues assigned to me in a test project, one labelled, with a priority and a comment, blocking the other; checks fields, `project_repos`, `blocked`, `issue.md` and `init` offering the real project and status | `JIRA_API_TOKEN`, `JIRA_SITE` (host), `JIRA_EMAIL`, `NIGHTSHIFT_JIRA_PROJECT` (a key whose project has a `Task` type); `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
 The GitHub test polls `items` until search indexes the seeded items and
@@ -73,13 +73,18 @@ of its own, which a workspace that keeps labels to admins refuses [I].
 A deleted issue sits in the trash for 30 days [C]; trashed issues
 should not count against the free plan's 250 [I].
 
+The Jira test runs twice, once per auth path: a classic token on the
+site URL, then a scoped token with `JIRA_CLOUD_ID` on the gateway, where
+`init` must find the same cloud id. Use a token made only for these
+tests: it writes. A scoped one needs `read:jira-work`, `write:jira-work`
+and `read:jira-user` (for `/myself`). In the project, its user needs
+Create, Assign, Link and Delete issues, Add comments and Assignable
+user, since the seeded issues are assigned to it; by default only
+project admins may delete. Jira's search is eventually consistent, so it
+polls like the GitHub test.
+
 Next:
 
-- Jira: seed like GitHub, in a test project whose issues are assigned
-  to the token's user. One issue per mapped state, with a comment and a
-  blocker; check `project_repos`, `blocked`, `fields.*` and `init`
-  offering the real names. Run twice: a classic token, then a scoped
-  one with `cloud_id`.
 - Pipeline, no quota: a config over the seeded items, then `plan --json`
   and `run --dry-run --unit <key>`; each item becomes the expected unit
   and skill with its context files, and a PR whose body carries the
