@@ -55,12 +55,14 @@ nightshift schedule install --with github-actions
 This writes `.github/workflows/night-shift.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
 manual run; `nightshift schedule remove` deletes it. It also copies your
-config to `.night-shift/config.yml` unless the repo has one, and offers to
-set each repository secret the config needs whose value is in your
-environment or `~/.config/night-shift/env`, with `gh secret set`. Values
-are never printed. Then:
+config to `.night-shift/config.yml` and your
+[skills](./skills.md#where-skills-come-from), if any, to
+`.night-shift/skills/` next to it, so your personal skills reach the
+runner. It offers to set each repository secret the config needs whose
+value is in your environment or `~/.config/night-shift/env`, with
+`gh secret set`. Values are never printed. Then:
 
-1. Commit the workflow and `.night-shift/config.yml`.
+1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
@@ -77,7 +79,9 @@ which installs the nightshift-agent version you generated it with. The
 action frees about 20 GB of preinstalled SDKs first (runners otherwise
 die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
-`v1`; to upgrade night-shift itself, raise `version` in the workflow.
+`v1`; to upgrade night-shift itself, raise `version` in the workflow, or
+upgrade nightshift-agent and run `schedule install --with github-actions`
+again.
 The action gets the job's env, secrets included: if you'd rather not
 follow `v1`, pin it to a commit SHA of this repo instead. A
 [custom source](./custom-sources.md)'s `setup` runs as a step of its own
@@ -86,9 +90,16 @@ before the action, in the config's folder.
 The workflow works once night-shift has a stable release on npm, which
 also creates the `v1` tag.
 
+Run `schedule install --with github-actions` again after changing your
+config or skills, or to refresh the workflow. Of the workflow, config and
+skills, one that matches is up to date; one that differs shows the diff
+and is replaced only if you say yes, so a hand edit never goes silently.
+The skills folder is replaced as a whole: a skill only the repo has, say a
+teammate's, goes with it. With no skills of your own, the repo's stay.
+
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you
-`schedule remove` and `schedule install --with github-actions` again.
+run `schedule install --with github-actions` again.
 
 A stdio [MCP server](./configuration.md#mcp-servers) runs on the runner,
 so its `command` must be there: `npx` and `node` are, other binaries

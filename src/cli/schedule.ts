@@ -1,16 +1,23 @@
-import { existsSync, realpathSync } from 'node:fs'
-import { copyFile, mkdir, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
-import { configPath, loadConfig } from '../config/load.js'
-import { packageVersion, stateDir } from '../config/paths.js'
+import { ConfigError, configPath, loadConfig } from '../config/load.js'
+import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
+import { hasSkills } from '../config/skills.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
-import { exec } from '../forge/gh.js'
+import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { REPO_CONFIG, removeWorkflow, WORKFLOW, workflow } from '../scheduler/github-actions.js'
+import {
+  REPO_CONFIG,
+  REPO_SKILLS,
+  removeWorkflow,
+  WORKFLOW,
+  workflow,
+} from '../scheduler/github-actions.js'
 import {
   defaultScheduler,
   describeStarts,
@@ -113,7 +120,8 @@ export async function staleSchedules(
   return warnings
 }
 
-export const gitRoot = () => exec('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
+export const gitRoot = (run: Exec = exec) =>
+  run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** Installs the nightly job with the named scheduler, or the platform's default. */
 export async function installSchedule(config: string | undefined, id?: string): Promise<void> {
@@ -154,16 +162,28 @@ export async function installSchedule(config: string | undefined, id?: string): 
   }
 }
 
-async function installWorkflow(config: string | undefined): Promise<void> {
-  const root = await gitRoot()
+/** What install reaches outside the repo's files; injected so tests fake it. */
+export interface Io {
+  run: Exec
+  ask: Ask
+  env: NodeJS.ProcessEnv
+  setSecret: (name: string, value: string) => Promise<void>
+}
+
+/** Sets a repository secret of the current repo; the value goes through stdin, never argv. */
+const ghSecretSet = async (name: string, value: string) =>
+  void (await execa('gh', ['secret', 'set', name], { input: value }))
+
+const terminal: Io = { run: exec, ask: terminalAsk, env: process.env, setSecret: ghSecretSet }
+
+/** Writes the workflow and copies the config and skills into the repo; run again, it syncs them. */
+export async function installWorkflow(
+  config: string | undefined,
+  io: Io = terminal,
+): Promise<void> {
+  const root = await gitRoot(io.run)
   if (!root) {
     console.error('GitHub Actions runs from a repo; run this inside a git repository')
-    process.exitCode = 1
-    return
-  }
-  const file = join(root, WORKFLOW)
-  if (existsSync(file)) {
-    console.error(`${WORKFLOW} already exists; \`nightshift schedule remove\` deletes it`)
     process.exitCode = 1
     return
   }
@@ -189,47 +209,96 @@ async function installWorkflow(config: string | undefined): Promise<void> {
       ...Object.values(repos).flatMap((r) => r.secrets),
       ...Object.values(mcp).flatMap((s) => s.secrets),
     ])
-    await mkdir(dirname(file), { recursive: true })
-    await writeFile(
-      file,
-      workflow({
-        starts: startsOf(windowsOf({ night, windows })),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        config: REPO_CONFIG,
-        version: packageVersion,
-        packages: used.map((p) => p.package),
-        secrets: [...secrets],
-        setup: Object.values(configured).flatMap((cfg) =>
-          isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
-        ),
-      }),
-    )
-    console.log(`Wrote ${WORKFLOW}`)
-    const repoConfig = join(root, REPO_CONFIG)
-    if (existsSync(repoConfig)) console.log(`Kept the existing ${REPO_CONFIG}`)
-    else {
-      await mkdir(dirname(repoConfig), { recursive: true })
-      await copyFile(path, repoConfig)
-      console.log(`Copied ${path} to ${REPO_CONFIG}`)
+    const text = workflow({
+      starts: startsOf(windowsOf({ night, windows })),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      config: REPO_CONFIG,
+      version: packageVersion,
+      packages: used.map((p) => p.package),
+      secrets: [...secrets],
+      setup: Object.values(configured).flatMap((cfg) =>
+        isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
+      ),
+    })
+    const changed = []
+    if (await sync(root, WORKFLOW, io.ask, (staged) => writeFile(staged, text))) {
+      console.log(`Wrote ${WORKFLOW}`)
+      changed.push(WORKFLOW)
     }
-    const unset = await offerSecrets([...secrets], process.env, terminalAsk, ghSecretSet).catch(
-      (e) => {
-        if (e instanceof Cancelled) return [...secrets]
-        throw e
-      },
-    )
-    console.log('Before the first night:')
-    console.log(`  commit ${WORKFLOW} and ${REPO_CONFIG}`)
+    if (await syncCopy(path, root, REPO_CONFIG, io.ask)) changed.push(REPO_CONFIG)
+    const skills = skillsDirOf(path)
+    if ((await hasSkills(skills)) && (await syncCopy(skills, root, REPO_SKILLS, io.ask)))
+      changed.push(REPO_SKILLS)
+    const unset = await offerSecrets([...secrets], io.env, io.ask, io.setSecret).catch((e) => {
+      if (e instanceof Cancelled) return [...secrets]
+      throw e
+    })
+    if (changed.length || unset.length) console.log('Before the first night:')
+    if (changed.length) console.log(`  commit ${and(changed)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
-    reportConfigError(e)
+    if (!(e instanceof Cancelled)) return reportConfigError(e)
+    console.error('Cancelled')
+    process.exitCode = 1
   }
 }
 
-/** Sets a repository secret of the current repo; the value goes through stdin, never argv. */
-const ghSecretSet = async (name: string, value: string) =>
-  void (await execa('gh', ['secret', 'set', name], { input: value }))
+const and = (names: string[]) =>
+  [names.slice(0, -1).join(', '), names.at(-1)].filter(Boolean).join(' and ')
+
+/**
+ * Copies `from`, a file or a folder replaced as a whole, to `to` under the repo root; when the
+ * repo's copy differs, only after showing the diff and asking. True when it copied.
+ */
+export async function syncCopy(from: string, root: string, to: string, ask: Ask): Promise<boolean> {
+  // A linked skill is committed as its files, not as a link to this machine.
+  const stage = (staged: string) => cp(from, staged, { recursive: true, dereference: true })
+  const copied = await sync(root, to, ask, stage)
+  if (copied) console.log(`Copied ${from} to ${to}`)
+  return copied
+}
+
+/** Puts what `stage` writes at `to` under the repo root, as syncCopy does; true when it did. */
+async function sync(
+  root: string,
+  to: string,
+  ask: Ask,
+  stage: (staged: string) => Promise<void>,
+): Promise<boolean> {
+  const tmp = await mkdtemp(join(tmpdir(), 'nightshift-'))
+  try {
+    const staged = join(tmp, basename(to))
+    await stage(staged)
+    const target = join(root, to)
+    if (existsSync(target)) {
+      const diff = await execa(bin('git'), ['diff', '--no-index', '--', target, staged], {
+        reject: false,
+      })
+      if (diff.exitCode === 0) {
+        console.log(`${to} is up to date`)
+        return false
+      }
+      if (diff.exitCode !== 1) throw new ConfigError(to, [`git diff failed: ${diff.stderr.trim()}`])
+      console.log(diff.stdout)
+      const folder = statSync(staged).isDirectory()
+      const question = folder
+        ? `Replace all of ${to} with the changes above, deleting anything only the repo's copy has?`
+        : `Overwrite ${to} with the changes above?`
+      // Enter after a long diff must not delete a skill only the repo has.
+      if (!(await ask.confirm(question, !folder))) {
+        console.log(`Kept ${to}`)
+        return false
+      }
+      await rm(target, { recursive: true })
+    }
+    await mkdir(dirname(target), { recursive: true })
+    await cp(staged, target, { recursive: true })
+    return true
+  } finally {
+    await rm(tmp, { recursive: true })
+  }
+}
 
 /**
  * Offers to set each secret whose value is in the env, the env file included;

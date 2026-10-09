@@ -192,8 +192,8 @@ Options:
 Commands:
   list            skills a rule can name, where each comes from and its delivery
                   default
-  eject <name>    copy a built-in skill to ~/.config/night-shift/skills,
-                  where it shadows the built-in
+  eject <name>    copy a built-in skill to skills/ beside the config, where it
+                  shadows the built-in
   help [command]  display help for command
 ```
 
@@ -213,7 +213,7 @@ Options:
 ```text
 Usage: nightshift skills eject [options] <name>
 
-copy a built-in skill to ~/.config/night-shift/skills, where it shadows the
+copy a built-in skill to skills/ beside the config, where it shadows the
 built-in
 
 Options:

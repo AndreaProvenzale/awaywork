@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
 export const REPO_CONFIG = '.night-shift/config.yml'
+export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 const ACTION_REPO = 'AndreaProvenzale/night-shift'
 const ACTION = `${ACTION_REPO}@v1`
 
@@ -78,5 +80,5 @@ export async function removeWorkflow(root: string): Promise<boolean> {
 export async function staleWorkflow(root: string): Promise<string | undefined> {
   const file = join(root, WORKFLOW)
   if (!existsSync(file) || (await readFile(file, 'utf8')).includes(`uses: ${ACTION_REPO}@`)) return
-  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule remove\`, then \`nightshift schedule install --with github-actions\``
+  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule install --with github-actions\` again to update it`
 }

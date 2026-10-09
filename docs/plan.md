@@ -353,7 +353,7 @@ Semantics, fixed so every milestone agrees:
   Claude, after the run for Codex. For `credits` providers the long window is the month.
   Without a probe, `fallback` caps units and turns per night.
 - **Skills.** `skill` is the main skill, and `skills` are extras available
-  to the worker. A name is looked up in `~/.config/night-shift/skills/`,
+  to the worker. A name is looked up in `skills/` next to the config,
   then in-repo `.night-shift/skills/`, then the built-ins. Skills are
   copied into the clone at the provider's `skillsDir`, or into a plugin
   folder outside it for a provider without one (Claude). Check each
