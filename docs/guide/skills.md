@@ -34,13 +34,23 @@ them.
 A skill name, a rule's or one in `skills`, is looked up, first match
 wins, in:
 
-1. `~/.config/night-shift/skills/<name>/`, yours;
+1. `skills/<name>/` next to your config, yours: `~/.config/night-shift/skills/`
+   for the default config;
 2. `.night-shift/skills/<name>/` in the unit's repo, the team's;
 3. the built-ins.
 
-On a PR someone else opened, `.night-shift/skills/` is the author's and
-is skipped. To use a skill from `~/.claude/skills/`, link it into yours:
+A config outside `~/.config/night-shift/` (`--config`, `NIGHT_SHIFT_CONFIG`)
+uses its own `skills/`, so move or link the folder there; `doctor` warns
+while `~/.config/night-shift/skills/` holds skills it doesn't use. On a PR someone
+else opened, `.night-shift/skills/` is the author's and is skipped. To use a
+skill from `~/.claude/skills/`, link it into yours:
 `ln -s ~/.claude/skills/<name> ~/.config/night-shift/skills/<name>`.
+
+On a runner, yours are the copy `schedule install --with github-actions`
+puts next to the repo's config: `.night-shift/skills/`, or, in a
+[shared control repo](./scheduling.md#shared-control-repo), each
+person's own `.night-shift/<person>/skills/`. A teammate's skills never
+reach your units.
 
 Claude Code gets the unit's skills as a plugin outside the clone
 (`--plugin-dir`), named `nightshift:<name>`, so they are callable on

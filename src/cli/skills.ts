@@ -2,25 +2,29 @@ import { existsSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Command } from 'commander'
-import { builtinSkillsDir, userSkillsDir } from '../config/paths.js'
+import { configPath } from '../config/load.js'
+import { builtinSkillsDir, skillsDirOf } from '../config/paths.js'
 import { loadSkills } from '../config/skills.js'
 
 export function skillsCommand(program: Command): void {
   const skills = program.command('skills').description('list skills and eject built-ins to tweak')
+  const userDir = () => skillsDirOf(configPath(program.opts().config))
 
   skills
     .command('list')
     .description('skills a rule can name, where each comes from and its delivery default')
     .action(async () => {
-      console.log(await listSkills())
+      console.log(await listSkills(userDir()))
     })
 
   skills
     .command('eject <name>')
-    .description(`copy a built-in skill to ${userSkillsDir}, where it shadows the built-in`)
+    .description(
+      'copy a built-in skill to skills/ beside the config, where it shadows the built-in',
+    )
     .action(async (name: string) => {
       try {
-        console.log(`Copied to ${await ejectSkill(name)}; edit its SKILL.md there`)
+        console.log(`Copied to ${await ejectSkill(name, userDir())}; edit its SKILL.md there`)
       } catch (e) {
         console.error((e as Error).message)
         process.exitCode = 1
@@ -28,7 +32,7 @@ export function skillsCommand(program: Command): void {
     })
 }
 
-export async function listSkills(userDir = userSkillsDir, builtinDir = builtinSkillsDir) {
+export async function listSkills(userDir: string, builtinDir = builtinSkillsDir) {
   const user = await loadSkills(userDir)
   const builtin = await loadSkills(builtinDir)
   const names = [...new Set([...Object.keys(user), ...Object.keys(builtin)])].sort()
@@ -45,11 +49,7 @@ export async function listSkills(userDir = userSkillsDir, builtinDir = builtinSk
   return [...lines, '', ...footer].join('\n')
 }
 
-export async function ejectSkill(
-  name: string,
-  userDir = userSkillsDir,
-  builtinDir = builtinSkillsDir,
-) {
+export async function ejectSkill(name: string, userDir: string, builtinDir = builtinSkillsDir) {
   const from = join(builtinDir, name)
   const to = join(userDir, name)
   if (!existsSync(join(from, 'SKILL.md'))) throw new Error(`no built-in skill "${name}"`)

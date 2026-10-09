@@ -1,8 +1,8 @@
+import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ruleSteps } from '../core/queue.js'
 import { builtinSkills, parseSkill, resolveSkill, type SkillMeta } from '../core/skills.js'
-import { userSkillsDir } from './paths.js'
 import type { Config } from './schema.js'
 
 /** Skills in a directory, one folder with a SKILL.md each; a missing directory has none. */
@@ -17,8 +17,14 @@ export async function loadSkills(dir: string): Promise<Record<string, SkillMeta>
   return skills
 }
 
+/** Whether a directory has a folder with a SKILL.md, linked ones included; parses none. */
+export async function hasSkills(dir: string): Promise<boolean> {
+  const entries = await readdir(dir).catch(() => [])
+  return entries.some((name) => existsSync(join(dir, name, 'SKILL.md')))
+}
+
 /** Skills a queue names that are neither the user's nor built in; in-repo skills are only visible at run time. */
-export async function unknownSkills(config: Config, userDir = userSkillsDir): Promise<string[]> {
+export async function unknownSkills(config: Config, userDir: string): Promise<string[]> {
   const catalog = { user: await loadSkills(userDir), builtin: builtinSkills }
   const problems = config.skills
     .filter((name) => !resolveSkill(name, catalog))
