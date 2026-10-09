@@ -343,19 +343,23 @@ async function installForPerson(
   const changed = await syncRepo(root, file, text, path, config, io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const atRepo = new Set(
-    await ghLines(io.run, ['secret', 'list', '--json', 'name', '--jq', '.[].name']),
-  )
-  const atOrg = new Set(
-    await ghLines(io.run, [
+  const existing = new Set([
+    ...(await secretNames(io.run, 'repository', [
+      'secret',
+      'list',
+      '--json',
+      'name',
+      '--jq',
+      '.[].name',
+    ])),
+    ...(await secretNames(io.run, 'organization', [
       'api',
       '--paginate',
       'repos/{owner}/{repo}/actions/organization-secrets',
       '--jq',
       '.secrets[].name',
-    ]),
-  )
-  const existing = new Set([...atRepo, ...atOrg])
+    ])),
+  ])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
@@ -496,11 +500,16 @@ const reasonOf = (e: unknown) =>
     .split('\n')
     .at(-1)
 
-/** The lines a gh call prints, none when it fails. */
-const ghLines = (run: Exec, args: string[]) =>
+/** The secret names a gh listing prints; when it fails, says why and returns none. */
+const secretNames = (run: Exec, layer: string, args: string[]) =>
   run('gh', args).then(
     (out) => out.split('\n').filter(Boolean),
-    () => [],
+    (e) => {
+      console.log(
+        `Couldn't list the ${layer} secrets (${reasonOf(e)}), so a shared one set there is offered anyway`,
+      )
+      return []
+    },
   )
 
 /** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */

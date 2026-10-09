@@ -42,6 +42,8 @@ interface Gh {
   repo?: string
   org?: string
   failSet?: boolean
+  /** gh's stderr when listing the repo's secrets fails. */
+  list?: string
   /** What `gh api user` prints; it fails when unset. */
   login?: string
 }
@@ -76,7 +78,7 @@ async function setup(gh: Gh = {}) {
     if (args[0] === 'repo') return 'main'
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
-    if (args[1] === 'list') return gh.repo ?? 'DATABASE_URL\nOTHER'
+    if (args[1] === 'list') return gh.list ? fail(gh.list) : (gh.repo ?? 'DATABASE_URL\nOTHER')
     if (call.includes('organization-secrets')) {
       if (gh.org === undefined) throw new Error('gh: Validation Failed (HTTP 422)')
       return gh.org
@@ -171,6 +173,22 @@ it('names where a failed secret was going, in either mode', async () => {
   expect(await notes({ refuse: true }, /^Set the GH_TOKEN__ALICE repository secret/)).toEqual([
     '`gh secret set GH_TOKEN__ALICE` failed',
   ])
+})
+
+it("says why it couldn't list secrets, and offers the shared ones it would have skipped", async () => {
+  const { set, install } = await setup({ list: 'error connecting to api.github.com' })
+  await install([
+    [/GH_TOKEN/, false],
+    [/SLACK_WEBHOOK/, false],
+    [/^Set the DATABASE_URL repository secret, shared/, true],
+  ])
+  expect(out).toContain(
+    "Couldn't list the repository secrets (error connecting to api.github.com), so a shared one set there is offered anyway",
+  )
+  expect(out).toContain(
+    "Couldn't list the organization secrets (gh: Validation Failed (HTTP 422)), so a shared one set there is offered anyway",
+  )
+  expect(set).toEqual([['DATABASE_URL', 'db_secret']])
 })
 
 it('adds no branch policy the environment already has', async () => {
