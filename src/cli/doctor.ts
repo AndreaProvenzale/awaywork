@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
@@ -12,17 +12,17 @@ import type { Ctx } from '../core/types.js'
 import { windowsOf } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { staleWorkflow, workflows } from '../scheduler/github-actions.js'
+import { staleWorkflow, suffixOf, workflows } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
 import {
   gitRoot,
+  leftoverWarning,
   type RepoSecrets,
   reasonOf,
   repoSecrets,
   secretNames,
-  secretsOf,
   staleSchedules,
 } from './schedule.js'
 
@@ -141,15 +141,17 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
   const files = await workflows(root)
   if (!files.length) return []
-  const listed = await repoSecrets(run, (_, e) => {
-    throw e
-  }).catch((e: Error) => e)
-  if (listed instanceof Error)
+  const failures: string[] = []
+  const listed = await repoSecrets(run, (list, e) =>
+    failures.push(`${list === 'repo' ? "the repo's" : "the organization's"}: ${reasonOf(e)}`),
+  )
+  // Without either list, a missing name can't be told from an unlisted one.
+  if (failures.length)
     return [
       {
         status: 'warn',
         what: 'workflow secrets',
-        detail: `couldn't list them: ${reasonOf(listed)}`,
+        detail: `couldn't list ${failures.join('; ')}`,
       },
     ]
   const checks: Check[] = []
@@ -159,7 +161,7 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
     try {
       const jobs = parse(await readFile(file, 'utf8'))?.jobs
       for (const job of Object.values<Job>(jobs ?? {}))
-        checks.push(...(await jobSecretChecks(what, job, root, listed, run)))
+        checks.push(...(await jobSecretChecks(what, job, listed, run)))
     } catch (e) {
       checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
     }
@@ -171,22 +173,23 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
 interface Job {
   environment?: string | { name?: string }
   env?: Record<string, unknown>
-  steps?: { with?: { config?: string } }[]
 }
 
+/** A job's secrets; in an environment, the person's own are the names with their suffix. */
 async function jobSecretChecks(
   what: string,
   job: Job,
-  root: string,
   listed: RepoSecrets,
   run: Exec,
 ): Promise<Check[]> {
   const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name
-  const names = new Set(
-    Object.values(job.env ?? {}).flatMap((value) =>
-      [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
+  const names = [
+    ...new Set(
+      Object.values(job.env ?? {}).flatMap((value) =>
+        [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
+      ),
     ),
-  )
+  ]
   const own = environment
     ? await secretNames(run, environment).catch((e: Error) => e)
     : new Set<string>()
@@ -198,20 +201,12 @@ async function jobSecretChecks(
         detail: `couldn't list environment ${environment}'s secrets: ${reasonOf(own)}`,
       },
     ]
-  const config = job.steps?.find((step) => step.with?.config)?.with?.config
-  const personal =
-    environment && config
-      ? await loadConfig(join(root, config))
-          .then((c) => secretsOf(c).personal)
-          .catch(() => undefined)
-      : undefined
-  const shared = (name: string) => listed.repo.has(name) || listed.org.has(name)
-  const missing = [...names].filter((name) => !own.has(name) && !shared(name))
-  // Without the person's config, every missing name goes to the environment, where a shared one is merely redundant.
-  const toEnvironment = environment
-    ? missing.filter((name) => personal?.includes(name) ?? true)
-    : []
-  const toRepo = missing.filter((name) => !toEnvironment.includes(name))
+  const personal = (name: string) => !!environment && name.endsWith(suffixOf(environment))
+  const missing = names.filter(
+    (name) => !own.has(name) && !listed.repo.has(name) && !listed.org.has(name),
+  )
+  const toEnvironment = missing.filter(personal)
+  const toRepo = missing.filter((name) => !personal(name))
   const checks: Check[] = [
     missing.length
       ? {
@@ -224,7 +219,10 @@ async function jobSecretChecks(
             .filter(Boolean)
             .join('; '),
         }
-      : { status: 'ok', what, detail: `secrets found: ${names.size}` },
+      : { status: 'ok', what, detail: `secrets found: ${names.length}` },
   ]
+  const leftovers = names.filter((name) => personal(name) && listed.repo.has(name))
+  if (environment && leftovers.length)
+    checks.push({ status: 'warn', what, detail: leftoverWarning(environment, leftovers) })
   return checks
 }

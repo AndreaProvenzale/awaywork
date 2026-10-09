@@ -355,10 +355,7 @@ async function installForPerson(
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
   const leftovers = personal.map(suffixed).filter((name) => listed.repo.has(name))
-  if (environment && leftovers.length)
-    console.log(
-      `Warning: ${leftovers.join(', ')} are still repository secrets, readable from any branch, and fill in for any that environment ${person} lacks. Once it has its own, delete them: ${leftovers.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
-    )
+  if (environment && leftovers.length) console.log(`Warning: ${leftoverWarning(person, leftovers)}`)
   const own: Layer = environment
     ? {
         label: (name) => `${suffixed(name)} in environment ${person}`,
@@ -513,7 +510,6 @@ export const reasonOf = (e: unknown) =>
     .at(-1)
 
 export interface RepoSecrets {
-  owner: string
   repo: Set<string>
   /** The org's secrets shared with the repo. */
   org: Set<string>
@@ -543,31 +539,30 @@ export async function repoSecrets(
     failed('repo', e)
     return new Set<string>()
   })
-  const { owner, org } = await orgSecrets(run).catch((e) => {
+  const org = await orgSecrets(run).catch((e) => {
     failed('org', e)
-    return { owner: '', org: new Set<string>() }
+    return new Set<string>()
   })
-  return { owner, repo, org }
+  return { repo, org }
 }
 
-/** The repo owner's login and, for an org, its secrets shared with the repo; throws when gh can't. */
-async function orgSecrets(run: Exec): Promise<{ owner: string; org: Set<string> }> {
-  const owner = JSON.parse(
-    await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner | {login, type}']),
-  )
+/** The org's secrets shared with the repo, none for a user's repo; throws when gh can't. */
+async function orgSecrets(run: Exec): Promise<Set<string>> {
+  const type = await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner.type'])
   // Only an org-owned repo has org secrets; listing a user's fails.
-  const org =
-    owner.type === 'Organization'
-      ? await ghNames(run, [
-          'api',
-          '--paginate',
-          'repos/{owner}/{repo}/actions/organization-secrets',
-          '--jq',
-          '.secrets[].name',
-        ])
-      : new Set<string>()
-  return { owner: owner.login, org }
+  if (type !== 'Organization') return new Set<string>()
+  return ghNames(run, [
+    'api',
+    '--paginate',
+    'repos/{owner}/{repo}/actions/organization-secrets',
+    '--jq',
+    '.secrets[].name',
+  ])
 }
+
+/** Why a fallback's suffixed repository secrets still matter once the person has an environment. */
+export const leftoverWarning = (person: string, names: string[]) =>
+  `${names.join(', ')} are still repository secrets, readable from any branch, and fill in for any that environment ${person} lacks. Once it has its own, delete them: ${names.map((name) => `\`gh secret delete ${name}\``).join(', ')}`
 
 /** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
 async function syncRepo(
