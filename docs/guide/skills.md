@@ -46,6 +46,12 @@ else opened, `.night-shift/skills/` is the author's and is skipped. To use a
 skill from `~/.claude/skills/`, link it into yours:
 `ln -s ~/.claude/skills/<name> ~/.config/night-shift/skills/<name>`.
 
+On a runner, yours are the copy `schedule install --with github-actions`
+puts next to the repo's config: `.night-shift/skills/`, or, in a
+[shared control repo](./scheduling.md#shared-control-repo), each
+person's own `.night-shift/<person>/skills/`. A teammate's skills never
+reach your units.
+
 Claude Code gets the unit's skills as a plugin outside the clone
 (`--plugin-dir`), named `nightshift:<name>`, so they are callable on
 every unit, someone else's PR included. Codex gets them copied into the

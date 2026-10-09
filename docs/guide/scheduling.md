@@ -45,7 +45,12 @@ stays on does that.
 ## In GitHub Actions
 
 Run it on a hosted runner instead, from a repo of your own (a private
-"night-shift" repo works well):
+"night-shift" repo works well). On a team, each person keeping their own
+control repo is the simple setup: it needs nothing beyond this section,
+and nobody's token sits in a repo a teammate can write to. Teammates can
+point theirs at the same repos, since each run only sees its own
+token's `@me`. To share one repo instead, see
+[Shared control repo](#shared-control-repo).
 
 ```sh
 cd my-night-shift-repo
@@ -118,3 +123,109 @@ PR doesn't wait for your review: the rule pushes again every night its
 |---|---|---|
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it about every 8 days, and an ephemeral runner can't save the refreshed file, so the secret eventually goes stale. Prefer running Codex locally. |
+
+## Shared control repo
+
+One repo for a team, with a workflow and a GitHub Environment per
+person. Each person runs, inside it:
+
+```sh
+nightshift schedule install --with github-actions --as alice
+```
+
+The name is lowercase letters, digits and `-`. Once the repo holds a
+`night-shift-<person>.yml` or a `.night-shift/<person>/config.yml`,
+install without `--as` refuses and suggests `--as` with your GitHub
+login. It writes:
+
+| File | What |
+|---|---|
+| `.github/workflows/night-shift-alice.yml` | The same workflow, named `night-shift-alice`, with `concurrency: night-shift-alice` and `environment: { name: "alice", deployment: false }` |
+| `.night-shift/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
+| `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
+
+First it reads the environment `alice`. One that exists is kept as it
+is, with a warning when any branch can deploy to it, or when its branch
+policies don't name the default branch, so the job can't use it: fix
+either in the repo's Settings > Environments. Otherwise install creates
+it and lets only the default branch deploy to it. `deployment: false`
+keeps the job out of the Deployments panel. The token still decides who
+"me" is: the config names no one, and each job spends its own person's
+subscription quota.
+
+### Secrets come in layers
+
+A job sees its environment's secrets, the repo's and the org secrets
+shared with the repo. For the same name, the lowest wins: environment
+over repository over organization.
+
+| Layer | Holds | Install |
+|---|---|---|
+| Organization | Company-wide values, like a notify webhook | never sets it |
+| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or, in an org's repo, the org has it; when it can't list them, it says why and offers each |
+| Environment `alice` | Alice's own: `GH_TOKEN`, the providers' and the sources' `secrets` | offers each |
+
+Alice's own secrets are suffixed, `__` then the name upper-cased with
+`-` as `_`, and the workflow maps each back:
+
+```yaml
+GH_TOKEN: ${{ secrets.GH_TOKEN__ALICE }}
+```
+
+So a repo or org `GH_TOKEN`, say yours from when the repo was your solo
+control repo, never stands in for hers. A name in both groups counts as
+personal. To keep a shared value to yourself, set it under its own name
+in your environment: it wins. As for one repo per person, the values
+come from your env and are never printed.
+
+Once you have an environment, a fallback's suffixed repository secrets
+(below) still reach any branch and fill in for any your environment
+lacks: install warns about each and how to delete it.
+
+### Without an environment
+
+Creating an environment needs admin access to the repo, and GitHub's
+docs reserve environment secrets on private repos for paid plans. In a
+personal account's repo, a collaborator with write access can set
+repository secrets, so the fallback works for them; in an
+organization's repo GitHub's docs ask for admin access, so an admin may
+have to set them. When GitHub refuses (HTTP 403, 404 or 422), install
+says why and asks before falling back, defaulting to no: the workflow
+loses its `environment:` line, and the same suffixed names become
+repository secrets. The API's answer decides, never a guess at
+the plan. Any other error, like a network one, stops install, and so
+does a refusal once `night-shift-alice.yml` uses the environment: it is
+never downgraded.
+
+The fallback has no branch limit: any branch's workflow can read every
+teammate's token.
+
+### Risks
+
+- **Write access reads every secret.** Anyone who can push a branch can
+  push a workflow that prints the repo's secrets. Each environment's
+  default-branch limit is the guard, so protect the default branch:
+  required reviews, no direct pushes. The fallback has no such guard.
+- **The shared layers have no guard.** Repository and org secrets reach
+  any branch, so keep there only what the whole team may see.
+  Subscription tokens go in personal environments.
+- **The repo holds teammates' credentials.** Each person sets their own,
+  but keeping them together is the team's choice; one control repo per
+  person avoids it.
+
+### Sync, status and remove
+
+Running the same command again is the sync, as for one repo per person:
+`night-shift-alice.yml`, `.night-shift/alice/config.yml` and
+`.night-shift/alice/skills/` are each replaced only after a diff and a
+yes.
+
+`schedule status` lists every `.github/workflows/night-shift*.yml`.
+`schedule remove --as alice` deletes `night-shift-alice.yml` only: the
+environment and its secrets stay until
+`gh api -X DELETE repos/{owner}/{repo}/environments/alice`, and a
+fallback's suffixed repository secrets, readable from any branch, until
+`gh secret delete` for each, which it lists.
+
+The action fails before anything else when `GH_TOKEN` is empty, which is
+how a job whose secrets didn't reach it shows.
