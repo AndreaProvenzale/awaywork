@@ -309,17 +309,13 @@ async function installForPerson(
   { personal, shared }: { personal: string[]; shared: string[] },
   io: Io,
 ): Promise<void> {
-  const environment = await createEnvironment(io.run, person).then(
-    () => true,
-    (e) => {
-      console.log(`Couldn't create the environment ${person}: ${reasonOf(e)}`)
-      console.log(
-        `So ${person}'s secrets are repository secrets ending in ${suffixOf(person)}, with no branch limit: any branch's workflow can read every teammate's token`,
-      )
-      return false
-    },
-  )
   const file = workflowOf(person)
+  const current = await readFile(join(root, file), 'utf8').catch(() => '')
+  const environment = await environmentFor(io, person, current)
+  if (environment === undefined) {
+    process.exitCode = 1
+    return
+  }
   const config = configOf(person)
   const text = workflow({
     ...base,
@@ -379,9 +375,59 @@ async function installForPerson(
   if (unsetPersonal.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
 }
 
-/** Creates the person's environment, deployable from the default branch only; throws when GitHub refuses. */
-async function createEnvironment(run: Exec, person: string): Promise<void> {
+/**
+ * Whether the person's secrets live in their environment: true once it is there, false when
+ * GitHub refuses it and the person takes the fallback, undefined to stop.
+ */
+async function environmentFor(
+  io: Io,
+  person: string,
+  current: string,
+): Promise<boolean | undefined> {
+  try {
+    await ensureEnvironment(io.run, person)
+    return true
+  } catch (e) {
+    if (!refused(e)) {
+      console.error(`Couldn't set up the environment ${person}: ${reasonOf(e)}`)
+      return undefined
+    }
+    if (hasEnvironment(current)) {
+      console.error(
+        `${workflowOf(person)} uses the environment ${person}, which GitHub now refuses: ${reasonOf(e)}. Changed nothing`,
+      )
+      return undefined
+    }
+    console.log(`GitHub refuses the environment ${person}: ${reasonOf(e)}`)
+    const fallback = await io.ask.confirm(
+      `Keep ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
+      false,
+    )
+    if (fallback) return false
+    console.error('Changed nothing')
+    return undefined
+  }
+}
+
+/**
+ * Keeps the person's environment as it is, or creates it deployable from the default branch
+ * only. Throws gh's error when GitHub refuses it; a failure once it exists is no refusal.
+ */
+async function ensureEnvironment(run: Exec, person: string): Promise<void> {
   const environment = `repos/{owner}/{repo}/environments/${person}`
+  const policy = await run('gh', ['api', environment, '--jq', '.deployment_branch_policy']).catch(
+    (e) => {
+      if (statusOf(e) !== '404') throw e
+    },
+  )
+  if (policy !== undefined) {
+    console.log(`Kept the environment ${person}`)
+    if (policy === 'null')
+      console.log(
+        `Warning: any branch can deploy to environment ${person}, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > ${person}`,
+      )
+    return
+  }
   await run('gh', [
     'api',
     '-X',
@@ -392,29 +438,46 @@ async function createEnvironment(run: Exec, person: string): Promise<void> {
     '-F',
     'deployment_branch_policy[custom_branch_policies]=true',
   ])
-  const branch = await run('gh', [
-    'repo',
-    'view',
-    '--json',
-    'defaultBranchRef',
-    '--jq',
-    '.defaultBranchRef.name',
-  ])
-  const policies = `${environment}/deployment-branch-policies`
-  const allowed = await run('gh', [
-    'api',
-    '--paginate',
-    policies,
-    '--jq',
-    '.branch_policies[].name',
-  ])
-  if (!allowed.split('\n').includes(branch))
-    await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+  try {
+    const branch = await run('gh', [
+      'repo',
+      'view',
+      '--json',
+      'defaultBranchRef',
+      '--jq',
+      '.defaultBranchRef.name',
+    ])
+    const policies = `${environment}/deployment-branch-policies`
+    const allowed = await run('gh', [
+      'api',
+      '--paginate',
+      policies,
+      '--jq',
+      '.branch_policies[].name',
+    ])
+    if (!allowed.split('\n').includes(branch))
+      await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+  } catch (e) {
+    throw new Error(`it exists, but limiting it to the default branch failed: ${reasonOf(e)}`)
+  }
+  console.log(`Created the environment ${person}, deployable from the default branch only`)
 }
+
+/** The HTTP status gh reports for a failed call, e.g. "403". */
+const statusOf = (e: unknown) =>
+  /\(HTTP (\d+)\)/.exec(String((e as { stderr?: string }).stderr ?? ''))?.[1]
+
+/** GitHub saying no, rather than a network error or a gh that isn't logged in. */
+const refused = (e: unknown) => ['403', '404', '422'].includes(statusOf(e) ?? '')
 
 /** gh's own last line of a failed call, e.g. "gh: Must have admin rights to Repository. (HTTP 403)". */
 const reasonOf = (e: unknown) =>
-  (String((e as { stderr?: string }).stderr ?? '').trim() || String(e)).split('\n').at(-1)
+  (
+    String((e as { stderr?: string }).stderr ?? '').trim() ||
+    (e instanceof Error ? e.message : String(e))
+  )
+    .split('\n')
+    .at(-1)
 
 /** The lines a gh call prints, none when it fails. */
 const ghLines = (run: Exec, args: string[]) =>

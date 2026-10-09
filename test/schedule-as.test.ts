@@ -8,7 +8,7 @@ import { parse } from 'yaml'
 import { installWorkflow, removePersonWorkflow, secretsOf, syncCopy } from '../src/cli/schedule.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
-import { scriptedAsk } from './fakes/ask.js'
+import { initial, scriptedAsk } from './fakes/ask.js'
 
 const CONFIG = `providers: [claude]
 sources: { github: { repos: [acme/api] }, asana: { workspace: "100" } }
@@ -29,10 +29,30 @@ afterEach(() => {
   process.exitCode = undefined
 })
 
+interface Gh {
+  /** What GET on the environment prints when it exists. */
+  environment?: string
+  /** gh's stderr when a call fails: the environment's GET, its PUT, a policy's POST. */
+  get?: string
+  put?: string
+  post?: string
+  /** The PUT fails as for someone without admin rights. */
+  refuse?: boolean
+  policies?: string
+  repo?: string
+  org?: string
+  failSet?: boolean
+}
+
+const fail = (stderr: string): never => {
+  throw Object.assign(new Error('Command failed with exit code 1'), { stderr })
+}
+
+const FALLBACK =
+  /^Keep alice's secrets as repository secrets ending in __ALICE, which any branch's workflow can read\?$/
+
 /** A control repo and a user's config with one skill, answered by a fake gh. */
-async function setup(
-  gh: { refuse?: boolean; policies?: string; repo?: string; org?: string; failSet?: boolean } = {},
-) {
+async function setup(gh: Gh = {}) {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
   const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
   const config = join(home, 'config.yml')
@@ -44,10 +64,11 @@ async function setup(
     const call = [cmd, ...args].join(' ')
     calls.push(call)
     if (cmd === 'git') return root
-    if (args[2] === 'PUT' && gh.refuse)
-      throw Object.assign(new Error('Command failed with exit code 1'), {
-        stderr: 'gh: Must have admin rights to Repository. (HTTP 403)',
-      })
+    if (call === 'gh api repos/{owner}/{repo}/environments/alice --jq .deployment_branch_policy')
+      return gh.get ? fail(gh.get) : (gh.environment ?? fail('gh: Not Found (HTTP 404)'))
+    if (args[2] === 'PUT' && gh.put) fail(gh.put)
+    if (args[2] === 'PUT' && gh.refuse) fail('gh: Must have admin rights to Repository. (HTTP 403)')
+    if (args[2] === 'POST' && gh.post) fail(gh.post)
     if (args[0] === 'repo') return 'main'
     if (call.endsWith('deployment-branch-policies --jq .branch_policies[].name'))
       return gh.policies ?? ''
@@ -133,6 +154,7 @@ it('names where a failed secret was going, in either mode', async () => {
   const notes = async (gh: { refuse?: boolean }, prompt: RegExp) => {
     const { config, io } = await setup({ ...gh, failSet: true })
     const run = io([
+      ...(gh.refuse ? [[FALLBACK, true] as [RegExp, unknown]] : []),
       [prompt, true],
       [/SLACK_WEBHOOK/, false],
     ])
@@ -159,13 +181,13 @@ it('adds no branch policy the environment already has', async () => {
 it('falls back to suffixed repository secrets when GitHub refuses the environment', async () => {
   const { calls, set, install, job } = await setup({ refuse: true })
   await install([
+    [FALLBACK, true],
     [/^Set the GH_TOKEN__ALICE repository secret from your env\?$/, true],
     [/^Set the SLACK_WEBHOOK repository secret, shared/, false],
   ])
   expect(out[0]).toBe(
-    "Couldn't create the environment alice: gh: Must have admin rights to Repository. (HTTP 403)",
+    'GitHub refuses the environment alice: gh: Must have admin rights to Repository. (HTTP 403)',
   )
-  expect(out[1]).toMatch(/no branch limit: any branch's workflow can read every teammate's token/)
   expect(calls.filter((c) => c.includes('branch-policies'))).toEqual([])
   const { environment, env } = await job()
   expect(environment).toBeUndefined()
@@ -178,6 +200,74 @@ it('falls back to suffixed repository secrets when GitHub refuses the environmen
     '  add these suffixed repository secrets: CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
   )
   expect(out).toContain('  add these repository secrets: SLACK_WEBHOOK, HOOK_TOKEN, MCP_DB_URL')
+})
+
+it('stops when the person declines the fallback, which a refused read also leads to', async () => {
+  const { root, set, install } = await setup({ get: 'gh: Resource not accessible (HTTP 403)' })
+  await install([[FALLBACK, initial]])
+  expect(process.exitCode).toBe(1)
+  expect(existsSync(join(root, '.github/workflows/night-shift-alice.yml'))).toBe(false)
+  expect(set).toEqual([])
+})
+
+it('stops without asking on an error that is no refusal', async () => {
+  for (const [gh, reason] of [
+    [{ get: 'gh: To get started with GitHub CLI, please run:  gh auth login' }, ''],
+    [{ put: 'error connecting to api.github.com' }, ''],
+    [
+      { post: 'gh: Must have admin rights to Repository. (HTTP 403)' },
+      'it exists, but limiting it to the default branch failed: ',
+    ],
+  ] as [Gh, string][]) {
+    out = []
+    const { root, install } = await setup(gh)
+    await install()
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([`Couldn't set up the environment alice: ${reason}${Object.values(gh)[0]}`])
+    expect(existsSync(join(root, '.github/workflows/night-shift-alice.yml'))).toBe(false)
+    process.exitCode = undefined
+  }
+})
+
+it('never turns a workflow with an environment into the fallback', async () => {
+  const gh: Gh = {}
+  const { root, install } = await setup(gh)
+  await install([
+    [/GH_TOKEN/, false],
+    [/SLACK_WEBHOOK/, false],
+  ])
+  const before = await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')
+  gh.get = 'gh: Must have admin rights to Repository. (HTTP 403)'
+  out = []
+  await install()
+  expect(process.exitCode).toBe(1)
+  expect(out).toEqual([
+    '.github/workflows/night-shift-alice.yml uses the environment alice, which GitHub now refuses: gh: Must have admin rights to Repository. (HTTP 403). Changed nothing',
+  ])
+  expect(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).toBe(before)
+})
+
+it('keeps an existing environment as it is, warning when any branch can deploy to it', async () => {
+  for (const environment of [
+    '{"custom_branch_policies":true,"protected_branches":false}',
+    'null',
+  ]) {
+    out = []
+    const { calls, install } = await setup({ environment })
+    await install([
+      [/GH_TOKEN/, false],
+      [/SLACK_WEBHOOK/, false],
+    ])
+    expect(calls.filter((c) => /-X (PUT|POST)|repo view/.test(c))).toEqual([])
+    expect(out).toContain('Kept the environment alice')
+    expect(out.filter((line) => line.startsWith('Warning: '))).toEqual(
+      environment === 'null'
+        ? [
+            "Warning: any branch can deploy to environment alice, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > alice",
+          ]
+        : [],
+    )
+  }
 })
 
 it('syncs again: unchanged says so, changed shows the diff and asks, declined keeps', async () => {
@@ -256,6 +346,7 @@ it("removes only the person's workflow and says how to delete their environment"
 it('names the suffixed repository secrets a removed fallback workflow leaves', async () => {
   const { root, install } = await setup({ refuse: true })
   await install([
+    [FALLBACK, true],
     [/GH_TOKEN__ALICE/, false],
     [/SLACK_WEBHOOK/, false],
   ])
