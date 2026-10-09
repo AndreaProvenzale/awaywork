@@ -133,7 +133,10 @@ person. Each person runs, inside it:
 nightshift schedule install --with github-actions --as alice
 ```
 
-The name is lowercase letters, digits and `-`. It writes:
+The name is lowercase letters, digits and `-`. Once the repo holds a
+`night-shift-<person>.yml` or a `.night-shift/<person>/config.yml`,
+install without `--as` refuses and suggests `--as` with your GitHub
+login. It writes:
 
 | File | What |
 |---|---|
@@ -141,9 +144,11 @@ The name is lowercase letters, digits and `-`. It writes:
 | `.night-shift/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
 | `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
 
-First it creates the environment `alice` and lets only the default
-branch deploy to it. `deployment: false` keeps the job out of the
-Deployments panel. The token still decides who "me" is: the config names
+First it reads the environment `alice`. One that exists is kept as it
+is, with a warning when any branch can deploy to it: limit it to the
+default branch in the repo's Settings > Environments. Otherwise install
+creates it and lets only the default branch deploy to it.
+`deployment: false` keeps the job out of the Deployments panel. The token still decides who "me" is: the config names
 no one, and each job spends its own person's subscription quota.
 
 ### Secrets come in layers
@@ -155,27 +160,32 @@ over repository over organization.
 | Layer | Holds | Install |
 |---|---|---|
 | Organization | Company-wide values, like a notify webhook | never sets it |
-| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or the org has it |
+| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or the org has it; when it can't list them, it says why and offers each |
 | Environment `alice` | Alice's own: `GH_TOKEN`, the providers' and the sources' `secrets` | offers each |
 
-A name in both groups counts as personal. To keep a shared value to
-yourself, set it in your environment: it wins. As for one repo per
-person, the values come from your env and are never printed.
-
-### Without an environment
-
-Creating an environment needs admin access to the repo, and GitHub's
-docs reserve environment secrets on private repos for paid plans. When
-GitHub refuses, install says why and falls back: the workflow has no
-`environment:` and reads each personal secret from a suffixed repository
-secret, `__` then the name upper-cased with `-` as `_`:
+Alice's own secrets are suffixed, `__` then the name upper-cased with
+`-` as `_`, and the workflow maps each back:
 
 ```yaml
 GH_TOKEN: ${{ secrets.GH_TOKEN__ALICE }}
 ```
 
-Shared secrets keep their names. The API's answer decides, never a
-guess at the plan.
+So a repo or org `GH_TOKEN`, say yours from when the repo was your solo
+control repo, never stands in for hers. A name in both groups counts as
+personal. To keep a shared value to yourself, set it under its own name
+in your environment: it wins. As for one repo per person, the values
+come from your env and are never printed.
+
+### Without an environment
+
+Creating an environment needs admin access to the repo, and GitHub's
+docs reserve environment secrets on private repos for paid plans. When
+GitHub refuses (HTTP 403, 404 or 422), install says why and asks before
+falling back, defaulting to no: the workflow loses its `environment:`
+line, and the same suffixed names become repository secrets. The API's
+answer decides, never a guess at the plan. Any other error, like a
+network one, stops install, and so does a refusal once
+`night-shift-alice.yml` uses the environment: it is never downgraded.
 
 The fallback has no branch limit: any branch's workflow can read every
 teammate's token.
@@ -186,14 +196,6 @@ teammate's token.
   push a workflow that prints the repo's secrets. Each environment's
   default-branch limit is the guard, so protect the default branch:
   required reviews, no direct pushes. The fallback has no such guard.
-- **A repo or org secret stands in for a personal one.** In
-  environment mode the workflow reads `secrets.GH_TOKEN`: if Alice's
-  environment lacks it and the repo still holds yours, as when the repo
-  started as your solo control repo, her job runs as you, pushing as you
-  and spending your quota. Install warns about personal names it finds
-  at repo or org level. Set each in every person's environment, then
-  delete the repo's (`gh secret delete GH_TOKEN`), or the org's in its
-  settings.
 - **The shared layers have no guard.** Repository and org secrets reach
   any branch, so keep there only what the whole team may see.
   Subscription tokens go in personal environments.
