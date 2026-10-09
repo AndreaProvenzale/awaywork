@@ -1,14 +1,16 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub Actions expressions
 import { existsSync, lstatSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { copySkillsToRepo, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
+import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
 import { cron, cronLine, cronLines, parseCronLines } from '../src/scheduler/cron.js'
 import {
+  REPO_CONFIG,
+  REPO_SKILLS,
   removeWorkflow,
   staleWorkflow,
   WORKFLOW,
@@ -19,7 +21,7 @@ import {
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
-import { scriptedAsk } from './fakes/ask.js'
+import { initial, scriptedAsk } from './fakes/ask.js'
 
 const schedule: Schedule = {
   command: [
@@ -221,16 +223,17 @@ const alice: Workflow = {
   secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'SLACK_WEBHOOK'],
   setup: ['make tracker'],
 }
+const personal = ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']
 
-it("writes a person's workflow with their environment, concurrency and config folder", () => {
-  const job = parse(workflow({ ...alice, person: { name: 'alice' } }))
+it("writes a person's workflow with their environment, suffixed secrets, concurrency and config folder", () => {
+  const job = parse(workflow({ ...alice, person: { name: 'alice', personal, environment: true } }))
   expect(job.name).toBe('night-shift-alice')
   expect(job.concurrency).toBe('night-shift-alice')
   expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
   expect(job.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
-    GH_TOKEN: '${{ secrets.GH_TOKEN }}',
-    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+    GH_TOKEN: '${{ secrets.GH_TOKEN__ALICE }}',
+    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
   expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/alice')
@@ -239,7 +242,11 @@ it("writes a person's workflow with their environment, concurrency and config fo
 
 it('keeps a person named like a YAML number a string', () => {
   const job = parse(
-    workflow({ ...alice, config: '.night-shift/007/config.yml', person: { name: '007' } }),
+    workflow({
+      ...alice,
+      config: '.night-shift/007/config.yml',
+      person: { name: '007', personal, environment: true },
+    }),
   )
   expect(job.name).toBe('night-shift-007')
   expect(job.concurrency).toBe('night-shift-007')
@@ -248,8 +255,8 @@ it('keeps a person named like a YAML number a string', () => {
   expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/007/config.yml')
 })
 
-it("reads a person's own secrets from suffixed repository secrets without an environment", () => {
-  const person = { name: 'mary-jo', suffixed: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] }
+it('differs without an environment only by its environment line', () => {
+  const person = { name: 'mary-jo', personal, environment: false }
   const job = parse(workflow({ ...alice, person }))
   expect(job.name).toBe('night-shift-mary-jo')
   expect(job.concurrency).toBe('night-shift-mary-jo')
@@ -260,6 +267,10 @@ it("reads a person's own secrets from suffixed repository secrets without an env
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
+  const env = workflow({ ...alice, person: { ...person, environment: true } }).split('\n')
+  expect(workflow({ ...alice, person }).split('\n')).toEqual(
+    env.filter((line) => !line.includes('environment:')),
+  )
 })
 
 it("lists every night-shift workflow in a repo and removes only one person's", async () => {
@@ -290,23 +301,120 @@ it('removes only its own workflow from a repo', async () => {
   expect(await removeWorkflow(root)).toBe(false)
 })
 
-it("copies the user's skills beside the repo config, linked ones as files, unless the repo has its own", async () => {
-  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
-  const skills = join(home, 'skills')
-  expect(await copySkillsToRepo(skills, root)).toBeUndefined()
-  await mkdir(join(home, 'elsewhere/linked'), { recursive: true })
-  await writeFile(join(home, 'elsewhere/linked/SKILL.md'), 'LINKED')
-  await mkdir(join(skills, 'mine'), { recursive: true })
-  await writeFile(join(skills, 'mine/SKILL.md'), 'MINE')
-  await symlink(join(home, 'elsewhere/linked'), join(skills, 'linked'))
-  expect(await copySkillsToRepo(skills, root)).toBe('copied')
-  expect(await readFile(join(root, '.night-shift/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
-  expect(lstatSync(join(root, '.night-shift/skills/linked')).isSymbolicLink()).toBe(false)
-  expect(await readFile(join(root, '.night-shift/skills/linked/SKILL.md'), 'utf8')).toBe('LINKED')
-  await writeFile(join(skills, 'mine/SKILL.md'), 'CHANGED')
-  expect(await copySkillsToRepo(skills, root)).toBe('kept')
-  expect(await readFile(join(root, '.night-shift/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
+describe('schedule install --with github-actions', () => {
+  let out: string[]
+  beforeEach(() => {
+    out = []
+    vi.spyOn(console, 'log').mockImplementation((line) => void out.push(String(line)))
+    vi.spyOn(console, 'error').mockImplementation((line) => void out.push(String(line)))
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    process.exitCode = undefined
+  })
+
+  const CONFIG = 'providers: [claude]\nsources: { github: { repos: [acme/api] } }\n'
+
+  /** A repo and a user's config with a skill of its own and one linked from elsewhere. */
+  async function setup() {
+    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+    const config = join(home, 'config.yml')
+    await writeFile(config, CONFIG)
+    await mkdir(join(home, 'elsewhere/linked'), { recursive: true })
+    await writeFile(join(home, 'elsewhere/linked/SKILL.md'), 'LINKED')
+    await mkdir(join(home, 'skills/mine'), { recursive: true })
+    await writeFile(join(home, 'skills/mine/SKILL.md'), 'MINE')
+    await symlink(join(home, 'elsewhere/linked'), join(home, 'skills/linked'))
+    const install = async (script: [RegExp, unknown][] = []) => {
+      out = []
+      const ask = scriptedAsk(script)
+      await installWorkflow(config, undefined, {
+        run: async () => root,
+        ask,
+        env: {},
+        setSecret: async () => {},
+      })
+      expect(process.exitCode).toBeUndefined()
+    }
+    return { root, home, config, install }
+  }
+
+  it("writes the workflow and copies the config and skills, linked ones as files; again, it's up to date", async () => {
+    const { root, install } = await setup()
+    await install()
+    expect(parse(await readFile(join(root, WORKFLOW), 'utf8')).name).toBe('night-shift')
+    expect(await readFile(join(root, REPO_CONFIG), 'utf8')).toBe(CONFIG)
+    expect(await readFile(join(root, REPO_SKILLS, 'mine/SKILL.md'), 'utf8')).toBe('MINE')
+    expect(lstatSync(join(root, REPO_SKILLS, 'linked')).isSymbolicLink()).toBe(false)
+    expect(await readFile(join(root, REPO_SKILLS, 'linked/SKILL.md'), 'utf8')).toBe('LINKED')
+    expect(out).toContain(
+      '  commit .github/workflows/night-shift.yml, .night-shift/config.yml and .night-shift/skills',
+    )
+    await install()
+    expect(out.slice(0, 3)).toEqual([
+      '.github/workflows/night-shift.yml is up to date',
+      '.night-shift/config.yml is up to date',
+      '.night-shift/skills is up to date',
+    ])
+    expect(out.join('\n')).not.toMatch(/commit/)
+  })
+
+  it('shows what changed and asks; declined keeps, accepted replaces the skills folder as a whole', async () => {
+    const { root, home, config, install } = await setup()
+    await install()
+    await mkdir(join(root, REPO_SKILLS, 'team'), { recursive: true })
+    await writeFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'TEAM')
+    await writeFile(config, `${CONFIG}skills: [mine]\n`)
+    await writeFile(join(home, 'skills/mine/SKILL.md'), 'CHANGED')
+    await install([
+      [/^Overwrite \.night-shift\/config\.yml/, false],
+      [/^Replace all of \.night-shift\/skills/, initial],
+    ])
+    expect(out).toContain('Kept .night-shift/skills')
+    expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
+    await install([
+      [/^Overwrite \.night-shift\/config\.yml with the changes above\?$/, false],
+      [
+        /^Replace all of \.night-shift\/skills with the changes above, deleting anything only the repo's copy has\?$/,
+        true,
+      ],
+    ])
+    expect(out.join('\n')).toContain('+skills: [mine]')
+    expect(out.join('\n')).toContain('-TEAM')
+    expect(out).toContain('Kept .night-shift/config.yml')
+    expect(await readFile(join(root, REPO_CONFIG), 'utf8')).toBe(CONFIG)
+    expect(await readFile(join(root, REPO_SKILLS, 'mine/SKILL.md'), 'utf8')).toBe('CHANGED')
+    expect(existsSync(join(root, REPO_SKILLS, 'team'))).toBe(false)
+    expect(out).toContain('  commit .night-shift/skills')
+  })
+
+  it('asks before overwriting a hand-edited workflow', async () => {
+    const { root, install } = await setup()
+    await install()
+    const generated = await readFile(join(root, WORKFLOW), 'utf8')
+    await writeFile(join(root, WORKFLOW), `${generated}# mine\n`)
+    await install([
+      [/^Overwrite \.github\/workflows\/night-shift\.yml with the changes above\?$/, false],
+    ])
+    expect(out).toContain('Kept .github/workflows/night-shift.yml')
+    expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(`${generated}# mine\n`)
+    await install([[/^Overwrite \.github\/workflows\/night-shift\.yml/, initial]])
+    expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(generated)
+    expect(out).toContain('  commit .github/workflows/night-shift.yml')
+  })
+
+  it("leaves the repo's skills alone when the user has none, a stray file aside", async () => {
+    const { root, home, install } = await setup()
+    await rm(join(home, 'skills'), { recursive: true })
+    await mkdir(join(home, 'skills'))
+    await writeFile(join(home, 'skills/.DS_Store'), '')
+    await mkdir(join(root, REPO_SKILLS, 'team'), { recursive: true })
+    await writeFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'TEAM')
+    await install()
+    expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
+    expect(out).toContain('  commit .github/workflows/night-shift.yml and .night-shift/config.yml')
+  })
 })
 
 it('warns about a workflow that runs its steps inline instead of calling the action', async () => {

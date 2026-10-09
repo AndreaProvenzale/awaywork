@@ -22,7 +22,7 @@ runs:
       shell: bash
       run: |
         if [ -z "$GH_TOKEN" ]; then
-          echo "::error::GH_TOKEN is empty: the job's secrets didn't reach it. Set GH_TOKEN in the job's environment or as a repository secret."
+          echo "::error::GH_TOKEN is empty: the job's secrets didn't reach it. Set the GH_TOKEN repository secret, or GH_TOKEN__<PERSON> in a shared control repo."
           exit 1
         fi
     # Preinstalled SDKs the runner doesn't need, about 20 GB (lessons.md, "Runners die quietly").

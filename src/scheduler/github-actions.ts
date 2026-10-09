@@ -1,14 +1,16 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
 
 export const WORKFLOW = '.github/workflows/night-shift.yml'
 export const REPO_CONFIG = '.night-shift/config.yml'
+export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 export const workflowOf = (person?: string) =>
   person ? `.github/workflows/night-shift-${person}.yml` : WORKFLOW
 export const configOf = (person: string) => `.night-shift/${person}/config.yml`
-/** A person's repository secrets, without an environment, are `<NAME>__<PERSON>`. */
+/** A person's own secrets are `<NAME>__<PERSON>`, so no shared secret can stand in for one. */
 export const suffixOf = (person: string) => `__${person.toUpperCase().replaceAll('-', '_')}`
 const ACTION_REPO = 'AndreaProvenzale/night-shift'
 const ACTION = `${ACTION_REPO}@v1`
@@ -28,8 +30,10 @@ export interface Workflow {
   /** A person's workflow in a shared control repo. */
   person?: {
     name: string
-    /** Their secrets read from suffixed repository secrets; unset when they have an environment. */
-    suffixed?: string[]
+    /** Their own secrets, read suffixed. */
+    personal: string[]
+    /** Whether their secrets are in their environment rather than the repo's. */
+    environment: boolean
   }
 }
 
@@ -37,7 +41,7 @@ export interface Workflow {
 export function workflow(w: Workflow): string {
   const person = w.person
   const from = (name: string) =>
-    person?.suffixed?.includes(name) ? name + suffixOf(person.name) : name
+    person?.personal.includes(name) ? name + suffixOf(person.name) : name
   const env = [
     `TZ: ${w.timezone}`,
     ...w.secrets.map((name) => `${name}: \${{ secrets.${from(name)} }}`),
@@ -64,7 +68,7 @@ concurrency: ${name}
 jobs:
   night:
     runs-on: ubuntu-latest
-${person && !person.suffixed ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
+${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
 ${env.map((line) => `      ${line}`).join('\n')}
     steps:
       - uses: actions/checkout@v5
@@ -106,5 +110,5 @@ export async function workflows(root: string): Promise<string[]> {
 export async function staleWorkflow(root: string): Promise<string | undefined> {
   const file = join(root, WORKFLOW)
   if (!existsSync(file) || (await readFile(file, 'utf8')).includes(`uses: ${ACTION_REPO}@`)) return
-  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule remove\`, then \`nightshift schedule install --with github-actions\``
+  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule install --with github-actions\` again to update it`
 }

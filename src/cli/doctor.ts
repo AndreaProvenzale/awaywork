@@ -1,11 +1,12 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
-import { envFile } from '../config/paths.js'
+import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { hasSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { windowsOf } from '../core/window.js'
@@ -23,7 +24,6 @@ import {
   secretNames,
   secretsOf,
   staleSchedules,
-  standInWarning,
 } from './schedule.js'
 
 export interface Check {
@@ -72,6 +72,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (mode === 0o600) report('ok', envFile, 'mode 600')
     else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
   }
+  const defaultSkills = skillsDirIn(configDir)
+  if (dirname(resolve(path)) !== configDir && (await hasSkills(defaultSkills)))
+    report(
+      'warn',
+      defaultSkills,
+      `not used with this config; move or link its skills to ${skillsDirOf(path)}`,
+    )
 
   let config: Config
   try {
@@ -134,7 +141,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
   const files = await workflows(root)
   if (!files.length) return []
-  const listed = await repoSecrets(run).catch((e: Error) => e)
+  const listed = await repoSecrets(run, (_, e) => {
+    throw e
+  }).catch((e: Error) => e)
   if (listed instanceof Error)
     return [
       {
@@ -217,8 +226,5 @@ async function jobSecretChecks(
         }
       : { status: 'ok', what, detail: `secrets found: ${names.size}` },
   ]
-  const standIns = (personal ?? []).filter((name) => !own.has(name) && shared(name))
-  if (environment && standIns.length)
-    checks.push({ status: 'warn', what, detail: standInWarning(environment, standIns, listed) })
   return checks
 }

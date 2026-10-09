@@ -1,12 +1,13 @@
-import { existsSync, realpathSync } from 'node:fs'
-import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
-import { configPath, loadConfig } from '../config/load.js'
+import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { hasSkills } from '../config/skills.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
@@ -111,18 +112,19 @@ export async function removePersonWorkflow(person: string, run: Exec = exec): Pr
     return
   }
   console.log(`Removed ${file}`)
+  if (hasEnvironment(text))
+    return console.log(
+      `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
+    )
   const suffixed = [
     ...new Set(text.match(new RegExp(`\\w+${suffixOf(person)}(?=\\s*}})`, 'g')) ?? []),
   ]
-  if (suffixed.length)
-    console.log(
-      `Its suffixed repository secrets stay, readable from any branch: ${suffixed.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
-    )
-  else
-    console.log(
-      `The environment ${person} and its secrets stay; \`gh api -X DELETE repos/{owner}/{repo}/environments/${person}\` deletes them`,
-    )
+  console.log(
+    `Its suffixed repository secrets stay, readable from any branch: ${suffixed.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
+  )
 }
+
+const hasEnvironment = (workflow: string) => /^\s+environment:/m.test(workflow)
 
 const localSchedulers = () => schedulers(homedir(), exec)
 
@@ -244,7 +246,10 @@ export function secretsOf(config: Config): { personal: string[]; shared: string[
   return { personal: [...personal], shared: [...shared] }
 }
 
-/** Writes the workflow and the repo's copy of the config; with `person`, theirs in a shared control repo. */
+/**
+ * Writes the workflow and copies the config and skills into the repo, with `person` theirs in a
+ * shared control repo; run again, it syncs them.
+ */
 export async function installWorkflow(
   config: string | undefined,
   person?: string,
@@ -263,9 +268,11 @@ export async function installWorkflow(
     process.exitCode = 1
     return
   }
-  const file = join(root, WORKFLOW)
-  if (!person && existsSync(file)) {
-    console.error(`${WORKFLOW} already exists; \`nightshift schedule remove\` deletes it`)
+  if (!person && (await isShared(root))) {
+    const login = await io.run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')
+    console.error(
+      `This is a shared control repo, with a workflow per person; run \`nightshift schedule install --with ${GITHUB_ACTIONS} --as ${login.toLowerCase() || '<name>'}\``,
+    )
     process.exitCode = 1
     return
   }
@@ -285,26 +292,14 @@ export async function installWorkflow(
     const { personal, shared } = secretsOf(loaded)
     if (person) return await installForPerson(root, path, person, base, { personal, shared }, io)
     const secrets = [...personal, ...shared]
-    await mkdir(dirname(file), { recursive: true })
-    await writeFile(file, workflow({ ...base, config: REPO_CONFIG, secrets }))
-    console.log(`Wrote ${WORKFLOW}`)
-    const repoConfig = join(root, REPO_CONFIG)
-    if (existsSync(repoConfig)) console.log(`Kept the existing ${REPO_CONFIG}`)
-    else {
-      await mkdir(dirname(repoConfig), { recursive: true })
-      await copyFile(path, repoConfig)
-      console.log(`Copied ${path} to ${REPO_CONFIG}`)
-    }
-    const skills = await copySkillsToRepo(skillsDirOf(path), root)
-    if (skills === 'kept') console.log(`Kept the existing ${REPO_SKILLS}`)
-    if (skills === 'copied') console.log(`Copied ${skillsDirOf(path)} to ${REPO_SKILLS}`)
+    const text = workflow({ ...base, config: REPO_CONFIG, secrets })
+    const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, io.ask)
     const unset = await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
       if (e instanceof Cancelled) return secrets
       throw e
     })
-    console.log('Before the first night:')
-    const commit = [WORKFLOW, REPO_CONFIG, ...(skills === 'copied' ? [REPO_SKILLS] : [])]
-    console.log(`  commit ${commit.slice(0, -1).join(', ')} and ${commit.at(-1)}`)
+    if (changed.length || unset.length) console.log('Before the first night:')
+    if (changed.length) console.log(`  commit ${and(changed)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
@@ -312,6 +307,15 @@ export async function installWorkflow(
     console.error('Cancelled')
     process.exitCode = 1
   }
+}
+
+/** Whether the repo holds a person's workflow or config, as a shared control repo does. */
+async function isShared(root: string): Promise<boolean> {
+  const people = await readdir(join(root, dirname(REPO_CONFIG))).catch(() => [])
+  return (
+    (await workflows(root)).some((file) => file !== join(root, WORKFLOW)) ||
+    people.some((name) => existsSync(join(root, configOf(name))))
+  )
 }
 
 async function installForPerson(
@@ -322,51 +326,43 @@ async function installForPerson(
   { personal, shared }: { personal: string[]; shared: string[] },
   io: Io,
 ): Promise<void> {
-  const environment = await createEnvironment(io.run, person).then(
-    () => true,
-    (e) => {
-      console.log(`Couldn't create the environment ${person}: ${reasonOf(e)}`)
-      console.log(
-        `So ${person}'s secrets are repository secrets ending in ${suffixOf(person)}, with no branch limit: any branch's workflow can read every teammate's token`,
-      )
-      return false
-    },
-  )
   const file = workflowOf(person)
+  const current = await readFile(join(root, file), 'utf8').catch(() => '')
+  const environment = await environmentFor(io, person, current)
+  if (environment === undefined) {
+    process.exitCode = 1
+    return
+  }
   const config = configOf(person)
-  await mkdir(dirname(join(root, file)), { recursive: true })
-  await writeFile(
-    join(root, file),
-    workflow({
-      ...base,
-      config,
-      secrets: [...personal, ...shared],
-      person: { name: person, suffixed: environment ? undefined : personal },
-    }),
-  )
-  console.log(`Wrote ${file}`)
-  await syncCopy(path, root, config, io.ask)
-  const skills = skillsDirOf(path)
-  if ((await readdir(skills).catch(() => [])).length)
-    await syncCopy(skills, root, skillsDirOf(config), io.ask)
+  const text = workflow({
+    ...base,
+    config,
+    secrets: [...personal, ...shared],
+    person: { name: person, personal, environment },
+  })
+  const changed = await syncRepo(root, file, text, path, config, io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const listed = await repoSecrets(io.run).catch(() => ({
-    owner: '',
-    repo: new Set<string>(),
-    org: new Set<string>(),
-  }))
+  const listed = await repoSecrets(io.run, (list, e) =>
+    console.log(
+      list === 'repo'
+        ? `Couldn't list the repo's secrets (${reasonOf(e)}), so every shared one is offered`
+        : `Couldn't list the organization's secrets (${reasonOf(e)}), so one set there is offered anyway`,
+    ),
+  )
   const existing = new Set([...listed.repo, ...listed.org])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
     console.log(`Already repository or organization secrets: ${present.join(', ')}`)
-  const standIns = personal.filter((name) => existing.has(name))
-  if (environment && standIns.length)
-    console.log(`Warning: ${standInWarning(person, standIns, listed)}`)
+  const leftovers = personal.map(suffixed).filter((name) => listed.repo.has(name))
+  if (environment && leftovers.length)
+    console.log(
+      `Warning: ${leftovers.join(', ')} are still repository secrets, readable from any branch, and fill in for any that environment ${person} lacks. Once it has its own, delete them: ${leftovers.map((name) => `\`gh secret delete ${name}\``).join(', ')}`,
+    )
   const own: Layer = environment
     ? {
-        label: (name) => `${name} in environment ${person}`,
-        args: (name) => [name, '--env', person],
+        label: (name) => `${suffixed(name)} in environment ${person}`,
+        args: (name) => [suffixed(name), '--env', person],
       }
     : {
         label: (name) => `the ${suffixed(name)} repository secret`,
@@ -384,21 +380,85 @@ async function installForPerson(
   } catch (e) {
     if (!(e instanceof Cancelled)) throw e
   }
-  console.log('Before the first night:')
-  console.log(`  commit ${file} and ${dirname(config)}/`)
+  if (changed.length || unsetPersonal.length || unsetShared.length)
+    console.log('Before the first night:')
+  if (changed.length) console.log(`  commit ${and(changed)}`)
   if (unsetPersonal.length)
     console.log(
       environment
-        ? `  add these secrets to environment ${person}: ${unsetPersonal.join(', ')}`
+        ? `  add these secrets to environment ${person}: ${unsetPersonal.map(suffixed).join(', ')}`
         : `  add these suffixed repository secrets: ${unsetPersonal.map(suffixed).join(', ')}`,
     )
   if (unsetShared.length) console.log(`  add these repository secrets: ${unsetShared.join(', ')}`)
   if (unsetPersonal.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
 }
 
-/** Creates the person's environment, deployable from the default branch only; throws when GitHub refuses. */
-async function createEnvironment(run: Exec, person: string): Promise<void> {
+/**
+ * Whether the person's secrets live in their environment: true once it is there, false when
+ * GitHub refuses it and the person takes the fallback, undefined to stop.
+ */
+async function environmentFor(
+  io: Io,
+  person: string,
+  current: string,
+): Promise<boolean | undefined> {
+  try {
+    await ensureEnvironment(io.run, person)
+    return true
+  } catch (e) {
+    if (!refused(e)) {
+      console.error(`Couldn't set up the environment ${person}: ${reasonOf(e)}`)
+      return undefined
+    }
+    if (hasEnvironment(current)) {
+      console.error(
+        `${workflowOf(person)} uses the environment ${person}, which GitHub now refuses: ${reasonOf(e)}. Changed nothing`,
+      )
+      return undefined
+    }
+    console.log(`GitHub refuses the environment ${person}: ${reasonOf(e)}`)
+    const fallback = await io.ask.confirm(
+      `Store ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
+      false,
+    )
+    if (fallback) return false
+    console.error('Changed nothing')
+    return undefined
+  }
+}
+
+/**
+ * Keeps the person's environment as it is, or creates it deployable from the default branch
+ * only. Throws gh's error when GitHub refuses it; a failure once it exists is no refusal.
+ */
+async function ensureEnvironment(run: Exec, person: string): Promise<void> {
   const environment = `repos/{owner}/{repo}/environments/${person}`
+  const policy = await run('gh', ['api', environment, '--jq', '.deployment_branch_policy']).catch(
+    (e) => {
+      if (statusOf(e) !== '404') throw e
+    },
+  )
+  const policies = `${environment}/deployment-branch-policies`
+  if (policy !== undefined) {
+    console.log(`Kept the environment ${person}`)
+    if (policy === 'null')
+      console.log(
+        `Warning: any branch can deploy to environment ${person}, so any branch's workflow can read its secrets; limit it to the default branch in the repo's Settings > Environments > ${person}`,
+      )
+    else if (JSON.parse(policy).custom_branch_policies)
+      await defaultBranchIn(run, policies).then(
+        ({ branch, names }) => {
+          // A pattern may cover the default branch; matching GitHub's globs isn't worth a warning.
+          if (!names.includes(branch) && !names.some((name) => name.includes('*')))
+            console.log(
+              `Warning: environment ${person}'s branch policies don't name the default branch, so ${person}'s job can't use it; add it in the repo's Settings > Environments > ${person}`,
+            )
+        },
+        (e) =>
+          console.log(`Couldn't check environment ${person}'s branch policies: ${reasonOf(e)}`),
+      )
+    return
+  }
   await run('gh', [
     'api',
     '-X',
@@ -409,6 +469,21 @@ async function createEnvironment(run: Exec, person: string): Promise<void> {
     '-F',
     'deployment_branch_policy[custom_branch_policies]=true',
   ])
+  try {
+    const { branch, names } = await defaultBranchIn(run, policies)
+    if (!names.includes(branch))
+      await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+  } catch (e) {
+    throw new Error(`it exists, but limiting it to the default branch failed: ${reasonOf(e)}`)
+  }
+  console.log(`Created the environment ${person}, deployable from the default branch only`)
+}
+
+/** The repo's default branch, and the names of an environment's branch policies. */
+async function defaultBranchIn(
+  run: Exec,
+  policies: string,
+): Promise<{ branch: string; names: string[] }> {
   const branch = await run('gh', [
     'repo',
     'view',
@@ -417,23 +492,26 @@ async function createEnvironment(run: Exec, person: string): Promise<void> {
     '--jq',
     '.defaultBranchRef.name',
   ])
-  const policies = `${environment}/deployment-branch-policies`
-  const allowed = await run('gh', [
-    'api',
-    '--paginate',
-    policies,
-    '--jq',
-    '.branch_policies[].name',
-  ])
-  if (!allowed.split('\n').includes(branch))
-    await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+  const names = await run('gh', ['api', '--paginate', policies, '--jq', '.branch_policies[].name'])
+  return { branch, names: names.split('\n') }
 }
+
+/** The HTTP status gh reports for a failed call, e.g. "403". */
+const statusOf = (e: unknown) =>
+  /\(HTTP (\d+)\)/.exec(String((e as { stderr?: string }).stderr ?? ''))?.[1]
+
+/** GitHub saying no, rather than a network error or a gh that isn't logged in. */
+const refused = (e: unknown) => ['403', '404', '422'].includes(statusOf(e) ?? '')
 
 /** gh's own last line of a failed call, e.g. "gh: Must have admin rights to Repository. (HTTP 403)". */
 export const reasonOf = (e: unknown) =>
-  (String((e as { stderr?: string }).stderr ?? '').trim() || String(e)).split('\n').at(-1)
+  (
+    String((e as { stderr?: string }).stderr ?? '').trim() ||
+    (e instanceof Error ? e.message : String(e))
+  )
+    .split('\n')
+    .at(-1)
 
-/** The secrets every workflow of the current repo reads besides an environment's. */
 export interface RepoSecrets {
   owner: string
   repo: Set<string>
@@ -456,8 +534,24 @@ export const secretNames = (run: Exec, environment?: string) =>
     '.[].name',
   ])
 
-/** Lists the current repo's secrets and its org's; throws when gh can't. */
-export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
+/** Lists the current repo's secrets and its org's; a list gh can't get is empty, after `failed` hears why. */
+export async function repoSecrets(
+  run: Exec,
+  failed: (list: 'repo' | 'org', e: unknown) => void,
+): Promise<RepoSecrets> {
+  const repo = await secretNames(run).catch((e) => {
+    failed('repo', e)
+    return new Set<string>()
+  })
+  const { owner, org } = await orgSecrets(run).catch((e) => {
+    failed('org', e)
+    return { owner: '', org: new Set<string>() }
+  })
+  return { owner, repo, org }
+}
+
+/** The repo owner's login and, for an org, its secrets shared with the repo; throws when gh can't. */
+async function orgSecrets(run: Exec): Promise<{ owner: string; org: Set<string> }> {
   const owner = JSON.parse(
     await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner | {login, type}']),
   )
@@ -472,66 +566,84 @@ export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
           '.secrets[].name',
         ])
       : new Set<string>()
-  return { owner: owner.login, repo: await secretNames(run), org }
+  return { owner: owner.login, org }
 }
 
-/** Why these personal names, set at repo or org level, put someone else's values in a person's job. */
-export function standInWarning(person: string, names: string[], at: RepoSecrets): string {
-  const deletions = [
-    ...names.filter((name) => at.repo.has(name)).map((name) => `\`gh secret delete ${name}\``),
-    ...names
-      .filter((name) => at.org.has(name))
-      .map(
-        (name) =>
-          `\`gh secret delete ${name} --org ${at.owner}\` (an org secret, or in the org's settings)`,
-      ),
-  ]
-  return `${names.join(', ')} already exist at repo or org level and stand in for any that environment ${person} lacks, so ${person}'s job would run with someone else's. Set them in the environment, and once each person has their own, delete the shared ones: ${deletions.join(', ')}`
+/** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
+async function syncRepo(
+  root: string,
+  file: string,
+  text: string,
+  path: string,
+  config: string,
+  ask: Ask,
+): Promise<string[]> {
+  const changed = []
+  if (await sync(root, file, ask, (staged) => writeFile(staged, text))) {
+    console.log(`Wrote ${file}`)
+    changed.push(file)
+  }
+  if (await syncCopy(path, root, config, ask)) changed.push(config)
+  const skills = skillsDirOf(path)
+  if ((await hasSkills(skills)) && (await syncCopy(skills, root, skillsDirOf(config), ask)))
+    changed.push(skillsDirOf(config))
+  return changed
 }
+
+const and = (names: string[]) =>
+  [names.slice(0, -1).join(', '), names.at(-1)].filter(Boolean).join(' and ')
 
 /**
  * Copies `from`, a file or a folder replaced as a whole, to `to` under the repo root; when the
- * repo's copy differs, only after showing the diff and asking.
+ * repo's copy differs, only after showing the diff and asking. True when it copied.
  */
-export async function syncCopy(from: string, root: string, to: string, ask: Ask): Promise<void> {
+export async function syncCopy(from: string, root: string, to: string, ask: Ask): Promise<boolean> {
+  // A linked skill is committed as its files, not as a link to this machine.
+  const stage = (staged: string) => cp(from, staged, { recursive: true, dereference: true })
+  const copied = await sync(root, to, ask, stage)
+  if (copied) console.log(`Copied ${from} to ${to}`)
+  return copied
+}
+
+/** Puts what `stage` writes at `to` under the repo root, as syncCopy does; true when it did. */
+async function sync(
+  root: string,
+  to: string,
+  ask: Ask,
+  stage: (staged: string) => Promise<void>,
+): Promise<boolean> {
   const tmp = await mkdtemp(join(tmpdir(), 'nightshift-'))
   try {
     const staged = join(tmp, basename(to))
-    // A linked skill is committed as its files, not as a link to this machine.
-    await cp(from, staged, { recursive: true, dereference: true })
+    await stage(staged)
     const target = join(root, to)
     if (existsSync(target)) {
       const diff = await execa(bin('git'), ['diff', '--no-index', '--', target, staged], {
         reject: false,
       })
-      if (diff.exitCode === 0) return console.log(`${to} is up to date`)
-      if (diff.exitCode !== 1) throw new Error(diff.stderr)
+      if (diff.exitCode === 0) {
+        console.log(`${to} is up to date`)
+        return false
+      }
+      if (diff.exitCode !== 1) throw new ConfigError(to, [`git diff failed: ${diff.stderr.trim()}`])
       console.log(diff.stdout)
-      if (!(await ask.confirm(`Overwrite ${to} with the changes above?`)))
-        return console.log(`Kept ${to}`)
+      const folder = statSync(staged).isDirectory()
+      const question = folder
+        ? `Replace all of ${to} with the changes above, deleting anything only the repo's copy has?`
+        : `Overwrite ${to} with the changes above?`
+      // Enter after a long diff must not delete a skill only the repo has.
+      if (!(await ask.confirm(question, !folder))) {
+        console.log(`Kept ${to}`)
+        return false
+      }
       await rm(target, { recursive: true })
     }
     await mkdir(dirname(target), { recursive: true })
     await cp(staged, target, { recursive: true })
-    console.log(`Copied ${from} to ${to}`)
+    return true
   } finally {
     await rm(tmp, { recursive: true })
   }
-}
-
-const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
-
-/** Copies the user's skills, if any, beside the repo's config, unless the repo has its own there. */
-export async function copySkillsToRepo(
-  skills: string,
-  root: string,
-): Promise<'copied' | 'kept' | undefined> {
-  if ((await readdir(skills).catch(() => [])).length === 0) return undefined
-  const to = join(root, REPO_SKILLS)
-  if (existsSync(to)) return 'kept'
-  // A linked skill is committed as its files, not as a link to this machine.
-  await cp(skills, to, { recursive: true, dereference: true })
-  return 'copied'
 }
 
 /** Where `gh secret set` puts a secret, as a prompt names it and as its args. */

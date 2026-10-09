@@ -12,7 +12,16 @@ vi.mock('../src/forge/gh.js', () => ({
   },
 }))
 
+vi.mock('../src/config/paths.js', async (importOriginal) => {
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const configDir = mkdtempSync(join(tmpdir(), 'nightshift-config-'))
+  return { ...(await importOriginal<object>()), configDir }
+})
+
 const { runChecks, workflowSecretChecks } = await import('../src/cli/doctor.js')
+const { configDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
   it('reports each check as { status, what, detail } and stops at a missing config', async () => {
@@ -30,6 +39,22 @@ describe('doctor', () => {
     expect(checks).toContainEqual({ status: 'FAIL', what: 'gh', detail: 'not found on PATH' })
     expect(checks).toContainEqual({ status: 'FAIL', what: 'gh login', detail: 'GH_TOKEN unset' })
     expect(checks.at(-1)).toEqual({ status: 'FAIL', what: path, detail: 'file not found' })
+  })
+
+  it("warns that the default skills aren't used with a config elsewhere, without parsing them", async () => {
+    await mkdir(join(configDir, 'skills/mine'), { recursive: true })
+    await writeFile(
+      join(configDir, 'skills/mine/SKILL.md'),
+      '---\ndescription: Fix CI: retry\n---\n',
+    )
+    const elsewhere = await mkdtemp(join(tmpdir(), 'nightshift-elsewhere-'))
+    expect(await runChecks(join(elsewhere, 'config.yml'), () => {})).toContainEqual({
+      status: 'warn',
+      what: join(configDir, 'skills'),
+      detail: `not used with this config; move or link its skills to ${join(elsewhere, 'skills')}`,
+    })
+    const own = await runChecks(join(configDir, 'config.yml'), () => {})
+    expect(own.map((c) => c.what)).not.toContain(join(configDir, 'skills'))
   })
 })
 
@@ -59,7 +84,7 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
         packages: [],
         secrets: SECRETS,
         setup: [],
-        person: { name: 'alice', suffixed },
+        person: { name: 'alice', personal: SECRETS.slice(0, 2), environment: !suffixed },
       }),
     )
     const calls: string[] = []
@@ -79,45 +104,13 @@ notify: { command: "true", secrets: [SLACK_WEBHOOK] }
 
   it('finds every secret in the environment, the repo or the org', async () => {
     const { checks, calls } = await check({
-      env: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'],
+      env: ['GH_TOKEN__ALICE', 'CLAUDE_CODE_OAUTH_TOKEN__ALICE'],
       org: ['SLACK_WEBHOOK'],
     })
     expect(calls).toContain('gh secret list --env alice --json name --jq .[].name')
     expect(checks).toEqual([
       { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
     ])
-  })
-
-  it('names each missing secret and where it goes', async () => {
-    const { checks } = await check({ env: ['GH_TOKEN'] })
-    expect(checks).toEqual([
-      {
-        status: 'FAIL',
-        what: 'night-shift-alice.yml',
-        detail:
-          'add CLAUDE_CODE_OAUTH_TOKEN to environment alice; add SLACK_WEBHOOK to the repository secrets',
-      },
-    ])
-  })
-
-  it("warns when a repo or org secret stands in for one the person's environment lacks", async () => {
-    const { checks } = await check({
-      env: [],
-      repo: ['GH_TOKEN', 'SLACK_WEBHOOK'],
-      org: ['CLAUDE_CODE_OAUTH_TOKEN'],
-    })
-    expect(checks[0]).toEqual({
-      status: 'ok',
-      what: 'night-shift-alice.yml',
-      detail: 'secrets found: 3',
-    })
-    expect(checks[1]?.status).toBe('warn')
-    expect(checks[1]?.detail).toMatch(
-      /^GH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN already exist at repo or org level and stand in for any that environment alice lacks/,
-    )
-    expect(checks[1]?.detail).toMatch(
-      /`gh secret delete GH_TOKEN`, `gh secret delete CLAUDE_CODE_OAUTH_TOKEN --org acme`/,
-    )
   })
 
   it('checks suffixed names at repo level without an environment', async () => {

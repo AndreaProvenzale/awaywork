@@ -61,14 +61,13 @@ This writes `.github/workflows/night-shift.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
 manual run; `nightshift schedule remove` deletes it. It also copies your
 config to `.night-shift/config.yml` and your
-[skills](./skills.md#where-skills-come-from) to `.night-shift/skills/` next
-to it, each unless the repo has one, so your personal skills reach the
+[skills](./skills.md#where-skills-come-from), if any, to
+`.night-shift/skills/` next to it, so your personal skills reach the
 runner. It offers to set each repository secret the config needs whose
 value is in your environment or `~/.config/night-shift/env`, with
 `gh secret set`. Values are never printed. Then:
 
-1. Commit the workflow, `.night-shift/config.yml` and, if copied,
-   `.night-shift/skills/`.
+1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
    `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
@@ -88,7 +87,9 @@ which installs the nightshift-agent version you generated it with. The
 action frees about 20 GB of preinstalled SDKs first (runners otherwise
 die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
-`v1`; to upgrade night-shift itself, raise `version` in the workflow.
+`v1`; to upgrade night-shift itself, raise `version` in the workflow, or
+upgrade nightshift-agent and run `schedule install --with github-actions`
+again.
 The action gets the job's env, secrets included: if you'd rather not
 follow `v1`, pin it to a commit SHA of this repo instead. A
 [custom source](./custom-sources.md)'s `setup` runs as a step of its own
@@ -97,9 +98,16 @@ before the action, in the config's folder.
 The workflow works once night-shift has a stable release on npm, which
 also creates the `v1` tag.
 
+Run `schedule install --with github-actions` again after changing your
+config or skills, or to refresh the workflow. Of the workflow, config and
+skills, one that matches is up to date; one that differs shows the diff
+and is replaced only if you say yes, so a hand edit never goes silently.
+The skills folder is replaced as a whole: a skill only the repo has, say a
+teammate's, goes with it. With no skills of your own, the repo's stay.
+
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you
-`schedule remove` and `schedule install --with github-actions` again.
+run `schedule install --with github-actions` again.
 
 A stdio [MCP server](./configuration.md#mcp-servers) runs on the runner,
 so its `command` must be there: `npx` and `node` are, other binaries
@@ -128,7 +136,10 @@ person. Each person runs, inside it:
 nightshift schedule install --with github-actions --as alice
 ```
 
-The name is lowercase letters, digits and `-`. It writes:
+The name is lowercase letters, digits and `-`. Once the repo holds a
+`night-shift-<person>.yml` or a `.night-shift/<person>/config.yml`,
+install without `--as` refuses and suggests `--as` with your GitHub
+login. It writes:
 
 | File | What |
 |---|---|
@@ -136,10 +147,14 @@ The name is lowercase letters, digits and `-`. It writes:
 | `.night-shift/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
 | `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
 
-First it creates the environment `alice` and lets only the default
-branch deploy to it. `deployment: false` keeps the job out of the
-Deployments panel. The token still decides who "me" is: the config names
-no one, and each job spends its own person's subscription quota.
+First it reads the environment `alice`. One that exists is kept as it
+is, with a warning when any branch can deploy to it, or when its branch
+policies don't name the default branch, so the job can't use it: fix
+either in the repo's Settings > Environments. Otherwise install creates
+it and lets only the default branch deploy to it. `deployment: false`
+keeps the job out of the Deployments panel. The token still decides who
+"me" is: the config names no one, and each job spends its own person's
+subscription quota.
 
 ### Secrets come in layers
 
@@ -150,27 +165,40 @@ over repository over organization.
 | Layer | Holds | Install |
 |---|---|---|
 | Organization | Company-wide values, like a notify webhook | never sets it |
-| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or the org has it |
+| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or, in an org's repo, the org has it; when it can't list them, it says why and offers each |
 | Environment `alice` | Alice's own: `GH_TOKEN`, the providers' and the sources' `secrets` | offers each |
 
-A name in both groups counts as personal. To keep a shared value to
-yourself, set it in your environment: it wins. As for one repo per
-person, the values come from your env and are never printed.
-
-### Without an environment
-
-Creating an environment needs admin access to the repo, and GitHub's
-docs reserve environment secrets on private repos for paid plans. When
-GitHub refuses, install says why and falls back: the workflow has no
-`environment:` and reads each personal secret from a suffixed repository
-secret, `__` then the name upper-cased with `-` as `_`:
+Alice's own secrets are suffixed, `__` then the name upper-cased with
+`-` as `_`, and the workflow maps each back:
 
 ```yaml
 GH_TOKEN: ${{ secrets.GH_TOKEN__ALICE }}
 ```
 
-Shared secrets keep their names. The API's answer decides, never a
-guess at the plan.
+So a repo or org `GH_TOKEN`, say yours from when the repo was your solo
+control repo, never stands in for hers. A name in both groups counts as
+personal. To keep a shared value to yourself, set it under its own name
+in your environment: it wins. As for one repo per person, the values
+come from your env and are never printed.
+
+Once you have an environment, a fallback's suffixed repository secrets
+(below) still reach any branch and fill in for any your environment
+lacks: install warns about each and how to delete it.
+
+### Without an environment
+
+Creating an environment needs admin access to the repo, and GitHub's
+docs reserve environment secrets on private repos for paid plans. In a
+personal account's repo, a collaborator with write access can set
+repository secrets, so the fallback works for them; in an
+organization's repo GitHub's docs ask for admin access, so an admin may
+have to set them. When GitHub refuses (HTTP 403, 404 or 422), install
+says why and asks before falling back, defaulting to no: the workflow
+loses its `environment:` line, and the same suffixed names become
+repository secrets. The API's answer decides, never a guess at
+the plan. Any other error, like a network one, stops install, and so
+does a refusal once `night-shift-alice.yml` uses the environment: it is
+never downgraded.
 
 The fallback has no branch limit: any branch's workflow can read every
 teammate's token.
@@ -181,14 +209,6 @@ teammate's token.
   push a workflow that prints the repo's secrets. Each environment's
   default-branch limit is the guard, so protect the default branch:
   required reviews, no direct pushes. The fallback has no such guard.
-- **A repo or org secret stands in for a personal one.** In
-  environment mode the workflow reads `secrets.GH_TOKEN`: if Alice's
-  environment lacks it and the repo still holds yours, as when the repo
-  started as your solo control repo, her job runs as you, pushing as you
-  and spending your quota. Install warns about personal names it finds
-  at repo or org level, and `doctor` about those an environment lacks.
-  Set each in every person's environment, then delete the repo's
-  (`gh secret delete GH_TOKEN`), or the org's in its settings.
 - **The shared layers have no guard.** Repository and org secrets reach
   any branch, so keep there only what the whole team may see.
   Subscription tokens go in personal environments.
@@ -198,12 +218,10 @@ teammate's token.
 
 ### Sync, status and remove
 
-Running the same command again is the sync. It rewrites the workflow,
-and when `.night-shift/alice/config.yml` or `.night-shift/alice/skills/`
-differs from yours, it shows the diff and asks before replacing it. The
-skills folder is replaced as a whole, so a skill you deleted goes too,
-as long as you have one left: with none, install leaves the folder
-alone.
+Running the same command again is the sync, as for one repo per person:
+`night-shift-alice.yml`, `.night-shift/alice/config.yml` and
+`.night-shift/alice/skills/` are each replaced only after a diff and a
+yes.
 
 `schedule status` lists every `.github/workflows/night-shift*.yml`.
 `schedule remove --as alice` deletes `night-shift-alice.yml` only: the

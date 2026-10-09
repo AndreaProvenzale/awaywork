@@ -40,7 +40,8 @@ wins, in:
 3. the built-ins.
 
 A config outside `~/.config/night-shift/` (`--config`, `NIGHT_SHIFT_CONFIG`)
-uses its own `skills/`, so move or link the folder there. On a PR someone
+uses its own `skills/`, so move or link the folder there; `doctor` warns
+while `~/.config/night-shift/skills/` holds skills it doesn't use. On a PR someone
 else opened, `.night-shift/skills/` is the author's and is skipped. To use a
 skill from `~/.claude/skills/`, link it into yours:
 `ln -s ~/.claude/skills/<name> ~/.config/night-shift/skills/<name>`.
