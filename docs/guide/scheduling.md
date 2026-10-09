@@ -185,12 +185,14 @@ lacks: install warns about each and how to delete it.
 ### Without an environment
 
 Creating an environment needs admin access to the repo, and GitHub's
-docs reserve environment secrets on private repos for paid plans. Setting
-repository secrets needs only write access, so the fallback works for
-anyone who can push. When GitHub refuses (HTTP 403, 404 or 422),
-install says why and asks before falling back, defaulting to no: the
-workflow loses its `environment:` line, and the same suffixed names
-become repository secrets. The API's answer decides, never a guess at
+docs reserve environment secrets on private repos for paid plans. In a
+personal account's repo, a collaborator with write access can set
+repository secrets, so the fallback works for them; in an
+organization's repo GitHub's docs ask for admin access, so an admin may
+have to set them. When GitHub refuses (HTTP 403, 404 or 422), install
+says why and asks before falling back, defaulting to no: the workflow
+loses its `environment:` line, and the same suffixed names become
+repository secrets. The API's answer decides, never a guess at
 the plan. Any other error, like a network one, stops install, and so
 does a refusal once `night-shift-alice.yml` uses the environment: it is
 never downgraded.

@@ -44,6 +44,8 @@ interface Gh {
   repo?: string
   /** The org's secrets; the repo is a user's when unset. */
   org?: string
+  /** gh's stderr when listing the org's secrets of an org's repo fails. */
+  orgList?: string
   failSet?: boolean
   /** gh's stderr when listing the repo's secrets fails. */
   list?: string
@@ -78,7 +80,10 @@ async function setup(gh: Gh = {}) {
     if (call === 'gh api repos/{owner}/{repo} --jq .owner | {login, type}')
       return gh.owner
         ? fail(gh.owner)
-        : JSON.stringify({ login: 'acme', type: gh.org === undefined ? 'User' : 'Organization' })
+        : JSON.stringify({
+            login: 'acme',
+            type: gh.org === undefined && !gh.orgList ? 'User' : 'Organization',
+          })
     if (args[2] === 'POST' && gh.post) fail(gh.post)
     if (call === 'gh api user --jq .login')
       return gh.login ?? fail('gh: Bad credentials (HTTP 401)')
@@ -87,7 +92,7 @@ async function setup(gh: Gh = {}) {
       return gh.policies ?? ''
     if (args[1] === 'list') return gh.list ? fail(gh.list) : (gh.repo ?? 'DATABASE_URL\nOTHER')
     if (call.includes('organization-secrets'))
-      return gh.org ?? fail('gh: Validation Failed (HTTP 422)')
+      return gh.orgList ? fail(gh.orgList) : (gh.org ?? fail('gh: Validation Failed (HTTP 422)'))
     return ''
   }
   const set: string[][] = []
@@ -180,22 +185,35 @@ it('names where a failed secret was going, in either mode', async () => {
   ])
 })
 
-it("says why it couldn't list secrets, and offers the shared ones it would have skipped", async () => {
+it("says why it couldn't list the repo's secrets, and offers the shared ones it would have skipped", async () => {
+  const { set, install } = await setup({ list: 'error connecting to api.github.com' })
+  await install([
+    [/GH_TOKEN/, false],
+    [/SLACK_WEBHOOK/, false],
+    [/^Set the DATABASE_URL repository secret, shared/, true],
+  ])
+  expect(out).toContain(
+    "Couldn't list the repo's secrets (error connecting to api.github.com), so every shared one is offered",
+  )
+  expect(set).toEqual([['DATABASE_URL', 'db_secret']])
+})
+
+it("keeps the repo's secrets when the org's can't be listed", async () => {
   for (const gh of [
-    { list: 'error connecting to api.github.com' },
     { owner: 'error connecting to api.github.com' },
+    { orgList: 'error connecting to api.github.com' },
   ]) {
     out = []
-    const { set, install } = await setup(gh)
+    const { install } = await setup({ ...gh, repo: 'GH_TOKEN__ALICE\nDATABASE_URL' })
     await install([
       [/GH_TOKEN/, false],
       [/SLACK_WEBHOOK/, false],
-      [/^Set the DATABASE_URL repository secret, shared/, true],
     ])
     expect(out).toContain(
-      "Couldn't list the repo's secrets (error connecting to api.github.com), so every shared one is offered",
+      "Couldn't list the organization's secrets (error connecting to api.github.com), so one set there is offered anyway",
     )
-    expect(set).toEqual([['DATABASE_URL', 'db_secret']])
+    expect(out).toContain('Already repository or organization secrets: DATABASE_URL')
+    expect(out.filter((line) => line.startsWith('Warning: GH_TOKEN__ALICE'))).toHaveLength(1)
   }
 })
 
@@ -319,6 +337,7 @@ it('keeps an existing environment as it is, warning when it lets any branch or n
   const custom = '{"custom_branch_policies":true,"protected_branches":false}'
   const cases: [Gh, string[]][] = [
     [{ environment: custom, policies: 'release\nmain' }, []],
+    [{ environment: custom, policies: 'release/*' }, []],
     [
       { environment: custom, policies: 'release' },
       [

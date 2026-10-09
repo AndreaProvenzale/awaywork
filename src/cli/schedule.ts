@@ -343,10 +343,13 @@ async function installForPerson(
   const changed = await syncRepo(root, file, text, path, config, io.ask)
 
   const suffixed = (name: string) => name + suffixOf(person)
-  const listed = await repoSecrets(io.run).catch((e) => {
-    console.log(`Couldn't list the repo's secrets (${reasonOf(e)}), so every shared one is offered`)
-    return { owner: '', repo: new Set<string>(), org: new Set<string>() }
-  })
+  const listed = await repoSecrets(io.run, (list, e) =>
+    console.log(
+      list === 'repo'
+        ? `Couldn't list the repo's secrets (${reasonOf(e)}), so every shared one is offered`
+        : `Couldn't list the organization's secrets (${reasonOf(e)}), so one set there is offered anyway`,
+    ),
+  )
   const existing = new Set([...listed.repo, ...listed.org])
   const present = shared.filter((name) => existing.has(name))
   if (present.length)
@@ -444,8 +447,9 @@ async function ensureEnvironment(run: Exec, person: string): Promise<void> {
       )
     else if (JSON.parse(policy).custom_branch_policies)
       await defaultBranchIn(run, policies).then(
-        ({ allowed }) => {
-          if (!allowed)
+        ({ branch, names }) => {
+          // A pattern may cover the default branch; matching GitHub's globs isn't worth a warning.
+          if (!names.includes(branch) && !names.some((name) => name.includes('*')))
             console.log(
               `Warning: environment ${person}'s branch policies don't name the default branch, so ${person}'s job can't use it; add it in the repo's Settings > Environments > ${person}`,
             )
@@ -466,19 +470,20 @@ async function ensureEnvironment(run: Exec, person: string): Promise<void> {
     'deployment_branch_policy[custom_branch_policies]=true',
   ])
   try {
-    const { branch, allowed } = await defaultBranchIn(run, policies)
-    if (!allowed) await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
+    const { branch, names } = await defaultBranchIn(run, policies)
+    if (!names.includes(branch))
+      await run('gh', ['api', '-X', 'POST', policies, '-f', `name=${branch}`])
   } catch (e) {
     throw new Error(`it exists, but limiting it to the default branch failed: ${reasonOf(e)}`)
   }
   console.log(`Created the environment ${person}, deployable from the default branch only`)
 }
 
-/** The repo's default branch, and whether an environment's branch policies name it. */
+/** The repo's default branch, and the names of an environment's branch policies. */
 async function defaultBranchIn(
   run: Exec,
   policies: string,
-): Promise<{ branch: string; allowed: boolean }> {
+): Promise<{ branch: string; names: string[] }> {
   const branch = await run('gh', [
     'repo',
     'view',
@@ -488,7 +493,7 @@ async function defaultBranchIn(
     '.defaultBranchRef.name',
   ])
   const names = await run('gh', ['api', '--paginate', policies, '--jq', '.branch_policies[].name'])
-  return { branch, allowed: names.split('\n').includes(branch) }
+  return { branch, names: names.split('\n') }
 }
 
 /** The HTTP status gh reports for a failed call, e.g. "403". */
@@ -529,8 +534,24 @@ export const secretNames = (run: Exec, environment?: string) =>
     '.[].name',
   ])
 
-/** Lists the current repo's secrets and its org's; throws when gh can't. */
-export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
+/** Lists the current repo's secrets and its org's; a list gh can't get is empty, after `failed` hears why. */
+export async function repoSecrets(
+  run: Exec,
+  failed: (list: 'repo' | 'org', e: unknown) => void,
+): Promise<RepoSecrets> {
+  const repo = await secretNames(run).catch((e) => {
+    failed('repo', e)
+    return new Set<string>()
+  })
+  const { owner, org } = await orgSecrets(run).catch((e) => {
+    failed('org', e)
+    return { owner: '', org: new Set<string>() }
+  })
+  return { owner, repo, org }
+}
+
+/** The repo owner's login and, for an org, its secrets shared with the repo; throws when gh can't. */
+async function orgSecrets(run: Exec): Promise<{ owner: string; org: Set<string> }> {
   const owner = JSON.parse(
     await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner | {login, type}']),
   )
@@ -545,7 +566,7 @@ export async function repoSecrets(run: Exec): Promise<RepoSecrets> {
           '.secrets[].name',
         ])
       : new Set<string>()
-  return { owner: owner.login, repo: await secretNames(run), org }
+  return { owner: owner.login, org }
 }
 
 /** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
