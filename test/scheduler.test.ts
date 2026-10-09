@@ -19,7 +19,7 @@ import {
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
-import { scriptedAsk } from './fakes/ask.js'
+import { initial, scriptedAsk } from './fakes/ask.js'
 
 const schedule: Schedule = {
   command: [
@@ -285,6 +285,12 @@ describe('schedule install --with github-actions', () => {
     await writeFile(config, `${CONFIG}skills: [mine]\n`)
     await writeFile(join(home, 'skills/mine/SKILL.md'), 'CHANGED')
     await install([
+      [/^Overwrite \.night-shift\/config\.yml/, false],
+      [/^Replace all of \.night-shift\/skills/, initial],
+    ])
+    expect(out).toContain('Kept .night-shift/skills')
+    expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
+    await install([
       [/^Overwrite \.night-shift\/config\.yml with the changes above\?$/, false],
       [
         /^Replace all of \.night-shift\/skills with the changes above, deleting anything only the repo's copy has\?$/,
@@ -310,14 +316,16 @@ describe('schedule install --with github-actions', () => {
     ])
     expect(out).toContain('Kept .github/workflows/night-shift.yml')
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(`${generated}# mine\n`)
-    await install([[/^Overwrite \.github\/workflows\/night-shift\.yml/, true]])
+    await install([[/^Overwrite \.github\/workflows\/night-shift\.yml/, initial]])
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(generated)
     expect(out).toContain('  commit .github/workflows/night-shift.yml')
   })
 
-  it("leaves the repo's skills alone when the user has none", async () => {
+  it("leaves the repo's skills alone when the user has none, a stray file aside", async () => {
     const { root, home, install } = await setup()
     await rm(join(home, 'skills'), { recursive: true })
+    await mkdir(join(home, 'skills'))
+    await writeFile(join(home, 'skills/.DS_Store'), '')
     await mkdir(join(root, REPO_SKILLS, 'team'), { recursive: true })
     await writeFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'TEAM')
     await install()

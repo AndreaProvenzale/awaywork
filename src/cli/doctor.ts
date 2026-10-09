@@ -4,7 +4,7 @@ import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { loadSkills } from '../config/skills.js'
+import { hasSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { windowsOf } from '../core/window.js'
@@ -63,7 +63,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
   }
   const defaultSkills = skillsDirIn(configDir)
-  if (dirname(resolve(path)) !== configDir && Object.keys(await loadSkills(defaultSkills)).length)
+  if (dirname(resolve(path)) !== configDir && (await hasSkills(defaultSkills)))
     report(
       'warn',
       defaultSkills,

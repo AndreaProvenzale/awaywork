@@ -1,11 +1,12 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
-import { configPath, loadConfig } from '../config/load.js'
+import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
+import { hasSkills } from '../config/skills.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
@@ -226,10 +227,7 @@ export async function installWorkflow(
     }
     if (await syncCopy(path, root, REPO_CONFIG, io.ask)) changed.push(REPO_CONFIG)
     const skills = skillsDirOf(path)
-    if (
-      (await readdir(skills).catch(() => [])).length &&
-      (await syncCopy(skills, root, REPO_SKILLS, io.ask))
-    )
+    if ((await hasSkills(skills)) && (await syncCopy(skills, root, REPO_SKILLS, io.ask)))
       changed.push(REPO_SKILLS)
     const unset = await offerSecrets([...secrets], io.env, io.ask, io.setSecret).catch((e) => {
       if (e instanceof Cancelled) return [...secrets]
@@ -281,12 +279,14 @@ async function sync(
         console.log(`${to} is up to date`)
         return false
       }
-      if (diff.exitCode !== 1) throw new Error(diff.stderr)
+      if (diff.exitCode !== 1) throw new ConfigError(to, [`git diff failed: ${diff.stderr.trim()}`])
       console.log(diff.stdout)
-      const question = statSync(staged).isDirectory()
+      const folder = statSync(staged).isDirectory()
+      const question = folder
         ? `Replace all of ${to} with the changes above, deleting anything only the repo's copy has?`
         : `Overwrite ${to} with the changes above?`
-      if (!(await ask.confirm(question))) {
+      // Enter after a long diff must not delete a skill only the repo has.
+      if (!(await ask.confirm(question, !folder))) {
         console.log(`Kept ${to}`)
         return false
       }

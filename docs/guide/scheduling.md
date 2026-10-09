@@ -79,7 +79,9 @@ which installs the nightshift-agent version you generated it with. The
 action frees about 20 GB of preinstalled SDKs first (runners otherwise
 die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
-`v1`; to upgrade night-shift itself, raise `version` in the workflow.
+`v1`; to upgrade night-shift itself, raise `version` in the workflow, or
+upgrade nightshift-agent and run `schedule install --with github-actions`
+again.
 The action gets the job's env, secrets included: if you'd rather not
 follow `v1`, pin it to a commit SHA of this repo instead. A
 [custom source](./custom-sources.md)'s `setup` runs as a step of its own
@@ -92,8 +94,8 @@ Run `schedule install --with github-actions` again after changing your
 config or skills, or to refresh the workflow. Of the workflow, config and
 skills, one that matches is up to date; one that differs shows the diff
 and is replaced only if you say yes, so a hand edit never goes silently.
-The skills folder is replaced as a whole: a skill only the repo has, a
-teammate's say, goes with it. With no skills of your own, the repo's stay.
+The skills folder is replaced as a whole: a skill only the repo has, say a
+teammate's, goes with it. With no skills of your own, the repo's stay.
 
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you

@@ -39,9 +39,12 @@ describe('doctor', () => {
     expect(checks.at(-1)).toEqual({ status: 'FAIL', what: path, detail: 'file not found' })
   })
 
-  it("warns that the default skills aren't used with a config elsewhere", async () => {
+  it("warns that the default skills aren't used with a config elsewhere, without parsing them", async () => {
     await mkdir(join(configDir, 'skills/mine'), { recursive: true })
-    await writeFile(join(configDir, 'skills/mine/SKILL.md'), '---\nname: mine\n---\n')
+    await writeFile(
+      join(configDir, 'skills/mine/SKILL.md'),
+      '---\ndescription: Fix CI: retry\n---\n',
+    )
     const elsewhere = await mkdtemp(join(tmpdir(), 'nightshift-elsewhere-'))
     expect(await runChecks(join(elsewhere, 'config.yml'), () => {})).toContainEqual({
       status: 'warn',

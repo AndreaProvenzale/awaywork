@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ruleSteps } from '../core/queue.js'
@@ -14,6 +15,12 @@ export async function loadSkills(dir: string): Promise<Record<string, SkillMeta>
     if (text !== undefined) skills[entry.name] = parseSkill(text)
   }
   return skills
+}
+
+/** Whether a directory has a folder with a SKILL.md, linked ones included; parses none. */
+export async function hasSkills(dir: string): Promise<boolean> {
+  const entries = await readdir(dir).catch(() => [])
+  return entries.some((name) => existsSync(join(dir, name, 'SKILL.md')))
 }
 
 /** Skills a queue names that are neither the user's nor built in; in-repo skills are only visible at run time. */
