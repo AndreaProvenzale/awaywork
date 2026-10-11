@@ -15,7 +15,7 @@ Claude one in `lessons.md`.
 | Provider | Headless credential | Remote | Bills | Quota model | Quota readable | Automation ToS |
 |---|---|---|---|---|---|---|
 | Claude Code | `claude setup-token`, 1 year, static | Yes, documented for CI [V] | Subscription [V, burn-tested] | 5 h + weekly windows | `rate_limit_event` in stream-json [V, tested] | Stock binary only [V] |
-| Codex (ChatGPT plan) | `~/.codex/auth.json`, rotates ~8 days | Yes, "advanced" [V] | Subscription | 5 h + weekly windows; free plan one 30-day window [V, tested] | App-server `account/rateLimits/read` [V, tested] | Own login, no sharing [I] |
+| Codex (ChatGPT plan) | `~/.codex/auth.json`, rotates at every refresh [V, tested] | Yes, "advanced" [V] | Subscription | 5 h + weekly windows; free plan one 30-day window [V, tested] | App-server `account/rateLimits/read` [V, tested] | Own login, no sharing [I] |
 | GitHub Copilot CLI | Fine-grained PAT or Actions `GITHUB_TOKEN` | Yes, documented [V] | AI Credits, monthly allowance [V] | Monthly credits | Billing and usage APIs [V] | Low [I] |
 | Cursor CLI | `CURSOR_API_KEY` | Yes, documented [V] | Plan pool, then on-demand [C] | Monthly usage | Admin API, Teams only [V] | Low [I] |
 | Gemini CLI (AI Pro/Ultra) | Cached OAuth `~/.gemini/oauth_creds.json` | Works, not sanctioned [C] | Subscription only via OAuth [V] | Daily requests | `/stats`, interactive only [V] | **High** [V] |
@@ -192,6 +192,17 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - The first probe refreshed a 12-day-old `auth.json` in place
   (`last_refresh` moved, login still valid). So probes rotate the file
   too and share the per-machine lock with runs. [V, tested]
+- A refresh fires when the access token expires, not when `last_refresh`
+  is 8 days old as the CI guide says, and every refresh rotates the
+  refresh token. [V, tested 0.162.1]
+- A replaced refresh token still refreshed 8 s, ~6 min and ~30 min later,
+  and the live login kept working beside it. After ~27 h it failed with
+  "refresh token was already used", and the live login still refreshed.
+  So a secret seeded on an ephemeral runner fails the night after its
+  first refresh. [V, tested 0.162.1]
+- Several `codex login --device-auth` on one account coexist: a new login
+  revokes none, and `codex logout` of one leaves the others working. On
+  macOS the default credential store writes `auth.json`. [V, tested 0.162.1]
 - `codex exec --json` prints JSONL: `thread.started`, `turn.started`,
   `item.started` / `item.completed` (`agent_message`,
   `command_execution` with `exit_code`, `file_change`, `error`), then
@@ -326,8 +337,10 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Devin: personal-plan CLI billing.
 - Codex: Plus/Pro window shape; whether an app server beside a running
   `exec` can share one `auth.json` safely, which a mid-run quota read needs.
+  Two refreshes minutes apart both succeed [V, tested], but two processes
+  writing one file at once was not tested.
 - Offline workers on Linux: Claude's bubblewrap sandbox and Codex's
   Landlock profile were only tested on macOS, so the network stays on
   by default until they are.
-- Codex remote: an ephemeral runner seeds `auth.json` from the secret
-  every run, so after a refresh the secret's refresh token goes stale.
+- Codex remote: how an ephemeral runner saves the refreshed `auth.json`
+  back to its secret; the workflow's `GITHUB_TOKEN` cannot write secrets.
