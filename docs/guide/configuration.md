@@ -212,7 +212,7 @@ trailer, your own work in progress, is passed over for a suffix.
 Trackers don't tell awaywork which PR is a task's, so it looks
 through your open PRs:
 
-- One awaywork opened is linked by the items its footer names,
+- A PR awaywork opened is linked by the items its footer names,
   whatever its branch or title. It never falls back to names, so an
   awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
   footer naming no items counts as none, so it is linked like yours.
