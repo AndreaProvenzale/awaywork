@@ -201,7 +201,8 @@ provider, the units, how many were done, failed or stopped, the share of the
 long quota window their workers used, and the draft PRs opened. `--json`
 prints the same totals. The quota share is an estimate: it starts at the
 worker's first reading, includes any other use of the account meanwhile, and
-is `-` when the window reset mid-unit. In a loop only the host unit carries
-the draft PR, so the loop's `review` and `address-review` rows show no PRs.
+is `-` when the window reset mid-unit or the worker read the quota only once,
+as Codex does after its run. In a loop only the host unit carries the draft
+PR, so the loop's `review` and `address-review` rows show no PRs.
 `units.json` is written when the run ends, so a run that is killed leaves none.
 Runs from before have no `units.json` and are left out.

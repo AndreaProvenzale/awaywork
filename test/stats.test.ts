@@ -48,6 +48,11 @@ describe('unitStats', () => {
     }
     expect(unitStats([result({ firstQuota: quota(0.9), quota: reset })])[0]?.used).toBeUndefined()
   })
+
+  it('leaves the share unknown when the worker read the quota only once', () => {
+    const once = quota(0.4)
+    expect(unitStats([result({ firstQuota: once, quota: once })])[0]?.used).toBeUndefined()
+  })
 })
 
 describe('loadStats', () => {
