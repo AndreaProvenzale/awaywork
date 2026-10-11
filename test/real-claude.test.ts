@@ -17,11 +17,11 @@ import { fakeSource } from './fakes/source.js'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
-/** Spends a few turns of the real subscription; run with NIGHTSHIFT_REAL=1. */
-it.skipIf(!process.env.NIGHTSHIFT_REAL)(
+/** Spends a few turns of the real subscription; run with AWAYWORK_REAL=1. */
+it.skipIf(!process.env.AWAYWORK_REAL)(
   'runs the real claude binary through a unit',
   async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     const dir = join(root, 'clone')
     const plugin = join(root, 'plugin')
     const forge = {
@@ -44,7 +44,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
       foreign: false,
       network: true,
       untrusted: false,
-      branch: 'night/fake-1',
+      branch: 'away/fake-1',
       rule: { skill: 'implement', provider: [], skills: [], instructions: [] },
       skill: 'implement',
       skills: [],
@@ -75,7 +75,7 @@ it.skipIf(!process.env.NIGHTSHIFT_REAL)(
 
     expect(result.status).toBe('done')
     expect(await readFile(join(dir, 'hello.txt'), 'utf8')).toMatch(/hello world/)
-    expect(await readFile(join(dir, '.nightshift/out/pr.md'), 'utf8')).not.toBe('')
+    expect(await readFile(join(dir, '.away/out/pr.md'), 'utf8')).not.toBe('')
     expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
   },
   300_000,

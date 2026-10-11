@@ -8,8 +8,8 @@ import { API, linear } from '../src/sources/linear.js'
 import { scriptedAsk } from './fakes/ask.js'
 
 const token = process.env.LINEAR_API_KEY ?? ''
-const team = process.env.NIGHTSHIFT_LINEAR_TEAM ?? ''
-const repo = 'night-shift/e2e'
+const team = process.env.AWAYWORK_LINEAR_TEAM ?? ''
+const repo = 'awaywork/e2e'
 const ctx = { env: process.env, log: console.log }
 
 /** Runs one GraphQL operation with the test's key, failing on any error. */
@@ -42,11 +42,11 @@ interface Seeded {
 /**
  * Seeds a labelled, prioritized issue with a comment and an issue it blocks in a test team,
  * reads them back for real and deletes them; run with LINEAR_API_KEY (read and write) and
- * NIGHTSHIFT_LINEAR_TEAM set to the key of a team the key's user is a member of.
+ * AWAYWORK_LINEAR_TEAM set to the key of a team the key's user is a member of.
  */
 describe.skipIf(!token || !team)('linear source, live', () => {
   const run = Date.now().toString(36)
-  const label = `night-shift-e2e-${run}`
+  const label = `awaywork-e2e-${run}`
   const comment = `e2e comment ${run}`
   let viewer = ''
   let state = ''
@@ -167,7 +167,7 @@ describe.skipIf(!token || !team)('linear source, live', () => {
       ...dates,
     })
 
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await linear.prefetch(first, dir, ctx)
     expect(await readdir(dir)).toEqual(['issue.md'])
     expect(await readFile(join(dir, 'issue.md'), 'utf8')).toContain(comment)

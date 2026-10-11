@@ -44,7 +44,7 @@ export async function listSkills(userDir: string, builtinDir = builtinSkillsDir)
   })
   const footer = [
     `User skills: ${userDir}`,
-    'In-repo skills in .night-shift/skills/ resolve at run time, between user and built-in.',
+    'In-repo skills in .awaywork/skills/ resolve at run time, between user and built-in.',
   ]
   return [...lines, '', ...footer].join('\n')
 }

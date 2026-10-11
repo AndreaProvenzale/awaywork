@@ -20,19 +20,19 @@ export function skipCommand(program: Command): void {
       '--until <date>',
       'skip until this local date (YYYY-MM-DD) starts; default: until unskip',
     )
-    .option('--reason <text>', 'why, shown by nightshift plan')
+    .option('--reason <text>', 'why, shown by awaywork plan')
     .action((key: string | undefined, opts: Skip) =>
       printOutcome(async () => {
         if (key) return skipItem(key, opts, await configuredSources(program))
         if (opts.until || opts.reason)
-          throw new Error('name the item to skip: nightshift skip <source:key>')
+          throw new Error('name the item to skip: awaywork skip <source:key>')
         return listSkips()
       }),
     )
 
   program
     .command('unskip <key>')
-    .description('let night-shift pick up a skipped item (source:key) again')
+    .description('let awaywork pick up a skipped item (source:key) again')
     .action((key: string) =>
       printOutcome(async () => unskipItem(key, await configuredSources(program))),
     )

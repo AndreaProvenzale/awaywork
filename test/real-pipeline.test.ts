@@ -10,10 +10,10 @@ import type { Item } from '../src/core/types.js'
 import { exec } from '../src/forge/gh.js'
 import { API } from '../src/sources/asana.js'
 
-let repo = process.env.NIGHTSHIFT_GITHUB_SANDBOX ?? ''
+let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
 const token = process.env.ASANA_TOKEN
-const workspace = process.env.NIGHTSHIFT_ASANA_WORKSPACE ?? ''
-const project = process.env.NIGHTSHIFT_ASANA_PROJECT ?? ''
+const workspace = process.env.AWAYWORK_ASANA_WORKSPACE ?? ''
+const project = process.env.AWAYWORK_ASANA_PROJECT ?? ''
 const root = fileURLToPath(new URL('..', import.meta.url))
 const gh = (...args: string[]) => exec('gh', args)
 const api = (path: string, fields: Record<string, string> = {}, ...args: string[]) =>
@@ -45,8 +45,8 @@ async function asana<T>(method: string, path: string, data?: object): Promise<T>
  */
 describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no quota', () => {
   const run = Date.now().toString(36)
-  const label = 'night-shift-e2e'
-  const branch = `night-shift-e2e-${run}`
+  const label = 'awaywork-e2e'
+  const branch = `awaywork-e2e-${run}`
   const section = `e2e ${run}`
   let sectionGid = ''
   const env: NodeJS.ProcessEnv = {}
@@ -60,7 +60,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
   let branched = false
   let pr = 0
 
-  const nightshift = async (...args: string[]) =>
+  const awaywork = async (...args: string[]) =>
     (
       await execa(
         'node',
@@ -81,7 +81,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
   /** Plans until `pick` finds the seeded items settled: search indexes new issues and PRs late. */
   async function settled<T>(pick: (plan: NightPlan) => T | undefined): Promise<T> {
     for (let deadline = Date.now() + 120_000; ; await sleep(5_000)) {
-      const plan = JSON.parse(await nightshift('plan', '--json'))
+      const plan = JSON.parse(await awaywork('plan', '--json'))
       const found = pick(plan)
       if (found) return found
       if (Date.now() > deadline)
@@ -93,7 +93,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     plan.units.find((p) => p.unit.items.some((i) => i.key === key))
 
   beforeAll(async () => {
-    const home = await mkdtemp(join(tmpdir(), 'nightshift-pipeline-'))
+    const home = await mkdtemp(join(tmpdir(), 'awaywork-pipeline-'))
     const fakes = join(home, 'bin')
     await mkdir(fakes)
     await symlink(join(root, 'test', 'fakes', 'claude.mjs'), join(fakes, 'claude'))
@@ -175,10 +175,10 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
         provider: 'claude',
         unit: { id, repo, skill, deliver, items: [{ key, title }] },
       })
-      const out = await nightshift('run', '--dry-run', '--unit', key)
+      const out = await awaywork('run', '--dry-run', '--unit', key)
       expect(out).toContain(`${id}: ${skill} on claude`)
       const runDir = out.match(/state in (\S+)/)?.[1] ?? ''
-      const work = join(runDir, 'work', id, '.nightshift')
+      const work = join(runDir, 'work', id, '.away')
       const context = join(work, 'context', id)
       expect(await readdir(context)).toEqual([file])
       expect(await readFile(join(context, file), 'utf8')).toContain(title)
@@ -189,7 +189,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     expect(link).toMatch(new RegExp(`^https://app\\.asana\\.com/.*${task}`))
   }, 300_000)
 
-  it("links the task to my PR carrying its link, and skips it once that PR is night-shift's", async () => {
+  it("links the task to my PR carrying its link, and skips it once that PR is awaywork's", async () => {
     const base = JSON.parse(await gh('api', `repos/${repo}`)).default_branch
     const sha = (await api(`git/ref/heads/${base}`, {}, '--jq', '.object.sha')).trim()
     await api('git/refs', { ref: `refs/heads/${branch}`, sha })
@@ -207,10 +207,10 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     const item: Pick<Item, 'source' | 'key'> = { source: 'asana', key: task }
     const published = `Seeded.\n\n${link}\n\n${footer(run, [item])}`
     await api(`pulls/${pr}`, { body: published }, '-X', 'PATCH')
-    const plan: NightPlan = JSON.parse(await nightshift('plan', '--json'))
+    const plan: NightPlan = JSON.parse(await awaywork('plan', '--json'))
     expect(unitOf(plan, task)).toBeUndefined()
     expect(plan.skipped.find((s) => s.item.key === task)?.reason).toBe(
-      `waiting for review: night-shift PR https://github.com/${repo}/pull/${pr} is open`,
+      `waiting for review: awaywork PR https://github.com/${repo}/pull/${pr} is open`,
     )
   }, 300_000)
 })

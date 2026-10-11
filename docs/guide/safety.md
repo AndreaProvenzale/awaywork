@@ -1,5 +1,5 @@
 ---
-description: What a night-shift worker can and cannot do, how pushes are guarded, how the watchdog works, and the vendor terms each provider runs under.
+description: What an awaywork worker can and cannot do, how pushes are guarded, how the watchdog works, and the vendor terms each provider runs under.
 ---
 
 # Safety
@@ -26,7 +26,7 @@ not asked of the model.
 - **Setup outside the agent.** A repo's `setup` runs before the agent
   in the same environment, without the agent's secret and with only that
   repo's `secrets` added, none on a PR someone else opened or on a
-  branch a worker wrote: earlier that night, or a night-shift PR a rule
+  branch a worker wrote: earlier that night, or an awaywork PR a rule
   took up again. On a PR by someone without
   write access or org membership it doesn't run at all.
   Whatever it leaves running is stopped before the agent starts.
@@ -36,15 +36,15 @@ not asked of the model.
   sandbox. So it doesn't run on an untrusted author's PR, or for a unit
   with `network: false`.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
-  helper left in it, on a new branch. `.nightshift/` (context, prompt,
+  helper left in it, on a new branch. `.away/` (context, prompt,
   output) is excluded from git, so it can't be committed. A loop's rounds
-  share one clone: between them, night-shift runs no diff driver or
+  share one clone: between them, awaywork runs no diff driver or
   fsmonitor its git config names, copies no symlink out of it, ends the
-  loop if a round left a symlink where night-shift writes, and reads or
+  loop if a round left a symlink where awaywork writes, and reads or
   writes only regular files there, so a FIFO can't hang it. Each check
   runs just before its write, so a worker process that outlived the
   watchdog could still swap a path in between.
-- **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
+- **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
   comment or change git config; targeted checks and the repo's documented
   generators only; nothing in the background. A skill or instruction can't override it. It also tells the
@@ -52,11 +52,11 @@ not asked of the model.
   in an item to run commands, fetch URLs, read secrets or change the
   delivery is reported, never followed.
 - **Someone else's PR is data too.** On a PR you didn't open, the
-  branch's `.night-shift/` is ignored, Codex's copy of the unit's skills
-  is replaced with night-shift's, and the prompt says its `CLAUDE.md`,
+  branch's `.awaywork/` is ignored, Codex's copy of the unit's skills
+  is replaced with awaywork's, and the prompt says its `CLAUDE.md`,
   `AGENTS.md` and skills are the author's. Claude Code loads none of the
   clone's config there (settings, hooks, MCP servers, `CLAUDE.md`,
-  skills), only night-shift's skills plugin and the `settings` file you
+  skills), only awaywork's skills plugin and the `settings` file you
   configured; Codex still loads `AGENTS.md` and its skills itself.
 - **Only trusted authors' code runs by default.** Reviewing a PR means
   running its tests, with your agent's login in the environment. The
@@ -88,7 +88,7 @@ so the guide's advice is in three parts:
 - **Injected instructions can use the tools.** An item's text could ask
   the agent to call a server's write tools. Give servers read-only
   tokens where the service has them, and list `tools` to allow only what
-  the skill needs: night-shift has the agent refuse every tool outside
+  the skill needs: awaywork has the agent refuse every tool outside
   the list. For context the worker only reads, prefetching it with a
   source keeps the token away from the model entirely.
 - **Not on someone else's PR.** The worker runs the PR's code, and on
@@ -139,10 +139,10 @@ so it may fail, e.g. on a stock GitHub Actions runner [I].
 With network on, the agent's tools are not sandboxed: Claude Code gets
 Bash and file tools pre-approved, Codex runs with `--sandbox
 danger-full-access`, which it needs to commit. Either way, run
-night-shift on a machine or runner where that is acceptable: it can read
+awaywork on a machine or runner where that is acceptable: it can read
 what your user can read.
 
-## What night-shift publishes
+## What awaywork publishes
 
 - Only a branch that **doesn't exist** on the remote, checked before the
   worker starts and again at push. A taken name gets a `-2` to `-10`
@@ -151,18 +151,18 @@ what your user can read.
 - The one exception is a rule with `deliver: push`: it adds commits onto
   **your own open PR's** branch, as a fast-forward, only while the
   branch is still where the clone started. Right before the push,
-  night-shift reads the PR again and refuses when it isn't yours, is
+  awaywork reads the PR again and refuses when it isn't yours, is
   closed or merged, or has auto-merge on, and when its branch is on a
   fork, is the default branch, is protected, or is also the branch of
   someone else's open PR in the repo. It is refused on someone else's PR, on an item without
-  a PR of yours, and on any branch night-shift opened that night. The commits land unreviewed on a
+  a PR of yours, and on any branch awaywork opened that night. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
   A `then` step on that branch the same night runs `setup` without the
   repo's `secrets`.
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
   not to force: the remote takes the new head only while the branch is
   still absent, or still at the commit the clone started from, and
-  night-shift checks first that the new head descends from it. A push
+  awaywork checks first that the new head descends from it. A push
   that would rewrite history, or bring back commits you dropped from
   your branch in the meantime, is refused.
 - Nothing is published when the new commits include a merge, or when
@@ -170,23 +170,23 @@ what your user can read.
   harness forbids both, and either would carry commits that aren't the
   unit's.
 - Only a **draft** PR, into your own PR's branch, the default branch or
-  a PR night-shift opened: earlier the same night, or one a rule naming
+  a PR awaywork opened: earlier the same night, or one a rule naming
   `ours` took up again.
   It never merges, approves, requests reviewers or comments.
-- A draft PR stacked on a night-shift PR joins that PR's GitHub stack,
+- A draft PR stacked on an awaywork PR joins that PR's GitHub stack,
   or starts one with it, only while that PR tops its stack or has none.
   Linking edits neither PR, but GitHub then merges a stack bottom-up:
   merging a PR merges the ones below it too, and GitHub rebases the
   ones above after a merge.
 - Only when the agent wrote a PR body, or its report for `push`. A run
   killed before that publishes nothing.
-- Publishing fetches the clone's HEAD into a repo night-shift creates
+- Publishing fetches the clone's HEAD into a repo awaywork creates
   for it, where it adds the trailer, diffs and pushes. The unit's
   commits are those after the commit the clone held before setup and
   the agent ran. The clone's config, attributes, hooks and refs, which
   the agent can write, neither steer where a push goes, nor pick which
   commits get the trailer, nor run anything: after `setup`, each agent
-  run and each check, night-shift puts back the config the clone had
+  run and each check, awaywork puts back the config the clone had
   when it was cloned, and refuses a `.git` that borrows a repo or
   objects from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
@@ -196,8 +196,8 @@ what your user can read.
   symlink check runs just before, so a worker process that outlived the
   watchdog could still swap a path in between.
 - `report` delivery pushes nothing at all.
-- Every PR says it came from night-shift: a footer with the run id and
-  the items it's for in the body, and a `Night-shift: <run id>` commit
+- Every PR says it came from awaywork: a footer with the run id and
+  the items it's for in the body, and an `Awaywork: <run id>` commit
   trailer. Pushed commits carry the trailer too. Adding it re-creates each commit, so a commit
   signature doesn't carry over: a branch that requires signed commits
   refuses the push.
@@ -207,11 +207,11 @@ what your user can read.
 A watchdog polls every 2 s. It stops the unit below 1.5 GB of free
 memory or 2 GB of free disk, and at the end kills every process the
 agent started, including detached ones. The agent also runs in a process
-group of its own, killed as soon as it exits or night-shift is stopped
+group of its own, killed as soon as it exits or awaywork is stopped
 (short of `SIGKILL`). A process that leaves the group, as an agent's own
 command runner may, is left to the watchdog; one that also detaches
 between two polls escapes both, and could still change the clone after
-night-shift checked it. Each run also has a turn cap and
+awaywork checked it. Each run also has a turn cap and
 stops at the quota ceiling.
 
 ## Secrets on a runner
@@ -225,13 +225,13 @@ can deploy to (install warns about an existing one any branch can),
 which makes protecting that branch the guard. Its
 fallback, suffixed repository secrets, has no branch limit, and neither
 do the shared repository and org secrets. The repo then holds
-teammates' subscription credentials, each set by its owner: night-shift
+teammates' subscription credentials, each set by its owner: awaywork
 neither stores nor proxies them, but keeping them together is the
 team's choice.
 
 ## Vendor terms
 
-night-shift runs each vendor's **unmodified CLI** with **your own
+awaywork runs each vendor's **unmodified CLI** with **your own
 login**. It never calls a provider's backing API with a subscription
 credential, never stores, pools or proxies anyone else's, and never
 changes the client's identity. That is the line the vendors draw.
@@ -241,10 +241,10 @@ changes the client's identity. That is the line the vendors draw.
 | Claude Code | Allowed: headless runs with your own login or a `setup-token`, documented for CI. |
 | Codex | Grey: account login in CI is documented as advanced, with API keys recommended; keep one `auth.json` per machine. |
 
-`nightshift doctor` shows this flag per provider. Research on other
+`awaywork doctor` shows this flag per provider. Research on other
 agents, and why some (Gemini on a personal plan, Alibaba's plan) won't be
 supported, is in [Providers](../providers.md).
 
 ## Reporting a vulnerability
 
-See [SECURITY.md](https://github.com/AndreaProvenzale/night-shift/blob/main/SECURITY.md).
+See [SECURITY.md](https://github.com/AndreaProvenzale/awaywork/blob/main/SECURITY.md).

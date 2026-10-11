@@ -17,7 +17,7 @@ const job: Job = {
     foreign: false,
     network: true,
     untrusted: false,
-    branch: 'night/fake-1',
+    branch: 'away/fake-1',
     rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],

@@ -7,7 +7,7 @@ import { activeSkips, untilTime } from '../src/core/skips.js'
 
 const now = new Date('2026-10-01T12:00').getTime()
 const sources = ['github', 'asana', 'tracker']
-const statePath = async () => join(await mkdtemp(join(tmpdir(), 'nightshift-')), 'skips.json')
+const statePath = async () => join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'skips.json')
 
 describe('skip', () => {
   it('records, lists and undoes skips by source:key', async () => {
@@ -21,14 +21,14 @@ describe('skip', () => {
         path,
         now,
       ),
-    ).toBe('skipped with nightshift skip github:acme/api#5 until 2026-10-05: flaky')
+    ).toBe('skipped with awaywork skip github:acme/api#5 until 2026-10-05: flaky')
     await skipItem('asana:T-7', {}, sources, path, now)
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
       'github:acme/api#5': { until: '2026-10-05', reason: 'flaky' },
       'asana:T-7': {},
     })
     expect(await listSkips(path, now)).toBe(
-      'skipped with nightshift skip github:acme/api#5 until 2026-10-05: flaky\nskipped with nightshift skip asana:T-7',
+      'skipped with awaywork skip github:acme/api#5 until 2026-10-05: flaky\nskipped with awaywork skip asana:T-7',
     )
     expect(await unskipItem('asana:T-7', sources, path)).toBe('asana:T-7 is no longer skipped')
     expect(await unskipItem('asana:T-7', sources, path)).toBe('asana:T-7 is not skipped')
@@ -48,7 +48,7 @@ describe('skip', () => {
 
   it('takes the key of a configured custom source', async () => {
     expect(await skipItem('tracker:AI-42', {}, sources, await statePath(), now)).toBe(
-      'skipped with nightshift skip tracker:AI-42',
+      'skipped with awaywork skip tracker:AI-42',
     )
   })
 

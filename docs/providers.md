@@ -51,7 +51,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
    only official tools with their real identity.
 4. **Local only.** Junie's subscription.
 
-## What matters for night-shift
+## What matters for awaywork
 
 - **Idle quota only expires on rolling windows.** Claude, Codex, Factory,
   Z.ai, Alibaba, OpenCode Go (hours to a week) and Gemini, Jules (daily)
@@ -119,6 +119,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   `nightshift` and `skills/<name>/SKILL.md` lists `nightshift:<name>` in
   the `init` event's `skills`, while the clone's `.claude/skills/` stays
   out; a `SessionStart` hook in the `--settings` JSON runs. [V, tested]
+  Named `awaywork` since the rename. [I]
   So workers get their skills as that plugin, outside the clone, and the
   developer's `settings` file merged into the `--settings` JSON.
 - Headless runs refuse writes under `.claude/` without a grant, even with
@@ -177,7 +178,8 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   `.secondary`, each `usedPercent` (0–100), `windowDurationMins`,
   `resetsAt` (unix s), plus `planType`. The server does not exit on its
   own. [V, tested 0.149.1] The request names its client: the user agent
-  reads `night-shift/<codex version>`. [V, tested]
+  reads `night-shift/<codex version>`. [V, tested] Now
+  `awaywork/<codex version>`. [I]
 - On the free plan the only window is `primary`, 43200 min (30 days),
   `secondary` null. Before any use `resetsAt` was now + 30 days; the
   window started at the first run. [V, tested] Plus/Pro show a 5 h
@@ -208,7 +210,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   `command_execution` with `exit_code`, `file_change`, `error`), then
   `turn.completed` with token usage, or `error` and `turn.failed` with
   exit 1. No quota and no turn count in the stream. [V, tested 0.149.1]
-- `exec` has no turn cap flag [V, `codex exec --help`]; night-shift
+- `exec` has no turn cap flag [V, `codex exec --help`]; awaywork
   counts tool calls (commands, edits, MCP calls, web searches) as turns
   and kills the binary past the cap. The quota is read after the run,
   once `exec` has exited: an app server started beside a running `exec`

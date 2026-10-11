@@ -1,12 +1,12 @@
 ---
-description: Plug any task tracker into night-shift with a command that prints your open items as JSON, in any language, locally or on GitHub Actions.
+description: Plug any task tracker into awaywork with a command that prints your open items as JSON, in any language, locally or on GitHub Actions.
 ---
 
 # Custom sources
 
 Your tracker isn't built in? Maybe it's an internal board, or a Jira
 nobody will ever let you share a token for. Write a command that prints
-your open items as JSON, and night-shift treats it like any other
+your open items as JSON, and awaywork treats it like any other
 source. Use any language: Python, Go, Rust, bash, or an `npx` package.
 
 ## Config
@@ -64,7 +64,7 @@ shows up when it fails.
   a task is picked up only when you already have a PR linked to it, and
   an issue not at all.
 - **`link`** in the config is the line, in your tracker's own words, that
-  links a PR to an item: night-shift writes it into its draft PRs, and
+  links a PR to an item: awaywork writes it into its draft PRs, and
   links a PR of yours whose body holds it, on top of the key in its
   branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no
   default. See [Linking PRs](./configuration.md#linking-prs).
@@ -137,18 +137,18 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 The runner has only what's in the repo holding your config, so:
 
 - **Commit the command next to `config.yml`.** A path under `~/` works on
-  your laptop and nowhere else, and `nightshift doctor` warns about it.
+  your laptop and nowhere else, and `awaywork doctor` warns about it.
 - **Build it in `setup`.** It runs in the config's folder before
-  night-shift's action, e.g. `cargo build --release` or `go build -o board .`.
+  awaywork's action, e.g. `cargo build --release` or `go build -o board .`.
   A binary built on your Mac won't run on the Linux runner. `ubuntu-latest`
   ships Node, Python, Go and Rust.
 - **Add the `secrets` as repository secrets.**
-  `nightshift schedule install --with github-actions` writes them into the
+  `awaywork schedule install --with github-actions` writes them into the
   workflow by name, and offers to set the ones your environment has.
 
 ## Try it
 
 ```sh
-nightshift doctor   # runs the command and checks its output
-nightshift plan     # shows which rule each item hits
+awaywork doctor   # runs the command and checks its output
+awaywork plan     # shows which rule each item hits
 ```

@@ -50,7 +50,7 @@ const worker: Provider = {
   async *run(job) {
     models.push(job.model)
     envs.push(job.env)
-    const out = join(job.dir, '.nightshift/out')
+    const out = join(job.dir, '.away/out')
     if (job.unit.deliver === 'report') {
       await writeFile(join(out, 'report.md'), 'Approve.')
       await writeFile(join(out, 'verdict'), 'Approve\n')
@@ -67,7 +67,7 @@ const worker: Provider = {
 }
 
 it('runs, publishes and reports a night', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-night-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-night-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
@@ -78,8 +78,8 @@ it('runs, publishes and reports a night', async () => {
       await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
     },
   }
-  forge.branches.add('acme/api:night/acme-api-3')
-  forge.heads['acme/api:night/acme-api-3'] = [
+  forge.branches.add('acme/api:away/acme-api-3')
+  forge.heads['acme/api:away/acme-api-3'] = [
     { url: 'https://github.com/acme/api/pull/7', body: footer('r0', [githubPr(3)]) },
   ]
 
@@ -101,7 +101,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   const plan = planNight({ config, items, allowances, skills: { builtin: builtinSkills } })
   const runDir = join(root, 'run')
 
-  const tried = `night-shift tried this in https://github.com/acme/api/pull/7; delete night/acme-api-3 to run it again`
+  const tried = `awaywork tried this in https://github.com/acme/api/pull/7; delete away/acme-api-3 to run it again`
   const report = await runNight({
     config,
     configDir: root,
@@ -124,7 +124,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     [
       'acme-api-1',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
     ],
     ['acme-api-3', 'skipped', tried],
     ['acme-api-2', 'done', { kind: 'report', text: 'Approve.' }],
@@ -142,7 +142,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 
   const text = formatReport(report)
   expect(text).toContain(
-    '| 1 | acme-api-1 | fix-ci | claude | done, 5 turns | https://example.com/acme/api/pull/night/acme-api-1 (1 commits) |',
+    '| 1 | acme-api-1 | fix-ci | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits) |',
   )
   expect(text).toContain(`| 2 | acme-api-3 | fix-ci | - | skipped | ${tried} |`)
   expect(text).toContain(
@@ -158,7 +158,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   expect(shown).toContain(
     [
       '#  Unit        Skill   Provider  Status         Result',
-      '1  acme-api-1  fix-ci  claude    done, 5 turns  https://example.com/acme/api/pull/night/acme-api-1 (1 commits)',
+      '1  acme-api-1  fix-ci  claude    done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1 (1 commits)',
       `2  acme-api-3  fix-ci  -         skipped        ${tried}`,
     ].join('\n'),
   )
@@ -173,7 +173,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 })
 
 it('prepares workspaces without running a worker on a dry run, for one unit', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-dry-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
@@ -207,7 +207,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-2', 'prepared'],
   ])
-  expect(existsSync(join(root, 'run/work/acme-api-2/.nightshift/prompt.md'))).toBe(true)
+  expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
   for (const only of ['acme/api#2', 'ACME-API-2']) {
     const byKey = await runNight({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
@@ -222,7 +222,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
 })
 
 it('runs a chained unit with the units it follows, which a dry run leaves nothing to', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-dry-chain-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-chain-'))
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
@@ -260,7 +260,7 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
 })
 
 it('stops a unit still running at night.end and publishes what it left', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-end-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-end-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
@@ -287,7 +287,7 @@ it('stops a unit still running at night.end and publishes what it left', async (
       await writeFile(join(job.dir, 'fix.txt'), 'half')
       await git(job.dir, 'add', 'fix.txt')
       await git(job.dir, 'commit', '-qm', 'Start the fix')
-      await writeFile(join(job.dir, '.nightshift/out/pr.md'), 'Start the fix\n\nUnfinished.')
+      await writeFile(join(job.dir, '.away/out/pr.md'), 'Start the fix\n\nUnfinished.')
       vi.setSystemTime(until)
       if (!signal.aborted) await new Promise((ok) => signal.addEventListener('abort', ok))
       yield { type: 'done', ok: false, turns: 1 }
@@ -312,7 +312,7 @@ it('stops a unit still running at night.end and publishes what it left', async (
     expect(report.results.map((u) => [u.status, u.outcome ?? u.reason])).toEqual([
       [
         'stopped: night ended',
-        { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+        { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
       ],
       ['skipped', 'the night window ended'],
     ])
@@ -322,7 +322,7 @@ it('stops a unit still running at night.end and publishes what it left', async (
 })
 
 it('runs a chain on what the unit before delivered, and skips it after nothing', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-chain-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
@@ -359,13 +359,13 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   const chained: Provider = {
     ...fakeProvider('claude'),
     async *run(job) {
-      const previous = join(job.dir, '.nightshift/context/previous')
+      const previous = join(job.dir, '.away/context/previous')
       seen.push({
         prompt: job.prompt,
         files: await readdir(job.dir),
         diff: await readFile(join(previous, 'diff.patch'), 'utf8').catch(() => undefined),
       })
-      const out = join(job.dir, '.nightshift/out')
+      const out = join(job.dir, '.away/out')
       if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
       else if (job.unit.id === 'acme-api-5') {
         await writeFile(join(job.dir, 'fix.txt'), 'fixed')
@@ -396,7 +396,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     [
       'acme-api-5',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-5', commits: 1 },
+      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-5', commits: 1 },
     ],
     ['acme-api-5-review', 'done', { kind: 'report', text: 'Approve.' }],
     ['acme-api-6', 'done', { kind: 'none', reason: 'no commits' }],
@@ -406,12 +406,12 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   expect(review?.files).toContain('fix.txt')
   expect(review?.diff).toMatch(/^\+\+\+ b\/fix\.txt$/m)
   expect(review?.prompt).toContain(
-    'This unit follows `implement` on the same items, which opened https://example.com/acme/api/pull/night/acme-api-5 tonight',
+    'This unit follows `implement` on the same items, which opened https://example.com/acme/api/pull/away/acme-api-5 tonight',
   )
 })
 
 it('runs setup before the worker with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
@@ -455,7 +455,7 @@ repos:
         async *run(job) {
           setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run'))
           workerEnvs.push(job.env)
-          await writeFile(join(job.dir, '.nightshift/out/report.md'), 'Approve.')
+          await writeFile(join(job.dir, '.away/out/report.md'), 'Approve.')
           yield { type: 'done', ok: true, turns: 1 }
         },
       },
@@ -485,7 +485,7 @@ repos:
 })
 
 it("gives a worker only its step's MCP servers whose secrets are set, and none on someone else's PR", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-mcp-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-mcp-'))
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
@@ -534,7 +534,7 @@ queue:
         async *run(job) {
           const mcp = Object.keys(job.mcp ?? {})
           jobs.push({ unit: job.unit.id, mcp, env: Object.keys(job.env) })
-          await writeFile(join(job.dir, '.nightshift/out/report.md'), 'Done.')
+          await writeFile(join(job.dir, '.away/out/report.md'), 'Done.')
           yield { type: 'done', ok: true, turns: 1 }
         },
       },
@@ -564,7 +564,7 @@ queue:
 })
 
 it("stops a unit at its provider's unit_minutes", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-time-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-time-'))
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
@@ -646,7 +646,7 @@ async function originForge(root: string) {
 const committer: Provider = {
   ...fakeProvider('claude'),
   async *run(job) {
-    const out = join(job.dir, '.nightshift/out')
+    const out = join(job.dir, '.away/out')
     if (job.unit.deliver === 'report') await writeFile(join(out, 'report.md'), 'Approve.')
     else {
       await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
@@ -671,7 +671,7 @@ const issue = (n: number) =>
   })
 
 it("starts each of a repo's draft PRs from the default branch, not on tonight's last one", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
   const prompts: string[] = []
@@ -683,7 +683,7 @@ it("starts each of a repo's draft PRs from the default branch, not on tonight's 
         await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
         await git(job.dir, 'add', '.')
         await git(job.dir, 'commit', '-qm', `Implement ${job.unit.id}`)
-        await writeFile(join(job.dir, '.nightshift/out/pr.md'), `Implement ${job.unit.id}\n\nDone.`)
+        await writeFile(join(job.dir, '.away/out/pr.md'), `Implement ${job.unit.id}\n\nDone.`)
       }
       yield { type: 'done', ok: true, turns: 1 }
     },
@@ -714,13 +714,13 @@ it("starts each of a repo's draft PRs from the default branch, not on tonight's 
 
   expect(report.results.map((u) => u.outcome)).toContainEqual({
     kind: 'pr',
-    url: 'https://example.com/acme/api/pull/night/acme-api-3',
+    url: 'https://example.com/acme/api/pull/away/acme-api-3',
     commits: 1,
   })
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-1', ''],
-    ['night/acme-api-4', 'feature-4'],
-    ['night/acme-api-3', ''],
+    ['away/acme-api-1', ''],
+    ['away/acme-api-4', 'feature-4'],
+    ['away/acme-api-3', ''],
   ])
   expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
   expect([prompts[0], prompts[1], prompts[3]]).toEqual([
@@ -729,12 +729,12 @@ it("starts each of a repo's draft PRs from the default branch, not on tonight's 
     expect.stringContaining('cut from the default branch.'),
   ])
   expect(forge.stacked).toEqual([])
-  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
+  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-3')
   expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
 it("stacks a chain's draft PRs on each other, and starts the repo's next unit from the default branch", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-chain-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-chain-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -764,21 +764,21 @@ queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
 
   const url = (branch: string) => `https://example.com/acme/api/pull/${branch}`
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-1', ''],
-    ['night/acme-api-1-review', 'night/acme-api-1'],
-    ['night/acme-api-2', ''],
-    ['night/acme-api-2-review', 'night/acme-api-2'],
+    ['away/acme-api-1', ''],
+    ['away/acme-api-1-review', 'away/acme-api-1'],
+    ['away/acme-api-2', ''],
+    ['away/acme-api-2-review', 'away/acme-api-2'],
   ])
-  expect(opened[1]?.body).toContain(`Stacked on ${url('night/acme-api-1')}: merge that first.`)
+  expect(opened[1]?.body).toContain(`Stacked on ${url('away/acme-api-1')}: merge that first.`)
   expect(opened[2]?.body).not.toContain('Stacked on')
   expect(forge.stacked).toEqual([
-    [url('night/acme-api-1'), url('night/acme-api-1-review')],
-    [url('night/acme-api-2'), url('night/acme-api-2-review')],
+    [url('away/acme-api-1'), url('away/acme-api-1-review')],
+    [url('away/acme-api-2'), url('away/acme-api-2-review')],
   ])
 })
 
 it("stacks a chain on your own PR, and starts the repo's other units from the default branch", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-past-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-past-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
   const config = parseConfig(`
@@ -810,17 +810,17 @@ queue:
   })
 
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-4', 'feature-4'],
-    ['night/acme-api-4-review', 'night/acme-api-4'],
-    ['night/acme-api-1', ''],
-    ['night/acme-api-3', ''],
+    ['away/acme-api-4', 'feature-4'],
+    ['away/acme-api-4-review', 'away/acme-api-4'],
+    ['away/acme-api-1', ''],
+    ['away/acme-api-3', ''],
   ])
-  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
+  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-3')
   expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
 it('pushes onto your own PR, and runs what follows on it without setup secrets', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
@@ -829,7 +829,7 @@ sources: { github: { repos: [acme/*] } }
 queue: [{ skill: fix-ci, deliver: push, then: { skill: implement, deliver: draft_pr } }]
 repos:
   acme/api:
-    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
     secrets: [NPM_TOKEN]
 `)
   const plan = planNight({
@@ -847,7 +847,7 @@ repos:
       await git(job.dir, 'add', `${job.unit.id}.txt`)
       await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
       const out = job.unit.deliver === 'push' ? 'report.md' : 'pr.md'
-      await writeFile(join(job.dir, '.nightshift/out', out), `Work on ${job.unit.id}\n\nDone.`)
+      await writeFile(join(job.dir, '.away/out', out), `Work on ${job.unit.id}\n\nDone.`)
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
@@ -874,16 +874,16 @@ repos:
       text: 'Work on acme-api-1\n\nDone.',
       head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
     },
-    { kind: 'pr', url: 'https://example.com/acme/api/pull/night/acme-api-1', commits: 1 },
+    { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
   ])
   const pushed = await git(
     origin,
     'log',
-    '--format=%s|%(trailers:key=Night-shift,valueonly)',
+    '--format=%s|%(trailers:key=Awaywork,valueonly)',
     'feature-1',
   )
   expect(pushed.stdout.split('\n').filter(Boolean)).toEqual(['Work on acme-api-1|r1', 'init|'])
-  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['night/acme-api-1', 'feature-1']])
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['away/acme-api-1', 'feature-1']])
   expect(opened[0]?.body).not.toContain('Stacked on')
   const setups = await Promise.all(
     ['acme-api-1', 'acme-api-1-implement'].map((id) =>
@@ -892,7 +892,7 @@ repos:
   )
   expect(setups).toEqual(['npm\n', '\n'])
   expect(prompts[0]).toContain(
-    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.nightshift/out/report.md`.",
+    "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.away/out/report.md`.",
   )
   expect(prompts[1]).toContain(
     'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` tonight; you start from them.',
@@ -904,7 +904,7 @@ repos:
 })
 
 it("loops in the push unit's clone and pushes every round's commits onto your PR once", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-loop-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
@@ -933,7 +933,7 @@ queue:
     ...fakeProvider('claude'),
     async *run(job) {
       prompts.push(job.prompt)
-      const out = join(job.dir, '.nightshift/out')
+      const out = join(job.dir, '.away/out')
       if (job.unit.deliver === 'report') {
         await writeFile(join(out, 'report.md'), `${job.unit.id} review.`)
         await writeFile(join(out, 'verdict'), verdicts[job.unit.id] ?? '')
@@ -965,7 +965,7 @@ queue:
   const host = report.results[0]
   expect(host?.outcome).toMatchObject({ kind: 'pushed', branch: 'feature-1', commits: 2 })
   expect(host?.outcome && 'text' in host.outcome && host.outcome.text).toContain(
-    'Fixed CI.\n\n## Night-shift loop\n\n2 rounds of review ⇄ implement; until held: verdict approve; last verdict approve.',
+    'Fixed CI.\n\n## Awaywork loop\n\n2 rounds of review ⇄ implement; until held: verdict approve; last verdict approve.',
   )
   const log = await git(origin, 'log', '--format=%s', 'feature-1')
   expect(log.stdout.split('\n')).toEqual([
@@ -974,12 +974,12 @@ queue:
     'init',
   ])
   expect(prompts[2]).toContain(
-    "Deliver: commits for the loop. Commit on this branch; night-shift pushes them onto `feature-1`, the developer's own pull request, when the loop ends.",
+    "Deliver: commits for the loop. Commit on this branch; awaywork pushes them onto `feature-1`, the developer's own pull request, when the loop ends.",
   )
 })
 
 it("doesn't open a push loop when the push unit wrote no report", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-push-loop-bare-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-loop-bare-'))
   const { origin, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-1')
   const config = parseConfig(`
@@ -1022,7 +1022,7 @@ queue:
 })
 
 it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-setup-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-setup-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1030,7 +1030,7 @@ sources: { github: { repos: [acme/*] } }
 queue: [{ skill: implement, then: review }]
 repos:
   acme/api:
-    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
     secrets: [NPM_TOKEN]
 `)
   const plan = planNight({
@@ -1067,9 +1067,9 @@ function looper(verdicts: Record<string, string>, seen: Record<string, string[]>
   return {
     ...fakeProvider('claude'),
     async *run(job) {
-      const previous = join(job.dir, '.nightshift/context/previous')
+      const previous = join(job.dir, '.away/context/previous')
       seen[job.unit.id] = (await readdir(previous).catch(() => [])).sort()
-      const out = join(job.dir, '.nightshift/out')
+      const out = join(job.dir, '.away/out')
       const verdict = verdicts[job.unit.id]
       if (job.unit.deliver === 'report') {
         await writeFile(join(out, 'report.md'), `${job.unit.id} says ${verdict ?? 'nothing'}.`)
@@ -1086,7 +1086,7 @@ function looper(verdicts: Record<string, string>, seen: Record<string, string[]>
 }
 
 it("loops review and fix in the draft PR unit's clone until the verdict holds, and publishes once", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-'))
   const { origin, opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1131,7 +1131,7 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const url = 'https://example.com/acme/api/pull/night/acme-api-1'
+  const url = 'https://example.com/acme/api/pull/away/acme-api-1'
   expect(report.results.map((u) => [u.planned.unit.id, u.outcome, u.verdict])).toEqual([
     ['acme-api-1', { kind: 'pr', url, commits: 2 }, undefined],
     [
@@ -1155,14 +1155,14 @@ queue:
       undefined,
     ],
   ])
-  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['night/acme-api-1', '']])
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['away/acme-api-1', '']])
   expect(opened[0]?.body).toBe(
     [
       'Add rate limits',
       '',
       'Done.',
       '',
-      '## Night-shift loop',
+      '## Awaywork loop',
       '',
       '2 rounds of review ⇄ address-review; until held: verdict approve; last verdict approve.',
       '',
@@ -1174,7 +1174,7 @@ queue:
       '',
     ].join('\n'),
   )
-  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-1')
+  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-address-review-1.txt', 'acme-api-1.txt'])
   expect(seen).toEqual({
     'acme-api-1': [],
@@ -1196,18 +1196,18 @@ queue:
   )
 })
 
-it("suffixes a taken branch, even one without a PR that night-shift didn't push, and carries the name through its loop rounds and the step after", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-'))
+it("suffixes a taken branch, even one without a PR that awaywork didn't push, and carries the name through its loop rounds and the step after", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-suffix-'))
   const { opened, forge } = await originForge(root)
-  forge.branches.add('acme/api:night/acme-api-1')
-  forge.branches.add('acme/api:night/acme-api-1-2')
-  forge.heads['acme/api:night/acme-api-1'] = [
+  forge.branches.add('acme/api:away/acme-api-1')
+  forge.branches.add('acme/api:away/acme-api-1-2')
+  forge.heads['acme/api:away/acme-api-1'] = [
     { url: 'https://github.com/acme/api/pull/9', body: 'Mine.' },
   ]
   const other = { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(2)]) }
-  forge.heads['acme/api:night/acme-api-1-2'] = [other]
-  forge.branches.add('acme/api:night/acme-api-1-3')
-  forge.tips['acme/api:night/acme-api-1-3'] = 'Work in progress'
+  forge.heads['acme/api:away/acme-api-1-2'] = [other]
+  forge.branches.add('acme/api:away/acme-api-1-3')
+  forge.tips['acme/api:away/acme-api-1-3'] = 'Work in progress'
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -1250,51 +1250,51 @@ queue:
   })
 
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-1-4', ''],
-    ['night/acme-api-1-qa-feedback', 'night/acme-api-1-4'],
+    ['away/acme-api-1-4', ''],
+    ['away/acme-api-1-qa-feedback', 'away/acme-api-1-4'],
   ])
   expect(report.results.map((u) => [u.planned.unit.id, u.planned.unit.branch])).toEqual([
-    ['acme-api-1', 'night/acme-api-1-4'],
-    ['acme-api-1-review-1', 'night/acme-api-1-4'],
-    ['acme-api-1-address-review-1', 'night/acme-api-1-4'],
-    ['acme-api-1-review-2', 'night/acme-api-1-4'],
-    ['acme-api-1-qa-feedback', 'night/acme-api-1-qa-feedback'],
+    ['acme-api-1', 'away/acme-api-1-4'],
+    ['acme-api-1-review-1', 'away/acme-api-1-4'],
+    ['acme-api-1-address-review-1', 'away/acme-api-1-4'],
+    ['acme-api-1-review-2', 'away/acme-api-1-4'],
+    ['acme-api-1-qa-feedback', 'away/acme-api-1-qa-feedback'],
   ])
-  expect(prompts[1]).toContain('Every round works in this clone on `night/acme-api-1-4`')
-  expect(prompts[4]).toContain('cut from `night/acme-api-1-4`')
+  expect(prompts[1]).toContain('Every round works in this clone on `away/acme-api-1-4`')
+  expect(prompts[4]).toContain('cut from `away/acme-api-1-4`')
   expect(logged).toContain(
-    'acme-api-1: night/acme-api-1 is taken on acme/api, using night/acme-api-1-4',
+    'acme-api-1: away/acme-api-1 is taken on acme/api, using away/acme-api-1-4',
   )
 })
 
-it('skips a unit night-shift tried on a suffixed branch, one with every name taken, on its own branch without a PR, or that it cannot check', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-suffix-skip-'))
+it('skips a unit awaywork tried on a suffixed branch, one with every name taken, on its own branch without a PR, or that it cannot check', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-suffix-skip-'))
   const forge = fakeForge()
   for (const n of [1, 3])
     for (const suffix of ['', '-2', '-3', '-4', '-5', '-6', '-7', '-8', '-9', '-10']) {
-      forge.branches.add(`acme/api:night/acme-api-${n}${suffix}`)
-      forge.heads[`acme/api:night/acme-api-${n}${suffix}`] = [
+      forge.branches.add(`acme/api:away/acme-api-${n}${suffix}`)
+      forge.heads[`acme/api:away/acme-api-${n}${suffix}`] = [
         { url: 'https://github.com/acme/api/pull/9', body: 'Mine.' },
       ]
     }
-  forge.branches.add('acme/api:night/acme-api-5')
-  forge.tips['acme/api:night/acme-api-5'] = 'Fix it\n\nNight-shift: r0'
-  forge.branches.add('acme/api:night/acme-api-7')
+  forge.branches.add('acme/api:away/acme-api-5')
+  forge.tips['acme/api:away/acme-api-5'] = 'Fix it\n\nAwaywork: r0'
+  forge.branches.add('acme/api:away/acme-api-7')
   const { prsOn } = forge
   forge.prsOn = async (repo, branch) => {
-    if (branch === 'night/acme-api-7') throw new Error('rate limited')
+    if (branch === 'away/acme-api-7') throw new Error('rate limited')
     return prsOn(repo, branch)
   }
-  forge.heads['acme/api:night/acme-api-1-2'] = [
+  forge.heads['acme/api:away/acme-api-1-2'] = [
     { url: 'https://github.com/acme/api/pull/8', body: footer('r0', [issue(1)]) },
   ]
-  forge.branches.add('acme/api:night/acme-api-11')
-  forge.heads['acme/api:night/acme-api-11'] = [
+  forge.branches.add('acme/api:away/acme-api-11')
+  forge.heads['acme/api:away/acme-api-11'] = [
     { url: 'https://github.com/acme/api/pull/11', body: footer('r0', [issue(11)]), merged: true },
     { url: 'https://github.com/acme/api/pull/12', body: footer('r0', [issue(11)]) },
   ]
-  forge.branches.add('acme/api:night/acme-api-9')
-  forge.heads['acme/api:night/acme-api-9'] = [
+  forge.branches.add('acme/api:away/acme-api-9')
+  forge.heads['acme/api:away/acme-api-9'] = [
     { url: 'https://github.com/acme/api/pull/10', body: footer('r0', [issue(9)]), merged: true },
   ]
   const config = parseConfig(
@@ -1321,31 +1321,31 @@ it('skips a unit night-shift tried on a suffixed branch, one with every name tak
   })
   const merged = report.results.at(-1)
   expect(merged?.planned.unit.id).toBe('acme-api-9')
-  expect(merged?.planned.unit.branch).toBe('night/acme-api-9-2')
+  expect(merged?.planned.unit.branch).toBe('away/acme-api-9-2')
   expect(merged?.status).not.toBe('skipped')
   expect(report.results.slice(0, -1).map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     [
       'acme-api-1',
       'skipped',
-      'night-shift tried this in https://github.com/acme/api/pull/8; delete night/acme-api-1-2 to run it again',
+      'awaywork tried this in https://github.com/acme/api/pull/8; delete away/acme-api-1-2 to run it again',
     ],
-    ['acme-api-3', 'skipped', 'night/acme-api-3 to night/acme-api-3-10 already exist on acme/api'],
+    ['acme-api-3', 'skipped', 'away/acme-api-3 to away/acme-api-3-10 already exist on acme/api'],
     [
       'acme-api-5',
       'skipped',
-      'night/acme-api-5 exists on acme/api without a PR; delete it to run again',
+      'away/acme-api-5 exists on acme/api without a PR; delete it to run again',
     ],
-    ['acme-api-7', 'skipped', "couldn't check night/acme-api-7 on acme/api: rate limited"],
+    ['acme-api-7', 'skipped', "couldn't check away/acme-api-7 on acme/api: rate limited"],
     [
       'acme-api-11',
       'skipped',
-      'night-shift tried this in https://github.com/acme/api/pull/12; delete night/acme-api-11 to run it again',
+      'awaywork tried this in https://github.com/acme/api/pull/12; delete away/acme-api-11 to run it again',
     ],
   ])
 })
 
 it('ends a loop when no provider is left for a round, and publishes what it has', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-budget-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-budget-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1383,11 +1383,11 @@ queue:
     ['acme-api-1-address-review-1', 'done', undefined],
     ['acme-api-1-review-2', 'skipped', noProvider],
   ])
-  expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
+  expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
 })
 
 it('loops on a fresh clone after a report up to max, and keeps a report when the loop committed nothing', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-report-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-report-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
   const config = parseConfig(`
@@ -1437,8 +1437,8 @@ queue:
     ['acme-api-4', 'report', undefined],
     ['acme-api-4-qa-feedback-1', 'report', '1 round of qa-feedback; until held: verdict approve'],
   ])
-  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['night/acme-api-1', '']])
-  const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-1')
+  expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['away/acme-api-1', '']])
+  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1')
   expect(files.stdout.split('\n')).toEqual([
     'acme-api-1-implement-1.txt',
     'acme-api-1-implement-2.txt',
@@ -1446,7 +1446,7 @@ queue:
 })
 
 it('ends a loop once its command passes, runs it once per commit, and hands its output to the next step', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-command-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-command-'))
   const { opened, forge } = await originForge(root)
   const command = 'echo run >> "$COUNT"; test -e acme-api-1-address-review-2.txt'
   const config = parseConfig(`
@@ -1506,13 +1506,13 @@ queue:
   const log = await readFile(join(root, 'run/units/acme-api-1-review-1/out/check.log'), 'utf8')
   expect(log).toMatch(/^\$ echo run >> "\$COUNT"; test -e acme-api-1-address-review-2\.txt\n/)
   expect(log).toMatch(/\nfailed: Command failed with exit code 1: .*\n$/)
-  expect(prompts[2]).toContain(', which night-shift ran after it, in `check.log`.')
-  expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
+  expect(prompts[2]).toContain(', which awaywork ran after it, in `check.log`.')
+  expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
   expect(opened[0]?.body).not.toContain('Last check')
 })
 
 it("publishes a loop that reached max with the failing check's output in the PR body", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-check-failed-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-check-failed-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1557,7 +1557,7 @@ queue:
 })
 
 it('skips a rule and a step whose quota when does not hold', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1597,7 +1597,7 @@ queue:
 })
 
 it('records no attempt for a rule whose quota when does not hold', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1633,7 +1633,7 @@ queue:
 })
 
 it("skips a step whose when doesn't hold and goes on from the unit before", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-when-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
   const config = parseConfig(`
@@ -1662,7 +1662,7 @@ queue:
   const provider: Provider = {
     ...committer,
     async *run(job, signal) {
-      const previous = join(job.dir, '.nightshift/context/previous')
+      const previous = join(job.dir, '.away/context/previous')
       seen[job.unit.id] = (await readdir(previous).catch(() => [])).sort()
       yield* committer.run(job, signal)
     },
@@ -1695,17 +1695,15 @@ queue:
       "when `true` passes didn't hold (not run on an untrusted author's PR)",
     ],
   ])
-  const url = 'https://example.com/acme/api/pull/night/acme-api-1'
+  const url = 'https://example.com/acme/api/pull/away/acme-api-1'
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
-    ['night/acme-api-1', ''],
-    ['night/acme-api-1-qa-feedback', 'night/acme-api-1'],
+    ['away/acme-api-1', ''],
+    ['away/acme-api-1-qa-feedback', 'away/acme-api-1'],
   ])
   expect(opened[1]?.body).toContain(`Stacked on ${url}: merge that first.`)
   expect(seen['acme-api-1-plan']).toEqual(['diff.patch', 'pr.md', 'when.log'])
   const prompt = await readFile(join(root, 'run/units/acme-api-1-plan/prompt.md'), 'utf8')
-  expect(prompt).toContain(
-    'Before you started, night-shift ran `test -e acme-api-1-qa-feedback.txt`',
-  )
+  expect(prompt).toContain('Before you started, awaywork ran `test -e acme-api-1-qa-feedback.txt`')
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
@@ -1723,7 +1721,7 @@ queue:
 })
 
 it("passes over a loop step whose when doesn't hold, and still ends the loop at max", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-when-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-when-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -1764,24 +1762,24 @@ queue:
     ['acme-api-1-review-2', 'done', undefined],
     ['acme-api-1-address-review-2', 'skipped', "when verdict changes didn't hold"],
   ])
-  expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
+  expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
   expect(opened[0]?.body).toContain('acme-api-1-review-2 says comments.')
 })
 
-it('stacks a draft PR on a night-shift PR it takes up, and runs setup there without secrets', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+it('stacks a draft PR on an awaywork PR it takes up, and runs setup there without secrets', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-ours-'))
   const { origin, opened, forge } = await originForge(root)
-  await git(origin, 'branch', 'night/acme-api-5')
+  await git(origin, 'branch', 'away/acme-api-5')
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 repos:
   acme/api:
-    setup: 'echo "$NPM_TOKEN" > .nightshift/setup.txt'
+    setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
     secrets: [NPM_TOKEN]
 `)
   const pr = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
-  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const plan = planNight({
     config,
     items: [{ ...pr, linkedPrs: [link] }],
@@ -1805,19 +1803,19 @@ repos:
 
   expect(opened).toEqual([
     {
-      head: 'night/acme-api-9',
-      base: 'night/acme-api-5',
+      head: 'away/acme-api-9',
+      base: 'away/acme-api-5',
       body: expect.stringContaining(`Stacked on ${link.url}: merge that first.`),
     },
   ])
-  expect(forge.stacked).toEqual([[link.url, 'https://example.com/acme/api/pull/night/acme-api-9']])
+  expect(forge.stacked).toEqual([[link.url, 'https://example.com/acme/api/pull/away/acme-api-9']])
   expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
 })
 
-it("matches changed against a taken-up night-shift PR's branch, not its own commits", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-ours-'))
+it("matches changed against a taken-up awaywork PR's branch, not its own commits", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-ours-'))
   const { origin, forge } = await originForge(root)
-  await git(origin, 'checkout', '-q', '-b', 'night/acme-api-5')
+  await git(origin, 'checkout', '-q', '-b', 'away/acme-api-5')
   await mkdir(join(origin, 'src/auth'), { recursive: true })
   await writeFile(join(origin, 'src/auth/a.ts'), 'auth')
   await git(origin, 'add', '.')
@@ -1832,7 +1830,7 @@ queue:
     then: { skill: review, when: { changed: "src/auth/**" } }
 `)
   const pr = githubPr(9, { ours: true })
-  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const plan = planNight({
     config,
     items: [{ ...pr, linkedPrs: [link] }],
@@ -1870,7 +1868,7 @@ async function loopNight(
     ...input
   }: Omit<Partial<NightInput>, 'forge'> & { forge?: Partial<Forge> } = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-loop-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-'))
   const { origin, opened, forge } = await originForge(root)
   for (const branch of new Set(items.flatMap((i) => i.linkedPrs.map((pr) => pr.branch))))
     await git(origin, 'branch', branch)
@@ -1920,7 +1918,7 @@ it('tells a loop to write the PR body until a unit wrote one, and to keep it aft
   )
 
   const first = prompts['acme-api-1-implement-1']
-  expect(first).toContain('Commit on this branch and write `.nightshift/out/pr.md`.')
+  expect(first).toContain('Commit on this branch and write `.away/out/pr.md`.')
   expect(first).toContain('follows `plan` on the same items, which wrote a report tonight')
   expect(first).not.toContain('PR body so far')
   expect(prompts['acme-api-1-review-1']).toContain('the PR body so far in `pr.md`')
@@ -1941,7 +1939,7 @@ it('tells a loop to write the PR body until a unit wrote one, and to keep it aft
     },
   )
   const fix = prompts['acme-api-1-address-review-1']
-  expect(fix).toContain('Commit on this branch and write `.nightshift/out/pr.md`.')
+  expect(fix).toContain('Commit on this branch and write `.away/out/pr.md`.')
   expect(fix).not.toContain('PR body so far')
   expect(prompts['acme-api-1-review-2']).toContain('the PR body so far in `pr.md`')
 })
@@ -2140,7 +2138,7 @@ it('counts a failure for a loop host whose publish was refused, though a round r
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        await rm(join(job.dir, '.nightshift/out/pr.md'), { force: true })
+        await rm(join(job.dir, '.away/out/pr.md'), { force: true })
         until.setTime(0)
       },
     },
@@ -2304,7 +2302,7 @@ it('ends a loop whose hand-off failed, and still finishes the night', async () =
 
 it("hands a round off without running the clone's diff command or writing through its symlinks", async () => {
   const stop = new AbortController()
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
   const marker = join(root, 'ran')
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
@@ -2324,7 +2322,7 @@ it("hands a round off without running the clone's diff command or writing throug
         }
         yield* provider.run(job, signal)
         if (job.unit.id === 'acme-api-1-address-review-1')
-          await symlink(outside, join(job.dir, '.nightshift/out/diff.patch'))
+          await symlink(outside, join(job.dir, '.away/out/diff.patch'))
       },
     },
     {
@@ -2346,7 +2344,7 @@ it("hands a round off without running the clone's diff command or writing throug
 })
 
 it('refuses to publish a loop whose PR body a round turned into a symlink', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
@@ -2361,7 +2359,7 @@ it('refuses to publish a loop whose PR body a round turned into a symlink', asyn
       async *run(job, signal) {
         yield* provider.run(job, signal)
         if (job.unit.id === 'acme-api-1-address-review-1') {
-          const body = join(job.dir, '.nightshift/out/pr.md')
+          const body = join(job.dir, '.away/out/pr.md')
           await rm(body)
           await symlink(outside, body)
         }
@@ -2370,13 +2368,13 @@ it('refuses to publish a loop whose PR body a round turned into a symlink', asyn
   )
 
   expect(report.results[0]?.status).toBe('error')
-  expect(report.results[0]?.reason).toBe('.nightshift/out/pr.md in the clone is a symlink')
+  expect(report.results[0]?.reason).toBe('.away/out/pr.md in the clone is a symlink')
   expect(opened).toEqual([])
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
 })
 
 it("ends a loop whose clone a round symlinked, before the next round's workspace touches it", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
   await mkdir(join(root, 'previous'))
   await writeFile(join(root, 'previous', 'keep'), 'mine\n')
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
@@ -2391,8 +2389,8 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
       async *run(job, signal) {
         yield* provider.run(job, signal)
         if (job.unit.id === 'acme-api-1-review-1') {
-          await rm(join(job.dir, '.nightshift/context'), { recursive: true })
-          await symlink(root, join(job.dir, '.nightshift/context'))
+          await rm(join(job.dir, '.away/context'), { recursive: true })
+          await symlink(root, join(job.dir, '.away/context'))
         }
       },
     },
@@ -2401,7 +2399,7 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'error', '.nightshift/context in the clone is a symlink'],
+    ['acme-api-1-address-review-1', 'error', '.away/context in the clone is a symlink'],
   ])
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
@@ -2420,7 +2418,7 @@ it('reads past FIFOs a round left as its verdict or report, and finishes the nig
         yield* provider.run(job, signal)
         if (job.unit.id === 'acme-api-1-review-1')
           for (const name of ['verdict', 'report.md']) {
-            const file = join(job.dir, '.nightshift/out', name)
+            const file = join(job.dir, '.away/out', name)
             await rm(file, { force: true })
             await execa('mkfifo', [file])
           }
@@ -2630,7 +2628,7 @@ it('ends a loop on a round where every step was passed over, and says so in the 
   ])
   expect(report.results[0]?.loop).toBe("0 rounds of address-review; no step's when held")
   expect(opened[0]?.body).toContain(
-    "## Night-shift loop\n\n0 rounds of address-review; no step's when held.",
+    "## Awaywork loop\n\n0 rounds of address-review; no step's when held.",
   )
 
   const fixedOnce = await loopNight(
@@ -2679,7 +2677,7 @@ queue:
 })
 
 it("doesn't run a nested repo's filter when it checks the clone for uncommitted changes", async () => {
-  const ran = join(await mkdtemp(join(tmpdir(), 'nightshift-filter-')), 'ran')
+  const ran = join(await mkdtemp(join(tmpdir(), 'awaywork-filter-')), 'ran')
   const provider = looper({})
   const { report } = await loopNight(
     `queue:
@@ -2713,7 +2711,7 @@ it("doesn't run a nested repo's filter when it checks the clone for uncommitted 
 
 it('skips a when step whose check was interrupted without passing over it, so the chain retries', async () => {
   const stop = new AbortController()
-  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const started = join(await mkdtemp(join(tmpdir(), 'awaywork-check-')), 'started')
   const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
   const item = fakeItem({
     ...issue(1),
@@ -2849,7 +2847,7 @@ queue:
 
 it('ends a loop whose when check was interrupted, and retries its chain without counting a failure', async () => {
   const stop = new AbortController()
-  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const started = join(await mkdtemp(join(tmpdir(), 'awaywork-check-')), 'started')
   const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
   const item = fakeItem({
     ...issue(1),
@@ -2880,7 +2878,7 @@ it('ends a loop whose when check was interrupted, and retries its chain without 
 
 it('ends a loop whose until check was interrupted, and retries its chain without counting a failure', async () => {
   const stop = new AbortController()
-  const started = join(await mkdtemp(join(tmpdir(), 'nightshift-check-')), 'started')
+  const started = join(await mkdtemp(join(tmpdir(), 'awaywork-check-')), 'started')
   const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
   const item = fakeItem({
     ...issue(1),
@@ -2937,7 +2935,7 @@ it("runs the step after a passed-over draft PR step on the base it would have ha
     ['acme-api-2-address-review', 'skipped'],
     ['acme-api-2-plan', 'done'],
   ])
-  expect(opened.map((pr) => pr.head)).toEqual(['night/acme-api-1'])
+  expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
   expect(bases['acme-api-2-plan']).toBe('')
 })
 
@@ -2962,7 +2960,7 @@ it('escapes a pipe in a check command, so the report table keeps its cells', asy
 })
 
 it("doesn't write a check's log through a symlink a round left in the clone", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-outside-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
   const provider = looper({})
@@ -2977,20 +2975,20 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
       async *run(job, signal) {
         yield* provider.run(job, signal)
         if (job.unit.id === 'acme-api-1-address-review-1')
-          await symlink(outside, join(job.dir, '.nightshift/out/check.log'))
+          await symlink(outside, join(job.dir, '.away/out/check.log'))
       },
     },
     { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
   )
 
   expect(report.results[1]?.status).toBe('error')
-  expect(report.results[1]?.reason).toBe('.nightshift/out/check.log in the clone is a symlink')
+  expect(report.results[1]?.reason).toBe('.away/out/check.log in the clone is a symlink')
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
 })
 
-it('stacks on a night-shift PR a rule took up whenever a draft PR starts from its branch at run time', async () => {
+it('stacks on an awaywork PR a rule took up whenever a draft PR starts from its branch at run time', async () => {
   const pr = githubPr(9, { ours: true })
-  const link = { ...pr.linkedPrs[0], branch: 'night/acme-api-5', ours: true } as PrRef
+  const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const stackedOn = async (then: string) => {
     const { opened } = await loopNight(
       `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
@@ -3002,12 +3000,12 @@ it('stacks on a night-shift PR a rule took up whenever a draft PR starts from it
 
   expect(
     await stackedOn('[{ skill: fix-ci, when: { verdict: changes } }, address-review]'),
-  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
+  ).toEqual([['away/acme-api-9-address-review', 'away/acme-api-5', true]])
   expect(
     await stackedOn(
       '[{ loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }, address-review]',
     ),
-  ).toEqual([['night/acme-api-9-address-review', 'night/acme-api-5', true]])
+  ).toEqual([['away/acme-api-9-address-review', 'away/acme-api-5', true]])
 })
 
 it("doesn't open a push loop on a host whose report is blank", async () => {
@@ -3022,7 +3020,7 @@ it("doesn't open a push loop on a host whose report is blank", async () => {
       ...committer,
       async *run(job, signal) {
         yield* committer.run(job, signal)
-        await writeFile(join(job.dir, '.nightshift/out/report.md'), '\n')
+        await writeFile(join(job.dir, '.away/out/report.md'), '\n')
       },
     },
   )
@@ -3071,7 +3069,7 @@ const afterUnitQueue = (out: string) => `queue:
   - { skill: fix-ci, deliver: push, where: { type: pr }, then: implement }
   - { skill: plan, where: { type: issue } }
 after_unit:
-  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL|$NIGHTSHIFT_REPORT" >> '${out}'; exit 3
+  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'; exit 3
 `
 
 /** Commits unless it reports, and writes a PR body or a report as its unit delivers. */
@@ -3084,13 +3082,13 @@ const pusher: Provider = {
       await git(job.dir, 'commit', '-qm', `Work on ${job.unit.id}`)
     }
     const file = job.unit.deliver === 'draft_pr' ? 'pr.md' : 'report.md'
-    await writeFile(join(job.dir, '.nightshift/out', file), `Work on ${job.unit.id}\n\nDone.`)
+    await writeFile(join(job.dir, '.away/out', file), `Work on ${job.unit.id}\n\nDone.`)
     yield { type: 'done', ok: true, turns: 1 }
   },
 }
 
 it('runs after_unit once per unit with its PR or report, and goes on past a failing one', async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
   const logs: string[] = []
   const { report } = await loopNight(afterUnitQueue(out), [githubPr(1), issue(2)], pusher, {
     ctx: { env: { PATH: process.env.PATH }, log: (line) => logs.push(line) },
@@ -3103,7 +3101,7 @@ it('runs after_unit once per unit with its PR or report, and goes on past a fail
   ])
   expect((await readFile(out, 'utf8')).split('\n')).toEqual([
     expect.stringMatching(/^acme-api-1 done \|\/.+\/run\/units\/acme-api-1\/out\/report\.md$/),
-    'acme-api-1-implement done https://example.com/acme/api/pull/night/acme-api-1|',
+    'acme-api-1-implement done https://example.com/acme/api/pull/away/acme-api-1|',
     expect.stringMatching(/^acme-api-2 done \|\/.+\/run\/units\/acme-api-2\/out\/report\.md$/),
     '',
   ])
@@ -3115,7 +3113,7 @@ it('runs after_unit once per unit with its PR or report, and goes on past a fail
 })
 
 it('runs no after_unit on a dry run, nor once interrupted, past those of the units that finished', async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-')), 'out.txt')
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
   const items = [githubPr(1), issue(2)]
   await loopNight(afterUnitQueue(out), items, pusher, { dryRun: true })
   const stop = new AbortController()
@@ -3138,14 +3136,14 @@ it('runs no after_unit on a dry run, nor once interrupted, past those of the uni
 })
 
 it("runs a loop's after_unit once it closes, with its host's PR and each round's report, before the next unit runs", async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'nightshift-after-unit-loop-')), 'out.txt')
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-loop-')), 'out.txt')
   const yaml = `queue:
   - skill: implement
     then:
       - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
       - { skill: qa-feedback, deliver: report }
 after_unit:
-  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL|$NIGHTSHIFT_REPORT" >> '${out}'
+  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'
 `
   const provider = looper({ 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' })
   const firedBefore: Record<string, number> = {}
@@ -3167,7 +3165,7 @@ after_unit:
   })
   const lines = (await readFile(out, 'utf8')).trim().split('\n')
   expect(lines).toEqual([
-    'acme-api-1 done https://example.com/acme/api/pull/night/acme-api-1|',
+    'acme-api-1 done https://example.com/acme/api/pull/away/acme-api-1|',
     expect.stringMatching(
       /^acme-api-1-review-1 done \|\/.+\/units\/acme-api-1-review-1\/out\/report\.md$/,
     ),
@@ -3188,7 +3186,7 @@ after_unit:
 })
 
 async function verifiedBody(repoConfig: string): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-verify-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
@@ -3224,13 +3222,13 @@ queue:
 
 it("publishes a unit whose verify failed with the command's output in the PR body", async () => {
   const body = await verifiedBody("verify: 'echo 2 lint errors; false'")
-  expect(body).toContain('## Night-shift verify')
+  expect(body).toContain('## Awaywork verify')
   expect(body).toContain('`echo 2 lint errors; false` failed: Command failed with exit code 1')
   expect(body).toContain('2 lint errors')
 })
 
 it('leaves the PR body alone when verify passes', async () => {
-  expect(await verifiedBody("verify: 'true'")).not.toContain('Night-shift verify')
+  expect(await verifiedBody("verify: 'true'")).not.toContain('Awaywork verify')
 })
 
 it('notes a refused verify in the PR body', async () => {

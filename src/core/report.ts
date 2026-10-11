@@ -36,7 +36,7 @@ export interface NightReport {
 /** The morning report as markdown: units, skipped items, quota against each ceiling, report-only outputs. */
 export function formatReport(r: NightReport): string {
   const out = [
-    `# Night shift ${r.runId}${r.dryRun ? ' (dry run)' : ''}`,
+    `# Awaywork ${r.runId}${r.dryRun ? ' (dry run)' : ''}`,
     '',
     `${r.startedAt.toISOString()} to ${r.finishedAt.toISOString()}`,
     '',

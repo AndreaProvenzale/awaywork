@@ -10,12 +10,12 @@ config semantics every change keeps to.
 pnpm install
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 pnpm docs:gen    # after a CLI or config schema change; CI fails on stale output
-pnpm docs:dev    # the site at http://localhost:5173/night-shift/
+pnpm docs:dev    # the site at http://localhost:5173/awaywork/
 ```
 
 Tests run against fakes and recorded fixtures. Tests against real
 accounts (`test/real-*.test.ts`) are skipped by default: provider tests
-unless `NIGHTSHIFT_REAL=1`, source tests unless their env (token, test
+unless `AWAYWORK_REAL=1`, source tests unless their env (token, test
 workspace or sandbox) is set; see
 [docs/e2e.md](docs/e2e.md#live-source-tests).
 

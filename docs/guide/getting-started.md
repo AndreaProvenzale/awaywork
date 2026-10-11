@@ -1,5 +1,5 @@
 ---
-description: Install night-shift, write a config, preview tonight with plan, run one unit, then schedule every night.
+description: Install awaywork, write a config, preview tonight with plan, run one unit, then schedule every night.
 ---
 
 # Getting started
@@ -8,7 +8,7 @@ description: Install night-shift, write a config, preview tonight with plan, run
 
 - Node 22 or later, and `git`.
 - [`gh`](https://cli.github.com) logged in (`gh auth login`). GitHub is
-  both a source of work and where night-shift pushes branches and opens
+  both a source of work and where awaywork pushes branches and opens
   draft PRs.
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or
@@ -20,14 +20,14 @@ description: Install night-shift, write a config, preview tonight with plan, run
 ## Install
 
 ```sh
-npm install -g nightshift-agent
-nightshift --help
+npm install -g awaywork
+awaywork --help
 ```
 
 ## Configure
 
 ```sh
-nightshift init
+awaywork init
 ```
 
 `init` finds the installed agents and your `gh` login, then asks which
@@ -38,11 +38,11 @@ and their real workflow states, and asks which repo each team's code
 lives in; for Jira it asks your site and email, lists your projects and
 the site's statuses, and asks which repo each project's code lives in.
 It writes
-`~/.config/night-shift/config.yml`; a token you type is saved to
-`~/.config/night-shift/env` (mode 600), never to the config. Last, it
+`~/.config/awaywork/config.yml`; a token you type is saved to
+`~/.config/awaywork/env` (mode 600), never to the config. Last, it
 asks where to run every night: this machine, GitHub Actions or later, and
 hands off to [`schedule install`](#every-night).
-`nightshift init --yes` asks nothing and takes the defaults instead.
+`awaywork init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
 
@@ -54,19 +54,19 @@ sources:
 
 With no `queue`, the [default queue](./how-it-works.md#the-queue) applies.
 Assigned GitHub issues need a rule of their own, e.g. `implement` for
-issues labelled `night-shift` (see [Configuration](./configuration.md)).
+issues labelled `awaywork` (see [Configuration](./configuration.md)).
 
 Check it:
 
 ```sh
-nightshift config check
-nightshift doctor   # binaries, credentials, quota, sources
+awaywork config check
+awaywork doctor   # binaries, credentials, quota, sources
 ```
 
 ## Preview tonight
 
 ```sh
-nightshift plan
+awaywork plan
 ```
 
 `plan` reads your sources and each provider's quota and prints what a
@@ -84,39 +84,39 @@ Providers
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  night/acme-api-1
+  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    night/acme-api-2
+  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
   github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
 ```
 
-`nightshift queue` shows the same rules with tonight's matches and lets
-you reorder them with the keyboard; `nightshift queue move 3 1` moves
+`awaywork queue` shows the same rules with tonight's matches and lets
+you reorder them with the keyboard; `awaywork queue move 3 1` moves
 rule #3 to the top without one.
 
 ## Run one unit
 
 ```sh
-nightshift run --dry-run         # clone, context and prompt, no agent
-nightshift run --unit acme-api-1 # one real unit
-nightshift report                # the morning report of the last run
-nightshift report --list         # recent runs, to pick an id for report <id>
+awaywork run --dry-run         # clone, context and prompt, no agent
+awaywork run --unit acme-api-1 # one real unit
+awaywork report                # the morning report of the last run
+awaywork report --list         # recent runs, to pick an id for report <id>
 ```
 
 `--unit` takes the unit id from `plan` or an item key such as
 `acme/api#1`, in any case. A step of a rule's `then` runs with the units
 it follows.
 
-The run directory, `~/.local/state/night-shift/runs/<id>/`, keeps the
+The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report.
 
 ## Every night
 
 ```sh
-nightshift schedule install      # launchd; --with systemd or cron on Linux
+awaywork schedule install      # launchd; --with systemd or cron on Linux
 ```
 
 The job starts at `night.start` (default `01:00`) and stops at

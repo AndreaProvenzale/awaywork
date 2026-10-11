@@ -8,8 +8,8 @@ import { sourceField } from '../src/sources/index.js'
 import { scriptedAsk } from './fakes/ask.js'
 
 const token = process.env.ASANA_TOKEN
-const workspace = process.env.NIGHTSHIFT_ASANA_WORKSPACE ?? ''
-const project = process.env.NIGHTSHIFT_ASANA_PROJECT ?? ''
+const workspace = process.env.AWAYWORK_ASANA_WORKSPACE ?? ''
+const project = process.env.AWAYWORK_ASANA_PROJECT ?? ''
 const ctx = { env: process.env, log: console.log }
 
 type Named = { gid: string; name: string }
@@ -44,12 +44,12 @@ const paid = <T>(what: string, step: Promise<T>) =>
 
 /**
  * Seeds two tasks assigned to me in a new section of a test project, one blocked by the other,
- * reads them back for real and deletes them; run with ASANA_TOKEN, NIGHTSHIFT_ASANA_WORKSPACE
- * and NIGHTSHIFT_ASANA_PROJECT (a project gid in that workspace) set.
+ * reads them back for real and deletes them; run with ASANA_TOKEN, AWAYWORK_ASANA_WORKSPACE
+ * and AWAYWORK_ASANA_PROJECT (a project gid in that workspace) set.
  */
 describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
   const run = Date.now().toString(36)
-  const repo = 'night-shift/e2e'
+  const repo = 'awaywork/e2e'
   const comment = `e2e comment ${run}`
   const value = `e2e value ${run}`
   const due = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10)
@@ -149,7 +149,7 @@ describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
       comments: [{ author: me.name, body: comment }],
     })
 
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await asana.prefetch(found.blocked, dir, ctx)
     expect(await readdir(dir)).toEqual(['task.md'])
     expect(await readFile(join(dir, 'task.md'), 'utf8')).toContain(comment)

@@ -31,13 +31,13 @@ export function initCommand(program: Command): void {
       const path = configPath(program.opts().config)
       if (!opts.yes && !process.stdin.isTTY) {
         console.error(
-          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`nightshift config schema` describes it) and run `nightshift config check`',
+          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`awaywork config schema` describes it) and run `awaywork config check`',
         )
         process.exitCode = 1
         return
       }
       const ask = opts.yes ? defaultAsk(presets(opts), (line) => log.info(line)) : terminalAsk
-      intro('night-shift init')
+      intro('awaywork init')
       try {
         if (existsSync(path) && !opts.force) {
           if (opts.yes) {
@@ -78,9 +78,9 @@ export function initCommand(program: Command): void {
         const scheduler = opts.yes ? 'later' : await whereToRun(terminalAsk).catch(() => 'later')
         if (scheduler === 'later')
           return outro(
-            `Wrote ${path}. Next: nightshift doctor, nightshift plan, nightshift schedule install`,
+            `Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`,
           )
-        outro(`Wrote ${path}. Next: nightshift doctor, nightshift plan`)
+        outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan`)
         await installSchedule(program.opts().config, scheduler || undefined)
       } catch (e) {
         if (e instanceof Cancelled) {
@@ -125,7 +125,7 @@ const whereToRun = (ask: Ask) =>
     [
       { value: '', label: 'this machine' },
       { value: 'github-actions', label: 'GitHub Actions, from the repo in this directory' },
-      { value: 'later', label: 'later, with nightshift schedule install' },
+      { value: 'later', label: 'later, with awaywork schedule install' },
     ],
     '',
   )
@@ -188,7 +188,7 @@ export async function initConfig(input: InitInput): Promise<string> {
 
   const defaults = defaultRules(Object.keys(configs))
   const kept = await ask.multiselect(
-    'Starting queue, top rule first (reorder later with nightshift queue)',
+    'Starting queue, top rule first (reorder later with awaywork queue)',
     defaults.map((r, i) => ({ value: String(i), label: r.skill, hint: describeRule(r) })),
     defaults.map((_, i) => String(i)),
   )
@@ -231,8 +231,8 @@ export function renderConfig(c: {
   queue: Rule[]
 }): string {
   return [
-    '# night-shift config: `nightshift config edit` validates on save,',
-    '# `nightshift queue` reorders the queue, `nightshift plan` previews tonight.',
+    '# awaywork config: `awaywork config edit` validates on save,',
+    '# `awaywork queue` reorders the queue, `awaywork plan` previews tonight.',
     `night: { start: "${c.night.start}", end: "${c.night.end}" }`,
     'budget:                         # every provider; override one with - <id>: { budget: … }',
     commented('  reserve: 10%', 'never go past 1 - reserve of any window'),

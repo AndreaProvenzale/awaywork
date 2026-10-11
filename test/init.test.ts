@@ -49,8 +49,8 @@ describe('init', () => {
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: true, ...registry() })
     expect(text).toMatchInlineSnapshot(`
-      "# night-shift config: \`nightshift config edit\` validates on save,
-      # \`nightshift queue\` reorders the queue, \`nightshift plan\` previews tonight.
+      "# awaywork config: \`awaywork config edit\` validates on save,
+      # \`awaywork queue\` reorders the queue, \`awaywork plan\` previews tonight.
       night: { start: "23:30", end: "07:00" }
       budget:                         # every provider; override one with - <id>: { budget: … }
         reserve: 10%                  # never go past 1 - reserve of any window
@@ -290,7 +290,7 @@ describe('init --yes', () => {
 
 describe('saveSecret', () => {
   it('appends on its own line to a file created with mode 600', async () => {
-    const file = join(await mkdtemp(join(tmpdir(), 'nightshift-env-')), 'env')
+    const file = join(await mkdtemp(join(tmpdir(), 'awaywork-env-')), 'env')
     await saveSecret('A', '1', file)
     expect((await stat(file)).mode & 0o777).toBe(0o600)
     await writeFile(file, 'A=1\nB=2')

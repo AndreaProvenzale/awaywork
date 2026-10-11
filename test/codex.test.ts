@@ -18,7 +18,7 @@ import { providerContract } from './contracts/provider.contract.js'
 import { fakeItem } from './fakes/items.js'
 
 const bin = fileURLToPath(new URL('./fakes/codex.mjs', import.meta.url))
-const tmp = await mkdtemp(join(tmpdir(), 'nightshift-codex-'))
+const tmp = await mkdtemp(join(tmpdir(), 'awaywork-codex-'))
 const lockFile = join(tmp, 'codex.lock')
 const provider = codexProvider(bin, lockFile)
 const recorded = (name: string) =>
@@ -36,7 +36,7 @@ const job = (maxTurns = 10): Job => ({
     foreign: false,
     network: true,
     untrusted: false,
-    branch: 'night/fake-1',
+    branch: 'away/fake-1',
     rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
@@ -245,7 +245,7 @@ describe('codex provider', () => {
   })
 
   it('kills what the binary left running once it exits', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-left-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-left-'))
     const pid = join(root, 'left.pid')
     const script = join(root, 'leaves.sh')
     // The quota probe after the run calls it again, as `app-server`.

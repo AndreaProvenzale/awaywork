@@ -2,7 +2,7 @@ import { pct } from './budget.js'
 import { matchesValue } from './queue.js'
 import type { Condition } from './types.js'
 
-/** What night-shift knows when it checks a condition: the verdict, and whether the command and paths passed. */
+/** What awaywork knows when it checks a condition: the verdict, and whether the command and paths passed. */
 export interface Facts {
   verdict?: string
   command?: boolean

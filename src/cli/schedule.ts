@@ -46,11 +46,11 @@ const GH_TOKEN_HELP =
 export function scheduleCommand(program: Command): void {
   const schedule = program
     .command('schedule')
-    .description('run night-shift every night on this machine or in GitHub Actions')
+    .description('run awaywork every night on this machine or in GitHub Actions')
 
   schedule
     .command('install')
-    .description('start `nightshift run` when a window opens; it starts no unit after it closes')
+    .description('start `awaywork run` when a window opens; it starts no unit after it closes')
     .option(
       '--with <scheduler>',
       `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: launchd on macOS, else systemd if it runs, else cron)`,
@@ -152,7 +152,7 @@ export async function staleSchedules(
     const wanted = startsOf(windows)
     if (startsKey(job.starts) !== startsKey(wanted))
       warnings.push(
-        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${describeStarts(wanted)}; run \`nightshift schedule install\``,
+        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${describeStarts(wanted)}; run \`awaywork schedule install\``,
       )
   }
   return warnings
@@ -271,7 +271,7 @@ export async function installWorkflow(
   if (!person && (await isShared(root))) {
     const login = await io.run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')
     console.error(
-      `This is a shared control repo, with a workflow per person; run \`nightshift schedule install --with ${GITHUB_ACTIONS} --as ${login.toLowerCase() || '<name>'}\``,
+      `This is a shared control repo, with a workflow per person; run \`awaywork schedule install --with ${GITHUB_ACTIONS} --as ${login.toLowerCase() || '<name>'}\``,
     )
     process.exitCode = 1
     return
@@ -607,7 +607,7 @@ async function sync(
   ask: Ask,
   stage: (staged: string) => Promise<void>,
 ): Promise<boolean> {
-  const tmp = await mkdtemp(join(tmpdir(), 'nightshift-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'awaywork-'))
   try {
     const staged = join(tmp, basename(to))
     await stage(staged)

@@ -1,5 +1,5 @@
 ---
-description: Research on which task trackers a script can read headless, their tokens and limits, and why night-shift uses thin adapters instead of MCP.
+description: Research on which task trackers a script can read headless, their tokens and limits, and why awaywork uses thin adapters instead of MCP.
 ---
 
 # Sources
@@ -166,7 +166,7 @@ YouTrack, Shortcut, Plane.
   `/rest/api/3/field`; comments per issue from `/issue/{id}/comment`,
   paged by `startAt`, oldest first, ADF turned into minimal Markdown [I]. 429s wait out
   `Retry-After`, as for Asana. Key is the issue key (`ENG-12`).
-- **PR links.** `dev-status` stays unused: night-shift links issues
+- **PR links.** `dev-status` stays unused: awaywork links issues
   through the forge by key, which Jira's own branch names carry [I].
 - **Blocked.** `blocked` is true when `fields.issuelinks` holds a link
   of type `Blocks` with an `inwardIssue` (the issue blocking this one)
@@ -178,11 +178,11 @@ YouTrack, Shortcut, Plane.
 ### Asana
 - PAT has the user's full access; read scopes exist for OAuth apps only
   [V] https://developers.asana.com/docs/oauth-scopes
-- **Token for night-shift.** There is no read-only PAT: the token in
+- **Token for awaywork.** There is no read-only PAT: the token in
   `token_env` can do anything the user can [V, above]. Service accounts
-  need "Full Permissions" for the task endpoints [V]. night-shift only
+  need "Full Permissions" for the task endpoints [V]. awaywork only
   sends `GET`s and never hands the token to the worker. Make a PAT for
-  night-shift alone so it can be revoked on its own.
+  awaywork alone so it can be revoked on its own.
   https://developers.asana.com/docs/personal-access-token
 - `GET /tasks` needs `workspace` with `assignee`; `completed_since`
   keeps incomplete tasks plus ones completed after it; pages of up to
@@ -214,7 +214,7 @@ YouTrack, Shortcut, Plane.
   attachment's subtype and URL fields are not documented [I]. The
   in-task GitHub widget is an app component whose resource lives on the
   app's server [V] https://developers.asana.com/reference/attachresource,
-  so it may not show in `/attachments` at all [I]. night-shift links
+  so it may not show in `/attachments` at all [I]. awaywork links
   tasks through the forge instead: my PRs whose branch or title carries
   the task key, or whose body holds the task URL.
 - **Repo for a task.** Asana has no notion of a repo, so a task with no
@@ -238,7 +238,7 @@ YouTrack, Shortcut, Plane.
   `canceled`, paged by `pageInfo.endCursor`; comments per issue through
   `issue(id).comments` [I]. Key is the `identifier` (`ENG-12`).
 - **PR links.** Not read from `attachments` until the claim below is
-  verified: night-shift links issues through the forge by key, which
+  verified: awaywork links issues through the forge by key, which
   matches Linear's own branch names (`dev/eng-12-title`) [I].
 - **Blocked.** `blocked` is true when `inverseRelations` holds a
   `blocks` relation whose issue's `state.type` is not `completed` or

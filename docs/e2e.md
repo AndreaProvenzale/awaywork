@@ -13,7 +13,7 @@ with tags as in `providers.md`.
 From `lessons.md`:
 
 - Claude: `implement` to draft PR, `review` to a report, and skipping an
-  item that links an open night-shift PR.
+  item that links an open awaywork PR.
 - Codex: `review` to a report, stopped at its ceiling between units,
   the next unit re-routed to Claude.
 
@@ -42,10 +42,10 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 
 | Source | Live test | Env |
 |---|---|---|
-| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `NIGHTSHIFT_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `NIGHTSHIFT_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
-| Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`, `NIGHTSHIFT_ASANA_PROJECT` (a project gid there) |
-| Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `NIGHTSHIFT_LINEAR_TEAM`: the key of a team its user belongs to |
-| Jira | Seeds two issues assigned to me in a test project, one labelled, with a priority and a comment, blocking the other; checks fields, `project_repos`, `blocked`, `issue.md` and `init` offering the real project and status | `JIRA_API_TOKEN`, `JIRA_SITE` (host), `JIRA_EMAIL`, `NIGHTSHIFT_JIRA_PROJECT` (a key whose project has a `Task` type); `JIRA_CLOUD_ID` for a scoped token |
+| GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `AWAYWORK_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `AWAYWORK_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
+| Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `AWAYWORK_ASANA_WORKSPACE`, `AWAYWORK_ASANA_PROJECT` (a project gid there) |
+| Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `AWAYWORK_LINEAR_TEAM`: the key of a team its user belongs to |
+| Jira | Seeds two issues assigned to me in a test project, one labelled, with a priority and a comment, blocking the other; checks fields, `project_repos`, `blocked`, `issue.md` and `init` offering the real project and status | `JIRA_API_TOKEN`, `JIRA_SITE` (host), `JIRA_EMAIL`, `AWAYWORK_JIRA_PROJECT` (a key whose project has a `Task` type); `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
 The GitHub test polls `items` until search indexes the seeded items and
@@ -90,7 +90,7 @@ rule and a task in a section it creates and deletes for `plan`. `plan
 --dry-run --unit <key>` must leave its context file, prompt and skill in
 the run dir. A PR of mine whose body carries the task's `link` then
 links the task without skipping it; once the body also carries
-night-shift's footer, `plan` skips the task as waiting for review. A
+awaywork's footer, `plan` skips the task as waiting for review. A
 fake `claude` on `PATH` answers the quota probe with a recorded reading
 and a dry run starts no worker, so nothing spends quota; `HOME` is a
 temp dir, so state stays out of yours. Its PR commits with `[skip ci]`
@@ -102,7 +102,7 @@ and leaves one closed PR.
   their own review. `address-review` can use review comments left on
   one's own PR.
 - The workflow from `schedule install --with github-actions` calls
-  `AndreaProvenzale/night-shift@v1` with the CLI's own version, and only a
+  `AndreaProvenzale/awaywork@v1` with the CLI's own version, and only a
   stable release moves `v1`: publish a release candidate first, and point
   `uses:` at its tag and `version` at its number in the test repo.
 - A scheduled job runs the `claude` binary on `PATH`, with whichever
@@ -111,7 +111,7 @@ and leaves one closed PR.
 
 ## Setup
 
-- A private sandbox repo, `AndreaProvenzale/night-shift-sandbox`: a
+- A private sandbox repo, `AndreaProvenzale/awaywork-sandbox`: a
   small TypeScript project with a CI job that can be turned red, a PR
   template and agent instructions.
 - An Asana project with sections `QA`, `In progress`, `Current sprint`,
@@ -124,7 +124,7 @@ and leaves one closed PR.
 ### 1. Install and set up
 
 - `pnpm build && npm pack`, install the tarball globally, then
-  `nightshift --help`, `skills list` and `doctor` from outside this repo.
+  `awaywork --help`, `skills list` and `doctor` from outside this repo.
 - `init` with real accounts (Claude and Codex, GitHub and Asana),
   `config check`, `queue` (reorder, save, comments kept), and
   `config edit` with a broken draft, which must be refused.
@@ -146,14 +146,14 @@ Set up the item, read `plan`, then `run --unit <id>`.
 For each unit, check:
 
 - the context files in the run dir;
-- the footer and the `Night-shift:` trailer;
+- the footer and the `Awaywork:` trailer;
 - the PR body's claims, rerun on the branch;
 - the next `plan` skipping the item as waiting for review.
 
 ### 3. Guardrails
 
 - A branch that already exists on the remote is never pushed: the unit
-  takes a `-2` suffix, or is skipped when a night-shift PR there names
+  takes a `-2` suffix, or is skipped when an awaywork PR there names
   its item, and the push refuses it again.
 - `deliver: report` pushes nothing.
 - An extra skill telling the model to run `gh auth status` and push:
@@ -172,7 +172,7 @@ For each unit, check:
 ### 5. Unattended
 
 - `schedule install` with the night window a few minutes ahead: it
-  fires, and `nightshift report` shows the night. A scheduled run outside
+  fires, and `awaywork report` shows the night. A scheduled run outside
   the window does nothing.
 - systemd and cron on a Linux VM or container, or ship them marked
   untested.
@@ -184,7 +184,7 @@ For each unit, check:
 
 ### 6. A whole night
 
-One `nightshift run --scheduled` with both providers and both sources.
+One `awaywork run --scheduled` with both providers and both sources.
 Record it in `lessons.md` like the earlier burn tests, and retag the
 [C]/[I] claims it settles in `providers.md` and `sources.md`.
 

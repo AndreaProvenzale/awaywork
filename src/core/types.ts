@@ -7,9 +7,9 @@ export interface PrRef {
   branch: string
   /** Its branch's head commit, when the source reads it. */
   head?: string
-  /** Opened by night-shift: its body carries the footer. */
+  /** Opened by awaywork: its body carries the footer. */
   ours: boolean
-  /** Opened by the developer, by hand or through night-shift. */
+  /** Opened by the developer, by hand or through awaywork. */
   mine: boolean
   /** Its author has write access or org membership; always, when it's mine. */
   trusted: boolean
@@ -49,7 +49,7 @@ export interface Choice<T extends string = string> {
   hint?: string
 }
 
-/** Questions `nightshift init` asks in the terminal; tests answer them from a script. */
+/** Questions `awaywork init` asks in the terminal; tests answer them from a script. */
 export interface Ask {
   text(message: string, opts?: { initial?: string; placeholder?: string }): Promise<string>
   select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
@@ -80,7 +80,7 @@ export interface Source<C = unknown> {
   secrets(cfg: C): string[]
   items(cfg: C, ctx: Ctx): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
-  /** Asks what `nightshift init` needs to configure this source. */
+  /** Asks what `awaywork init` needs to configure this source. */
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
 }
 
@@ -206,7 +206,7 @@ export interface Step {
 export interface Condition {
   /** The latest verdict a step of the loop wrote, or for `when` the step before's. */
   verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
-  /** A shell command night-shift runs in the clone, outside the model; exit 0 holds. */
+  /** A shell command awaywork runs in the clone, outside the model; exit 0 holds. */
   command?: string
   /** `when` only: globs, holding when the chain's commits change a matching path, against where the chain started. */
   changed?: string[]
@@ -253,7 +253,7 @@ export interface Unit {
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** The URL of the night-shift PR whose branch `base` is: tonight's draft PR, or one a rule took up again. */
+  /** The URL of the awaywork PR whose branch `base` is: tonight's draft PR, or one a rule took up again. */
   stackedOn?: string
   branch: string
   rule: Step

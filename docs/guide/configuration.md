@@ -1,19 +1,19 @@
 ---
-description: The night-shift config file by example, covering the night window, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
+description: The awaywork config file by example, covering the night window, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
 ---
 
 # Configuration
 
-One YAML file, `~/.config/night-shift/config.yml` by default;
-`--config <path>` or `NIGHT_SHIFT_CONFIG` point elsewhere. Every key is
+One YAML file, `~/.config/awaywork/config.yml` by default;
+`--config <path>` or `AWAYWORK_CONFIG` point elsewhere. Every key is
 listed in the [reference](../reference/config.md).
 
 ## Editing safely
 
 ```sh
-nightshift config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
-nightshift config check   # validate, including skill names
-nightshift plan           # see what the change does tonight
+awaywork config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
+awaywork config check   # validate, including skill names
+awaywork plan           # see what the change does tonight
 ```
 
 For autocompletion and hover docs in editors with the YAML language
@@ -21,10 +21,10 @@ server (VS Code's YAML extension, JetBrains, Neovim), put this first line
 in the file:
 
 ```yaml
-# yaml-language-server: $schema=https://andreaprovenzale.github.io/night-shift/config.schema.json
+# yaml-language-server: $schema=https://andreaprovenzale.github.io/awaywork/config.schema.json
 ```
 
-`nightshift config schema` prints the same JSON Schema for the installed
+`awaywork config schema` prints the same JSON Schema for the installed
 version.
 
 ## A full example
@@ -50,7 +50,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
-branch: night/{key}             # default; {key} or {title} is required
+branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
@@ -66,7 +66,7 @@ queue:                          # first matching rule wins; top = highest priori
     branch: fix/{key}
   - skill: implement
     source: github
-    where: { type: issue, label: night-shift, repo: acme/api }
+    where: { type: issue, label: awaywork, repo: acme/api }
     order: oldest
     units: 2                    # at most 2 of these per night
   - skill: review
@@ -107,9 +107,9 @@ A readable quota decides how much work fits, not how much you can review
 in a morning. `night.units` caps the units planned per night,
 `night.units_per_repo` those in any one repo, and a rule's `units` those
 from that rule. None is set by default. Units past a cap are skipped in
-queue order, with the cap named in `nightshift plan` and the report. A
+queue order, with the cap named in `awaywork plan` and the report. A
 [`then`](#then) step counts as a unit of the rule that started its chain.
-Only units routed to a provider count, and caps apply to each `nightshift
+Only units routed to a provider count, and caps apply to each `awaywork
 run`, like `fallback.units`.
 
 Budgets are shares of each provider's quota windows; see
@@ -130,7 +130,7 @@ including someone else's PR:
 - `claude: { settings: <file> }`: a Claude Code settings file, relative
   to the config file, passed as `--settings`. Auto-memory stays off, and
   workers run in `dontAsk` mode: a tool that isn't pre-approved, by
-  night-shift or by your `permissions.allow`, is denied.
+  awaywork or by your `permissions.allow`, is denied.
 - `codex: { config: { <key>: <value> } }`: each key passed as
   `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
@@ -147,20 +147,20 @@ including someone else's PR:
 Every source but `github` also takes a [`link`](#linking-prs).
 
 Asana has no read-only personal token: the token can do anything you can.
-night-shift only reads with it and never hands it to the agent, unless
+awaywork only reads with it and never hands it to the agent, unless
 you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just
-for night-shift so you can revoke it alone.
+for awaywork so you can revoke it alone.
 
 Linear takes a personal API key (Settings > Account > Security & access).
-night-shift only reads with it and never hands it to the agent, unless
+awaywork only reads with it and never hands it to the agent, unless
 you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear
 offers the choice, give the key read access only.
 
 Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
 API tokens). Prefer "Create API token with scopes", app Jira, scope
-`read:jira-work`: `init` then finds the site's `cloud_id` and night-shift
+`read:jira-work`: `init` then finds the site's `cloud_id` and awaywork
 calls `api.atlassian.com`, as scoped tokens require. A token without
-scopes can do anything you can; night-shift only reads with it. Tokens
+scopes can do anything you can; awaywork only reads with it. Tokens
 expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as
@@ -188,33 +188,33 @@ queue:
   - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
 ```
 
-The name is cosmetic: night-shift finds its own PRs by their footer, and
+The name is cosmetic: awaywork finds its own PRs by their footer, and
 yours as [Linking PRs](#linking-prs) says. Jira is the exception, since
 it links a PR only by the key in its branch or title: for Jira items keep
 the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that night-shift only pushes a branch that doesn't
+The guardrail is that awaywork only pushes a branch that doesn't
 exist on the remote yet, unless a rule opts in to [`push`](#push). When
 the name is taken, the unit takes the first free one of `<branch>-2` to
 `<branch>-10`, and the `then` steps and loop rounds after it follow.
-Not when night-shift already tried there: when a PR on the taken branch,
+Not when awaywork already tried there: when a PR on the taken branch,
 open or closed unmerged, has a footer naming one of the unit's items, the
-unit is skipped as `night-shift tried this in <PR>; delete <branch> to
+unit is skipped as `awaywork tried this in <PR>; delete <branch> to
 run it again`. That record lives on GitHub, so it holds on a runner that
 keeps no [attempts](./how-it-works.md#units). A merged one landed, so
 the next pickup is a new round and takes a suffix. A taken branch with
-no PR whose tip has the `Night-shift:` trailer is a push whose PR
+no PR whose tip has the `Awaywork:` trailer is a push whose PR
 failed, so it skips the unit too, until you delete it; one without the
 trailer, your own work in progress, is passed over for a suffix.
 
 ## Linking PRs
 
-Trackers don't tell night-shift which PR is a task's, so it looks
+Trackers don't tell awaywork which PR is a task's, so it looks
 through your open PRs:
 
-- One night-shift opened is linked by the items its footer names,
-  whatever its branch or title. It never falls back to names, so a
-  night-shift PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
+- A PR awaywork opened is linked by the items its footer names,
+  whatever its branch or title. It never falls back to names, so an
+  awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
   footer naming no items counts as none, so it is linked like yours.
 - One you wrote is linked when its branch or title holds the item's key
   as a whole word, in any case, or its body holds the source's `link`
@@ -222,7 +222,7 @@ through your open PRs:
   would mark ENG-12 as taken.
 
 `link` is one line in the tracker's own words, rendered from the item's
-`{key}`, `{id}` and `{url}`. night-shift writes it into its draft PRs
+`{key}`, `{id}` and `{url}`. awaywork writes it into its draft PRs
 too, so the tracker links them whatever the branch is called.
 
 | Source | Default `link` | Why |
@@ -254,7 +254,7 @@ setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
 otherwise the agent is told it didn't run. It gets none of them either
 on a branch a worker wrote: a `then` step's after a draft PR or a push,
-a stacked draft PR's, or a night-shift PR's a rule took up again. Read
+a stacked draft PR's, or an awaywork PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -270,7 +270,7 @@ skips it.
 
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
-file. A repo can also carry `.night-shift/instructions.md`, read from the
+file. A repo can also carry `.awaywork/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
 `network: false` on a repo or a rule cuts the agent's commands off the
@@ -292,7 +292,7 @@ the repo's PR template, its recent commit style and your instructions
 
 | Key | Meaning |
 |---|---|
-| `skill` | The skill that does the work (`nightshift skills list`) |
+| `skill` | The skill that does the work (`awaywork skills list`) |
 | `source` | Only items from this source |
 | `where` | Conditions on `type` and the source's fields |
 | `provider` | One or a list; overrides the global order for this rule |
@@ -318,7 +318,7 @@ where:
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
   updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
-  label: night-shift                # on a list field: contains
+  label: awaywork                # on a list field: contains
   "fields.Priority": High           # an Asana custom field
   blocked: false                    # Linear, Jira, Asana: no open blocker
   any:                              # at least one entry holds; each is a where, ANDed with the keys above
@@ -335,7 +335,7 @@ key is a config error that lists the keys each source offers. The
 [field table](./how-it-works.md#items)
 lists them too.
 
-A PR night-shift opened only matches a rule whose top-level `where` names
+A PR awaywork opened only matches a rule whose top-level `where` names
 `ours` (inside `any` it is a config error), so rules written for your own
 PRs leave it waiting for your review. To act on it once you've reviewed it:
 
@@ -344,11 +344,11 @@ PRs leave it waiting for your review. To act on it once you've reviewed it:
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-The unit's draft PR stacks on the night-shift PR, on a branch named
-after it (`night/acme-api-9` for #9). Once you merge the stacked PR, the
+The unit's draft PR stacks on the awaywork PR, on a branch named
+after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the
 next pickup of #9 takes a `-2` branch; while the stacked PR is open or
-closed unmerged, it is skipped as `night-shift tried this in <PR>;
-delete night/acme-api-9 to run it again`. Resolve the threads it
+closed unmerged, it is skipped as `awaywork tried this in <PR>;
+delete away/acme-api-9 to run it again`. Resolve the threads it
 answered too: merging moves #9, and with your threads still open the
 rule takes it up again for the same threads.
 The rule runs on the threads you started, but the agent reads every
@@ -371,7 +371,7 @@ to set more:
 ```yaml
 queue:
   - skill: implement
-    where: { type: issue, label: night-shift }
+    where: { type: issue, label: awaywork }
     then: review
 
   - skill: plan
@@ -391,7 +391,7 @@ queue:
   first. After a report, it starts from the same base. After a push, it
   starts from your PR's branch, pushed commits included.
 - The step finds what the one before delivered in
-  `.nightshift/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
+  `.away/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
   or both `report.md` and `diff.patch` after a push.
 - A step runs only when the one before delivered; otherwise the rest of
   the chain is skipped, with the reason in the report. Once a unit in the
@@ -416,7 +416,7 @@ the other agent reviewing:
 ```yaml
 queue:
   - skill: implement
-    where: { type: issue, label: night-shift }
+    where: { type: issue, label: awaywork }
     then:
       - loop:
           - { skill: review, provider: codex }
@@ -437,11 +437,11 @@ queue:
   the draft PR.
 - `until` is checked after every step and ends the loop as soon as it
   holds; with both keys, both must. `verdict` is the latest word a step
-  wrote to `.nightshift/out/verdict` (built-in `review` writes `approve`,
+  wrote to `.away/out/verdict` (built-in `review` writes `approve`,
   `comments` or `changes`); it takes a word, a list for any of, or
   `{ not: … }`. It waits for a step in the loop to write a verdict, so
   `{ not: changes }` doesn't hold after a step that wrote none.
-  `command` is a shell command night-shift runs in the clone after the
+  `command` is a shell command awaywork runs in the clone after the
   step, outside the model; it holds when it exits 0. `max` is at most 5.
 - A command runs like `setup` on a branch a worker wrote: without the
   repo's `secrets`, for at most 15 minutes, and not past `night.end`. It
@@ -459,7 +459,7 @@ queue:
   outside a loop it skips a `when` step without passing over it, so the
   chain is tried again the next night. After Ctrl-C the chain is tried
   again in both cases.
-- A step finds the one before's output in `.nightshift/context/previous/`:
+- A step finds the one before's output in `.away/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When
   the loop ends with the command failing, the tail of its output goes
@@ -494,7 +494,7 @@ weren't there:
 ```yaml
 queue:
   - skill: implement
-    where: { type: issue, label: night-shift }
+    where: { type: issue, label: awaywork }
     then:
       - loop:
           - review
@@ -511,12 +511,12 @@ queue:
 - `command` runs as in `until`, in the step's clone before its agent
   starts. Prefix `!` to run a step only when a check fails, such as a
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
-  `.nightshift/context/previous/when.log`. A check that times out says
+  `.away/context/previous/when.log`. A check that times out says
   nothing: the step is skipped without being passed over, so the chain
   retries each night.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
-  default branch or the night-shift PR a rule took up. Globs are git's, from the repo root, with no leading
+  default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - `nights_until_reset` holds when the provider's long window resets within
@@ -542,7 +542,7 @@ queue:
 
 ### `push`
 
-By default night-shift only pushes branches that don't exist yet. `deliver:
+By default awaywork only pushes branches that don't exist yet. `deliver:
 push` is the opt-in to add commits onto your own open PR instead of
 stacking a draft PR on it, e.g. to have review threads addressed in place:
 
@@ -553,7 +553,7 @@ queue:
     deliver: push
 ```
 
-- Only onto an open PR you authored, night-shift's own included (they
+- Only onto an open PR you authored, awaywork's own included (they
   are opened with your login). On someone else's PR, a PR from a fork,
   or an item with no PR of yours, the unit is skipped with the reason.
 - A `then` step can push only onto the rule's own PR. After a draft PR,
@@ -562,24 +562,24 @@ queue:
 - A [loop](#loops) after a push unit pushes every round's commits once,
   when it ends. A loop's own steps can't set `deliver: push`: the unit
   before the loop does.
-- A fast-forward only: night-shift pushes only commits on top of where
+- A fast-forward only: awaywork pushes only commits on top of where
   the clone started, and refuses when the branch moved since, so it
   never rewrites history. It reads the PR again right before the
   push and refuses when it is no longer yours or open, or has auto-merge
   on, which would merge unreviewed commits, and when its branch lives on
   a fork, is the default branch, is protected, or also backs someone
   else's open PR in the repo. New commits that include a merge aren't pushed
-  either. The commits get the `Night-shift:` trailer, which drops a
+  either. The commits get the `Awaywork:` trailer, which drops a
   commit's signature.
-- The agent writes `.nightshift/out/report.md`; without it nothing is
+- The agent writes `.away/out/report.md`; without it nothing is
   pushed. The PR body stays as it is and the report goes into the
   morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
 - After a push, the PR waits for your review: no rule takes it while
-  its head is still the commit night-shift pushed. Any commit on top
+  its head is still the commit awaywork pushed. Any commit on top
   releases it, yours or a bot's, and so does a rebase or an amend.
   Without that, the push itself would update the PR and run the rule
-  again every night. The pushed head is kept in night-shift's state dir,
+  again every night. The pushed head is kept in awaywork's state dir,
   which a [GitHub Actions runner](./scheduling.md#in-github-actions)
   doesn't keep: there, a push rule pushes again every night its `where`
   holds.
@@ -588,20 +588,20 @@ queue:
 
 To get the morning report where you already look, `notify.command` runs
 in a shell after every run, dry runs included, with the report's path in
-`NIGHTSHIFT_REPORT` and the run id in `NIGHTSHIFT_RUN_ID`. There are no
+`AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`. There are no
 built-in integrations. A command that fails or takes over a minute is
 logged; the run still succeeds. Anything it leaves running in the
 background is stopped when it exits.
 
 ```yaml
 notify:                         # ntfy
-  command: curl -sf -H "Title: night-shift $NIGHTSHIFT_RUN_ID" -H "Markdown: yes" --data-binary @"$NIGHTSHIFT_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+  command: curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes" --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
 ```yaml
 notify:                         # a Slack incoming webhook
-  command: jq -Rs '{text:.}' "$NIGHTSHIFT_REPORT" | curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
+  command: jq -Rs '{text:.}' "$AWAYWORK_REPORT" | curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
 
@@ -615,16 +615,16 @@ To act as units finish, say to post to your own tools or record metrics,
 soon as its result is final, before the next unit starts. A loop's host
 and rounds wait for the loop to publish, so the host gets its PR. A dry
 run runs none, and Ctrl-C stops the running one and starts no more.
-Its env has `NIGHTSHIFT_RUN_ID`, `NIGHTSHIFT_UNIT`, `NIGHTSHIFT_SKILL` and
-`NIGHTSHIFT_STATUS` (`done`, `failed`, `skipped`...), plus
-`NIGHTSHIFT_PR_URL` when the unit opened a draft PR and `NIGHTSHIFT_REPORT`,
+Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT`, `AWAYWORK_SKILL` and
+`AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus
+`AWAYWORK_PR_URL` when the unit opened a draft PR and `AWAYWORK_REPORT`,
 the path of its report, when it wrote one. Like `notify`, a command that
 fails or takes over a minute is logged and the run goes on, and `secrets`
 are withheld from workers.
 
 ```yaml
 after_unit:
-  command: echo "$NIGHTSHIFT_UNIT $NIGHTSHIFT_STATUS $NIGHTSHIFT_PR_URL" >> ~/night-shift.log
+  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
 ```
 
 ## MCP servers
@@ -665,8 +665,8 @@ only literal values. Names starting
 with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and
 Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything
 outside the list is refused. Only units whose rule names a server get
-its secrets. `nightshift schedule` maps them into the Actions workflow,
-and `nightshift doctor` shows whether each one is set.
+its secrets. `awaywork schedule` maps them into the Actions workflow,
+and `awaywork doctor` shows whether each one is set.
 
 Servers start for your own PRs and for issues and tasks, but not on
 someone else's PR or an issue it closes, nor when one of their secrets
@@ -678,7 +678,7 @@ tools are tools that injected instructions can call. See
 ## Secrets
 
 The config holds env var **names** only. Values come from the environment
-or `~/.config/night-shift/env` (the environment wins).
+or `~/.config/awaywork/env` (the environment wins).
 
 | Variable | Used by |
 |---|---|

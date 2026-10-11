@@ -1,8 +1,8 @@
 [
   {
-    "ref": "refs/heads/night/acme-api-1-old",
+    "ref": "refs/heads/away/acme-api-1-old",
     "node_id": "x",
-    "url": "https://api.github.com/repos/acme/api/git/refs/heads/night/acme-api-1-old",
+    "url": "https://api.github.com/repos/acme/api/git/refs/heads/away/acme-api-1-old",
     "object": { "sha": "abc", "type": "commit", "url": "https://api.github.com/x" }
   }
 ]

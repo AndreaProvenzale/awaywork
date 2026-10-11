@@ -21,7 +21,7 @@ import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.
 import type { Outcome } from './publish.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
-export const WORK_DIR = '.nightshift'
+export const WORK_DIR = '.away'
 export const outputFile: Record<Deliver, string> = {
   draft_pr: 'pr.md',
   report: 'report.md',
@@ -62,7 +62,7 @@ interface Previous {
 
 /**
  * Clones the unit's repo onto its new branch, installs its skills, prefetches context and writes the prompt.
- * On a PR someone else opened, the branch's `.night-shift/` and skills are the author's: they are ignored.
+ * On a PR someone else opened, the branch's `.awaywork/` and skills are the author's: they are ignored.
  * A loop round reuses the clone and its context, and only swaps in its skills, `previous/` and prompt.
  */
 export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
@@ -90,7 +90,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     user: skillsDirIn(w.configDir),
     builtin: builtinSkillsDir,
   }
-  const roots = foreign ? [user, builtin] : [user, join(dir, '.night-shift', 'skills'), builtin]
+  const roots = foreign ? [user, builtin] : [user, join(dir, '.awaywork', 'skills'), builtin]
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
   else await buildPlugin(w.plugin, names, roots)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
@@ -129,7 +129,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
-    inRepo: foreign ? '' : await readOutput(join(dir, '.night-shift', 'instructions.md')),
+    inRepo: foreign ? '' : await readOutput(join(dir, '.awaywork', 'instructions.md')),
     rule: await Promise.all(unit.rule.instructions.map(read)),
   })
   await writeOutput(join(work, 'prompt.md'), prompt)
@@ -138,7 +138,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
- * steers night-shift's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere.
+ * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
@@ -226,10 +226,10 @@ export function configSecrets(
   ]
 }
 
-/** The skill copies night-shift made in each clone, which a loop's later rounds replace rather than keep. Per process: a resumed loop starts empty. */
+/** The skill copies awaywork made in each clone, which a loop's later rounds replace rather than keep. Per process: a resumed loop starts empty. */
 const copied = new Map<string, Set<string>>()
 
-/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or night-shift copied it. */
+/** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or awaywork copied it. */
 async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[], roots: string[]) {
   const excluded: string[] = []
   const replaced: string[] = []
@@ -241,7 +241,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
       await cp(findSkill(name, roots), target, { recursive: true })
-      w.ctx.log(`skill ${name}: restored night-shift's copy of ${skillsDir}/${name}`)
+      w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
       if (w.unit.foreign) replaced.push(target)
       continue
     }
@@ -263,10 +263,10 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
   if (replaced.length > 0) await hideFromGit(w.dir, replaced)
 }
 
-/** A plugin named `nightshift` holding the skills, so they load as `nightshift:<name>`. */
+/** A plugin named `awaywork` holding the skills, so they load as `awaywork:<name>`. */
 async function buildPlugin(plugin: string, names: string[], roots: string[]) {
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
-  await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"nightshift"}\n')
+  await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
   for (const name of names)
     await cp(findSkill(name, roots), join(plugin, 'skills', name), { recursive: true })
 }
@@ -296,7 +296,7 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
   const deliver = {
     draft_pr:
       loop?.deliver === 'push'
-        ? `commits for the loop. Commit on this branch; night-shift pushes them onto ${base}, the developer's own pull request, when the loop ends.`
+        ? `commits for the loop. Commit on this branch; awaywork pushes them onto ${base}, the developer's own pull request, when the loop ends.`
         : `a draft PR. Commit on this branch and ${body ? 'keep' : 'write'} \`${output}\`${body ? ' current: it holds the PR body so far' : ''}.`,
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. Commit on this branch and write \`${output}\`.`,
@@ -312,14 +312,14 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
       : []),
     ...(unit.stackedOn
       ? [
-          `${base} is the earlier night-shift PR ${unit.stackedOn}: your PR stacks on it, so leave its commits as they are.`,
+          `${base} is the earlier awaywork PR ${unit.stackedOn}: your PR stacks on it, so leave its commits as they are.`,
         ]
       : []),
     `Items:\n${items.join('\n')}`,
     ...(previous ? [continues ? loopFollowUp(previous, loop, body) : followUp(previous)] : []),
     ...(unit.rule.when?.command
       ? [
-          `Before you started, night-shift ran \`${unit.rule.when.command}\`: its output is \`when.log\` in \`${WORK_DIR}/context/previous/\`.`,
+          `Before you started, awaywork ran \`${unit.rule.when.command}\`: its output is \`when.log\` in \`${WORK_DIR}/context/previous/\`.`,
         ]
       : []),
     `Deliver: ${deliver}`,
@@ -332,13 +332,13 @@ function loopSection(loop: LoopRound, unit: Unit): string {
     loop.deliver === 'push'
       ? `pushes the branch's commits onto \`${unit.base}\``
       : 'publishes the branch as one draft PR'
-  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; night-shift ${publish} when the loop ends.`
+  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; awaywork ${publish} when the loop ends.`
 }
 
 function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean): string {
   const pr = body ? `, the PR body so far in \`${outputFile.draft_pr}\`` : ''
   const check = existsSync(join(out, 'check.log'))
-    ? `, and the output of \`${loop.until.command}\`, which night-shift ran after it, in \`check.log\``
+    ? `, and the output of \`${loop.until.command}\`, which awaywork ran after it, in \`check.log\``
     : ''
   return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${pr}, and its commits in \`diff.patch\`${check}.`
 }

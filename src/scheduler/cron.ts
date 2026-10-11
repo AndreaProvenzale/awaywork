@@ -4,13 +4,13 @@ import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
 import type { Schedule, Scheduler, Start } from './index.js'
 
-const TAG = '# night-shift'
+const TAG = '# awaywork'
 
 /** One tagged line in the user's crontab; cron skips a run missed while the machine sleeps. */
 export function cron(run: Exec): Scheduler {
   const read = () => run('crontab', ['-l']).catch(() => '')
   const write = async (lines: string[]) => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
     try {
       await writeFile(join(dir, 'crontab'), lines.map((l) => `${l}\n`).join(''))
       await run('crontab', [join(dir, 'crontab')])

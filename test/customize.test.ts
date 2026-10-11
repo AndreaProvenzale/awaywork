@@ -13,7 +13,7 @@ import type { Rule } from '../src/core/types.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
-const tmp = () => mkdtemp(join(tmpdir(), 'nightshift-customize-'))
+const tmp = () => mkdtemp(join(tmpdir(), 'awaywork-customize-'))
 
 describe('queue order in the config text', () => {
   it('moves rules with the comments above them and leaves the rest untouched', () => {
@@ -99,7 +99,7 @@ describe('queue screen', () => {
       [
         "#1  fix-ci     type=pr mine=true checks=failing",
         "     1 tonight: acme/api#1",
-        "#2  implement  source=github type=issue label=night-shift repo=acme/api",
+        "#2  implement  source=github type=issue label=awaywork repo=acme/api",
         "     0 tonight",
         "#3  review     type=pr review_requested=true",
         "     1 tonight: acme/api#2",

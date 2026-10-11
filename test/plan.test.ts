@@ -55,7 +55,7 @@ const issue = fakeItem({
   key: 'acme/api#5',
   type: 'issue',
   title: 'Add rate limits',
-  fields: { repo: 'acme/api', label: ['night-shift'] },
+  fields: { repo: 'acme/api', label: ['awaywork'] },
 })
 
 describe('plan', () => {
@@ -78,13 +78,13 @@ describe('plan', () => {
     expect(result.units[0]?.unit).toMatchObject({
       base: 'feature-1',
       foreign: false,
-      branch: 'night/acme-api-1',
+      branch: 'away/acme-api-1',
     })
     expect(result.units[2]?.unit).toMatchObject({ base: 'feature-2', foreign: true })
     expect(formatPlan(result)).toMatchInlineSnapshot(`
       "Queue
         #1  fix-ci     type=pr mine=true checks=failing
-        #2  implement  source=github type=issue label=night-shift repo=acme/api
+        #2  implement  source=github type=issue label=awaywork repo=acme/api
         #3  review     type=pr review_requested=true
         #4  implement  source=asana section=Ready tags=backend provider=codex
 
@@ -97,12 +97,12 @@ describe('plan', () => {
 
       Units
            unit        repo      rule  skill                 provider  deliver   branch
-        1  acme-api-1  acme/api  #1    fix-ci (built-in)     claude    draft_pr  night/acme-api-1
+        1  acme-api-1  acme/api  #1    fix-ci (built-in)     claude    draft_pr  away/acme-api-1
            github acme/api#1: PR 1
            + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  night/acme-api-5
+        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  away/acme-api-5
            github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    night/acme-api-2
+        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    away/acme-api-2
            github acme/api#2: PR 2
 
       Skipped
@@ -336,14 +336,14 @@ queue:
         after,
       ]),
     ).toEqual([
-      ['acme-api-5', 'plan', 'claude', 'report', '', 'night/acme-api-5', undefined],
+      ['acme-api-5', 'plan', 'claude', 'report', '', 'away/acme-api-5', undefined],
       [
         'acme-api-5-implement',
         'implement',
         'claude',
         'draft_pr',
         '',
-        'night/acme-api-5',
+        'away/acme-api-5',
         'acme-api-5',
       ],
       [
@@ -351,18 +351,18 @@ queue:
         'review',
         'codex',
         'report',
-        'night/acme-api-5',
+        'away/acme-api-5',
         'review/acme-api-5',
         'acme-api-5-implement',
       ],
-      ['acme-api-3', 'fix-ci', 'claude', 'draft_pr', 'feature-3', 'night/acme-api-3', undefined],
+      ['acme-api-3', 'fix-ci', 'claude', 'draft_pr', 'feature-3', 'away/acme-api-3', undefined],
       [
         'acme-api-3-review',
         'review',
         'claude',
         'report',
-        'night/acme-api-3',
-        'night/acme-api-3-review',
+        'away/acme-api-3',
+        'away/acme-api-3-review',
         'acme-api-3',
       ],
     ])
@@ -401,7 +401,7 @@ queue:
       provider,
       deliver,
       '',
-      'night/acme-api-5',
+      'away/acme-api-5',
       undefined,
       `acme-api-5 ${round}`,
     ]
@@ -416,7 +416,7 @@ queue:
         loop && `${loop.host} ${loop.round}.${loop.step}`,
       ]),
     ).toEqual([
-      ['acme-api-5', 'claude', 'draft_pr', '', 'night/acme-api-5', undefined, undefined],
+      ['acme-api-5', 'claude', 'draft_pr', '', 'away/acme-api-5', undefined, undefined],
       onBranch('acme-api-5-review-1', 'codex', 'report', '1.0'),
       onBranch('acme-api-5-address-review-1', 'claude', 'draft_pr', '1.1'),
       onBranch('acme-api-5-review-2', 'codex', 'report', '2.0'),
@@ -425,18 +425,18 @@ queue:
         'acme-api-5-qa-feedback',
         'claude',
         'draft_pr',
-        'night/acme-api-5',
-        'night/acme-api-5-qa-feedback',
+        'away/acme-api-5',
+        'away/acme-api-5-qa-feedback',
         'acme-api-5',
         undefined,
       ],
-      ['acme-api-3', 'claude', 'report', 'feature-3', 'night/acme-api-3', undefined, undefined],
+      ['acme-api-3', 'claude', 'report', 'feature-3', 'away/acme-api-3', undefined, undefined],
       [
         'acme-api-3-implement-1',
         'claude',
         'draft_pr',
         'feature-3',
-        'night/acme-api-3',
+        'away/acme-api-3',
         'acme-api-3',
         'acme-api-3-implement-1 1.0',
       ],
@@ -445,7 +445,7 @@ queue:
         'claude',
         'report',
         'feature-3',
-        'night/acme-api-3',
+        'away/acme-api-3',
         undefined,
         'acme-api-3-implement-1 1.1',
       ],
@@ -473,9 +473,9 @@ queue:
 `
     const result = plan(yaml, [githubPr(3, { unresolved_threads: 2 })], { claude: week(0.1) })
     expect(result.units.map(({ unit, loop }) => [unit.id, unit.branch, loop?.host])).toEqual([
-      ['acme-api-3', 'night/acme-api-3', undefined],
-      ['acme-api-3-review-1', 'night/acme-api-3', 'acme-api-3'],
-      ['acme-api-3-address-review-1', 'night/acme-api-3', 'acme-api-3'],
+      ['acme-api-3', 'away/acme-api-3', undefined],
+      ['acme-api-3-review-1', 'away/acme-api-3', 'acme-api-3'],
+      ['acme-api-3-address-review-1', 'away/acme-api-3', 'acme-api-3'],
     ])
   })
 
@@ -540,7 +540,7 @@ queue:
     const result = plan(yaml('bad.lock'), [theirs], {})
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => s.reason)).toEqual([
-      'then bad.lock: branch template night/{key} renders an invalid name "night/acme-api-2-bad.lock"',
+      'then bad.lock: branch template away/{key} renders an invalid name "away/acme-api-2-bad.lock"',
     ])
   })
 
@@ -580,7 +580,7 @@ queue:
       ['acme-api-1-implement', 'draft_pr', 'feature-1'],
     ])
     expect(result.units[2]?.capped).toBe(
-      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened tonight, not your own PR',
     )
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
       ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
@@ -597,7 +597,7 @@ queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver
       {},
     )
     expect(relayed.units.at(-1)?.capped).toBe(
-      'then fix-ci: deliver push: night/acme-api-1 is a draft PR opened tonight, not your own PR',
+      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened tonight, not your own PR',
     )
     const forked = githubPr(3)
     const fork = { ...(forked.linkedPrs[0] as PrRef), fork: true }
@@ -761,17 +761,17 @@ describe('branch', () => {
       key: 'ABC-123',
       title: 'Fix: the Login page (again) on Safari & Firefox, finally!',
     }
-    expect(renderBranch('night/{key}', { ...item, key: 'acme/api#12' })).toBe('night/acme-api-12')
+    expect(renderBranch('away/{key}', { ...item, key: 'acme/api#12' })).toBe('away/acme-api-12')
     expect(renderBranch('feat/{key}-{title}', item)).toBe(
       'feat/ABC-123-fix-the-login-page-again-on-safari-firef',
     )
   })
 
   it('rejects templates that cannot make a branch name', () => {
-    expect(templateProblem('night/{key}')).toBeUndefined()
+    expect(templateProblem('away/{key}')).toBeUndefined()
     expect(templateProblem('feat/{title}')).toBeUndefined()
     expect(templateProblem('feat/work')).toBe('must contain {key} or {title}')
-    expect(templateProblem('night/{key}/{user}')).toBe('unknown placeholder {user}')
+    expect(templateProblem('away/{key}/{user}')).toBe('unknown placeholder {user}')
     expect(templateProblem('night..{key}')).toMatch(/invalid branch name/)
     expect(templateProblem('{key}.lock')).toMatch(/invalid branch name/)
     expect(() =>
@@ -804,7 +804,7 @@ queue:
     ])
   })
 
-  it('skips a feature whose night-shift PR waits for review, whatever item links it', () => {
+  it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
     const ours = githubPr(9, { checks: 'failing', ours: true })
     const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
     const task = asanaTask(4, {}, { linkedPrs: [pr] })
@@ -813,12 +813,12 @@ queue:
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }, task], {})
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
-      'waiting for review: night-shift PR https://github.com/acme/api/pull/9 is open',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
     ])
   })
 
-  it('holds a PR night-shift pushed onto while its head is still the one the push left', () => {
+  it('holds a PR awaywork pushed onto while its head is still the one the push left', () => {
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -837,7 +837,7 @@ queue: [{ skill: fix-ci, deliver: push }]`
     const held = plan(yaml, [at('def5678', pushedAt), at('def5678', pushedAt, 2)], {}, {}, attempts)
     expect(held.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
     expect(held.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: night-shift pushed onto https://github.com/acme/api/pull/1',
+      'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
     ])
     const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
     expect(movedOn.units).toHaveLength(1)
@@ -869,9 +869,9 @@ queue: [{ skill: fix-ci, deliver: push, then: review }]`
     })
   })
 
-  it('takes up a night-shift PR only for a rule that names ours, and bases the unit on it', () => {
+  it('takes up an awaywork PR only for a rule that names ours, and bases the unit on it', () => {
     const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
-    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'away/acme-api-5', ours: true }
     const linked = { ...issue, linkedPrs: [pr] }
     const yaml = `
 providers: [claude: {}]
@@ -883,16 +883,16 @@ queue:
     const result = plan(yaml, [linked, { ...ours, linkedPrs: [pr] }], {})
     expect(rows(result)).toEqual([['acme-api-9', 3, 'address-review', 'claude', 'draft_pr']])
     expect(result.units[0]?.unit).toMatchObject({
-      base: 'night/acme-api-5',
-      branch: 'night/acme-api-9',
+      base: 'away/acme-api-5',
+      branch: 'away/acme-api-9',
       foreign: false,
     })
     expect(result.units[0]?.unit.items.map((i) => i.key)).toEqual(['acme/api#9', 'acme/api#5'])
   })
 
-  it('loops on the draft PR stacked on a night-shift PR it takes up', () => {
+  it('loops on the draft PR stacked on an awaywork PR it takes up', () => {
     const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
-    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'night/acme-api-5', ours: true }
+    const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'away/acme-api-5', ours: true }
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -902,15 +902,15 @@ queue:
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }`
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }], {})
     expect(result.units.map(({ unit, loop }) => [unit.id, unit.base, loop?.host])).toEqual([
-      ['acme-api-9', 'night/acme-api-5', undefined],
-      ['acme-api-9-review-1', 'night/acme-api-5', 'acme-api-9'],
-      ['acme-api-9-address-review-1', 'night/acme-api-5', 'acme-api-9'],
-      ['acme-api-9-review-2', 'night/acme-api-5', 'acme-api-9'],
-      ['acme-api-9-address-review-2', 'night/acme-api-5', 'acme-api-9'],
+      ['acme-api-9', 'away/acme-api-5', undefined],
+      ['acme-api-9-review-1', 'away/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-1', 'away/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-review-2', 'away/acme-api-5', 'acme-api-9'],
+      ['acme-api-9-address-review-2', 'away/acme-api-5', 'acme-api-9'],
     ])
   })
 
-  it('addresses the threads you started on a night-shift PR by default, not anyone else', () => {
+  it('addresses the threads you started on an awaywork PR by default, not anyone else', () => {
     const yaml = 'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'
     const ours = (n: number, mine: number) => {
       const pr = githubPr(n, { ours: true, unresolved_threads: 2, my_unresolved_threads: mine })
@@ -919,7 +919,7 @@ queue:
     const result = plan(yaml, [ours(1, 1), ours(2, 0)], {})
     expect(rows(result)).toEqual([['acme-api-1', 3, 'address-review', 'claude', 'draft_pr']])
     expect(result.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: night-shift PR https://github.com/acme/api/pull/2 is open; closest #3 address-review: my_unresolved_threads is 0, wants not 0',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #3 address-review: my_unresolved_threads is 0, wants not 0',
     ])
   })
 
@@ -938,8 +938,8 @@ queue:
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
       ['acme/api#5', expect.stringContaining('matched no rule')],
-      ['acme/api#1', 'skipped with nightshift skip asana:T-7: blocked on design'],
-      ['T-7', 'skipped with nightshift skip asana:T-7: blocked on design'],
+      ['acme/api#1', 'skipped with awaywork skip asana:T-7: blocked on design'],
+      ['T-7', 'skipped with awaywork skip asana:T-7: blocked on design'],
     ])
   })
 })

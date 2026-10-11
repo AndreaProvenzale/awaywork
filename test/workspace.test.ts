@@ -30,7 +30,7 @@ describe('workspace', () => {
   })
 
   it('clones onto the new branch with skills from beside the config, context and the prompt, and keeps them out of git', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
     const dir = join(root, 'clone')
     const plugin = join(root, 'plugin')
     await mkdir(join(root, 'skills', 'house-style'), { recursive: true })
@@ -67,7 +67,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         foreign: false,
         network: true,
         untrusted: false,
-        branch: 'night/acme-api-1',
+        branch: 'away/acme-api-1',
         rule: {
           skill: 'fix-ci',
           provider: [],
@@ -91,23 +91,21 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       ctx: { env: {}, log: () => {} },
     })
 
-    expect((await git(dir, 'branch', '--show-current')).stdout).toBe('night/acme-api-1')
+    expect((await git(dir, 'branch', '--show-current')).stdout).toBe('away/acme-api-1')
     expect(existsSync(join(plugin, '.claude-plugin/plugin.json'))).toBe(true)
     expect(existsSync(join(plugin, 'skills/fix-ci/SKILL.md'))).toBe(true)
     expect(existsSync(join(plugin, 'skills/house-style/SKILL.md'))).toBe(true)
     expect(existsSync(join(dir, '.claude/skills'))).toBe(false)
-    expect(await readFile(join(dir, '.nightshift/context/fake-1/item.md'), 'utf8')).toBe(
-      'CI is red',
-    )
+    expect(await readFile(join(dir, '.away/context/fake-1/item.md'), 'utf8')).toBe('CI is red')
     expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
 
     const parts = prompt.split('\n\n---\n\n')
-    expect(parts[0]).toMatch(/^# night-shift worker/)
+    expect(parts[0]).toMatch(/^# awaywork worker/)
     expect(parts[0]).toContain(
-      '- FAKE-1: Fix the thing (https://example.com/1); context in `.nightshift/context/fake-1/`',
+      '- FAKE-1: Fix the thing (https://example.com/1); context in `.away/context/fake-1/`',
     )
     expect(parts[0]).toContain(
-      'Deliver: a draft PR. Commit on this branch and write `.nightshift/out/pr.md`.',
+      'Deliver: a draft PR. Commit on this branch and write `.away/out/pr.md`.',
     )
     expect(parts[1]).toMatch(/^# Fix CI/)
     expect(parts.slice(2)).toEqual([
@@ -116,11 +114,11 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       'Setup, already run: `pnpm install`',
       'REPO NOTE',
     ])
-    expect(await readFile(join(dir, '.nightshift/prompt.md'), 'utf8')).toBe(prompt)
+    expect(await readFile(join(dir, '.away/prompt.md'), 'utf8')).toBe(prompt)
   })
 
   it('still reads a symlinked or hard-linked SKILL.md from the user skills dir', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
     await mkdir(join(root, 'skills/linked'), { recursive: true })
     await writeFile(join(root, 'real.md'), '---\nname: linked\n---\nFollow the link.')
     await symlink(join(root, 'real.md'), join(root, 'skills/linked/SKILL.md'))
@@ -136,7 +134,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           foreign: false,
           network: true,
           untrusted: false,
-          branch: 'night/acme-api-1',
+          branch: 'away/acme-api-1',
           rule: { skill, provider: [], skills: [], instructions: [] },
           skill,
           skills: [],
@@ -169,7 +167,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
     const review = async (mine: boolean, provider: Provider = claude, stacked = false) => {
-      const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+      const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const out = join(root, 'previous')
       await mkdir(out)
       const dir = join(root, 'clone')
@@ -178,9 +176,9 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         ...fakeForge(),
         async clone(_repo: string, _branch: string, into: string) {
           await execa(bin('git'), ['init', '-q', '-b', 'sessions', into])
-          await mkdir(join(into, '.night-shift/skills/review'), { recursive: true })
-          await writeFile(join(into, '.night-shift/instructions.md'), 'AUTHOR NOTE')
-          await writeFile(join(into, '.night-shift/skills/review/SKILL.md'), 'AUTHOR SKILL')
+          await mkdir(join(into, '.awaywork/skills/review'), { recursive: true })
+          await writeFile(join(into, '.awaywork/instructions.md'), 'AUTHOR NOTE')
+          await writeFile(join(into, '.awaywork/skills/review/SKILL.md'), 'AUTHOR SKILL')
           for (const skills of ['.claude/skills', '.agents/skills']) {
             await mkdir(join(into, skills, 'review'), { recursive: true })
             await writeFile(join(into, skills, 'review/SKILL.md'), 'AUTHOR SKILL')
@@ -209,7 +207,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           foreign: !mine,
           network: true,
           untrusted: false,
-          branch: 'night/acme-api-2',
+          branch: 'away/acme-api-2',
           rule: { skill: 'review', provider: [], skills: [], instructions: [] },
           skill: 'review',
           skills: [],
@@ -274,8 +272,8 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     })
   })
 
-  it("replaces the skills night-shift copied when a loop round reuses the clone, and keeps the repo's own", async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-ws-'))
+  it("replaces the skills awaywork copied when a loop round reuses the clone, and keeps the repo's own", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
     const dir = join(root, 'clone')
     const forge = {
       ...fakeForge(),
@@ -299,7 +297,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           foreign: false,
           network: true,
           untrusted: false,
-          branch: 'night/acme-api-1',
+          branch: 'away/acme-api-1',
           rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
           skill: 'fix-ci',
           skills: ['house-style'],

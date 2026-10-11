@@ -1,10 +1,10 @@
 ---
-description: "What real runs verified: Claude Code on runners, reading quota, budgeting a night, guardrails that held, and the burn tests of night-shift itself."
+description: "What real runs verified: Claude Code on runners, reading quota, budgeting a night, guardrails that held, and the burn tests of awaywork itself."
 ---
 
 # Lessons from the prototype
 
-night-shift started as a private prototype: scheduled GitHub Actions running
+awaywork started as a private prototype: scheduled GitHub Actions running
 headless Claude Code on one team's leftovers (red CI, review threads, QA
 feedback, plans). Everything below was tested there, not read.
 
@@ -58,11 +58,11 @@ response, so workers can stop themselves at a ceiling.
 
 - The model gets no forge token. A script prefetches PR view, diff,
   threads and failed-check logs into files, clones with credentials
-  stripped, and after the model finishes pushes `night/<branch>` and opens
+  stripped, and after the model finishes pushes `away/<branch>` and opens
   a draft PR. Never an existing branch, never force, merge or comment.
 - Publish a branch only if the model wrote its PR body; write the body
   after the first commit so a killed run still leaves one.
-- Commit trailer `Night-shift: <run id>`; a unit whose `night/<branch>`
+- Commit trailer `Awaywork: <run id>`; a unit whose `away/<branch>`
   still exists is skipped.
 - Service integrations need token-based paths: OAuth-only MCP servers
   (claude.ai connectors) do not work with a setup-token; REST with a
@@ -94,9 +94,9 @@ The prompt should state these per repo instead:
 - Device-only verification is flagged in the PR, never blocked on.
 - The PR body states only what was checked; unverified rationale creeps in.
 
-## First run of night-shift itself
+## First run of awaywork itself
 
-The M4 burn test: `nightshift run` locally, Claude Code 2.1.282 on the
+The M4 burn test: `awaywork run` locally, Claude Code 2.1.282 on the
 developer's login, one `implement` unit on this repo's issue #1 (expand
 `~/` in the config path), `per_night: 3%`.
 
@@ -106,7 +106,9 @@ developer's login, one `implement` unit on this repo's issue #1 (expand
   Neither window moved at 1% resolution (5% and 6% after), so the
   ceiling was never tested; a longer unit has to do that.
 - The publisher pushed `night/AndreaProvenzale-night-shift-1` and opened
-  draft PR #2 into `main`, with the footer and the `Night-shift:` trailer.
+  draft PR #2 into `main`, with the footer
+  `<!-- night-shift run=20260925-194945 -->` and the trailer
+  `Night-shift: 20260925-194945` (the pre-rename names).
   Planning again skipped the issue as waiting for review: the issue links
   PR #2 and its body carries the footer.
 - The PR body claimed `pnpm install`, the touched test file (9 passed)
@@ -121,7 +123,7 @@ developer's login, one `implement` unit on this repo's issue #1 (expand
 
 ## First night with two providers
 
-The M7 burn test: `nightshift run` locally with `providers: [codex,
+The M7 burn test: `awaywork run` locally with `providers: [codex,
 claude]` (Codex 0.149.1 on a free ChatGPT plan, Claude Code 2.1.283),
 `per_night: 3%`, one rule sending this repo's open PRs of mine to the
 `review` skill with `deliver: report`, so nothing was pushed.

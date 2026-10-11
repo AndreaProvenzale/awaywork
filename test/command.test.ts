@@ -56,7 +56,7 @@ describe('command source', () => {
   })
 
   it("runs in the config file's folder once the config loads", async () => {
-    const folder = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const folder = await mkdtemp(join(tmpdir(), 'awaywork-'))
     await copyFile(join(dir, 'items.mjs'), join(folder, 'items.mjs'))
     await writeFile(
       join(folder, 'config.yml'),
@@ -68,7 +68,7 @@ describe('command source', () => {
   })
 
   it('writes the context, or the description, and the comments for the worker', async () => {
-    const out = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const out = await mkdtemp(join(tmpdir(), 'awaywork-'))
     const [plain] = await source.items(cfg(), ctx())
     if (plain) await source.prefetch(plain, out, ctx())
     const text = await readFile(join(out, 'item.md'), 'utf8')

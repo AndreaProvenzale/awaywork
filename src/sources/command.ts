@@ -12,7 +12,7 @@ export const linkTemplate = z
     if (problem) ctx.addIssue({ code: 'custom', message: problem })
   })
   .describe(
-    "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's",
+    "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's",
   )
 
 export const commandConfig = z
@@ -34,7 +34,7 @@ export const commandConfig = z
     setup: z
       .string()
       .optional()
-      .describe("Runs in the config file's folder before night-shift on GitHub Actions"),
+      .describe("Runs in the config file's folder before awaywork on GitHub Actions"),
     link: linkTemplate.optional(),
   })
   .describe('A custom source: any command that prints your open items as JSON')

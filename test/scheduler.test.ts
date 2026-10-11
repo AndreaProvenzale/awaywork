@@ -26,7 +26,7 @@ import { initial, scriptedAsk } from './fakes/ask.js'
 const schedule: Schedule = {
   command: [
     '/opt/node',
-    '/opt/night shift/index.js',
+    '/opt/away work/index.js',
     'run',
     '--scheduled',
     '--config',
@@ -57,17 +57,17 @@ function recorder(crontab = '') {
 }
 
 it('writes a LaunchAgent that starts at the night start and logs to the state dir', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   const scheduler = launchd(home, run, 501)
   const file = await scheduler.install(schedule)
-  expect(file).toBe(join(home, 'Library/LaunchAgents/nightshift.plist'))
+  expect(file).toBe(join(home, 'Library/LaunchAgents/awaywork.plist'))
   const text = await readFile(file, 'utf8')
   expect(text).toBe(plist(schedule))
   expect(text).toContain('<key>Hour</key><integer>1</integer><key>Minute</key><integer>5</integer>')
-  expect(text).toContain('<string>/opt/night shift/index.js</string>')
+  expect(text).toContain('<string>/opt/away work/index.js</string>')
   expect(calls).toEqual([
-    'launchctl bootout gui/501/nightshift',
+    'launchctl bootout gui/501/awaywork',
     `launchctl bootstrap gui/501 ${file}`,
   ])
   expect(await scheduler.read()).toEqual(schedule)
@@ -78,7 +78,7 @@ it('writes a LaunchAgent that starts at the night start and logs to the state di
 })
 
 it('retries bootstrap while launchd still holds the old job', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   let busy = 2
   const flaky: Exec = async (cmd, args) => {
@@ -90,7 +90,7 @@ it('retries bootstrap while launchd still holds the old job', async () => {
   }
   const file = await launchd(home, flaky, 501, 0).install(schedule)
   expect(calls).toEqual([
-    'launchctl bootout gui/501/nightshift',
+    'launchctl bootout gui/501/awaywork',
     'failed',
     'failed',
     `launchctl bootstrap gui/501 ${file}`,
@@ -98,20 +98,20 @@ it('retries bootstrap while launchd still holds the old job', async () => {
 })
 
 it('writes a persistent systemd user timer and its service', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   await systemd(home, run).install(schedule)
   expect(timer(schedule)).toContain('OnCalendar=*-*-* 01:05:00\nPersistent=true')
   expect(service(schedule)).toContain(
-    `ExecStart="/opt/node" "/opt/night shift/index.js" "run" "--scheduled" "--config" "/h/it's.yml"`,
+    `ExecStart="/opt/node" "/opt/away work/index.js" "run" "--scheduled" "--config" "/h/it's.yml"`,
   )
   expect(calls).toEqual([
     'systemctl --user daemon-reload',
-    'systemctl --user enable --now nightshift.timer',
+    'systemctl --user enable --now awaywork.timer',
   ])
   expect(await systemd(home, run).read()).toEqual(schedule)
   expect(await systemd(home, run).remove()).toBe(true)
-  expect(existsSync(join(home, '.config/systemd/user/nightshift.service'))).toBe(false)
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
   expect(await systemd(home, run).read()).toBeUndefined()
 })
 
@@ -121,7 +121,7 @@ it("adds one tagged crontab line, keeps the user's own and removes only its line
   await scheduler.install(schedule)
   await scheduler.install(schedule)
   expect(cronLine(schedule, schedule.starts[0] as Start)).toBe(
-    `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/night shift/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # night-shift`,
+    `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # awaywork`,
   )
   expect(cronTab.crontab()).toBe(
     `MAILTO=me\n\n0 9 * * * backup\n${cronLines(schedule).join('\n')}\n`,
@@ -143,7 +143,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   const text = workflow({
     starts: [{ hour: 1, minute: 30 }],
     timezone: 'Europe/Rome',
-    config: '.night-shift/config.yml',
+    config: '.awaywork/config.yml',
     version: '0.3.1',
     packages: ['@anthropic-ai/claude-code', '@openai/codex'],
     secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'],
@@ -151,8 +151,8 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   })
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
-  expect(parsed.name).toBe('night-shift')
-  expect(parsed.concurrency).toBe('night-shift')
+  expect(parsed.name).toBe('awaywork')
+  expect(parsed.concurrency).toBe('awaywork')
   expect(parsed.jobs.night.environment).toBeUndefined()
   expect(parsed.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
@@ -162,9 +162,9 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.jobs.night.steps).toEqual([
     { uses: 'actions/checkout@v5' },
     {
-      uses: 'AndreaProvenzale/night-shift@v1',
+      uses: 'AndreaProvenzale/awaywork@v1',
       with: {
-        config: '.night-shift/config.yml',
+        config: '.awaywork/config.yml',
         version: '0.3.1',
         packages: '@anthropic-ai/claude-code @openai/codex',
       },
@@ -180,9 +180,9 @@ it('ships an action that installs the pinned version and runs the night', async 
   expect(runs[0]).toContain('if [ -z "$GH_TOKEN" ]; then')
   expect(runs[0]).toContain("::error::GH_TOKEN is empty: the job's secrets didn't reach it.")
   expect(runs[1]).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
-  expect(runs).toContain('npm install -g "nightshift-agent@$VERSION" $PACKAGES')
+  expect(runs).toContain('npm install -g "awaywork@$VERSION" $PACKAGES')
   expect(runs).toContain(
-    "nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
+    "awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
   )
   const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
   expect(step("Commit as the token's user").run).toContain(
@@ -190,15 +190,15 @@ it('ships an action that installs the pinned version and runs the night', async 
   )
   expect(step('Morning report')).toMatchObject({
     if: 'always()',
-    run: 'nightshift report >> "$GITHUB_STEP_SUMMARY" || true',
+    run: 'awaywork report >> "$GITHUB_STEP_SUMMARY" || true',
   })
 })
 
-it("runs command sources' setup in the config's folder before night-shift", () => {
+it("runs command sources' setup in the config's folder before awaywork", () => {
   const text = workflow({
     starts: [{ hour: 1, minute: 30 }],
     timezone: 'Europe/Rome',
-    config: '.night-shift/config.yml',
+    config: '.awaywork/config.yml',
     version: '0.3.1',
     packages: [],
     secrets: [],
@@ -208,7 +208,7 @@ it("runs command sources' setup in the config's folder before night-shift", () =
     parse(text).jobs.night.steps
   const setup = steps.findIndex((s) => s.run?.startsWith('cargo'))
   expect(steps[setup]).toEqual({
-    'working-directory': '.night-shift',
+    'working-directory': '.awaywork',
     run: 'cargo build --release\ncp target/release/tracker bin/\n',
   })
   expect(setup).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('AndreaProvenzale/')))
@@ -217,7 +217,7 @@ it("runs command sources' setup in the config's folder before night-shift", () =
 const alice: Workflow = {
   starts: [{ hour: 22, minute: 0 }],
   timezone: 'Europe/Rome',
-  config: '.night-shift/alice/config.yml',
+  config: '.awaywork/alice/config.yml',
   version: '0.3.1',
   packages: [],
   secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'SLACK_WEBHOOK'],
@@ -227,8 +227,8 @@ const personal = ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']
 
 it("writes a person's workflow with their environment, suffixed secrets, concurrency and config folder", () => {
   const job = parse(workflow({ ...alice, person: { name: 'alice', personal, environment: true } }))
-  expect(job.name).toBe('night-shift-alice')
-  expect(job.concurrency).toBe('night-shift-alice')
+  expect(job.name).toBe('awaywork-alice')
+  expect(job.concurrency).toBe('awaywork-alice')
   expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
   expect(job.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
@@ -236,30 +236,30 @@ it("writes a person's workflow with their environment, suffixed secrets, concurr
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
-  expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/alice')
-  expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/alice/config.yml')
+  expect(job.jobs.night.steps[1]['working-directory']).toBe('.awaywork/alice')
+  expect(job.jobs.night.steps[2].with.config).toBe('.awaywork/alice/config.yml')
 })
 
 it('keeps a person named like a YAML number a string', () => {
   const job = parse(
     workflow({
       ...alice,
-      config: '.night-shift/007/config.yml',
+      config: '.awaywork/007/config.yml',
       person: { name: '007', personal, environment: true },
     }),
   )
-  expect(job.name).toBe('night-shift-007')
-  expect(job.concurrency).toBe('night-shift-007')
+  expect(job.name).toBe('awaywork-007')
+  expect(job.concurrency).toBe('awaywork-007')
   expect(job.jobs.night.environment).toEqual({ name: '007', deployment: false })
-  expect(job.jobs.night.steps[1]['working-directory']).toBe('.night-shift/007')
-  expect(job.jobs.night.steps[2].with.config).toBe('.night-shift/007/config.yml')
+  expect(job.jobs.night.steps[1]['working-directory']).toBe('.awaywork/007')
+  expect(job.jobs.night.steps[2].with.config).toBe('.awaywork/007/config.yml')
 })
 
 it('differs without an environment only by its environment line', () => {
   const person = { name: 'mary-jo', personal, environment: false }
   const job = parse(workflow({ ...alice, person }))
-  expect(job.name).toBe('night-shift-mary-jo')
-  expect(job.concurrency).toBe('night-shift-mary-jo')
+  expect(job.name).toBe('awaywork-mary-jo')
+  expect(job.concurrency).toBe('awaywork-mary-jo')
   expect(job.jobs.night.environment).toBeUndefined()
   expect(job.jobs.night.env).toEqual({
     TZ: 'Europe/Rome',
@@ -273,27 +273,27 @@ it('differs without an environment only by its environment line', () => {
   )
 })
 
-it("lists every night-shift workflow in a repo and removes only one person's", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+it("lists every awaywork workflow in a repo and removes only one person's", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   expect(await workflows(root)).toEqual([])
   const dir = join(root, '.github/workflows')
   await mkdir(dir, { recursive: true })
-  for (const f of ['night-shift.yml', 'night-shift-bob.yml', 'night-shift-alice.yml', 'ci.yml'])
+  for (const f of ['awaywork.yml', 'awaywork-bob.yml', 'awaywork-alice.yml', 'ci.yml'])
     await writeFile(join(dir, f), '')
   expect(await workflows(root)).toEqual(
-    ['night-shift-alice.yml', 'night-shift-bob.yml', 'night-shift.yml'].map((f) => join(dir, f)),
+    ['awaywork-alice.yml', 'awaywork-bob.yml', 'awaywork.yml'].map((f) => join(dir, f)),
   )
   expect(await removeWorkflow(root, 'alice')).toBe(true)
   expect(await removeWorkflow(root, 'alice')).toBe(false)
   expect(await workflows(root)).toEqual(
-    ['night-shift-bob.yml', 'night-shift.yml'].map((f) => join(dir, f)),
+    ['awaywork-bob.yml', 'awaywork.yml'].map((f) => join(dir, f)),
   )
 })
 
 it('removes only its own workflow from a repo', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   await mkdir(join(root, '.github/workflows'), { recursive: true })
-  await writeFile(join(root, WORKFLOW), 'name: night-shift\n')
+  await writeFile(join(root, WORKFLOW), 'name: awaywork\n')
   await writeFile(join(root, '.github/workflows/ci.yml'), 'name: ci\n')
   expect(await removeWorkflow(root)).toBe(true)
   expect(existsSync(join(root, WORKFLOW))).toBe(false)
@@ -317,8 +317,8 @@ describe('schedule install --with github-actions', () => {
 
   /** A repo and a user's config with a skill of its own and one linked from elsewhere. */
   async function setup() {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
-    const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
     const config = join(home, 'config.yml')
     await writeFile(config, CONFIG)
     await mkdir(join(home, 'elsewhere/linked'), { recursive: true })
@@ -343,19 +343,19 @@ describe('schedule install --with github-actions', () => {
   it("writes the workflow and copies the config and skills, linked ones as files; again, it's up to date", async () => {
     const { root, install } = await setup()
     await install()
-    expect(parse(await readFile(join(root, WORKFLOW), 'utf8')).name).toBe('night-shift')
+    expect(parse(await readFile(join(root, WORKFLOW), 'utf8')).name).toBe('awaywork')
     expect(await readFile(join(root, REPO_CONFIG), 'utf8')).toBe(CONFIG)
     expect(await readFile(join(root, REPO_SKILLS, 'mine/SKILL.md'), 'utf8')).toBe('MINE')
     expect(lstatSync(join(root, REPO_SKILLS, 'linked')).isSymbolicLink()).toBe(false)
     expect(await readFile(join(root, REPO_SKILLS, 'linked/SKILL.md'), 'utf8')).toBe('LINKED')
     expect(out).toContain(
-      '  commit .github/workflows/night-shift.yml, .night-shift/config.yml and .night-shift/skills',
+      '  commit .github/workflows/awaywork.yml, .awaywork/config.yml and .awaywork/skills',
     )
     await install()
     expect(out.slice(0, 3)).toEqual([
-      '.github/workflows/night-shift.yml is up to date',
-      '.night-shift/config.yml is up to date',
-      '.night-shift/skills is up to date',
+      '.github/workflows/awaywork.yml is up to date',
+      '.awaywork/config.yml is up to date',
+      '.awaywork/skills is up to date',
     ])
     expect(out.join('\n')).not.toMatch(/commit/)
   })
@@ -368,25 +368,25 @@ describe('schedule install --with github-actions', () => {
     await writeFile(config, `${CONFIG}skills: [mine]\n`)
     await writeFile(join(home, 'skills/mine/SKILL.md'), 'CHANGED')
     await install([
-      [/^Overwrite \.night-shift\/config\.yml/, false],
-      [/^Replace all of \.night-shift\/skills/, initial],
+      [/^Overwrite \.awaywork\/config\.yml/, false],
+      [/^Replace all of \.awaywork\/skills/, initial],
     ])
-    expect(out).toContain('Kept .night-shift/skills')
+    expect(out).toContain('Kept .awaywork/skills')
     expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
     await install([
-      [/^Overwrite \.night-shift\/config\.yml with the changes above\?$/, false],
+      [/^Overwrite \.awaywork\/config\.yml with the changes above\?$/, false],
       [
-        /^Replace all of \.night-shift\/skills with the changes above, deleting anything only the repo's copy has\?$/,
+        /^Replace all of \.awaywork\/skills with the changes above, deleting anything only the repo's copy has\?$/,
         true,
       ],
     ])
     expect(out.join('\n')).toContain('+skills: [mine]')
     expect(out.join('\n')).toContain('-TEAM')
-    expect(out).toContain('Kept .night-shift/config.yml')
+    expect(out).toContain('Kept .awaywork/config.yml')
     expect(await readFile(join(root, REPO_CONFIG), 'utf8')).toBe(CONFIG)
     expect(await readFile(join(root, REPO_SKILLS, 'mine/SKILL.md'), 'utf8')).toBe('CHANGED')
     expect(existsSync(join(root, REPO_SKILLS, 'team'))).toBe(false)
-    expect(out).toContain('  commit .night-shift/skills')
+    expect(out).toContain('  commit .awaywork/skills')
   })
 
   it('asks before overwriting a hand-edited workflow', async () => {
@@ -395,13 +395,13 @@ describe('schedule install --with github-actions', () => {
     const generated = await readFile(join(root, WORKFLOW), 'utf8')
     await writeFile(join(root, WORKFLOW), `${generated}# mine\n`)
     await install([
-      [/^Overwrite \.github\/workflows\/night-shift\.yml with the changes above\?$/, false],
+      [/^Overwrite \.github\/workflows\/awaywork\.yml with the changes above\?$/, false],
     ])
-    expect(out).toContain('Kept .github/workflows/night-shift.yml')
+    expect(out).toContain('Kept .github/workflows/awaywork.yml')
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(`${generated}# mine\n`)
-    await install([[/^Overwrite \.github\/workflows\/night-shift\.yml/, initial]])
+    await install([[/^Overwrite \.github\/workflows\/awaywork\.yml/, initial]])
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(generated)
-    expect(out).toContain('  commit .github/workflows/night-shift.yml')
+    expect(out).toContain('  commit .github/workflows/awaywork.yml')
   })
 
   it("leaves the repo's skills alone when the user has none, a stray file aside", async () => {
@@ -413,16 +413,16 @@ describe('schedule install --with github-actions', () => {
     await writeFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'TEAM')
     await install()
     expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
-    expect(out).toContain('  commit .github/workflows/night-shift.yml and .night-shift/config.yml')
+    expect(out).toContain('  commit .github/workflows/awaywork.yml and .awaywork/config.yml')
   })
 })
 
 it('warns about a workflow that runs its steps inline instead of calling the action', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   expect(await staleWorkflow(root)).toBeUndefined()
   await mkdir(join(root, '.github/workflows'), { recursive: true })
-  await writeFile(join(root, WORKFLOW), 'steps:\n  - run: npm install -g nightshift-agent\n')
-  expect(await staleWorkflow(root)).toMatch(/doesn't call night-shift's action/)
+  await writeFile(join(root, WORKFLOW), 'steps:\n  - run: npm install -g awaywork\n')
+  expect(await staleWorkflow(root)).toMatch(/doesn't call awaywork's action/)
   const current = {
     starts: [{ hour: 1, minute: 30 }],
     timezone: 'UTC',
@@ -467,12 +467,12 @@ it('warns when an installed job for this config no longer starts when its window
   })
   const all = {
     launchd: installed('launchd', schedule),
-    cron: installed('cron', { ...schedule, command: ['nightshift', '--config', '/h/other.yml'] }),
+    cron: installed('cron', { ...schedule, command: ['awaywork', '--config', '/h/other.yml'] }),
     systemd: installed('systemd'),
   }
   expect(await staleSchedules("/h/it's.yml", [{ start: '01:05', end: '07:00' }], all)).toEqual([])
   expect(await staleSchedules("/h/it's.yml", [{ start: '02:30', end: '07:00' }], all)).toEqual([
-    "the launchd job starts at 01:05, the config's windows start at 02:30; run `nightshift schedule install`",
+    "the launchd job starts at 01:05, the config's windows start at 02:30; run `awaywork schedule install`",
   ])
   const reordered = { launchd: installed('launchd', weekly) }
   const windows = [

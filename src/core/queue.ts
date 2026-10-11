@@ -82,14 +82,14 @@ export function matches(rule: Rule, item: Item): boolean {
   return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
-/** A night-shift PR waits for review unless a rule names `ours`. */
+/** An awaywork PR waits for review unless a rule names `ours`. */
 function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
-  return !isNightShiftPr(item) || 'ours' in rule.where
+  return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
-/** A PR night-shift opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
-export function isNightShiftPr(item: Item): boolean {
+/** A PR awaywork opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
+export function isAwayworkPr(item: Item): boolean {
   return item.source === 'github' && item.fields.ours === true
 }
 

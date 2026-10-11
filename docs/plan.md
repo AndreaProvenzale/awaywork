@@ -27,8 +27,8 @@ protects that.
 
 ## Stack
 
-TypeScript on Node ≥ 22, ESM, published to npm as `nightshift-agent`;
-the command is `nightshift`.
+TypeScript on Node ≥ 22, ESM, published to npm as `awaywork`;
+the command is `awaywork`.
 
 | Need | Pick |
 |---|---|
@@ -87,7 +87,7 @@ replaces them:
   worker what to do.
 - **Built-in skills** ship as defaults and cover the prototype's kinds:
   `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan`,
-  `implement`, `review`. `nightshift skills eject <name>` copies one into
+  `implement`, `review`. `awaywork skills eject <name>` copies one into
   the user's skills dir to tweak; a user skill shadows a built-in of the
   same name.
 - **The harness wraps every skill.** `harness.md` holds what no skill
@@ -109,7 +109,7 @@ interface Item {            // from sources.md, plus the forge link
   comments: { author: string; body: string; at: string }[]
   linkedPrs: PrRef[]; fields: Record<string, unknown>; raw: unknown
 }                           // a PR item links itself
-interface PrRef { repo: string; number: number; url: string; branch: string; ours: boolean }  // ours = night-shift footer
+interface PrRef { repo: string; number: number; url: string; branch: string; ours: boolean }  // ours = awaywork footer
 interface Ctx { env: NodeJS.ProcessEnv; log(line: string): void }
 
 interface Source {
@@ -120,7 +120,7 @@ interface Source {
   secrets(cfg): string[]                         // env var names it reads
   items(cfg, ctx): Promise<Item[]>               // mine, open
   prefetch(item, dir, ctx): Promise<void>        // write context files for the worker
-  init?(ask: Ask, ctx): Promise<SourceSetup>     // its own `nightshift init` questions
+  init?(ask: Ask, ctx): Promise<SourceSetup>     // its own `awaywork init` questions
 }
 interface SourceSetup {     // config as written; values found for `where` fields (real sections)
   config: Record<string, unknown>; values?: Record<string, string[]>
@@ -179,12 +179,12 @@ interface Rule {            // a queue entry, normalized: one-or-many fields are
 
 ## Config
 
-User config, validated by zod. `nightshift config schema` prints the
-JSON Schema. The path is provisional; `--config` and `NIGHT_SHIFT_CONFIG`
+User config, validated by zod. `awaywork config schema` prints the
+JSON Schema. The path is provisional; `--config` and `AWAYWORK_CONFIG`
 override it.
 
 ```yaml
-# ~/.config/night-shift/config.yml
+# ~/.config/awaywork/config.yml
 night: { start: "01:00", end: "07:00" }
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
@@ -200,7 +200,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
-branch: night/{key}             # default; {key} or {title} is required
+branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
     branch: feat/{key}-{title}
@@ -214,7 +214,7 @@ queue:                          # first matching rule wins; top = highest priori
     branch: fix/{key}
   - skill: implement
     source: github
-    where: { type: issue, label: night-shift, repo: acme/api }
+    where: { type: issue, label: awaywork, repo: acme/api }
   - skill: review
     where: { type: pr, review_requested: true }
   - skill: implement
@@ -233,7 +233,7 @@ Semantics, fixed so every milestone agrees:
   reproduces the prototype's order (`design.md`), keeping only rules for
   configured sources: `fix-ci` (GitHub, my PR, checks failing),
   `qa-feedback` (Asana section `QA`), `address-review` (my PR, unresolved
-  threads; then my night-shift PR, unresolved threads I started),
+  threads; then my awaywork PR, unresolved threads I started),
   `review` (review requested), `continue` (Asana `In progress`),
   `plan` (Asana `Current sprint`).
 - **Units.** Items sharing a key or a linked PR (repo + branch) are one
@@ -241,8 +241,8 @@ Semantics, fixed so every milestone agrees:
   linked PR's repo, else the item's `repo` field; with neither it is
   skipped. A tracker source fills `repo` from its own mapping, e.g.
   Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
-  an open night-shift PR (`ours`) is skipped as waiting for review. A
-  night-shift PR item only matches rules whose `where` names `ours`; one
+  an open awaywork PR (`ours`) is skipped as waiting for review. An
+  awaywork PR item only matches rules whose `where` names `ours`; one
   that did leads its unit (its rule and key win over better-ranked items)
   and is the unit's base, and setup there gets none of the repo's secrets.
   A PR a `push` landed on waits too, while its head is the commit the
@@ -252,7 +252,7 @@ Semantics, fixed so every milestone agrees:
   name, or a map with the rule keys other than `source`, `where`, `order`
   and `then`, plus `when`, inheriting none of the rule's. Each step is a unit planned
   after the rule's, id `<unit>-<skill slug>`, that runs only when the one
-  before delivered and gets its `out/` in `.nightshift/context/previous/`.
+  before delivered and gets its `out/` in `.away/context/previous/`.
   After a draft PR the step's base is that PR's branch, so its own draft
   PR stacks on it; after a report the base is unchanged. A step's
   branch gets `-<skill>` appended when an earlier draft PR in the chain
@@ -273,7 +273,7 @@ Semantics, fixed so every milestone agrees:
   before's `report.md`, `verdict`, `pr.md`, a `diff.patch` of its commits
   and the command's `check.log`. A round that can't route, reaches
   `night.end`, fails or stops ends the loop, which publishes what it
-  has; night-shift appends the loop's summary, last verdict and last
+  has; awaywork appends the loop's summary, last verdict and last
   report to the PR body, or to a push host's report. A host's kept
   report finishes the chain only when the loop ended at `until`, `max`
   or a round where no step's `when` held; otherwise the host is
@@ -288,7 +288,7 @@ Semantics, fixed so every milestone agrees:
   past `night.end`), once per commit per clone. In `until`, it doesn't
   hold in a clone with uncommitted changes beyond what setup and earlier
   checks left; in `when`, it runs on them and isn't kept for the commit. On an untrusted author's PR or an offline unit
-  (night-shift has no sandbox of its own) it doesn't run; config refuses
+  (awaywork has no sandbox of its own) it doesn't run; config refuses
   one on a rule with `network: false`. One that didn't run doesn't hold
   for `when` and ends a loop. One past its 15 minutes fails. One
   stopped by `night.end` ends a loop, which publishes, and outside a
@@ -303,7 +303,7 @@ Semantics, fixed so every milestone agrees:
   unless its command didn't run or its whole round was passed over.
 - **Attempts.** A unit whose worker finished records each item's
   `updated` time and the unit's skill in
-  `~/.local/state/night-shift/attempts.json`; a unit of the same skill
+  `~/.local/state/awaywork/attempts.json`; a unit of the same skill
   none of whose items changed since is skipped as unchanged since that
   run. A chain records its items once, when every unit finished or
   the chain ended at a unit that made nothing; commits left unpushed
@@ -312,8 +312,8 @@ Semantics, fixed so every milestone agrees:
   one failure on each item instead; after 3 in a row on the same
   `updated` time and skill the unit is skipped as gave up. Not
   persisted in Actions.
-- **Skips.** `nightshift skip <source:key>` keeps `{ until?, reason? }`
-  under `source:key` in `~/.local/state/night-shift/skips.json`, which
+- **Skips.** `awaywork skip <source:key>` keeps `{ until?, reason? }`
+  under `source:key` in `~/.local/state/awaywork/skips.json`, which
   only `skip` and `unskip` write. A unit with a skipped item is skipped
   until `unskip` or the start of the `until` day; `run --unit` ignores
   skips. Not persisted in Actions.
@@ -325,14 +325,14 @@ Semantics, fixed so every milestone agrees:
   invalid ref, is a config error. The name is cosmetic: the push
   guardrail is that the branch doesn't exist on the remote. A taken name
   gets `-2` to `-10`, unless a PR on it carries a footer naming one of
-  the unit's items (night-shift tried there) or it has no PR and its
-  tip has the `Night-shift:` trailer (a push whose PR failed): then the
+  the unit's items (awaywork tried there) or it has no PR and its
+  tip has the `Awaywork:` trailer (a push whose PR failed): then the
   unit is skipped. Fork PRs with the same head name don't count.
 - **Conventions.** PR title, body and commit messages have no config.
   The harness has the model follow the repo's PR template, recent commit
   style and any rule in the instructions (e.g. "prefix titles with the
   key"). The publisher appends the items' `link` lines and a footer
-  naming night-shift, the run id and the unit's items; it discloses the
+  naming awaywork, the run id and the unit's items; it discloses the
   author, marks the PR as `ours` and links it to its items.
 - **`where`.** Keys are `type` plus the fields the source declares. A
   scalar means equals, a list means any of, and `{ not: … }` negates.
@@ -354,15 +354,15 @@ Semantics, fixed so every milestone agrees:
   Without a probe, `fallback` caps units and turns per night.
 - **Skills.** `skill` is the main skill, and `skills` are extras available
   to the worker. A name is looked up in `skills/` next to the config,
-  then in-repo `.night-shift/skills/`, then the built-ins. Skills are
+  then in-repo `.awaywork/skills/`, then the built-ins. Skills are
   copied into the clone at the provider's `skillsDir`, or into a plugin
   folder outside it for a provider without one (Claude). Check each
   provider's skill location in its docs and tag it as in `providers.md`.
 - **Prompt**, in order: `harness.md`, the main skill, global
   `instructions`, repo `setup`/`test`/`instructions`, in-repo
-  `.night-shift/instructions.md`, the rule's `instructions`.
+  `.awaywork/instructions.md`, the rule's `instructions`.
 - **Workspace.** A unit runs in a fresh clone on its new branch, cut
-  from `base`. Skills go to the provider's `skillsDir` or plugin; `.nightshift/`
+  from `base`. Skills go to the provider's `skillsDir` or plugin; `.away/`
   holds `context/<item key slug>/`, `prompt.md` and `out/`, where the
   model writes `pr.md` (first line the title) or `report.md`. Both are
   in `.git/info/exclude`, so the model can't commit them. The model's
@@ -370,28 +370,28 @@ Semantics, fixed so every milestone agrees:
 - **Deliver**, per rule, else the skill's default (frontmatter `metadata`),
   else `draft_pr`. Built-in `review` and `plan` default to `report`.
 - **Secrets** are only ever env var names in config. Locally they come
-  from the environment or `~/.config/night-shift/env` (mode 600; the
+  from the environment or `~/.config/awaywork/env` (mode 600; the
   environment wins); in Actions they come from repository secrets, with
-  `GH_TOKEN` for the forge and the config at `.night-shift/config.yml`.
+  `GH_TOKEN` for the forge and the config at `.awaywork/config.yml`.
 
 ## Delivery
 
 - `draft_pr` (default): push the unit's new branch and open a draft PR,
   into the developer's branch when the unit has one, else into the
-  default branch. A draft PR stacked on a night-shift PR joins its
+  default branch. A draft PR stacked on an awaywork PR joins its
   GitHub stack (Stacks API) where the repo has stacked PRs.
 - `report`: nothing is pushed; the output goes into the morning report.
 - `push`: commit onto the developer's own branch, only when a rule opts
   in (never a skill's default), the unit's base is an open PR the
-  developer authored (night-shift's own included), and the push is a
+  developer authored (awaywork's own included), and the push is a
   fast-forward from the commit the clone started at, checked again at
   push time, where a lease also requires the branch to still be at it,
   along with the PR being the developer's, open, in the repo,
   without auto-merge, and its branch not the default branch, not
   protected and not the branch of someone else's open PR in the repo; no
-  merge commits. Pushes run from a bare repo night-shift owns that
+  merge commits. Pushes run from a bare repo awaywork owns that
   fetches the clone's `HEAD`, so the clone's config, hooks and refs can't
-  redirect them; the fetch runs only after night-shift put back the
+  redirect them; the fetch runs only after awaywork put back the
   clone's config as cloned, so it can't run a command either. `plan` refuses a push onto a fork's PR up front. A
   `then` step can push only onto the rule's own PR, never onto a
   branch opened tonight. The model writes
@@ -413,7 +413,7 @@ M3; M5 and M7 need M4; M8 needs M1; M9 needs everything else.
 - [x] Registries for providers and sources; fakes in `test/fakes/`.
 - [x] Shared contract suites in `test/contracts/`, run against the fakes.
 
-Done when `nightshift config check` validates the example above and
+Done when `awaywork config check` validates the example above and
 reports a clear error for a bad `where` key or an unknown skill.
 
 ### M1 Foreman core (pure, no I/O)
@@ -424,7 +424,7 @@ reports a clear error for a bad `where` key or an unknown skill.
 - [x] `budget.ts`: tonight's ceiling per provider (`reserve`, `per_night`,
       pacing), `session_max`, fallback, routing.
 - [x] Skill resolution (user, in-repo, built-in) and the prompt order.
-- [x] `nightshift plan`: collect → match → dedupe → budget, printed as a
+- [x] `awaywork plan`: collect → match → dedupe → budget, printed as a
       table (unit, rule #, skill, provider, deliver) plus each provider's
       ceiling. No worker runs.
 
@@ -444,8 +444,8 @@ why a unit is placed where it is.
       `checks.md` (last 200 lines of each failed Actions job), or
       `issue.md` (body and comments). One item per dir.
 - [x] Forge: clone through `gh`'s login with no credential helper left
-      in the clone, find my PRs by key, `night/<…>` existence check, push
-      that refuses existing and non-`night/` branches, draft PR.
+      in the clone, find my PRs by key, `away/<…>` existence check, push
+      that refuses existing and non-`away/` branches, draft PR.
 - [x] Contract suite passes; recorded `gh` fixtures for tests. Push and
       draft PR are tested on fixtures only; M4's burn test runs them.
 
@@ -467,20 +467,20 @@ why a unit is placed where it is.
 ### M4 Publisher, report, first real night
 - [x] Branch template: `branch` in config (global, repo, rule) with the
       checks above, rendered in the foreman and shown by `plan`. Forge:
-      drop M2's `night/` prefix check (the absent-branch check stays),
+      drop M2's `away/` prefix check (the absent-branch check stays),
       read PR bodies so `prsFor` sets `ours`.
 - [x] `draft_pr`: publish only if the model wrote its PR body; commit
-      trailer `Night-shift: <run id>`, added at publish time since a
+      trailer `Awaywork: <run id>`, added at publish time since a
       repo's `core.hooksPath` (husky) bypasses a hook in the clone; the
-      body footer; skip units with an open night-shift PR; refuse a
+      body footer; skip units with an open awaywork PR; refuse a
       branch that exists, checked before the worker runs and again at
       push.
 - [x] `report` delivery and the morning report (markdown in the run dir,
       plus a terminal summary): units done, skipped and why, quota used
       against each ceiling, report-only outputs.
-- [x] Run state in `~/.local/state/night-shift/runs/<id>/` (plan, logs,
-      context, report); `nightshift report [id]`.
-- [x] `nightshift run` end to end, `--dry-run` (workspaces only, no
+- [x] Run state in `~/.local/state/awaywork/runs/<id>/` (plan, logs,
+      context, report); `awaywork report [id]`.
+- [x] `awaywork run` end to end, `--dry-run` (workspaces only, no
       worker), `--unit <id>`. Units run one at a time; each re-routes on
       the quota the previous worker saw; a provider at `session_max` is
       passed over. Without a quota reading the turn cap is
@@ -516,15 +516,15 @@ why a unit is placed where it is.
       per picked project.
 - [x] Contract suite passes on fixtures shaped from Asana's documented
       responses; `test/real-asana.test.ts` seeds tasks in a test project
-      and reads them back when `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`
-      and `NIGHTSHIFT_ASANA_PROJECT` are set; passes live on a free plan.
+      and reads them back when `ASANA_TOKEN`, `AWAYWORK_ASANA_WORKSPACE`
+      and `AWAYWORK_ASANA_PROJECT` are set; passes live on a free plan.
 
 ### M7 Codex provider
 - [x] `codex exec --json` headless run and its event stream; the turn
       cap counts tool calls, since `exec` has none. The rotating
       `auth.json` in `$CODEX_HOME` is seeded from `CODEX_AUTH_JSON` only
       when missing; Codex writes the refreshed file back in place, and
-      night-shift never rewrites an existing one. Runs and probes hold a
+      awaywork never rewrites an existing one. Runs and probes hold a
       per-machine lock. An ephemeral runner has nowhere to persist the
       refreshed file, so Codex remote stays best effort.
 - [x] `probe` via `account/rateLimits/read` through `codex app-server`,
@@ -540,22 +540,22 @@ Screens only where an editor can't help: discovery (`init`) and live
 feedback (`queue`). Every other setting is edited as YAML, with the JSON
 Schema for autocompletion and `config edit` as the safety net.
 
-- [x] `nightshift init`: detect installed binaries and `gh` login, pick
+- [x] `awaywork init`: detect installed binaries and `gh` login, pick
       providers, sources and a starting queue, write the config. Each
       source asks its own questions (`Source.init`); Asana lists
       workspaces, projects and the real section names, and each default
       Asana rule picks its section from them. An unset token is prompted
       for and saved to the env file. The queue is written out, not left
       to the hidden default.
-- [x] `nightshift queue`: list rules with tonight's matches and the items
+- [x] `awaywork queue`: list rules with tonight's matches and the items
       an earlier rule took, reorder with the keyboard (counts update as
       rules move), save the YAML with comments preserved: rules move as
       source text with the comments above them, the rest of the file is
       unchanged. No queue in the config: saving writes the default one.
       Items are fetched once; no provider is probed.
-- [x] `nightshift skills list|eject`: resolved skills and where each
+- [x] `awaywork skills list|eject`: resolved skills and where each
       comes from; copy a built-in to the user dir.
-- [x] `nightshift config edit`: `$VISUAL`/`$EDITOR` on a draft copy,
+- [x] `awaywork config edit`: `$VISUAL`/`$EDITOR` on a draft copy,
       written over the config only once it validates; a scheduled run
       never sees a broken config.
 - [x] Providers take a bare name (`- claude`) next to the override map.
@@ -591,10 +591,10 @@ Schema for autocompletion and `config edit` as the safety net.
   daytime use. Decide after the M4 burn test.
 - **Pending GitHub reviews** as a `review` delivery: a write through the
   developer's token, even if unsubmitted.
-- **Config path**, and whether a team-shared in-repo `.night-shift.yml`
+- **Config path**, and whether a team-shared in-repo `.awaywork.yml`
   can also hold queue rules.
 - **In-repo skills in `config check`.** It sees only user and built-in
-  skills, so a rule naming an in-repo `.night-shift/skills/` skill fails
+  skills, so a rule naming an in-repo `.awaywork/skills/` skill fails
   the check. Resolve once M3 clones repos.
 - **Mapping tracker columns to skills.** Section and status names are the
   user's own, so the default queue's Asana names (`QA`, `In progress`,

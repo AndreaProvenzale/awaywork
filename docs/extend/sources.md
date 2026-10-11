@@ -1,5 +1,5 @@
 ---
-description: How to add a work source such as a task tracker to night-shift, with the Source contract, fields for queue rules, prefetched context, init questions and contract tests.
+description: How to add a work source such as a task tracker to awaywork, with the Source contract, fields for queue rules, prefetched context, init questions and contract tests.
 ---
 
 # Adding a source
@@ -33,7 +33,7 @@ interface Source {
   secrets(cfg): string[]                   // env var names it reads
   items(cfg, ctx): Promise<Item[]>         // the user's open items
   prefetch(item, dir, ctx): Promise<void>  // write the context files the worker reads
-  init?(ask: Ask, ctx): Promise<SourceSetup>   // its own `nightshift init` questions
+  init?(ask: Ask, ctx): Promise<SourceSetup>   // its own `awaywork init` questions
 }
 ```
 
@@ -56,7 +56,7 @@ interface Source {
   `where` fields (e.g. section names), so the starting queue uses them.
   Tokens go through `ask.secret`, which saves them to the env file.
 
-[`asana.ts`](https://github.com/AndreaProvenzale/night-shift/blob/main/src/sources/asana.ts)
+[`asana.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/sources/asana.ts)
 is the example to copy.
 
 ## Register it

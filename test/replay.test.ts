@@ -21,7 +21,7 @@ const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 it('replays a unit on its base commit and saved context, and publishes nothing', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-replay-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-replay-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
@@ -40,7 +40,7 @@ it('replays a unit on its base commit and saved context, and publishes nothing',
       await writeFile(join(job.dir, 'fix.txt'), 'fixed')
       await git(job.dir, 'add', 'fix.txt')
       await git(job.dir, 'commit', '-qm', 'Fix the build')
-      await writeFile(join(job.dir, '.nightshift/out/pr.md'), 'Fix\n\nBody')
+      await writeFile(join(job.dir, '.away/out/pr.md'), 'Fix\n\nBody')
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
@@ -102,15 +102,15 @@ queue:
   expect(result.status).toBe('done')
   expect(result.commits).toBe(1)
   expect((await git(result.dir, 'rev-parse', 'HEAD~1')).stdout).toBe(base)
-  expect((await git(result.dir, 'branch', '--show-current')).stdout).toBe('night/acme-api-1')
-  expect(existsSync(join(result.dir, '.nightshift/context/acme-api-1'))).toBe(true)
+  expect((await git(result.dir, 'branch', '--show-current')).stdout).toBe('away/acme-api-1')
+  expect(existsSync(join(result.dir, '.away/context/acme-api-1'))).toBe(true)
   expect(await readFile(join(result.out, 'pr.md'), 'utf8')).toMatch(/^Fix/)
   expect(prompts).toHaveLength(2)
   expect(forge.branches).toEqual(pushed)
 })
 
 it('says a unit from before replay existed cannot be replayed', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-replay-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-replay-'))
   await expect(
     replayUnit({ runDir: root, unitId: 'x' } as Parameters<typeof replayUnit>[0]),
   ).rejects.toThrow(/no replay.json/)

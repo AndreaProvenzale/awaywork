@@ -358,7 +358,7 @@
               "type": "string"
             },
             "link": {
-              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
+              "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
               "type": "string"
             }
           },
@@ -388,7 +388,7 @@
               "type": "string"
             },
             "link": {
-              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
+              "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
               "type": "string"
             }
           },
@@ -432,7 +432,7 @@
               "type": "string"
             },
             "link": {
-              "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",
+              "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",
               "type": "string"
             }
           },
@@ -470,12 +470,12 @@
             }
           },
           "setup": {
-            "description": "Runs in the config file's folder before night-shift on GitHub Actions",
+            "description": "Runs in the config file's folder before awaywork on GitHub Actions",
             "type": "string"
           },
           "link": {
             "type": "string",
-            "description": "Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
+            "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
           }
         },
         "required": [
@@ -487,7 +487,7 @@
       "description": "Where work comes from: built-in sources or your own commands; at least one"
     },
     "branch": {
-      "default": "night/{key}",
+      "default": "away/{key}",
       "description": "Branch name template; {key} or {title} is required",
       "type": "string"
     },
@@ -921,7 +921,7 @@
                             ]
                           },
                           "command": {
-                            "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                            "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                             "type": "string",
                             "minLength": 1
                           },
@@ -1118,7 +1118,7 @@
                                     ]
                                   },
                                   "command": {
-                                    "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                    "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                     "type": "string",
                                     "minLength": 1
                                   },
@@ -1312,7 +1312,7 @@
                                       ]
                                     },
                                     "command": {
-                                      "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                      "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                       "type": "string",
                                       "minLength": 1
                                     },
@@ -1407,7 +1407,7 @@
                         ]
                       },
                       "command": {
-                        "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                        "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                         "type": "string",
                         "minLength": 1
                       }
@@ -1585,7 +1585,7 @@
                                   ]
                                 },
                                 "command": {
-                                  "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                  "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                   "type": "string",
                                   "minLength": 1
                                 },
@@ -1782,7 +1782,7 @@
                                           ]
                                         },
                                         "command": {
-                                          "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                          "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                           "type": "string",
                                           "minLength": 1
                                         },
@@ -1976,7 +1976,7 @@
                                             ]
                                           },
                                           "command": {
-                                            "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                                            "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                             "type": "string",
                                             "minLength": 1
                                           },
@@ -2071,7 +2071,7 @@
                               ]
                             },
                             "command": {
-                              "description": "A shell command night-shift runs in the clone, outside the model; exit 0 holds",
+                              "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                               "type": "string",
                               "minLength": 1
                             }
@@ -2122,7 +2122,7 @@
         "command": {
           "type": "string",
           "minLength": 1,
-          "description": "Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env"
+          "description": "Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env"
         },
         "secrets": {
           "default": [],
@@ -2146,7 +2146,7 @@
         "command": {
           "type": "string",
           "minLength": 1,
-          "description": "Shell command; NIGHTSHIFT_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env"
+          "description": "Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env"
         },
         "secrets": {
           "default": [],

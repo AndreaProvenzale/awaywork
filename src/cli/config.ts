@@ -43,11 +43,11 @@ export function configCommand(program: Command): void {
       const path = configPath(program.opts().config)
       const original = await readFile(path, 'utf8').catch(() => undefined)
       if (original === undefined) {
-        console.error(`${path} not found; nightshift init writes one`)
+        console.error(`${path} not found; awaywork init writes one`)
         process.exitCode = 1
         return
       }
-      const draft = join(await mkdtemp(join(tmpdir(), 'nightshift-')), basename(path))
+      const draft = join(await mkdtemp(join(tmpdir(), 'awaywork-')), basename(path))
       const [bin = 'vi', ...args] = (process.env.VISUAL || process.env.EDITOR || 'vi').split(' ')
       const outcome = await editUntilValid({
         path,

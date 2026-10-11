@@ -40,7 +40,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       reject: false,
     })
     const send = (message: object) => child.stdin.write(`${JSON.stringify(message)}\n`)
-    const clientInfo = { name: 'night-shift', title: null, version: '0' }
+    const clientInfo = { name: 'awaywork', title: null, version: '0' }
     send({ id: 1, method: 'initialize', params: { clientInfo, capabilities: null } })
     try {
       for await (const line of child) {

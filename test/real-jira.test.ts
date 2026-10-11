@@ -12,10 +12,10 @@ const {
   JIRA_SITE = '',
   JIRA_EMAIL = '',
   JIRA_CLOUD_ID,
-  NIGHTSHIFT_JIRA_PROJECT: project = '',
+  AWAYWORK_JIRA_PROJECT: project = '',
 } = process.env
 const ctx = { env: process.env, log: console.log }
-const repo = 'night-shift/e2e'
+const repo = 'awaywork/e2e'
 const cfg = {
   site: JIRA_SITE,
   email: JIRA_EMAIL,
@@ -46,14 +46,14 @@ async function api<T>(method: string, path: string, body?: object): Promise<T> {
 
 /**
  * Seeds two issues assigned to me in a test project, one blocking the other, reads them back for
- * real and deletes them; run with JIRA_API_TOKEN, JIRA_SITE, JIRA_EMAIL and NIGHTSHIFT_JIRA_PROJECT
+ * real and deletes them; run with JIRA_API_TOKEN, JIRA_SITE, JIRA_EMAIL and AWAYWORK_JIRA_PROJECT
  * set, plus JIRA_CLOUD_ID for a scoped token. The token's user needs Delete issues in the project.
  */
 describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
   'jira source, live',
   () => {
     const run = Date.now().toString(36)
-    const label = 'night-shift-e2e'
+    const label = 'awaywork-e2e'
     const issuetype = 'Task'
     let me = { accountId: '', displayName: '' }
     let priority: { id: string; name: string } | undefined
@@ -164,7 +164,7 @@ describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
         fields: { ...fields, labels: [], blocked: true },
       })
 
-      const dir = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
       await jira.prefetch(found.blocker, dir, ctx)
       expect(await readdir(dir)).toEqual(['issue.md'])
       expect(await readFile(join(dir, 'issue.md'), 'utf8')).toContain(`e2e comment ${run}`)

@@ -23,7 +23,7 @@ providerContract(fakeProvider(), () => ({
     foreign: false,
     network: true,
     untrusted: false,
-    branch: 'night/FAKE-1',
+    branch: 'away/FAKE-1',
     rule: { skill: 'fix-ci', where: {}, provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
