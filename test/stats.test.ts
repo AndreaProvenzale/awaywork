@@ -57,7 +57,7 @@ describe('unitStats', () => {
 
 describe('loadStats', () => {
   it('reads units.json per run and ignores missing, malformed or non-array files and entries of the wrong shape', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
     const unit = { id: 'a', rule: 1, skill: 'implement', status: 'done', pr: false }
     const files: Record<string, string | undefined> = {
       a: JSON.stringify([unit, { id: 'x' }, null, { ...unit, status: 'bogus' }]),

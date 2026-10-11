@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const configDir = join(homedir(), '.config', 'night-shift')
+export const configDir = join(homedir(), '.config', 'awaywork')
 export const defaultConfigPath = join(configDir, 'config.yml')
 export const envFile = join(configDir, 'env')
 
@@ -23,7 +23,7 @@ export const packageVersion: string = JSON.parse(
   readFileSync(join(packageRoot(), 'package.json'), 'utf8'),
 ).version
 
-export const stateDir = join(homedir(), '.local', 'state', 'night-shift')
+export const stateDir = join(homedir(), '.local', 'state', 'awaywork')
 export const runsDir = join(stateDir, 'runs')
 export const attemptsPath = join(stateDir, 'attempts.json')
 export const skipsPath = join(stateDir, 'skips.json')

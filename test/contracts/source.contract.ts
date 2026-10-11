@@ -42,7 +42,7 @@ export function sourceContract(
 
     it('prefetches context files into the given dir', async () => {
       const [item] = await source.items(cfg(), ctx)
-      const dir = await mkdtemp(join(tmpdir(), 'nightshift-'))
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
       if (item) await source.prefetch(item, dir, ctx)
       expect((await readdir(dir)).length).toBeGreaterThan(0)
     })

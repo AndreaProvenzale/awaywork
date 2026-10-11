@@ -39,8 +39,8 @@ export function activeSkips(skips: Skips, now: number): Skips {
   )
 }
 
-/** E.g. `skipped with nightshift skip github:acme/api#5 until 2026-10-05: flaky upstream`. */
+/** E.g. `skipped with awaywork skip github:acme/api#5 until 2026-10-05: flaky upstream`. */
 export function describeSkip(key: string, skip: Skip): string {
   const until = skip.until ? ` until ${skip.until}` : ''
-  return `skipped with nightshift skip ${key}${until}${skip.reason ? `: ${skip.reason}` : ''}`
+  return `skipped with awaywork skip ${key}${until}${skip.reason ? `: ${skip.reason}` : ''}`
 }

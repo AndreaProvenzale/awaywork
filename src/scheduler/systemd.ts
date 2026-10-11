@@ -7,7 +7,7 @@ import type { Schedule, Scheduler } from './index.js'
 /** A user service plus a persistent timer, so a run missed while off starts at boot. */
 export function systemd(home: string, run: Exec): Scheduler {
   const dir = join(home, '.config', 'systemd', 'user')
-  const files = [join(dir, 'nightshift.service'), join(dir, 'nightshift.timer')] as const
+  const files = [join(dir, 'awaywork.service'), join(dir, 'awaywork.timer')] as const
   const systemctl = (...args: string[]) => run('systemctl', ['--user', ...args])
   return {
     id: 'systemd',
@@ -16,12 +16,12 @@ export function systemd(home: string, run: Exec): Scheduler {
       await writeFile(files[0], service(s))
       await writeFile(files[1], timer(s))
       await systemctl('daemon-reload')
-      await systemctl('enable', '--now', 'nightshift.timer')
+      await systemctl('enable', '--now', 'awaywork.timer')
       return files.join(', ')
     },
     async remove() {
       if (!existsSync(files[1])) return false
-      await systemctl('disable', '--now', 'nightshift.timer').catch(() => '')
+      await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
       for (const file of files) await rm(file, { force: true })
       await systemctl('daemon-reload')
       return true
@@ -61,7 +61,7 @@ export function parseUnits(serviceText: string, timerText: string): Schedule {
 
 export function service(s: Schedule): string {
   return `[Unit]
-Description=night-shift run
+Description=awaywork run
 
 [Service]
 Type=oneshot
@@ -79,7 +79,7 @@ export function timer(s: Schedule): string {
       `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
   )
   return `[Unit]
-Description=night-shift nightly run
+Description=awaywork nightly run
 
 [Timer]
 ${calendar.join('\n')}

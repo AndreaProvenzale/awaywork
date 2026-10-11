@@ -16,12 +16,12 @@ import { statsCommand } from './stats.js'
 // The environment wins over the file; scheduled jobs start without a login shell's variables.
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
-const program = new Command('nightshift')
+const program = new Command('awaywork')
   .description('Spend idle coding-subscription quota overnight')
   .version(packageVersion)
   .option(
     '-c, --config <path>',
-    'config file (default: $NIGHT_SHIFT_CONFIG or ~/.config/night-shift/config.yml)',
+    'config file (default: $AWAYWORK_CONFIG or ~/.config/awaywork/config.yml)',
   )
 
 initCommand(program)

@@ -16,9 +16,9 @@ import {
   describeComparison,
   failedIn,
   fieldValue,
+  isAwayworkPr,
   isLoop,
   isMatch,
-  isNightShiftPr,
   rank,
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
@@ -85,8 +85,8 @@ export function planNight(input: {
 
   for (const found of dedupe(ranked)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
-    // A night-shift PR taken by a rule leads its feature: that rule decides, its key names the unit.
-    const pickup = ours && found.find((e) => isNightShiftPr(e.item))
+    // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
+    const pickup = ours && found.find((e) => isAwayworkPr(e.item))
     const group = pickup ? [pickup, ...found.filter((e) => e !== pickup)] : found
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
@@ -101,12 +101,12 @@ export function planNight(input: {
     }
     const prs = items.flatMap((i) => i.linkedPrs)
     if (ours && !pickup) {
-      skip(`waiting for review: night-shift PR ${ours.url} is open`)
+      skip(`waiting for review: awaywork PR ${ours.url} is open`)
       continue
     }
     const held = pushedOnto(items, input.attempts ?? {})
     if (held) {
-      skip(`waiting for review: night-shift pushed onto ${held.url}`)
+      skip(`waiting for review: awaywork pushed onto ${held.url}`)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
@@ -338,8 +338,8 @@ function pushRefusal(
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
 function noRuleReason(item: Item, queue: Rule[]): string {
   const closest = closestRule(item, queue)
-  const why = isNightShiftPr(item)
-    ? `waiting for review: night-shift PR ${item.url} is open`
+  const why = isAwayworkPr(item)
+    ? `waiting for review: awaywork PR ${item.url} is open`
     : 'matched no rule'
   if (!closest) return why
   const rule = queue[closest.rule] as Rule

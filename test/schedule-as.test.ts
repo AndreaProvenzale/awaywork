@@ -62,8 +62,8 @@ const FALLBACK =
 
 /** A control repo and a user's config with one skill, answered by a fake gh. */
 async function setup(gh: Gh = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
-  const home = await mkdtemp(join(tmpdir(), 'nightshift-home-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const config = join(home, 'config.yml')
   await writeFile(config, CONFIG)
   await mkdir(join(home, 'skills/mine'), { recursive: true })
@@ -107,7 +107,7 @@ async function setup(gh: Gh = {}) {
   })
   const install = (script: [RegExp, unknown][] = []) => installWorkflow(config, 'alice', io(script))
   const job = async () =>
-    parse(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).jobs.night
+    parse(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).jobs.night
   return { root, home, config, calls, set, io, install, job }
 }
 
@@ -133,16 +133,16 @@ it("installs a person's environment, workflow, config and skills, and offers eac
   expect((await job()).environment).toEqual({ name: 'alice', deployment: false })
   expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
   expect((await job()).env.SLACK_WEBHOOK).toBe('${{ secrets.SLACK_WEBHOOK }}')
-  expect(await readFile(join(root, '.night-shift/alice/config.yml'), 'utf8')).toBe(CONFIG)
-  expect(await readFile(join(root, '.night-shift/alice/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
-  expect(existsSync(join(root, '.night-shift/config.yml'))).toBe(false)
+  expect(await readFile(join(root, '.awaywork/alice/config.yml'), 'utf8')).toBe(CONFIG)
+  expect(await readFile(join(root, '.awaywork/alice/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
+  expect(existsSync(join(root, '.awaywork/config.yml'))).toBe(false)
   expect(set).toEqual([
     ['GH_TOKEN__ALICE', '--env', 'alice', 'ghp_secret'],
     ['SLACK_WEBHOOK', 'hook_secret'],
   ])
   expect(out).toContain('Already repository or organization secrets: DATABASE_URL, MCP_DB_URL')
   expect(out).toContain(
-    '  commit .github/workflows/night-shift-alice.yml, .night-shift/alice/config.yml and .night-shift/alice/skills',
+    '  commit .github/workflows/awaywork-alice.yml, .awaywork/alice/config.yml and .awaywork/alice/skills',
   )
   expect(out).toContain(
     '  add these secrets to environment alice: CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
@@ -291,7 +291,7 @@ it('stops when the person declines the fallback, which a refused read also leads
   const { root, set, install } = await setup({ get: 'gh: Resource not accessible (HTTP 403)' })
   await install([[FALLBACK, initial]])
   expect(process.exitCode).toBe(1)
-  expect(existsSync(join(root, '.github/workflows/night-shift-alice.yml'))).toBe(false)
+  expect(existsSync(join(root, '.github/workflows/awaywork-alice.yml'))).toBe(false)
   expect(set).toEqual([])
 })
 
@@ -309,7 +309,7 @@ it('stops without asking on an error that is no refusal', async () => {
     await install()
     expect(process.exitCode).toBe(1)
     expect(out).toEqual([`Couldn't set up the environment alice: ${reason}${Object.values(gh)[0]}`])
-    expect(existsSync(join(root, '.github/workflows/night-shift-alice.yml'))).toBe(false)
+    expect(existsSync(join(root, '.github/workflows/awaywork-alice.yml'))).toBe(false)
     process.exitCode = undefined
   }
 })
@@ -321,15 +321,15 @@ it('never turns a workflow with an environment into the fallback', async () => {
     [/GH_TOKEN/, false],
     [/SLACK_WEBHOOK/, false],
   ])
-  const before = await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')
+  const before = await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')
   gh.get = 'gh: Must have admin rights to Repository. (HTTP 403)'
   out = []
   await install()
   expect(process.exitCode).toBe(1)
   expect(out).toEqual([
-    '.github/workflows/night-shift-alice.yml uses the environment alice, which GitHub now refuses: gh: Must have admin rights to Repository. (HTTP 403). Changed nothing',
+    '.github/workflows/awaywork-alice.yml uses the environment alice, which GitHub now refuses: gh: Must have admin rights to Repository. (HTTP 403). Changed nothing',
   ])
-  expect(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).toBe(before)
+  expect(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).toBe(before)
 })
 
 it('keeps an existing environment as it is, warning when it lets any branch or not the default one deploy', async () => {
@@ -365,8 +365,8 @@ it('keeps an existing environment as it is, warning when it lets any branch or n
 
 it('refuses an install without --as in a shared control repo, before writing anything', async () => {
   const cases: [string, Gh, string][] = [
-    ['.github/workflows/night-shift-bob.yml', { login: 'Alice-Smith' }, 'alice-smith'],
-    ['.night-shift/bob/config.yml', {}, '<name>'],
+    ['.github/workflows/awaywork-bob.yml', { login: 'Alice-Smith' }, 'alice-smith'],
+    ['.awaywork/bob/config.yml', {}, '<name>'],
   ]
   for (const [file, gh, name] of cases) {
     out = []
@@ -376,10 +376,10 @@ it('refuses an install without --as in a shared control repo, before writing any
     await installWorkflow(config, undefined, io([]))
     expect(process.exitCode).toBe(1)
     expect(out).toEqual([
-      `This is a shared control repo, with a workflow per person; run \`nightshift schedule install --with github-actions --as ${name}\``,
+      `This is a shared control repo, with a workflow per person; run \`awaywork schedule install --with github-actions --as ${name}\``,
     ])
-    expect(existsSync(join(root, '.github/workflows/night-shift.yml'))).toBe(false)
-    expect(existsSync(join(root, '.night-shift/config.yml'))).toBe(false)
+    expect(existsSync(join(root, '.github/workflows/awaywork.yml'))).toBe(false)
+    expect(existsSync(join(root, '.awaywork/config.yml'))).toBe(false)
     process.exitCode = undefined
   }
 })
@@ -391,12 +391,12 @@ it('syncs again: unchanged says so, changed shows the diff and asks, declined ke
     [/SLACK_WEBHOOK/, false],
   ]
   await install(secrets())
-  await writeFile(join(root, '.github/workflows/night-shift-alice.yml'), 'stale')
+  await writeFile(join(root, '.github/workflows/awaywork-alice.yml'), 'stale')
   out = []
-  await install([[/^Overwrite \.github\/workflows\/night-shift-alice\.yml/, true], ...secrets()])
-  expect(out).toContain('.night-shift/alice/config.yml is up to date')
-  expect(out).toContain('.night-shift/alice/skills is up to date')
-  expect(await readFile(join(root, '.github/workflows/night-shift-alice.yml'), 'utf8')).not.toBe(
+  await install([[/^Overwrite \.github\/workflows\/awaywork-alice\.yml/, true], ...secrets()])
+  expect(out).toContain('.awaywork/alice/config.yml is up to date')
+  expect(out).toContain('.awaywork/alice/skills is up to date')
+  expect(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).not.toBe(
     'stale',
   )
 
@@ -406,21 +406,19 @@ it('syncs again: unchanged says so, changed shows the diff and asks, declined ke
   await writeFile(join(home, 'skills/other/SKILL.md'), 'OTHER')
   out = []
   await install([
-    [/^Overwrite \.night-shift\/alice\/config\.yml with the changes above\?$/, false],
-    [/^Replace all of \.night-shift\/alice\/skills with the changes above/, true],
+    [/^Overwrite \.awaywork\/alice\/config\.yml with the changes above\?$/, false],
+    [/^Replace all of \.awaywork\/alice\/skills with the changes above/, true],
     ...secrets(),
   ])
   expect(out.join('\n')).toContain('+skills: [mine]')
-  expect(out).toContain('Kept .night-shift/alice/config.yml')
-  expect(await readFile(join(root, '.night-shift/alice/config.yml'), 'utf8')).toBe(CONFIG)
-  expect(existsSync(join(root, '.night-shift/alice/skills/mine'))).toBe(false)
-  expect(await readFile(join(root, '.night-shift/alice/skills/other/SKILL.md'), 'utf8')).toBe(
-    'OTHER',
-  )
+  expect(out).toContain('Kept .awaywork/alice/config.yml')
+  expect(await readFile(join(root, '.awaywork/alice/config.yml'), 'utf8')).toBe(CONFIG)
+  expect(existsSync(join(root, '.awaywork/alice/skills/mine'))).toBe(false)
+  expect(await readFile(join(root, '.awaywork/alice/skills/other/SKILL.md'), 'utf8')).toBe('OTHER')
 })
 
 it('copies a file the repo lacks without asking', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   const from = join(root, 'source.yml')
   await writeFile(from, 'a: 1\n')
   await syncCopy(from, root, 'x/config.yml', scriptedAsk([]))
@@ -446,15 +444,15 @@ it("removes only the person's workflow and says how to delete their environment"
   out = []
   const run: Exec = async () => root
   await removePersonWorkflow('alice', run)
-  expect(existsSync(join(root, '.github/workflows/night-shift-alice.yml'))).toBe(false)
-  expect(existsSync(join(root, '.night-shift/alice/config.yml'))).toBe(true)
+  expect(existsSync(join(root, '.github/workflows/awaywork-alice.yml'))).toBe(false)
+  expect(existsSync(join(root, '.awaywork/alice/config.yml'))).toBe(true)
   expect(out).toEqual([
-    'Removed .github/workflows/night-shift-alice.yml',
+    'Removed .github/workflows/awaywork-alice.yml',
     'The environment alice and its secrets stay; `gh api -X DELETE repos/{owner}/{repo}/environments/alice` deletes them',
   ])
   out = []
   await removePersonWorkflow('alice', run)
-  expect(out).toEqual(['No .github/workflows/night-shift-alice.yml in this repo'])
+  expect(out).toEqual(['No .github/workflows/awaywork-alice.yml in this repo'])
 })
 
 it('names the suffixed repository secrets a removed fallback workflow leaves', async () => {
@@ -467,7 +465,7 @@ it('names the suffixed repository secrets a removed fallback workflow leaves', a
   out = []
   await removePersonWorkflow('alice', async () => root)
   expect(out).toEqual([
-    'Removed .github/workflows/night-shift-alice.yml',
+    'Removed .github/workflows/awaywork-alice.yml',
     'Its suffixed repository secrets stay, readable from any branch: `gh secret delete GH_TOKEN__ALICE`, `gh secret delete CLAUDE_CODE_OAUTH_TOKEN__ALICE`, `gh secret delete ASANA_TOKEN__ALICE`',
   ])
 })

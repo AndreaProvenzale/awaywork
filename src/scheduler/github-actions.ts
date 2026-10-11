@@ -4,15 +4,15 @@ import { dirname, join } from 'node:path'
 import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
 
-export const WORKFLOW = '.github/workflows/night-shift.yml'
-export const REPO_CONFIG = '.night-shift/config.yml'
+export const WORKFLOW = '.github/workflows/awaywork.yml'
+export const REPO_CONFIG = '.awaywork/config.yml'
 export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 export const workflowOf = (person?: string) =>
-  person ? `.github/workflows/night-shift-${person}.yml` : WORKFLOW
-export const configOf = (person: string) => `.night-shift/${person}/config.yml`
+  person ? `.github/workflows/awaywork-${person}.yml` : WORKFLOW
+export const configOf = (person: string) => `.awaywork/${person}/config.yml`
 /** A person's own secrets are `<NAME>__<PERSON>`, so no shared secret can stand in for one. */
 export const suffixOf = (person: string) => `__${person.toUpperCase().replaceAll('-', '_')}`
-const ACTION_REPO = 'AndreaProvenzale/night-shift'
+const ACTION_REPO = 'AndreaProvenzale/awaywork'
 const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
@@ -21,7 +21,7 @@ export interface Workflow {
   timezone: string
   /** Repo path of the config the run reads. */
   config: string
-  /** The nightshift-agent version the runner installs. */
+  /** The awaywork version the runner installs. */
   version: string
   packages: string[]
   secrets: string[]
@@ -37,7 +37,7 @@ export interface Workflow {
   }
 }
 
-/** A nightly workflow calling night-shift's action; secrets appear by name only, their values stay in the repo's settings. */
+/** A nightly workflow calling awaywork's action; secrets appear by name only, their values stay in the repo's settings. */
 export function workflow(w: Workflow): string {
   const person = w.person
   const from = (name: string) =>
@@ -50,7 +50,7 @@ export function workflow(w: Workflow): string {
     (script) =>
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
-  const name = person ? `night-shift-${person.name}` : 'night-shift'
+  const name = person ? `awaywork-${person.name}` : 'awaywork'
   return `name: ${name}
 
 on:
@@ -96,19 +96,19 @@ export async function removeWorkflow(root: string, person?: string): Promise<boo
   return true
 }
 
-/** The paths of every night-shift workflow under a repo root, people's included. */
+/** The paths of every awaywork workflow under a repo root, people's included. */
 export async function workflows(root: string): Promise<string[]> {
   const dir = join(root, dirname(WORKFLOW))
   const files = await readdir(dir).catch(() => [])
   return files
-    .filter((f) => /^night-shift.*\.yml$/.test(f))
+    .filter((f) => /^awaywork.*\.yml$/.test(f))
     .sort()
     .map((f) => join(dir, f))
 }
 
-/** Warns when the repo's workflow predates night-shift's action and runs its steps inline. */
+/** Warns when the repo's workflow predates awaywork's action and runs its steps inline. */
 export async function staleWorkflow(root: string): Promise<string | undefined> {
   const file = join(root, WORKFLOW)
   if (!existsSync(file) || (await readFile(file, 'utf8')).includes(`uses: ${ACTION_REPO}@`)) return
-  return `${WORKFLOW} doesn't call night-shift's action; run \`nightshift schedule install --with github-actions\` again to update it`
+  return `${WORKFLOW} doesn't call awaywork's action; run \`awaywork schedule install --with github-actions\` again to update it`
 }

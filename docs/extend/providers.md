@@ -1,5 +1,5 @@
 ---
-description: How to add a coding-agent provider to night-shift, with the research it needs first, the Provider contract, the registry line, tests against a fake binary, and a burn test.
+description: How to add a coding-agent provider to awaywork, with the research it needs first, the Provider contract, the registry line, tests against a fake binary, and a burn test.
 ---
 
 # Adding a provider
@@ -14,7 +14,7 @@ claim tagged **[V]** (vendor docs), **[C]** (community) or **[I]**
 (inference), and settle these with a real run:
 
 - It runs **headless** with the user's own subscription login, through
-  the vendor's **unmodified binary**. night-shift never calls a backing
+  the vendor's **unmodified binary**. awaywork never calls a backing
   API with a subscription credential; a provider that only works that way
   is out.
 - The terms allow unattended use, or at least don't forbid it.
@@ -47,7 +47,7 @@ interface Provider {
 
 - `run` spawns the binary in `job.dir` with `job.prompt`, under
   `job.maxTurns`, with `job.env` as its whole environment
-  (`extendEnv: false`): night-shift has already removed the forge tokens
+  (`extendEnv: false`): awaywork has already removed the forge tokens
   and the other providers' and sources' secrets. It yields `log` lines,
   `quota` whenever the stream reports one, and exactly one `done`. It
   stops when `signal` aborts. `job.config` is the provider's entry in
@@ -55,12 +55,12 @@ interface Provider {
   `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h
   session and `long` for the week or month. Return `null` when the quota
-  can't be read; night-shift then applies `fallback`.
+  can't be read; awaywork then applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and
   aborting, as `codex.ts` does.
 
-[`claude.ts`](https://github.com/AndreaProvenzale/night-shift/blob/main/src/providers/claude.ts)
-is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/night-shift/blob/main/src/providers/codex.ts)
+[`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts)
+is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts)
 shows a rotating credential and a per-machine lock.
 
 ## Register it
@@ -80,7 +80,7 @@ the registry.
   from `test/contracts/provider.contract.ts`.
 - Unit tests for the event parser against the recorded streams.
 - A `test/real-<id>.test.ts` that spends a few turns of a real
-  subscription, skipped unless `NIGHTSHIFT_REAL=1`.
+  subscription, skipped unless `AWAYWORK_REAL=1`.
 
-Then a burn test: one real unit with `nightshift run --unit`, recorded in
+Then a burn test: one real unit with `awaywork run --unit`, recorded in
 `lessons.md` with what the quota did.

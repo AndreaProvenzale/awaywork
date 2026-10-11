@@ -16,7 +16,7 @@ const alive = (pid: number) => {
 
 describe('runSetup', () => {
   it('stops at the deadline even when a background process holds its output', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
     const started = Date.now()
     const failed = await runSetup('sleep 30 & echo $! > pid; sleep 30', dir, env, () => {}, {
       secrets: [],
@@ -28,7 +28,7 @@ describe('runSetup', () => {
   })
 
   it('stops what it started when it exits, and on an interrupt', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
     expect(await runSetup('sleep 30 & echo $! > pid', dir, env, () => {}, { secrets: [] })).toBe(
       undefined,
     )
@@ -42,7 +42,7 @@ describe('runSetup', () => {
   })
 
   it('masks its secrets in the log and the reason', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-setup-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
     const lines: string[] = []
     const failed = await runSetup(
       'echo "token $NPM_TOKEN"; exit 1',
@@ -60,7 +60,7 @@ describe('runSetup', () => {
 
 describe('runCommand', () => {
   it('marks a command that hit the time limit, not one stopped by the night window', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-command-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-command-'))
     const real = AbortSignal.timeout.bind(AbortSignal)
     const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(200))
     try {

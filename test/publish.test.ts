@@ -13,7 +13,7 @@ const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
 const trailers = (dir: string) =>
-  git(dir, 'log', '--format=%s|%(trailers:key=Night-shift,valueonly)', 'HEAD').then((log) =>
+  git(dir, 'log', '--format=%s|%(trailers:key=Awaywork,valueonly)', 'HEAD').then((log) =>
     log.split('\n').filter(Boolean),
   )
 
@@ -54,7 +54,7 @@ const unit = (deliver: Unit['deliver'] = 'draft_pr'): Unit => ({
   foreign: false,
   network: true,
   untrusted: false,
-  branch: 'night/FAKE-1',
+  branch: 'away/FAKE-1',
   rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
   skill: 'fix-ci',
   skills: [],
@@ -71,10 +71,10 @@ describe('publish', () => {
     await git(dir, 'add', '.')
     await git(dir, 'commit', '-qm', message)
   }
-  const body = (text: string) => writeFile(join(dir, '.nightshift/out/pr.md'), text)
+  const body = (text: string) => writeFile(join(dir, '.away/out/pr.md'), text)
 
   beforeEach(async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-publish-'))
     const origin = join(root, 'origin')
     dir = join(root, 'clone')
     await execa(bin('git'), ['init', '-q', '-b', 'feature-1', origin])
@@ -94,8 +94,8 @@ describe('publish', () => {
     await git(dir, 'config', 'user.name', 'Dev')
     await git(dir, 'config', 'user.email', 'dev@example.com')
     await git(dir, 'config', 'core.hooksPath', '.husky')
-    await git(dir, 'checkout', '-q', '-b', 'night/FAKE-1')
-    await mkdir(join(dir, '.nightshift/out'), { recursive: true })
+    await git(dir, 'checkout', '-q', '-b', 'away/FAKE-1')
+    await mkdir(join(dir, '.away/out'), { recursive: true })
     start = await git(dir, 'rev-parse', 'HEAD')
   })
 
@@ -106,10 +106,10 @@ describe('publish', () => {
     const forge = pushingForge()
     expect(await publish(unit(), dir, forge, '20260925-010000', start)).toEqual({
       kind: 'pr',
-      url: 'https://example.com/acme/api/pull/night/FAKE-1',
+      url: 'https://example.com/acme/api/pull/away/FAKE-1',
       commits: 2,
     })
-    expect(forge.branches).toEqual(new Set(['acme/api:night/FAKE-1']))
+    expect(forge.branches).toEqual(new Set(['acme/api:away/FAKE-1']))
     expect(forge.pushed).toEqual([['second|20260925-010000', 'first|20260925-010000', 'init|']])
   })
 
@@ -132,7 +132,7 @@ describe('publish', () => {
         items: ['ENG-12', 'ENG-12', 'ENG-13', 'FAKE-1'],
       },
     ])
-    expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'night/FAKE-1']])
+    expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'away/FAKE-1']])
   })
 
   it('still opens the PR when the forge has no stacks for it', async () => {
@@ -161,16 +161,16 @@ describe('publish', () => {
       unpublished: true,
     })
     await body('Title')
-    forge.branches.add('acme/api:night/FAKE-1')
+    forge.branches.add('acme/api:away/FAKE-1')
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: 'night/FAKE-1 already exists on acme/api, not pushed',
+      reason: 'away/FAKE-1 already exists on acme/api, not pushed',
       unpublished: true,
     })
   })
 
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
-    const report = (text: string) => writeFile(join(dir, '.nightshift/out/report.md'), text)
+    const report = (text: string) => writeFile(join(dir, '.away/out/report.md'), text)
     const forge = pushingForge()
     await commit('first')
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
@@ -206,7 +206,7 @@ describe('publish', () => {
     await commit('side')
     await git(dir, 'checkout', '-q', '-')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
-    await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
+    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
     await body('Title')
     const merged = {
       kind: 'none',
@@ -243,7 +243,7 @@ describe('publish', () => {
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
     await git(dir, 'update-ref', 'refs/remotes/origin/sneaky', 'HEAD')
     await commit('after')
-    await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
+    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '4 commits include a merge, not pushed',
@@ -259,7 +259,7 @@ describe('publish', () => {
     await git(dir, 'config', 'core.fsmonitor', hook)
     await git(dir, 'config', 'diff.external', hook)
     await writeFile(join(dir, 'uncommitted.txt'), 'left behind')
-    await writeFile(join(dir, '.nightshift/out/report.md'), 'Fixed.\n')
+    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
     const forge = pushingForge()
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toMatchObject({ kind: 'pushed' })
     await body('Title')
@@ -269,7 +269,7 @@ describe('publish', () => {
       ['first|r1', 'init|'],
     ])
     await expect(readFile(ran, 'utf8')).rejects.toThrow('ENOENT')
-    const diff = await readFile(join(dir, '.nightshift/out/diff.patch'), 'utf8')
+    const diff = await readFile(join(dir, '.away/out/diff.patch'), 'utf8')
     expect(diff).toContain('+++ b/first.txt')
     expect(diff).not.toContain('uncommitted')
   })
@@ -295,7 +295,7 @@ describe('publish', () => {
       message = await git(repo, 'log', '-1', '--format=%B', 'HEAD')
     }
     await publish(unit(), dir, forge, 'r1', start)
-    expect(message).toBe('Fix it\n\nBefore\n---\nAfter\n\nNight-shift: r1')
+    expect(message).toBe('Fix it\n\nBefore\n---\nAfter\n\nAwaywork: r1')
   })
 
   it('refuses to write through a symlink in the clone', async () => {
@@ -303,15 +303,15 @@ describe('publish', () => {
     await writeFile(outside, 'mine\n')
     await commit('first')
     await body('Title')
-    await symlink(outside, join(dir, '.nightshift/out/diff.patch'))
+    await symlink(outside, join(dir, '.away/out/diff.patch'))
     const forge = fakeForge()
     await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
-      '.nightshift/out/diff.patch in the clone is a symlink',
+      '.away/out/diff.patch in the clone is a symlink',
     )
-    await rm(join(dir, '.nightshift/out/pr.md'))
-    await symlink(outside, join(dir, '.nightshift/out/pr.md'))
+    await rm(join(dir, '.away/out/pr.md'))
+    await symlink(outside, join(dir, '.away/out/pr.md'))
     await expect(publish(unit(), dir, forge, 'r1', start)).rejects.toThrow(
-      '.nightshift/out/pr.md in the clone is a symlink',
+      '.away/out/pr.md in the clone is a symlink',
     )
     expect(await readFile(outside, 'utf8')).toBe('mine\n')
     expect(forge.branches.size).toBe(0)
@@ -319,8 +319,8 @@ describe('publish', () => {
 
   it('reads a FIFO left as the PR body as no body, without waiting on it', async () => {
     await commit('first')
-    await mkdir(join(dir, '.nightshift/out'), { recursive: true })
-    await execa('mkfifo', [join(dir, '.nightshift/out/pr.md')])
+    await mkdir(join(dir, '.away/out'), { recursive: true })
+    await execa('mkfifo', [join(dir, '.away/out/pr.md')])
     const forge = fakeForge()
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
@@ -337,7 +337,7 @@ describe('publish', () => {
       kind: 'none',
       reason: 'no report written',
     })
-    await writeFile(join(dir, '.nightshift/out/report.md'), 'Approve.\n')
+    await writeFile(join(dir, '.away/out/report.md'), 'Approve.\n')
     expect(await publish(unit('report'), dir, forge, 'r1', start)).toEqual({
       kind: 'report',
       text: 'Approve.',

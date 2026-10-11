@@ -14,7 +14,7 @@ import { fakeItem } from './fakes/items.js'
 
 const log: string[] = []
 const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
-const tmp = () => mkdtemp(join(tmpdir(), 'nightshift-'))
+const tmp = () => mkdtemp(join(tmpdir(), 'awaywork-'))
 
 /** A search for my PRs on acme/api, numbered from 1. */
 const authored = (...prs: Record<string, string>[]) =>
@@ -42,27 +42,27 @@ describe('footer', () => {
   it('names every item, URI-encoded, and reads them back', () => {
     const items = [
       { source: 'linear', key: 'ENG-12' },
-      { source: 'my tracker', key: 'odd key --> <!-- night-shift item=x:y' },
+      { source: 'my tracker', key: 'odd key --> <!-- awaywork item=x:y' },
     ]
     const text = footer('r1', items)
     expect(text).toContain(
-      '<!-- night-shift run=r1 item=linear:ENG-12 item=my%20tracker:odd%20key%20--%3E',
+      '<!-- awaywork run=r1 item=linear:ENG-12 item=my%20tracker:odd%20key%20--%3E',
     )
     expect(text.split('-->')).toHaveLength(2)
     expect(isOurs(text)).toBe(true)
     expect(footerItems(`Body.\n\n${text}`)).toEqual([
       'linear:ENG-12',
-      'my tracker:odd key --> <!-- night-shift item=x:y',
+      'my tracker:odd key --> <!-- awaywork item=x:y',
     ])
     expect(footerItems(footer('r1', []))).toEqual([])
     expect(footerItems('No footer.')).toEqual([])
-    const quoted = 'The footer reads `<!-- night-shift run=r0 item=linear:ENG-99 -->`.'
+    const quoted = 'The footer reads `<!-- awaywork run=r0 item=linear:ENG-99 -->`.'
     expect(footerItems(`${quoted}\n\n${text}`)).toEqual(footerItems(text))
     const unclosed = footer('r1', [{ source: 'linear', key: 'ENG-12' }])
-    expect(footerItems(`Done.\n\n<!-- night-shift item=linear:ENG-99 \n\n${unclosed}`)).toEqual([
+    expect(footerItems(`Done.\n\n<!-- awaywork item=linear:ENG-99 \n\n${unclosed}`)).toEqual([
       'linear:ENG-12',
     ])
-    expect(footerItems(`Quotes \`<!-- night-shift item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
+    expect(footerItems(`Quotes \`<!-- awaywork item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
       'linear:ENG-12',
     ])
   })
@@ -115,7 +115,7 @@ describe('github source', () => {
     expect(pr2?.reviewers).toEqual(['dev', 'backend'])
     expect(issue5?.fields).toEqual({
       repo: 'acme/api',
-      label: ['night-shift', 'backend'],
+      label: ['awaywork', 'backend'],
       author: 'lead',
       trusted: true,
       mine: true,
@@ -165,7 +165,7 @@ describe('github source', () => {
     expect(log[0]).toMatch(/^github: couldn't read every file of acme\/api#1: /)
   })
 
-  it('marks a PR night-shift opened as ours', async () => {
+  it('marks a PR awaywork opened as ours', async () => {
     const authored = fixture('search-authored.json').replace(
       '"body": "Adds a token bucket per client."',
       `"body": ${JSON.stringify(footer('r0', []))}`,
@@ -310,7 +310,7 @@ describe('github forge', () => {
     expect(run.calls[2]).not.toContain('--branch')
   })
 
-  it('finds my PRs whose branch or title carries the key, and marks night-shift ones', async () => {
+  it('finds my PRs whose branch or title carries the key, and marks awaywork ones', async () => {
     const authored = fixture('search-authored.json')
       .replace('"headRefName": "rate-limits"', '"headRefName": "t-12-rate-limits"')
       .replace(
@@ -346,8 +346,8 @@ describe('github forge', () => {
           { body: 'Context: https://app.asana.com/0/1/1205/f' },
           { body: 'Context: https://app.asana.com/0/1/12050' },
           { headRefName: 'eng-13-extra', body: ours('jira', 'ENG-13') },
-          { headRefName: 'eng-12-footer', body: 'Adds `<!-- night-shift run=<id> -->`.' },
-          { title: 'ENG-12: older', body: 'Done.\n\n---\n<!-- night-shift run=r0 -->' },
+          { headRefName: 'eng-12-footer', body: 'Adds `<!-- awaywork run=<id> -->`.' },
+          { title: 'ENG-12: older', body: 'Done.\n\n---\n<!-- awaywork run=r0 -->' },
         ),
       ],
     ])
@@ -378,53 +378,53 @@ describe('github forge', () => {
         JSON.stringify({ data: { repository: { pullRequests: { nodes } } } }),
       ],
     ])
-    expect(await githubForge(run).prsOn('acme/api', 'night/eng-12')).toEqual([
+    expect(await githubForge(run).prsOn('acme/api', 'away/eng-12')).toEqual([
       { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', merged: true },
     ])
     expect(run.calls[0]).toEqual(
-      expect.arrayContaining(['owner=acme', 'name=api', 'branch=night/eng-12']),
+      expect.arrayContaining(['owner=acme', 'name=api', 'branch=away/eng-12']),
     )
   })
 
   it("reads the message of a branch's tip", async () => {
-    const target = { message: 'Fix it\n\nNight-shift: r0' }
+    const target = { message: 'Fix it\n\nAwaywork: r0' }
     const run = recorded([
       [
         /ref\(qualifiedName: \$ref\)/,
         JSON.stringify({ data: { repository: { ref: { target } } } }),
       ],
     ])
-    expect(await githubForge(run).tipMessage('acme/api', 'night/eng-12')).toBe(target.message)
-    expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/night/eng-12']))
+    expect(await githubForge(run).tipMessage('acme/api', 'away/eng-12')).toBe(target.message)
+    expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/away/eng-12']))
   })
 
   it('checks branch existence by exact name, not prefix', async () => {
     const run = recorded([
-      [/heads\/night\/acme-api-1$/, fixture('matching-refs-prefix.json')],
-      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
+      [/heads\/away\/acme-api-1$/, fixture('matching-refs-prefix.json')],
+      [/heads\/away\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
     ])
     const forge = githubForge(run)
-    expect(await forge.branchExists('acme/api', 'night/acme-api-1')).toBe(false)
-    expect(await forge.branchExists('acme/api', 'night/acme-api-1-old')).toBe(true)
+    expect(await forge.branchExists('acme/api', 'away/acme-api-1')).toBe(false)
+    expect(await forge.branchExists('acme/api', 'away/acme-api-1-old')).toBe(true)
   })
 
   it('pushes only branches absent on the remote, and only while they are', async () => {
     const run = recorded([
-      [/heads\/night\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
+      [/heads\/away\/acme-api-1-old$/, fixture('matching-refs-prefix.json')],
       [/matching-refs/, '[]'],
       [/rev-parse/, 'f00d000\n'],
       [/^git /, ''],
     ])
     const forge = githubForge(run)
     await expect(
-      forge.push('/work/u1', 'night/acme-api-1-old', { repo: 'acme/api' }),
+      forge.push('/work/u1', 'away/acme-api-1-old', { repo: 'acme/api' }),
     ).rejects.toThrow('already exists')
-    await forge.push('/work/u1', 'night/acme-api-1', { repo: 'acme/api' })
+    await forge.push('/work/u1', 'away/acme-api-1', { repo: 'acme/api' })
     const push = run.calls.at(-1) ?? []
     expect(push).toEqual([
       'git',
       '-C',
-      expect.stringContaining('nightshift-push-'),
+      expect.stringContaining('awaywork-push-'),
       '--no-replace-objects',
       '-c',
       'core.hooksPath=/dev/null',
@@ -433,9 +433,9 @@ describe('github forge', () => {
       '-c',
       'credential.helper=!gh auth git-credential',
       'push',
-      '--force-with-lease=refs/heads/night/acme-api-1:',
+      '--force-with-lease=refs/heads/away/acme-api-1:',
       'https://github.com/acme/api.git',
-      'f00d000:refs/heads/night/acme-api-1',
+      'f00d000:refs/heads/away/acme-api-1',
     ])
     expect(push.join(' ')).not.toMatch(/\+/)
   })
@@ -499,7 +499,7 @@ describe('github forge', () => {
     expect(run.calls.at(-1)).toEqual([
       'git',
       '-C',
-      expect.stringContaining('nightshift-push-'),
+      expect.stringContaining('awaywork-push-'),
       '--no-replace-objects',
       '-c',
       'core.hooksPath=/dev/null',
@@ -526,7 +526,7 @@ describe('github forge', () => {
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'init')
     await git(clone, 'config', `url.${elsewhere}.pushInsteadOf`, origin)
     let head = ''
-    let branch = 'night/acme-api-1'
+    let branch = 'away/acme-api-1'
     const pullRequest = () => ({
       state: 'OPEN',
       viewerDidAuthor: true,
@@ -553,31 +553,31 @@ describe('github forge', () => {
             })
           : '[]'
     const forge = githubForge(run)
-    await forge.push(clone, 'night/acme-api-1', { repo: 'acme/api' })
+    await forge.push(clone, 'away/acme-api-1', { repo: 'acme/api' })
     const refs = async (dir: string) =>
       (await git(dir, 'for-each-ref', '--format=%(refname)')).stdout
-    expect(await refs(origin)).toBe('refs/heads/night/acme-api-1')
+    expect(await refs(origin)).toBe('refs/heads/away/acme-api-1')
     expect(await refs(elsewhere)).toBe('')
 
-    head = (await git(origin, 'rev-parse', 'night/acme-api-1')).stdout
+    head = (await git(origin, 'rev-parse', 'away/acme-api-1')).stdout
     await git(clone, 'commit', '-q', '--amend', '--allow-empty', '-m', 'rewritten')
-    const onto = forge.fastForward(clone, 'night/acme-api-1', head, { repo: 'acme/api', pr: 1 })
+    const onto = forge.fastForward(clone, 'away/acme-api-1', head, { repo: 'acme/api', pr: 1 })
     await expect(onto).rejects.toThrow(`not a fast-forward from ${head.slice(0, 7)}`)
 
     // The branch moved back after the PR was read: the push would bring back what was dropped.
     const rewritten = (await git(clone, 'rev-parse', 'HEAD')).stdout
-    branch = 'night/acme-api-2'
+    branch = 'away/acme-api-2'
     head = rewritten
     await forge.push(clone, branch, { repo: 'acme/api' })
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'dropped')
     await forge.fastForward(clone, branch, rewritten, { repo: 'acme/api', pr: 1 })
     head = (await git(clone, 'rev-parse', 'HEAD')).stdout
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'tonight')
-    await git(origin, 'update-ref', 'refs/heads/night/acme-api-2', rewritten)
-    const back = forge.fastForward(clone, 'night/acme-api-2', head, { repo: 'acme/api', pr: 1 })
+    await git(origin, 'update-ref', 'refs/heads/away/acme-api-2', rewritten)
+    const back = forge.fastForward(clone, 'away/acme-api-2', head, { repo: 'acme/api', pr: 1 })
     await expect(back).rejects.toThrow()
-    expect((await git(origin, 'rev-parse', 'night/acme-api-2')).stdout).toBe(rewritten)
-    await expect(forge.push(clone, 'night/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
+    expect((await git(origin, 'rev-parse', 'away/acme-api-2')).stdout).toBe(rewritten)
+    await expect(forge.push(clone, 'away/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
   })
 
   it('opens a draft PR titled by the body file first line', async () => {
@@ -588,7 +588,7 @@ describe('github forge', () => {
     const items = [fakeItem({ source: 'linear', key: 'ENG-12' })]
     const url = await githubForge(run).draftPr(
       'acme/api',
-      'night/acme-api-1',
+      'away/acme-api-1',
       'rate-limits',
       body,
       'r1',
@@ -603,7 +603,7 @@ describe('github forge', () => {
       'acme/api',
       '--draft',
       '--head',
-      'night/acme-api-1',
+      'away/acme-api-1',
       '--base',
       'rate-limits',
       '--title',
@@ -612,7 +612,7 @@ describe('github forge', () => {
       `Checked: src/limit.test.ts passes.\n\n${footer('r1', items)}`,
     ])
     expect(footerItems(run.calls[0]?.at(-1))).toEqual(['linear:ENG-12'])
-    await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1', items)
+    await githubForge(run).draftPr('acme/api', 'away/x', '', body, 'r1', items)
     expect(run.calls[1]).not.toContain('--base')
   })
 

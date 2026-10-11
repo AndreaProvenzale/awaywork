@@ -1,5 +1,5 @@
 ---
-description: Survey of open-source projects, vendor features and commercial products that overlap with night-shift, and where people ask for a tool like it.
+description: Survey of open-source projects, vendor features and commercial products that overlap with awaywork, and where people ask for a tool like it.
 ---
 
 # Landscape
@@ -12,7 +12,7 @@ here leans on GitHub issues.
 
 ## Summary
 
-Nobody found combines all of night-shift: a queue harvested from forges and
+Nobody found combines all of awaywork: a queue harvested from forges and
 trackers (red CI, review threads, assigned issues, GitHub and GitLab), pacing
 against the subscription's own session and weekly windows with a morning
 reserve, several vendor CLIs, and draft PRs only. Each piece exists somewhere:
@@ -29,8 +29,8 @@ reserve, several vendor CLIs, and draft PRs only. Each piece exists somewhere:
 
 The biggest risk is vendors, not projects: Routines, Codex automations,
 Copilot Automations, Jules and Cursor all ship scheduled agents that open PRs.
-The name is crowded: at least ten GitHub repos are called some variant of
-nightshift.
+The old name was crowded: at least ten GitHub repos are called some variant of
+nightshift, hence awaywork.
 
 ## Direct competitors: overnight, quota-aware
 
@@ -86,7 +86,7 @@ Interactive or board-driven, none paces quota: ComposioHQ/agent-orchestrator
 [V], smtg-ai/claude-squad, BloopAI/vibe-kanban, stablyai/orca,
 frankbria/ralph-claude-code, Yeachan-Heo/oh-my-claudecode, manaflow-ai/cmux
 [C]. eyaltoledano/claude-task-master, MrLesk/Backlog.md and gastownhall/beads
-[C] are task stores night-shift could read as sources.
+[C] are task stores awaywork could read as sources.
 
 ## Quota monitors and auto-resume
 
@@ -97,7 +97,7 @@ ones; window pre-warmers such as macalinao/claude-code-schedule [C].
 
 ## Vendor features
 
-| Feature | Overlap | Gap night-shift fills |
+| Feature | Overlap | Gap awaywork fills |
 |---|---|---|
 | [Claude Code Routines](https://code.claude.com/docs/en/routines) [V] | Schedule, API or GitHub PR/release triggers; draws subscription usage; `claude/` branches; refuses protected branches and others' commits | Claude and GitHub only; daily run cap, no pacing against remaining quota; the prompt must find the work |
 | [Auto-fix, desktop scheduled tasks](https://code.claude.com/docs/en/claude-code-on-the-web) [V] | Auto-fix pushes fixes for CI and review comments on one watched PR | Per PR, opt-in; desktop tasks need the app open |
@@ -161,13 +161,13 @@ unattended permission prompts that hang (anthropics/claude-code#86915).
   [V] bars third parties from routing or storing subscription credentials,
   and does not "prevent an end user from signing in to the unmodified Claude
   Code binary with their own Claude subscription". Usage limits "assume
-  ordinary, individual usage". night-shift sits inside the carve-out; tools
+  ordinary, individual usage". awaywork sits inside the carve-out; tools
   that read the OAuth token to call usage endpoints sit closer to the line [I].
 - Anthropic justified weekly limits by users "running Claude Code
   continuously in the background, 24/7" [C]. It announced moving `claude -p`,
   the Agent SDK and GitHub Actions to a separate credit billed at API prices,
   then paused the change and promised notice [C]. If it returns, headless
   runs stop drawing on the subscription; that is the largest risk to
-  night-shift's premise.
+  awaywork's premise.
 - OpenAI documents persisting ChatGPT auth in CI [C]; no explicit statement
   on unattended use found.

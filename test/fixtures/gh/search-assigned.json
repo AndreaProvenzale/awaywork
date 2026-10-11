@@ -17,7 +17,7 @@
           "author": { "login": "lead" },
           "authorAssociation": "MEMBER",
           "assignees": { "nodes": [{ "login": "dev" }] },
-          "labels": { "nodes": [{ "name": "night-shift" }, { "name": "backend" }] },
+          "labels": { "nodes": [{ "name": "awaywork" }, { "name": "backend" }] },
           "comments": {
             "nodes": [{ "author": null, "body": "+1", "createdAt": "2026-01-01T09:00:00Z" }]
           },

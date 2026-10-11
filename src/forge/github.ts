@@ -83,7 +83,7 @@ const remote = (repo: string) => `https://github.com/${repo}.git`
  * but lifts git's own fast-forward check, so the ancestry check here is what keeps history intact.
  */
 async function pushHead(run: Exec, dir: string, repo: string, branch: string, from?: string) {
-  const bare = await mkdtemp(join(tmpdir(), 'nightshift-push-'))
+  const bare = await mkdtemp(join(tmpdir(), 'awaywork-push-'))
   const git = (...args: string[]) => run('git', ['-C', bare, ...pushSafely, ...args])
   try {
     await run('git', ['init', '-q', '--bare', bare])

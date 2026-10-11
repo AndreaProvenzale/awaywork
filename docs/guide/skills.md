@@ -1,5 +1,5 @@
 ---
-description: The built-in night-shift skills, how skills are resolved, ejecting one to tweak it, and writing your own as an Agent Skills folder.
+description: The built-in awaywork skills, how skills are resolved, ejecting one to tweak it, and writing your own as an Agent Skills folder.
 ---
 
 # Skills
@@ -13,7 +13,7 @@ same folder works for Claude Code and Codex.
 | Skill | For | Delivers |
 |---|---|---|
 | `fix-ci` | Your PR with failing checks | draft PR |
-| `address-review` | Your PR with unresolved review threads, a night-shift PR with unresolved threads you started, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
+| `address-review` | Your PR with unresolved review threads, an awaywork PR with unresolved threads you started, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |
@@ -21,10 +21,10 @@ same folder works for Claude Code and Codex.
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
-nightshift skills list   # every skill a rule can name, and where it comes from
+awaywork skills list   # every skill a rule can name, and where it comes from
 ```
 
-The skill decides the work; the [harness](https://github.com/AndreaProvenzale/night-shift/blob/main/harness.md)
+The skill decides the work; the [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md)
 wrapped around every skill decides the limits (no forge access, targeted
 tests only, no background commands, when to stop). A skill can't lift
 them.
@@ -34,37 +34,37 @@ them.
 A skill name, a rule's or one in `skills`, is looked up, first match
 wins, in:
 
-1. `skills/<name>/` next to your config, yours: `~/.config/night-shift/skills/`
+1. `skills/<name>/` next to your config, yours: `~/.config/awaywork/skills/`
    for the default config;
-2. `.night-shift/skills/<name>/` in the unit's repo, the team's;
+2. `.awaywork/skills/<name>/` in the unit's repo, the team's;
 3. the built-ins.
 
-A config outside `~/.config/night-shift/` (`--config`, `NIGHT_SHIFT_CONFIG`)
+A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`)
 uses its own `skills/`, so move or link the folder there; `doctor` warns
-while `~/.config/night-shift/skills/` holds skills it doesn't use. On a PR someone
-else opened, `.night-shift/skills/` is the author's and is skipped. To use a
+while `~/.config/awaywork/skills/` holds skills it doesn't use. On a PR someone
+else opened, `.awaywork/skills/` is the author's and is skipped. To use a
 skill from `~/.claude/skills/`, link it into yours:
-`ln -s ~/.claude/skills/<name> ~/.config/night-shift/skills/<name>`.
+`ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 
 On a runner, yours are the copy `schedule install --with github-actions`
-puts next to the repo's config: `.night-shift/skills/`, or, in a
+puts next to the repo's config: `.awaywork/skills/`, or, in a
 [shared control repo](./scheduling.md#shared-control-repo), each
-person's own `.night-shift/<person>/skills/`. A teammate's skills never
+person's own `.awaywork/<person>/skills/`. A teammate's skills never
 reach your units.
 
 Claude Code gets the unit's skills as a plugin outside the clone
-(`--plugin-dir`), named `nightshift:<name>`, so they are callable on
+(`--plugin-dir`), named `awaywork:<name>`, so they are callable on
 every unit, someone else's PR included. Codex gets them copied into the
 clone's `.agents/skills/`: a repo that already has a skill of that name
-there keeps it, except on someone else's PR, where night-shift's copy
+there keeps it, except on someone else's PR, where awaywork's copy
 replaces it. `config check` sees user and built-in skills only; an
 in-repo skill resolves at run time.
 
 ## Tweak a built-in
 
 ```sh
-nightshift skills eject fix-ci
-$EDITOR ~/.config/night-shift/skills/fix-ci/SKILL.md
+awaywork skills eject fix-ci
+$EDITOR ~/.config/awaywork/skills/fix-ci/SKILL.md
 ```
 
 The ejected copy shadows the built-in from then on.
@@ -72,7 +72,7 @@ The ejected copy shadows the built-in from then on.
 ## Try an edit on a past unit
 
 ```sh
-nightshift replay 20261006-020000 acme-api-1
+awaywork replay 20261006-020000 acme-api-1
 ```
 
 Replay rebuilds a unit of a past run: a clone at the commit the unit started
@@ -94,7 +94,7 @@ replays without the prompt's loop section.
 ## Write your own
 
 ```
-~/.config/night-shift/skills/triage-flaky/
+~/.config/awaywork/skills/triage-flaky/
   SKILL.md
 ```
 
@@ -128,13 +128,13 @@ queue:
 - `with: { key: value }` on a rule or step lists those values in a
   Parameters section of the prompt, after the skill; a multi-line value
   comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or
-  thorough" }`; night-shift doesn't check them.
+  thorough" }`; awaywork doesn't check them.
 - A skill that judges can write one lowercase word to
-  `.nightshift/out/verdict`, such as `pass` or `fail`. The report shows
+  `.away/out/verdict`, such as `pass` or `fail`. The report shows
   it, and a [loop](./configuration.md#loops)'s `until` can match it.
 - Say what the output must state, as the built-ins do: what was checked,
   how, and what couldn't be.
-- Context is in `.nightshift/context/<item>/`: `pr.md`, `diff.patch`,
+- Context is in `.away/context/<item>/`: `pr.md`, `diff.patch`,
   `threads.md`, `checks.md` for a PR; `issue.md` or `task.md` otherwise.
 - `skills: [name]` on a rule, or at the top level for every unit, adds
   extra skills the agent may call, such as your team's conventions.

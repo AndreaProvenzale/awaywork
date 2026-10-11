@@ -137,7 +137,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   return checks
 }
 
-/** Checks that every secret each night-shift workflow names exists in its environment, the repo or the org. */
+/** Checks that every secret each awaywork workflow names exists in its environment, the repo or the org. */
 export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
   const files = await workflows(root)
   if (!files.length) return []

@@ -18,7 +18,7 @@ describe('where', () => {
   const pr = githubPr(1, {
     checks: 'failing',
     unresolved_threads: 3,
-    label: ['bug', 'night-shift'],
+    label: ['bug', 'awaywork'],
   })
 
   it.each([
@@ -27,7 +27,7 @@ describe('where', () => {
     ['a list is any of', { checks: ['pending', 'failing'] }, true],
     ['not negates a scalar', { unresolved_threads: { not: 0 } }, true],
     ['not negates a list', { checks: { not: ['failing', 'pending'] } }, false],
-    ['a scalar is contained in a list field', { label: 'night-shift' }, true],
+    ['a scalar is contained in a list field', { label: 'awaywork' }, true],
     ['a list overlaps a list field', { label: ['docs', 'bug'] }, true],
     ['type matches the item type', { type: 'pr' }, true],
     ['a missing field never equals', { review_requested: true }, false],
@@ -39,7 +39,7 @@ describe('where', () => {
     ['a comparison never matches a string', { checks: { gt: 0 } }, false],
     ['matches tests the title, case-insensitively', { title: { matches: '^PR 1$|pr' } }, true],
     ['matches fails when nothing matches', { title: { matches: 'zzz' } }, false],
-    ['matches reads a list field', { label: { matches: '^night' } }, true],
+    ['matches reads a list field', { label: { matches: '^away' } }, true],
     ['matches ignores a number', { unresolved_threads: { matches: '3' } }, false],
     ['any holds when one entry does', { any: [{ checks: 'passing' }, { label: 'bug' }] }, true],
     ['any fails when no entry holds', { any: [{ checks: 'passing' }, { type: 'issue' }] }, false],
@@ -86,7 +86,7 @@ describe('where', () => {
     expect(matches(rule({}, 'github'), pr)).toBe(true)
   })
 
-  it("holds a night-shift PR for rules that name ours, but not another source's ours field", () => {
+  it("holds an awaywork PR for rules that name ours, but not another source's ours field", () => {
     expect(matches(rule({}), githubPr(2, { ours: true }))).toBe(false)
     expect(matches(rule({ ours: true }), githubPr(2, { ours: true }))).toBe(true)
     expect(matches(rule({}), asanaTask(3, { ours: true }))).toBe(true)

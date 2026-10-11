@@ -18,21 +18,21 @@ describe('paths', () => {
 
   it('puts the user skills beside the config in use', () => {
     expect(skillsDirOf(defaultConfigPath)).toBe(join(configDir, 'skills'))
-    expect(skillsDirOf('.night-shift/config.yml')).toBe(join('.night-shift', 'skills'))
+    expect(skillsDirOf('.awaywork/config.yml')).toBe(join('.awaywork', 'skills'))
   })
 
   it('finds a command on PATH past what is not an executable file, and keeps the bare name when absent', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-bin-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-bin-'))
     const plain = join(root, 'plain')
     const found = join(root, 'found')
-    await mkdir(join(root, 'folder', 'nightshift-tool'), { recursive: true })
+    await mkdir(join(root, 'folder', 'awaywork-tool'), { recursive: true })
     await mkdir(plain)
-    await writeFile(join(plain, 'nightshift-tool'), '')
+    await writeFile(join(plain, 'awaywork-tool'), '')
     await mkdir(found)
-    await writeFile(join(found, 'nightshift-tool'), '', { mode: 0o755 })
+    await writeFile(join(found, 'awaywork-tool'), '', { mode: 0o755 })
     vi.stubEnv('PATH', ['', plain, join(root, 'folder'), found].join(':'))
-    expect(bin('nightshift-tool')).toBe(join(found, 'nightshift-tool'))
-    expect(bin('nightshift-missing')).toBe('nightshift-missing')
+    expect(bin('awaywork-tool')).toBe(join(found, 'awaywork-tool'))
+    expect(bin('awaywork-missing')).toBe('awaywork-missing')
     vi.unstubAllEnvs()
   })
 })

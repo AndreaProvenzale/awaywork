@@ -12,7 +12,7 @@ import { fakeItem } from './fakes/items.js'
 
 const bin = fileURLToPath(new URL('./fakes/claude.mjs', import.meta.url))
 const provider = claudeProvider(bin)
-const dir = await mkdtemp(join(tmpdir(), 'nightshift-claude-'))
+const dir = await mkdtemp(join(tmpdir(), 'awaywork-claude-'))
 const recorded = (name: string) =>
   readFileSync(new URL(`./fixtures/claude/${name}.jsonl`, import.meta.url), 'utf8').split('\n')
 
@@ -25,7 +25,7 @@ const job = (): Job => ({
     foreign: false,
     network: true,
     untrusted: false,
-    branch: 'night/fake-1',
+    branch: 'away/fake-1',
     rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
     skill: 'fix-ci',
     skills: [],
@@ -99,7 +99,7 @@ describe('claude provider', () => {
       '/work',
       ['ASANA_TOKEN'],
     )
-    expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.nightshift/gh' })
+    expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.away/gh' })
   })
 
   it('passes the model only when one is set', async () => {
@@ -245,7 +245,7 @@ describe('claude provider', () => {
   })
 
   it('kills what the binary left running once it exits', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-left-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-left-'))
     const pid = join(root, 'left.pid')
     const script = join(root, 'leaves.sh')
     const leaves = `/bin/sleep 30 >/dev/null 2>&1 & echo $! > ${pid}`

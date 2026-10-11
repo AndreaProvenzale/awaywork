@@ -1,5 +1,5 @@
 ---
-description: "The shape of night-shift: foreman, workers and publisher, the provider adapter, work units, guardrails and the watchdog findings."
+description: "The shape of awaywork: foreman, workers and publisher, the provider adapter, work units, guardrails and the watchdog findings."
 ---
 
 # Design
@@ -61,7 +61,7 @@ Tags as in `providers.md`.
   needs a native addon [I]. A cgroup needs a delegated subtree or root,
   which a laptop run doesn't have [I]. So both platforms poll instead.
 - Every 2 s the watchdog lists `ps -A -o pid=,ppid=,lstart=` and records
-  each descendant of night-shift by pid and start time; at the end it
+  each descendant of awaywork by pid and start time; at the end it
   kills those still alive with the same start time. A detached
   grandchild whose parent exited is killed this way [V, tested on macOS;
   the same test runs on Linux in CI]. A process born and orphaned
@@ -84,11 +84,11 @@ Tags as in `providers.md`.
 - Quota allocation is config: a reserve, a cap per night, and a session
   ceiling, per provider.
 - v1 runs locally and in CI only; vendor cloud schedulers are out.
-- Team conventions: night-shift fixes only what code must decide before
-  the model runs, the branch name (a template, default `night/{key}`).
+- Team conventions: awaywork fixes only what code must decide before
+  the model runs, the branch name (a template, default `away/{key}`).
   PR title, body and commit style are the model's, taken from the repo
   (PR template, recent history) and the instructions. A footer on the PR
-  body marks night-shift's own PRs.
+  body marks awaywork's own PRs.
 
 ## Open decisions
 

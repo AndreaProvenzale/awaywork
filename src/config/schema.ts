@@ -201,7 +201,7 @@ const conditionKeys = {
     .string()
     .min(1)
     .optional()
-    .describe('A shell command night-shift runs in the clone, outside the model; exit 0 holds'),
+    .describe('A shell command awaywork runs in the clone, outside the model; exit 0 holds'),
 }
 const condition = z
   .strictObject(conditionKeys)
@@ -464,7 +464,7 @@ export const configSchema = z
         command: z
           .string()
           .min(1)
-          .describe('Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env'),
+          .describe('Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env'),
         secrets: z
           .array(z.string().min(1))
           .default([])
@@ -478,7 +478,7 @@ export const configSchema = z
           .string()
           .min(1)
           .describe(
-            'Shell command; NIGHTSHIFT_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env',
+            'Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env',
           ),
         secrets: z
           .array(z.string().min(1))
@@ -512,7 +512,7 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
-      const offline = "a command can't run with network: false: night-shift has no sandbox for it"
+      const offline = "a command can't run with network: false: awaywork has no sandbox for it"
       // Back-to-back loops would share one host, and the second would never run.
       if (Array.isArray(r.then))
         r.then.forEach((entry, j, then) => {
@@ -615,7 +615,7 @@ export const configSchema = z
             ctx.addIssue({
               code: 'custom',
               path: [...path, key],
-              message: 'ours only lifts the night-shift PR wait at the top of where',
+              message: 'ours only lifts the awaywork PR wait at the top of where',
             })
             continue
           }

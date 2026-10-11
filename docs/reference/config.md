@@ -6,17 +6,17 @@ description: Every config key with its type, default and meaning, from the JSON 
 
 # Config reference
 
-Generated from the JSON Schema that `nightshift config schema` prints,
-also published at [`config.schema.json`](https://andreaprovenzale.github.io/night-shift/config.schema.json). For autocompletion
+Generated from the JSON Schema that `awaywork config schema` prints,
+also published at [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json). For autocompletion
 and hover docs in editors with the YAML language server, start the config
 with:
 
 ```yaml
-# yaml-language-server: $schema=https://andreaprovenzale.github.io/night-shift/config.schema.json
+# yaml-language-server: $schema=https://andreaprovenzale.github.io/awaywork/config.schema.json
 ```
 
 `<key>` stands for a map key you choose, `[]` for a list entry.
-`nightshift config check` validates what the schema cannot, such as
+`awaywork config check` validates what the schema cannot, such as
 `where` keys and skill names.
 
 ## Top level
@@ -28,7 +28,7 @@ with:
 | `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
-| `branch` | string | `"night/{key}"` | Branch name template; {key} or {title} is required |
+| `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit |
@@ -162,7 +162,7 @@ My incomplete Asana tasks.
 | `projects` | string[] |  | Only tasks in these project gids |
 | `project_repos` | map |  | Project gid -> owner/repo where its tasks' code lives |
 | `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
-| `link` | string |  | Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
+| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
 
 ## `sources.linear`
 
@@ -172,7 +172,7 @@ My open Linear issues.
 |---|---|---|---|
 | `team_repos` | map |  | Team key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
-| `link` | string |  | Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
+| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
 
 ## `sources.jira`
 
@@ -186,7 +186,7 @@ My unresolved Jira Cloud issues.
 | `jql` | string |  | JQL condition ANDed with my unresolved issues |
 | `project_repos` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
-| `link` | string |  | Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
+| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 
 ## `sources.<key>`
 
@@ -197,8 +197,8 @@ A custom source: any command that prints your open items as JSON.
 | `command` (required) | string |  | Shell command printing the items as a JSON array; runs in the config file's folder |
 | `fields` | string[] | `[]` | Item fields rules may match on |
 | `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
-| `setup` | string |  | Runs in the config file's folder before night-shift on GitHub Actions |
-| `link` | string |  | Line night-shift writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
+| `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions |
+| `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
 
 ## `repos.<key>`
 
@@ -323,7 +323,7 @@ Run this step only when every key holds; otherwise skip it.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
-| `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
+| `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
 | `nights_until_reset` | integer |  | Holds when the provider's long window resets within this many nights; 1 is the last |
 | `headroom` | percent |  | Holds when at least this share of the long window is left under tonight's ceiling |
 | `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
@@ -377,7 +377,7 @@ Ends the loop as soon as it holds; checked after every step.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The latest verdict a loop step wrote; a list means any of, {not} negates |
-| `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
+| `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
 
 ## `queue[].then.until.verdict`
 
@@ -437,7 +437,7 @@ Run after each night with the morning report; a failure is only logged.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `command` (required) | string |  | Shell command; NIGHTSHIFT_REPORT and NIGHTSHIFT_RUN_ID are in its env |
+| `command` (required) | string |  | Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
 
 ## `after_unit`
@@ -446,5 +446,5 @@ Run after each unit, once its result is final; a failure is only logged.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `command` (required) | string |  | Shell command; NIGHTSHIFT_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env |
+| `command` (required) | string |  | Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |

@@ -62,7 +62,7 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
- * A draft PR stacks on tonight's draft PR it follows, or on the night-shift PR a rule took up.
+ * A draft PR stacks on tonight's draft PR it follows, or on the awaywork PR a rule took up.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -128,7 +128,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     published: boolean,
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
-    // The worker's sandbox is the provider's: night-shift has none to run worker-written code in.
+    // The worker's sandbox is the provider's: awaywork has none to run worker-written code in.
     if (!unit.network) return refusal('not run without network: it has no sandbox')
     const before = await uncommitted(dir)
     const baseline = baselines.get(dir) ?? new Set()
@@ -300,7 +300,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     // A loop publishes its host as a draft PR, unless the host pushes onto your PR.
     const deliver = hosting && p.unit.deliver !== 'push' ? 'draft_pr' : p.unit.deliver
     const tonight = opened[`${repo} ${base}`]
-    // A night-shift PR a rule took up, when this unit works on its branch.
+    // An awaywork PR a rule took up, when this unit works on its branch.
     const pickedUp = p.unit.items
       .flatMap((i) => i.linkedPrs)
       .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)
@@ -613,9 +613,9 @@ export async function runNight(n: NightInput): Promise<NightReport> {
 
 /**
  * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
- * whose PR, open or closed unmerged, night-shift opened for one of the unit's items means it tried
+ * whose PR, open or closed unmerged, awaywork opened for one of the unit's items means it tried
  * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
- * one with no PR whose tip has night-shift's trailer is a push whose PR failed: either way the unit
+ * one with no PR whose tip has awaywork's trailer is a push whose PR failed: either way the unit
  * is skipped until that branch is deleted, even where no attempts are kept.
  */
 async function freeBranch(
@@ -633,7 +633,7 @@ async function freeBranch(
       (pr) => !pr.merged && footerItems(pr.body).some((item) => items.includes(item)),
     )
     if (tried)
-      return { skip: `night-shift tried this in ${tried.url}; delete ${branch} to run it again` }
+      return { skip: `awaywork tried this in ${tried.url}; delete ${branch} to run it again` }
   }
   return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
 }
@@ -762,12 +762,12 @@ function describeLoop(loop: OpenLoop): string {
   return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`
 }
 
-/** night-shift's own note in the PR body or push report: how the loop went, its last verdict, and the last report a round wrote. */
+/** awaywork's own note in the PR body or push report: how the loop went, its last verdict, and the last report a round wrote. */
 async function appendLoopSummary(file: string, loop: OpenLoop): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
   const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
-  const lines = ['', '', '## Night-shift loop', '', `${describeLoop(loop)}${verdict}.`]
+  const lines = ['', '', '## Awaywork loop', '', `${describeLoop(loop)}${verdict}.`]
   const { report, check } = loop
   if (report)
     lines.push(
@@ -804,7 +804,7 @@ async function appendVerifyFailure(file: string, check: RanCheck): Promise<void>
   if (!body) return
   const verb = check.refused ? 'not run' : check.stopped ? 'stopped' : 'failed'
   const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
-  await writeOutput(file, `${body}\n\n## Night-shift verify\n\n${checkDetails(summary, check)}\n`)
+  await writeOutput(file, `${body}\n\n## Awaywork verify\n\n${checkDetails(summary, check)}\n`)
 }
 
 /** Like the worker's, with every secret withheld except the repo's own. */

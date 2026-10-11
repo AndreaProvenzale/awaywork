@@ -34,7 +34,7 @@ describe('skills', () => {
   })
 
   it('loads a skills dir and tolerates a missing one', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-skills-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-skills-'))
     await mkdir(join(dir, 'triage'))
     await writeFile(join(dir, 'triage', 'SKILL.md'), '---\nmetadata: { deliver: report }\n---\n')
     await mkdir(join(dir, 'not-a-skill'))

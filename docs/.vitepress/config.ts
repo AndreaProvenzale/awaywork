@@ -2,8 +2,8 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { type DefaultTheme, defineConfig } from 'vitepress'
 
-const repo = 'https://github.com/AndreaProvenzale/night-shift'
-const site = 'https://andreaprovenzale.github.io/night-shift/'
+const repo = 'https://github.com/AndreaProvenzale/awaywork'
+const site = 'https://andreaprovenzale.github.io/awaywork/'
 const description = 'Schedule headless coding agents to spend idle subscription quota'
 
 const sidebar: DefaultTheme.SidebarItem[] = [
@@ -50,8 +50,8 @@ const sidebar: DefaultTheme.SidebarItem[] = [
 ]
 
 export default defineConfig({
-  base: '/night-shift/',
-  title: 'night-shift',
+  base: '/awaywork/',
+  title: 'awaywork',
   description,
   cleanUrls: true,
   lastUpdated: false,
@@ -83,7 +83,7 @@ export default defineConfig({
     )
     await writeFile(
       join(outDir, 'llms.txt'),
-      `# night-shift\n\n> ${description}. An open-source CLI that runs the vendors' own agent CLIs (Claude Code, Codex) headless overnight on a developer's leftovers: red CI, review threads, QA feedback, requested reviews, plans. Output is a draft PR from a new branch or a morning report.\n\nEvery page is Markdown at its URL below; llms-full.txt has them all in one file.\n\n${index.join('\n\n')}\n`,
+      `# awaywork\n\n> ${description}. An open-source CLI that runs the vendors' own agent CLIs (Claude Code, Codex) headless overnight on a developer's leftovers: red CI, review threads, QA feedback, requested reviews, plans. Output is a draft PR from a new branch or a morning report.\n\nEvery page is Markdown at its URL below; llms-full.txt has them all in one file.\n\n${index.join('\n\n')}\n`,
     )
     const full = pages.flatMap((group) =>
       group.pages.map((p) => `<!-- ${p.url} -->\n\n${body(p.text)}`),

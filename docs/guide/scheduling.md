@@ -1,10 +1,10 @@
 ---
-description: Run night-shift every night on your machine with launchd, systemd or cron, or in GitHub Actions with repository secrets.
+description: Run awaywork every night on your machine with launchd, systemd or cron, or in GitHub Actions with repository secrets.
 ---
 
 # Scheduling
 
-A scheduled run is `nightshift run --scheduled`: it does nothing outside
+A scheduled run is `awaywork run --scheduled`: it does nothing outside
 the `night` window (or, with [`windows`](./configuration.md#night-and-budget),
 every window) and starts no unit after it ends. A unit still
 running at the window's end stops there with status `stopped: night ended`,
@@ -13,28 +13,28 @@ and what it left is published as for a quota stop.
 ## On your machine
 
 ```sh
-nightshift schedule install                 # macOS: launchd
-nightshift schedule install --with systemd  # Linux: a user timer
-nightshift schedule install --with cron
-nightshift schedule status                  # scheduler, time, config and log
-nightshift schedule remove
+awaywork schedule install                 # macOS: launchd
+awaywork schedule install --with systemd  # Linux: a user timer
+awaywork schedule install --with cron
+awaywork schedule status                  # scheduler, time, config and log
+awaywork schedule remove
 ```
 
 | Scheduler | Writes | Missed while asleep or off |
 |---|---|---|
-| launchd | `~/Library/LaunchAgents/nightshift.plist` | Runs at the next wake |
-| systemd | `~/.config/systemd/user/nightshift.{service,timer}` | Runs at the next boot (`Persistent=true`) |
+| launchd | `~/Library/LaunchAgents/awaywork.plist` | Runs at the next wake |
+| systemd | `~/.config/systemd/user/awaywork.{service,timer}` | Runs at the next boot (`Persistent=true`) |
 | cron | a tagged line in your crontab | Skipped |
 
 - The job keeps the `PATH` of the shell that installed it, so it finds the
   same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not
   a shell alias or function wrapping it.
-- Secrets come from `~/.config/night-shift/env`, since a scheduled job
+- Secrets come from `~/.config/awaywork/env`, since a scheduled job
   starts without your login shell's variables.
 - systemd user timers run only while you are logged in;
   `loginctl enable-linger` lifts that.
-- Output goes to `~/.local/state/night-shift/schedule.log`; the morning
-  report is `nightshift report`.
+- Output goes to `~/.local/state/awaywork/schedule.log`; the morning
+  report is `awaywork report`.
 - The job bakes in the window starts (`night.start`, or each of `windows`), one trigger each. When you change it, `config edit` and
   `doctor` warn until `schedule install` runs again.
 
@@ -45,7 +45,7 @@ stays on does that.
 ## In GitHub Actions
 
 Run it on a hosted runner instead, from a repo of your own (a private
-"night-shift" repo works well). On a team, each person keeping their own
+"awaywork" repo works well). On a team, each person keeping their own
 control repo is the simple setup: it needs nothing beyond this section,
 and nobody's token sits in a repo a teammate can write to. Teammates can
 point theirs at the same repos, since each run only sees its own
@@ -53,18 +53,18 @@ token's `@me`. To share one repo instead, see
 [Shared control repo](#shared-control-repo).
 
 ```sh
-cd my-night-shift-repo
-nightshift schedule install --with github-actions
+cd my-awaywork-repo
+awaywork schedule install --with github-actions
 ```
 
-This writes `.github/workflows/night-shift.yml`: a nightly cron at
+This writes `.github/workflows/awaywork.yml`: a nightly cron at
 `night.start` in your current timezone, plus `workflow_dispatch` for a
-manual run; `nightshift schedule remove` deletes it. It also copies your
-config to `.night-shift/config.yml` and your
+manual run; `awaywork schedule remove` deletes it. It also copies your
+config to `.awaywork/config.yml` and your
 [skills](./skills.md#where-skills-come-from), if any, to
-`.night-shift/skills/` next to it, so your personal skills reach the
+`.awaywork/skills/` next to it, so your personal skills reach the
 runner. It offers to set each repository secret the config needs whose
-value is in your environment or `~/.config/night-shift/env`, with
+value is in your environment or `~/.config/awaywork/env`, with
 `gh secret set`. Values are never printed. Then:
 
 1. Commit the files it lists.
@@ -82,20 +82,20 @@ issues, checks and Actions logs, pushes new branches and opens draft PRs
 in the configured repos; `workflow` lets it push branches that change
 workflow files.
 
-The workflow calls night-shift's action, `AndreaProvenzale/night-shift@v1`,
-which installs the nightshift-agent version you generated it with. The
+The workflow calls awaywork's action, `AndreaProvenzale/awaywork@v1`,
+which installs the awaywork version you generated it with. The
 action frees about 20 GB of preinstalled SDKs first (runners otherwise
 die quietly on large repos), commits as the token's user, and appends the
 morning report to the job summary. Fixes to those steps reach you through
-`v1`; to upgrade night-shift itself, raise `version` in the workflow, or
-upgrade nightshift-agent and run `schedule install --with github-actions`
+`v1`; to upgrade awaywork itself, raise `version` in the workflow, or
+upgrade awaywork and run `schedule install --with github-actions`
 again.
 The action gets the job's env, secrets included: if you'd rather not
 follow `v1`, pin it to a commit SHA of this repo instead. A
 [custom source](./custom-sources.md)'s `setup` runs as a step of its own
 before the action, in the config's folder.
 
-The workflow works once night-shift has a stable release on npm, which
+The workflow works once awaywork has a stable release on npm, which
 also creates the `v1` tag.
 
 Run `schedule install --with github-actions` again after changing your
@@ -115,7 +115,7 @@ need a setup step. An HTTP server must be reachable from GitHub's runners.
 
 A runner starts with an empty state dir, so it keeps no attempts or
 skips: an item unchanged since last night runs again, none is given up
-on, and `nightshift skip` on your machine doesn't reach it. Nor does it
+on, and `awaywork skip` on your machine doesn't reach it. Nor does it
 keep the head a [`deliver: push`](./configuration.md#push) left, so the
 PR doesn't wait for your review: the rule pushes again every night its
 `where` holds.
@@ -133,19 +133,19 @@ One repo for a team, with a workflow and a GitHub Environment per
 person. Each person runs, inside it:
 
 ```sh
-nightshift schedule install --with github-actions --as alice
+awaywork schedule install --with github-actions --as alice
 ```
 
 The name is lowercase letters, digits and `-`. Once the repo holds a
-`night-shift-<person>.yml` or a `.night-shift/<person>/config.yml`,
+`awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`,
 install without `--as` refuses and suggests `--as` with your GitHub
 login. It writes:
 
 | File | What |
 |---|---|
-| `.github/workflows/night-shift-alice.yml` | The same workflow, named `night-shift-alice`, with `concurrency: night-shift-alice` and `environment: { name: "alice", deployment: false }` |
-| `.night-shift/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
-| `.night-shift/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
+| `.github/workflows/awaywork-alice.yml` | The same workflow, named `awaywork-alice`, with `concurrency: awaywork-alice` and `environment: { name: "alice", deployment: false }` |
+| `.awaywork/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
+| `.awaywork/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
 
 First it reads the environment `alice`. One that exists is kept as it
 is, with a warning when any branch can deploy to it, or when its branch
@@ -197,7 +197,7 @@ says why and asks before falling back, defaulting to no: the workflow
 loses its `environment:` line, and the same suffixed names become
 repository secrets. The API's answer decides, never a guess at
 the plan. Any other error, like a network one, stops install, and so
-does a refusal once `night-shift-alice.yml` uses the environment: it is
+does a refusal once `awaywork-alice.yml` uses the environment: it is
 never downgraded.
 
 The fallback has no branch limit: any branch's workflow can read every
@@ -219,12 +219,12 @@ teammate's token.
 ### Sync, status and remove
 
 Running the same command again is the sync, as for one repo per person:
-`night-shift-alice.yml`, `.night-shift/alice/config.yml` and
-`.night-shift/alice/skills/` are each replaced only after a diff and a
+`awaywork-alice.yml`, `.awaywork/alice/config.yml` and
+`.awaywork/alice/skills/` are each replaced only after a diff and a
 yes.
 
-`schedule status` lists every `.github/workflows/night-shift*.yml`.
-`schedule remove --as alice` deletes `night-shift-alice.yml` only: the
+`schedule status` lists every `.github/workflows/awaywork*.yml`.
+`schedule remove --as alice` deletes `awaywork-alice.yml` only: the
 environment and its secrets stay until
 `gh api -X DELETE repos/{owner}/{repo}/environments/alice`, and a
 fallback's suffixed repository secrets, readable from any branch, until
@@ -235,8 +235,8 @@ how a job whose secrets didn't reach it shows.
 
 ### Checking with doctor
 
-`nightshift doctor`, run inside the repo, reads each
-`night-shift*.yml`: its `environment` and every `secrets.X` its `env:`
+`awaywork doctor`, run inside the repo, reads each
+`awaywork*.yml`: its `environment` and every `secrets.X` its `env:`
 names. Each must exist in that environment, the repo or the org: one
 line per workflow says how many were found, or fails naming the missing
 ones and where they go. With an environment, a name with the person's

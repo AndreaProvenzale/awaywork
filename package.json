@@ -1,5 +1,5 @@
 {
-  "name": "nightshift-agent",
+  "name": "awaywork",
   "version": "0.0.0",
   "description": "Schedule headless coding agents to spend idle subscription quota",
   "keywords": [
@@ -14,17 +14,17 @@
     "scheduler",
     "asana"
   ],
-  "homepage": "https://andreaprovenzale.github.io/night-shift/",
-  "bugs": "https://github.com/AndreaProvenzale/night-shift/issues",
+  "homepage": "https://andreaprovenzale.github.io/awaywork/",
+  "bugs": "https://github.com/AndreaProvenzale/awaywork/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AndreaProvenzale/night-shift.git"
+    "url": "git+https://github.com/AndreaProvenzale/awaywork.git"
   },
   "license": "Apache-2.0",
   "author": "Andrea Provenzale",
   "type": "module",
   "bin": {
-    "nightshift": "dist/index.js"
+    "awaywork": "dist/index.js"
   },
   "files": [
     "dist",

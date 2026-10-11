@@ -17,7 +17,7 @@ export class ConfigError extends Error {
 }
 
 export function configPath(flag?: string): string {
-  const path = flag ?? process.env.NIGHT_SHIFT_CONFIG ?? defaultConfigPath
+  const path = flag ?? process.env.AWAYWORK_CONFIG ?? defaultConfigPath
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 

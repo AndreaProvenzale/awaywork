@@ -1,13 +1,13 @@
-# night-shift
+# awaywork
 
 > Your AI coding subscription resets every week, used or not.
-> night-shift puts Claude Code, Codex and friends to work while you sleep.
+> While you're away, awaywork puts Claude Code, Codex and friends to work.
 
 You log off with red CI, 11 PR comments and a QA ticket that just says
 "broken on Safari". Your coding agent logs off with 60% of its weekly quota
 unused. Both are a waste.
 
-night-shift is a CLI that clocks in when you clock out. It pulls your
+awaywork is a CLI that clocks in when you clock out. It pulls your
 leftovers from your forge and task tracker and runs your agents' stock
 CLIs on them headless, logged in as you. It paces itself so you still have
 quota left in the morning. You wake up to draft PRs and a report. Nothing
@@ -16,13 +16,13 @@ gets merged or force-pushed, and nobody gets a comment "from you".
 ## Quick start
 
 ```sh
-npm i -g nightshift-agent
-nightshift init     # finds your agents and forge login, asks the rest
-nightshift plan     # a dry look at tonight, zero tokens spent
+npm i -g awaywork
+awaywork init     # finds your agents and forge login, asks the rest
+awaywork plan     # a dry look at tonight, zero tokens spent
 ```
 
 ```
-$ nightshift plan
+$ awaywork plan
 Queue
   #1  fix-ci     type=pr mine=true checks=failing
   #2  review     type=pr review_requested=true trusted=true
@@ -34,34 +34,34 @@ Providers
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  night/acme-api-1
+  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    night/acme-api-2
+  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 ```
 
 Looks sane? Run one unit for real:
 
 ```sh
-nightshift run --unit acme-api-1
+awaywork run --unit acme-api-1
 ```
 
 Then hand over the night, on your machine:
 
 ```sh
-nightshift schedule install    # launchd, systemd or cron
+awaywork schedule install    # launchd, systemd or cron
 ```
 
 Or on GitHub Actions, from a repo of your own:
 
 ```sh
-nightshift schedule install --with github-actions    # add the secrets it lists
+awaywork schedule install --with github-actions    # add the secrets it lists
 ```
 
 Next morning:
 
 ```
-$ nightshift report
+$ awaywork report
 | # | Unit       | Skill  | Provider | Status        | Result                                  |
 |---|------------|--------|----------|---------------|-----------------------------------------|
 | 1 | acme-api-1 | fix-ci | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
@@ -70,8 +70,8 @@ $ nightshift report
 - claude: seven_day 36% to 45%, ceiling 51%; session 10% to 10%, stop at 90%
 ```
 
-**Docs:** https://andreaprovenzale.github.io/night-shift/ ·
-**Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/night-shift/llms.txt).
+**Docs:** https://andreaprovenzale.github.io/awaywork/ ·
+**Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
 
 ## What it picks up
 
@@ -83,7 +83,7 @@ defaults:
 | your PR has red checks | `fix-ci` | draft PR |
 | a task lands in `QA` | `qa-feedback` | draft PR |
 | your PR has unresolved threads | `address-review` | draft PR |
-| you left threads on a night-shift PR | `address-review` | draft PR on it |
+| you left threads on an awaywork PR | `address-review` | draft PR on it |
 | someone requested your review | `review` | report |
 | a task is `In progress` | `continue` | draft PR |
 | a task is in `Current sprint` | `plan` | report |
@@ -93,12 +93,12 @@ Adding a rule takes a few lines of YAML:
 ```yaml
 queue:
   - skill: implement
-    where: { type: issue, label: night-shift }
+    where: { type: issue, label: awaywork }
     provider: codex
 ```
 
-`nightshift queue` reorders rules from the keyboard. Skills are plain
-markdown: `nightshift skills eject fix-ci` and hack away.
+`awaywork queue` reorders rules from the keyboard. Skills are plain
+markdown: `awaywork skills eject fix-ci` and hack away.
 
 ## How much quota it burns
 
@@ -117,8 +117,8 @@ stream and stops at the ceiling, or when the short session window passes
 
 - **The model sees only its own agent's token.** No forge token, no
   tracker token, no other agent's login. PR diffs, threads and CI logs are
-  prefetched into files. night-shift itself does the push.
-- **It only pushes branches it creates** (`night/<key>`), unless a rule
+  prefetched into files. awaywork itself does the push.
+- **It only pushes branches it creates** (`away/<key>`), unless a rule
   opts in to fast-forward your own PR. No force pushes, merges or
   comments, and it never touches anyone else's branch.
 - **It runs the vendor's own binary with your login.** It never calls the
@@ -149,7 +149,7 @@ Needs Node 22+, `git`, and `gh auth login`.
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
-| [With an AI agent](docs/guide/agents.md) | Let your coding agent set night-shift up |
+| [With an AI agent](docs/guide/agents.md) | Let your coding agent set awaywork up |
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 

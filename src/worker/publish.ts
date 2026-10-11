@@ -22,7 +22,7 @@ const git = async (dir: string, ...args: string[]) =>
  * Delivers a finished unit: a draft PR only with commits, a PR body and a branch new to the remote;
  * a push only with commits, a report, and a fast-forward onto the developer's own PR branch.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
- * Git reads the clone only to fetch its HEAD into a repo of night-shift's own, so the clone's
+ * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
  */
 export async function publish(
@@ -39,7 +39,7 @@ export async function publish(
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
-  const repo = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
+  const repo = await mkdtemp(join(tmpdir(), 'awaywork-publish-'))
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
     await git(repo, 'fetch', '-q', '--no-tags', dir, 'HEAD:refs/heads/work')
@@ -89,7 +89,7 @@ async function deliver(
       reason: `push goes only onto your own PR's branch, not pushed`,
       unpublished: true,
     }
-  // Merged history would carry other people's commits onto the PR, with night-shift's trailer.
+  // Merged history would carry other people's commits onto the PR, with awaywork's trailer.
   if (await git(repo, 'rev-list', '--merges', 'work', `^${start}`))
     return {
       kind: 'none',

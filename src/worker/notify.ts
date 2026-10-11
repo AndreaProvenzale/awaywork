@@ -39,7 +39,7 @@ export function notify(
   command: string,
   report: { path: string; runId: string },
 ): Promise<string | undefined> {
-  return runHook(command, { NIGHTSHIFT_REPORT: report.path, NIGHTSHIFT_RUN_ID: report.runId })
+  return runHook(command, { AWAYWORK_REPORT: report.path, AWAYWORK_RUN_ID: report.runId })
 }
 
 /** Runs the after_unit command with one unit's result in its env. */
@@ -51,12 +51,12 @@ export function afterUnit(
   return runHook(
     command,
     {
-      NIGHTSHIFT_RUN_ID: unit.runId,
-      NIGHTSHIFT_UNIT: unit.id,
-      NIGHTSHIFT_SKILL: unit.skill,
-      NIGHTSHIFT_STATUS: unit.status,
-      ...(unit.pr && { NIGHTSHIFT_PR_URL: unit.pr }),
-      ...(unit.report && { NIGHTSHIFT_REPORT: unit.report }),
+      AWAYWORK_RUN_ID: unit.runId,
+      AWAYWORK_UNIT: unit.id,
+      AWAYWORK_SKILL: unit.skill,
+      AWAYWORK_STATUS: unit.status,
+      ...(unit.pr && { AWAYWORK_PR_URL: unit.pr }),
+      ...(unit.report && { AWAYWORK_REPORT: unit.report }),
     },
     signal,
   )

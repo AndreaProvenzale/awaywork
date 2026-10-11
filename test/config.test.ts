@@ -122,7 +122,7 @@ describe('config', () => {
       'queue[0].where.any[1]: an empty entry matches everything',
     ])
     expect(problems(rule('{ any: [{ ours: true }, { label: urgent }] }'))).toEqual([
-      'queue[0].where.any[0].ours: ours only lifts the night-shift PR wait at the top of where',
+      'queue[0].where.any[0].ours: ours only lifts the awaywork PR wait at the top of where',
     ])
     expect(problems(rule('{ checks: { newer_than: 1h } }'))).toEqual([
       'queue[0].where.checks: older_than and newer_than need a date field',
@@ -214,7 +214,7 @@ describe('config', () => {
     expect(configPath('~/night.yml')).toBe(join(homedir(), 'night.yml'))
     expect(configPath('/etc/~/night.yml')).toBe('/etc/~/night.yml')
     expect(configPath('~other/night.yml')).toBe('~other/night.yml')
-    vi.stubEnv('NIGHT_SHIFT_CONFIG', '~/env.yml')
+    vi.stubEnv('AWAYWORK_CONFIG', '~/env.yml')
     expect(configPath()).toBe(join(homedir(), 'env.yml'))
     vi.unstubAllEnvs()
   })
@@ -403,8 +403,8 @@ describe('config', () => {
       - { skill: review, when: { command: pnpm test } }
 `),
     ).toEqual([
-      "queue[0].then[0].until.command: a command can't run with network: false: night-shift has no sandbox for it",
-      "queue[0].then[1].when.command: a command can't run with network: false: night-shift has no sandbox for it",
+      "queue[0].then[0].until.command: a command can't run with network: false: awaywork has no sandbox for it",
+      "queue[0].then[1].when.command: a command can't run with network: false: awaywork has no sandbox for it",
     ])
   })
 
@@ -510,7 +510,7 @@ describe('config', () => {
 
 describe('skills', () => {
   it('accepts built-in and user skills and names unknown ones', async () => {
-    const userDir = await mkdtemp(join(tmpdir(), 'nightshift-skills-'))
+    const userDir = await mkdtemp(join(tmpdir(), 'awaywork-skills-'))
     const cfg = parseConfig(example)
     expect(await unknownSkills(cfg, userDir)).toEqual([
       `queue[3]: unknown skill "our-api-conventions" (not built in, not in ${userDir})`,

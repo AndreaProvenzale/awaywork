@@ -1,6 +1,6 @@
 import type { Item } from './types.js'
 
-export const defaultBranch = 'night/{key}'
+export const defaultBranch = 'away/{key}'
 
 /** `{key}` in its own case with runs outside [A-Za-z0-9._-] as `-`; `{title}` as a lowercase slug of at most 40 characters. */
 export function renderBranch(template: string, item: Pick<Item, 'key' | 'title'>): string {

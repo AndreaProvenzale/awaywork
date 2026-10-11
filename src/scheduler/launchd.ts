@@ -6,7 +6,7 @@ import { setTimeout } from 'node:timers/promises'
 import type { Exec } from '../forge/gh.js'
 import type { Schedule, Scheduler, Start } from './index.js'
 
-const LABEL = 'nightshift'
+const LABEL = 'awaywork'
 
 /** A user LaunchAgent; launchd starts a run missed during sleep at the next wake. */
 export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs = 300): Scheduler {

@@ -124,7 +124,7 @@ describe('asana source', () => {
 
   it('prefetches task.md with fields and comments', async () => {
     const [eng12] = await items()
-    const dir = await mkdtemp(join(tmpdir(), 'nightshift-'))
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
     await source.prefetch(eng12 as never, dir, ctx)
     const task = await readFile(join(dir, 'task.md'), 'utf8')
     expect(task).toContain('# ENG-12: Refill the rate-limit bucket\n\n')

@@ -17,7 +17,7 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   const { mkdtempSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
-  const configDir = mkdtempSync(join(tmpdir(), 'nightshift-config-'))
+  const configDir = mkdtempSync(join(tmpdir(), 'awaywork-config-'))
   return { ...(await importOriginal<object>()), configDir }
 })
 
@@ -48,7 +48,7 @@ describe('doctor', () => {
       join(configDir, 'skills/mine/SKILL.md'),
       '---\ndescription: Fix CI: retry\n---\n',
     )
-    const elsewhere = await mkdtemp(join(tmpdir(), 'nightshift-elsewhere-'))
+    const elsewhere = await mkdtemp(join(tmpdir(), 'awaywork-elsewhere-'))
     expect(await runChecks(join(elsewhere, 'config.yml'), () => {})).toContainEqual({
       status: 'warn',
       what: join(configDir, 'skills'),
@@ -67,14 +67,14 @@ describe('doctor in a control repo', () => {
     gh: { env?: string[]; repo?: string[]; org?: string[]; fail?: RegExp },
     environment = true,
   ) {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
     await mkdir(join(root, '.github/workflows'), { recursive: true })
     await writeFile(
-      join(root, '.github/workflows/night-shift-alice.yml'),
+      join(root, '.github/workflows/awaywork-alice.yml'),
       workflow({
         starts: [{ hour: 22, minute: 0 }],
         timezone: 'Europe/Rome',
-        config: '.night-shift/alice/config.yml',
+        config: '.awaywork/alice/config.yml',
         version: '1.0.0',
         packages: [],
         secrets: SECRETS,
@@ -104,7 +104,7 @@ describe('doctor in a control repo', () => {
     })
     expect(calls).toContain('gh secret list --env alice --json name --jq .[].name')
     expect(checks).toEqual([
-      { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
+      { status: 'ok', what: 'awaywork-alice.yml', detail: 'secrets found: 3' },
     ])
   })
 
@@ -113,7 +113,7 @@ describe('doctor in a control repo', () => {
     expect(checks).toEqual([
       {
         status: 'FAIL',
-        what: 'night-shift-alice.yml',
+        what: 'awaywork-alice.yml',
         detail:
           'add CLAUDE_CODE_OAUTH_TOKEN__ALICE to environment alice; add SLACK_WEBHOOK to the repository secrets',
       },
@@ -127,13 +127,13 @@ describe('doctor in a control repo', () => {
     )
     expect(found.calls.some((call) => call.includes('--env'))).toBe(false)
     expect(found.checks).toEqual([
-      { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
+      { status: 'ok', what: 'awaywork-alice.yml', detail: 'secrets found: 3' },
     ])
     const missing = await check({ repo: ['GH_TOKEN', 'SLACK_WEBHOOK'] }, false)
     expect(missing.checks).toEqual([
       {
         status: 'FAIL',
-        what: 'night-shift-alice.yml',
+        what: 'awaywork-alice.yml',
         detail: 'add GH_TOKEN__ALICE, CLAUDE_CODE_OAUTH_TOKEN__ALICE to the repository secrets',
       },
     ])
@@ -145,10 +145,10 @@ describe('doctor in a control repo', () => {
       repo: ['GH_TOKEN__ALICE', 'GH_TOKEN__BOB', 'SLACK_WEBHOOK'],
     })
     expect(checks).toEqual([
-      { status: 'ok', what: 'night-shift-alice.yml', detail: 'secrets found: 3' },
+      { status: 'ok', what: 'awaywork-alice.yml', detail: 'secrets found: 3' },
       {
         status: 'warn',
-        what: 'night-shift-alice.yml',
+        what: 'awaywork-alice.yml',
         detail: leftoverWarning('alice', ['GH_TOKEN__ALICE']),
       },
     ])
@@ -175,39 +175,36 @@ describe('doctor in a control repo', () => {
     expect(env.checks).toEqual([
       {
         status: 'warn',
-        what: 'night-shift-alice.yml',
+        what: 'awaywork-alice.yml',
         detail: "couldn't list environment alice's secrets: gh: Not Found (HTTP 404)",
       },
     ])
   })
 
   it("fails a workflow that doesn't parse and checks the rest", async () => {
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
     const dir = join(root, '.github/workflows')
     await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, 'night-shift-a.yml'), 'jobs: { n: { env: [ }')
-    await writeFile(join(dir, 'night-shift-b.yml'), 'jobs: { n: }')
-    await writeFile(
-      join(dir, 'night-shift-d.yml'),
-      'jobs: { n: { env: { A: "${{ secrets.A }}" } } }',
-    )
+    await writeFile(join(dir, 'awaywork-a.yml'), 'jobs: { n: { env: [ }')
+    await writeFile(join(dir, 'awaywork-b.yml'), 'jobs: { n: }')
+    await writeFile(join(dir, 'awaywork-d.yml'), 'jobs: { n: { env: { A: "${{ secrets.A }}" } } }')
     const run: Exec = async (_cmd, args) => (args[1] === 'repos/{owner}/{repo}' ? 'User' : 'A')
     const checks = await workflowSecretChecks(root, run)
     expect(checks.map((c) => [c.status, c.what])).toEqual([
-      ['FAIL', 'night-shift-a.yml'],
-      ['FAIL', 'night-shift-b.yml'],
-      ['ok', 'night-shift-d.yml'],
+      ['FAIL', 'awaywork-a.yml'],
+      ['FAIL', 'awaywork-b.yml'],
+      ['ok', 'awaywork-d.yml'],
     ])
     expect(checks.every((c) => !c.detail.includes('\n'))).toBe(true)
   })
 
-  it('adds no checks to a repo without night-shift workflows', async () => {
+  it('adds no checks to a repo without awaywork workflows', async () => {
     const calls: string[] = []
     const run: Exec = async (cmd, args) => {
       calls.push([cmd, ...args].join(' '))
       return ''
     }
-    const root = await mkdtemp(join(tmpdir(), 'nightshift-repo-'))
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
     expect(await workflowSecretChecks(root, run)).toEqual([])
     expect(calls).toEqual([])
   })

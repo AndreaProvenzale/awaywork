@@ -1,5 +1,5 @@
-# night-shift config: `nightshift config edit` validates on save,
-# `nightshift queue` reorders the queue, `nightshift plan` previews tonight.
+# awaywork config: `awaywork config edit` validates on save,
+# `awaywork queue` reorders the queue, `awaywork plan` previews tonight.
 night: { start: "18:00", end: "07:00" }
 budget:                         # every provider; override one with - <id>: { budget: … }
   reserve: 10%                  # never go past 1 - reserve of any window
@@ -20,7 +20,7 @@ queue:                          # first matching rule wins; top = highest priori
     where: {type: pr, review_requested: true}
   - skill: implement
     source: github
-    where: {type: issue, label: night-shift}
+    where: {type: issue, label: awaywork}
     then:
       - loop:
           - review

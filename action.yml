@@ -1,15 +1,15 @@
-name: night-shift
-description: Run one night of night-shift on a hosted runner, from a checked-out repo
+name: awaywork
+description: Run one night of awaywork on a hosted runner, from a checked-out repo
 branding:
   icon: moon
   color: purple
 
 inputs:
   config:
-    description: Repo path of the night-shift config
-    default: .night-shift/config.yml
+    description: Repo path of the awaywork config
+    default: .awaywork/config.yml
   version:
-    description: The nightshift-agent version to install
+    description: The awaywork version to install
     required: true
   packages:
     description: Extra npm packages to install, such as the providers' CLIs, space-separated
@@ -34,7 +34,7 @@ runs:
         node-version: 22
     - name: Install
       shell: bash
-      run: npm install -g "nightshift-agent@$VERSION" $PACKAGES
+      run: npm install -g "awaywork@$VERSION" $PACKAGES
       env:
         VERSION: ${{ inputs.version }}
         PACKAGES: ${{ inputs.packages }}
@@ -46,12 +46,12 @@ runs:
         git config --global user.email "$user@users.noreply.github.com"
     - name: Run
       shell: bash
-      run: nightshift run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
+      run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
       env:
-        NIGHT_SHIFT_CONFIG: ${{ inputs.config }}
+        AWAYWORK_CONFIG: ${{ inputs.config }}
     - name: Morning report
       if: always()
       shell: bash
-      run: nightshift report >> "$GITHUB_STEP_SUMMARY" || true
+      run: awaywork report >> "$GITHUB_STEP_SUMMARY" || true
       env:
-        NIGHT_SHIFT_CONFIG: ${{ inputs.config }}
+        AWAYWORK_CONFIG: ${{ inputs.config }}

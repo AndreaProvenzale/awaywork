@@ -10,8 +10,8 @@ import { github } from '../src/sources/github.js'
 import { sourceField } from '../src/sources/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-let repo = process.env.NIGHTSHIFT_GITHUB_SANDBOX ?? ''
-const reviewerToken = process.env.NIGHTSHIFT_GITHUB_REVIEWER_TOKEN ?? ''
+let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
+const reviewerToken = process.env.AWAYWORK_GITHUB_REVIEWER_TOKEN ?? ''
 const ctx = { env: process.env, log: console.log }
 type Gh = (...args: string[]) => Promise<string>
 const gh: Gh = (...args) => exec('gh', args)
@@ -56,13 +56,13 @@ async function cleanup(steps: [what: string, undo: false | (() => Promise<unknow
 
 /**
  * Seeds an issue and a PR closing it in a sandbox repo, reads them back for real and deletes them;
- * run with NIGHTSHIFT_GITHUB_SANDBOX set to a repo `gh` can delete issues in (owner, or org admin).
- * With NIGHTSHIFT_GITHUB_REVIEWER_TOKEN, a second account with write access also requests my review.
+ * run with AWAYWORK_GITHUB_SANDBOX set to a repo `gh` can delete issues in (owner, or org admin).
+ * With AWAYWORK_GITHUB_REVIEWER_TOKEN, a second account with write access also requests my review.
  */
 describe.skipIf(!repo)('github source, live', () => {
   const run = Date.now().toString(36)
-  const label = 'night-shift-e2e'
-  const branch = `night-shift-e2e-${run}`
+  const label = 'awaywork-e2e'
+  const branch = `awaywork-e2e-${run}`
   const path = `e2e/${run}.md`
   const workflow = '.github/workflows/e2e-fail.yml'
   const failure = `e2e failure ${run}`
@@ -194,11 +194,11 @@ jobs:
     })
     expect(found.pr.fields.files).toEqual([...dropped, workflow, path].sort())
 
-    const issueDir = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const issueDir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await github.prefetch(found.issue, issueDir, ctx)
     expect(await readFile(join(issueDir, 'issue.md'), 'utf8')).toContain(`e2e comment ${run}`)
 
-    const prDir = await mkdtemp(join(tmpdir(), 'nightshift-real-'))
+    const prDir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await github.prefetch(found.pr, prDir, ctx)
     expect((await readdir(prDir)).sort()).toEqual([
       'checks.md',
