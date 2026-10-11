@@ -241,7 +241,7 @@ Semantics, fixed so every milestone agrees:
   linked PR's repo, else the item's `repo` field; with neither it is
   skipped. A tracker source fills `repo` from its own mapping, e.g.
   Asana's `project_repos` (a task's first mapped project wins). `id` is the top item's key as a slug. A unit whose items link
-  an open awaywork PR (`ours`) is skipped as waiting for review. A
+  an open awaywork PR (`ours`) is skipped as waiting for review. An
   awaywork PR item only matches rules whose `where` names `ours`; one
   that did leads its unit (its rule and key win over better-ranked items)
   and is the unit's base, and setup there gets none of the repo's secrets.

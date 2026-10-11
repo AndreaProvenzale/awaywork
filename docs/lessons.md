@@ -105,8 +105,10 @@ developer's login, one `implement` unit on this repo's issue #1 (expand
 - The unit took 57 s and 6 turns, made one commit and wrote its PR body.
   Neither window moved at 1% resolution (5% and 6% after), so the
   ceiling was never tested; a longer unit has to do that.
-- The publisher pushed `away/AndreaProvenzale-awaywork-1` and opened
-  draft PR #2 into `main`, with the footer and the `Awaywork:` trailer.
+- The publisher pushed `night/AndreaProvenzale-night-shift-1` and opened
+  draft PR #2 into `main`, with the footer
+  `<!-- night-shift run=20260925-194945 -->` and the trailer
+  `Night-shift: 20260925-194945` (the pre-rename names).
   Planning again skipped the issue as waiting for review: the issue links
   PR #2 and its body carries the footer.
 - The PR body claimed `pnpm install`, the touched test file (9 passed)

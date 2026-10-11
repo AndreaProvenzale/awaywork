@@ -136,7 +136,7 @@ person. Each person runs, inside it:
 awaywork schedule install --with github-actions --as alice
 ```
 
-The name is lowercase letters, digits and `-`. Once the repo holds a
+The name is lowercase letters, digits and `-`. Once the repo holds an
 `awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`,
 install without `--as` refuses and suggests `--as` with your GitHub
 login. It writes:

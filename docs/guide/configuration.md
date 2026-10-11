@@ -213,7 +213,7 @@ Trackers don't tell awaywork which PR is a task's, so it looks
 through your open PRs:
 
 - One awaywork opened is linked by the items its footer names,
-  whatever its branch or title. It never falls back to names, so a
+  whatever its branch or title. It never falls back to names, so an
   awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
   footer naming no items counts as none, so it is linked like yours.
 - One you wrote is linked when its branch or title holds the item's key

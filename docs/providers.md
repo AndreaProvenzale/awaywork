@@ -116,9 +116,10 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   without auto-memory.
 - Under `--setting-sources ''`, checked the same way (2.1.284): a
   `--plugin-dir` folder with `.claude-plugin/plugin.json` named
-  `awaywork` and `skills/<name>/SKILL.md` lists `awaywork:<name>` in
+  `nightshift` and `skills/<name>/SKILL.md` lists `nightshift:<name>` in
   the `init` event's `skills`, while the clone's `.claude/skills/` stays
   out; a `SessionStart` hook in the `--settings` JSON runs. [V, tested]
+  Named `awaywork` since the rename. [I]
   So workers get their skills as that plugin, outside the clone, and the
   developer's `settings` file merged into the `--settings` JSON.
 - Headless runs refuse writes under `.claude/` without a grant, even with
@@ -177,7 +178,8 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   `.secondary`, each `usedPercent` (0–100), `windowDurationMins`,
   `resetsAt` (unix s), plus `planType`. The server does not exit on its
   own. [V, tested 0.149.1] The request names its client: the user agent
-  reads `awaywork/<codex version>`. [V, tested]
+  reads `night-shift/<codex version>`. [V, tested] Now
+  `awaywork/<codex version>`. [I]
 - On the free plan the only window is `primary`, 43200 min (30 days),
   `secondary` null. Before any use `resetsAt` was now + 30 days; the
   window started at the first run. [V, tested] Plus/Pro show a 5 h
