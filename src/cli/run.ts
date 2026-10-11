@@ -5,6 +5,7 @@ import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, runLine, summarize } from '../core/report.js'
+import { unitStats } from '../core/stats.js'
 import { describeWindow, nightEnd, windowsOf } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
@@ -14,6 +15,7 @@ import { notify } from '../worker/notify.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { planTonight } from './plan.js'
+import { unitsFile } from './stats.js'
 
 export function runCommand(program: Command): void {
   program
@@ -66,6 +68,7 @@ export function runCommand(program: Command): void {
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report))
+        await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
         if (config.notify) {

@@ -38,6 +38,8 @@ Commands:
   run [options]          plan tonight, run a worker per unit and publish draft
                          PRs and reports
   report [options] [id]  print a run's morning report; the latest by default
+  stats [options]        what each rule, skill and provider cost and delivered
+                         across all runs
   replay <run> <unit>    re-run a past run's unit on its base commit and saved
                          context with today's skills and instructions; nothing
                          is pushed
@@ -243,6 +245,18 @@ print a run's morning report; the latest by default
 
 Options:
   --list      list the last 20 runs: units, draft PRs and reports
+  -h, --help  display help for command
+```
+
+## nightshift stats
+
+```text
+Usage: nightshift stats [options]
+
+what each rule, skill and provider cost and delivered across all runs
+
+Options:
+  --json      print the totals as JSON
   -h, --help  display help for command
 ```
 
