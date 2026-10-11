@@ -20,7 +20,21 @@ subscription quota. Read `README.md`, then `docs/`: `guide/` and
   per-rule opt-in (`deliver: push`), fast-forward only.
 - **State what you checked, not what you believe.** A finding names its
   evidence; research tags claims [V]/[C]/[I] as in `docs/providers.md`.
+  A record of a run or a test keeps the names and values it observed,
+  even after a rename.
+- **Docs talk dev to dev.** Guides and the README are casual, a bit nerdy
+  and generic ("Claude Code, Codex and friends"), and they show real
+  output instead of describing it. Research docs stay dry and evidence-tagged.
 - **No dates in docs.** Git history owns time.
 - **Docs follow the code.** A change to the CLI or the config schema runs
   `pnpm docs:gen` (from source, no build) and updates the guides it
   touches; CI fails on stale generated docs.
+
+## Merging
+
+- Squash-merge, only on green CI.
+- In a stack, retarget every child PR to `main` before merging its
+  parent: deleting a base branch by hand closes the PRs on it
+  (`delete_branch_on_merge` is off).
+- Bring a pushed branch up to date by merging `main` into it; never
+  rebase or force-push it.
