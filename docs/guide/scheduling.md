@@ -125,7 +125,7 @@ PR doesn't wait for your review: the rule pushes again every night its
 | Provider | Secret | Notes |
 |---|---|---|
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
-| Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it about every 8 days, and an ephemeral runner can't save the refreshed file, so the secret eventually goes stale. Prefer running Codex locally. |
+| Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it at every refresh, about every 10 days, and an ephemeral runner can't save the refreshed file, so the secret stops working the night after its first refresh. Prefer running Codex locally. |
 
 ## Shared control repo
 
