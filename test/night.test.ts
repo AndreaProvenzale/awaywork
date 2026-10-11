@@ -6,7 +6,7 @@ import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { formatPlan, formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
-import { builtinSkillsDir } from '../src/config/paths.js'
+import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
@@ -25,7 +25,7 @@ process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 
 const git = (dir: string, ...args: string[]) =>
-  execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
 const quota = (long: number): Quota => ({
   windows: [
@@ -69,13 +69,13 @@ const worker: Provider = {
 it('runs, publishes and reports a night', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-night-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   for (const n of [1, 2, 3]) await git(origin, 'branch', `feature-${n}`)
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', '--branch', branch, origin, dir])
+      await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
     },
   }
   forge.branches.add('acme/api:night/acme-api-3')
@@ -177,7 +177,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -226,7 +226,7 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -262,12 +262,12 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
 it('stops a unit still running at night.end and publishes what it left', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-end-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', origin, dir])
+      await execa(bin('git'), ['clone', '-q', origin, dir])
     },
   }
   const config = parseConfig(
@@ -324,13 +324,13 @@ it('stops a unit still running at night.end and publishes what it left', async (
 it('runs a chain on what the unit before delivered, and skips it after nothing', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-chain-'))
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const base = fakeForge()
   const forge = {
     ...base,
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
@@ -415,7 +415,7 @@ it('runs setup before the worker with only its own secrets, none on a foreign PR
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
       if (branch === 'feature-2') await writeFile(join(dir, 'broken'), '')
     },
@@ -489,7 +489,7 @@ it("gives a worker only its step's MCP servers whose secrets are set, and none o
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -568,7 +568,7 @@ it("stops a unit at its provider's unit_minutes", async () => {
   const forge = {
     ...fakeForge(),
     clone: async (_repo: string, _branch: string, dir: string) => {
-      await execa('git', ['init', '-q', dir])
+      await execa(bin('git'), ['init', '-q', dir])
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
@@ -616,14 +616,14 @@ it("stops a unit at its provider's unit_minutes", async () => {
 /** Clones from and pushes to a local `origin` on `main`, recording each draft PR it opens. */
 async function originForge(root: string) {
   const origin = join(root, 'origin')
-  await execa('git', ['init', '-q', '-b', 'main', origin])
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const opened: { head: string; base: string; body: string }[] = []
   const fake = fakeForge()
   const forge = {
     ...fake,
     clone: async (_repo: string, branch: string, dir: string) => {
-      await execa('git', ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await fake.push(dir, branch, opts)
@@ -670,7 +670,7 @@ const issue = (n: number) =>
     fields: { repo: 'acme/api' },
   })
 
-it("stacks a repo's draft PRs off the default branch on the last one published tonight", async () => {
+it("starts each of a repo's draft PRs from the default branch, not on tonight's last one", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
@@ -712,7 +712,6 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const first = 'https://example.com/acme/api/pull/night/acme-api-1'
   expect(report.results.map((u) => u.outcome)).toContainEqual({
     kind: 'pr',
     url: 'https://example.com/acme/api/pull/night/acme-api-3',
@@ -721,23 +720,20 @@ it("stacks a repo's draft PRs off the default branch on the last one published t
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['night/acme-api-1', ''],
     ['night/acme-api-4', 'feature-4'],
-    ['night/acme-api-3', 'night/acme-api-1'],
+    ['night/acme-api-3', ''],
   ])
-  expect(opened[0]?.body).not.toContain('Stacked on')
-  expect(opened[2]?.body).toBe(
-    `Implement acme-api-3\n\nDone.\n\nStacked on ${first}: merge that first.\n`,
-  )
-  expect(prompts[0]).toContain('cut from the default branch.')
-  const stacked = `cut from \`night/acme-api-1\`.\n\n\`night/acme-api-1\` is the earlier night-shift PR ${first}`
-  expect([prompts[1], prompts[3]]).toEqual([
-    expect.stringContaining(stacked),
-    expect.stringContaining(stacked),
+  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
+  expect([prompts[0], prompts[1], prompts[3]]).toEqual([
+    expect.stringContaining('cut from the default branch.'),
+    expect.stringContaining('cut from the default branch.'),
+    expect.stringContaining('cut from the default branch.'),
   ])
+  expect(forge.stacked).toEqual([])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
-it("stacks a chain's draft PRs on each other, and the repo's next unit on the chain's last", async () => {
+it("stacks a chain's draft PRs on each other, and starts the repo's next unit from the default branch", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-chain-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
@@ -770,16 +766,18 @@ queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['night/acme-api-1', ''],
     ['night/acme-api-1-review', 'night/acme-api-1'],
-    ['night/acme-api-2', 'night/acme-api-1-review'],
+    ['night/acme-api-2', ''],
     ['night/acme-api-2-review', 'night/acme-api-2'],
   ])
   expect(opened[1]?.body).toContain(`Stacked on ${url('night/acme-api-1')}: merge that first.`)
-  expect(opened[2]?.body).toContain(
-    `Stacked on ${url('night/acme-api-1-review')}: merge that first.`,
-  )
+  expect(opened[2]?.body).not.toContain('Stacked on')
+  expect(forge.stacked).toEqual([
+    [url('night/acme-api-1'), url('night/acme-api-1-review')],
+    [url('night/acme-api-2'), url('night/acme-api-2-review')],
+  ])
 })
 
-it("keeps a chain on your own PR off the stack, and stacks the repo's next units as if it weren't there", async () => {
+it("stacks a chain on your own PR, and starts the repo's other units from the default branch", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-stack-past-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
@@ -815,10 +813,10 @@ queue:
     ['night/acme-api-4', 'feature-4'],
     ['night/acme-api-4-review', 'night/acme-api-4'],
     ['night/acme-api-1', ''],
-    ['night/acme-api-3', 'night/acme-api-1'],
+    ['night/acme-api-3', ''],
   ])
   const files = await git(origin, 'ls-tree', '--name-only', 'night/acme-api-3')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1.txt', 'acme-api-3.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-3.txt'])
 })
 
 it('pushes onto your own PR, and runs what follows on it without setup secrets', async () => {
@@ -1061,7 +1059,7 @@ repos:
   const setups = await Promise.all(
     ids.map((id) => readFile(join(root, 'run/units', id, 'setup.txt'), 'utf8')),
   )
-  expect(setups).toEqual(['npm\n', '\n', '\n', '\n'])
+  expect(setups).toEqual(['npm\n', '\n', 'npm\n', '\n'])
 })
 
 /** Commits and keeps a PR body current; reviews and QA write a report and a verdict from `verdicts`. */
@@ -1558,6 +1556,82 @@ queue:
   expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
 })
 
+it('skips a rule and a step whose quota when does not hold', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: implement
+    where: { type: issue }
+    then:
+      - { skill: review, deliver: draft_pr, when: { nights_until_reset: 1 } }
+      - { skill: plan, deliver: draft_pr, when: { headroom: 10% } }
+`)
+  const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
+  const plan = planNight({
+    config,
+    items: [item],
+    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  const [, review, planned] = report.results
+  expect(review?.status).toBe('skipped')
+  expect(review?.reason).toMatch(/^when the window resets within 1 night didn't hold/)
+  expect(planned?.status).toBe('done')
+})
+
+it('records no attempt for a rule whose quota when does not hold', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-when-quota-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: implement
+    where: { type: issue }
+    when: { nights_until_reset: 1 }
+`)
+  const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
+  const plan = planNight({
+    config,
+    items: [item],
+    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(report.results[0]?.passedOver).toBe(true)
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
 it("skips a step whose when doesn't hold and goes on from the unit before", async () => {
   const root = await mkdtemp(join(tmpdir(), 'nightshift-when-'))
   const { origin, opened, forge } = await originForge(root)
@@ -1736,6 +1810,7 @@ repos:
       body: expect.stringContaining(`Stacked on ${link.url}: merge that first.`),
     },
   ])
+  expect(forge.stacked).toEqual([[link.url, 'https://example.com/acme/api/pull/night/acme-api-9']])
   expect(await readFile(join(root, 'run/units/acme-api-9/setup.txt'), 'utf8')).toBe('\n')
 })
 
@@ -2498,7 +2573,7 @@ it("fences a failed check's output in the PR body past any backticks in it", asy
   expect(opened[0]?.body).toContain("`````\n$ echo '````'; false\n````\nfailed:")
 })
 
-it('matches changed against the draft PR a chain stacked on, not the default branch', async () => {
+it("matches changed against the chain's own commits, not another chain's", async () => {
   const { report } = await loopNight(
     `queue:
   - skill: implement
@@ -2618,7 +2693,7 @@ it("doesn't run a nested repo's filter when it checks the clone for uncommitted 
         yield* provider.run(job, signal)
         if (job.unit.id !== 'acme-api-1-address-review-1') return
         const sub = join(job.dir, 'sub')
-        const git = (dir: string, ...args: string[]) => execa('git', ['-C', dir, ...args])
+        const git = (dir: string, ...args: string[]) => execa(bin('git'), ['-C', dir, ...args])
         await git(job.dir, 'init', '-q', 'sub')
         await writeFile(join(sub, 'f'), 'a')
         await git(sub, 'add', 'f')
@@ -3110,4 +3185,55 @@ after_unit:
     'acme-api-1-review-2 says approve.',
     'acme-api-1-qa-feedback says nothing.',
   ])
+})
+
+async function verifiedBody(repoConfig: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'nightshift-verify-'))
+  const { opened, forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+repos:
+  acme/api: { ${repoConfig} }
+queue:
+  - skill: implement
+`)
+  const plan = planNight({
+    config,
+    items: [issue(1)],
+    allowances: { claude: allowance(config.budget, null, 0) },
+    skills: { builtin: builtinSkills },
+  })
+  await runNight({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: looper({}) },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  return opened[0]?.body ?? ''
+}
+
+it("publishes a unit whose verify failed with the command's output in the PR body", async () => {
+  const body = await verifiedBody("verify: 'echo 2 lint errors; false'")
+  expect(body).toContain('## Night-shift verify')
+  expect(body).toContain('`echo 2 lint errors; false` failed: Command failed with exit code 1')
+  expect(body).toContain('2 lint errors')
+})
+
+it('leaves the PR body alone when verify passes', async () => {
+  expect(await verifiedBody("verify: 'true'")).not.toContain('Night-shift verify')
+})
+
+it('notes a refused verify in the PR body', async () => {
+  const body = await verifiedBody("verify: 'true', network: false")
+  expect(body).toContain('not run: not run without network')
 })

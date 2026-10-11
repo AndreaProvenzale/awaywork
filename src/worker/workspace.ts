@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { execa } from 'execa'
-import { builtinSkillsDir, harnessPath, userSkillsDir } from '../config/paths.js'
+import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
@@ -35,7 +35,7 @@ export interface WorkspaceInput {
   /** The clone; it must not exist yet. */
   dir: string
   config: Config
-  /** Instruction paths in the config resolve against it. */
+  /** Instruction paths in the config resolve against it; the user's skills are its `skills/`. */
   configDir: string
   forge: Forge
   sources: Record<string, Source>
@@ -49,6 +49,8 @@ export interface WorkspaceInput {
   /** `dir` is already the clone, on the unit's branch: a loop round after the loop's first unit. */
   reuse?: boolean
   loop?: LoopRound
+  /** A replay: the clone starts at `commit` and its context is copied from a past run's `context/`, with no source asked. */
+  replay?: { commit: string; context: string }
 }
 
 interface Previous {
@@ -78,31 +80,36 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     ])
   } else {
     await w.forge.clone(unit.repo, unit.base, dir)
-    await execa('git', ['-C', dir, 'checkout', '-q', '-b', unit.branch])
+    const from = w.replay ? [w.replay.commit] : []
+    await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
 
-  const { user, builtin } = w.skillDirs ?? { user: userSkillsDir, builtin: builtinSkillsDir }
+  const { user, builtin } = w.skillDirs ?? {
+    user: skillsDirIn(w.configDir),
+    builtin: builtinSkillsDir,
+  }
   const roots = foreign ? [user, builtin] : [user, join(dir, '.night-shift', 'skills'), builtin]
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
   else await buildPlugin(w.plugin, names, roots)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
+  if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
   const items: string[] = []
   for (const item of unit.items) {
     const source = w.sources[item.source]
-    if (!source) throw new Error(`no source "${item.source}" for ${item.key}`)
+    if (!source && !w.replay) throw new Error(`no source "${item.source}" for ${item.key}`)
     const context = join(WORK_DIR, 'context', slug(item.key))
-    if (!w.reuse) {
+    if (!w.reuse && source) {
       await mkdir(join(dir, context), { recursive: true })
       await source.prefetch(item, join(dir, context), w.ctx)
     }
     items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
   }
   const previous = join(work, 'context', 'previous')
-  await rm(previous, { recursive: true, force: true })
-  if (w.previous) await cp(w.previous.out, previous, { recursive: true })
+  if (!w.replay) await rm(previous, { recursive: true, force: true })
+  if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
@@ -203,6 +210,22 @@ export function workerEnv(
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
 }
 
+/** Every secret the config names, for `workerEnv` to withhold. */
+export function configSecrets(
+  config: Config,
+  providers: Record<string, Provider>,
+  sources: Record<string, Source>,
+): string[] {
+  return [
+    ...Object.values(providers).flatMap((p) => p.secrets),
+    ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+    ...(config.notify?.secrets ?? []),
+    ...(config.after_unit?.secrets ?? []),
+    ...Object.values(config.repos).flatMap((r) => r.secrets),
+    ...Object.values(config.mcp).flatMap((s) => s.secrets),
+  ]
+}
+
 /** The skill copies night-shift made in each clone, which a loop's later rounds replace rather than keep. Per process: a resumed loop starts empty. */
 const copied = new Map<string, Set<string>>()
 
@@ -252,8 +275,8 @@ async function buildPlugin(plugin: string, names: string[], roots: string[]) {
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
   // In a loop's clone, the config is a worker's: run no fsmonitor command from it.
   const git = ['-C', dir, '-c', 'core.fsmonitor=false']
-  const { stdout } = await execa('git', [...git, 'ls-files', '-z', '--', ...paths])
-  await execa('git', [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
+  await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

@@ -2,8 +2,9 @@ import { createWriteStream } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { route, withQuota } from '../core/budget.js'
+import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import { type NightPlan, slug } from '../core/foreman.js'
@@ -20,9 +21,11 @@ import type {
 } from '../core/types.js'
 import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
+import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
+  configSecrets,
   notSymlink,
   outputFile,
   prepareWorkspace,
@@ -34,7 +37,6 @@ import {
   writeOutput,
 } from './workspace.js'
 
-const MAX_TURNS = 200
 const CHECK_LOG_CHARS = 8000
 const MAX_SUFFIX = 10
 
@@ -60,8 +62,7 @@ export interface NightInput {
 
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
- * A draft PR stacks on tonight's draft PR it follows, on the night-shift PR a rule took up,
- * or on its repo's last one when it would start from the default branch.
+ * A draft PR stacks on tonight's draft PR it follows, or on the night-shift PR a rule took up.
  * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
  */
 export async function runNight(n: NightInput): Promise<NightReport> {
@@ -87,18 +88,10 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     }
   }
   const planned = n.plan.units.filter((p) => !only || wanted.has(p.unit.id))
-  const secrets = [
-    ...Object.values(n.providers).flatMap((p) => p.secrets),
-    ...Object.entries(n.config.sources).flatMap(([id, cfg]) => n.sources[id]?.secrets(cfg) ?? []),
-    ...(n.config.notify?.secrets ?? []),
-    ...(n.config.after_unit?.secrets ?? []),
-    ...Object.values(n.config.repos).flatMap((r) => r.secrets),
-    ...Object.values(n.config.mcp).flatMap((s) => s.secrets),
-  ]
+  const secrets = configSecrets(n.config, n.providers, n.sources)
 
-  // Tonight's draft PRs by repo and branch, the branch on top of each repo's stack, and the PR branches pushed onto.
+  // Tonight's draft PRs by repo and branch, and the PR branches pushed onto.
   const opened: Record<string, string> = {}
-  const tips: Record<string, string> = {}
   const pushed = new Set<string>()
   const hosts = new Set(planned.flatMap((p) => (p.loop ? [p.loop.host] : [])))
   // The base each unit ran on: a step after one that opened no PR runs there too.
@@ -159,6 +152,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     return result
   }
 
+  /** Runs the unit's `verify` before it is published; a failure goes in the PR body or report, and the unit is still published. */
+  const verify = async (unit: Unit, dir: string, start: string, log: (line: string) => void) => {
+    if (!unit.verify || unit.deliver === 'report' || (await commitsSince(dir, start)) === 0) return
+    const result = await check(unit.verify, unit, dir, log, false)
+    if (!result.failed) return
+    const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
+    await refuseSymlinks(dir, [output])
+    await appendVerifyFailure(join(dir, output), { command: unit.verify, ...result })
+  }
+
   /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
   const factsFor = async (
     condition: Condition,
@@ -202,18 +205,22 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         if (deliver === 'push')
           await cp(join(loop.unitDir, 'out', outputFile.push), file).catch(() => {})
         await appendLoopSummary(file, loop)
-        const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId, loop.start)
-        // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
-        const kept =
-          host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
-        if (!kept) host.outcome = published
-        else if (!loop.completed)
-          host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
-        if (published.kind === 'pr') {
-          opened[`${unit.repo} ${unit.branch}`] = published.url
-          if (loop.stacks) tips[unit.repo] = unit.branch
+        await verify({ ...unit, deliver }, dir, loop.start, n.ctx.log)
+        if (n.signal?.aborted)
+          host.outcome = { kind: 'none', reason: 'interrupted', unpublished: true }
+        else {
+          const published = await publish({ ...unit, deliver }, dir, n.forge, n.runId, loop.start)
+          // A report host whose loop committed nothing keeps its report, if the loop ran to its end.
+          const kept =
+            host.outcome?.kind === 'report' && published.kind === 'none' && !published.unpublished
+          if (!kept) host.outcome = published
+          else if (!loop.completed)
+            host.outcome = { kind: 'none', reason: `loop ${loop.ended}`, unpublished: true }
+          if (published.kind === 'pr') {
+            opened[`${unit.repo} ${unit.branch}`] = published.url
+          }
+          if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
         }
-        if (published.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
       }
     } catch (e) {
       Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
@@ -292,13 +299,11 @@ export async function runNight(n: NightInput): Promise<NightReport> {
     const { repo } = p.unit
     // A loop publishes its host as a draft PR, unless the host pushes onto your PR.
     const deliver = hosting && p.unit.deliver !== 'push' ? 'draft_pr' : p.unit.deliver
-    const stacks = !round && deliver === 'draft_pr' && (base === '' || base === tips[repo])
-    const onto = stacks ? (tips[repo] ?? '') : base
-    const tonight = opened[`${repo} ${onto}`]
+    const tonight = opened[`${repo} ${base}`]
     // A night-shift PR a rule took up, when this unit works on its branch.
     const pickedUp = p.unit.items
       .flatMap((i) => i.linkedPrs)
-      .find((pr) => pr.ours && pr.branch === base)
+      .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)
     const stackedOn = deliver === 'draft_pr' ? (tonight ?? pickedUp?.url) : undefined
     const unit = round
       ? {
@@ -307,12 +312,12 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           branch: round.unit.branch,
           stackedOn: round.unit.stackedOn,
         }
-      : { ...p.unit, base: onto, stackedOn }
+      : { ...p.unit, base, stackedOn }
     ranOn[p.unit.id] = unit.base
     starts[unit.id] = round
       ? (starts[round.unit.id] ?? '')
-      : (stacks || pickedUp) && !openedPr(after)
-        ? onto
+      : pickedUp && !openedPr(after)
+        ? base
         : ((after && starts[after.planned.unit.id]) ?? '')
     const skip = (reason: string) => {
       results.push({ planned: p, status: 'skipped', reason })
@@ -396,7 +401,16 @@ export async function runNight(n: NightInput): Promise<NightReport> {
       })
       // Before setup or any worker touched the clone: the unit's commits are the ones after it.
       const cloned = round ? round.start : await head(dir)
-      if (!round) gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+      if (!round) {
+        gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+        const state: ReplayState = {
+          unit,
+          provider: id,
+          commit: cloned,
+          previous: previous && { skill: previous.skill, outcome: previous.outcome },
+        }
+        await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
+      }
       if (n.dryRun) continue
       const a = allowances[id]
       if (!a) continue
@@ -428,6 +442,7 @@ export async function runNight(n: NightInput): Promise<NightReport> {
         const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
         const verdict = (before && loopVerdicts[before.planned.unit.id]) ?? before?.verdict
         const met = await factsFor(when, unit, dir, verdict, log, logFile)
+        Object.assign(met.facts, quotaFacts(a))
         // A check stopped or timed out before it exited says nothing: skip the step without passing over it.
         if (met.check?.stopped || met.check?.timedOut) {
           const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
@@ -510,7 +525,6 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           dir,
           start: cloned,
           unitDir,
-          stacks,
           skills: p.loop.skills,
           rounds: 0,
         }
@@ -547,16 +561,17 @@ export async function runNight(n: NightInput): Promise<NightReport> {
           dir,
           start: cloned,
           unitDir,
-          stacks,
           skills,
           rounds: 0,
           last: result,
         }
       } else if (!aborted) {
-        result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
-        if (result.outcome?.kind === 'pr') {
-          opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
-          if (stacks) tips[unit.repo] = unit.branch
+        await verify(unit, dir, cloned, log)
+        if (!n.signal?.aborted) {
+          result.outcome = await publish(unit, dir, n.forge, n.runId, cloned)
+          if (result.outcome?.kind === 'pr') {
+            opened[`${unit.repo} ${unit.branch}`] = result.outcome.url
+          }
         }
       }
       if (result.outcome?.kind === 'pushed') pushed.add(`${unit.repo} ${unit.base}`)
@@ -632,7 +647,6 @@ interface OpenLoop {
   /** The commit the clone held before its host ran; the loop publishes what's after it. */
   start: string
   unitDir: string
-  stacks: boolean
   skills: string[]
   rounds: number
   /** The unit the next round follows. */
@@ -663,7 +677,7 @@ type RanCheck = Check & { command: string }
 const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
 
 const git = async (dir: string, ...args: string[]) =>
-  (await execa('git', ['-C', dir, ...args])).stdout
+  (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
@@ -764,21 +778,33 @@ async function appendLoopSummary(file: string, loop: OpenLoop): Promise<void> {
       '',
       '</details>',
     )
-  if (check?.failed && !check.refused) {
-    const log = checkLog(check).trim()
-    const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+  if (check?.failed && !check.refused)
     lines.push(
       '',
-      `<details><summary>Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}</summary>`,
-      '',
-      fence,
-      log,
-      fence,
-      '',
-      '</details>',
+      checkDetails(
+        `Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}`,
+        check,
+      ),
     )
-  }
   await writeOutput(file, `${body}${lines.join('\n')}\n`)
+}
+
+/** A collapsible block with the command and the tail of its output. */
+function checkDetails(summary: string, check: RanCheck): string {
+  const log = checkLog(check).trim()
+  const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+  return [`<details><summary>${summary}</summary>`, '', fence, log, fence, '', '</details>'].join(
+    '\n',
+  )
+}
+
+/** Appends a failed `verify` to the PR body or push report, so the reviewer sees it before the diff. */
+async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
+  const body = (await readOutput(file)).trim()
+  if (!body) return
+  const verb = check.refused ? 'not run' : check.stopped ? 'stopped' : 'failed'
+  const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
+  await writeOutput(file, `${body}\n\n## Night-shift verify\n\n${checkDetails(summary, check)}\n`)
 }
 
 /** Like the worker's, with every secret withheld except the repo's own. */

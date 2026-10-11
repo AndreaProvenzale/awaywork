@@ -4,11 +4,17 @@ import { cron } from './cron.js'
 import { launchd } from './launchd.js'
 import { systemd } from './systemd.js'
 
+/** A time of day (local) a job starts, on the given weekdays (0 is Sunday) or every day. */
+export interface Start {
+  hour: number
+  minute: number
+  days?: number[]
+}
+
 /** A nightly job: the command, when it starts (local time), its PATH and its log file. */
 export interface Schedule {
   command: string[]
-  hour: number
-  minute: number
+  starts: Start[]
   path: string
   log: string
 }
@@ -33,3 +39,11 @@ export function defaultScheduler(platform = process.platform): string {
   if (platform === 'darwin') return 'launchd'
   return existsSync('/run/systemd/system') ? 'systemd' : 'cron'
 }
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** E.g. `01:00, 10:00 on 0,6`. */
+export const describeStarts = (starts: Start[]) =>
+  starts
+    .map((s) => `${pad(s.hour)}:${pad(s.minute)}${s.days ? ` on ${s.days.join(',')}` : ''}`)
+    .join(', ')

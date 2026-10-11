@@ -206,9 +206,22 @@ const conditionKeys = {
 const condition = z
   .strictObject(conditionKeys)
   .refine((c) => Object.keys(c).length > 0, 'expected verdict or command')
+const quotaKeys = {
+  nights_until_reset: z
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Holds when the provider's long window resets within this many nights; 1 is the last",
+    ),
+  headroom: percent
+    .optional()
+    .describe("Holds when at least this share of the long window is left under tonight's ceiling"),
+}
 const when = z
   .strictObject({
     ...conditionKeys,
+    ...quotaKeys,
     verdict: conditionKeys.verdict.describe(
       "The step before's verdict; a list means any of, {not} negates",
     ),
@@ -218,7 +231,13 @@ const when = z
         "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
       ),
   })
-  .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
+  .refine(
+    (c) => Object.keys(c).length > 0,
+    'expected verdict, command, changed, nights_until_reset or headroom',
+  )
+const ruleWhen = z
+  .strictObject(quotaKeys)
+  .refine((c) => Object.keys(c).length > 0, 'expected nights_until_reset or headroom')
 const stepObject = z.strictObject({
   skill,
   ...stepSettings,
@@ -263,6 +282,9 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
       .describe('Which item goes first: oldest, newest or last updated; default the source order'),
+    when: ruleWhen
+      .optional()
+      .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
       .describe('At most this many units per night from this rule, its then steps included'),
@@ -278,6 +300,10 @@ const rule: z.ZodType<Rule, unknown> = z
       .boolean()
       .optional()
       .describe("Network for the worker's commands, then steps included; default the repo's"),
+    verify: z
+      .string()
+      .optional()
+      .describe("Command run before publishing, then steps included; default the repo's"),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -363,6 +389,12 @@ const repo = z.strictObject({
     .array(z.string().min(1))
     .default([])
     .describe('Env vars setup needs; withheld from workers, listed in Actions'),
+  verify: z
+    .string()
+    .optional()
+    .describe(
+      'Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published',
+    ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
   network: z.boolean().optional().describe("Network for the worker's commands; default on"),
@@ -387,6 +419,23 @@ export const configSchema = z
       .refine((n) => n.start !== n.end, 'start and end must differ')
       .default({ start: '01:00', end: '07:00' })
       .describe('Local hours a scheduled run may start units in, and how many'),
+    windows: z
+      .array(
+        z
+          .strictObject({
+            days: z
+              .array(z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']))
+              .min(1)
+              .optional()
+              .describe('Weekdays the window opens on; every day when unset'),
+            start: time.describe('When a scheduled run starts, local time'),
+            end: time.describe('No unit starts after this'),
+          })
+          .refine((w) => w.start !== w.end, 'start and end must differ'),
+      )
+      .min(1)
+      .optional()
+      .describe('Windows a scheduled run may start units in, instead of night.start to night.end'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -468,6 +517,13 @@ export const configSchema = z
       if (Array.isArray(r.then))
         r.then.forEach((entry, j, then) => {
           const before = then[j - 1]
+          if (j === 0 && isLoop(entry) && r.when && r.deliver !== 'report')
+            ctx.addIssue({
+              code: 'custom',
+              path: [...at, 'when'],
+              message:
+                "a loop works in the clone of the rule's unit, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on the rule",
+            })
           if (before && isLoop(before) && isLoop(entry))
             ctx.addIssue({
               code: 'custom',

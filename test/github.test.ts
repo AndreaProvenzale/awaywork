@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
+import { bin } from '../src/config/paths.js'
 import { footer, footerItems, isOurs } from '../src/core/footer.js'
 import type { Ctx, Item } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
@@ -519,9 +520,9 @@ describe('github forge', () => {
     const elsewhere = join(root, 'elsewhere')
     const clone = join(root, 'clone')
     const git = (dir: string, ...args: string[]) =>
-      execa('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
-    for (const bare of [origin, elsewhere]) await execa('git', ['init', '-q', '--bare', bare])
-    await execa('git', ['init', '-q', clone])
+      execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    for (const bare of [origin, elsewhere]) await execa(bin('git'), ['init', '-q', '--bare', bare])
+    await execa(bin('git'), ['init', '-q', clone])
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'init')
     await git(clone, 'config', `url.${elsewhere}.pushInsteadOf`, origin)
     let head = ''
@@ -613,5 +614,36 @@ describe('github forge', () => {
     expect(footerItems(run.calls[0]?.at(-1))).toEqual(['linear:ENG-12'])
     await githubForge(run).draftPr('acme/api', 'night/x', '', body, 'r1', items)
     expect(run.calls[1]).not.toContain('--base')
+  })
+
+  it('stacks a PR on the one below it: a new stack, the top of its stack, never mid-stack', async () => {
+    const stack = (prs: number[]) =>
+      JSON.stringify([{ number: 7, pull_requests: prs.map((number) => ({ number })) }])
+    const stackOn = async (found: string) => {
+      const run = recorded([
+        [/stacks\?pull_request=9$/, found],
+        [/--method POST/, '{}'],
+      ])
+      const pr = (n: number) => `https://github.com/acme/api/pull/${n}`
+      await githubForge(run).stack('acme/api', pr(9), pr(10))
+      return run.calls.slice(1)
+    }
+    expect(await stackOn('[]')).toEqual([
+      [
+        'gh',
+        'api',
+        '--method',
+        'POST',
+        'repos/acme/api/stacks',
+        '-F',
+        'pull_requests[]=9',
+        '-F',
+        'pull_requests[]=10',
+      ],
+    ])
+    expect(await stackOn(stack([8, 9]))).toEqual([
+      ['gh', 'api', '--method', 'POST', 'repos/acme/api/stacks/7/add', '-F', 'pull_requests[]=10'],
+    ])
+    expect(await stackOn(stack([9, 11]))).toEqual([])
   })
 })

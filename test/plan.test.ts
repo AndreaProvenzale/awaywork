@@ -282,6 +282,34 @@ queue:
     ])
   })
 
+  it('says why a quota when fails, for the rule and its steps', () => {
+    const yaml = (rule: string, step: string) => `
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - skill: fix-ci
+    where: { checks: failing }
+    ${rule}
+    then: { skill: review, ${step} }
+`
+    const items = [githubPr(1, { checks: 'failing' })]
+    const units = (rule: string, step: string, quota: Quota | null) =>
+      plan(yaml(rule, step), items, { claude: quota }).units.map((u) => u.quotaUnmet)
+    const last = 'when: { nights_until_reset: 1 }'
+    expect(units('', last, week(0.36))).toEqual([
+      undefined,
+      "the quota part doesn't hold on the probe",
+    ])
+    expect(units('when: { headroom: 10% }', 'when: { nights_until_reset: 3 }', week(0.36))).toEqual(
+      [undefined, undefined],
+    )
+    expect(units('when: { headroom: 20% }', last, week(0.36))[0]).toBe(
+      "the quota part doesn't hold on the probe",
+    )
+    expect(units('when: { headroom: 1% }', last, null)[0]).toBe('no quota reading')
+    expect(units('when: { headroom: 1% }', last, week(0.95))).toEqual([undefined, undefined])
+  })
+
   it('chains steps: stacked on a draft PR, on the same base after a report', () => {
     const yaml = `
 providers: [claude, codex]

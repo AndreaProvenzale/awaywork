@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { bin } from '../src/config/paths.js'
 import type { PrRef, Unit } from '../src/core/types.js'
 import { publish } from '../src/worker/publish.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 
 const git = async (dir: string, ...args: string[]) =>
-  (await execa('git', ['-C', dir, ...args])).stdout
+  (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
 const trailers = (dir: string) =>
   git(dir, 'log', '--format=%s|%(trailers:key=Night-shift,valueonly)', 'HEAD').then((log) =>
@@ -76,7 +77,7 @@ describe('publish', () => {
     const root = await mkdtemp(join(tmpdir(), 'nightshift-publish-'))
     const origin = join(root, 'origin')
     dir = join(root, 'clone')
-    await execa('git', ['init', '-q', '-b', 'feature-1', origin])
+    await execa(bin('git'), ['init', '-q', '-b', 'feature-1', origin])
     await git(
       origin,
       '-c',
@@ -89,7 +90,7 @@ describe('publish', () => {
       '-m',
       'init',
     )
-    await execa('git', ['clone', '-q', origin, dir])
+    await execa(bin('git'), ['clone', '-q', origin, dir])
     await git(dir, 'config', 'user.name', 'Dev')
     await git(dir, 'config', 'user.email', 'dev@example.com')
     await git(dir, 'config', 'core.hooksPath', '.husky')
@@ -131,6 +132,18 @@ describe('publish', () => {
         items: ['ENG-12', 'ENG-12', 'ENG-13', 'FAKE-1'],
       },
     ])
+    expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'night/FAKE-1']])
+  })
+
+  it('still opens the PR when the forge has no stacks for it', async () => {
+    await commit('first')
+    await body('Fix the thing')
+    const forge = fakeForge()
+    forge.stack = async () => {
+      throw new Error('Stacked PRs are not enabled for this repository')
+    }
+    const stacked = { ...unit(), stackedOn: 'https://github.com/acme/api/pull/9' }
+    expect(await publish(stacked, dir, forge, 'r1', start)).toMatchObject({ kind: 'pr' })
   })
 
   it('publishes nothing without commits, without a PR body, or onto an existing branch', async () => {

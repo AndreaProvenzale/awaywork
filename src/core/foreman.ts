@@ -7,7 +7,8 @@ import {
   unchangedSince,
 } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
-import { type Allowance, route } from './budget.js'
+import { type Allowance, quotaFacts, route } from './budget.js'
+import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
 import {
   closestRule,
@@ -31,6 +32,8 @@ export interface PlannedUnit {
   origin?: Origin
   provider?: string
   passed: string[]
+  /** Why its quota `when` fails now: the run checks again as windows fill, and skips it if it still fails. */
+  quotaUnmet?: string
   /** The unit this one chains after, by id: it runs only on what that unit delivered. */
   after?: string
   /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
@@ -149,6 +152,7 @@ export function planNight(input: {
       const unit: Unit = {
         ...at,
         network: rule.network ?? config.repos[repo]?.network ?? true,
+        verify: rule.verify ?? config.repos[repo]?.verify,
         items,
         repo,
         rule: step,
@@ -162,6 +166,7 @@ export function planNight(input: {
         ],
         deliver: deliverOf(step),
       }
+      const unmet = provider && quotaUnmet(step.when, allowances[provider])
       units.push({
         unit,
         rule: ruleIndex,
@@ -169,6 +174,7 @@ export function planNight(input: {
         origin: skill?.origin,
         provider,
         passed,
+        ...(unmet && { quotaUnmet: unmet }),
         after,
         ...(loop && { loop }),
       })
@@ -294,6 +300,22 @@ export function planNight(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+function quotaOf(when: Condition | undefined): Condition | undefined {
+  const { nights_until_reset, headroom } = when ?? {}
+  if (nights_until_reset === undefined && headroom === undefined) return undefined
+  return {
+    ...(nights_until_reset !== undefined && { nights_until_reset }),
+    ...(headroom !== undefined && { headroom }),
+  }
+}
+
+function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
+  const quota = quotaOf(when)
+  if (!quota || !a) return undefined
+  if (a.kind === 'fallback') return 'no quota reading'
+  return holds(quota, quotaFacts(a)) ? undefined : "the quota part doesn't hold on the probe"
 }
 
 function firstStep(entry: Step | Loop): Step {

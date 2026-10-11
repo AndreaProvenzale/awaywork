@@ -18,7 +18,7 @@ const config = z
   .describe('My open Linear issues')
 type Config = z.infer<typeof config>
 
-const API = 'https://api.linear.app/graphql'
+export const API = 'https://api.linear.app/graphql'
 
 const issuesQuery = `query Issues($after: String) {
   viewer {

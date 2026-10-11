@@ -24,6 +24,7 @@ with:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in, and how many |
+| `windows` | object[] |  | Windows a scheduled run may start units in, instead of night.start to night.end |
 | `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
@@ -46,6 +47,14 @@ Local hours a scheduled run may start units in, and how many.
 | `end` (required) | time |  | No unit starts after this |
 | `units` | integer |  | At most this many units per night |
 | `units_per_repo` | integer |  | At most this many units per night in one repo |
+
+## `windows[]`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays the window opens on; every day when unset |
+| `start` (required) | time |  | When a scheduled run starts, local time |
+| `end` (required) | time |  | No unit starts after this |
 
 ## `budget`
 
@@ -198,6 +207,7 @@ A custom source: any command that prints your open items as JSON.
 | `branch` | string |  | Branch name template for this repo |
 | `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
+| `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `network` | boolean |  | Network for the worker's commands; default on |
@@ -232,9 +242,11 @@ First matching rule wins; top = highest priority.
 | `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
+| `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
 | `units` | integer |  | At most this many units per night from this rule, its then steps included |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
+| `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
 ## `queue[].where`
 
@@ -280,6 +292,15 @@ Matches items whose text field contains a match, e.g. `{ matches: '^\[bug\]' }`.
 |---|---|---|---|
 | `matches` (required) | string |  | A regular expression, case-insensitive |
 
+## `queue[].when`
+
+Run this rule's unit only when the quota holds; otherwise skip it.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `nights_until_reset` | integer |  | Holds when the provider's long window resets within this many nights; 1 is the last |
+| `headroom` | percent |  | Holds when at least this share of the long window is left under tonight's ceiling |
+
 ## `queue[].then`
 
 | Key | Type | Default | Description |
@@ -303,6 +324,8 @@ Run this step only when every key holds; otherwise skip it.
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
 | `command` | string |  | A shell command night-shift runs in the clone, outside the model; exit 0 holds |
+| `nights_until_reset` | integer |  | Holds when the provider's long window resets within this many nights; 1 is the last |
+| `headroom` | percent |  | Holds when at least this share of the long window is left under tonight's ceiling |
 | `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
 
 ## `queue[].then.when.verdict`

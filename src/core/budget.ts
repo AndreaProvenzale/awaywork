@@ -1,6 +1,8 @@
 import type { Budget } from '../config/schema.js'
 import type { Quota } from './types.js'
+import { runsLeft, type Window } from './window.js'
 
+export const MAX_TURNS = 200
 const DAY = 24 * 60 * 60 * 1000
 
 export type Allowance =
@@ -15,16 +17,19 @@ export type Allowance =
     }
   | { kind: 'fallback'; units: number; turns: number; reason: string }
 
-/** Tonight's ceiling on the long window: the lowest of used + per_night, 1 - reserve and the paced share. */
+/** Tonight's ceiling on the long window: the lowest of used + per_night, 1 - reserve and the paced share; with `windows`, paced over the runs left rather than the days. */
 export function allowance(
   budget: Budget,
   quota: Quota | null,
   now: number,
   reason = 'no quota reading',
+  windows?: Window[],
 ): Allowance {
   const long = quota?.windows.find((w) => w.span === 'long')
   if (!long) return { kind: 'fallback', ...budget.fallback, reason }
-  const nights = Math.max(1, Math.ceil((long.resetsAt * 1000 - now) / DAY))
+  const nights = windows
+    ? runsLeft(windows, now, long.resetsAt * 1000)
+    : Math.max(1, Math.ceil((long.resetsAt * 1000 - now) / DAY))
   const limits: Extract<Allowance, { kind: 'quota' }>['limits'] = [
     { name: 'reserve', value: 1 - budget.reserve },
     { name: 'pacing', value: long.used + (1 - budget.reserve - long.used) / nights },
@@ -69,6 +74,13 @@ export function route(
 }
 
 export const pct = (share: number) => `${Math.round(share * 1000) / 10}%`
+
+/** What a quota condition reads: nights to the reset and the share left under the ceiling; none without a reading. */
+export function quotaFacts(a: Allowance): { nights?: number; headroom?: number } {
+  return a.kind === 'quota'
+    ? { nights: a.nights, headroom: Math.max(0, Math.round((a.ceiling - a.used) * 1000) / 1000) }
+    : {}
+}
 
 /** The same ceiling with usage moved to what a worker last saw. */
 export function withQuota(a: Allowance, quota: Quota): Allowance {

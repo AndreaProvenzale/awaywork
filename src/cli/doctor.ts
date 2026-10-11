@@ -1,17 +1,30 @@
 import { existsSync, statSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { basename, dirname, resolve } from 'node:path'
 import type { Command } from 'commander'
+import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
-import { envFile } from '../config/paths.js'
+import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { hasSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
-import { exec } from '../forge/gh.js'
+import { windowsOf } from '../core/window.js'
+import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { staleWorkflow } from '../scheduler/github-actions.js'
+import { staleWorkflow, suffixOf, workflows } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
-import { gitRoot, staleSchedules } from './schedule.js'
+import {
+  gitRoot,
+  leftoverWarning,
+  type RepoSecrets,
+  reasonOf,
+  repoSecrets,
+  secretNames,
+  staleSchedules,
+} from './schedule.js'
 
 export interface Check {
   status: Status
@@ -59,6 +72,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (mode === 0o600) report('ok', envFile, 'mode 600')
     else report('warn', envFile, `mode ${mode.toString(8)}, want 600`)
   }
+  const defaultSkills = skillsDirIn(configDir)
+  if (dirname(resolve(path)) !== configDir && (await hasSkills(defaultSkills)))
+    report(
+      'warn',
+      defaultSkills,
+      `not used with this config; move or link its skills to ${skillsDirOf(path)}`,
+    )
 
   let config: Config
   try {
@@ -68,11 +88,12 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
     return checks
   }
-  for (const warning of await staleSchedules(path, config.night.start))
+  for (const warning of await staleSchedules(path, windowsOf(config)))
     report('warn', 'schedule', warning)
   const root = await gitRoot()
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
+  for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
 
   for (const { id, budget } of config.providers) {
     const provider = providers[id]
@@ -90,7 +111,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
     await provider.probe(ctx).then(
       (quota) => {
-        const a = allowance(budget, quota, Date.now())
+        const a = allowance(budget, quota, Date.now(), undefined, config.windows)
         report(a.kind === 'quota' ? 'ok' : 'warn', `${id} tonight`, describeAllowance(a))
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),
@@ -113,5 +134,95 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
   }
+  return checks
+}
+
+/** Checks that every secret each night-shift workflow names exists in its environment, the repo or the org. */
+export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
+  const files = await workflows(root)
+  if (!files.length) return []
+  const failures: string[] = []
+  const listed = await repoSecrets(run, (list, e) =>
+    failures.push(`${list === 'repo' ? "the repo's" : "the organization's"}: ${reasonOf(e)}`),
+  )
+  // Without either list, a missing name can't be told from an unlisted one.
+  if (failures.length)
+    return [
+      {
+        status: 'warn',
+        what: 'workflow secrets',
+        detail: `couldn't list ${failures.join('; ')}`,
+      },
+    ]
+  const checks: Check[] = []
+  for (const file of files) {
+    const what = basename(file)
+    // A workflow that doesn't parse won't run either.
+    try {
+      const jobs = parse(await readFile(file, 'utf8'))?.jobs
+      for (const job of Object.values<Job>(jobs ?? {}))
+        checks.push(...(await jobSecretChecks(what, job, listed, run)))
+    } catch (e) {
+      checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
+    }
+  }
+  return checks
+}
+
+/** The parts of a workflow's job these checks read. */
+interface Job {
+  environment?: string | { name?: string }
+  env?: Record<string, unknown>
+}
+
+/** A job's secrets; in an environment, the person's own are the names with their suffix. */
+async function jobSecretChecks(
+  what: string,
+  job: Job,
+  listed: RepoSecrets,
+  run: Exec,
+): Promise<Check[]> {
+  const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name
+  const names = [
+    ...new Set(
+      Object.values(job.env ?? {}).flatMap((value) =>
+        [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
+      ),
+    ),
+  ]
+  const own = environment
+    ? await secretNames(run, environment).catch((e: Error) => e)
+    : new Set<string>()
+  if (own instanceof Error)
+    return [
+      {
+        status: 'warn',
+        what,
+        detail: `couldn't list environment ${environment}'s secrets: ${reasonOf(own)}`,
+      },
+    ]
+  const personal = (name: string) => !!environment && name.endsWith(suffixOf(environment))
+  const missing = names.filter(
+    (name) => !own.has(name) && !listed.repo.has(name) && !listed.org.has(name),
+  )
+  const toEnvironment = missing.filter(personal)
+  const toRepo = missing.filter((name) => !personal(name))
+  const checks: Check[] = [
+    missing.length
+      ? {
+          status: 'FAIL',
+          what,
+          detail: [
+            toEnvironment.length && `add ${toEnvironment.join(', ')} to environment ${environment}`,
+            toRepo.length && `add ${toRepo.join(', ')} to the repository secrets`,
+          ]
+            .filter(Boolean)
+            .join('; '),
+        }
+      : { status: 'ok', what, detail: `secrets found: ${names.length}` },
+  ]
+  const leftovers = names.filter((name) => personal(name) && listed.repo.has(name))
+  if (environment && leftovers.length)
+    checks.push({ status: 'warn', what, detail: leftoverWarning(environment, leftovers) })
   return checks
 }

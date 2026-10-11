@@ -173,6 +173,11 @@ what your user can read.
   a PR night-shift opened: earlier the same night, or one a rule naming
   `ours` took up again.
   It never merges, approves, requests reviewers or comments.
+- A draft PR stacked on a night-shift PR joins that PR's GitHub stack,
+  or starts one with it, only while that PR tops its stack or has none.
+  Linking edits neither PR, but GitHub then merges a stack bottom-up:
+  merging a PR merges the ones below it too, and GitHub rebases the
+  ones above after a merge.
 - Only when the agent wrote a PR body, or its report for `push`. A run
   killed before that publishes nothing.
 - Publishing fetches the clone's HEAD into a repo night-shift creates
@@ -208,6 +213,21 @@ command runner may, is left to the watchdog; one that also detaches
 between two polls escapes both, and could still change the clone after
 night-shift checked it. Each run also has a turn cap and
 stops at the quota ceiling.
+
+## Secrets on a runner
+
+In GitHub Actions, your credentials are secrets of your control repo,
+and anyone with write access to it can read them: a branch they push can
+carry a workflow that prints them. So the default is a control repo of
+your own. A [shared control repo](./scheduling.md#shared-control-repo)
+puts each person's credentials in an environment only the default branch
+can deploy to (install warns about an existing one any branch can),
+which makes protecting that branch the guard. Its
+fallback, suffixed repository secrets, has no branch limit, and neither
+do the shared repository and org secrets. The repo then holds
+teammates' subscription credentials, each set by its owner: night-shift
+neither stores nor proxies them, but keeping them together is the
+team's choice.
 
 ## Vendor terms
 

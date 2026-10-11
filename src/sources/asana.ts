@@ -17,7 +17,7 @@ const config = z
   .describe('My incomplete Asana tasks')
 type Config = z.infer<typeof config>
 
-const API = 'https://app.asana.com/api/1.0'
+export const API = 'https://app.asana.com/api/1.0'
 const RETRIES = 3
 
 const taskFields = [
@@ -60,7 +60,8 @@ interface Task {
   assignee: Named | null
   memberships: { project: Named; section?: Named | null }[]
   tags: Named[]
-  custom_fields: CustomField[]
+  // Asana omits it on free plans.
+  custom_fields?: CustomField[]
 }
 interface Story {
   created_at: string
@@ -237,12 +238,13 @@ function toItem(
 ): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
   const tags = task.tags.map((t) => t.name)
-  const custom = task.custom_fields.flatMap((f) => {
+  const customFields = task.custom_fields ?? []
+  const custom = customFields.flatMap((f) => {
     const value = fieldValue(f)
     return value === undefined ? [] : [[`fields.${f.name}`, value] as const]
   })
   const repo = task.memberships.map((m) => projectRepos[m.project.gid]).find(Boolean)
-  const customId = task.custom_fields.find((f) => f.representation_type === 'custom_id')
+  const customId = customFields.find((f) => f.representation_type === 'custom_id')
   return {
     source: 'asana',
     id: task.gid,

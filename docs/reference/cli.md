@@ -40,6 +40,9 @@ Commands:
   report [options] [id]  print a run's morning report; the latest by default
   stats [options]        what each rule, skill and provider cost and delivered
                          across all runs
+  replay <run> <unit>    re-run a past run's unit on its base commit and saved
+                         context with today's skills and instructions; nothing
+                         is pushed
   schedule               run night-shift every night on this machine or in
                          GitHub Actions
   doctor [options]       check binaries, credentials, quota and sources before a
@@ -191,8 +194,8 @@ Options:
 Commands:
   list            skills a rule can name, where each comes from and its delivery
                   default
-  eject <name>    copy a built-in skill to ~/.config/night-shift/skills,
-                  where it shadows the built-in
+  eject <name>    copy a built-in skill to skills/ beside the config, where it
+                  shadows the built-in
   help [command]  display help for command
 ```
 
@@ -212,7 +215,7 @@ Options:
 ```text
 Usage: nightshift skills eject [options] <name>
 
-copy a built-in skill to ~/.config/night-shift/skills, where it shadows the
+copy a built-in skill to skills/ beside the config, where it shadows the
 built-in
 
 Options:
@@ -257,6 +260,18 @@ Options:
   -h, --help  display help for command
 ```
 
+## nightshift replay
+
+```text
+Usage: nightshift replay [options] <run> <unit>
+
+re-run a past run's unit on its base commit and saved context with today's
+skills and instructions; nothing is pushed
+
+Options:
+  -h, --help  display help for command
+```
+
 ## nightshift schedule
 
 ```text
@@ -268,9 +283,9 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  install [options]  start `nightshift run` at night.start; it starts no unit
-                     after night.end
-  remove             remove the nightly job, and
+  install [options]  start `nightshift run` when a window opens; it starts no
+                     unit after it closes
+  remove [options]   remove the nightly job, and
                      .github/workflows/night-shift.yml in the current repo
   status             show the installed nightly job
   help [command]     display help for command
@@ -281,11 +296,13 @@ Commands:
 ```text
 Usage: nightshift schedule install [options]
 
-start `nightshift run` at night.start; it starts no unit after night.end
+start `nightshift run` when a window opens; it starts no unit after it closes
 
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd
                       on macOS, else systemd if it runs, else cron)
+  --as <person>       with github-actions: install for one person of a shared
+                      control repo
   -h, --help          display help for command
 ```
 
@@ -298,7 +315,8 @@ remove the nightly job, and .github/workflows/night-shift.yml in the current
 repo
 
 Options:
-  -h, --help  display help for command
+  --as <person>  remove only that person's workflow from the current repo
+  -h, --help     display help for command
 ```
 
 ## nightshift schedule status

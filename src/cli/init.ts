@@ -5,7 +5,7 @@ import { cancel, intro, log, outro, spinner } from '@clack/prompts'
 import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
-import { builtinSkillsDir, userSkillsDir } from '../config/paths.js'
+import { builtinSkillsDir, skillsDirOf } from '../config/paths.js'
 import { time } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { defaultRules } from '../core/queue.js'
@@ -68,7 +68,7 @@ export function initCommand(program: Command): void {
 
         const skills = {
           ...(await loadSkills(builtinSkillsDir)),
-          ...(await loadSkills(userSkillsDir)),
+          ...(await loadSkills(skillsDirOf(path))),
         }
         const ctx: Ctx = { env: process.env, log: (line) => log.warn(line) }
         const text = await initConfig({ ask, ctx, installed, ghLogin, skills })

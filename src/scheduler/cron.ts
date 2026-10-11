@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler } from './index.js'
+import type { Schedule, Scheduler, Start } from './index.js'
 
 const TAG = '# night-shift'
 
@@ -23,7 +23,7 @@ export function cron(run: Exec): Scheduler {
   return {
     id: 'cron',
     async install(s) {
-      await write([...others(await read()), cronLine(s)])
+      await write([...others(await read()), ...cronLines(s)])
       return 'crontab'
     },
     async remove() {
@@ -34,27 +34,34 @@ export function cron(run: Exec): Scheduler {
       return true
     },
     async read() {
-      const line = lines(await read()).find((l) => l.endsWith(TAG))
-      return line ? parseCronLine(line) : undefined
+      const ours = lines(await read()).filter((l) => l.endsWith(TAG))
+      return ours.length ? parseCronLines(ours) : undefined
     },
   }
 }
 
-export function cronLine(s: Schedule): string {
+export const cronLines = (s: Schedule) => s.starts.map((start) => cronLine(s, start))
+
+export function cronLine(s: Schedule, start: Start): string {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
   const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} >> ${q(s.log)} 2>&1`
-  return `${s.minute} ${s.hour} * * * ${command} ${TAG}`
+  return `${start.minute} ${start.hour} * * ${start.days?.join(',') ?? '*'} ${command} ${TAG}`
 }
 
-export function parseCronLine(line: string): Schedule {
-  const [minute, hour] = line.split(' ')
-  const words = [...line.replace(/\\%/g, '%').matchAll(/'((?:[^']|'\\'')*)'/g)].map((m) =>
-    (m[1] ?? '').replace(/'\\''/g, "'"),
+export function parseCronLines(ours: string[]): Schedule {
+  const words = [...(ours[0] ?? '').replace(/\\%/g, '%').matchAll(/'((?:[^']|'\\'')*)'/g)].map(
+    (m) => (m[1] ?? '').replace(/'\\''/g, "'"),
   )
   return {
     command: words.slice(1, -1),
-    hour: Number(hour),
-    minute: Number(minute),
+    starts: ours.map((line) => {
+      const [minute, hour, , , days] = line.split(' ')
+      return {
+        hour: Number(hour),
+        minute: Number(minute),
+        ...(days !== '*' && { days: (days ?? '').split(',').map(Number) }),
+      }
+    }),
     path: words[0] ?? '',
     log: words.at(-1) ?? '',
   }

@@ -86,6 +86,23 @@ queue:                          # first matching rule wins; top = highest priori
 `night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
 `timezone` in GitHub Actions.
 
+`windows` replaces that one window with a list, each with optional
+`days` (`sun` to `sat`, the day it opens on) for quota that idles at
+weekends or over lunch:
+
+```yaml
+windows:
+  - { start: "01:00", end: "07:00" }
+  - { days: [sat, sun], start: "10:00", end: "18:00" }
+```
+
+The scheduler gets one trigger per window, and pacing divides the
+headroom by the runs left before the reset, not the nights. Windows
+should not overlap. `night.units` and `night.units_per_repo` still cap
+each run, and `night.start` and `night.end` are then unused.
+Budgets count runs too: `per_night` caps each run, not each day, so three
+windows a day can spend three times it, and `nights_until_reset` counts runs.
+
 A readable quota decides how much work fits, not how much you can review
 in a morning. `night.units` caps the units planned per night,
 `night.units_per_repo` those in any one repo, and a rule's `units` those
@@ -241,6 +258,16 @@ a stacked draft PR's, or a night-shift PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
+`verify` runs in the clone after the agent, outside the model, before
+the work is published; set it on a repo or a rule (the rule wins and
+covers its `then` steps). Use it for lint, format or the repo's tests.
+A failure doesn't stop the publish: the PR body or push report gets the
+tail of its output. It runs once per commit, with none of the secrets,
+and not on a PR by an untrusted author or with `network: false`, where
+it is reported as not run. An empty `verify: ""` on a rule turns the
+repo's off. A `report` delivery has nothing to publish and
+skips it.
+
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.night-shift/instructions.md`, read from the
@@ -361,10 +388,8 @@ queue:
   and `skills` still apply, as to every unit.
 - After a draft PR, the next step starts from that PR's branch, and a
   draft PR it opens is stacked on it: its body names that PR to merge
-  first. After a report, it starts from the same base, except that a
-  draft PR it would open off the default branch stacks on the repo's
-  last one that night, as any unit's does. After a push, it starts from
-  your PR's branch, pushed commits included.
+  first. After a report, it starts from the same base. After a push, it
+  starts from your PR's branch, pushed commits included.
 - The step finds what the one before delivered in
   `.nightshift/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
   or both `report.md` and `diff.patch` after a push.
@@ -491,11 +516,18 @@ queue:
   retries each night.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
-  default branch, the draft PR it stacked on, or the night-shift PR a
-  rule took up. Globs are git's, from the repo root, with no leading
+  default branch or the night-shift PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
-- Every key set must hold. `plan` shows each step's `when`, and the
+- `nights_until_reset` holds when the provider's long window resets within
+  that many nights: `1` is the last night before the reset. `headroom`
+  (e.g. `20%`) holds when at least that share of the window is left
+  under tonight's ceiling, so a loop with a high `max` or a second review
+  can run only on spare quota. Both read the quota the run last saw, as
+  the budget does, and don't hold when the quota can't be read. A rule
+  takes a `when` with these two keys only, to skip its own unit.
+- Every key set must hold. `plan` shows each step's `when`, notes when its
+  quota part doesn't hold on the probe or has no quota reading, and the
   report says which one didn't hold.
 - A skipped step doesn't end a loop, unless its command didn't run: it
   wouldn't in a later round either. A round whose steps were all passed

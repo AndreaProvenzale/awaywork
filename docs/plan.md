@@ -254,10 +254,9 @@ Semantics, fixed so every milestone agrees:
   after the rule's, id `<unit>-<skill slug>`, that runs only when the one
   before delivered and gets its `out/` in `.nightshift/context/previous/`.
   After a draft PR the step's base is that PR's branch, so its own draft
-  PR stacks on it; after a report the base is unchanged, except that a
-  draft PR step off the default branch stacks at run time on the repo's
-  last stacked draft PR that night. A step's branch gets `-<skill>`
-  appended when an earlier draft PR in the chain renders the same name.
+  PR stacks on it; after a report the base is unchanged. A step's
+  branch gets `-<skill>` appended when an earlier draft PR in the chain
+  renders the same name.
   A skill runs at most once outside loops, and once across the chain's loops.
 - **Loops.** A `then` entry `{ loop: steps, until, max }` repeats its
   steps round after round, planned as units `<unit>-<skill>-<round>` up
@@ -354,7 +353,7 @@ Semantics, fixed so every milestone agrees:
   Claude, after the run for Codex. For `credits` providers the long window is the month.
   Without a probe, `fallback` caps units and turns per night.
 - **Skills.** `skill` is the main skill, and `skills` are extras available
-  to the worker. A name is looked up in `~/.config/night-shift/skills/`,
+  to the worker. A name is looked up in `skills/` next to the config,
   then in-repo `.night-shift/skills/`, then the built-ins. Skills are
   copied into the clone at the provider's `skillsDir`, or into a plugin
   folder outside it for a provider without one (Claude). Check each
@@ -379,7 +378,8 @@ Semantics, fixed so every milestone agrees:
 
 - `draft_pr` (default): push the unit's new branch and open a draft PR,
   into the developer's branch when the unit has one, else into the
-  default branch.
+  default branch. A draft PR stacked on a night-shift PR joins its
+  GitHub stack (Stacks API) where the repo has stacked PRs.
 - `report`: nothing is pushed; the output goes into the morning report.
 - `push`: commit onto the developer's own branch, only when a rule opts
   in (never a skill's default), the unit's base is an open PR the
@@ -515,9 +515,9 @@ why a unit is placed where it is.
       field so a task with no PR still gets a unit; `init` asks for one
       per picked project.
 - [x] Contract suite passes on fixtures shaped from Asana's documented
-      responses; `test/real-asana.test.ts` reads a real workspace when
-      `ASANA_TOKEN` and `NIGHTSHIFT_ASANA_WORKSPACE` are set. Not yet
-      run against a live workspace.
+      responses; `test/real-asana.test.ts` seeds tasks in a test project
+      and reads them back when `ASANA_TOKEN`, `NIGHTSHIFT_ASANA_WORKSPACE`
+      and `NIGHTSHIFT_ASANA_PROJECT` are set; passes live on a free plan.
 
 ### M7 Codex provider
 - [x] `codex exec --json` headless run and its event stream; the turn

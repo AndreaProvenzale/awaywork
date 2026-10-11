@@ -6,6 +6,7 @@ import { doctorCommand } from './doctor.js'
 import { initCommand } from './init.js'
 import { planCommand } from './plan.js'
 import { queueCommand } from './queue.js'
+import { replayCommand } from './replay.js'
 import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
 import { skillsCommand } from './skills.js'
@@ -31,6 +32,7 @@ skipCommand(program)
 skillsCommand(program)
 runCommand(program)
 statsCommand(program)
+replayCommand(program)
 scheduleCommand(program)
 doctorCommand(program)
 
