@@ -79,7 +79,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       ...(provider.skillsDir ? skills : []),
     ])
   } else {
-    await w.forge.clone(unit.repo, unit.base, dir)
+    await w.forge.clone(unit.repo, unit.base, dir, unit.fork)
     const from = w.replay ? [w.replay.commit] : []
     await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
   }

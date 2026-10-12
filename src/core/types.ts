@@ -142,7 +142,8 @@ export interface Provider {
 }
 
 export interface Forge {
-  clone(repo: string, branch: string, dir: string): Promise<void>
+  /** With `fork`, `branch` is on a fork: the clone checks out the PR's head from its pull ref. */
+  clone(repo: string, branch: string, dir: string, fork?: Unit['fork']): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   /** PRs whose head is `branch` in the repo, not a fork, open, closed or merged. */
@@ -249,6 +250,8 @@ export interface Unit {
   foreign: boolean
   /** `base` is a PR by an author without write access or org membership: setup doesn't run on it. */
   untrusted: boolean
+  /** `base` is PR `number`'s branch on a fork, read at `head`: only a report delivers there. */
+  fork?: { number: number; head?: string }
   /** Whether the worker's commands may reach the network. */
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */

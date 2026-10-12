@@ -169,9 +169,11 @@ what your user can read.
   the branch no longer holds the commit the clone started from: the
   harness forbids both, and either would carry commits that aren't the
   unit's.
-- Only a **draft** PR, into your own PR's branch, the default branch or
-  a PR awaywork opened: earlier in the same run, or one a rule naming
-  `ours` took up again.
+- Only a **draft** PR, into the default branch, your own PR's branch in
+  the repo (an awaywork PR a rule naming `ours` took up again included),
+  or a draft PR awaywork opened earlier in the same run. Never into
+  someone else's PR or a PR from a fork: only a report delivers there.
+  A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
   It never merges, approves, requests reviewers or comments.
 - A draft PR stacked on an awaywork PR joins that PR's GitHub stack,
   or starts one with it, only while that PR tops its stack or has none.

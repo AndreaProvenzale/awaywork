@@ -120,7 +120,7 @@ export function planRun(input: {
     }
     const deliverOf = (step: Step) =>
       step.deliver ?? resolveSkill(step.skill, input.skills)?.meta.deliver ?? 'draft_pr'
-    const pr = (deliverOf(rule) === 'push' ? prs.find((p) => p.mine) : undefined) ?? prs[0]
+    const pr = (deliverOf(rule) !== 'report' ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no repo: no linked PR or repo field')
@@ -129,7 +129,7 @@ export function planRun(input: {
     const templateFor = (step: Step) => step.branch ?? config.repos[repo]?.branch ?? config.branch
     const add = (
       step: Step,
-      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'branch'>,
+      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'fork' | 'branch'>,
       after?: string,
       loop?: LoopRound,
     ) => {
@@ -217,8 +217,8 @@ export function planRun(input: {
     }
     const base = pr?.branch ?? ''
     const foreign = pr ? !pr.mine : false
-    const fork = !!pr?.fork
-    const refused = deliverOf(rule) === 'push' && pushRefusal(base, foreign, fork, false)
+    const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
+    const refused = deliveryRefusal(deliverOf(rule), base, foreign, !!fork, false)
     if (refused) {
       skip(refused)
       continue
@@ -266,16 +266,20 @@ export function planRun(input: {
       base,
       foreign,
       untrusted: pr ? !pr.trusted : false,
+      fork,
       branch: branches[0] as string,
     })
     for (const [j, entry] of (rule.then ?? []).entries()) {
       const stacked = previous.deliver === 'draft_pr'
       const onto = stacked ? previous.branch : previous.base
       // Only the rule's own PR branch takes a push, not one a step opened in this run.
-      const refused =
-        !isLoop(entry) &&
-        deliverOf(entry) === 'push' &&
-        pushRefusal(onto, previous.foreign, fork, onto !== base)
+      const refused = deliveryRefusal(
+        isLoop(entry) ? 'draft_pr' : deliverOf(entry),
+        onto,
+        previous.foreign,
+        !!fork,
+        onto !== base,
+      )
       const left = refused || overCap()
       if (left) {
         const last = units.find((u) => u.unit.id === previous.id) as PlannedUnit
@@ -293,6 +297,7 @@ export function planRun(input: {
           base: onto,
           foreign: previous.foreign,
           untrusted: previous.untrusted,
+          fork: previous.fork,
           branch: branches[j + 1] as string,
         },
         previous.id,
@@ -322,18 +327,23 @@ function firstStep(entry: Step | Loop): Step {
   return isLoop(entry) ? (entry.loop[0] as Step) : entry
 }
 
-/** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened in this run. */
-function pushRefusal(
+/**
+ * Why a unit can't deliver onto its base: a draft PR or a push goes only onto the developer's own PR
+ * in the repo, and a push never onto a branch opened in this run. A report goes anywhere.
+ */
+function deliveryRefusal(
+  deliver: Unit['deliver'],
   base: string,
   foreign: boolean,
   fork: boolean,
   openedThisRun: boolean,
 ): string | undefined {
-  if (openedThisRun)
+  if (deliver === 'report') return undefined
+  if (deliver === 'push' && openedThisRun)
     return `deliver push: ${base} is a draft PR opened in this run, not your own PR`
-  if (!base) return 'deliver push: no PR of yours to push onto'
-  if (foreign) return `deliver push: ${base} is someone else's PR`
-  if (fork) return `deliver push: ${base} is on a fork`
+  if (deliver === 'push' && !base) return 'deliver push: no PR of yours to push onto'
+  if (foreign) return `deliver ${deliver}: ${base} is someone else's PR`
+  if (fork) return `deliver ${deliver}: ${base} is on a fork`
 }
 
 /** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */

@@ -111,10 +111,20 @@ export function githubForge(run: Exec = exec): Forge {
   let myPrs: Promise<(PrNode & { items: string[] })[]> | undefined
 
   const forge: Forge = {
-    async clone(repo, branch, dir) {
-      const pick = branch ? ['--branch', branch] : []
+    async clone(repo, branch, dir, fork) {
+      const pick = fork ? ['--no-checkout'] : branch ? ['--branch', branch] : []
       await run('git', [...withGhLogin, 'clone', ...pick, remote(repo), dir])
       await run('git', ['-C', dir, 'config', 'credential.helper', ''])
+      if (!fork) return
+      // The fork's branch isn't in the repo; a same-named one there is other code.
+      const ref = `refs/pull/${fork.number}/head`
+      await run('git', ['-C', dir, ...withGhLogin, 'fetch', '-q', '--no-tags', remote(repo), ref])
+      const head = (await run('git', ['-C', dir, 'rev-parse', 'FETCH_HEAD'])).trim()
+      if (head !== fork.head)
+        throw new Error(
+          `#${fork.number} on ${repo} is at ${head.slice(0, 7)}, not ${fork.head?.slice(0, 7) ?? 'a commit read'}: it moved since it was read`,
+        )
+      await run('git', ['-C', dir, 'checkout', '-q', '--detach', head])
     },
 
     /**
