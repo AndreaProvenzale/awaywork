@@ -29,12 +29,5 @@ subscription quota. Read `README.md`, then `docs/`: `guide/` and
 - **Docs follow the code.** A change to the CLI or the config schema runs
   `pnpm docs:gen` (from source, no build) and updates the guides it
   touches; CI fails on stale generated docs.
-
-## Merging
-
-- Squash-merge, only on green CI.
-- In a stack, retarget every child PR to `main` before merging its
-  parent: deleting a base branch by hand closes the PRs on it
-  (`delete_branch_on_merge` is off).
-- Bring a pushed branch up to date by merging `main` into it; never
-  rebase or force-push it.
+- **Branches only move forward.** Merge on green CI. Update a pushed
+  branch by merging `main` into it; never rebase or force-push it.
