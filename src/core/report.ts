@@ -45,7 +45,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     '',
   ]
   if (warnings.length > 0)
-    out.push('## Warnings', '', ...warnings.map((w) => `- ${w.replaceAll('\n', '\n  ')}`), '')
+    out.push('## Warnings', '', ...warnings.map((w) => `- ${w.replace(/\n(?=.)/g, '\n  ')}`), '')
   out.push('## Units', '')
   if (r.results.length === 0) out.push('None.')
   else {
@@ -62,6 +62,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     for (const s of r.plan.skipped) out.push(`- ${s.item.source} ${s.item.key}: ${s.reason}`)
   }
   out.push('', '## Quota', '')
+  if (Object.keys(r.plan.allowances).length === 0) out.push('None.')
   for (const [id, a] of Object.entries(r.plan.allowances)) {
     const units = r.results.filter((u) => u.provider === id)
     out.push(`- ${id}: ${quotaLine(a, r.quotas[id], units)}`)

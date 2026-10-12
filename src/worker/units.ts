@@ -82,7 +82,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const only = input.only && slug(input.only)
   const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
   if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
   // A loop round needs its whole loop, and a chained unit the units it follows.
@@ -94,7 +93,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (p.after && wanted.has(p.unit.id)) wanted.add(p.after)
     }
   }
-  const planned = input.plan.units.filter((p) => !only || wanted.has(p.unit.id))
+  const planned = input.plan.units.filter((p) => !input.only || wanted.has(p.unit.id))
   const secrets = configSecrets(input.config, input.providers, input.sources)
 
   // This run's draft PRs by repo and branch, and the PR branches pushed onto.

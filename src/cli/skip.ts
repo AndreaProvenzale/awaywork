@@ -57,7 +57,9 @@ function checkKey(key: string, sources: string[]): void {
   if (!source || !rest.join(':'))
     throw new Error(`name the item as source:key, e.g. github:acme/api#5 (got ${key})`)
   if (!sources.includes(source))
-    throw new Error(`source "${source}" is not configured; the config has ${sources.join(', ')}`)
+    throw new Error(
+      `source "${source}" is not configured; the config has ${sources.join(', ')} (name the item as source:key, e.g. github:acme/api#5)`,
+    )
 }
 
 export async function skipItem(
