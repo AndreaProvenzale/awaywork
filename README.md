@@ -46,7 +46,7 @@ Looks sane? Run one unit for real:
 awaywork run --unit acme-api-1
 ```
 
-Then hand it the hours you're away, on your machine:
+Then schedule it for when you're away, on your machine:
 
 ```sh
 awaywork schedule install    # launchd, systemd or cron

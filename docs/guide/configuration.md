@@ -519,8 +519,9 @@ queue:
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - `runs_until_reset` holds when at most that many window openings are
-  left before the provider's long window resets: `1` is the last run
-  before the reset. `headroom` (e.g. `20%`) holds when at least that share
+  left before the provider's long window resets: `1` holds in the last
+  window before the reset, and in a manual run when at most one window
+  is left. `headroom` (e.g. `20%`) holds when at least that share
   of the window is left under this run's ceiling, so a loop with a high `max` or a second review
   can run only on spare quota. Both read the quota the run last saw, as
   the budget does, and don't hold when the quota can't be read. A rule

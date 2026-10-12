@@ -20,7 +20,7 @@ import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
-const now = Date.UTC(2026, 0, 1, 1)
+const now = new Date(2026, 0, 1, 1).getTime()
 const week = (used: number): Quota => ({
   windows: [
     { name: 'five_hour', span: 'short', used: 0.02, resetsAt: now / 1000 + 3 * 3600 },

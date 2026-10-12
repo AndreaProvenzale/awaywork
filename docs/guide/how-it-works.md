@@ -127,9 +127,9 @@ Claude, the week or month for Codex). The ceiling is the lowest of:
 - `used + per_run`, when `per_run` is set;
 - `1 - reserve` (default reserve 10%);
 - pacing: `used + (1 - reserve - used) / runs to reset`, where runs to
-  reset counts the window openings left before the reset, the one under
-  way included; so a run just before the reset may spend more than one
-  just after.
+  reset counts the window openings left before the reset, including the
+  one under way when the run is in a window; so a run just before the
+  reset may spend more than one just after.
 
 A worker stops once the provider reports its long window past the ceiling
 or its short (5 h) window past `session_max` (default 90%). Claude reports

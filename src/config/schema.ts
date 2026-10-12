@@ -209,7 +209,7 @@ const quotaKeys = {
     .positive()
     .optional()
     .describe(
-      "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+      "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
     ),
   headroom: percent
     .optional()

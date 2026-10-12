@@ -295,7 +295,7 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last |
+| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
 | `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
 
 ## `queue[].then`
@@ -321,7 +321,7 @@ Run this step only when every key holds; otherwise skip it.
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
 | `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
-| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last |
+| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
 | `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
 | `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
 

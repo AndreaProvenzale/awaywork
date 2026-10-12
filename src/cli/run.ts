@@ -20,7 +20,7 @@ import { unitsFile } from './stats.js'
 export function runCommand(program: Command): void {
   program
     .command('run')
-    .description('plan a run, run a worker per unit and publish draft PRs and reports')
+    .description('plan the units, start a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
     .option('--scheduled', 'run only inside a window and start no unit after it ends')

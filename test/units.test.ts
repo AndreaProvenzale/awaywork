@@ -27,10 +27,12 @@ process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
+const reset = new Date(2026, 8, 26, 3).getTime() / 1000
+
 const quota = (long: number): Quota => ({
   windows: [
     { name: 'five_hour', span: 'short', used: 0.1, resetsAt: 1790254200 },
-    { name: 'seven_day', span: 'long', used: long, resetsAt: 1790391600 },
+    { name: 'seven_day', span: 'long', used: long, resetsAt: reset },
   ],
 })
 
@@ -96,8 +98,8 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     githubPr(2, { mine: false, review_requested: true }),
     githubPr(3, { checks: 'failing' }),
   ]
-  // 03:00 UTC, inside the 01:00-07:00 window, 3 days before the reset: this run and 3 more.
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+  // 03:00 local, inside the 01:00-07:00 window, 3 days before the reset: this run and 3 more.
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
   const plan = planRun({ config, items, allowances, skills: { builtin: builtinSkills } })
   const runDir = join(root, 'run')
@@ -657,7 +659,7 @@ const committer: Provider = {
 }
 
 /** Three days before `quota`'s weekly reset. */
-const week = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+const week = reset * 1000 - 3 * 24 * 60 * 60 * 1000
 
 const issue = (n: number) =>
   fakeItem({
@@ -1095,7 +1097,7 @@ queue:
       - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
       - { skill: qa-feedback, deliver: report }
 `)
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
     config,
     items: [issue(1)],
@@ -1399,7 +1401,7 @@ queue:
     where: { type: pr }
     then: { loop: { skill: qa-feedback, deliver: report }, until: { verdict: approve }, max: 1 }
 `)
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
     config,
     items: [issue(1), githubPr(4)],

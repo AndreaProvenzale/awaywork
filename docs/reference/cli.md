@@ -34,8 +34,8 @@ Commands:
                          items
   unskip <key>           let awaywork pick up a skipped item (source:key) again
   skills                 list skills and eject built-ins to tweak
-  run [options]          plan a run, run a worker per unit and publish draft PRs
-                         and reports
+  run [options]          plan the units, start a worker per unit and publish
+                         draft PRs and reports
   report [options] [id]  print a run's morning report; the latest by default
   stats [options]        what each rule, skill and provider cost and delivered
                          across all runs
@@ -227,7 +227,7 @@ Options:
 ```text
 Usage: awaywork run [options]
 
-plan a run, run a worker per unit and publish draft PRs and reports
+plan the units, start a worker per unit and publish draft PRs and reports
 
 Options:
   --dry-run    prepare each workspace (clone, context, prompt) but run no worker

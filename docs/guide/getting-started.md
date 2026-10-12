@@ -40,7 +40,7 @@ the site's statuses, and asks which repo each project's code lives in.
 It writes
 `~/.config/awaywork/config.yml`; a token you type is saved to
 `~/.config/awaywork/env` (mode 600), never to the config. Last, it
-asks where to run on schedule: this machine, GitHub Actions or later, and
+asks where to run it on a schedule: this machine, GitHub Actions or later, and
 hands off to [`schedule install`](#on-a-schedule).
 `awaywork init --yes` asks nothing and takes the defaults instead.
 

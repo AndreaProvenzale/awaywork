@@ -121,7 +121,7 @@ function presets({ provider, source, window }: InitOptions): [RegExp, unknown][]
 /** The `schedule install --with` value: '' for this machine's default, or 'later'. */
 const whereToRun = (ask: Ask) =>
   ask.select(
-    'Where does it run on schedule?',
+    'Where should it run on a schedule?',
     [
       { value: '', label: 'this machine' },
       { value: 'github-actions', label: 'GitHub Actions, from the repo in this directory' },

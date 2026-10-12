@@ -726,7 +726,7 @@
             "type": "object",
             "properties": {
               "runs_until_reset": {
-                "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
@@ -903,7 +903,7 @@
                             "minLength": 1
                           },
                           "runs_until_reset": {
-                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                             "type": "integer",
                             "exclusiveMinimum": 0,
                             "maximum": 9007199254740991
@@ -1100,7 +1100,7 @@
                                     "minLength": 1
                                   },
                                   "runs_until_reset": {
-                                    "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                                    "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                     "type": "integer",
                                     "exclusiveMinimum": 0,
                                     "maximum": 9007199254740991
@@ -1294,7 +1294,7 @@
                                       "minLength": 1
                                     },
                                     "runs_until_reset": {
-                                      "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                                      "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                       "type": "integer",
                                       "exclusiveMinimum": 0,
                                       "maximum": 9007199254740991
@@ -1567,7 +1567,7 @@
                                   "minLength": 1
                                 },
                                 "runs_until_reset": {
-                                  "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                                  "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                   "type": "integer",
                                   "exclusiveMinimum": 0,
                                   "maximum": 9007199254740991
@@ -1764,7 +1764,7 @@
                                           "minLength": 1
                                         },
                                         "runs_until_reset": {
-                                          "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                                          "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                           "type": "integer",
                                           "exclusiveMinimum": 0,
                                           "maximum": 9007199254740991
@@ -1958,7 +1958,7 @@
                                             "minLength": 1
                                           },
                                           "runs_until_reset": {
-                                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last",
+                                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                             "type": "integer",
                                             "exclusiveMinimum": 0,
                                             "maximum": 9007199254740991
