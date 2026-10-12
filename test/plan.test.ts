@@ -826,6 +826,24 @@ queue:
       vi.unstubAllEnvs()
     }
   })
+
+  it("masks a failing source's secret in the warnings plan prints", async () => {
+    const yaml =
+      'providers: [codex]\nsources: { chores: { command: \'echo "auth failed for $CHORES_TOKEN" >&2; exit 1\', secrets: [CHORES_TOKEN] } }\n'
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    vi.stubEnv('CHORES_TOKEN', 's3cr3t-value')
+    try {
+      const { warnings } = await probeAndPlan(
+        parseConfig(yaml),
+        await mkdtemp(join(tmpdir(), 'awaywork-skills-')),
+        { retry: true },
+      )
+      expect(warnings).toContainEqual(expect.stringMatching(/\nauth failed for \*\*\*$/))
+      expect(warnings.join('\n')).not.toContain('s3cr3t-value')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })
 
 describe('branch', () => {

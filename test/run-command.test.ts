@@ -23,9 +23,9 @@ vi.mock('../src/config/paths.js', async (original) => {
   }
 })
 
-async function run(args: string[], chores = '{ command: exit 1 }') {
+async function run(args: string[], chores = '{ command: exit 1 }', extra = '') {
   const config = join(await mkdtemp(join(tmpdir(), 'awaywork-run-')), 'config.yml')
-  await writeFile(config, `providers: [claude]\nsources: { chores: ${chores} }\n`)
+  await writeFile(config, `providers: [claude]\nsources: { chores: ${chores} }\n${extra}`)
   const out: string[] = []
   const err: string[] = []
   vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
@@ -78,5 +78,16 @@ describe('run command', () => {
       expect(text).toContain('auth failed for ***')
       expect(text).not.toContain('s3cr3t-value')
     }
+  })
+
+  it("masks the notify command's secret in its failure", async () => {
+    vi.stubEnv('NOTIFY_TOKEN', 's3cr3t-value')
+    const { err } = await run(
+      [],
+      undefined,
+      `notify: { command: 'echo "posting with $NOTIFY_TOKEN" >&2; exit 1', secrets: [NOTIFY_TOKEN] }\n`,
+    )
+    expect(err.at(-1)).toMatch(/^notify failed: .*\nposting with \*\*\*$/s)
+    expect(err.join('\n')).not.toContain('s3cr3t-value')
   })
 })

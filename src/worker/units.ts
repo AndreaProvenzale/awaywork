@@ -23,7 +23,7 @@ import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { runCommand, runSetup } from './setup.js'
+import { maskSecrets, runCommand, runSetup } from './setup.js'
 import {
   commandEnv,
   configSecrets,
@@ -273,7 +273,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         },
         input.signal,
       )
-      if (failure) input.ctx.log(`after_unit failed for ${id}: ${failure}`)
+      if (failure)
+        input.ctx.log(
+          `after_unit failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`,
+        )
     }
   }
 

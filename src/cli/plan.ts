@@ -9,10 +9,12 @@ import { renderLink } from '../core/footer.js'
 import { planRun, type RunPlan } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
-import type { Ctx, Forge, Item } from '../core/types.js'
+import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
+import { maskSecrets } from '../worker/setup.js'
+import { configSecrets } from '../worker/workspace.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, planJson } from './format.js'
 
@@ -32,12 +34,18 @@ export function planCommand(program: Command): void {
     })
 }
 
-/** Collects items from every configured source, probes every provider and plans the run. */
+/** Collects items from every configured source, probes every provider and plans the run, masking secrets in warnings. */
 export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
   opts: { retry?: boolean } = {},
-): Promise<{ plan: RunPlan; warnings: string[]; ctx: Ctx }> {
+): Promise<{
+  plan: RunPlan
+  warnings: string[]
+  ctx: Ctx
+  sources: Record<string, Source>
+  secrets: string[]
+}> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
 
@@ -61,7 +69,21 @@ export async function probeAndPlan(
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
-  return { plan: planRun({ config, items, allowances, skills, attempts, skips }), warnings, ctx }
+  const sources = Object.fromEntries(
+    Object.entries(config.sources).flatMap(([id, cfg]) => {
+      const source = sourceFor(id, cfg)
+      return source ? [[id, source]] : []
+    }),
+  )
+  // A failed source's warning carries its stderr, and coding agents read `plan`.
+  const secrets = configSecrets(config, providers, sources)
+  return {
+    plan: planRun({ config, items, allowances, skills, attempts, skips }),
+    warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
+    ctx,
+    sources,
+    secrets,
+  }
 }
 
 /** Items from every configured source with their link lines, tasks linked to their PRs; a failing source is logged. */

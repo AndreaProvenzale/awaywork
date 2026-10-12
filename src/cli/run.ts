@@ -9,11 +9,9 @@ import { unitStats } from '../core/stats.js'
 import { describeWindow, windowEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
-import { sourceFor } from '../sources/index.js'
 import { notify } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
-import { configSecrets } from '../worker/workspace.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { probeAndPlan } from './plan.js'
@@ -38,20 +36,11 @@ export function runCommand(program: Command): void {
           )
           return
         }
-        const {
-          plan,
-          warnings: unmasked,
-          ctx,
-        } = await probeAndPlan(config, skillsDirOf(path), { retry: !!opts.unit })
-        const sources = Object.fromEntries(
-          Object.entries(config.sources).flatMap(([id, cfg]) => {
-            const source = sourceFor(id, cfg)
-            return source ? [[id, source]] : []
-          }),
+        const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
+          config,
+          skillsDirOf(path),
+          { retry: !!opts.unit },
         )
-        // A failed source's warning carries its stderr, and the report reaches notify.
-        const secrets = configSecrets(config, providers, sources)
-        const warnings = unmasked.map((w) => maskSecrets(w, secrets, ctx.env))
         for (const warning of warnings) console.error(`warning: ${warning}`)
         if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
           console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
@@ -88,7 +77,7 @@ export function runCommand(program: Command): void {
         console.log(summarize(report, reportPath))
         if (config.notify) {
           const failure = await notify(config.notify.command, { path: reportPath, runId })
-          if (failure) console.error(`notify failed: ${failure}`)
+          if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
         }
       } catch (e) {
         reportConfigError(e)
