@@ -1,16 +1,12 @@
 import type { Config } from '../config/schema.js'
 
-export type Window = NonNullable<Config['windows']>[number]
+export type Window = Config['windows'][number]
 
 export const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
 
 const DAY = 24 * 60 * 60 * 1000
 
 export const clock = (time: string) => time.split(':').map(Number) as [number, number]
-
-/** `windows` when set, else the single `night` window. */
-export const windowsOf = ({ night, windows }: Pick<Config, 'night' | 'windows'>): Window[] =>
-  windows ?? [night]
 
 /** Where a window opens (local time) as a scheduler trigger, same-time windows merged as launchd reads them back: weekdays are 0 (Sunday) to 6. */
 export function startsOf(windows: Window[]): { hour: number; minute: number; days?: number[] }[] {
@@ -45,7 +41,7 @@ function occurrences(windows: Window[], from: Date, days: number): [Date, Date][
 }
 
 /** When the window `now` (local time) is in ends, or undefined when it is in none. */
-export function nightEnd(windows: Window[], now: Date): Date | undefined {
+export function windowEnd(windows: Window[], now: Date): Date | undefined {
   const open = occurrences(windows, now, 0).filter(([start, end]) => start <= now && now < end)
   return open.length ? new Date(Math.max(...open.map(([, end]) => end.getTime()))) : undefined
 }

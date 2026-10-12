@@ -1,5 +1,5 @@
 name: awaywork
-description: Run one night of awaywork on a hosted runner, from a checked-out repo
+description: Run awaywork once on a hosted runner, from a checked-out repo
 branding:
   icon: moon
   color: purple

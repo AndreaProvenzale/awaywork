@@ -98,14 +98,14 @@ describe('queue screen', () => {
     expect(formatQueue(queue, items).flat()).toMatchInlineSnapshot(`
       [
         "#1  fix-ci     type=pr mine=true checks=failing",
-        "     1 tonight: acme/api#1",
+        "     1 taken: acme/api#1",
         "#2  implement  source=github type=issue label=awaywork repo=acme/api",
-        "     0 tonight",
+        "     0 taken",
         "#3  review     type=pr review_requested=true",
-        "     1 tonight: acme/api#2",
+        "     1 taken: acme/api#2",
         "     1 taken by #1: acme/api#1",
         "#4  implement  source=asana section=Ready tags=backend provider=codex",
-        "     1 tonight: T-7",
+        "     1 taken: T-7",
         "1 unmatched: T-8",
       ]
     `)

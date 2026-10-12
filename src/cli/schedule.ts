@@ -9,7 +9,7 @@ import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills } from '../config/skills.js'
 import type { Ask } from '../core/types.js'
-import { describeWindow, startsOf, type Window, windowsOf } from '../core/window.js'
+import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import {
@@ -46,7 +46,7 @@ const GH_TOKEN_HELP =
 export function scheduleCommand(program: Command): void {
   const schedule = program
     .command('schedule')
-    .description('run awaywork every night on this machine or in GitHub Actions')
+    .description('run awaywork when its windows open, on this machine or in GitHub Actions')
 
   schedule
     .command('install')
@@ -65,7 +65,7 @@ export function scheduleCommand(program: Command): void {
 
   schedule
     .command('remove')
-    .description(`remove the nightly job, and ${WORKFLOW} in the current repo`)
+    .description(`remove the scheduled job, and ${WORKFLOW} in the current repo`)
     .option('--as <person>', "remove only that person's workflow from the current repo")
     .action(async (opts: { as?: string }) => {
       if (opts.as !== undefined) return removePersonWorkflow(opts.as)
@@ -75,13 +75,13 @@ export function scheduleCommand(program: Command): void {
       const root = await gitRoot()
       if (root && (await removeWorkflow(root))) removed.push(GITHUB_ACTIONS)
       console.log(
-        removed.length ? `Removed the ${removed.join(', ')} job` : 'No nightly job installed',
+        removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
       )
     })
 
   schedule
     .command('status')
-    .description('show the installed nightly job')
+    .description('show the installed scheduled job')
     .action(async () => {
       let found = false
       for (const scheduler of Object.values(localSchedulers())) {
@@ -97,7 +97,7 @@ export function scheduleCommand(program: Command): void {
         found = true
         console.log(`Scheduled with ${GITHUB_ACTIONS}: ${file}`)
       }
-      if (!found) console.log('No nightly job installed')
+      if (!found) console.log('No scheduled job installed')
     })
 }
 
@@ -161,7 +161,7 @@ export async function staleSchedules(
 export const gitRoot = (run: Exec = exec) =>
   run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
-/** Installs the nightly job with the named scheduler, or the platform's default. */
+/** Installs the scheduled job with the named scheduler, or the platform's default. */
 export async function installSchedule(
   config: string | undefined,
   id?: string,
@@ -184,7 +184,7 @@ export async function installSchedule(
   }
   try {
     const path = resolve(configPath(config))
-    const windows = windowsOf(await loadConfig(path))
+    const { windows } = await loadConfig(path)
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
@@ -281,7 +281,7 @@ export async function installWorkflow(
     const loaded = await loadConfig(path)
     const used = loaded.providers.flatMap((p) => providers[p.id] ?? [])
     const base = {
-      starts: startsOf(windowsOf(loaded)),
+      starts: startsOf(loaded.windows),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       version: packageVersion,
       packages: used.map((p) => p.package),
@@ -298,7 +298,7 @@ export async function installWorkflow(
       if (e instanceof Cancelled) return secrets
       throw e
     })
-    if (changed.length || unset.length) console.log('Before the first night:')
+    if (changed.length || unset.length) console.log('Before the first run:')
     if (changed.length) console.log(`  commit ${and(changed)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
@@ -378,7 +378,7 @@ async function installForPerson(
     if (!(e instanceof Cancelled)) throw e
   }
   if (changed.length || unsetPersonal.length || unsetShared.length)
-    console.log('Before the first night:')
+    console.log('Before the first run:')
   if (changed.length) console.log(`  commit ${and(changed)}`)
   if (unsetPersonal.length)
     console.log(

@@ -3,7 +3,7 @@ import type { UnitResult } from './report.js'
 /** What a unit cost and delivered, as kept in its run's `units.json`. */
 export interface UnitStat {
   id: string
-  /** The rule's position in the queue that night. */
+  /** The rule's position in the queue in that run. */
   rule: number
   skill: string
   provider?: string

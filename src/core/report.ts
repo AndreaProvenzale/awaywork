@@ -1,7 +1,7 @@
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import { type Allowance, pct } from './budget.js'
-import type { NightPlan, PlannedUnit } from './foreman.js'
+import type { PlannedUnit, RunPlan } from './foreman.js'
 import type { Quota } from './types.js'
 
 export interface UnitResult {
@@ -22,19 +22,19 @@ export interface UnitResult {
   loop?: string
 }
 
-export interface NightReport {
+export interface RunReport {
   runId: string
   dryRun: boolean
   startedAt: Date
   finishedAt: Date
-  plan: NightPlan
+  plan: RunPlan
   results: UnitResult[]
   /** The last quota a worker saw, per provider. */
   quotas: Record<string, Quota>
 }
 
 /** The morning report as markdown: units, skipped items, quota against each ceiling, report-only outputs. */
-export function formatReport(r: NightReport): string {
+export function formatReport(r: RunReport): string {
   const out = [
     `# Awaywork ${r.runId}${r.dryRun ? ' (dry run)' : ''}`,
     '',
@@ -77,7 +77,7 @@ export function formatReport(r: NightReport): string {
 }
 
 /** A few lines for the terminal. */
-export function summarize(r: NightReport, reportPath: string): string {
+export function summarize(r: RunReport, reportPath: string): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
   const head = `Run ${r.runId}: ${count('pr')} draft PRs, ${count('report')} reports, ${r.results.length} units`
   const rows = r.results.map((u) => `  ${u.planned.unit.id}  ${status(u)}  ${result(u)}`)

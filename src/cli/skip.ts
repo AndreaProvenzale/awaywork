@@ -14,7 +14,7 @@ export function skipCommand(program: Command): void {
   program
     .command('skip [key]')
     .description(
-      'leave an item (source:key, e.g. github:acme/api#5) alone on the coming nights; with no key, list skipped items',
+      'leave an item (source:key, e.g. github:acme/api#5) alone in the coming runs; with no key, list skipped items',
     )
     .option(
       '--until <date>',

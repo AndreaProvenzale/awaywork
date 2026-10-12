@@ -1,12 +1,12 @@
 import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
-import type { NightPlan } from '../core/foreman.js'
+import type { RunPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, spans } from '../core/queue.js'
 import type { Rule, Where, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
-export function planJson(plan: NightPlan, warnings: string[] = []): string {
+export function planJson(plan: RunPlan, warnings: string[] = []): string {
   return JSON.stringify(
     { ...plan, warnings },
     (key, value) => (key === 'raw' ? undefined : value),
@@ -15,12 +15,12 @@ export function planJson(plan: NightPlan, warnings: string[] = []): string {
 }
 
 // A loop's later rounds repeat its first: only round 1 is listed.
-export function listedUnits(plan: NightPlan) {
+export function listedUnits(plan: RunPlan) {
   return plan.units.filter((p) => !p.loop || p.loop.round === 1)
 }
 
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
-export function formatPlan(plan: NightPlan, warnings: string[] = [], styled = false): string {
+export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
   const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
   const out: string[] = []
   if (warnings.length > 0) out.push(style('bold', 'Warnings'), ...warnings.map((w) => `  ${w}`), '')
@@ -146,7 +146,7 @@ export function describeAllowance(a: Allowance): string {
   const session = a.session
     ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
     : ''
-  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${nights(a.nights)})${session}`
+  return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${runs(a.runs)})${session}`
 }
 
 type QuotaAllowance = Extract<Allowance, { kind: 'quota' }>
@@ -155,7 +155,7 @@ type FallbackAllowance = Extract<Allowance, { kind: 'fallback' }>
 function allowanceRow(id: string, a: Allowance): string[] {
   if (a.kind === 'fallback') return [id, 'fallback']
   const session = a.session ? `${pct(a.session.used)} / ${pct(a.session.stopAt)}` : '-'
-  return [id, a.window, pct(a.used), pct(a.ceiling), bindingLimit(a), nights(a.nights), session]
+  return [id, a.window, pct(a.used), pct(a.ceiling), bindingLimit(a), runs(a.runs), session]
 }
 
 function allowanceNote(a: Allowance): string {
@@ -180,7 +180,7 @@ function otherLimits(a: QuotaAllowance): string {
     .join(', ')
 }
 
-const nights = (n: number) => `${n} night${n === 1 ? '' : 's'}`
+const runs = (n: number) => `${n} run${n === 1 ? '' : 's'}`
 
 function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)

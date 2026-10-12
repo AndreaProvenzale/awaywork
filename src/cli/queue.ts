@@ -13,14 +13,14 @@ import { collectItems } from './plan.js'
 export function queueCommand(program: Command): void {
   const queue = program
     .command('queue')
-    .description('show what each rule matches tonight and reorder the rules with the keyboard')
+    .description('show what each rule matches now and reorder the rules with the keyboard')
     .action(async () => {
       const path = configPath(program.opts().config)
       try {
         const config = await loadConfig(path)
         const text = await readFile(path, 'utf8')
         const warnings: string[] = []
-        process.stderr.write("Reading tonight's items…\n")
+        process.stderr.write('Reading the open items…\n')
         const items = await collectItems(config, { env: process.env, log: (l) => warnings.push(l) })
         const rules = config.queue ?? defaultRules(Object.keys(config.sources))
         const header = [
@@ -90,7 +90,7 @@ export function formatQueue(rules: Rule[], items: Item[]): string[][] {
   const blocks = rules.map((rule, i) => {
     const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
     const lines = [`#${i + 1}  ${rule.skill.padEnd(width)}  ${describeRule(rule)}`]
-    lines.push(`     ${taken.length} tonight${keys(taken)}`)
+    lines.push(`     ${taken.length} taken${keys(taken)}`)
     for (const by of new Set(shadowed.map((s) => s.by))) {
       const list = shadowed.filter((s) => s.by === by).map((s) => s.item)
       lines.push(`     ${list.length} taken by #${by + 1}${keys(list)}`)

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { footer } from '../src/core/footer.js'
-import { type NightPlan, slug } from '../src/core/foreman.js'
+import { type RunPlan, slug } from '../src/core/foreman.js'
 import type { Item } from '../src/core/types.js'
 import { exec } from '../src/forge/gh.js'
 import { API } from '../src/sources/asana.js'
@@ -79,7 +79,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     ).stdout
 
   /** Plans until `pick` finds the seeded items settled: search indexes new issues and PRs late. */
-  async function settled<T>(pick: (plan: NightPlan) => T | undefined): Promise<T> {
+  async function settled<T>(pick: (plan: RunPlan) => T | undefined): Promise<T> {
     for (let deadline = Date.now() + 120_000; ; await sleep(5_000)) {
       const plan = JSON.parse(await awaywork('plan', '--json'))
       const found = pick(plan)
@@ -89,7 +89,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     }
   }
 
-  const unitOf = (plan: NightPlan, key: string) =>
+  const unitOf = (plan: RunPlan, key: string) =>
     plan.units.find((p) => p.unit.items.some((i) => i.key === key))
 
   beforeAll(async () => {
@@ -207,7 +207,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     const item: Pick<Item, 'source' | 'key'> = { source: 'asana', key: task }
     const published = `Seeded.\n\n${link}\n\n${footer(run, [item])}`
     await api(`pulls/${pr}`, { body: published }, '-X', 'PATCH')
-    const plan: NightPlan = JSON.parse(await awaywork('plan', '--json'))
+    const plan: RunPlan = JSON.parse(await awaywork('plan', '--json'))
     expect(unitOf(plan, task)).toBeUndefined()
     expect(plan.skipped.find((s) => s.item.key === task)?.reason).toBe(
       `waiting for review: awaywork PR https://github.com/${repo}/pull/${pr} is open`,

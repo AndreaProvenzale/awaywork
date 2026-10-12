@@ -3,7 +3,6 @@ import type { Quota } from './types.js'
 import { runsLeft, type Window } from './window.js'
 
 export const MAX_TURNS = 200
-const DAY = 24 * 60 * 60 * 1000
 
 export type Allowance =
   | {
@@ -11,38 +10,36 @@ export type Allowance =
       window: string
       used: number
       ceiling: number
-      nights: number
-      limits: { name: 'per_night' | 'reserve' | 'pacing'; value: number }[]
+      runs: number
+      limits: { name: 'per_run' | 'reserve' | 'pacing'; value: number }[]
       session?: { used: number; stopAt: number }
     }
   | { kind: 'fallback'; units: number; turns: number; reason: string }
 
-/** Tonight's ceiling on the long window: the lowest of used + per_night, 1 - reserve and the paced share; with `windows`, paced over the runs left rather than the days. */
+/** This run's ceiling on the long window: the lowest of used + per_run, 1 - reserve and the share paced over the runs left before the reset. */
 export function allowance(
   budget: Budget,
   quota: Quota | null,
   now: number,
+  windows: Window[],
   reason = 'no quota reading',
-  windows?: Window[],
 ): Allowance {
   const long = quota?.windows.find((w) => w.span === 'long')
   if (!long) return { kind: 'fallback', ...budget.fallback, reason }
-  const nights = windows
-    ? runsLeft(windows, now, long.resetsAt * 1000)
-    : Math.max(1, Math.ceil((long.resetsAt * 1000 - now) / DAY))
+  const runs = runsLeft(windows, now, long.resetsAt * 1000)
   const limits: Extract<Allowance, { kind: 'quota' }>['limits'] = [
     { name: 'reserve', value: 1 - budget.reserve },
-    { name: 'pacing', value: long.used + (1 - budget.reserve - long.used) / nights },
+    { name: 'pacing', value: long.used + (1 - budget.reserve - long.used) / runs },
   ]
-  if (budget.per_night !== undefined)
-    limits.unshift({ name: 'per_night', value: long.used + budget.per_night })
+  if (budget.per_run !== undefined)
+    limits.unshift({ name: 'per_run', value: long.used + budget.per_run })
   const short = quota?.windows.find((w) => w.span === 'short')
   return {
     kind: 'quota',
     window: long.name,
     used: long.used,
     ceiling: Math.min(...limits.map((l) => l.value)),
-    nights,
+    runs,
     limits,
     session: short && { used: short.used, stopAt: budget.session_max },
   }
@@ -75,10 +72,10 @@ export function route(
 
 export const pct = (share: number) => `${Math.round(share * 1000) / 10}%`
 
-/** What a quota condition reads: nights to the reset and the share left under the ceiling; none without a reading. */
-export function quotaFacts(a: Allowance): { nights?: number; headroom?: number } {
+/** What a quota condition reads: runs to the reset and the share left under the ceiling; none without a reading. */
+export function quotaFacts(a: Allowance): { runs?: number; headroom?: number } {
   return a.kind === 'quota'
-    ? { nights: a.nights, headroom: Math.max(0, Math.round((a.ceiling - a.used) * 1000) / 1000) }
+    ? { runs: a.runs, headroom: Math.max(0, Math.round((a.ceiling - a.used) * 1000) / 1000) }
     : {}
 }
 

@@ -17,7 +17,7 @@ import { statsCommand } from './stats.js'
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const program = new Command('awaywork')
-  .description('Spend idle coding-subscription quota overnight')
+  .description("Spend idle coding-subscription quota while you're away")
   .version(packageVersion)
   .option(
     '-c, --config <path>',

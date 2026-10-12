@@ -31,6 +31,7 @@ const job: Job = {
   env: process.env,
 }
 
+const windows = [{ start: '01:00', end: '07:00' }]
 const budget = { reserve: 0.1, session_max: 0.9, fallback: { units: 4, turns: 60 } }
 const quota = await fakeProvider().probe({ env: {}, log: () => {} })
 const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
@@ -44,13 +45,13 @@ async function run(a: Allowance, watch: WorkerOptions['watch'] = () => idle) {
 
 describe('worker', () => {
   it('runs to the end under the ceiling', async () => {
-    const result = await run(allowance(budget, quota, now))
+    const result = await run(allowance(budget, quota, now, windows))
     expect(result).toMatchObject({ status: 'done', turns: 3 })
     expect(result.lines).toEqual(['turn 1', 'turn 2', 'turn 3'])
   })
 
-  it('stops once the long window reaches tonight ceiling', async () => {
-    const result = await run(allowance({ ...budget, per_night: 0 }, quota, now))
+  it("stops once the long window reaches the run's ceiling", async () => {
+    const result = await run(allowance({ ...budget, per_run: 0 }, quota, now, windows))
     expect(result).toMatchObject({
       status: 'stopped: quota',
       reason: 'seven_day at 36%, ceiling 36%',
@@ -59,7 +60,7 @@ describe('worker', () => {
   })
 
   it('stops once the short window reaches session_max', async () => {
-    const result = await run(allowance({ ...budget, session_max: 0.02 }, quota, now))
+    const result = await run(allowance({ ...budget, session_max: 0.02 }, quota, now, windows))
     expect(result).toMatchObject({
       status: 'stopped: session',
       reason: 'five_hour at 2%, stop at 2%',
@@ -67,12 +68,12 @@ describe('worker', () => {
   })
 
   it('ignores quota on a fallback budget', async () => {
-    expect(await run(allowance(budget, null, now))).toMatchObject({ status: 'done' })
+    expect(await run(allowance(budget, null, now, windows))).toMatchObject({ status: 'done' })
   })
 
   it('stops when the watchdog trips and always stops the watchdog', async () => {
     let stopped = false
-    const result = await run(allowance(budget, quota, now), (_dir, onLimit) => {
+    const result = await run(allowance(budget, quota, now, windows), (_dir, onLimit) => {
       onLimit('disk below 2 GB')
       return {
         stop: async () => {
@@ -84,7 +85,7 @@ describe('worker', () => {
     expect(stopped).toBe(true)
   })
 
-  it('stops at night.end', async () => {
+  it('stops at the window end', async () => {
     vi.useFakeTimers()
     const minute = 60_000
     const slow = {
@@ -98,7 +99,7 @@ describe('worker', () => {
     }
     const lines: string[] = []
     const until = new Date(Date.now() + 1.5 * minute)
-    const running = runWorker(slow, job, allowance(budget, quota, now), {
+    const running = runWorker(slow, job, allowance(budget, quota, now, windows), {
       log: (l) => lines.push(l),
       until,
       watch: () => idle,
@@ -106,11 +107,11 @@ describe('worker', () => {
     await vi.advanceTimersByTimeAsync(3 * minute)
     vi.useRealTimers()
     expect(await running).toMatchObject({
-      status: 'stopped: night ended',
-      reason: 'reached night.end',
+      status: 'stopped: window ended',
+      reason: 'reached the window end',
       turns: 2,
     })
-    expect(lines).toEqual(['turn 1', 'turn 2', 'stop: reached night.end'])
+    expect(lines).toEqual(['turn 1', 'turn 2', 'stop: reached the window end'])
   })
 
   it('stops after unit_minutes', async () => {
@@ -126,7 +127,7 @@ describe('worker', () => {
       },
     }
     const lines: string[] = []
-    const running = runWorker(slow, job, allowance(budget, quota, now), {
+    const running = runWorker(slow, job, allowance(budget, quota, now, windows), {
       log: (l) => lines.push(l),
       maxMinutes: 1.5,
       watch: () => idle,

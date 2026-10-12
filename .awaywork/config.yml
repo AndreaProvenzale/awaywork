@@ -1,10 +1,10 @@
 # awaywork config: `awaywork config edit` validates on save,
-# `awaywork queue` reorders the queue, `awaywork plan` previews tonight.
-night: { start: "18:00", end: "07:00" }
+# `awaywork queue` reorders the queue, `awaywork plan` previews the next run.
+windows: [{ start: "18:00", end: "07:00" }]
 budget:                         # every provider; override one with - <id>: { budget: … }
   reserve: 10%                  # never go past 1 - reserve of any window
   session_max: 90%              # stop a worker past this share of the short window
-  # per_night: 15%              # at most this share of the long window per night
+  # per_run: 15%                # at most this share of the long window per run
 providers: [claude]             # codex is out of credits; add it back with its reviewer below
 sources:
   github: {repos: [AndreaProvenzale/*]}

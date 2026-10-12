@@ -69,9 +69,14 @@ it.skipIf(!process.env.AWAYWORK_REAL)(
     expect(quota?.windows.map((w) => w.span)).toEqual(['short', 'long'])
 
     const job = { unit, dir, plugin, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
-    const result = await runWorker(claude, job, allowance(config.budget, quota, Date.now()), {
-      log: console.log,
-    })
+    const result = await runWorker(
+      claude,
+      job,
+      allowance(config.budget, quota, Date.now(), config.windows),
+      {
+        log: console.log,
+      },
+    )
 
     expect(result.status).toBe('done')
     expect(await readFile(join(dir, 'hello.txt'), 'utf8')).toMatch(/hello world/)

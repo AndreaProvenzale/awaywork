@@ -11,7 +11,7 @@ export interface Start {
   days?: number[]
 }
 
-/** A nightly job: the command, when it starts (local time), its PATH and its log file. */
+/** The scheduled job: the command, when it starts (local time), its PATH and its log file. */
 export interface Schedule {
   command: string[]
   starts: Start[]

@@ -51,11 +51,11 @@ describe('config', () => {
     const [claude, codex] = parseConfig(example).providers
     expect(claude?.budget).toEqual({
       reserve: 0.1,
-      per_night: 0.15,
+      per_run: 0.15,
       session_max: 0.9,
       fallback: { units: 4, turns: 60 },
     })
-    expect(codex?.budget.per_night).toBe(0.05)
+    expect(codex?.budget.per_run).toBe(0.05)
     expect(parseConfig(minimal).budget).toEqual({
       reserve: 0.1,
       session_max: 0.9,
@@ -211,9 +211,9 @@ describe('config', () => {
   })
 
   it('expands a leading ~/ in the config path', () => {
-    expect(configPath('~/night.yml')).toBe(join(homedir(), 'night.yml'))
-    expect(configPath('/etc/~/night.yml')).toBe('/etc/~/night.yml')
-    expect(configPath('~other/night.yml')).toBe('~other/night.yml')
+    expect(configPath('~/away.yml')).toBe(join(homedir(), 'away.yml'))
+    expect(configPath('/etc/~/away.yml')).toBe('/etc/~/away.yml')
+    expect(configPath('~other/away.yml')).toBe('~other/away.yml')
     vi.stubEnv('AWAYWORK_CONFIG', '~/env.yml')
     expect(configPath()).toBe(join(homedir(), 'env.yml'))
     vi.unstubAllEnvs()
@@ -345,10 +345,10 @@ describe('config', () => {
   it('takes a quota when on a rule and on a step, but not on a rule before a loop', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
-    when: { nights_until_reset: 1 }
+    when: { runs_until_reset: 1 }
     then: { skill: review, when: { headroom: 20% } }
 `)
-    expect(cfg.queue?.[0]).toMatchObject({ when: { nights_until_reset: 1 } })
+    expect(cfg.queue?.[0]).toMatchObject({ when: { runs_until_reset: 1 } })
     expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ when: { headroom: 0.2 } })
     expect(
       problems(
@@ -378,13 +378,13 @@ describe('config', () => {
     expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
       [
         'queue[0].when: Unrecognized key: "verdict"',
-        'queue[0].when: expected nights_until_reset or headroom',
+        'queue[0].when: expected runs_until_reset or headroom',
       ],
     )
     expect(
       problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
     ).toEqual([
-      'queue[0].then.when: expected verdict, command, changed, nights_until_reset or headroom',
+      'queue[0].then.when: expected verdict, command, changed, runs_until_reset or headroom',
     ])
     expect(
       problems(
@@ -461,15 +461,15 @@ describe('config', () => {
 
   it('takes bare provider names next to overrides', () => {
     const cfg = parseConfig(
-      minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_night: 5% } }]'),
+      minimal.replace('[claude: {}]', '[claude, codex: { budget: { per_run: 5% } }]'),
     )
-    expect(cfg.providers.map((p) => [p.id, p.budget.per_night])).toEqual([
+    expect(cfg.providers.map((p) => [p.id, p.budget.per_run])).toEqual([
       ['claude', undefined],
       ['codex', 0.05],
     ])
   })
 
-  it('takes a list of windows with optional weekdays, and rejects an empty one', () => {
+  it('takes a list of windows with optional weekdays, defaults to one, and rejects an empty one', () => {
     const cfg = parseConfig(
       `${minimal}windows: [{ start: "01:00", end: "07:00" }, { days: [sat, sun], start: "10:00", end: "18:00" }]`,
     )
@@ -477,30 +477,23 @@ describe('config', () => {
       { start: '01:00', end: '07:00' },
       { days: ['sat', 'sun'], start: '10:00', end: '18:00' },
     ])
-    expect(parseConfig(minimal).windows).toBeUndefined()
+    expect(parseConfig(minimal).windows).toEqual([{ start: '01:00', end: '07:00' }])
     expect(problems(`${minimal}windows: [{ start: "01:00", end: "01:00" }]`)).toEqual([
       'windows[0]: start and end must differ',
     ])
     expect(problems(`${minimal}windows: []`)).toHaveLength(1)
   })
 
-  it('takes unit_minutes globally and per provider', () => {
-    const cfg = parseConfig(
-      `${minimal.replace('[claude: {}]', '[claude, codex: { budget: { unit_minutes: 30 } }]')}budget: { unit_minutes: 90 }`,
-    )
-    expect(cfg.providers.map((p) => [p.id, p.budget.unit_minutes])).toEqual([
-      ['claude', 90],
-      ['codex', 30],
+  it('takes limits for every provider, not per provider', () => {
+    const cfg = parseConfig(`${minimal}limits: { units: 6, units_per_repo: 2, unit_minutes: 90 }`)
+    expect(cfg.limits).toEqual({ units: 6, units_per_repo: 2, unit_minutes: 90 })
+    expect(parseConfig(minimal).limits).toEqual({})
+    expect(problems(`${minimal}limits: { unit_minutes: 0 }`)).toEqual([
+      expect.stringMatching(/^limits\.unit_minutes: /),
     ])
-    expect(problems(`${minimal}budget: { unit_minutes: 0 }`)).toEqual([
-      expect.stringMatching(/^budget\.unit_minutes: /),
-    ])
-  })
-
-  it('rejects a night window that starts when it ends', () => {
-    expect(problems(`${minimal}night: { start: '01:00', end: '01:00' }`)).toEqual([
-      'night: start and end must differ',
-    ])
+    expect(
+      problems(minimal.replace('[claude: {}]', '[claude: { budget: { unit_minutes: 30 } }]')),
+    ).toEqual([expect.stringContaining('Unrecognized key: "unit_minutes"')])
   })
 
   it('reports YAML syntax errors', () => {

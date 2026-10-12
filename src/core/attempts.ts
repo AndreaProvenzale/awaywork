@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { PlannedUnit } from './foreman.js'
-import type { NightReport, UnitResult } from './report.js'
+import type { RunReport, UnitResult } from './report.js'
 import type { Item, PrRef } from './types.js'
 
 export const MAX_ATTEMPTS = 3
@@ -60,7 +60,7 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
  * count on their own. An interrupted loop counts nothing, like an aborted unit, and so does
  * a host that kept its report when its last round didn't run.
  */
-export function recordAttempts(attempts: Attempts, report: NightReport): Attempts {
+export function recordAttempts(attempts: Attempts, report: RunReport): Attempts {
   const next = { ...attempts }
   const result = (id: string) => report.results.find((r) => r.planned.unit.id === id)
   const step = (id: string) => report.plan.units.find((p) => p.after === id)

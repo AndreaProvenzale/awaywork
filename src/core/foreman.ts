@@ -54,7 +54,7 @@ export interface LoopRound {
   deliver: 'draft_pr' | 'push'
 }
 
-export interface NightPlan {
+export interface RunPlan {
   queue: Rule[]
   defaultQueue: boolean
   units: PlannedUnit[]
@@ -62,8 +62,8 @@ export interface NightPlan {
   allowances: Record<string, Allowance>
 }
 
-/** Match, dedupe and route tonight's items; no I/O. */
-export function planNight(input: {
+/** Match, dedupe and route this run's items; no I/O. */
+export function planRun(input: {
   config: Config
   items: Item[]
   allowances: Record<string, Allowance>
@@ -71,7 +71,7 @@ export function planNight(input: {
   skips?: Record<string, Skip>
   /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
   attempts?: Attempts
-}): NightPlan {
+}): RunPlan {
   const { config, allowances, skips = {} } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
@@ -182,10 +182,10 @@ export function planNight(input: {
     }
     const overCap = () => {
       const cap = [
-        { name: 'night.units', max: config.night.units, count: counted },
+        { name: 'limits.units', max: config.limits.units, count: counted },
         {
-          name: 'night.units_per_repo',
-          max: config.night.units_per_repo,
+          name: 'limits.units_per_repo',
+          max: config.limits.units_per_repo,
           count: perRepo[repo] ?? 0,
         },
         { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
@@ -271,7 +271,7 @@ export function planNight(input: {
     for (const [j, entry] of (rule.then ?? []).entries()) {
       const stacked = previous.deliver === 'draft_pr'
       const onto = stacked ? previous.branch : previous.base
-      // Only the rule's own PR branch takes a push, not one a step opened tonight.
+      // Only the rule's own PR branch takes a push, not one a step opened in this run.
       const refused =
         !isLoop(entry) &&
         deliverOf(entry) === 'push' &&
@@ -303,10 +303,10 @@ export function planNight(input: {
 }
 
 function quotaOf(when: Condition | undefined): Condition | undefined {
-  const { nights_until_reset, headroom } = when ?? {}
-  if (nights_until_reset === undefined && headroom === undefined) return undefined
+  const { runs_until_reset, headroom } = when ?? {}
+  if (runs_until_reset === undefined && headroom === undefined) return undefined
   return {
-    ...(nights_until_reset !== undefined && { nights_until_reset }),
+    ...(runs_until_reset !== undefined && { runs_until_reset }),
     ...(headroom !== undefined && { headroom }),
   }
 }
@@ -322,14 +322,15 @@ function firstStep(entry: Step | Loop): Step {
   return isLoop(entry) ? (entry.loop[0] as Step) : entry
 }
 
-/** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened tonight. */
+/** Why a unit can't push onto its base: only the developer's own open PR, never a branch opened in this run. */
 function pushRefusal(
   base: string,
   foreign: boolean,
   fork: boolean,
-  tonight: boolean,
+  openedThisRun: boolean,
 ): string | undefined {
-  if (tonight) return `deliver push: ${base} is a draft PR opened tonight, not your own PR`
+  if (openedThisRun)
+    return `deliver push: ${base} is a draft PR opened in this run, not your own PR`
   if (!base) return 'deliver push: no PR of yours to push onto'
   if (foreign) return `deliver push: ${base} is someone else's PR`
   if (fork) return `deliver push: ${base} is on a fork`

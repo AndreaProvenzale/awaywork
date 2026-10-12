@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { describeRule, formatPlan, listedUnits, statusMarker } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
-import { planNight } from '../src/core/foreman.js'
+import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { githubPr } from './fakes/items.js'
@@ -52,7 +52,7 @@ sources: { github: { repos: [acme/api] } }
 queue:
   - skill: fix-ci
     where: { checks: failing }
-    when: { nights_until_reset: 1 }
+    when: { runs_until_reset: 1 }
 `)
     const now = Date.UTC(2026, 0, 1, 1)
     const quota = {
@@ -61,16 +61,16 @@ queue:
       ],
     }
     const allowances = Object.fromEntries(
-      config.providers.map((p) => [p.id, allowance(p.budget, quota, now)]),
+      config.providers.map((p) => [p.id, allowance(p.budget, quota, now, config.windows)]),
     )
-    const plan = planNight({
+    const plan = planRun({
       config,
       items: [githubPr(1, { checks: 'failing' })],
       allowances,
       skills: { builtin: builtinSkills },
     })
     expect(formatPlan(plan)).toContain(
-      "     when the window resets within 1 night (the quota part doesn't hold on the probe)\n",
+      "     when the window resets within 1 run (the quota part doesn't hold on the probe)\n",
     )
   })
 })

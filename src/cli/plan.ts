@@ -6,7 +6,7 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
-import { type NightPlan, planNight } from '../core/foreman.js'
+import { planRun, type RunPlan } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item } from '../core/types.js'
@@ -19,12 +19,12 @@ import { formatPlan, planJson } from './format.js'
 export function planCommand(program: Command): void {
   program
     .command('plan')
-    .description("show tonight's units in order, with each provider's ceiling; runs no worker")
+    .description("show the next run's units in order, with each provider's ceiling; runs no worker")
     .option('--json', 'print the plan and warnings as JSON')
     .action(async (opts: { json?: boolean }) => {
       try {
         const path = configPath(program.opts().config)
-        const { plan, warnings } = await planTonight(await loadConfig(path), skillsDirOf(path))
+        const { plan, warnings } = await probeAndPlan(await loadConfig(path), skillsDirOf(path))
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
@@ -32,12 +32,12 @@ export function planCommand(program: Command): void {
     })
 }
 
-/** Collects items from every configured source, probes every provider and plans the night. */
-export async function planTonight(
+/** Collects items from every configured source, probes every provider and plans the run. */
+export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
   opts: { retry?: boolean } = {},
-): Promise<{ plan: NightPlan; warnings: string[]; ctx: Ctx }> {
+): Promise<{ plan: RunPlan; warnings: string[]; ctx: Ctx }> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
 
@@ -50,13 +50,13 @@ export async function planTonight(
       reason = `probe failed: ${e.message}`
       return null
     })
-    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), reason, config.windows)
+    allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), config.windows, reason)
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
-  return { plan: planNight({ config, items, allowances, skills, attempts, skips }), warnings, ctx }
+  return { plan: planRun({ config, items, allowances, skills, attempts, skips }), warnings, ctx }
 }
 
 /** Items from every configured source with their link lines, tasks linked to their PRs; a failing source is logged. */

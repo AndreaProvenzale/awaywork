@@ -7,11 +7,11 @@ import { expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
-import { planNight } from '../src/core/foreman.js'
+import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Provider } from '../src/core/types.js'
-import { runNight } from '../src/worker/night.js'
 import { replayUnit } from '../src/worker/replay.js'
+import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -57,17 +57,17 @@ queue:
     ],
   }
   const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1, { checks: 'failing' })],
-    allowances: { claude: allowance(config.budget, quota, now) },
+    allowances: { claude: allowance(config.budget, quota, now, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const runDir = join(root, 'run')
   const skillDirs = { user: join(root, 'none'), builtin: builtinSkillsDir }
   const providers = { claude: worker }
   const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
-  const night = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -81,7 +81,7 @@ queue:
     watch: () => ({ stop: async () => {} }),
     skillDirs,
   })
-  expect(night.results.map((u) => u.status)).toEqual(['done'])
+  expect(report.results.map((u) => u.status)).toEqual(['done'])
   const base = (await git(origin, 'rev-parse', 'HEAD')).stdout
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'moved on')
   const pushed = new Set(forge.branches)

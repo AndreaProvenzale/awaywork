@@ -23,7 +23,7 @@ describe('runSetup', () => {
       until: new Date(Date.now() + 500),
     })
     expect(Date.now() - started).toBeLessThan(5000)
-    expect(failed).toBe('setup failed: the night window ended')
+    expect(failed).toBe('setup failed: the window ended')
     expect(alive(Number(await readFile(join(dir, 'pid'), 'utf8')))).toBe(false)
   })
 
@@ -59,7 +59,7 @@ describe('runSetup', () => {
 })
 
 describe('runCommand', () => {
-  it('marks a command that hit the time limit, not one stopped by the night window', async () => {
+  it('marks a command that hit the time limit, not one stopped by the window end', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-command-'))
     const real = AbortSignal.timeout.bind(AbortSignal)
     const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => real(200))

@@ -8,7 +8,6 @@ import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load
 import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
 import { unknownSkills } from '../config/skills.js'
-import { windowsOf } from '../core/window.js'
 import { terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
@@ -68,7 +67,7 @@ export function configCommand(program: Command): void {
       )
       if (outcome === 'saved') {
         const config = await loadConfig(path)
-        for (const warning of await staleSchedules(path, windowsOf(config)))
+        for (const warning of await staleSchedules(path, config.windows))
           console.error(`warning: ${warning}`)
       }
     })

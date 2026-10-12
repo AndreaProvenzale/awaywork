@@ -9,7 +9,7 @@ export type WorkerStatus =
   | 'stopped: session'
   | 'stopped: resources'
   | 'stopped: aborted'
-  | 'stopped: night ended'
+  | 'stopped: window ended'
   | 'stopped: time'
 
 export interface WorkerResult {
@@ -31,7 +31,7 @@ export interface WorkerOptions {
   watch?: (dir: string, onLimit: (reason: string) => void) => Watchdog
 }
 
-/** Runs one job; stops it at tonight's ceiling, at `session_max`, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
+/** Runs one job; stops it at this run's ceiling, at `session_max`, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
 export async function runWorker(
   provider: Provider,
   job: Job,
@@ -50,10 +50,10 @@ export async function runWorker(
   if (signal?.aborted) onAbort()
   signal?.addEventListener('abort', onAbort)
   const watchdog = watch(job.dir, (reason) => stop('stopped: resources', reason))
-  const nightEnd =
+  const windowEnd =
     until &&
     setTimeout(
-      () => stop('stopped: night ended', 'reached night.end'),
+      () => stop('stopped: window ended', 'reached the window end'),
       until.getTime() - Date.now(),
     )
   const timeUp =
@@ -80,7 +80,7 @@ export async function runWorker(
     }
   } finally {
     signal?.removeEventListener('abort', onAbort)
-    clearTimeout(nightEnd)
+    clearTimeout(windowEnd)
     clearTimeout(timeUp)
     await watchdog.stop()
   }
