@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,14 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
-import {
-  codexProvider,
-  lock,
-  mcpOverrides,
-  seedAuth,
-  toEvents,
-  toQuota,
-} from '../src/providers/codex.js'
+import { codexProvider, lock, mcpOverrides, toEvents, toQuota } from '../src/providers/codex.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -256,14 +249,10 @@ describe('codex provider', () => {
     await vi.waitFor(() => expect(() => process.kill(left, 0)).toThrow(), { timeout: 2000 })
   })
 
-  it('seeds auth.json only when it is missing', async () => {
-    const home = join(tmp, 'home')
-    await seedAuth({ CODEX_HOME: home, CODEX_AUTH_JSON: '{"seed":1}' })
-    expect(await readFile(join(home, 'auth.json'), 'utf8')).toBe('{"seed":1}')
-    expect(statSync(join(home, 'auth.json')).mode & 0o777).toBe(0o600)
-    await writeFile(join(home, 'auth.json'), '{"refreshed":1}')
-    await seedAuth({ CODEX_HOME: home, CODEX_AUTH_JSON: '{"seed":1}' })
-    expect(await readFile(join(home, 'auth.json'), 'utf8')).toBe('{"refreshed":1}')
+  it('is unavailable on a GitHub-hosted runner only', () => {
+    expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toMatch(/self-hosted/)
+    expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
+    expect(provider.unavailable?.({})).toBeUndefined()
   })
 
   it('serializes on a lock held by a live process and takes over a dead one', async () => {

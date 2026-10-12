@@ -37,15 +37,15 @@ export interface Workflow {
   }
 }
 
-/** A scheduled workflow calling awaywork's action; secrets appear by name only, their values stay in the repo's settings. */
+/**
+ * A scheduled workflow calling awaywork's action; secrets appear by name only, their values stay in the repo's settings.
+ * Only the action's step gets them, and the job's GITHUB_TOKEN only reads: awaywork pushes with GH_TOKEN.
+ */
 export function workflow(w: Workflow): string {
   const person = w.person
   const from = (name: string) =>
     person?.personal.includes(name) ? name + suffixOf(person.name) : name
-  const env = [
-    `TZ: ${w.timezone}`,
-    ...w.secrets.map((name) => `${name}: \${{ secrets.${from(name)} }}`),
-  ]
+  const secrets = w.secrets.map((name) => `\n          ${name}: \${{ secrets.${from(name)} }}`)
   const setup = w.setup.map(
     (script) =>
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
@@ -65,15 +65,20 @@ ${w.starts
 
 concurrency: ${name}
 
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest
 ${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
-${env.map((line) => `      ${line}`).join('\n')}
+      TZ: ${w.timezone}
     steps:
       - uses: actions/checkout@v5
-${setup.join('')}      - uses: ${ACTION}
         with:
+          persist-credentials: false
+${setup.join('')}      - uses: ${ACTION}
+${secrets.length ? `        env:${secrets.join('')}\n` : ''}        with:
           config: ${w.config}
           version: ${w.version}
           packages: ${JSON.stringify(w.packages.join(' '))}

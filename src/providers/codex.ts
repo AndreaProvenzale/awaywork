@@ -1,6 +1,4 @@
-import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
@@ -10,13 +8,14 @@ import { killGroupWhenDone } from '../core/group.js'
 import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
-const AUTH_SECRET = 'CODEX_AUTH_JSON'
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
 /** workspace-write can't commit (.git is read-only). */
 const ONLINE = ['--sandbox', 'danger-full-access']
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
+const HOSTED_RUNNER =
+  'a GitHub-hosted runner has no Codex login, and one copied there goes stale since Codex rotates it in place; run Codex locally or on a self-hosted runner'
 
 const configSchema = z.strictObject({
   config: z
@@ -28,8 +27,8 @@ const configSchema = z.strictObject({
 })
 
 /**
- * The stock `codex` binary on the local login in `$CODEX_HOME/auth.json`, which Codex rotates in place.
- * CODEX_AUTH_JSON seeds that file only when it is missing; runs and probes hold a per-machine lock.
+ * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;
+ * runs and probes hold a per-machine lock.
  */
 export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lock')): Provider {
   async function probe(env: NodeJS.ProcessEnv): Promise<Quota | null> {
@@ -70,7 +69,9 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
     quota: 'window',
     unattended: 'grey',
     package: '@openai/codex',
-    secrets: [AUTH_SECRET],
+    secrets: [],
+
+    unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
       const out = await execa(bin, ['--version']).catch(() => undefined)
@@ -81,7 +82,6 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
     async probe(ctx) {
       const release = await lock(lockFile, ctx.log)
       try {
-        await seedAuth(ctx.env)
         return await probe(ctx.env)
       } catch (e) {
         ctx.log(`codex probe: ${(e as Error).message}`)
@@ -94,12 +94,10 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
       const release = await lock(lockFile, () => {})
-      const { [AUTH_SECRET]: _, ...env } = job.env
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
       try {
-        await seedAuth(process.env)
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
         const overrides = Object.entries(config).flatMap(([k, v]) => [
@@ -112,7 +110,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         const args = [...EXEC, ...model, ...overrides, ...mcp, ...sandbox, '-C', job.dir, '-']
         const child = execa(bin, args, {
           cwd: job.dir,
-          env,
+          env: job.env,
           extendEnv: false,
           input: job.prompt,
           cancelSignal: AbortSignal.any([signal, capped.signal]),
@@ -263,19 +261,6 @@ export function toQuota(
     return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt }]
   })
   return windows.length ? { windows } : null
-}
-
-function codexHome(env: NodeJS.ProcessEnv): string {
-  return env.CODEX_HOME ?? join(env.HOME ?? homedir(), '.codex')
-}
-
-/** Writes CODEX_AUTH_JSON only when auth.json is missing, so a token Codex refreshed is never overwritten. */
-export async function seedAuth(env: NodeJS.ProcessEnv): Promise<void> {
-  const file = join(codexHome(env), 'auth.json')
-  const seed = env[AUTH_SECRET]
-  if (!seed || existsSync(file)) return
-  await mkdir(dirname(file), { recursive: true, mode: 0o700 })
-  await writeFile(file, seed, { mode: 0o600, flag: 'wx' })
 }
 
 /** Waits until no other live process holds the lock file, then takes it. */

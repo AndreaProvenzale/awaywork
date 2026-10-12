@@ -27,7 +27,7 @@ From `lessons.md`:
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
 | Claude ceiling | Never stopped mid-run: real units stayed below 1% of either window. |
 | Scheduling | `schedule install` never fired a run; the `github-actions` workflow never ran on a runner (`timezone` is [C]). |
-| Codex remote | Best effort by design (rotating `auth.json`). |
+| Codex remote | Not on GitHub-hosted runners; a self-hosted runner is untested. |
 | Setup UX | `init`, `queue` and `config edit` never ran against real accounts. |
 | Packaging | Never installed from a packed tarball; `harness.md` and `skills/` resolve from the package root (`src/config/paths.ts`). |
 
@@ -179,8 +179,8 @@ For each unit, check:
 - `schedule install --with github-actions` in the sandbox,
   `workflow_dispatch`, then one scheduled run: `timezone`, disk cleanup, commit identity, the report in the
   step summary.
-- Codex in Actions twice, recording what the rotated `auth.json` does
-  to the second run.
+- Codex on a self-hosted runner twice, recording what the refreshed
+  `auth.json` does to the second run.
 
 ### 6. A whole run
 

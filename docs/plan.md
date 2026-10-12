@@ -13,7 +13,7 @@ The shape comes from `design.md`, the facts from `lessons.md`,
 - **Providers:** Claude Code, Codex.
 - **Sources:** GitHub (also the forge), Asana.
 - **Runs:** locally (launchd, systemd, cron) and in GitHub Actions. Codex
-  remote is best effort (rotating `auth.json`).
+  is experimental and runs locally or on a self-hosted runner only.
 - **Customization:** which providers and sources to use, an ordered queue
   of rules that map items to skills, per-rule provider, extra skills,
   instructions, MCP servers and delivery, the branch name template
@@ -521,12 +521,11 @@ why a unit is placed where it is.
 
 ### M7 Codex provider
 - [x] `codex exec --json` headless run and its event stream; the turn
-      cap counts tool calls, since `exec` has none. The rotating
-      `auth.json` in `$CODEX_HOME` is seeded from `CODEX_AUTH_JSON` only
-      when missing; Codex writes the refreshed file back in place, and
-      awaywork never rewrites an existing one. Runs and probes hold a
-      per-machine lock. An ephemeral runner has nowhere to persist the
-      refreshed file, so Codex remote stays best effort.
+      cap counts tool calls, since `exec` has none. Codex uses the
+      machine's own `codex login`; it writes the refreshed `auth.json`
+      back in place, and awaywork never touches it. Runs and probes hold
+      a per-machine lock. An ephemeral runner has nowhere to persist the
+      refreshed file, so Codex is unavailable on GitHub-hosted runners.
 - [x] `probe` via `account/rateLimits/read` through `codex app-server`,
       burn-tested and recorded in `providers.md` [V]; a failed read falls
       back to a fixed budget. `exec` carries no quota and a second Codex

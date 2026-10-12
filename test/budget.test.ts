@@ -73,6 +73,13 @@ describe('route', () => {
     })
   })
 
+  it('passes over a provider with no allowance, which is unavailable here', () => {
+    expect(route(['gone', 'open'], allowances, {})).toEqual({
+      provider: 'open',
+      passed: ['gone unavailable'],
+    })
+  })
+
   it('caps fallback providers by units already routed', () => {
     expect(route(['capped'], allowances, {})).toEqual({ provider: 'capped', passed: [] })
     expect(route(['capped'], allowances, { capped: 1 })).toEqual({

@@ -97,6 +97,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   for (const { id, budget } of config.providers) {
     const provider = providers[id]
     if (!provider) continue
+    const unavailable = provider.unavailable?.(process.env)
+    if (unavailable) {
+      report('warn', id, `unavailable: ${unavailable}`)
+      continue
+    }
     const found = await provider.detect().catch((e: Error) => e)
     if (found instanceof Error || !found.installed) {
       report('FAIL', id, found instanceof Error ? found.message : 'not installed')
@@ -172,9 +177,10 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
 interface Job {
   environment?: string | { name?: string }
   env?: Record<string, unknown>
+  steps?: { env?: Record<string, unknown> }[]
 }
 
-/** A job's secrets; in an environment, the person's own are the names with their suffix. */
+/** A job's secrets, in its env or its steps'; in an environment, the person's own are the names with their suffix. */
 async function jobSecretChecks(
   what: string,
   job: Job,
@@ -182,11 +188,14 @@ async function jobSecretChecks(
   run: Exec,
 ): Promise<Check[]> {
   const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name
+  const envs = [job.env, ...(job.steps ?? []).map((step) => step?.env)]
   const names = [
     ...new Set(
-      Object.values(job.env ?? {}).flatMap((value) =>
-        [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
-      ),
+      envs
+        .flatMap((env) => Object.values(env ?? {}))
+        .flatMap((value) =>
+          [...String(value).matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1] ?? ''),
+        ),
     ),
   ]
   const own = environment

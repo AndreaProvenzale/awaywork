@@ -41,7 +41,7 @@ const envs: NodeJS.ProcessEnv[] = []
 const loaded = {
   PATH: '/bin',
   FAKE_AGENT_TOKEN: 'own',
-  CODEX_AUTH_JSON: 'other',
+  OTHER_AGENT_TOKEN: 'other',
   FAKE_TOKEN: 'src',
   NTFY_TOPIC: 'notify',
 }
@@ -114,7 +114,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     dryRun: false,
     providers: {
       claude: worker,
-      codex: { ...fakeProvider('codex'), secrets: ['CODEX_AUTH_JSON'] },
+      codex: { ...fakeProvider('codex'), secrets: ['OTHER_AGENT_TOKEN'] },
     },
     sources: { github: { ...fakeSource(), secrets: () => ['FAKE_TOKEN'] } as Source },
     forge,
@@ -426,7 +426,7 @@ sources: { github: { repos: [acme/*] } }
 queue: [{ skill: review }]
 repos:
   acme/api:
-    setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN" > setup.txt'
+    setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN,$SSH_AUTH_SOCK" > setup.txt'
     secrets: [NPM_TOKEN]
 `)
   const plan = planRun({
@@ -463,15 +463,21 @@ repos:
     sources: { github: fakeSource() as Source },
     forge,
     ctx: {
-      env: { PATH: process.env.PATH, FAKE_AGENT_TOKEN: 'own', NPM_TOKEN: 'npm' },
+      env: {
+        PATH: process.env.PATH,
+        FAKE_AGENT_TOKEN: 'own',
+        NPM_TOKEN: 'npm',
+        SSH_AUTH_SOCK: '/agent.sock',
+      },
       log: () => {},
     },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  expect(setups).toEqual(['npm,\n', ',\n', 'not run'])
+  expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
+  expect(workerEnvs[0]).toHaveProperty('SSH_AUTH_SOCK', '/agent.sock')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([
     ['done', undefined],
     ['skipped', expect.stringMatching(/^setup failed: .*code 3.*\nresolving\n404 from registry$/s)],
@@ -1445,10 +1451,10 @@ queue:
   ])
 })
 
-it('ends a loop once its command passes, runs it once per commit, and hands its output to the next step', async () => {
+it('ends a loop once its command passes, runs it once per commit without the askpass helper, and hands its output to the next step', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-command-'))
   const { opened, forge } = await originForge(root)
-  const command = 'echo run >> "$COUNT"; test -e acme-api-1-address-review-2.txt'
+  const command = 'echo "run$GIT_ASKPASS" >> "$COUNT"; test -e acme-api-1-address-review-2.txt'
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -1484,7 +1490,7 @@ queue:
     },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: process.env.PATH, COUNT: count }, log: () => {} },
+    ctx: { env: { PATH: process.env.PATH, COUNT: count, GIT_ASKPASS: '/askpass' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -1504,7 +1510,9 @@ queue:
   expect(seen['acme-api-1-address-review-1']).toEqual(['check.log', 'pr.md', 'report.md'])
   expect(seen['acme-api-1-review-2']).toEqual(['check.log', 'diff.patch', 'pr.md'])
   const log = await readFile(join(root, 'run/units/acme-api-1-review-1/out/check.log'), 'utf8')
-  expect(log).toMatch(/^\$ echo run >> "\$COUNT"; test -e acme-api-1-address-review-2\.txt\n/)
+  expect(log).toMatch(
+    /^\$ echo "run\$GIT_ASKPASS" >> "\$COUNT"; test -e acme-api-1-address-review-2\.txt\n/,
+  )
   expect(log).toMatch(/\nfailed: Command failed with exit code 1: .*\n$/)
   expect(prompts[2]).toContain(', which awaywork ran after it, in `check.log`.')
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])

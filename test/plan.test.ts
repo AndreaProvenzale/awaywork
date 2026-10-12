@@ -1,8 +1,9 @@
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
+import { probeAndPlan } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -803,6 +804,27 @@ queue:
       ['acme-api-2', 'claude'],
     ])
     expect(result.skipped).toEqual([])
+  })
+
+  it('leaves a provider unavailable here out of the run, without probing it, and says why', async () => {
+    const yaml =
+      'providers: [codex]\nsources: { tracker: { command: "echo []", fields: [column] } }\n'
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    try {
+      const { plan, warnings } = await probeAndPlan(
+        parseConfig(yaml),
+        await mkdtemp(join(tmpdir(), 'awaywork-skills-')),
+        {
+          retry: true,
+        },
+      )
+      expect(plan.allowances).toEqual({})
+      expect(warnings).toEqual([
+        expect.stringMatching(/^codex unavailable: a GitHub-hosted runner/),
+      ])
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

@@ -54,7 +54,10 @@ export function route(
   const passed: string[] = []
   for (const id of candidates) {
     const a = allowances[id]
-    if (!a) continue
+    if (!a) {
+      passed.push(`${id} unavailable`)
+      continue
+    }
     if (a.kind === 'quota' && a.session && a.session.used >= a.session.stopAt) {
       passed.push(`${id} at session_max (${pct(a.session.used)} of ${pct(a.session.stopAt)})`)
       continue
