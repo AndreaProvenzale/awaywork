@@ -115,9 +115,10 @@ stream and stops at the ceiling, or when the short session window passes
 
 ## The paranoid bit
 
-- **The model sees only its own agent's token.** No forge token, no
+- **Tokens stay out of the agent's env and prompt.** No forge token, no
   tracker token, no other agent's login. PR diffs, threads and CI logs are
-  prefetched into files. awaywork itself does the push.
+  prefetched into files. awaywork itself does the push. It's not a
+  sandbox, though: the agent runs as you and can read what you can.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule
   opts in to fast-forward your own PR. No force pushes, merges or
   comments, and it never touches anyone else's branch.
@@ -132,7 +133,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 |---|---|---|
-| Claude Code, Codex | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
+| Claude Code, Codex (experimental, not on hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own:
 [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md),

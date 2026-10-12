@@ -12,14 +12,17 @@ not asked of the model.
 
 - **No forge or tracker token.** Sources prefetch the context into files
   before the agent starts. The agent's environment has `GH_TOKEN` and
-  similar variables removed and a `gh` config without a login.
+  similar variables removed and a `gh` config without a login. Nor does
+  it get credentials that aren't tokens: `SSH_AUTH_SOCK`, `SSH_ASKPASS`,
+  `GIT_ASKPASS`, and git config passed in `GIT_CONFIG_PARAMETERS` or
+  `GIT_CONFIG_COUNT` and friends. `setup` and the checks keep those.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your
   `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets`, every
   MCP server's `secrets` and every
-  other provider's (`CODEX_AUTH_JSON` for a
-  Claude worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
-  Codex reads `auth.json` and gets no secret. A unit also keeps the
+  other provider's (`CLAUDE_CODE_OAUTH_TOKEN` for a
+  Codex worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
+  Codex uses the machine's own login and gets no secret. A unit also keeps the
   secrets of the [MCP servers](#mcp-servers) its rule names. The rest of your
   environment stays so repo tooling runs, including any variable you
   added to the env file that nothing declares.
@@ -72,6 +75,38 @@ not asked of the model.
   [MCP servers](./configuration.md#mcp-servers).
   They are yours, so they apply on someone else's PR too, except MCP
   servers, which carry your secrets.
+
+## Not a sandbox
+
+All of the above keeps credentials out of the agent's way, not out of
+its reach. With network on, it runs as your user with its tools
+unsandboxed ([Network](#network)), so it can read what you can [I, from
+the code]:
+
+- `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
+- gh's own login, by unsetting `GH_CONFIG_DIR`, and git's global
+  credential helper.
+- Your ssh keys.
+- On Linux, awaywork's own environment under `/proc`, `GH_TOKEN`
+  included. On a runner, that's your personal access token.
+
+What that leaves open:
+
+- **Prompt injection.** Issue bodies, comments, review threads and CI
+  logs are text someone else may have written. The harness tells the
+  agent they're data, but a model can still be talked into things, and
+  with network on, what it runs has the reach above.
+- **Hooks across a loop's rounds.** On your own repo, Claude Code loads
+  the clone's `.claude/settings.json`, so one round can leave hooks the
+  next round runs, outside the sandbox when offline.
+- **MCP secrets in Claude's Bash** on your own items:
+  [MCP servers](#mcp-servers), and
+  [#155](https://github.com/AndreaProvenzale/awaywork/issues/155) to fix it.
+- **Codex reads the PR author's `AGENTS.md`** on someone else's PR, as
+  above.
+
+So run awaywork on a machine or runner where that's acceptable. Real
+isolation is [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
 
 ## MCP servers
 
@@ -138,9 +173,8 @@ so it may fail, e.g. on a stock GitHub Actions runner [I].
 
 With network on, the agent's tools are not sandboxed: Claude Code gets
 Bash and file tools pre-approved, Codex runs with `--sandbox
-danger-full-access`, which it needs to commit. Either way, run
-awaywork on a machine or runner where that is acceptable: it can read
-what your user can read.
+danger-full-access`, which it needs to commit. What that reaches is in
+[Not a sandbox](#not-a-sandbox).
 
 ## What awaywork publishes
 
@@ -216,8 +250,11 @@ stops at the quota ceiling.
 
 ## Secrets on a runner
 
-In GitHub Actions, your credentials are secrets of your control repo,
-and anyone with write access to it can read them: a branch they push can
+In GitHub Actions, your credentials are secrets of your control repo.
+The generated workflow passes them only to awaywork's step, checks out
+without keeping a credential, and gives the job's `GITHUB_TOKEN` read
+access only: awaywork pushes with your `GH_TOKEN`. Still, anyone with
+write access to the repo can read them: a branch they push can
 carry a workflow that prints them. So the default is a control repo of
 your own. A [shared control repo](./scheduling.md#shared-control-repo)
 puts each person's credentials in an environment only the default branch

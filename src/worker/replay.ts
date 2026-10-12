@@ -10,6 +10,7 @@ import type { Outcome } from './publish.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
 import {
+  commandEnv,
   configSecrets,
   notSymlink,
   prepareWorkspace,
@@ -94,7 +95,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   const setup = r.config.repos[unit.repo]?.setup
   if (setup && !unit.untrusted) {
-    const failed = await runSetup(setup, dir, workerEnv(r.ctx.env, dir, secrets), log, {
+    const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
       secrets: [],
       signal: r.signal,
     })

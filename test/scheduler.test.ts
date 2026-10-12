@@ -145,7 +145,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
     timezone: 'Europe/Rome',
     config: '.awaywork/config.yml',
     version: '0.3.1',
-    packages: ['@anthropic-ai/claude-code', '@openai/codex'],
+    packages: ['@anthropic-ai/claude-code'],
     secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'],
     setup: [],
   })
@@ -153,20 +153,21 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
   expect(parsed.name).toBe('awaywork')
   expect(parsed.concurrency).toBe('awaywork')
+  expect(parsed.permissions).toEqual({ contents: 'read' })
   expect(parsed.jobs.run.environment).toBeUndefined()
-  expect(parsed.jobs.run.env).toEqual({
-    TZ: 'Europe/Rome',
-    GH_TOKEN: '${{ secrets.GH_TOKEN }}',
-    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
-  })
+  expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
   expect(parsed.jobs.run.steps).toEqual([
-    { uses: 'actions/checkout@v5' },
+    { uses: 'actions/checkout@v5', with: { 'persist-credentials': false } },
     {
       uses: 'AndreaProvenzale/awaywork@v1',
+      env: {
+        GH_TOKEN: '${{ secrets.GH_TOKEN }}',
+        CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
+      },
       with: {
         config: '.awaywork/config.yml',
         version: '0.3.1',
-        packages: '@anthropic-ai/claude-code @openai/codex',
+        packages: '@anthropic-ai/claude-code',
       },
     },
   ])
@@ -230,8 +231,8 @@ it("writes a person's workflow with their environment, suffixed secrets, concurr
   expect(job.name).toBe('awaywork-alice')
   expect(job.concurrency).toBe('awaywork-alice')
   expect(job.jobs.run.environment).toEqual({ name: 'alice', deployment: false })
-  expect(job.jobs.run.env).toEqual({
-    TZ: 'Europe/Rome',
+  expect(job.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
+  expect(job.jobs.run.steps[2].env).toEqual({
     GH_TOKEN: '${{ secrets.GH_TOKEN__ALICE }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
@@ -261,8 +262,7 @@ it('differs without an environment only by its environment line', () => {
   expect(job.name).toBe('awaywork-mary-jo')
   expect(job.concurrency).toBe('awaywork-mary-jo')
   expect(job.jobs.run.environment).toBeUndefined()
-  expect(job.jobs.run.env).toEqual({
-    TZ: 'Europe/Rome',
+  expect(job.jobs.run.steps[2].env).toEqual({
     GH_TOKEN: '${{ secrets.GH_TOKEN__MARY_JO }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
@@ -358,6 +358,18 @@ describe('schedule install --with github-actions', () => {
       '.awaywork/skills is up to date',
     ])
     expect(out.join('\n')).not.toMatch(/commit/)
+  })
+
+  it("says codex won't run on the hosted runner and leaves it out of the installs", async () => {
+    const { root, config, install } = await setup()
+    await writeFile(config, CONFIG.replace('[claude]', '[claude, codex]'))
+    await install()
+    expect(out[0]).toMatch(
+      /^codex won't run in this workflow: a GitHub-hosted runner has no Codex login/,
+    )
+    const steps = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps
+    expect(steps.at(-1).with.packages).toBe('@anthropic-ai/claude-code')
+    expect(Object.keys(steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
   })
 
   it('shows what changed and asks; declined keeps, accepted replaces the skills folder as a whole', async () => {

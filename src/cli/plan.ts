@@ -45,6 +45,11 @@ export async function probeAndPlan(
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
+    const unavailable = providers[p.id]?.unavailable?.(ctx.env)
+    if (unavailable) {
+      warnings.push(`${p.id} unavailable: ${unavailable}`)
+      continue
+    }
     let reason: string | undefined
     const quota = await providers[p.id]?.probe(ctx).catch((e: Error) => {
       reason = `probe failed: ${e.message}`

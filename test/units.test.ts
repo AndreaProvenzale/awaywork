@@ -41,7 +41,7 @@ const envs: NodeJS.ProcessEnv[] = []
 const loaded = {
   PATH: '/bin',
   FAKE_AGENT_TOKEN: 'own',
-  CODEX_AUTH_JSON: 'other',
+  OTHER_AGENT_TOKEN: 'other',
   FAKE_TOKEN: 'src',
   NTFY_TOPIC: 'notify',
 }
@@ -114,7 +114,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     dryRun: false,
     providers: {
       claude: worker,
-      codex: { ...fakeProvider('codex'), secrets: ['CODEX_AUTH_JSON'] },
+      codex: { ...fakeProvider('codex'), secrets: ['OTHER_AGENT_TOKEN'] },
     },
     sources: { github: { ...fakeSource(), secrets: () => ['FAKE_TOKEN'] } as Source },
     forge,
@@ -426,7 +426,7 @@ sources: { github: { repos: [acme/*] } }
 queue: [{ skill: review }]
 repos:
   acme/api:
-    setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN" > setup.txt'
+    setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN,$SSH_AUTH_SOCK" > setup.txt'
     secrets: [NPM_TOKEN]
 `)
   const plan = planRun({
@@ -463,15 +463,21 @@ repos:
     sources: { github: fakeSource() as Source },
     forge,
     ctx: {
-      env: { PATH: process.env.PATH, FAKE_AGENT_TOKEN: 'own', NPM_TOKEN: 'npm' },
+      env: {
+        PATH: process.env.PATH,
+        FAKE_AGENT_TOKEN: 'own',
+        NPM_TOKEN: 'npm',
+        SSH_AUTH_SOCK: '/agent.sock',
+      },
       log: () => {},
     },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  expect(setups).toEqual(['npm,\n', ',\n', 'not run'])
+  expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
+  expect(workerEnvs[0]).not.toHaveProperty('SSH_AUTH_SOCK')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([
     ['done', undefined],
     ['skipped', expect.stringMatching(/^setup failed: .*code 3.*\nresolving\n404 from registry$/s)],

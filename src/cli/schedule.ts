@@ -279,7 +279,12 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
-    const used = loaded.providers.flatMap((p) => providers[p.id] ?? [])
+    const used = loaded.providers.flatMap((p) => {
+      const provider = providers[p.id]
+      const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })
+      if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
+      return provider && !unavailable ? [provider] : []
+    })
     const base = {
       starts: startsOf(loaded.windows),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,

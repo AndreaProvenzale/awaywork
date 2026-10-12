@@ -37,6 +37,7 @@ interface Provider {
   unattended: 'allowed' | 'grey' | 'forbidden'
   package: string                           // npm package with the binary, for runners
   secrets: string[]                         // env var names it reads unattended
+  unavailable?(env): string | undefined     // why it can't run here, if it can't
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>         // null = fixed budget (fallback)
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
@@ -58,6 +59,10 @@ interface Provider {
   can't be read; awaywork then applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and
   aborting, as `codex.ts` does.
+- `unavailable` returns a one-line reason where the provider can't run,
+  as Codex on a GitHub-hosted runner: `plan` and `run` route around it,
+  `doctor` says why, and `schedule install --with github-actions` leaves
+  it out of the workflow.
 
 [`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts)
 is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts)

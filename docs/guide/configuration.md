@@ -683,7 +683,6 @@ or `~/.config/awaywork/env` (the environment wins).
 | Variable | Used by |
 |---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`) |
-| `CODEX_AUTH_JSON` | Codex on a runner: seeds `auth.json` when missing |
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |

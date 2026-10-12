@@ -133,6 +133,8 @@ export interface Provider {
   package: string
   /** Env var names it reads unattended; locally a login may stand in. */
   secrets: string[]
+  /** Why it can't run in this environment, if it can't; routing then skips it. */
+  unavailable?(env: NodeJS.ProcessEnv): string | undefined
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>

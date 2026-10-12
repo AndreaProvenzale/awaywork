@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { claudeProvider, toEvents } from '../src/providers/claude.js'
-import { workerEnv } from '../src/worker/workspace.js'
+import { commandEnv, workerEnv } from '../src/worker/workspace.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -100,6 +100,25 @@ describe('claude provider', () => {
       ['ASANA_TOKEN'],
     )
     expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.away/gh' })
+  })
+
+  it('gives the model no ssh agent, askpass helper or git config from the env; setup keeps them', () => {
+    const plumbing = {
+      SSH_AUTH_SOCK: '/agent.sock',
+      SSH_ASKPASS: '/askpass',
+      GIT_ASKPASS: '/askpass',
+      GIT_CONFIG_PARAMETERS: "'credential.helper'='store'",
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'credential.helper',
+      GIT_CONFIG_VALUE_0: 'store',
+    }
+    const env = { PATH: '/bin', GIT_CONFIG_GLOBAL: '/g', ...plumbing }
+    expect(workerEnv(env, '/work', [])).toEqual({
+      PATH: '/bin',
+      GIT_CONFIG_GLOBAL: '/g',
+      GH_CONFIG_DIR: '/work/.away/gh',
+    })
+    expect(commandEnv(env, '/work', [])).toEqual({ ...env, GH_CONFIG_DIR: '/work/.away/gh' })
   })
 
   it('passes the model only when one is set', async () => {

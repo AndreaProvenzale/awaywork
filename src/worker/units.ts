@@ -25,6 +25,7 @@ import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { runCommand, runSetup } from './setup.js'
 import {
+  commandEnv,
   configSecrets,
   notSymlink,
   outputFile,
@@ -813,7 +814,7 @@ async function appendVerifyFailure(file: string, check: RanCheck): Promise<void>
   await writeOutput(file, `${body}\n\n## Awaywork verify\n\n${checkDetails(summary, check)}\n`)
 }
 
-/** Like the worker's, with every secret withheld except the repo's own. */
+/** With every secret withheld except the repo's own. */
 function setupEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
@@ -821,5 +822,5 @@ function setupEnv(
   own: string[],
 ): NodeJS.ProcessEnv {
   const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
-  return { ...workerEnv(env, dir, secrets), ...Object.fromEntries(passed) }
+  return { ...commandEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }

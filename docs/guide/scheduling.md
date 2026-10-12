@@ -90,10 +90,12 @@ morning report to the job summary. Fixes to those steps reach you through
 `v1`; to upgrade awaywork itself, raise `version` in the workflow, or
 upgrade awaywork and run `schedule install --with github-actions`
 again.
-The action gets the job's env, secrets included: if you'd rather not
-follow `v1`, pin it to a commit SHA of this repo instead. A
-[custom source](./custom-sources.md)'s `setup` runs as a step of its own
-before the action, in the config's folder.
+The job's `GITHUB_TOKEN` can only read (`permissions: contents: read`),
+checkout keeps no credential (`persist-credentials: false`), and only the
+action's step gets the secrets. Every step inside the action sees them:
+if you'd rather not follow `v1`, pin it to a commit SHA of this repo
+instead. A [custom source](./custom-sources.md)'s `setup` runs as a step
+of its own before the action, in the config's folder, without the secrets.
 
 The workflow works once awaywork has a stable release on npm, which
 also creates the `v1` tag.
@@ -125,7 +127,13 @@ PR doesn't wait for your review: the rule pushes again every run its
 | Provider | Secret | Notes |
 |---|---|---|
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
-| Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it at every refresh, about every 10 days, and an ephemeral runner can't save the refreshed file, so the secret stops working after its first refresh. Prefer running Codex locally. |
+
+Codex is experimental and doesn't run on GitHub-hosted runners: it uses
+the machine's own `codex login`, which Codex rotates in place, and a
+fresh runner has none to keep. `schedule install` says so and leaves it
+out of the workflow, and a run on a hosted runner routes its units to
+your other providers. Run Codex locally, or on a self-hosted runner
+logged in with `codex login`.
 
 ## Shared control repo
 
@@ -236,8 +244,8 @@ how a job whose secrets didn't reach it shows.
 ### Checking with doctor
 
 `awaywork doctor`, run inside the repo, reads each
-`awaywork*.yml`: its `environment` and every `secrets.X` its `env:`
-names. Each must exist in that environment, the repo or the org: one
+`awaywork*.yml`: its `environment` and every `secrets.X` its job's and
+steps' `env:` name. Each must exist in that environment, the repo or the org: one
 line per workflow says how many were found, or fails naming the missing
 ones and where they go. With an environment, a name with the person's
 suffix goes there and the rest to the repo; without one, all go to the

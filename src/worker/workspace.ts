@@ -29,6 +29,15 @@ export const outputFile: Record<Deliver, string> = {
 }
 
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
+/** Credentials that aren't tokens: the ssh agent, askpass helpers and git config set through the env. */
+const credentialPlumbing = [
+  'SSH_AUTH_SOCK',
+  'SSH_ASKPASS',
+  'GIT_ASKPASS',
+  'GIT_CONFIG_PARAMETERS',
+  'GIT_CONFIG_COUNT',
+]
+const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
 export interface WorkspaceInput {
   unit: Unit
@@ -199,8 +208,8 @@ export async function writeOutput(path: string, text: string, append = false): P
 /** A `cp` filter that leaves symlinks behind, so nothing later writes through one. */
 export const notSymlink = async (src: string) => !(await lstat(src)).isSymbolicLink()
 
-/** The model's environment: no forge token, none of `withheld`, and a gh config dir without the local login. */
-export function workerEnv(
+/** The env of setup and checks: no forge token, none of `withheld`, and a gh config dir without the local login. */
+export function commandEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
   withheld: string[],
@@ -208,6 +217,18 @@ export function workerEnv(
   const hidden = new Set([...forgeTokens, ...withheld])
   const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
   return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
+}
+
+/** The model's environment: `commandEnv`'s without the credential plumbing. */
+export function workerEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  withheld: string[],
+): NodeJS.ProcessEnv {
+  const kept = Object.entries(commandEnv(env, dir, withheld)).filter(
+    ([name]) => !credentialPlumbing.includes(name) && !gitConfigEntry.test(name),
+  )
+  return Object.fromEntries(kept)
 }
 
 /** Every secret the config names, for `workerEnv` to withhold. */

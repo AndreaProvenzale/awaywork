@@ -108,7 +108,10 @@ async function setup(gh: Gh = {}) {
   const install = (script: [RegExp, unknown][] = []) => installWorkflow(config, 'alice', io(script))
   const job = async () =>
     parse(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).jobs.run
-  return { root, home, config, calls, set, io, install, job }
+  // Only the action's step gets the secrets.
+  const actionEnv = async () =>
+    (await job()).steps.find((s: { uses?: string }) => s.uses?.startsWith('AndreaProvenzale/')).env
+  return { root, home, config, calls, set, io, install, job, actionEnv }
 }
 
 it('splits secrets into personal and shared, a name in both being personal', () => {
@@ -119,7 +122,7 @@ it('splits secrets into personal and shared, a name in both being personal', () 
 })
 
 it("installs a person's environment, workflow, config and skills, and offers each secret in its layer", async () => {
-  const { root, calls, set, install, job } = await setup({ org: 'MCP_DB_URL' })
+  const { root, calls, set, install, job, actionEnv } = await setup({ org: 'MCP_DB_URL' })
   await install([
     [/^Set GH_TOKEN__ALICE in environment alice from your env\?$/, true],
     [/^Set the SLACK_WEBHOOK repository secret, shared with the team, from your env\?$/, true],
@@ -131,8 +134,8 @@ it("installs a person's environment, workflow, config and skills, and offers eac
     'gh api -X POST repos/{owner}/{repo}/environments/alice/deployment-branch-policies -f name=main',
   )
   expect((await job()).environment).toEqual({ name: 'alice', deployment: false })
-  expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
-  expect((await job()).env.SLACK_WEBHOOK).toBe('${{ secrets.SLACK_WEBHOOK }}')
+  expect((await actionEnv()).GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
+  expect((await actionEnv()).SLACK_WEBHOOK).toBe('${{ secrets.SLACK_WEBHOOK }}')
   expect(await readFile(join(root, '.awaywork/alice/config.yml'), 'utf8')).toBe(CONFIG)
   expect(await readFile(join(root, '.awaywork/alice/skills/mine/SKILL.md'), 'utf8')).toBe('MINE')
   expect(existsSync(join(root, '.awaywork/config.yml'))).toBe(false)
@@ -153,13 +156,13 @@ it("installs a person's environment, workflow, config and skills, and offers eac
 })
 
 it("never lets a repo or org secret of a personal name stand in for the person's", async () => {
-  const { install, job } = await setup({ repo: 'GH_TOKEN\nDATABASE_URL', org: 'ASANA_TOKEN' })
+  const { install, actionEnv } = await setup({ repo: 'GH_TOKEN\nDATABASE_URL', org: 'ASANA_TOKEN' })
   await install([
     [/^Set GH_TOKEN__ALICE in environment alice/, false],
     [/SLACK_WEBHOOK/, false],
   ])
-  expect((await job()).env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
-  expect((await job()).env.ASANA_TOKEN).toBe('${{ secrets.ASANA_TOKEN__ALICE }}')
+  expect((await actionEnv()).GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
+  expect((await actionEnv()).ASANA_TOKEN).toBe('${{ secrets.ASANA_TOKEN__ALICE }}')
   expect(out).toContain(
     '  add these secrets to environment alice: GH_TOKEN__ALICE, CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
   )
@@ -266,7 +269,7 @@ it('adds no branch policy the environment already has', async () => {
 })
 
 it('falls back to suffixed repository secrets when GitHub refuses the environment', async () => {
-  const { calls, set, install, job } = await setup({ refuse: true })
+  const { calls, set, install, job, actionEnv } = await setup({ refuse: true })
   await install([
     [FALLBACK, true],
     [/^Set the GH_TOKEN__ALICE repository secret from your env\?$/, true],
@@ -274,7 +277,8 @@ it('falls back to suffixed repository secrets when GitHub refuses the environmen
   ])
   expect(out[0]).toBe('GitHub refuses the environment alice: gh: Not Found (HTTP 404)')
   expect(calls.filter((c) => c.includes('branch-policies'))).toEqual([])
-  const { environment, env } = await job()
+  const { environment } = await job()
+  const env = await actionEnv()
   expect(environment).toBeUndefined()
   expect(env.GH_TOKEN).toBe('${{ secrets.GH_TOKEN__ALICE }}')
   expect(env.ASANA_TOKEN).toBe('${{ secrets.ASANA_TOKEN__ALICE }}')
