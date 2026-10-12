@@ -291,7 +291,7 @@ function findSkill(name: string, roots: string[]): string {
 
 function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: LoopRound): string {
   const base = unit.fork
-    ? `#${unit.fork.number}'s head (on a fork)`
+    ? `#${unit.fork.number} (from a fork)`
     : unit.base
       ? `\`${unit.base}\``
       : 'the default branch'

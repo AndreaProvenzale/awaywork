@@ -180,7 +180,7 @@ queue: [{ skill: review }]
 
   expect(result.status).toBe('done')
   expect((await git(result.dir, 'rev-parse', 'HEAD')).stdout).toBe(head)
-  expect(prompts[1]).toContain("cut from #3's head (on a fork).")
+  expect(prompts[1]).toContain('cut from #3 (from a fork).')
 })
 
 it('says a unit from before replay existed cannot be replayed', async () => {
