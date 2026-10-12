@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -146,10 +146,14 @@ describe('skills', () => {
     const userDir = await tmp()
     await mkdir(join(userDir, 'review'))
     await writeFile(join(userDir, 'review', 'SKILL.md'), '---\ndescription: Mine.\n---\n')
+    const linked = await tmp()
+    await writeFile(join(linked, 'SKILL.md'), '---\ndescription: Linked.\n---\n')
+    await symlink(linked, join(userDir, 'house-style'))
     const text = await listSkills(userDir)
     expect(text).toContain('fix-ci (built-in, draft_pr)\n  Fix the failing checks')
     expect(text).toContain('plan (built-in, report)')
     expect(text).toContain('review (user, shadows built-in, draft_pr)\n  Mine.')
+    expect(text).toContain('house-style (user, draft_pr)\n  Linked.')
   })
 
   it('ejects a built-in once, and only a built-in', async () => {

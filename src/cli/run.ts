@@ -4,14 +4,14 @@ import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
-import { formatReport, runLine, summarize } from '../core/report.js'
+import { formatReport, localTime, runLine, summarize } from '../core/report.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, windowEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { notify } from '../worker/notify.js'
-import { runUnits } from '../worker/units.js'
+import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { probeAndPlan } from './plan.js'
@@ -25,6 +25,7 @@ export function runCommand(program: Command): void {
     .option('--unit <id>', 'run only this unit, by id or item key')
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
     .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
+      console.log(`awaywork run at ${localTime(new Date())}`)
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
@@ -38,6 +39,12 @@ export function runCommand(program: Command): void {
         const { plan, warnings, ctx } = await probeAndPlan(config, skillsDirOf(path), {
           retry: !!opts.unit,
         })
+        for (const warning of warnings) console.error(`warning: ${warning}`)
+        if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
+          console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
+          process.exitCode = 1
+          return
+        }
         const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
@@ -67,7 +74,7 @@ export function runCommand(program: Command): void {
           signal: abort.signal,
         })
         const reportPath = join(runDir, 'report.md')
-        await writeFile(reportPath, formatReport(report))
+        await writeFile(reportPath, formatReport(report, warnings))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))

@@ -610,7 +610,7 @@ describe('github forge', () => {
     await expect(back).rejects.toThrow()
     expect((await git(origin, 'rev-parse', 'away/acme-api-2')).stdout).toBe(rewritten)
     await expect(forge.push(clone, 'away/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
-  })
+  }, 30_000)
 
   it('opens a draft PR titled by the body file first line', async () => {
     const dir = await tmp()

@@ -61,6 +61,16 @@ export interface RunInput {
   skillDirs?: { user: string; builtin: string }
 }
 
+/** The units `name` names, by unit id or item key in any case. */
+export function namedUnits(plan: RunPlan, name: string): Set<string> {
+  const only = slug(name)
+  return new Set(
+    plan.units
+      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
+      .map((p) => p.unit.id),
+  )
+}
+
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
  * A draft PR stacks on this run's draft PR it follows, or on the awaywork PR a rule took up.
@@ -73,11 +83,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
   const only = input.only && slug(input.only)
-  const wanted = new Set(
-    input.plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
-      .map((p) => p.unit.id),
-  )
+  const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
   if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
   // A loop round needs its whole loop, and a chained unit the units it follows.
   for (let size = 0; size !== wanted.size; ) {

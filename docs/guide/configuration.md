@@ -59,7 +59,7 @@ repos:
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
-skills: [house-style]           # every unit, next to a rule's skills
+skills: [house-style]           # every unit, next to a rule's skills; yours, in skills/ beside this file
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix-ci
     where: { type: pr, mine: true, checks: failing }
@@ -76,7 +76,7 @@ queue:                          # first matching rule wins; top = highest priori
     source: asana
     where: { section: Ready, tags: backend }
     provider: codex
-    skills: [our-api-conventions]
+    skills: [our-api-conventions]   # yours too
     instructions: notes/backend.md
 ```
 
@@ -500,7 +500,7 @@ queue:
           - { skill: address-review, when: { verdict: changes } }
         until: { verdict: [approve, comments], command: pnpm test }
         max: 3
-      - { skill: security-review, when: { changed: "src/auth/**" } }
+      - { skill: security-review, when: { changed: "src/auth/**" } }   # a skill of yours
 ```
 
 - `verdict` is the step before's or, after a loop, the latest one
@@ -595,13 +595,17 @@ background is stopped when it exits.
 
 ```yaml
 notify:                         # ntfy
-  command: curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes" --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+  command: >-
+    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes"
+    --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
 ```yaml
 notify:                         # a Slack incoming webhook
-  command: jq -Rs '{text:.}' "$AWAYWORK_REPORT" | curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
+  command: >-
+    jq -Rs '{text:.}' "$AWAYWORK_REPORT" |
+    curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
 
@@ -648,7 +652,7 @@ mcp:
 
 queue:
   - skill: implement
-    where: { type: issue, labels: bug }
+    where: { type: issue, label: bug }
     mcp: [sentry]
     then:
       - { skill: review, mcp: [db] }
