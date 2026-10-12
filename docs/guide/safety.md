@@ -86,7 +86,8 @@ not; with network on its tools aren't sandboxed either
 - `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
 - gh's own login, by unsetting `GH_CONFIG_DIR`, and git's global
   credential helper.
-- Your ssh keys, and your ssh agent.
+- Your ssh keys, and your ssh agent: the worker keeps `SSH_AUTH_SOCK` to
+  sign its commits.
 - A VS Code terminal's git askpass (`VSCODE_GIT_*`).
 - On Linux, awaywork's own environment under `/proc`, `GH_TOKEN`
   included. On a runner, that's your personal access token.

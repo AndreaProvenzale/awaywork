@@ -115,10 +115,11 @@ stream and stops at the ceiling, or when the short session window passes
 
 ## The paranoid bit
 
-- **Only its own login reaches the agent.** No forge token, no tracker
-  token, no other agent's login. PR diffs, threads and CI logs are
-  prefetched into files. awaywork itself does the push. It's not a
-  sandbox, though: the agent runs as you and can read what you can.
+- **Only its own login reaches the agent,** plus the secrets of any MCP
+  servers a rule names. No forge token, no other agent's login. PR diffs,
+  threads and CI logs are prefetched into files. awaywork itself does the
+  push. It's not a sandbox, though: the agent runs as you, with your ssh
+  agent, and can read what you can.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule
   opts in to fast-forward your own PR. No force pushes, merges or
   comments, and it never touches anyone else's branch.
