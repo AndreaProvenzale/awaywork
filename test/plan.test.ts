@@ -531,21 +531,21 @@ queue:
   })
 
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
-    const yaml = (step: string) =>
-      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: fix-ci, then: ${step} }]`
+    const yaml = (skill: string, step: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: ${skill}, then: ${step} }]`
     const theirs = githubPr(2, { checks: 'failing', mine: false })
-    expect(plan(yaml('review'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
+    expect(plan(yaml('review', 'plan'), [theirs], {}).units.map((u) => u.unit.foreign)).toEqual([
       true,
       true,
     ])
-    const result = plan(yaml('bad.lock'), [theirs], {})
+    const result = plan(yaml('fix-ci', 'bad.lock'), [theirs], {})
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => s.reason)).toEqual([
       'then bad.lock: branch template away/{key} renders an invalid name "away/acme-api-2-bad.lock"',
     ])
   })
 
-  it('lets a push rule take the first linked PR that is yours', () => {
+  it('lets a push or draft PR rule take the first linked PR that is yours', () => {
     const theirs = githubPr(2, { mine: false }).linkedPrs[0] as PrRef
     const mine = githubPr(1).linkedPrs[0] as PrRef
     const issue = { ...githubPr(5), linkedPrs: [theirs, mine] }
@@ -555,13 +555,63 @@ queue:
     expect(pushed.units.map(({ unit }) => [unit.deliver, unit.base])).toEqual([
       ['push', 'feature-1'],
     ])
-    expect(plan(yaml('draft_pr'), [issue], {}).units[0]?.unit.base).toBe('feature-2')
+    expect(plan(yaml('draft_pr'), [issue], {}).units[0]?.unit.base).toBe('feature-1')
+    expect(plan(yaml('report'), [issue], {}).units[0]?.unit.base).toBe('feature-2')
     const theirs2 = githubPr(3, { mine: false }).linkedPrs[0] as PrRef
-    const none = plan(yaml('push'), [{ ...githubPr(6), linkedPrs: [theirs, theirs2] }], {})
-    expect(none.units).toEqual([])
-    expect(none.skipped.map((s) => s.reason)).toEqual([
-      "deliver push: feature-2 is someone else's PR",
+    const both = [{ ...githubPr(6), linkedPrs: [theirs, theirs2] }]
+    for (const deliver of ['push', 'draft_pr']) {
+      const none = plan(yaml(deliver), both, {})
+      expect(none.units).toEqual([])
+      expect(none.skipped.map((s) => s.reason)).toEqual([
+        `deliver ${deliver}: feature-2 is someone else's PR`,
+      ])
+    }
+  })
+
+  it("stacks no draft PR onto someone else's PR, after a report either", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: review, where: { type: pr }, then: [implement, { loop: [review, implement], until: { verdict: approve }, max: 2 }] }
+  - { skill: review, where: { type: issue }, then: { loop: [review, implement], until: { verdict: approve }, max: 2 } }
+`
+    const theirs = githubPr(2, { mine: false })
+    const closing = { ...issue, linkedPrs: githubPr(3, { mine: false }).linkedPrs }
+    const result = plan(yaml, [theirs, closing], {})
+    expect(result.units.map(({ unit, capped }) => [unit.id, unit.deliver, capped])).toEqual([
+      ['acme-api-2', 'report', "then implement: deliver draft_pr: feature-2 is someone else's PR"],
+      ['acme-api-5', 'report', "then loop: deliver draft_pr: feature-3 is someone else's PR"],
     ])
+    expect(formatPlan(result)).toContain(
+      "then implement: deliver draft_pr: feature-2 is someone else's PR",
+    )
+    const mine = plan(yaml, [githubPr(1)], {})
+    expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
+      'acme-api-1-implement',
+      'feature-1',
+    ])
+  })
+
+  it('reports on a PR from a fork, at its head, and refuses a draft PR or a push there', () => {
+    const forked = githubPr(3)
+    const fork = { ...(forked.linkedPrs[0] as PrRef), branch: 'main', head: 'f0f0f0f', fork: true }
+    const pr = { ...forked, linkedPrs: [fork] }
+    const yaml = (deliver: string) =>
+      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: review, deliver: ${deliver}, then: implement }]`
+    const report = plan(yaml('report'), [pr], {})
+    expect(report.units.map(({ unit, capped }) => [unit.base, unit.fork, capped])).toEqual([
+      [
+        'main',
+        { number: 3, head: 'f0f0f0f' },
+        'then implement: deliver draft_pr: main is on a fork',
+      ],
+    ])
+    for (const deliver of ['draft_pr', 'push']) {
+      const refused = plan(yaml(deliver), [pr], {})
+      expect(refused.units).toEqual([])
+      expect(formatPlan(refused)).toContain(`deliver ${deliver}: main is on a fork`)
+    }
   })
 
   it("pushes only onto your own PR's branch, never onto someone else's or this run's draft PR", () => {
@@ -637,8 +687,8 @@ queue:
   - { skill: implement, where: { type: issue } }
 `
     const items = [
-      githubPr(1, { mine: false, checks: 'failing' }),
-      githubPr(2, { mine: false, review_requested: true }),
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { review_requested: true }),
       issue,
       fakeItem({ ...issue, key: 'acme/web#5', fields: { repo: 'acme/web' } }),
     ]

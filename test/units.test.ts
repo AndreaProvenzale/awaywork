@@ -1649,7 +1649,7 @@ queue:
       - { skill: continue, when: { verdict: approve } }
   - skill: review
     where: { type: pr }
-    then: { skill: qa-feedback, when: { command: "true" } }
+    then: { skill: qa-feedback, deliver: report, when: { command: "true" } }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({

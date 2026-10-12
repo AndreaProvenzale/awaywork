@@ -310,6 +310,38 @@ describe('github forge', () => {
     expect(run.calls[2]).not.toContain('--branch')
   })
 
+  it("clones a fork PR at its head from the repo's pull ref, not the repo's same-named branch", async () => {
+    const root = await tmp()
+    const [origin, work] = [join(root, 'origin'), join(root, 'work')]
+    const git = (dir: string, ...args: string[]) =>
+      execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+    await execa(bin('git'), ['init', '-q', '-b', 'main', work])
+    await git(work, 'commit', '-q', '--allow-empty', '-m', 'base main')
+    await git(work, 'checkout', '-q', '-b', 'theirs')
+    await git(work, 'commit', '-q', '--allow-empty', '-m', 'fork main')
+    const head = (await git(work, 'rev-parse', 'HEAD')).stdout
+    await execa(bin('git'), ['clone', '-q', '--bare', work, origin])
+    await git(origin, 'update-ref', 'refs/pull/7/head', head)
+    await git(origin, 'branch', '-D', 'theirs')
+    const run: Exec = (cmd, args) =>
+      exec(
+        cmd,
+        args.map((a) => (a === 'https://github.com/acme/api.git' ? origin : a)),
+      )
+    const forge = githubForge(run)
+    const dir = join(root, 'clone')
+    await forge.clone('acme/api', 'main', dir, { number: 7, head })
+    expect((await git(dir, 'rev-parse', 'HEAD')).stdout).toBe(head)
+    expect((await git(dir, 'config', 'credential.helper')).stdout).toBe('')
+    const moved = forge.clone('acme/api', 'main', join(root, 'moved'), {
+      number: 7,
+      head: 'abc1234',
+    })
+    await expect(moved).rejects.toThrow(
+      `#7 on acme/api is at ${head.slice(0, 7)}, not abc1234: it moved since it was read`,
+    )
+  })
+
   it('finds my PRs whose branch or title carries the key, and marks awaywork ones', async () => {
     const authored = fixture('search-authored.json')
       .replace('"headRefName": "rate-limits"', '"headRefName": "t-12-rate-limits"')

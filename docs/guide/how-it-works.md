@@ -146,8 +146,10 @@ unit goes to the next provider.
 ## The worker
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
-draft PR a `then` step follows, else your PR's branch, else the
-default branch. A branch name
+draft PR a `then` step follows, else the linked PR's branch, else the
+default branch. A PR from a fork is fetched from the repo's
+`refs/pull/<number>/head`, and the unit fails if that is no longer the
+head commit its source read. A branch name
 that's taken on the remote gets a `-2` to `-10` suffix, unless
 awaywork already tried there ([Branch names](./configuration.md#branch-names)).
 A loop's rounds reuse the clone of the unit the loop started from.
@@ -172,7 +174,7 @@ A loop's rounds reuse the clone of the unit the loop started from.
 
 | `deliver` | What happens |
 |---|---|
-| `draft_pr` | The worker commits and writes `.away/out/pr.md` (first line the title). awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. |
+| `draft_pr` | The worker commits and writes `.away/out/pr.md` (first line the title). awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a PR from a fork: there a rule is skipped with the reason, and a `then` step is left out with the rest of the chain; a report still works. |
 | `report` | The worker writes `.away/out/report.md`; nothing is pushed. It goes into the morning report. |
 | `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/report.md`; awaywork adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. |
 
