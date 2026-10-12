@@ -20,8 +20,6 @@ subscription quota. Read `README.md`, then `docs/`: `guide/` and
   per-rule opt-in (`deliver: push`), fast-forward only.
 - **State what you checked, not what you believe.** A finding names its
   evidence; research tags claims [V]/[C]/[I] as in `docs/providers.md`.
-  A record of a run or a test keeps the names and values it observed,
-  even after a rename.
 - **Docs talk dev to dev.** Guides and the README are casual, a bit nerdy
   and generic ("Claude Code, Codex and friends"), and they show real
   output instead of describing it. Research docs stay dry and evidence-tagged.
