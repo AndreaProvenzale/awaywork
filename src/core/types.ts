@@ -142,7 +142,7 @@ export interface Provider {
 }
 
 export interface Forge {
-  /** With `fork`, `branch` is on a fork: the clone checks out the PR's head from its pull ref. */
+  /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
   clone(repo: string, branch: string, dir: string, fork?: Unit['fork']): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>

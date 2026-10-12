@@ -79,7 +79,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       ...(provider.skillsDir ? skills : []),
     ])
   } else {
-    await w.forge.clone(unit.repo, unit.base, dir, unit.fork)
+    // A replay checks out its saved commit: the PR may have moved since.
+    const fork = w.replay && unit.fork ? { number: unit.fork.number } : unit.fork
+    await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
     await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
   }
@@ -288,7 +290,11 @@ function findSkill(name: string, roots: string[]): string {
 }
 
 function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: LoopRound): string {
-  const base = unit.base ? `\`${unit.base}\`` : 'the default branch'
+  const base = unit.fork
+    ? `#${unit.fork.number}'s head (on a fork)`
+    : unit.base
+      ? `\`${unit.base}\``
+      : 'the default branch'
   const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
   // A loop's PR body exists once its host, or a round before, wrote one.
   const continues = loop !== undefined && loop.host !== unit.id

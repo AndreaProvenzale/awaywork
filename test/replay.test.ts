@@ -9,7 +9,9 @@ import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
-import type { Provider } from '../src/core/types.js'
+import type { Provider, PrRef } from '../src/core/types.js'
+import { type Exec, exec } from '../src/forge/gh.js'
+import { githubForge } from '../src/forge/github.js'
 import { replayUnit } from '../src/worker/replay.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
@@ -107,6 +109,78 @@ queue:
   expect(await readFile(join(result.out, 'pr.md'), 'utf8')).toMatch(/^Fix/)
   expect(prompts).toHaveLength(2)
   expect(forge.branches).toEqual(pushed)
+})
+
+it('replays a fork unit on its saved commit after the PR moved', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-replay-'))
+  const [work, origin] = [join(root, 'work'), join(root, 'origin')]
+  await execa(bin('git'), ['init', '-q', '-b', 'main', work])
+  await git(work, 'commit', '-q', '--allow-empty', '-m', 'fork main')
+  const head = (await git(work, 'rev-parse', 'HEAD')).stdout
+  await execa(bin('git'), ['clone', '-q', '--bare', work, origin])
+  await git(origin, 'update-ref', 'refs/pull/3/head', head)
+  const run: Exec = (cmd, args) =>
+    exec(
+      cmd,
+      args.map((a) => (a === 'https://github.com/acme/api.git' ? origin : a)),
+    )
+  const forge = { ...fakeForge(), clone: githubForge(run).clone }
+  const prompts: string[] = []
+  const worker: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      prompts.push(job.prompt)
+      await writeFile(join(job.dir, '.away/out/report.md'), 'Looks fine')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const config = parseConfig(`
+providers: [claude]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: review }]
+`)
+  const forked = githubPr(3)
+  const fork = { ...(forked.linkedPrs[0] as PrRef), branch: 'main', head, fork: true }
+  const quota = {
+    windows: [
+      { name: 'five_hour', span: 'short' as const, used: 0.1, resetsAt: 1790254200 },
+      { name: 'seven_day', span: 'long' as const, used: 0.3, resetsAt: 1790391600 },
+    ],
+  }
+  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+  const plan = planRun({
+    config,
+    items: [{ ...forked, linkedPrs: [fork] }],
+    allowances: { claude: allowance(config.budget, quota, now, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const shared = {
+    config,
+    configDir: root,
+    runDir: join(root, 'run'),
+    providers: { claude: worker },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  }
+  const report = await runUnits({
+    ...shared,
+    plan,
+    runId: '20260925-010000',
+    dryRun: false,
+    sources: { github: fakeSource() },
+  })
+  expect(report.results.map((u) => u.status)).toEqual(['done'])
+  await git(work, 'commit', '-q', '--allow-empty', '-m', 'moved on')
+  await git(work, 'push', '-q', origin, 'main:refs/pull/3/head')
+
+  const unitId = plan.units[0]?.unit.id ?? ''
+  const result = await replayUnit({ ...shared, unitId, sources: {} })
+
+  expect(result.status).toBe('done')
+  expect((await git(result.dir, 'rev-parse', 'HEAD')).stdout).toBe(head)
+  expect(prompts[1]).toContain("cut from #3's head (on a fork).")
 })
 
 it('says a unit from before replay existed cannot be replayed', async () => {

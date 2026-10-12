@@ -120,9 +120,9 @@ export function githubForge(run: Exec = exec): Forge {
       const ref = `refs/pull/${fork.number}/head`
       await run('git', ['-C', dir, ...withGhLogin, 'fetch', '-q', '--no-tags', remote(repo), ref])
       const head = (await run('git', ['-C', dir, 'rev-parse', 'FETCH_HEAD'])).trim()
-      if (head !== fork.head)
+      if (fork.head && head !== fork.head)
         throw new Error(
-          `#${fork.number} on ${repo} is at ${head.slice(0, 7)}, not ${fork.head?.slice(0, 7) ?? 'a commit read'}: it moved since it was read`,
+          `#${fork.number} on ${repo} is at ${head.slice(0, 7)}, not ${fork.head.slice(0, 7)}: it moved since it was read`,
         )
       await run('git', ['-C', dir, 'checkout', '-q', '--detach', head])
     },
