@@ -102,9 +102,8 @@ describe('claude provider', () => {
     expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.away/gh' })
   })
 
-  it('gives the model no ssh agent, askpass helper or git config from the env; setup keeps them', () => {
+  it('gives the model no askpass helper or git config from the env, but the ssh agent; setup keeps them', () => {
     const plumbing = {
-      SSH_AUTH_SOCK: '/agent.sock',
       SSH_ASKPASS: '/askpass',
       GIT_ASKPASS: '/askpass',
       GIT_CONFIG_PARAMETERS: "'credential.helper'='store'",
@@ -112,10 +111,11 @@ describe('claude provider', () => {
       GIT_CONFIG_KEY_0: 'credential.helper',
       GIT_CONFIG_VALUE_0: 'store',
     }
-    const env = { PATH: '/bin', GIT_CONFIG_GLOBAL: '/g', ...plumbing }
+    const env = { PATH: '/bin', GIT_CONFIG_GLOBAL: '/g', SSH_AUTH_SOCK: '/agent.sock', ...plumbing }
     expect(workerEnv(env, '/work', [])).toEqual({
       PATH: '/bin',
       GIT_CONFIG_GLOBAL: '/g',
+      SSH_AUTH_SOCK: '/agent.sock',
       GH_CONFIG_DIR: '/work/.away/gh',
     })
     expect(commandEnv(env, '/work', [])).toEqual({ ...env, GH_CONFIG_DIR: '/work/.away/gh' })

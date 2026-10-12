@@ -139,7 +139,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const key = `${dir} ${await head(dir)} ${command}`
     const known = left.length ? undefined : checks.get(key)
     if (known) return known
-    const result = await runCommand(command, dir, setupEnv(input.ctx.env, dir, secrets, []), {
+    const result = await runCommand(command, dir, workerEnv(input.ctx.env, dir, secrets), {
       secrets: [],
       signal: input.signal,
       until: input.until,

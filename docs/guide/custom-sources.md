@@ -140,6 +140,7 @@ The runner has only what's in the repo holding your config, so:
   your laptop and nowhere else, and `awaywork doctor` warns about it.
 - **Build it in `setup`.** It runs in the config's folder before
   awaywork's action, e.g. `cargo build --release` or `go build -o board .`.
+  It runs without the source's secrets: only the command gets them.
   A binary built on your Mac won't run on the Linux runner. `ubuntu-latest`
   ships Node, Python, Go and Rust.
 - **Add the `secrets` as repository secrets.**

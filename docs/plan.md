@@ -13,7 +13,7 @@ The shape comes from `design.md`, the facts from `lessons.md`,
 - **Providers:** Claude Code, Codex.
 - **Sources:** GitHub (also the forge), Asana.
 - **Runs:** locally (launchd, systemd, cron) and in GitHub Actions. Codex
-  remote is best effort (rotating `auth.json`).
+  is experimental and runs locally or on a self-hosted runner only.
 - **Customization:** which providers and sources to use, an ordered queue
   of rules that map items to skills, per-rule provider, extra skills,
   instructions, MCP servers and delivery, the branch name template

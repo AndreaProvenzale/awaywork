@@ -13,9 +13,9 @@ not asked of the model.
 - **No forge or tracker token.** Sources prefetch the context into files
   before the agent starts. The agent's environment has `GH_TOKEN` and
   similar variables removed and a `gh` config without a login. Nor does
-  it get credentials that aren't tokens: `SSH_AUTH_SOCK`, `SSH_ASKPASS`,
+  it or the checks get credentials that aren't tokens: `SSH_ASKPASS`,
   `GIT_ASKPASS`, and git config passed in `GIT_CONFIG_PARAMETERS` or
-  `GIT_CONFIG_COUNT` and friends. `setup` and the checks keep those.
+  `GIT_CONFIG_COUNT` and friends. `setup` keeps those.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your
   `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets`, every
@@ -79,14 +79,15 @@ not asked of the model.
 ## Not a sandbox
 
 All of the above keeps credentials out of the agent's way, not out of
-its reach. With network on, it runs as your user with its tools
-unsandboxed ([Network](#network)), so it can read what you can [I, from
-the code]:
+its reach. It runs as your user and can read what you can, offline or
+not; with network on its tools aren't sandboxed either
+([Network](#network)), so what it reads can leave [I, from the code]:
 
 - `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
 - gh's own login, by unsetting `GH_CONFIG_DIR`, and git's global
   credential helper.
-- Your ssh keys.
+- Your ssh keys, and your ssh agent.
+- A VS Code terminal's git askpass (`VSCODE_GIT_*`).
 - On Linux, awaywork's own environment under `/proc`, `GH_TOKEN`
   included. On a runner, that's your personal access token.
 

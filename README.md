@@ -115,8 +115,8 @@ stream and stops at the ceiling, or when the short session window passes
 
 ## The paranoid bit
 
-- **Tokens stay out of the agent's env and prompt.** No forge token, no
-  tracker token, no other agent's login. PR diffs, threads and CI logs are
+- **Only its own login reaches the agent.** No forge token, no tracker
+  token, no other agent's login. PR diffs, threads and CI logs are
   prefetched into files. awaywork itself does the push. It's not a
   sandbox, though: the agent runs as you and can read what you can.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule
