@@ -1,13 +1,13 @@
 ---
-description: Run awaywork every night on your machine with launchd, systemd or cron, or in GitHub Actions with repository secrets.
+description: Run awaywork in its windows on your machine with launchd, systemd or cron, or in GitHub Actions with repository secrets.
 ---
 
 # Scheduling
 
 A scheduled run is `awaywork run --scheduled`: it does nothing outside
-the `night` window (or, with [`windows`](./configuration.md#night-and-budget),
-every window) and starts no unit after it ends. A unit still
-running at the window's end stops there with status `stopped: night ended`,
+the [`windows`](./configuration.md#windows-limits-and-budget) and starts
+no unit after the one it is in ends. A unit still
+running at the window's end stops there with status `stopped: window ended`,
 and what it left is published as for a quota stop.
 
 ## On your machine
@@ -35,10 +35,10 @@ awaywork schedule remove
   `loginctl enable-linger` lifts that.
 - Output goes to `~/.local/state/awaywork/schedule.log`; the morning
   report is `awaywork report`.
-- The job bakes in the window starts (`night.start`, or each of `windows`), one trigger each. When you change it, `config edit` and
+- The job bakes in the window starts, one trigger each. When you change them, `config edit` and
   `doctor` warn until `schedule install` runs again.
 
-The machine must be awake at each window's start (or `night.start`). On a laptop, a sleep schedule
+The machine must be awake at each window's start. On a laptop, a sleep schedule
 that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that
 stays on does that.
 
@@ -57,8 +57,8 @@ cd my-awaywork-repo
 awaywork schedule install --with github-actions
 ```
 
-This writes `.github/workflows/awaywork.yml`: a nightly cron at
-`night.start` in your current timezone, plus `workflow_dispatch` for a
+This writes `.github/workflows/awaywork.yml`: a cron at each window's
+start in your current timezone, plus `workflow_dispatch` for a
 manual run; `awaywork schedule remove` deletes it. It also copies your
 config to `.awaywork/config.yml` and your
 [skills](./skills.md#where-skills-come-from), if any, to
@@ -114,10 +114,10 @@ so its `command` must be there: `npx` and `node` are, other binaries
 need a setup step. An HTTP server must be reachable from GitHub's runners.
 
 A runner starts with an empty state dir, so it keeps no attempts or
-skips: an item unchanged since last night runs again, none is given up
+skips: an item unchanged since the last run runs again, none is given up
 on, and `awaywork skip` on your machine doesn't reach it. Nor does it
 keep the head a [`deliver: push`](./configuration.md#push) left, so the
-PR doesn't wait for your review: the rule pushes again every night its
+PR doesn't wait for your review: the rule pushes again every run its
 `where` holds.
 
 ### Credentials on a runner
@@ -125,7 +125,7 @@ PR doesn't wait for your review: the rule pushes again every night its
 | Provider | Secret | Notes |
 |---|---|---|
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
-| Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it at every refresh, about every 10 days, and an ephemeral runner can't save the refreshed file, so the secret stops working the night after its first refresh. Prefer running Codex locally. |
+| Codex | `CODEX_AUTH_JSON` | The contents of `~/.codex/auth.json`. Best effort: Codex rotates it at every refresh, about every 10 days, and an ephemeral runner can't save the refreshed file, so the secret stops working after its first refresh. Prefer running Codex locally. |
 
 ## Shared control repo
 

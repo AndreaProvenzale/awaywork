@@ -1,5 +1,5 @@
 ---
-description: How a night runs, from items to units, the queue of rules, deduplication, quota ceilings and routing, the worker's workspace, and delivery as a draft PR, a report or a push onto your own PR.
+description: How a run works, from items to units, the queue of rules, deduplication, quota ceilings and routing, the worker's workspace, and delivery as a draft PR, a report or a push onto your own PR.
 ---
 
 # How it works
@@ -13,7 +13,7 @@ collect ──> match ──> dedupe ──> budget ──> dispatch ──> pub
 ```
 
 Only the workers call a model. Everything else is plain code you can
-inspect with `awaywork plan` before a night.
+inspect with `awaywork plan` before a run.
 
 ## Items
 
@@ -79,7 +79,7 @@ line in its body.
   with neither it is skipped.
 - A unit that links an open awaywork PR is skipped as **waiting for
   review**: awaywork doesn't add to work you haven't read from an
-  earlier night. An awaywork PR only matches rules whose `where` names
+  earlier run. An awaywork PR only matches rules whose `where` names
   `ours`, like the default `address-review` on threads you left on it:
   that rule then takes the unit, even over a better-ranked item linked to
   the PR, and its draft PR stacks on the awaywork PR.
@@ -88,7 +88,7 @@ line in its body.
   awaywork pushed (kept in the state dir, so not on a runner).
 - A unit none of whose items changed since a worker last finished the
   same skill on it is skipped as **unchanged since run `<id>`**, so a
-  review or a unit that gave up isn't redone every night. A rule's `then`
+  review or a unit that gave up isn't redone every run. A rule's `then`
   chain counts as one attempt, recorded only when every unit of the chain
   finished; commits left unpushed retry. "Changed" is the item's
   `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`,
@@ -116,24 +116,26 @@ line in its body.
   [stacked PRs](https://gh.io/stacks) awaywork links the two into a
   stack. Every other draft PR starts from the default branch, so you can
   merge, park or close each one on its own.
-- Optional [caps](./configuration.md#night-and-budget) limit the units
-  per night, per repo and per rule.
+- Optional [caps](./configuration.md#windows-limits-and-budget) limit the units
+  per run, per repo and per rule.
 
 ## Budget
 
-Each provider gets a ceiling for tonight on its long window (the week for
+Each provider gets a ceiling for the run on its long window (the week for
 Claude, the week or month for Codex). The ceiling is the lowest of:
 
-- `used + per_night`, when `per_night` is set;
+- `used + per_run`, when `per_run` is set;
 - `1 - reserve` (default reserve 10%);
-- pacing: `used + (1 - reserve - used) / nights to reset`, so a night
-  just before the reset may spend more than one just after.
+- pacing: `used + (1 - reserve - used) / runs to reset`, where runs to
+  reset counts the window openings left before the reset, the one under
+  way included; so a run just before the reset may spend more than one
+  just after.
 
 A worker stops once the provider reports its long window past the ceiling
 or its short (5 h) window past `session_max` (default 90%). Claude reports
 quota during the run, so it stops mid-run; Codex is read after each run,
 so it stops between units. A provider whose quota can't be read gets a
-fixed `fallback` of units and turns per night.
+fixed `fallback` of units and turns per run.
 
 ## Routing
 
@@ -162,7 +164,7 @@ A loop's rounds reuse the clone of the unit the loop started from.
 - The agent has no forge token, no source's or other provider's secret,
   and a `gh` config without a login.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota
-  reading), `unit_minutes` caps its wall-clock time when set (status
+  reading), `limits.unit_minutes` caps its wall-clock time when set (status
   `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of
   disk, then kills every process it left behind.
 
@@ -196,7 +198,7 @@ and reports; `awaywork report <id>` prints one of them. A
 [`notify` command](./configuration.md#notify) can send it elsewhere.
 
 `awaywork stats` adds up every run since this feature, kept in each run's
-`units.json`: per rule (by its position in the queue that night), skill and
+`units.json`: per rule (by its position in the queue in that run), skill and
 provider, the units, how many were done, failed or stopped, the share of the
 long quota window their workers used, and the draft PRs opened. `--json`
 prints the same totals. The quota share is an estimate: it starts at the

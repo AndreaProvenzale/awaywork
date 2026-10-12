@@ -19,7 +19,7 @@ features:
   - title: Your leftovers, ranked
     details: Red CI, unresolved review threads, QA feedback, requested reviews and sprint tasks from your forge and task tracker, ordered by a queue of rules you control.
   - title: Won't eat your morning
-    details: Reads each agent's remaining quota before and during the night and stops at a ceiling you set, so the morning still has room.
+    details: Reads each agent's remaining quota before and during each run and stops at a ceiling you set, so the morning still has room.
   - title: Vendor binaries, your login
     details: Runs the stock agent CLIs (Claude Code, Codex, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
   - title: Drafts, never merges
@@ -29,8 +29,8 @@ features:
 ```sh
 npm install -g awaywork
 awaywork init             # finds your agents and forge login, asks the rest
-awaywork plan             # a dry look at tonight, zero tokens spent
-awaywork schedule install # every night when you clock out
+awaywork plan             # a dry look at the next run, zero tokens spent
+awaywork schedule install # runs when you clock out
 ```
 
 Setting it up with a coding agent? Point it at

@@ -10,9 +10,9 @@ provider research (`providers.md`); `plan.md` has the details.
 ## Shape
 
 1. **Foreman**, no model call. Collects work units from sources, ranks
-   them, reads each provider's quota and plans the night.
+   them, reads each provider's quota and plans the run.
 2. **Workers**, one per unit. Each runs a provider's stock CLI headless in
-   a fresh clone, under a turn cap and the night's ceiling.
+   a fresh clone, under a turn cap and the run's ceiling.
 3. **Publisher**, no model call. Pushes a new branch and opens draft PRs;
    writes the morning report.
 
@@ -81,7 +81,7 @@ Tags as in `providers.md`.
   with an ordered queue of rules. Details and milestones in `plan.md`.
 - Routing: a rule's provider list, else the configured provider order;
   the first under its ceiling takes the unit.
-- Quota allocation is config: a reserve, a cap per night, and a session
+- Quota allocation is config: a reserve, a cap per run, and a session
   ceiling, per provider.
 - v1 runs locally and in CI only; vendor cloud schedulers are out.
 - Team conventions: awaywork fixes only what code must decide before

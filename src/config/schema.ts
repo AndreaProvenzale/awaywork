@@ -470,7 +470,7 @@ export const configSchema = z
           .describe('Env vars the command needs; withheld from workers, listed in Actions'),
       })
       .optional()
-      .describe('Run at the end of each run with the morning report; a failure is only logged'),
+      .describe('Runs with the morning report when a run ends; a failure is only logged'),
     after_unit: z
       .strictObject({
         command: z

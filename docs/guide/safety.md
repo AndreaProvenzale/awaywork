@@ -5,7 +5,7 @@ description: What an awaywork worker can and cannot do, how pushes are guarded, 
 # Safety
 
 An agent working unattended on your repos is only acceptable if the worst
-night leaves nothing you have to undo. These rules are enforced in code,
+run leaves nothing you have to undo. These rules are enforced in code,
 not asked of the model.
 
 ## What the agent can reach
@@ -26,7 +26,7 @@ not asked of the model.
 - **Setup outside the agent.** A repo's `setup` runs before the agent
   in the same environment, without the agent's secret and with only that
   repo's `secrets` added, none on a PR someone else opened or on a
-  branch a worker wrote: earlier that night, or an awaywork PR a rule
+  branch a worker wrote: earlier in the run, or an awaywork PR a rule
   took up again. On a PR by someone without
   write access or org membership it doesn't run at all.
   Whatever it leaves running is stopped before the agent starts.
@@ -155,9 +155,9 @@ what your user can read.
   closed or merged, or has auto-merge on, and when its branch is on a
   fork, is the default branch, is protected, or is also the branch of
   someone else's open PR in the repo. It is refused on someone else's PR, on an item without
-  a PR of yours, and on any branch awaywork opened that night. The commits land unreviewed on a
+  a PR of yours, and on any branch awaywork opened in that run. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
-  A `then` step on that branch the same night runs `setup` without the
+  A `then` step on that branch in the same run runs `setup` without the
   repo's `secrets`.
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
   not to force: the remote takes the new head only while the branch is
@@ -170,7 +170,7 @@ what your user can read.
   harness forbids both, and either would carry commits that aren't the
   unit's.
 - Only a **draft** PR, into your own PR's branch, the default branch or
-  a PR awaywork opened: earlier the same night, or one a rule naming
+  a PR awaywork opened: earlier in the same run, or one a rule naming
   `ours` took up again.
   It never merges, approves, requests reviewers or comments.
 - A draft PR stacked on an awaywork PR joins that PR's GitHub stack,

@@ -185,15 +185,15 @@ override it.
 
 ```yaml
 # ~/.config/awaywork/config.yml
-night: { start: "01:00", end: "07:00" }
+windows: [{ start: "01:00", end: "07:00" }]
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
-  per_night: 15%                # at most this share of the long window per night
+  per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude                      # a name, or a map to override
-  - codex: { budget: { per_night: 5% } }
+  - codex: { budget: { per_run: 5% } }
 sources:
   github: { repos: [acme/*] }
   asana:
@@ -272,26 +272,26 @@ Semantics, fixed so every milestone agrees:
   each unit again. Before each step `context/previous/` holds the step
   before's `report.md`, `verdict`, `pr.md`, a `diff.patch` of its commits
   and the command's `check.log`. A round that can't route, reaches
-  `night.end`, fails or stops ends the loop, which publishes what it
+  the window's end, fails or stops ends the loop, which publishes what it
   has; awaywork appends the loop's summary, last verdict and last
   report to the PR body, or to a push host's report. A host's kept
   report finishes the chain only when the loop ended at `until`, `max`
   or a round where no step's `when` held; otherwise the host is
   unpublished, and counts a failure unless a round couldn't run for
-  `night.end` or no provider left. An interrupted loop publishes nothing
+  the window's end or no provider left. An interrupted loop publishes nothing
   and records no attempt, like an aborted unit. A loop counts once
   against the caps and as an attempt through its host; a step after the
   loop follows the host, or runs where the host ran when the host kept
   its report, and its `when` reads the loop's last verdict.
 - **Conditions.** A condition's `command` runs outside the model like
   `setup` on a branch a worker wrote (no repo secrets, 15 minutes, not
-  past `night.end`), once per commit per clone. In `until`, it doesn't
+  past the window's end), once per commit per clone. In `until`, it doesn't
   hold in a clone with uncommitted changes beyond what setup and earlier
   checks left; in `when`, it runs on them and isn't kept for the commit. On an untrusted author's PR or an offline unit
   (awaywork has no sandbox of its own) it doesn't run; config refuses
   one on a rule with `network: false`. One that didn't run doesn't hold
   for `when` and ends a loop. One past its 15 minutes fails. One
-  stopped by `night.end` ends a loop, which publishes, and outside a
+  stopped by the window's end ends a loop, which publishes, and outside a
   loop skips a `when` step without passing over it; an interrupt
   retries the chain either way. Its last 8,000 characters go to `check.log`, or `when.log`
   for a `when`. A step's `when` (`verdict` of the unit before, or the
@@ -345,9 +345,9 @@ Semantics, fixed so every milestone agrees:
   `plan` routes with the quota read before the night; the run re-routes
   as windows fill.
 - **Budget.** Each provider has a ceiling for tonight on its long window:
-  the lowest of `used + per_night`, `1 - reserve`, and the paced ceiling
-  in `lessons.md` ("Budgeting a night"), where nights to reset is the
-  whole days until `resetsAt`, rounded up, at least one. Unset `per_night` leaves only
+  the lowest of `used + per_run`, `1 - reserve`, and the paced ceiling
+  in `lessons.md` ("Budgeting a night"), where runs to reset is the
+  window openings left before `resetsAt`, the one under way included, at least one. Unset `per_run` leaves only
   the pacing. Workers stop at that ceiling or at `session_max` of the
   short window, as soon as the provider reports quota: mid-run for
   Claude, after the run for Codex. For `credits` providers the long window is the month.

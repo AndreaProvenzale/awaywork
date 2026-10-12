@@ -23,9 +23,9 @@ with:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `night` | object | `{"start":"01:00","end":"07:00"}` | Local hours a scheduled run may start units in, and how many |
-| `windows` | object[] |  | Windows a scheduled run may start units in, instead of night.start to night.end |
-| `budget` | object | `{}` | Quota allocation defaults; any provider can override them |
+| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run |
+| `limits` | object | `{}` | Unit counts and time per run, for every provider |
+| `budget` | object | `{}` | Quota shares; any provider can override them |
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required |
@@ -34,19 +34,8 @@ with:
 | `skills` | string[] | `[]` | Extra skills available to every unit |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
-| `notify` | object |  | Run after each night with the morning report; a failure is only logged |
+| `notify` | object |  | Runs with the morning report when a run ends; a failure is only logged |
 | `after_unit` | object |  | Run after each unit, once its result is final; a failure is only logged |
-
-## `night`
-
-Local hours a scheduled run may start units in, and how many.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `start` (required) | time |  | When a scheduled run starts, local time |
-| `end` (required) | time |  | No unit starts after this |
-| `units` | integer |  | At most this many units per night |
-| `units_per_repo` | integer |  | At most this many units per night in one repo |
 
 ## `windows[]`
 
@@ -56,16 +45,25 @@ Local hours a scheduled run may start units in, and how many.
 | `start` (required) | time |  | When a scheduled run starts, local time |
 | `end` (required) | time |  | No unit starts after this |
 
+## `limits`
+
+Unit counts and time per run, for every provider.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `units` | integer |  | At most this many units per run |
+| `units_per_repo` | integer |  | At most this many units per run in one repo |
+| `unit_minutes` | integer |  | Stop a worker after this many minutes |
+
 ## `budget`
 
-Quota allocation defaults; any provider can override them.
+Quota shares; any provider can override them.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `reserve` | percent | `"10%"` | Never go past 1 - reserve of any window |
-| `per_night` | percent |  | At most this share of the long window per night |
+| `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent | `"90%"` | Stop a worker past this share of the short window |
-| `unit_minutes` | integer |  | Stop a worker after this many minutes |
 | `fallback` | object | `{"units":4,"turns":60}` | Caps when the provider's quota can't be read |
 
 ## `budget.fallback`
@@ -74,7 +72,7 @@ Caps when the provider's quota can't be read.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `units` (required) | integer |  | Units per night |
+| `units` (required) | integer |  | Units per run |
 | `turns` (required) | integer |  | Turns per unit |
 
 ## `providers[]`
@@ -101,9 +99,8 @@ Overrides the top-level budget for this provider.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `reserve` | percent |  | Never go past 1 - reserve of any window |
-| `per_night` | percent |  | At most this share of the long window per night |
+| `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent |  | Stop a worker past this share of the short window |
-| `unit_minutes` | integer |  | Stop a worker after this many minutes |
 | `fallback` | object |  | Caps when the provider's quota can't be read |
 
 ## `providers[].claude.budget.fallback`
@@ -112,7 +109,7 @@ Caps when the provider's quota can't be read.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `units` (required) | integer |  | Units per night |
+| `units` (required) | integer |  | Units per run |
 | `turns` (required) | integer |  | Turns per unit |
 
 ## `providers[].codex`
@@ -243,8 +240,8 @@ First matching rule wins; top = highest priority.
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
-| `units` | integer |  | At most this many units per night from this rule, its then steps included |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps |
+| `units` | integer |  | At most this many units per run from this rule, its then steps included |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 | `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
@@ -298,8 +295,8 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `nights_until_reset` | integer |  | Holds when the provider's long window resets within this many nights; 1 is the last |
-| `headroom` | percent |  | Holds when at least this share of the long window is left under tonight's ceiling |
+| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last |
+| `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
 
 ## `queue[].then`
 
@@ -324,8 +321,8 @@ Run this step only when every key holds; otherwise skip it.
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
 | `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
-| `nights_until_reset` | integer |  | Holds when the provider's long window resets within this many nights; 1 is the last |
-| `headroom` | percent |  | Holds when at least this share of the long window is left under tonight's ceiling |
+| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last |
+| `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
 | `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
 
 ## `queue[].then.when.verdict`
@@ -433,7 +430,7 @@ Same keys as `queue[].then.when.verdict`.
 
 ## `notify`
 
-Run after each night with the morning report; a failure is only logged.
+Runs with the morning report when a run ends; a failure is only logged.
 
 | Key | Type | Default | Description |
 |---|---|---|---|

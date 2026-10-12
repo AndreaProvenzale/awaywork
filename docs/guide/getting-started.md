@@ -1,5 +1,5 @@
 ---
-description: Install awaywork, write a config, preview tonight with plan, run one unit, then schedule every night.
+description: Install awaywork, write a config, preview the next run with plan, run one unit, then put it on a schedule.
 ---
 
 # Getting started
@@ -40,8 +40,8 @@ the site's statuses, and asks which repo each project's code lives in.
 It writes
 `~/.config/awaywork/config.yml`; a token you type is saved to
 `~/.config/awaywork/env` (mode 600), never to the config. Last, it
-asks where to run every night: this machine, GitHub Actions or later, and
-hands off to [`schedule install`](#every-night).
+asks where to run on schedule: this machine, GitHub Actions or later, and
+hands off to [`schedule install`](#on-a-schedule).
 `awaywork init --yes` asks nothing and takes the defaults instead.
 
 Or write a minimal config by hand:
@@ -63,14 +63,14 @@ awaywork config check
 awaywork doctor   # binaries, credentials, quota, sources
 ```
 
-## Preview tonight
+## Preview the next run
 
 ```sh
 awaywork plan
 ```
 
 `plan` reads your sources and each provider's quota and prints what a
-night would do, without running an agent:
+run would do, without running an agent:
 
 ```
 Queue
@@ -78,8 +78,8 @@ Queue
   #2  review     type=pr review_requested=true trusted=true
 
 Providers
-  provider  window     used  ceiling  set by     resets in  session / stop at
-  claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+  provider  window     used  ceiling  set by   resets in  session / stop at
+  claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
     other limits: reserve cap 90%, pacing 54%
 
 Units
@@ -93,7 +93,7 @@ Skipped
   github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
 ```
 
-`awaywork queue` shows the same rules with tonight's matches and lets
+`awaywork queue` shows the same rules with what each matches now and lets
 you reorder them with the keyboard; `awaywork queue move 3 1` moves
 rule #3 to the top without one.
 
@@ -113,12 +113,12 @@ it follows.
 The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report.
 
-## Every night
+## On a schedule
 
 ```sh
 awaywork schedule install      # launchd; --with systemd or cron on Linux
 ```
 
-The job starts at `night.start` (default `01:00`) and stops at
-`night.end` (`07:00`). To run in GitHub Actions instead, add
+The job starts when a window opens (default `01:00`) and stops when it
+ends (`07:00`). To run in GitHub Actions instead, add
 `--with github-actions`; see [Scheduling](./scheduling.md).

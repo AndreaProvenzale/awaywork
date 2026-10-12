@@ -14,8 +14,8 @@ Set up awaywork (https://andreaprovenzale.github.io/awaywork/llms.txt)
 for me. Read the docs first. Find which of claude and codex I have
 installed and logged in, and which GitHub repos I work on (gh). Ask me
 which repos and which Asana workspace to include and how much quota a
-night may use, then write the config, validate it and show me the plan.
-Don't run a night or install a schedule until I say so.
+run may use, then write the config, validate it and show me the plan.
+Don't start a run or install a schedule until I say so.
 ```
 
 ## For agents
@@ -36,8 +36,8 @@ Setting up:
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml`
    without a terminal: the installed providers, `github` when `gh` is
    logged in (repos `<login>/*`), the default queue and a 01:00-07:00
-   night. Override with `--provider claude codex` (first takes units
-   first), `--source github asana` and `--night 23:00-06:00`. Asana is
+   window. Override with `--provider claude codex` (first takes units
+   first), `--source github asana` and `--window 23:00-06:00`. Asana is
    skipped with a note unless `ASANA_TOKEN` is set; then it takes the
    first workspace and every project with the user's tasks. Linear is
    likewise skipped unless `LINEAR_API_KEY` is set. Jira is skipped:
@@ -62,7 +62,7 @@ What each command does:
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
-| `schedule install` | Installs a nightly job, or writes a workflow with `--with github-actions`. Ask first. |
+| `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `init`, `queue`, `config edit` | Interactive; need a terminal |
 

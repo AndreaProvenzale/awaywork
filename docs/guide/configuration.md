@@ -1,5 +1,5 @@
 ---
-description: The awaywork config file by example, covering the night window, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
+description: The awaywork config file by example, covering run windows, limits, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
 ---
 
 # Configuration
@@ -13,7 +13,7 @@ listed in the [reference](../reference/config.md).
 ```sh
 awaywork config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
 awaywork config check   # validate, including skill names
-awaywork plan           # see what the change does tonight
+awaywork plan           # see what the change does to the next run
 ```
 
 For autocompletion and hover docs in editors with the YAML language
@@ -30,20 +30,20 @@ version.
 ## A full example
 
 ```yaml
-night:
-  start: "01:00"
-  end: "07:00"
-  units: 8                      # caps, unset by default
+windows:                        # when scheduled runs start; this one is the default
+  - { start: "01:00", end: "07:00" }
+limits:                         # per run, every provider; unset by default
+  units: 8
   units_per_repo: 3
+  unit_minutes: 90              # stop a worker after this many minutes
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
-  per_night: 15%                # at most this share of the long window per night
+  per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
-  unit_minutes: 90              # stop a worker after this many minutes
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
-  - codex: { budget: { per_night: 5% }, config: { model_reasoning_effort: high } }
+  - codex: { budget: { per_run: 5% }, config: { model_reasoning_effort: high } }
 sources:
   github: { repos: [acme/*] }
   asana:
@@ -68,7 +68,7 @@ queue:                          # first matching rule wins; top = highest priori
     source: github
     where: { type: issue, label: awaywork, repo: acme/api }
     order: oldest
-    units: 2                    # at most 2 of these per night
+    units: 2                    # at most 2 of these per run
   - skill: review
     where: { type: pr, review_requested: true, trusted: true }
     model: { claude: sonnet }
@@ -80,15 +80,15 @@ queue:                          # first matching rule wins; top = highest priori
     instructions: notes/backend.md
 ```
 
-## Night and budget
+## Windows, limits and budget
 
-`night.start` is when a scheduled run begins; no unit starts after
-`night.end`, and a running one stops there. Times are local to the machine, or to the workflow's
-`timezone` in GitHub Actions.
-
-`windows` replaces that one window with a list, each with optional
-`days` (`sun` to `sat`, the day it opens on) for quota that idles at
-weekends or over lunch:
+A run is one window opening, or one `awaywork run` by hand. A window's
+`start` is when a scheduled run begins; no unit starts after its `end`,
+and a running one stops there. Times are local to the machine, or to the
+workflow's `timezone` in GitHub Actions. The default is one window,
+`01:00` to `07:00`. Add windows, each with optional `days` (`sun` to
+`sat`, the day it opens on), for quota that idles at weekends or over
+lunch:
 
 ```yaml
 windows:
@@ -97,24 +97,23 @@ windows:
 ```
 
 The scheduler gets one trigger per window, and pacing divides the
-headroom by the runs left before the reset, not the nights. Windows
-should not overlap. `night.units` and `night.units_per_repo` still cap
-each run, and `night.start` and `night.end` are then unused.
-Budgets count runs too: `per_night` caps each run, not each day, so three
-windows a day can spend three times it, and `nights_until_reset` counts runs.
+headroom by the runs left before the reset. Windows should not overlap.
+Budgets count runs, not days: three windows a day can spend `per_run`
+three times, and `runs_until_reset` counts window openings.
 
 A readable quota decides how much work fits, not how much you can review
-in a morning. `night.units` caps the units planned per night,
-`night.units_per_repo` those in any one repo, and a rule's `units` those
+in a morning. `limits.units` caps the units planned per run,
+`limits.units_per_repo` those in any one repo, and a rule's `units` those
 from that rule. None is set by default. Units past a cap are skipped in
 queue order, with the cap named in `awaywork plan` and the report. A
 [`then`](#then) step counts as a unit of the rule that started its chain.
 Only units routed to a provider count, and caps apply to each `awaywork
-run`, like `fallback.units`.
+run`, like `fallback.units`. `limits.unit_minutes` stops any worker
+after that many minutes, whichever provider runs it.
 
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
-`per_night: 5%` for a week shows what a unit costs you before you raise it.
+`per_run: 5%` for a week shows what a unit costs you before you raise it.
 
 ## Providers
 
@@ -243,7 +242,7 @@ sources:
 repo, plus an instructions file. `setup` runs in the clone before the
 agent starts, outside the model; the agent is told it already ran.
 Anything it leaves running is stopped when it exits. A setup that fails,
-takes over 15 minutes or reaches `night.end` skips the unit, with the
+takes over 15 minutes or reaches the window's end skips the unit, with the
 tail of its output in the report.
 
 `secrets` names the env vars setup needs, such as a private registry
@@ -304,8 +303,8 @@ the repo's PR template, its recent commit style and your instructions
 | `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
-| `units` | At most this many units per night from this rule, its `then` steps included |
-| `then` | Steps that run after this rule's unit, the same night; see [`then`](#then) |
+| `units` | At most this many units per run from this rule, its `then` steps included |
+| `then` | Steps that run after this rule's unit, in the same run; see [`then`](#then) |
 | `network` | `false` cuts the agent's commands off the network, `then` steps included; default the repo's |
 
 ### `where`
@@ -359,7 +358,7 @@ source: a custom source's `ours` field holds nothing back.
 
 Within a rule, units run in the order the source returns items; for
 GitHub that is newest first, so with little quota the oldest can wait
-night after night. `order: oldest` runs them first. Items without the
+run after run. `order: oldest` runs them first. Items without the
 timestamp go last.
 
 ### `then`
@@ -395,14 +394,14 @@ queue:
   or both `report.md` and `diff.patch` after a push.
 - A step runs only when the one before delivered; otherwise the rest of
   the chain is skipped, with the reason in the report. Once a unit in the
-  chain opened a draft PR, the next night doesn't retry: the item waits
+  chain opened a draft PR, the next run doesn't retry: the item waits
   for your review of it. Otherwise the whole chain runs again.
 - Each step is a unit of its own in `plan` and the report (`<unit>-<skill>`),
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
 - A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `address-review` then `loop: [review, address-review]`.
-- Steps count against the [caps](#night-and-budget) like any unit, and
+- Steps count against the [caps](#windows-limits-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
   doesn't start; a step over a cap is left out with the rest of the chain,
   and the unit before it names the cap.
@@ -444,7 +443,7 @@ queue:
   `command` is a shell command awaywork runs in the clone after the
   step, outside the model; it holds when it exits 0. `max` is at most 5.
 - A command runs like `setup` on a branch a worker wrote: without the
-  repo's `secrets`, for at most 15 minutes, and not past `night.end`. It
+  repo's `secrets`, for at most 15 minutes, and not past the window's end. It
   runs again only once a step committed. In `until` it doesn't hold
   while the clone has uncommitted changes beyond what `setup` and earlier
   checks left, since the branch wouldn't publish them; a `when` command
@@ -455,21 +454,21 @@ queue:
   repo's `network: false` is only known at run time. A command that isn't
   run doesn't hold for `when`, and ends the loop either way. One that
   runs past its 15 minutes fails, like one that exits non-zero. One
-  stopped by `night.end` ends the loop, which publishes what it has;
+  stopped by the window's end ends the loop, which publishes what it has;
   outside a loop it skips a `when` step without passing over it, so the
-  chain is tried again the next night. After Ctrl-C the chain is tried
+  chain is tried again the next run. After Ctrl-C the chain is tried
   again in both cases.
 - A step finds the one before's output in `.away/context/previous/`:
   its `report.md` and `verdict`, the PR body so far in `pr.md`, its
   commits in `diff.patch`, and the command's output in `check.log`. When
   the loop ends with the command failing, the tail of its output goes
   into the PR body too.
-- Each round is routed and budgeted live. No provider left, `night.end`,
+- Each round is routed and budgeted live. No provider left, the window's end,
   or a step that fails or stops ends the loop, which still publishes what
   it has and says why; a loop after a report that ends this way with no
   commits runs again, counting a failure unless a round couldn't run
-  for `night.end` or no provider left. An interrupt (Ctrl-C) publishes
-  nothing, and the chain runs again the next night without counting as
+  for the window's end or no provider left. An interrupt (Ctrl-C) publishes
+  nothing, and the chain runs again the next run without counting as
   a failure.
 - Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
   `plan` lists round 1, but routes every round up to `max`, so a loop
@@ -513,16 +512,16 @@ queue:
   fixer with `when: { command: "! pnpm test" }`; it finds the output in
   `.away/context/previous/when.log`. A check that times out says
   nothing: the step is skipped without being passed over, so the chain
-  retries each night.
+  retries each run.
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
   default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
-- `nights_until_reset` holds when the provider's long window resets within
-  that many nights: `1` is the last night before the reset. `headroom`
-  (e.g. `20%`) holds when at least that share of the window is left
-  under tonight's ceiling, so a loop with a high `max` or a second review
+- `runs_until_reset` holds when at most that many window openings are
+  left before the provider's long window resets: `1` is the last run
+  before the reset. `headroom` (e.g. `20%`) holds when at least that share
+  of the window is left under this run's ceiling, so a loop with a high `max` or a second review
   can run only on spare quota. Both read the quota the run last saw, as
   the budget does, and don't hold when the quota can't be read. A rule
   takes a `when` with these two keys only, to skip its own unit.
@@ -557,7 +556,7 @@ queue:
   are opened with your login). On someone else's PR, a PR from a fork,
   or an item with no PR of yours, the unit is skipped with the reason.
 - A `then` step can push only onto the rule's own PR. After a draft PR,
-  even with a report in between, its base is that night's new branch,
+  even with a report in between, its base is that run's new branch,
   not your PR: the step is left out with the rest of the chain.
 - A [loop](#loops) after a push unit pushes every round's commits once,
   when it ends. A loop's own steps can't set `deliver: push`: the unit
@@ -579,9 +578,9 @@ queue:
   its head is still the commit awaywork pushed. Any commit on top
   releases it, yours or a bot's, and so does a rebase or an amend.
   Without that, the push itself would update the PR and run the rule
-  again every night. The pushed head is kept in awaywork's state dir,
+  again every run. The pushed head is kept in awaywork's state dir,
   which a [GitHub Actions runner](./scheduling.md#in-github-actions)
-  doesn't keep: there, a push rule pushes again every night its `where`
+  doesn't keep: there, a push rule pushes again every run its `where`
   holds.
 
 ## Notify

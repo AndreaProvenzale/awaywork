@@ -13,11 +13,11 @@ same folder works for Claude Code and Codex.
 | Skill | For | Delivers |
 |---|---|---|
 | `fix-ci` | Your PR with failing checks | draft PR |
-| `address-review` | Your PR with unresolved review threads, an awaywork PR with unresolved threads you started, or tonight's review in a [loop](./configuration.md#loops) | draft PR |
+| `address-review` | Your PR with unresolved review threads, an awaywork PR with unresolved threads you started, or this run's review in a [loop](./configuration.md#loops) | draft PR |
 | `qa-feedback` | A task back from QA, with your PR | draft PR |
 | `continue` | A task in progress, with your PR | draft PR |
 | `implement` | An issue or task with no PR yet | draft PR |
-| `review` | A PR awaiting your review, or tonight's own after a `then`; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
+| `review` | A PR awaiting your review, or this run's own after a `then`; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
@@ -76,11 +76,11 @@ awaywork replay 20261006-020000 acme-api-1
 ```
 
 Replay rebuilds a unit of a past run: a clone at the commit the unit started
-from and its saved context. The unit is as recorded that night: its skills
+from and its saved context. The unit is as recorded in that run: its skills
 and its rule's `model`, `with` and `instructions` list, so editing those in
 the config changes nothing. What is read fresh is the files: each
 `SKILL.md`, every instruction file, and the repo's and provider's config.
-It runs the unit's provider and model once, outside the night's quota
+It runs the unit's provider and model once, outside the run's quota
 ceilings, and never pushes or opens a PR. The clone stays on the unit's local
 branch under `replays/` in the run's state directory, with the worker's
 `out/` next to it. The saved context is the post-run copy, so files the
