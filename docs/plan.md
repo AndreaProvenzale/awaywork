@@ -347,7 +347,7 @@ Semantics, fixed so every milestone agrees:
 - **Budget.** Each provider has a ceiling for tonight on its long window:
   the lowest of `used + per_run`, `1 - reserve`, and the paced ceiling
   in `lessons.md` ("Budgeting a night"), where runs to reset is the
-  window openings left before `resetsAt`, the one under way included, at least one. Unset `per_run` leaves only
+  window openings left before `resetsAt`, including the one under way when the run is in a window, at least one. Unset `per_run` leaves only
   the pacing. Workers stop at that ceiling or at `session_max` of the
   short window, as soon as the provider reports quota: mid-run for
   Claude, after the run for Codex. For `credits` providers the long window is the month.
