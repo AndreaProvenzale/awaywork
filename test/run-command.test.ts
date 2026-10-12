@@ -23,40 +23,60 @@ vi.mock('../src/config/paths.js', async (original) => {
   }
 })
 
-async function run(...args: string[]) {
+async function run(args: string[], chores = '{ command: exit 1 }') {
   const config = join(await mkdtemp(join(tmpdir(), 'awaywork-run-')), 'config.yml')
-  await writeFile(config, 'providers: [claude]\nsources: { chores: { command: exit 1 } }\n')
+  await writeFile(config, `providers: [claude]\nsources: { chores: ${chores} }\n`)
   const out: string[] = []
-  const print = (...line: unknown[]) => void out.push(line.join(' '))
-  vi.spyOn(console, 'log').mockImplementation(print)
-  vi.spyOn(console, 'error').mockImplementation(print)
+  const err: string[] = []
+  vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
+  vi.spyOn(console, 'error').mockImplementation((...line) => void err.push(line.join(' ')))
   const program = new Command().option('--config <path>')
   runCommand(program)
   await program.parseAsync(['--config', config, 'run', ...args], { from: 'user' })
-  return out
+  return { out, err }
+}
+
+/** The latest run's files; runs in the same second share a dir, the latest writing last. */
+async function latestRun() {
+  const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+  const read = (file: string) => readFile(join(runsDir, id, file), 'utf8')
+  return { report: await read('report.md'), plan: await read('plan.txt') }
 }
 
 describe('run command', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
     process.exitCode = undefined
   })
 
   it('dates its start and shows a failed source in its output and the report', async () => {
-    const out = await run()
+    const { out, err } = await run([])
     expect(out[0]).toMatch(/^awaywork run at \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/)
-    expect(out[1]).toMatch(/^warning: source chores: Command failed with exit code 1/)
-    const [id = ''] = await readdir(runsDir)
-    const report = await readFile(join(runsDir, id, 'report.md'), 'utf8')
+    expect(err[0]).toMatch(/^warning: source chores: Command failed with exit code 1/)
+    const { report } = await latestRun()
     expect(report).toMatch(/\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d to \S+ \S+, local time\n/)
     expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
   })
 
   it('refuses a unit not in the plan in one line, leaving no run dir', async () => {
     const before = existsSync(runsDir) ? await readdir(runsDir) : []
-    const out = await run('--unit', 'nope')
-    expect(out.at(-1)).toBe(`no unit "nope" in this run's plan; awaywork plan lists them`)
+    const { err } = await run(['--unit', 'nope'])
+    expect(err.at(-1)).toBe(`no unit "nope" in this run's plan; awaywork plan lists them`)
     expect(process.exitCode).toBe(1)
     expect(existsSync(runsDir) ? await readdir(runsDir) : []).toEqual(before)
+  })
+
+  it("masks a source's secret in its warning, the plan and the report", async () => {
+    vi.stubEnv('CHORES_TOKEN', 's3cr3t-value')
+    const { err } = await run(
+      [],
+      `{ command: 'echo "auth failed for $CHORES_TOKEN" >&2; exit 1', secrets: [CHORES_TOKEN] }`,
+    )
+    const { report, plan } = await latestRun()
+    for (const text of [err.join('\n'), plan, report]) {
+      expect(text).toContain('auth failed for ***')
+      expect(text).not.toContain('s3cr3t-value')
+    }
   })
 })

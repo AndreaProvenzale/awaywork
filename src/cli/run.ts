@@ -11,7 +11,9 @@ import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { notify } from '../worker/notify.js'
+import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
+import { configSecrets } from '../worker/workspace.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { probeAndPlan } from './plan.js'
@@ -36,9 +38,20 @@ export function runCommand(program: Command): void {
           )
           return
         }
-        const { plan, warnings, ctx } = await probeAndPlan(config, skillsDirOf(path), {
-          retry: !!opts.unit,
-        })
+        const {
+          plan,
+          warnings: unmasked,
+          ctx,
+        } = await probeAndPlan(config, skillsDirOf(path), { retry: !!opts.unit })
+        const sources = Object.fromEntries(
+          Object.entries(config.sources).flatMap(([id, cfg]) => {
+            const source = sourceFor(id, cfg)
+            return source ? [[id, source]] : []
+          }),
+        )
+        // A failed source's warning carries its stderr, and the report reaches notify.
+        const secrets = configSecrets(config, providers, sources)
+        const warnings = unmasked.map((w) => maskSecrets(w, secrets, ctx.env))
         for (const warning of warnings) console.error(`warning: ${warning}`)
         if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
           console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
@@ -63,12 +76,7 @@ export function runCommand(program: Command): void {
           only: opts.unit,
           until,
           providers,
-          sources: Object.fromEntries(
-            Object.entries(config.sources).flatMap(([id, cfg]) => {
-              const source = sourceFor(id, cfg)
-              return source ? [[id, source]] : []
-            }),
-          ),
+          sources,
           forge: githubForge(),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,

@@ -46,7 +46,8 @@ awaywork schedule remove
   Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/20261012-203418
   ```
 
-  Run ids are the start time in UTC, so they sort the same across
+  A secret the config names shows up as `***` there, so the report is
+  safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across
   daylight saving and travel.
 - The job bakes in the window starts, one trigger each. When you change them, `config edit` and
   `doctor` warn until `schedule install` runs again.
