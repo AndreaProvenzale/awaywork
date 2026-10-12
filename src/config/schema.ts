@@ -25,29 +25,26 @@ const branch = z.string().superRefine((template, ctx) => {
 
 const fallback = z
   .strictObject({
-    units: z.int().positive().describe('Units per night'),
+    units: z.int().positive().describe('Units per run'),
     turns: z.int().positive().describe('Turns per unit'),
   })
   .describe("Caps when the provider's quota can't be read")
 const reserve = 'Never go past 1 - reserve of any window'
-const perNight = 'At most this share of the long window per night'
+const perRun = 'At most this share of the long window per run'
 const sessionMax = 'Stop a worker past this share of the short window'
-const unitMinutes = 'Stop a worker after this many minutes'
 const budget = z
   .strictObject({
     reserve: percent.prefault('10%').describe(reserve),
-    per_night: percent.optional().describe(perNight),
+    per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
-    unit_minutes: z.int().positive().optional().describe(unitMinutes),
     fallback: fallback.default({ units: 4, turns: 60 }),
   })
-  .describe('Quota allocation defaults; any provider can override them')
+  .describe('Quota shares; any provider can override them')
 const budgetOverride = z
   .strictObject({
     reserve: percent.describe(reserve),
-    per_night: percent.describe(perNight),
+    per_run: percent.describe(perRun),
     session_max: percent.describe(sessionMax),
-    unit_minutes: z.int().positive().describe(unitMinutes),
     fallback,
   })
   .partial()
@@ -207,16 +204,16 @@ const condition = z
   .strictObject(conditionKeys)
   .refine((c) => Object.keys(c).length > 0, 'expected verdict or command')
 const quotaKeys = {
-  nights_until_reset: z
+  runs_until_reset: z
     .int()
     .positive()
     .optional()
     .describe(
-      "Holds when the provider's long window resets within this many nights; 1 is the last",
+      "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
     ),
   headroom: percent
     .optional()
-    .describe("Holds when at least this share of the long window is left under tonight's ceiling"),
+    .describe("Holds when at least this share of the long window is left under this run's ceiling"),
 }
 const when = z
   .strictObject({
@@ -233,11 +230,11 @@ const when = z
   })
   .refine(
     (c) => Object.keys(c).length > 0,
-    'expected verdict, command, changed, nights_until_reset or headroom',
+    'expected verdict, command, changed, runs_until_reset or headroom',
   )
 const ruleWhen = z
   .strictObject(quotaKeys)
-  .refine((c) => Object.keys(c).length > 0, 'expected nights_until_reset or headroom')
+  .refine((c) => Object.keys(c).length > 0, 'expected runs_until_reset or headroom')
 const stepObject = z.strictObject({
   skill,
   ...stepSettings,
@@ -287,14 +284,14 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
-      .describe('At most this many units per night from this rule, its then steps included'),
+      .describe('At most this many units per run from this rule, its then steps included'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, loop, z.array(z.union([step, loop])).min(1)])
       .transform((steps) => [steps].flat())
       .default([])
       .describe(
-        "Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps",
+        "Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps",
       ),
     network: z
       .boolean()
@@ -409,16 +406,6 @@ const itemFields: Record<string, z.ZodType> = {
 
 export const configSchema = z
   .strictObject({
-    night: z
-      .strictObject({
-        start: time.describe('When a scheduled run starts, local time'),
-        end: time.describe('No unit starts after this'),
-        units: units.optional().describe('At most this many units per night'),
-        units_per_repo: units.optional().describe('At most this many units per night in one repo'),
-      })
-      .refine((n) => n.start !== n.end, 'start and end must differ')
-      .default({ start: '01:00', end: '07:00' })
-      .describe('Local hours a scheduled run may start units in, and how many'),
     windows: z
       .array(
         z
@@ -434,8 +421,20 @@ export const configSchema = z
           .refine((w) => w.start !== w.end, 'start and end must differ'),
       )
       .min(1)
-      .optional()
-      .describe('Windows a scheduled run may start units in, instead of night.start to night.end'),
+      .default([{ start: '01:00', end: '07:00' }])
+      .describe('Local hours a scheduled run may start units in; each opening is one run'),
+    limits: z
+      .strictObject({
+        units: units.optional().describe('At most this many units per run'),
+        units_per_repo: units.optional().describe('At most this many units per run in one repo'),
+        unit_minutes: z
+          .int()
+          .positive()
+          .optional()
+          .describe('Stop a worker after this many minutes'),
+      })
+      .prefault({})
+      .describe('Unit counts and time per run, for every provider'),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -471,7 +470,7 @@ export const configSchema = z
           .describe('Env vars the command needs; withheld from workers, listed in Actions'),
       })
       .optional()
-      .describe('Run after each night with the morning report; a failure is only logged'),
+      .describe('Runs with the morning report when a run ends; a failure is only logged'),
     after_unit: z
       .strictObject({
         command: z

@@ -79,7 +79,7 @@ export function timer(s: Schedule): string {
       `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
   )
   return `[Unit]
-Description=awaywork nightly run
+Description=awaywork scheduled run
 
 [Timer]
 ${calendar.join('\n')}

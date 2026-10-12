@@ -56,7 +56,7 @@ function recorder(crontab = '') {
   return { run, calls, crontab: () => crontab }
 }
 
-it('writes a LaunchAgent that starts at the night start and logs to the state dir', async () => {
+it('writes a LaunchAgent that starts at the window start and logs to the state dir', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   const scheduler = launchd(home, run, 501)
@@ -153,13 +153,13 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
   expect(parsed.name).toBe('awaywork')
   expect(parsed.concurrency).toBe('awaywork')
-  expect(parsed.jobs.night.environment).toBeUndefined()
-  expect(parsed.jobs.night.env).toEqual({
+  expect(parsed.jobs.run.environment).toBeUndefined()
+  expect(parsed.jobs.run.env).toEqual({
     TZ: 'Europe/Rome',
     GH_TOKEN: '${{ secrets.GH_TOKEN }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
   })
-  expect(parsed.jobs.night.steps).toEqual([
+  expect(parsed.jobs.run.steps).toEqual([
     { uses: 'actions/checkout@v5' },
     {
       uses: 'AndreaProvenzale/awaywork@v1',
@@ -172,7 +172,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   ])
 })
 
-it('ships an action that installs the pinned version and runs the night', async () => {
+it('ships an action that installs the pinned version and runs awaywork once', async () => {
   const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
   expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages'])
   expect(action.runs.using).toBe('composite')
@@ -205,7 +205,7 @@ it("runs command sources' setup in the config's folder before awaywork", () => {
     setup: ['cargo build --release\ncp target/release/tracker bin/'],
   })
   const steps: { run?: string; uses?: string; 'working-directory'?: string }[] =
-    parse(text).jobs.night.steps
+    parse(text).jobs.run.steps
   const setup = steps.findIndex((s) => s.run?.startsWith('cargo'))
   expect(steps[setup]).toEqual({
     'working-directory': '.awaywork',
@@ -229,15 +229,15 @@ it("writes a person's workflow with their environment, suffixed secrets, concurr
   const job = parse(workflow({ ...alice, person: { name: 'alice', personal, environment: true } }))
   expect(job.name).toBe('awaywork-alice')
   expect(job.concurrency).toBe('awaywork-alice')
-  expect(job.jobs.night.environment).toEqual({ name: 'alice', deployment: false })
-  expect(job.jobs.night.env).toEqual({
+  expect(job.jobs.run.environment).toEqual({ name: 'alice', deployment: false })
+  expect(job.jobs.run.env).toEqual({
     TZ: 'Europe/Rome',
     GH_TOKEN: '${{ secrets.GH_TOKEN__ALICE }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
     SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
   })
-  expect(job.jobs.night.steps[1]['working-directory']).toBe('.awaywork/alice')
-  expect(job.jobs.night.steps[2].with.config).toBe('.awaywork/alice/config.yml')
+  expect(job.jobs.run.steps[1]['working-directory']).toBe('.awaywork/alice')
+  expect(job.jobs.run.steps[2].with.config).toBe('.awaywork/alice/config.yml')
 })
 
 it('keeps a person named like a YAML number a string', () => {
@@ -250,9 +250,9 @@ it('keeps a person named like a YAML number a string', () => {
   )
   expect(job.name).toBe('awaywork-007')
   expect(job.concurrency).toBe('awaywork-007')
-  expect(job.jobs.night.environment).toEqual({ name: '007', deployment: false })
-  expect(job.jobs.night.steps[1]['working-directory']).toBe('.awaywork/007')
-  expect(job.jobs.night.steps[2].with.config).toBe('.awaywork/007/config.yml')
+  expect(job.jobs.run.environment).toEqual({ name: '007', deployment: false })
+  expect(job.jobs.run.steps[1]['working-directory']).toBe('.awaywork/007')
+  expect(job.jobs.run.steps[2].with.config).toBe('.awaywork/007/config.yml')
 })
 
 it('differs without an environment only by its environment line', () => {
@@ -260,8 +260,8 @@ it('differs without an environment only by its environment line', () => {
   const job = parse(workflow({ ...alice, person }))
   expect(job.name).toBe('awaywork-mary-jo')
   expect(job.concurrency).toBe('awaywork-mary-jo')
-  expect(job.jobs.night.environment).toBeUndefined()
-  expect(job.jobs.night.env).toEqual({
+  expect(job.jobs.run.environment).toBeUndefined()
+  expect(job.jobs.run.env).toEqual({
     TZ: 'Europe/Rome',
     GH_TOKEN: '${{ secrets.GH_TOKEN__MARY_JO }}',
     CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',

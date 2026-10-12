@@ -69,9 +69,14 @@ it.skipIf(!process.env.AWAYWORK_REAL)(
     expect(quota?.windows.map((w) => w.span)).toContain('long')
 
     const job = { unit, dir, plugin, prompt, maxTurns: 12, env: workerEnv(process.env, dir, []) }
-    const result = await runWorker(codex, job, allowance(config.budget, quota, Date.now()), {
-      log: console.log,
-    })
+    const result = await runWorker(
+      codex,
+      job,
+      allowance(config.budget, quota, Date.now(), config.windows),
+      {
+        log: console.log,
+      },
+    )
 
     // On the free plan one unit outspends the paced month, so the after-run reading can stop it.
     expect(['done', 'stopped: quota']).toContain(result.status)

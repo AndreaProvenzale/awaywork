@@ -3,7 +3,9 @@ import type { Budget } from '../src/config/schema.js'
 import { type Allowance, allowance, quotaFacts, route } from '../src/core/budget.js'
 import type { Quota } from '../src/core/types.js'
 
-const now = Date.UTC(2026, 0, 1, 1)
+// Thursday at 01:00 local time, as the default window opens.
+const now = new Date(2026, 0, 1, 1).getTime()
+const daily = [{ start: '01:00', end: '07:00' }]
 const hours = (h: number) => now / 1000 + h * 3600
 const budget = (over: Partial<Budget> = {}): Budget => ({
   reserve: 0.1,
@@ -21,28 +23,34 @@ const ceiling = (a: Allowance) => (a.kind === 'quota' ? Math.round(a.ceiling * 1
 
 describe('allowance', () => {
   it.each([
-    ['per_night binds early in the week', budget({ per_night: 0.15 }), quota(0.36, 60), 0.51],
-    ['pacing binds without per_night', budget(), quota(0.36, 60), 0.54],
-    ['the last night may spend up to the reserve', budget(), quota(0.36, 10), 0.9],
+    ['per_run binds early in the week', budget({ per_run: 0.15 }), quota(0.36, 60), 0.51],
+    ['pacing binds without per_run', budget(), quota(0.36, 60), 0.54],
+    ['the last run may spend up to the reserve', budget(), quota(0.36, 10), 0.9],
     ['a bigger reserve lowers every limit', budget({ reserve: 0.3 }), quota(0.36, 10), 0.7],
     ['past the reserve the ceiling sits below used', budget(), quota(0.95, 60), 0.9],
   ])('%s', (_, b, q, expected) => {
-    expect(ceiling(allowance(b, q, now))).toBe(expected)
+    expect(ceiling(allowance(b, q, now, daily))).toBe(expected)
   })
 
-  it('counts nights to the reset, at least one', () => {
-    expect(allowance(budget(), quota(0.2, 60), now)).toMatchObject({ nights: 3 })
-    expect(allowance(budget(), quota(0.2, -1), now)).toMatchObject({ nights: 1 })
+  it('counts the runs to the reset, the one under way included, at least one', () => {
+    expect(allowance(budget(), quota(0.2, 60), now, daily)).toMatchObject({ runs: 3 })
+    expect(allowance(budget(), quota(0.2, -1), now, daily)).toMatchObject({ runs: 1 })
+  })
+
+  it('counts only the windows that open before the reset', () => {
+    const noon = now + 11 * 3600 * 1000
+    // 61 hours from noon is 01:00 on Sunday: Friday's and Saturday's windows open before it, Sunday's doesn't.
+    expect(allowance(budget(), quota(0.2, 72), noon, daily)).toMatchObject({ runs: 2 })
   })
 
   it('carries the session stop', () => {
-    expect(allowance(budget({ session_max: 0.8 }), quota(0.2, 60, 0.4), now)).toMatchObject({
+    expect(allowance(budget({ session_max: 0.8 }), quota(0.2, 60, 0.4), now, daily)).toMatchObject({
       session: { used: 0.4, stopAt: 0.8 },
     })
   })
 
   it('falls back without a long window', () => {
-    expect(allowance(budget(), null, now, 'probe failed: boom')).toEqual({
+    expect(allowance(budget(), null, now, daily, 'probe failed: boom')).toEqual({
       kind: 'fallback',
       units: 4,
       turns: 60,
@@ -53,9 +61,9 @@ describe('allowance', () => {
 
 describe('route', () => {
   const allowances = {
-    full: allowance(budget(), quota(0.95, 60), now),
-    open: allowance(budget(), quota(0.2, 60), now),
-    capped: allowance(budget({ fallback: { units: 1, turns: 10 } }), null, now),
+    full: allowance(budget(), quota(0.95, 60), now, daily),
+    open: allowance(budget(), quota(0.2, 60), now, daily),
+    capped: allowance(budget({ fallback: { units: 1, turns: 10 } }), null, now, daily),
   }
 
   it('takes the first candidate under its ceiling and says why others passed', () => {
@@ -74,25 +82,25 @@ describe('route', () => {
 })
 
 describe('quotaFacts', () => {
-  it('reads nights and the headroom under the ceiling', () => {
-    const a = allowance(budget(), quota(0.36, 10), now)
-    expect(quotaFacts(a).nights).toBe(1)
+  it('reads runs and the headroom under the ceiling', () => {
+    const a = allowance(budget(), quota(0.36, 10), now, daily)
+    expect(quotaFacts(a).runs).toBe(1)
     expect(quotaFacts(a).headroom).toBeCloseTo(0.54)
   })
 
   it('rounds headroom to 0.1% so a value on the edge holds', () => {
-    const a = { ...allowance(budget(), quota(0.1, 10), now), ceiling: 0.3 }
+    const a = { ...allowance(budget(), quota(0.1, 10), now, daily), ceiling: 0.3 }
     expect(quotaFacts(a).headroom).toBeGreaterThanOrEqual(0.2)
   })
 
   it('has headroom 0 past the ceiling and nothing on a fallback', () => {
-    expect(quotaFacts(allowance(budget(), quota(0.95, 60), now)).headroom).toBe(0)
-    expect(quotaFacts(allowance(budget(), null, now))).toEqual({})
+    expect(quotaFacts(allowance(budget(), quota(0.95, 60), now, daily)).headroom).toBe(0)
+    expect(quotaFacts(allowance(budget(), null, now, daily))).toEqual({})
   })
 })
 
-it('paces over the windows left rather than the days when given windows', () => {
+it('paces over the windows left, not the days', () => {
   const weekly = [{ days: ['sat' as const], start: '10:00', end: '18:00' }]
-  expect(ceiling(allowance(budget(), quota(0.36, 60), now, undefined, weekly))).toBe(0.9)
-  expect(ceiling(allowance(budget(), quota(0.36, 60), now))).toBe(0.54)
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now, weekly))).toBe(0.9)
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now, daily))).toBe(0.54)
 })

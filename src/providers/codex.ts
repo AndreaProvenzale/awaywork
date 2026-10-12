@@ -159,9 +159,9 @@ export function offline(dir: string): string[] {
   const writable = [dir, join(dir, '.git')].map((path) => `${JSON.stringify(path)}="write"`)
   const filesystem = `{":root"="read",":tmpdir"="write",${writable.join(',')}}`
   return [
-    ...['-c', 'default_permissions="night"'],
-    ...['-c', `permissions.night.filesystem=${filesystem}`],
-    ...['-c', 'permissions.night.network.enabled=false'],
+    ...['-c', 'default_permissions="awaywork"'],
+    ...['-c', `permissions.awaywork.filesystem=${filesystem}`],
+    ...['-c', 'permissions.awaywork.network.enabled=false'],
     ...['-c', 'web_search="disabled"'],
   ]
 }

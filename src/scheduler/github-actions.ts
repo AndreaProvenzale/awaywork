@@ -17,7 +17,7 @@ const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
   starts: Start[]
-  /** IANA name; the schedule and the run's night window both use it. */
+  /** IANA name; the schedule and the run's windows both use it. */
   timezone: string
   /** Repo path of the config the run reads. */
   config: string
@@ -37,7 +37,7 @@ export interface Workflow {
   }
 }
 
-/** A nightly workflow calling awaywork's action; secrets appear by name only, their values stay in the repo's settings. */
+/** A scheduled workflow calling awaywork's action; secrets appear by name only, their values stay in the repo's settings. */
 export function workflow(w: Workflow): string {
   const person = w.person
   const from = (name: string) =>
@@ -66,7 +66,7 @@ ${w.starts
 concurrency: ${name}
 
 jobs:
-  night:
+  run:
     runs-on: ubuntu-latest
 ${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
 ${env.map((line) => `      ${line}`).join('\n')}

@@ -13,14 +13,14 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { type PlannedUnit, planNight } from '../src/core/foreman.js'
-import { type NightReport, summarize } from '../src/core/report.js'
+import { type PlannedUnit, planRun } from '../src/core/foreman.js'
+import { type RunReport, summarize } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
-const now = Date.UTC(2026, 0, 1, 1)
+const now = new Date(2026, 0, 1, 1).getTime()
 const week = (used: number): Quota => ({
   windows: [
     { name: 'five_hour', span: 'short', used: 0.02, resetsAt: now / 1000 + 3 * 3600 },
@@ -38,8 +38,8 @@ function plan(
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers)
-    allowances[p.id] = allowance(p.budget, quotas[p.id] ?? null, now)
-  return planNight({
+    allowances[p.id] = allowance(p.budget, quotas[p.id] ?? null, now, config.windows)
+  return planRun({
     config,
     items,
     allowances,
@@ -89,8 +89,8 @@ describe('plan', () => {
         #4  implement  source=asana section=Ready tags=backend provider=codex
 
       Providers
-        provider  window     used  ceiling  set by     resets in  session / stop at
-        claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+        provider  window     used  ceiling  set by   resets in  session / stop at
+        claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
           other limits: reserve cap 90%, pacing 54%
         codex     fallback
           4 units, 60 turns each (no quota reading)
@@ -214,7 +214,7 @@ queue:
 
   it('routes between claude and codex on their own windows', () => {
     const yaml = `
-providers: [claude: {}, codex: { budget: { per_night: 5% } }]
+providers: [claude: {}, codex: { budget: { per_run: 5% } }]
 sources: { github: { repos: [acme/api] } }
 queue:
   - { skill: fix-ci, where: { checks: failing } }
@@ -228,12 +228,12 @@ queue:
     expect(rows(result).map((r) => r[3])).toEqual(['claude', 'codex'])
     expect(formatPlan(result)).toContain(
       [
-        '  codex     30d        4%    6.9%     pacing  30 nights  -',
-        '    other limits: per_night 9%, reserve cap 90%',
+        '  codex     30d        4%    6.9%     pacing  30 runs    -',
+        '    other limits: per_run 9%, reserve cap 90%',
       ].join('\n'),
     )
     expect(describeAllowance(result.allowances.codex as Allowance)).toBe(
-      '30d 4% used, ceiling 6.9% set by pacing (per_night 9%, reserve cap 90%; resets in 30 nights)',
+      '30d 4% used, ceiling 6.9% set by pacing (per_run 9%, reserve cap 90%; resets in 30 runs)',
     )
 
     const full = plan(yaml, items, { claude: week(0.95), codex: month })
@@ -295,14 +295,15 @@ queue:
     const items = [githubPr(1, { checks: 'failing' })]
     const units = (rule: string, step: string, quota: Quota | null) =>
       plan(yaml(rule, step), items, { claude: quota }).units.map((u) => u.quotaUnmet)
-    const last = 'when: { nights_until_reset: 1 }'
+    const last = 'when: { runs_until_reset: 1 }'
     expect(units('', last, week(0.36))).toEqual([
       undefined,
       "the quota part doesn't hold on the probe",
     ])
-    expect(units('when: { headroom: 10% }', 'when: { nights_until_reset: 3 }', week(0.36))).toEqual(
-      [undefined, undefined],
-    )
+    expect(units('when: { headroom: 10% }', 'when: { runs_until_reset: 3 }', week(0.36))).toEqual([
+      undefined,
+      undefined,
+    ])
     expect(units('when: { headroom: 20% }', last, week(0.36))[0]).toBe(
       "the quota part doesn't hold on the probe",
     )
@@ -379,7 +380,7 @@ queue:
 
   it('plans every round of a loop on the draft PR before it, or on a fresh clone after a report, and counts it once', () => {
     const yaml = `
-night: { start: "01:00", end: "07:00", units: 5 }
+limits: { units: 5 }
 providers: [claude, codex]
 sources: { github: { repos: [acme/api] } }
 queue:
@@ -451,7 +452,7 @@ queue:
       ],
     ])
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#4', 'over the cap: night.units is 5'],
+      ['acme/api#4', 'over the cap: limits.units is 5'],
     ])
     const text = formatPlan(result)
     expect(text).toContain('then=loop(review,address-review),qa-feedback')
@@ -463,7 +464,7 @@ queue:
 
   it('lets a loop repeat the skill of the unit it follows', () => {
     const yaml = `
-night: { start: "01:00", end: "07:00" }
+windows: [{ start: "01:00", end: "07:00" }]
 providers: [claude]
 sources: { github: { repos: [acme/api] } }
 queue:
@@ -510,7 +511,7 @@ queue:
 
   it('counts units against the caps as if every loop ended after round 1', () => {
     const yaml = `
-night: { start: "01:00", end: "07:00", units: 3 }
+limits: { units: 3 }
 budget: { fallback: { units: 6, turns: 30 } }
 providers: [claude]
 sources: { github: { repos: [acme/api] } }
@@ -524,9 +525,9 @@ queue:
       ['acme-api-1', 'acme-api-1-review-1', 'acme-api-1-address-review-1', 'acme-api-2'],
     )
     expect(result.units.find((u) => u.unit.id === 'acme-api-2')?.capped).toBe(
-      'then loop: over the cap: night.units is 3',
+      'then loop: over the cap: limits.units is 3',
     )
-    expect(result.skipped.map((s) => s.reason)).toEqual(['over the cap: night.units is 3'])
+    expect(result.skipped.map((s) => s.reason)).toEqual(['over the cap: limits.units is 3'])
   })
 
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
@@ -563,7 +564,7 @@ queue:
     ])
   })
 
-  it("pushes only onto your own PR's branch, never onto someone else's or tonight's draft PR", () => {
+  it("pushes only onto your own PR's branch, never onto someone else's or this run's draft PR", () => {
     const yaml = `
 providers: [claude]
 sources: { github: { repos: [acme/api] } }
@@ -580,7 +581,7 @@ queue:
       ['acme-api-1-implement', 'draft_pr', 'feature-1'],
     ])
     expect(result.units[2]?.capped).toBe(
-      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened tonight, not your own PR',
+      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened in this run, not your own PR',
     )
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
       ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
@@ -597,7 +598,7 @@ queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver
       {},
     )
     expect(relayed.units.at(-1)?.capped).toBe(
-      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened tonight, not your own PR',
+      'then fix-ci: deliver push: away/acme-api-1 is a draft PR opened in this run, not your own PR',
     )
     const forked = githubPr(3)
     const fork = { ...(forked.linkedPrs[0] as PrRef), fork: true }
@@ -650,9 +651,9 @@ queue:
     ])
   })
 
-  it('skips units past the night, repo and rule caps, naming the cap', () => {
+  it('skips units past the run, repo and rule caps, naming the cap', () => {
     const yaml = `
-night: { start: "01:00", end: "07:00", units: 4, units_per_repo: 2 }
+limits: { units: 4, units_per_repo: 2 }
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
@@ -679,14 +680,14 @@ queue:
     ])
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
       ['acme/api#2', 'over the cap: rule #1 units is 1'],
-      ['acme/api#4', 'over the cap: night.units_per_repo is 2'],
-      ['acme/ops#7', 'over the cap: night.units is 4'],
+      ['acme/api#4', 'over the cap: limits.units_per_repo is 2'],
+      ['acme/ops#7', 'over the cap: limits.units is 4'],
     ])
   })
 
   it("counts then steps against the caps and their rule's units", () => {
     const yaml = `
-night: { start: "01:00", end: "07:00", units: 4 }
+limits: { units: 4 }
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
@@ -726,13 +727,13 @@ queue:
     )
     expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
       ['acme/app#3', 'over the cap: rule #1 units is 3'],
-      ['acme/api#5', 'over the cap: night.units is 4'],
+      ['acme/api#5', 'over the cap: limits.units is 4'],
     ])
   })
 
   it('counts only units routed to a provider against the caps', () => {
     const yaml = `
-night: { start: "01:00", end: "07:00", units: 1 }
+limits: { units: 1 }
 providers: [claude: {}, codex: {}]
 sources: { github: { repos: [acme/api] } }
 queue:
@@ -772,7 +773,7 @@ describe('branch', () => {
     expect(templateProblem('feat/{title}')).toBeUndefined()
     expect(templateProblem('feat/work')).toBe('must contain {key} or {title}')
     expect(templateProblem('away/{key}/{user}')).toBe('unknown placeholder {user}')
-    expect(templateProblem('night..{key}')).toMatch(/invalid branch name/)
+    expect(templateProblem('away..{key}')).toMatch(/invalid branch name/)
     expect(templateProblem('{key}.lock')).toMatch(/invalid branch name/)
     expect(() =>
       parseConfig(
@@ -830,7 +831,7 @@ queue: [{ skill: fix-ci, deliver: push }]`
     const first = plan(yaml, [at('abc1234', '2026-01-01T00:00:00Z')], {})
     const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
     const results = [{ planned: first.units[0], status: 'done', outcome }]
-    const attempts = recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+    const attempts = recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
     expect(attempts['github:acme/api#1']?.pushed).toBe('def5678')
 
     const pushedAt = '2026-01-02T00:00:00Z'
@@ -849,14 +850,14 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue: [{ skill: fix-ci, deliver: push, then: review }]`
     const item = githubPr(1, { updated: '2026-01-01T00:00:00Z' })
-    const night = plan(yaml, [item], {})
+    const planned = plan(yaml, [item], {})
     const outcome = { kind: 'pushed', branch: 'feature-1', commits: 1, text: '', head: 'def5678' }
-    const [push, review] = night.units
+    const [push, review] = planned.units
     const results = [
       { planned: push, status: 'done', outcome },
       { planned: review, status: 'stopped: aborted' },
     ]
-    const report = { runId: 'r2', plan: night, results } as NightReport
+    const report = { runId: 'r2', plan: planned, results } as RunReport
     const key = 'github:acme/api#1'
 
     const fresh = recordAttempts({}, report)
@@ -928,7 +929,7 @@ queue:
     const task = asanaTask(7, {}, { linkedPrs: pr.linkedPrs })
     const yaml =
       'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix-ci, where: { type: [pr, task] } }]'
-    const result = planNight({
+    const result = planRun({
       config: parseConfig(yaml),
       items: [pr, task, issue],
       allowances: {},
@@ -959,7 +960,7 @@ describe('attempts', () => {
         { planned: done, status: 'done' },
         { planned: stopped, status: 'stopped: quota' },
       ],
-    } as NightReport
+    } as RunReport
     const attempts = recordAttempts({}, report)
     expect(attempts).toEqual({
       'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at },
@@ -1007,7 +1008,7 @@ describe('attempts', () => {
       unpublished: true,
     }
     const results = [{ planned: first.units[0], status: 'done', outcome }]
-    expect(recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)).toEqual({
+    expect(recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)).toEqual({
       'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at, failed: 1 },
     })
   })
@@ -1032,7 +1033,7 @@ describe('attempts', () => {
       pr: { kind: 'pr', url: 'u', commits: 1 },
     }
     const record = (...results: object[]) =>
-      recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+      recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
     const planned = { ...head, status: 'done', outcome: outcomes.review }
     const opened = { ...implement, status: 'done', outcome: outcomes.pr }
 
@@ -1060,7 +1061,7 @@ describe('attempts', () => {
     const first = plan(chain, [githubPr(1, { updated: at })], {})
     const [host, review] = first.units.map((planned) => ({ planned }))
     const record = (...results: object[]) =>
-      recordAttempts({}, { runId: 'r1', plan: first, results } as NightReport)
+      recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
     const failedRound = { ...review, status: 'failed' }
 
     expect(
@@ -1082,14 +1083,14 @@ describe('attempts', () => {
     const report = { kind: 'report', text: 'r' }
     let attempts: Attempts = {}
     for (const runId of ['r1', 'r2', 'r3']) {
-      const night = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
-      expect(night.units).toHaveLength(2)
-      const [head, implement] = night.units
+      const planned = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+      expect(planned.units).toHaveLength(2)
+      const [head, implement] = planned.units
       const results = [
         { planned: head, status: 'done', outcome: report },
         { planned: implement, status: 'failed' },
       ]
-      attempts = recordAttempts(attempts, { runId, plan: night, results } as NightReport)
+      attempts = recordAttempts(attempts, { runId, plan: planned, results } as RunReport)
     }
     expect(attempts).toEqual({
       'github:acme/api#1': { runId: 'r3', skill: 'plan', updated: at, failed: 3 },
@@ -1113,7 +1114,7 @@ describe('attempts', () => {
         runId: 'r1',
         plan: first,
         results: [{ planned: first.units[0], ...result }],
-      } as NightReport)
+      } as RunReport)
 
     expect(recorded({ status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } })).toEqual({
       'github:acme/api#1': { runId: 'r1', skill: 'fix-ci', updated: at },

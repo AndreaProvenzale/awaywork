@@ -18,7 +18,7 @@ gets merged or force-pushed, and nobody gets a comment "from you".
 ```sh
 npm i -g awaywork
 awaywork init     # finds your agents and forge login, asks the rest
-awaywork plan     # a dry look at tonight, zero tokens spent
+awaywork plan     # a dry look at the next run, zero tokens spent
 ```
 
 ```
@@ -28,8 +28,8 @@ Queue
   #2  review     type=pr review_requested=true trusted=true
 
 Providers
-  provider  window     used  ceiling  set by     resets in  session / stop at
-  claude    seven_day  36%   51%      per_night  3 nights   2% / 90%
+  provider  window     used  ceiling  set by   resets in  session / stop at
+  claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
     other limits: reserve cap 90%, pacing 54%
 
 Units
@@ -46,7 +46,7 @@ Looks sane? Run one unit for real:
 awaywork run --unit acme-api-1
 ```
 
-Then hand over the night, on your machine:
+Then schedule it for when you're away, on your machine:
 
 ```sh
 awaywork schedule install    # launchd, systemd or cron
@@ -102,10 +102,10 @@ markdown: `awaywork skills eject fix-ci` and hack away.
 
 ## How much quota it burns
 
-Tonight's ceiling on the weekly window:
+Each run's ceiling on the weekly window:
 
 ```
-ceiling = used + (1 - reserve - used) / nights_until_reset
+ceiling = used + (1 - reserve - used) / runs_until_reset
 ```
 
 Early in the week that's a small slice, and it gets greedier as the reset
@@ -143,7 +143,7 @@ Needs Node 22+, `git`, and `gh auth login`.
 
 | Guide | |
 |---|---|
-| [Getting started](docs/guide/getting-started.md) | Install, first plan, first unit, first night |
+| [Getting started](docs/guide/getting-started.md) | Install, first plan, first unit, first schedule |
 | [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery |
 | [Configuration](docs/guide/configuration.md) | The config file by example; [reference](docs/reference/config.md) |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |

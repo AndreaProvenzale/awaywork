@@ -44,18 +44,18 @@ describe('init', () => {
       [/^Where does the work come from/, initial],
       [/^GitHub repos to watch.*your orgs: acme, widgets/, 'octo/*, acme/api'],
       [/^Starting queue/, initial],
-      [/^Night starts at/, '23:30'],
-      [/^Night ends at/, initial],
+      [/^Window starts at/, '23:30'],
+      [/^Window ends at/, initial],
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: true, ...registry() })
     expect(text).toMatchInlineSnapshot(`
       "# awaywork config: \`awaywork config edit\` validates on save,
-      # \`awaywork queue\` reorders the queue, \`awaywork plan\` previews tonight.
-      night: { start: "23:30", end: "07:00" }
+      # \`awaywork queue\` reorders the queue, \`awaywork plan\` previews the next run.
+      windows: [{ start: "23:30", end: "07:00" }]
       budget:                         # every provider; override one with - <id>: { budget: … }
         reserve: 10%                  # never go past 1 - reserve of any window
         session_max: 90%              # stop a worker past this share of the short window
-        # per_night: 15%              # at most this share of the long window per night
+        # per_run: 15%                # at most this share of the long window per run
       providers: [claude]             # order = routing preference
       sources:
         github: {repos: [octo/*, acme/api]}
@@ -75,9 +75,9 @@ describe('init', () => {
       "
     `)
     const cfg = parseConfig(text)
-    expect(cfg.night).toEqual({ start: '23:30', end: '07:00' })
+    expect(cfg.windows).toEqual([{ start: '23:30', end: '07:00' }])
     expect(cfg.budget).toMatchObject({ reserve: 0.1, session_max: 0.9 })
-    expect(cfg.budget.per_night).toBeUndefined()
+    expect(cfg.budget.per_run).toBeUndefined()
   })
 
   it('orders providers by the one picked first', async () => {
@@ -87,8 +87,8 @@ describe('init', () => {
       [/^Where does the work come from/, ['github']],
       [/^GitHub repos/, initial],
       [/^Starting queue/, []],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const text = await initConfig({ ask, installed: [], ghLogin: true, ...registry() })
     const cfg = parseConfig(text)
@@ -108,8 +108,8 @@ describe('init', () => {
       [/^Which section holds the items for qa-feedback\? Fix the issues QA/, initial],
       [/^Which section holds the items for continue/, 'Doing'],
       [/^Which section holds the items for plan/, ''],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry() })
     const cfg = parseConfig(text)
@@ -138,8 +138,8 @@ describe('init', () => {
       [/^Which state holds the items for qa-feedback/, initial],
       [/^Which state holds the items for continue/, initial],
       [/^Which state holds the items for plan/, ''],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const env = { LINEAR_API_KEY: 'lin_api_key' }
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry(env) })
@@ -168,8 +168,8 @@ describe('init', () => {
       [/^Which status holds the items for qa-feedback/, initial],
       [/^Which status holds the items for continue/, initial],
       [/^Which status holds the items for plan/, initial],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry({}) })
     expect(ask.secrets).toEqual(['JIRA_API_TOKEN'])
@@ -198,8 +198,8 @@ describe('init', () => {
       [/^Asana projects/, []],
       [/^Starting queue/, ['2']],
       [/^Which section holds the items for plan/, initial],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry() })
     expect(parseConfig(text).queue?.map((r) => r.where)).toEqual([{ section: 'Current sprint' }])
@@ -212,8 +212,8 @@ describe('init', () => {
       [/^Asana personal access token/, ''],
       [/^Asana workspace gid/, '100'],
       [/^Starting queue/, initial],
-      [/^Night starts/, initial],
-      [/^Night ends/, initial],
+      [/^Window starts/, initial],
+      [/^Window ends/, initial],
     ])
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry({}) })
     expect(ask.secrets).toEqual(['ASANA_TOKEN'])
@@ -233,15 +233,15 @@ describe('init', () => {
       [/^Asana workspace/, '100'],
       [/^Asana projects/, []],
       [/^Starting queue/, []],
-      [/^Night starts/, '25:00'],
-      [/^Night starts at \(HH:MM/, '02:00'],
-      [/^Night ends/, initial],
+      [/^Window starts/, '25:00'],
+      [/^Window starts at \(HH:MM/, '02:00'],
+      [/^Window ends/, initial],
     ])
     const setup = registry()
     setup.sources.github = githubSource(recorded([]))
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...setup })
     expect(ask.notes).toEqual([expect.stringMatching(/^Skipping github: no recorded output/)])
-    expect(parseConfig(text).night.start).toBe('02:00')
+    expect(parseConfig(text).windows[0]?.start).toBe('02:00')
   })
 })
 
@@ -258,7 +258,7 @@ describe('init --yes', () => {
       'address-review',
       'review',
     ])
-    expect(cfg.night).toEqual({ start: '01:00', end: '07:00' })
+    expect(cfg.windows).toEqual([{ start: '01:00', end: '07:00' }])
   })
 
   it('answers from the presets and skips a source whose secret is unset', async () => {
@@ -267,8 +267,8 @@ describe('init --yes', () => {
       [
         [/^Providers/, ['codex', 'claude']],
         [/^Where does the work come from/, ['asana', 'github']],
-        [/^Night starts/, '22:00'],
-        [/^Night ends/, '06:00'],
+        [/^Window starts/, '22:00'],
+        [/^Window ends/, '06:00'],
       ],
       (note) => void notes.push(note),
     )
@@ -276,7 +276,7 @@ describe('init --yes', () => {
     const cfg = parseConfig(text)
     expect(cfg.providers.map((p) => p.id)).toEqual(['codex', 'claude'])
     expect(Object.keys(cfg.sources)).toEqual(['github'])
-    expect(cfg.night).toEqual({ start: '22:00', end: '06:00' })
+    expect(cfg.windows).toEqual([{ start: '22:00', end: '06:00' }])
     expect(notes).toEqual(['Skipping asana: ASANA_TOKEN is not set'])
   })
 

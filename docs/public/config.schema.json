@@ -2,45 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "night": {
-      "default": {
-        "start": "01:00",
-        "end": "07:00"
-      },
-      "description": "Local hours a scheduled run may start units in, and how many",
-      "type": "object",
-      "properties": {
-        "start": {
-          "type": "string",
-          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-          "description": "When a scheduled run starts, local time"
-        },
-        "end": {
-          "type": "string",
-          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
-          "description": "No unit starts after this"
-        },
-        "units": {
-          "description": "At most this many units per night",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
-        },
-        "units_per_repo": {
-          "description": "At most this many units per night in one repo",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
-        }
-      },
-      "required": [
-        "start",
-        "end"
-      ],
-      "additionalProperties": false
-    },
     "windows": {
-      "description": "Windows a scheduled run may start units in, instead of night.start to night.end",
+      "default": [
+        {
+          "start": "01:00",
+          "end": "07:00"
+        }
+      ],
+      "description": "Local hours a scheduled run may start units in; each opening is one run",
       "minItems": 1,
       "type": "array",
       "items": {
@@ -81,6 +50,32 @@
         "additionalProperties": false
       }
     },
+    "limits": {
+      "description": "Unit counts and time per run, for every provider",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "units": {
+          "description": "At most this many units per run",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "units_per_repo": {
+          "description": "At most this many units per run in one repo",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unit_minutes": {
+          "description": "Stop a worker after this many minutes",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
     "budget": {
       "default": {},
       "type": "object",
@@ -91,8 +86,8 @@
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
         },
-        "per_night": {
-          "description": "At most this share of the long window per night",
+        "per_run": {
+          "description": "At most this share of the long window per run",
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
         },
@@ -101,12 +96,6 @@
           "default": "90%",
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-        },
-        "unit_minutes": {
-          "description": "Stop a worker after this many minutes",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
         },
         "fallback": {
           "default": {
@@ -119,7 +108,7 @@
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991,
-              "description": "Units per night"
+              "description": "Units per run"
             },
             "turns": {
               "type": "integer",
@@ -137,7 +126,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Quota allocation defaults; any provider can override them"
+      "description": "Quota shares; any provider can override them"
     },
     "providers": {
       "minItems": 1,
@@ -176,8 +165,8 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
-                      "per_night": {
-                        "description": "At most this share of the long window per night",
+                      "per_run": {
+                        "description": "At most this share of the long window per run",
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
@@ -186,12 +175,6 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
-                      "unit_minutes": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991,
-                        "description": "Stop a worker after this many minutes"
-                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -199,7 +182,7 @@
                             "type": "integer",
                             "exclusiveMinimum": 0,
                             "maximum": 9007199254740991,
-                            "description": "Units per night"
+                            "description": "Units per run"
                           },
                           "turns": {
                             "type": "integer",
@@ -253,8 +236,8 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
-                      "per_night": {
-                        "description": "At most this share of the long window per night",
+                      "per_run": {
+                        "description": "At most this share of the long window per run",
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
@@ -263,12 +246,6 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
-                      "unit_minutes": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991,
-                        "description": "Stop a worker after this many minutes"
-                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -276,7 +253,7 @@
                             "type": "integer",
                             "exclusiveMinimum": 0,
                             "maximum": 9007199254740991,
-                            "description": "Units per night"
+                            "description": "Units per run"
                           },
                           "turns": {
                             "type": "integer",
@@ -748,14 +725,14 @@
             "description": "Run this rule's unit only when the quota holds; otherwise skip it",
             "type": "object",
             "properties": {
-              "nights_until_reset": {
-                "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+              "runs_until_reset": {
+                "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
               },
               "headroom": {
-                "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                "description": "Holds when at least this share of the long window is left under this run's ceiling",
                 "type": "string",
                 "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
               }
@@ -763,13 +740,13 @@
             "additionalProperties": false
           },
           "units": {
-            "description": "At most this many units per night from this rule, its then steps included",
+            "description": "At most this many units per run from this rule, its then steps included",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "then": {
-            "description": "Steps run in turn after this rule's unit the same night, each on what the one before delivered; a {loop} repeats its steps",
+            "description": "Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps",
             "anyOf": [
               {
                 "anyOf": [
@@ -925,14 +902,14 @@
                             "type": "string",
                             "minLength": 1
                           },
-                          "nights_until_reset": {
-                            "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                          "runs_until_reset": {
+                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                             "type": "integer",
                             "exclusiveMinimum": 0,
                             "maximum": 9007199254740991
                           },
                           "headroom": {
-                            "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                            "description": "Holds when at least this share of the long window is left under this run's ceiling",
                             "type": "string",
                             "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                           },
@@ -1122,14 +1099,14 @@
                                     "type": "string",
                                     "minLength": 1
                                   },
-                                  "nights_until_reset": {
-                                    "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                  "runs_until_reset": {
+                                    "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                     "type": "integer",
                                     "exclusiveMinimum": 0,
                                     "maximum": 9007199254740991
                                   },
                                   "headroom": {
-                                    "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                    "description": "Holds when at least this share of the long window is left under this run's ceiling",
                                     "type": "string",
                                     "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                   },
@@ -1316,14 +1293,14 @@
                                       "type": "string",
                                       "minLength": 1
                                     },
-                                    "nights_until_reset": {
-                                      "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                    "runs_until_reset": {
+                                      "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                       "type": "integer",
                                       "exclusiveMinimum": 0,
                                       "maximum": 9007199254740991
                                     },
                                     "headroom": {
-                                      "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                      "description": "Holds when at least this share of the long window is left under this run's ceiling",
                                       "type": "string",
                                       "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                     },
@@ -1589,14 +1566,14 @@
                                   "type": "string",
                                   "minLength": 1
                                 },
-                                "nights_until_reset": {
-                                  "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                "runs_until_reset": {
+                                  "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                   "type": "integer",
                                   "exclusiveMinimum": 0,
                                   "maximum": 9007199254740991
                                 },
                                 "headroom": {
-                                  "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                  "description": "Holds when at least this share of the long window is left under this run's ceiling",
                                   "type": "string",
                                   "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                 },
@@ -1786,14 +1763,14 @@
                                           "type": "string",
                                           "minLength": 1
                                         },
-                                        "nights_until_reset": {
-                                          "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                        "runs_until_reset": {
+                                          "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                           "type": "integer",
                                           "exclusiveMinimum": 0,
                                           "maximum": 9007199254740991
                                         },
                                         "headroom": {
-                                          "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                          "description": "Holds when at least this share of the long window is left under this run's ceiling",
                                           "type": "string",
                                           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                         },
@@ -1980,14 +1957,14 @@
                                             "type": "string",
                                             "minLength": 1
                                           },
-                                          "nights_until_reset": {
-                                            "description": "Holds when the provider's long window resets within this many nights; 1 is the last",
+                                          "runs_until_reset": {
+                                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
                                             "type": "integer",
                                             "exclusiveMinimum": 0,
                                             "maximum": 9007199254740991
                                           },
                                           "headroom": {
-                                            "description": "Holds when at least this share of the long window is left under tonight's ceiling",
+                                            "description": "Holds when at least this share of the long window is left under this run's ceiling",
                                             "type": "string",
                                             "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                           },
@@ -2116,7 +2093,7 @@
       }
     },
     "notify": {
-      "description": "Run after each night with the morning report; a failure is only logged",
+      "description": "Runs with the morning report when a run ends; a failure is only logged",
       "type": "object",
       "properties": {
         "command": {

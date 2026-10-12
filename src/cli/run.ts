@@ -6,36 +6,36 @@ import { attemptsPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, runLine, summarize } from '../core/report.js'
 import { unitStats } from '../core/stats.js'
-import { describeWindow, nightEnd, windowsOf } from '../core/window.js'
+import { describeWindow, windowEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
-import { runNight } from '../worker/night.js'
 import { notify } from '../worker/notify.js'
+import { runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
-import { planTonight } from './plan.js'
+import { probeAndPlan } from './plan.js'
 import { unitsFile } from './stats.js'
 
 export function runCommand(program: Command): void {
   program
     .command('run')
-    .description('plan tonight, run a worker per unit and publish draft PRs and reports')
+    .description('plan the units, start a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
-    .option('--scheduled', 'run only inside the night window and start no unit after it ends')
+    .option('--scheduled', 'run only inside a window and start no unit after it ends')
     .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        const until = opts.scheduled ? nightEnd(windowsOf(config), new Date()) : undefined
+        const until = opts.scheduled ? windowEnd(config.windows, new Date()) : undefined
         if (opts.scheduled && !until) {
           console.log(
-            `Outside the ${config.windows ? 'run windows' : 'night window'} (${windowsOf(config).map(describeWindow).join(', ')}), nothing to do`,
+            `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
           )
           return
         }
-        const { plan, warnings, ctx } = await planTonight(config, skillsDirOf(path), {
+        const { plan, warnings, ctx } = await probeAndPlan(config, skillsDirOf(path), {
           retry: !!opts.unit,
         })
         const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
@@ -46,7 +46,7 @@ export function runCommand(program: Command): void {
 
         const abort = new AbortController()
         process.once('SIGINT', () => abort.abort())
-        const report = await runNight({
+        const report = await runUnits({
           config,
           configDir: dirname(path),
           plan,

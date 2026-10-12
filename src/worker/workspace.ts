@@ -302,7 +302,7 @@ function unitSection(unit: Unit, items: string[], previous?: Previous, loop?: Lo
     push: `commits pushed onto ${base}, the developer's own pull request. Commit on this branch and write \`${output}\`.`,
   }[unit.deliver]
   return [
-    `## Tonight's unit`,
+    `## Your unit`,
     `Unit \`${unit.id}\`, skill \`${unit.skill}\`. You are on the new branch \`${unit.branch}\`, cut from ${base}.`,
     ...(loop ? [loopSection(loop, unit)] : []),
     ...(unit.foreign
@@ -332,7 +332,7 @@ function loopSection(loop: LoopRound, unit: Unit): string {
     loop.deliver === 'push'
       ? `pushes the branch's commits onto \`${unit.base}\``
       : 'publishes the branch as one draft PR'
-  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold tonight's commits; awaywork ${publish} when the loop ends.`
+  return `This unit is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}. Every round works in this clone on \`${unit.branch}\`, which may already hold this run's commits; awaywork ${publish} when the loop ends.`
 }
 
 function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean): string {
@@ -346,8 +346,8 @@ function loopFollowUp({ skill, out }: Previous, loop: LoopRound, body: boolean):
 function followUp({ skill, outcome }: Previous): string {
   const context = `\`${WORK_DIR}/context/previous/\``
   if (outcome?.kind === 'pushed')
-    return `This unit follows \`${skill}\` on the same items, which pushed ${outcome.commits} commits onto \`${outcome.branch}\` tonight; you start from them. Its report and diff are \`${outputFile.push}\` and \`diff.patch\` in ${context}.`
+    return `This unit follows \`${skill}\` on the same items, which pushed ${outcome.commits} commits onto \`${outcome.branch}\` in this run; you start from them. Its report and diff are \`${outputFile.push}\` and \`diff.patch\` in ${context}.`
   if (outcome?.kind !== 'pr')
-    return `This unit follows \`${skill}\` on the same items, which wrote a report tonight: \`${outputFile.report}\` in ${context}.`
-  return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} tonight; you start from its branch. Its body and diff are \`${outputFile.draft_pr}\` and \`diff.patch\` in ${context}.`
+    return `This unit follows \`${skill}\` on the same items, which wrote a report in this run: \`${outputFile.report}\` in ${context}.`
+  return `This unit follows \`${skill}\` on the same items, which opened ${outcome.url} in this run; you start from its branch. Its body and diff are \`${outputFile.draft_pr}\` and \`diff.patch\` in ${context}.`
 }

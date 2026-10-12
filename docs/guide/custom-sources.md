@@ -123,12 +123,12 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
   haven't changed since a worker finished it is skipped, see
   [how it works](./how-it-works.md). `updated` is the Monday of the week,
   so a chore runs at most once a week, and not while its last draft PR is
-  still open; print the date of the day for every night.
+  still open; print the day's date to run it every day.
 - **Weekdays** are the script's call: print nothing on the days a chore
   shouldn't run.
 - **`when`** is checked again when the unit starts: `plan` lists the chore
   with its gate and notes when the probe has no headroom for it, and the
-  night skips it without the headroom.
+  run skips it without the headroom.
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry
   no link line.
 

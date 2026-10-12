@@ -107,7 +107,7 @@ async function setup(gh: Gh = {}) {
   })
   const install = (script: [RegExp, unknown][] = []) => installWorkflow(config, 'alice', io(script))
   const job = async () =>
-    parse(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).jobs.night
+    parse(await readFile(join(root, '.github/workflows/awaywork-alice.yml'), 'utf8')).jobs.run
   return { root, home, config, calls, set, io, install, job }
 }
 
@@ -250,10 +250,10 @@ it('prints no to-do list when nothing is left to do', async () => {
     [/ASANA_TOKEN__ALICE/, true],
   ]
   await installWorkflow(config, 'alice', io(yes(), all))
-  expect(out).toContain('Before the first night:')
+  expect(out).toContain('Before the first run:')
   out = []
   await installWorkflow(config, 'alice', io(yes(), all))
-  expect(out).not.toContain('Before the first night:')
+  expect(out).not.toContain('Before the first run:')
 })
 
 it('adds no branch policy the environment already has', async () => {

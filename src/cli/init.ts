@@ -25,7 +25,7 @@ export function initCommand(program: Command): void {
     .option('-y, --yes', 'answer every question with its default; needs no terminal')
     .option('--provider <id...>', 'with --yes: providers, first takes units first')
     .option('--source <id...>', 'with --yes: sources to take work from')
-    .option('--night <start-end>', 'with --yes: night window, e.g. 01:00-07:00', parseNight)
+    .option('--window <start-end>', 'with --yes: the run window, e.g. 01:00-07:00', parseWindow)
     .option('--force', 'replace an existing config without asking')
     .action(async (opts: InitOptions) => {
       const path = configPath(program.opts().config)
@@ -98,11 +98,11 @@ interface InitOptions {
   yes?: boolean
   provider?: string[]
   source?: string[]
-  night?: [string, string]
+  window?: [string, string]
   force?: boolean
 }
 
-function parseNight(value: string): [string, string] {
+function parseWindow(value: string): [string, string] {
   const [start = '', end = '', ...rest] = value.split('-')
   if (rest.length > 0 || !time.safeParse(start).success || !time.safeParse(end).success)
     throw new InvalidArgumentError('expected HH:MM-HH:MM, e.g. 01:00-07:00')
@@ -110,18 +110,18 @@ function parseNight(value: string): [string, string] {
 }
 
 /** The --yes answers the flags give, keyed by the prompts of initConfig. */
-function presets({ provider, source, night }: InitOptions): [RegExp, unknown][] {
+function presets({ provider, source, window }: InitOptions): [RegExp, unknown][] {
   const presets: [RegExp, unknown][] = []
   if (provider) presets.push([/^Providers/, provider])
   if (source) presets.push([/^Where does the work come from/, source])
-  if (night) presets.push([/^Night starts/, night[0]], [/^Night ends/, night[1]])
+  if (window) presets.push([/^Window starts/, window[0]], [/^Window ends/, window[1]])
   return presets
 }
 
 /** The `schedule install --with` value: '' for this machine's default, or 'later'. */
 const whereToRun = (ask: Ask) =>
   ask.select(
-    'Where does it run every night?',
+    'Where should it run on a schedule?',
     [
       { value: '', label: 'this machine' },
       { value: 'github-actions', label: 'GitHub Actions, from the repo in this directory' },
@@ -140,7 +140,7 @@ export interface InitInput {
   sources?: Record<string, Source>
 }
 
-/** Asks for providers, sources, a starting queue and the night window; returns the config text. */
+/** Asks for providers, sources, a starting queue and the run window; returns the config text. */
 export async function initConfig(input: InitInput): Promise<string> {
   const { ask, ctx, installed } = input
   const registry = { providers: input.providers ?? providers, sources: input.sources ?? sources }
@@ -217,27 +217,27 @@ export async function initConfig(input: InitInput): Promise<string> {
       value = await ask.text(`${message} (HH:MM, 24 hours)`, { initial })
     return value
   }
-  const start = await clock('Night starts at', '01:00')
-  const end = await clock('Night ends at', '07:00')
-  return renderConfig({ night: { start, end }, providers: picked, sources: configs, queue })
+  const start = await clock('Window starts at', '01:00')
+  const end = await clock('Window ends at', '07:00')
+  return renderConfig({ window: { start, end }, providers: picked, sources: configs, queue })
 }
 
 const commented = (line: string, comment: string) => `${line.padEnd(31)} # ${comment}`
 
 export function renderConfig(c: {
-  night: { start: string; end: string }
+  window: { start: string; end: string }
   providers: string[]
   sources: Record<string, unknown>
   queue: Rule[]
 }): string {
   return [
     '# awaywork config: `awaywork config edit` validates on save,',
-    '# `awaywork queue` reorders the queue, `awaywork plan` previews tonight.',
-    `night: { start: "${c.night.start}", end: "${c.night.end}" }`,
+    '# `awaywork queue` reorders the queue, `awaywork plan` previews the next run.',
+    `windows: [{ start: "${c.window.start}", end: "${c.window.end}" }]`,
     'budget:                         # every provider; override one with - <id>: { budget: … }',
     commented('  reserve: 10%', 'never go past 1 - reserve of any window'),
     commented('  session_max: 90%', 'stop a worker past this share of the short window'),
-    commented('  # per_night: 15%', 'at most this share of the long window per night'),
+    commented('  # per_run: 15%', 'at most this share of the long window per run'),
     commented(`providers: ${flow(c.providers)}`, 'order = routing preference'),
     'sources:',
     ...Object.entries(c.sources).map(([id, cfg]) => `  ${id}: ${flow(cfg)}`),

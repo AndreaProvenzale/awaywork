@@ -155,10 +155,10 @@ describe('codex provider', () => {
       expect((await argv(true)).join(' ')).toContain('--sandbox danger-full-access')
       const offline = await argv(false)
       expect(offline).not.toContain('--sandbox')
-      expect(offline).toContain('permissions.night.network.enabled=false')
+      expect(offline).toContain('permissions.awaywork.network.enabled=false')
       expect(offline.findLast((a) => a.startsWith('web_search='))).toBe('web_search="disabled"')
       expect(offline.findLast((a) => a.startsWith('default_permissions='))).toBe(
-        'default_permissions="night"',
+        'default_permissions="awaywork"',
       )
       expect(offline.join(' ')).toContain(`${JSON.stringify(join(tmp, '.git'))}="write"`)
     } finally {

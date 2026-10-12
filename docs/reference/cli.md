@@ -13,7 +13,7 @@ Every command's `--help`. The global `--config` option applies to all of them.
 ```text
 Usage: awaywork [options] [command]
 
-Spend idle coding-subscription quota overnight
+Spend idle coding-subscription quota while you're away
 
 Options:
   -V, --version          output the version number
@@ -25,27 +25,27 @@ Commands:
   init [options]         detect installed agents, pick providers, sources and a
                          starting queue
   config                 inspect and validate the config
-  plan [options]         show tonight's units in order, with each provider's
-                         ceiling; runs no worker
-  queue                  show what each rule matches tonight and reorder the
-                         rules with the keyboard
+  plan [options]         show the next run's units in order, with each
+                         provider's ceiling; runs no worker
+  queue                  show what each rule matches now and reorder the rules
+                         with the keyboard
   skip [options] [key]   leave an item (source:key, e.g. github:acme/api#5)
-                         alone on the coming nights; with no key, list skipped
+                         alone in the coming runs; with no key, list skipped
                          items
   unskip <key>           let awaywork pick up a skipped item (source:key) again
   skills                 list skills and eject built-ins to tweak
-  run [options]          plan tonight, run a worker per unit and publish draft
-                         PRs and reports
+  run [options]          plan the units, start a worker per unit and publish
+                         draft PRs and reports
   report [options] [id]  print a run's morning report; the latest by default
   stats [options]        what each rule, skill and provider cost and delivered
                          across all runs
   replay <run> <unit>    re-run a past run's unit on its base commit and saved
                          context with today's skills and instructions; nothing
                          is pushed
-  schedule               run awaywork every night on this machine or in GitHub
-                         Actions
+  schedule               run awaywork when its windows open, on this machine or
+                         in GitHub Actions
   doctor [options]       check binaries, credentials, quota and sources before a
-                         night
+                         run
   help [command]         display help for command
 ```
 
@@ -57,12 +57,13 @@ Usage: awaywork init [options]
 detect installed agents, pick providers, sources and a starting queue
 
 Options:
-  -y, --yes            answer every question with its default; needs no terminal
-  --provider <id...>   with --yes: providers, first takes units first
-  --source <id...>     with --yes: sources to take work from
-  --night <start-end>  with --yes: night window, e.g. 01:00-07:00
-  --force              replace an existing config without asking
-  -h, --help           display help for command
+  -y, --yes             answer every question with its default; needs no
+                        terminal
+  --provider <id...>    with --yes: providers, first takes units first
+  --source <id...>      with --yes: sources to take work from
+  --window <start-end>  with --yes: the run window, e.g. 01:00-07:00
+  --force               replace an existing config without asking
+  -h, --help            display help for command
 ```
 
 ## awaywork config
@@ -121,7 +122,7 @@ Options:
 ```text
 Usage: awaywork plan [options]
 
-show tonight's units in order, with each provider's ceiling; runs no worker
+show the next run's units in order, with each provider's ceiling; runs no worker
 
 Options:
   --json      print the plan and warnings as JSON
@@ -133,7 +134,7 @@ Options:
 ```text
 Usage: awaywork queue [options] [command]
 
-show what each rule matches tonight and reorder the rules with the keyboard
+show what each rule matches now and reorder the rules with the keyboard
 
 Options:
   -h, --help        display help for command
@@ -159,7 +160,7 @@ Options:
 ```text
 Usage: awaywork skip [options] [key]
 
-leave an item (source:key, e.g. github:acme/api#5) alone on the coming nights;
+leave an item (source:key, e.g. github:acme/api#5) alone in the coming runs;
 with no key, list skipped items
 
 Options:
@@ -226,12 +227,12 @@ Options:
 ```text
 Usage: awaywork run [options]
 
-plan tonight, run a worker per unit and publish draft PRs and reports
+plan the units, start a worker per unit and publish draft PRs and reports
 
 Options:
   --dry-run    prepare each workspace (clone, context, prompt) but run no worker
   --unit <id>  run only this unit, by id or item key
-  --scheduled  run only inside the night window and start no unit after it ends
+  --scheduled  run only inside a window and start no unit after it ends
   -h, --help   display help for command
 ```
 
@@ -276,7 +277,7 @@ Options:
 ```text
 Usage: awaywork schedule [options] [command]
 
-run awaywork every night on this machine or in GitHub Actions
+run awaywork when its windows open, on this machine or in GitHub Actions
 
 Options:
   -h, --help         display help for command
@@ -284,9 +285,9 @@ Options:
 Commands:
   install [options]  start `awaywork run` when a window opens; it starts no unit
                      after it closes
-  remove [options]   remove the nightly job, and .github/workflows/awaywork.yml
-                     in the current repo
-  status             show the installed nightly job
+  remove [options]   remove the scheduled job, and
+                     .github/workflows/awaywork.yml in the current repo
+  status             show the installed scheduled job
   help [command]     display help for command
 ```
 
@@ -310,7 +311,7 @@ Options:
 ```text
 Usage: awaywork schedule remove [options]
 
-remove the nightly job, and .github/workflows/awaywork.yml in the current repo
+remove the scheduled job, and .github/workflows/awaywork.yml in the current repo
 
 Options:
   --as <person>  remove only that person's workflow from the current repo
@@ -322,7 +323,7 @@ Options:
 ```text
 Usage: awaywork schedule status [options]
 
-show the installed nightly job
+show the installed scheduled job
 
 Options:
   -h, --help  display help for command
@@ -333,7 +334,7 @@ Options:
 ```text
 Usage: awaywork doctor [options]
 
-check binaries, credentials, quota and sources before a night
+check binaries, credentials, quota and sources before a run
 
 Options:
   --json      print the checks as a JSON array of { status, what, detail }

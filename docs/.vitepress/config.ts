@@ -83,7 +83,7 @@ export default defineConfig({
     )
     await writeFile(
       join(outDir, 'llms.txt'),
-      `# awaywork\n\n> ${description}. An open-source CLI that runs the vendors' own agent CLIs (Claude Code, Codex) headless overnight on a developer's leftovers: red CI, review threads, QA feedback, requested reviews, plans. Output is a draft PR from a new branch or a morning report.\n\nEvery page is Markdown at its URL below; llms-full.txt has them all in one file.\n\n${index.join('\n\n')}\n`,
+      `# awaywork\n\n> ${description}. An open-source CLI that runs the vendors' own agent CLIs (Claude Code, Codex) headless while they're away, on a developer's leftovers: red CI, review threads, QA feedback, requested reviews, plans. Output is a draft PR from a new branch or a morning report.\n\nEvery page is Markdown at its URL below; llms-full.txt has them all in one file.\n\n${index.join('\n\n')}\n`,
     )
     const full = pages.flatMap((group) =>
       group.pages.map((p) => `<!-- ${p.url} -->\n\n${body(p.text)}`),

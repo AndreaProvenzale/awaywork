@@ -10,11 +10,11 @@ import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
-import { planNight } from '../src/core/foreman.js'
+import { planRun } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
-import { type NightInput, runNight } from '../src/worker/night.js'
+import { type RunInput, runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -27,10 +27,12 @@ process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
+const reset = new Date(2026, 8, 26, 3).getTime() / 1000
+
 const quota = (long: number): Quota => ({
   windows: [
     { name: 'five_hour', span: 'short', used: 0.1, resetsAt: 1790254200 },
-    { name: 'seven_day', span: 'long', used: long, resetsAt: 1790391600 },
+    { name: 'seven_day', span: 'long', used: long, resetsAt: reset },
   ],
 })
 
@@ -66,8 +68,8 @@ const worker: Provider = {
   },
 }
 
-it('runs, publishes and reports a night', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'awaywork-night-'))
+it('runs, publishes and reports a run', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-run-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
@@ -96,13 +98,14 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     githubPr(2, { mine: false, review_requested: true }),
     githubPr(3, { checks: 'failing' }),
   ]
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
-  const allowances = { claude: allowance(config.budget, quota(0.36), now) }
-  const plan = planNight({ config, items, allowances, skills: { builtin: builtinSkills } })
+  // 03:00 local, inside the 01:00-07:00 window, 3 days before the reset: this run and 3 more.
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
+  const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
+  const plan = planRun({ config, items, allowances, skills: { builtin: builtinSkills } })
   const runDir = join(root, 'run')
 
   const tried = `awaywork tried this in https://github.com/acme/api/pull/7; delete away/acme-api-3 to run it again`
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -149,7 +152,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     '| 3 | acme-api-2 | review | claude | done, 5 turns | report below, verdict approve |',
   )
   expect(text).toContain(
-    '- claude: seven_day 36% to 45%, ceiling 54%; session 10% to 10%, stop at 90%',
+    '- claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
   )
   expect(text).toContain(
     '### acme-api-2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.',
@@ -184,10 +187,10 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1), githubPr(2)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const input = {
@@ -203,22 +206,19 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     ctx: { env: {}, log: () => {} },
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   }
-  const report = await runNight({ ...input, only: 'acme-api-2' })
+  const report = await runUnits({ ...input, only: 'acme-api-2' })
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-2', 'prepared'],
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
   for (const only of ['acme/api#2', 'ACME-API-2']) {
-    const byKey = await runNight({ ...input, only })
+    const byKey = await runUnits({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
   }
-  await expect(runNight({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
+  await expect(runUnits({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
 
-  const ended = await runNight({ ...input, until: new Date(0) })
-  expect(ended.results.map((u) => u.reason)).toEqual([
-    'the night window ended',
-    'the night window ended',
-  ])
+  const ended = await runUnits({ ...input, until: new Date(0) })
+  expect(ended.results.map((u) => u.reason)).toEqual(['the window ended', 'the window ended'])
 })
 
 it('runs a chained unit with the units it follows, which a dry run leaves nothing to', async () => {
@@ -233,13 +233,13 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci, then: review }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -259,7 +259,7 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
   ])
 })
 
-it('stops a unit still running at night.end and publishes what it left', async () => {
+it('stops a unit still running at the window end and publishes what it left', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-end-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -273,10 +273,10 @@ it('stops a unit still running at night.end and publishes what it left', async (
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1), githubPr(2)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -294,7 +294,7 @@ it('stops a unit still running at night.end and publishes what it left', async (
     },
   }
   try {
-    const report = await runNight({
+    const report = await runUnits({
       config,
       configDir: root,
       plan,
@@ -311,10 +311,10 @@ it('stops a unit still running at night.end and publishes what it left', async (
     })
     expect(report.results.map((u) => [u.status, u.outcome ?? u.reason])).toEqual([
       [
-        'stopped: night ended',
+        'stopped: window ended',
         { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
       ],
-      ['skipped', 'the night window ended'],
+      ['skipped', 'the window ended'],
     ])
   } finally {
     vi.useRealTimers()
@@ -349,10 +349,10 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
       type: 'issue',
       fields: { repo: 'acme/api' },
     })
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(5), issue(6)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const seen: { prompt: string; files: string[]; diff?: string }[] = []
@@ -377,7 +377,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     },
   }
 
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -406,7 +406,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   expect(review?.files).toContain('fix.txt')
   expect(review?.diff).toMatch(/^\+\+\+ b\/fix\.txt$/m)
   expect(review?.prompt).toContain(
-    'This unit follows `implement` on the same items, which opened https://example.com/acme/api/pull/away/acme-api-5 tonight',
+    'This unit follows `implement` on the same items, which opened https://example.com/acme/api/pull/away/acme-api-5 in this run',
   )
 })
 
@@ -429,7 +429,7 @@ repos:
     setup: 'if [ -f broken ]; then echo resolving; echo 404 from registry; exit 3; fi; echo "$NPM_TOKEN,$FAKE_AGENT_TOKEN" > setup.txt'
     secrets: [NPM_TOKEN]
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [
       githubPr(1),
@@ -437,12 +437,12 @@ repos:
       githubPr(3, { mine: false }),
       githubPr(4, { mine: false, trusted: false }),
     ],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const setups: string[] = []
   const workerEnvs: NodeJS.ProcessEnv[] = []
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -509,7 +509,7 @@ queue:
     then: [{ skill: address-review, mcp: [sentry], deliver: report }]
   - { skill: review, mcp: [sentry, jira] }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [
       githubPr(1, { checks: 'failing' }),
@@ -517,11 +517,11 @@ queue:
       githubPr(3, { mine: false, trusted: false }),
       githubPr(4, { mine: false }),
     ],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const jobs: { unit: string; mcp: string[]; env: string[] }[] = []
-  await runNight({
+  await runUnits({
     config,
     configDir: root,
     plan,
@@ -563,7 +563,7 @@ queue:
   expect(await log('acme-api-4')).toContain("mcp: sentry, jira not started on someone else's PR")
 })
 
-it("stops a unit at its provider's unit_minutes", async () => {
+it('stops a unit at unit_minutes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-time-'))
   const forge = {
     ...fakeForge(),
@@ -573,12 +573,12 @@ it("stops a unit at its provider's unit_minutes", async () => {
     },
   }
   const config = parseConfig(
-    'providers: [claude: { budget: { unit_minutes: 5 } }]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+    'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const hung: Provider = {
@@ -591,7 +591,7 @@ it("stops a unit at its provider's unit_minutes", async () => {
   }
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   try {
-    const report = await runNight({
+    const report = await runUnits({
       config,
       configDir: root,
       plan,
@@ -659,7 +659,7 @@ const committer: Provider = {
 }
 
 /** Three days before `quota`'s weekly reset. */
-const week = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
+const week = reset * 1000 - 3 * 24 * 60 * 60 * 1000
 
 const issue = (n: number) =>
   fakeItem({
@@ -670,7 +670,7 @@ const issue = (n: number) =>
     fields: { repo: 'acme/api' },
   })
 
-it("starts each of a repo's draft PRs from the default branch, not on tonight's last one", async () => {
+it("starts each of a repo's draft PRs from the default branch, not on this run's last one", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
@@ -691,13 +691,13 @@ it("starts each of a repo's draft PRs from the default branch, not on tonight's 
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1), issue(2), githubPr(4), issue(3)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -741,13 +741,13 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue: [{ skill: implement, then: { skill: review, deliver: draft_pr } }]
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1), issue(2)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await runNight({
+  await runUnits({
     config,
     configDir: root,
     plan,
@@ -788,13 +788,13 @@ queue:
   - { skill: implement, where: { type: pr }, then: { skill: review, deliver: draft_pr } }
   - { skill: implement }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1), githubPr(4), issue(3)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await runNight({
+  await runUnits({
     config,
     configDir: root,
     plan,
@@ -832,10 +832,10 @@ repos:
     setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
     secrets: [NPM_TOKEN]
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const prompts: string[] = []
@@ -851,7 +851,7 @@ repos:
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -895,7 +895,7 @@ repos:
     "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.away/out/report.md`.",
   )
   expect(prompts[1]).toContain(
-    'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` tonight; you start from them.',
+    'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` in this run; you start from them.',
   )
   expect(formatReport(report)).toContain(
     '| 1 | acme-api-1 | fix-ci | claude | done, 1 turns | 1 commits pushed onto feature-1, report below |',
@@ -915,10 +915,10 @@ queue:
     deliver: push
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
   expect(formatPlan(plan)).toContain(
@@ -946,7 +946,7 @@ queue:
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -990,13 +990,13 @@ queue:
     deliver: push
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [githubPr(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1021,7 +1021,7 @@ queue:
   ])
 })
 
-it("runs setup without the repo's secrets on a branch a worker wrote tonight", async () => {
+it("runs setup without the repo's secrets on a branch a worker wrote in this run", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-stack-setup-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
@@ -1033,13 +1033,13 @@ repos:
     setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
     secrets: [NPM_TOKEN]
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1), issue(2)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1097,18 +1097,18 @@ queue:
       - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
       - { skill: qa-feedback, deliver: report }
 `)
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
-  const plan = planNight({
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, quota(0.36), now) },
+    allowances: { claude: allowance(config.budget, quota(0.36), now, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' }
   const prompts: string[] = []
   const provider = looper(verdicts, seen)
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1186,7 +1186,7 @@ queue:
   expect(prompts[2]).toContain(
     'This unit is round 1 of at most 3 of a loop (`review` ⇄ `address-review`) that ends once verdict approve.',
   )
-  expect(prompts[4]).toContain(`which opened ${url} tonight; you start from its branch.`)
+  expect(prompts[4]).toContain(`which opened ${url} in this run; you start from its branch.`)
   const text = formatReport(report)
   expect(text).toContain(
     `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits) |`,
@@ -1217,16 +1217,16 @@ queue:
       - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
       - { skill: qa-feedback, deliver: draft_pr }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const prompts: string[] = []
   const provider = looper({ 'acme-api-1-review-2': 'approve' })
   const logged: string[] = []
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1300,13 +1300,13 @@ it('skips a unit awaywork tried on a suffixed branch, one with every name taken,
   const config = parseConfig(
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
   )
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1), issue(3), issue(5), issue(7), issue(11), issue(9)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1355,13 +1355,13 @@ queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 3 }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1401,11 +1401,11 @@ queue:
     where: { type: pr }
     then: { loop: { skill: qa-feedback, deliver: report }, until: { verdict: approve }, max: 1 }
 `)
-  const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
-  const plan = planNight({
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
+  const plan = planRun({
     config,
     items: [issue(1), githubPr(4)],
-    allowances: { claude: allowance(config.budget, quota(0.36), now) },
+    allowances: { claude: allowance(config.budget, quota(0.36), now, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const verdicts = {
@@ -1413,7 +1413,7 @@ queue:
     'acme-api-1-review-2': 'changes',
     'acme-api-4-qa-feedback-1': 'approve',
   }
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1456,17 +1456,17 @@ queue:
   - skill: implement
     then: { loop: [review, address-review], until: { command: '${command}' }, max: 3 }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
   const prompts: string[] = []
   const provider = looper({}, seen)
   const count = join(root, 'count')
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1521,13 +1521,13 @@ queue:
   - skill: implement
     then: { loop: address-review, until: { command: 'echo 3 tests failed; false' }, max: 1 }
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1566,17 +1566,17 @@ queue:
   - skill: implement
     where: { type: issue }
     then:
-      - { skill: review, deliver: draft_pr, when: { nights_until_reset: 1 } }
+      - { skill: review, deliver: draft_pr, when: { runs_until_reset: 1 } }
       - { skill: plan, deliver: draft_pr, when: { headroom: 10% } }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [item],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1592,7 +1592,7 @@ queue:
   })
   const [, review, planned] = report.results
   expect(review?.status).toBe('skipped')
-  expect(review?.reason).toMatch(/^when the window resets within 1 night didn't hold/)
+  expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
   expect(planned?.status).toBe('done')
 })
 
@@ -1605,16 +1605,16 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
     where: { type: issue }
-    when: { nights_until_reset: 1 }
+    when: { runs_until_reset: 1 }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [item],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1652,10 +1652,10 @@ queue:
     then: { skill: qa-feedback, when: { command: "true" } }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [item, githubPr(4, { mine: false, trusted: false, updated: '2026-01-01T00:00:00Z' })],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
@@ -1667,7 +1667,7 @@ queue:
       yield* committer.run(job, signal)
     },
   }
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1733,14 +1733,14 @@ queue:
       until: { verdict: approve }
       max: 2
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'comments' }
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1780,13 +1780,13 @@ repos:
 `)
   const pr = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
   const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [{ ...pr, linkedPrs: [link] }],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await runNight({
+  await runUnits({
     config,
     configDir: root,
     plan,
@@ -1831,13 +1831,13 @@ queue:
 `)
   const pr = githubPr(9, { ours: true })
   const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [{ ...pr, linkedPrs: [link] }],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1858,15 +1858,15 @@ queue:
   ])
 })
 
-/** Plans `yaml` for `items` and runs the night against a local origin. */
-async function loopNight(
+/** Plans `yaml` for `items` and runs it against a local origin. */
+async function loopRun(
   yaml: string,
   items: Item[],
   provider: Provider,
   {
     forge: overrides,
     ...input
-  }: Omit<Partial<NightInput>, 'forge'> & { forge?: Partial<Forge> } = {},
+  }: Omit<Partial<RunInput>, 'forge'> & { forge?: Partial<Forge> } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-'))
   const { origin, opened, forge } = await originForge(root)
@@ -1875,13 +1875,13 @@ async function loopNight(
   const config = parseConfig(`providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 ${yaml}`)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items,
-    allowances: { claude: allowance(config.budget, quota(0.36), week) },
+    allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  const report = await runNight({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -1902,7 +1902,7 @@ ${yaml}`)
 it('tells a loop to write the PR body until a unit wrote one, and to keep it after', async () => {
   const provider = looper({ 'acme-api-1-review-1': 'approve' })
   const prompts: Record<string, string> = {}
-  await loopNight(
+  await loopRun(
     `queue:
   - skill: plan
     then: { loop: [implement, review], until: { verdict: approve }, max: 2 }
@@ -1919,12 +1919,12 @@ it('tells a loop to write the PR body until a unit wrote one, and to keep it aft
 
   const first = prompts['acme-api-1-implement-1']
   expect(first).toContain('Commit on this branch and write `.away/out/pr.md`.')
-  expect(first).toContain('follows `plan` on the same items, which wrote a report tonight')
+  expect(first).toContain('follows `plan` on the same items, which wrote a report in this run')
   expect(first).not.toContain('PR body so far')
   expect(prompts['acme-api-1-review-1']).toContain('the PR body so far in `pr.md`')
 
   const reviewFirst = looper({ 'acme-api-1-review-2': 'approve' })
-  await loopNight(
+  await loopRun(
     `queue:
   - skill: plan
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -1954,7 +1954,7 @@ it('records a loop interrupted after a report as unpublished, so its chain retri
     type: 'issue',
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: plan
     then: { loop: [implement, review], until: { verdict: approve }, max: 2 }
@@ -1991,7 +1991,7 @@ it("records an interrupted loop as unpublished even when it kept its host's repo
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: plan
     then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
@@ -2021,7 +2021,7 @@ it("counts a failed loop as a failure even when it kept its host's report", asyn
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: plan
     then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
@@ -2042,14 +2042,14 @@ it("counts a failed loop as a failure even when it kept its host's report", asyn
   ])
 })
 
-it("retries a loop that kept its host's report and reached night.end without counting a failure", async () => {
+it("retries a loop that kept its host's report and reached the window end without counting a failure", async () => {
   const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
   const until = new Date(Date.now() + 60 * 60 * 1000)
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: plan
     then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
@@ -2066,12 +2066,12 @@ it("retries a loop that kept its host's report and reached night.end without cou
   )
 
   expect(report.results[1]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
-  expect(report.results[2]).toMatchObject({ status: 'skipped', reason: 'the night window ended' })
+  expect(report.results[2]).toMatchObject({ status: 'skipped', reason: 'the window ended' })
   expect(recordAttempts({}, report)).toEqual({})
 })
 
 it('skips the step after a loop whose publish threw, though its host kept a report', async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: plan
     then:
@@ -2091,14 +2091,14 @@ it('skips the step after a loop whose publish threw, though its host kept a repo
   ])
 })
 
-it('counts a failure when a loop that reached night.end fails to publish', async () => {
+it('counts a failure when a loop that reached the window end fails to publish', async () => {
   const provider = looper({})
   const until = new Date(Date.now() + 60 * 60 * 1000)
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2116,19 +2116,19 @@ it('counts a failure when a loop that reached night.end fails to publish', async
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'error', 'push refused'],
-    ['acme-api-1-review-1', 'skipped', 'the night window ended'],
+    ['acme-api-1-review-1', 'skipped', 'the window ended'],
   ])
   expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
 })
 
-it('counts a failure for a loop host whose publish was refused, though a round reached night.end', async () => {
+it('counts a failure for a loop host whose publish was refused, though a round reached the window end', async () => {
   const provider = looper({})
   const until = new Date(Date.now() + 60 * 60 * 1000)
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review], until: { verdict: approve }, max: 1 }
@@ -2146,12 +2146,12 @@ it('counts a failure for a loop host whose publish was refused, though a round r
   )
 
   expect(report.results[0]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
-  expect(report.results[1]).toMatchObject({ status: 'skipped', reason: 'the night window ended' })
+  expect(report.results[1]).toMatchObject({ status: 'skipped', reason: 'the window ended' })
   expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
 })
 
 it("runs the step after a loop that kept its host's report on the host's base", async () => {
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: plan
     then:
@@ -2171,7 +2171,7 @@ it("runs the step after a loop that kept its host's report on the host's base", 
 })
 
 it('runs the whole loop for a step after it that --unit names', async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2192,7 +2192,7 @@ it('runs the whole loop for a step after it that --unit names', async () => {
 
 it("names why a loop didn't start after a host that failed", async () => {
   const provider = looper({})
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2215,7 +2215,7 @@ it("names why a loop didn't start after a host that failed", async () => {
 
 it("runs the steps after a loop that kept its host's report where that report ran", async () => {
   const kept = { 'acme-api-1-qa-feedback-1': 'approve' }
-  const draft = await loopNight(
+  const draft = await loopRun(
     `queue:
   - skill: plan
     then:
@@ -2234,7 +2234,7 @@ it("runs the steps after a loop that kept its host's report where that report ra
   ])
   expect(draft.opened.map((pr) => pr.base)).toEqual([''])
 
-  const loop = await loopNight(
+  const loop = await loopRun(
     `queue:
   - skill: plan
     then:
@@ -2256,7 +2256,7 @@ it("runs the steps after a loop that kept its host's report where that report ra
 })
 
 it('waits for a verdict written in the loop before `until: { verdict: { not } }` holds', async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [address-review, review], until: { verdict: { not: changes } }, max: 2 }
@@ -2272,9 +2272,9 @@ it('waits for a verdict written in the loop before `until: { verdict: { not } }`
   ])
 })
 
-it('ends a loop whose hand-off failed, and still finishes the night', async () => {
+it('ends a loop whose hand-off failed, and still finishes the run', async () => {
   const provider = looper({})
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2307,7 +2307,7 @@ it("hands a round off without running the clone's diff command or writing throug
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
-  await loopNight(
+  await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2348,7 +2348,7 @@ it('refuses to publish a loop whose PR body a round turned into a symlink', asyn
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
@@ -2378,7 +2378,7 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   await mkdir(join(root, 'previous'))
   await writeFile(join(root, 'previous', 'keep'), 'mine\n')
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2404,9 +2404,9 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
 
-it('reads past FIFOs a round left as its verdict or report, and finishes the night', async () => {
+it('reads past FIFOs a round left as its verdict or report, and finishes the run', async () => {
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
@@ -2435,7 +2435,7 @@ it('reads past FIFOs a round left as its verdict or report, and finishes the nig
 
 it('ends a loop interrupted between rounds, and retries its chain without counting a failure', async () => {
   const stop = new AbortController()
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
@@ -2469,7 +2469,7 @@ it('ends a loop interrupted between rounds, and retries its chain without counti
 })
 
 it("reads a loop's last verdict in the when of the step after it", async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2491,7 +2491,7 @@ it("doesn't run a check without network, or end a loop while the clone has uncom
   const provider = looper({})
   const env = { ctx: { env: { PATH: process.env.PATH }, log: () => {} } }
   const offline = (then: string) =>
-    loopNight(
+    loopRun(
       `repos: { acme/api: { network: false } }
 queue: [{ skill: implement, then: ${then} }]
 `,
@@ -2513,7 +2513,7 @@ queue: [{ skill: implement, then: ${then} }]
   expect(loop.opened[0]?.body).toContain('until `true` passes not checked')
   expect(loop.opened[0]?.body).not.toContain('Last check')
 
-  const dirty = await loopNight(
+  const dirty = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [address-review], until: { command: 'test -e fixed.txt' }, max: 1 }
@@ -2532,7 +2532,7 @@ queue: [{ skill: implement, then: ${then} }]
   expect(dirty.report.results[0]?.loop).toBe('1 round of address-review; max 1 round reached')
   expect(dirty.opened[0]?.body).toContain('failed: uncommitted changes in the clone')
 
-  const leftForNextStep = await loopNight(
+  const leftForNextStep = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2558,7 +2558,7 @@ queue: [{ skill: implement, then: ${then} }]
 })
 
 it("fences a failed check's output in the PR body past any backticks in it", async () => {
-  const { opened } = await loopNight(
+  const { opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [address-review], until: { command: "echo '\`\`\`\`'; false" }, max: 1 }
@@ -2572,7 +2572,7 @@ it("fences a failed check's output in the PR body past any backticks in it", asy
 })
 
 it("matches changed against the chain's own commits, not another chain's", async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { skill: review, when: { changed: acme-api-1.txt } }
@@ -2590,7 +2590,7 @@ it("matches changed against the chain's own commits, not another chain's", async
 })
 
 it("matches changed against the chain's draft PR after a report step", async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2609,7 +2609,7 @@ it("matches changed against the chain's draft PR after a report step", async () 
 })
 
 it('ends a loop on a round where every step was passed over, and says so in the PR body', async () => {
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2631,7 +2631,7 @@ it('ends a loop on a round where every step was passed over, and says so in the 
     "## Awaywork loop\n\n0 rounds of address-review; no step's when held.",
   )
 
-  const fixedOnce = await loopNight(
+  const fixedOnce = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2652,7 +2652,7 @@ it('ends a loop on a round where every step was passed over, and says so in the 
 })
 
 it('checks a clone for uncommitted changes beyond what setup and earlier checks left', async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `repos: { acme/api: { setup: 'echo x > setup.out' } }
 queue:
   - skill: implement
@@ -2679,7 +2679,7 @@ queue:
 it("doesn't run a nested repo's filter when it checks the clone for uncommitted changes", async () => {
   const ran = join(await mkdtemp(join(tmpdir(), 'awaywork-filter-')), 'ran')
   const provider = looper({})
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [address-review], until: { command: 'test ! -e ${ran}' }, max: 1 }
@@ -2717,7 +2717,7 @@ it('skips a when step whose check was interrupted without passing over it, so th
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { skill: review, when: { command: 'touch ${started}; sleep 5' } }
@@ -2743,7 +2743,7 @@ it('skips a when step whose check timed out without passing over it, so the chai
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
   try {
-    const { report } = await loopNight(
+    const { report } = await loopRun(
       `queue:
   - skill: implement
     then: { skill: review, when: { command: '! sleep 30' } }
@@ -2765,7 +2765,7 @@ it('skips a when step whose check timed out without passing over it, so the chai
 })
 
 it("ends a loop at a refused when, instead of repeating its other steps on code that can't change", async () => {
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `repos: { acme/api: { network: false } }
 queue:
   - skill: implement
@@ -2797,7 +2797,7 @@ it("doesn't run a loop whose first step after a report has a refused when, and f
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `repos: { acme/api: { network: false } }
 queue:
   - skill: plan
@@ -2824,7 +2824,7 @@ it('counts a failure for a loop after a report that a refused when ended, since 
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `repos: { acme/api: { network: false } }
 queue:
   - skill: plan
@@ -2853,7 +2853,7 @@ it('ends a loop whose when check was interrupted, and retries its chain without 
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then:
@@ -2884,7 +2884,7 @@ it('ends a loop whose until check was interrupted, and retries its chain without
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
   })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review], until: { command: 'touch ${started}; sleep 5' }, max: 2 }
@@ -2903,7 +2903,7 @@ it('ends a loop whose until check was interrupted, and retries its chain without
   expect(recordAttempts({}, report)).toEqual({})
 })
 
-it("runs the step after a passed-over draft PR step on the base it would have had, not tonight's tip", async () => {
+it("runs the step after a passed-over draft PR step on the base it would have had, not this run's tip", async () => {
   const bases: Record<string, string> = {}
   const inner = looper({})
   const provider: Provider = {
@@ -2915,7 +2915,7 @@ it("runs the step after a passed-over draft PR step on the base it would have ha
   }
   const item = (n: number, label: string) =>
     fakeItem({ ...issue(n), fields: { repo: 'acme/api', label: [label] } })
-  const { report, opened } = await loopNight(
+  const { report, opened } = await loopRun(
     `queue:
   - { skill: implement, where: { label: first } }
   - skill: review
@@ -2940,7 +2940,7 @@ it("runs the step after a passed-over draft PR step on the base it would have ha
 })
 
 it('escapes a pipe in a check command, so the report table keeps its cells', async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { skill: review, when: { command: "git log | grep -q nothing-like-this" } }
@@ -2964,7 +2964,7 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
   const outside = join(root, 'outside')
   await writeFile(outside, 'mine\n')
   const provider = looper({})
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: address-review, until: { command: 'true' }, max: 1 }
@@ -2990,7 +2990,7 @@ it('stacks on an awaywork PR a rule took up whenever a draft PR starts from its 
   const pr = githubPr(9, { ours: true })
   const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
   const stackedOn = async (then: string) => {
-    const { opened } = await loopNight(
+    const { opened } = await loopRun(
       `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
       [{ ...pr, linkedPrs: [link] }],
       looper({ 'acme-api-9-qa-feedback-1': 'approve' }),
@@ -3009,7 +3009,7 @@ it('stacks on an awaywork PR a rule took up whenever a draft PR starts from its 
 })
 
 it("doesn't open a push loop on a host whose report is blank", async () => {
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: fix-ci
     deliver: push
@@ -3038,7 +3038,7 @@ it("doesn't open a push loop on a host whose report is blank", async () => {
 it("puts back a loop clone's git config after each worker, and refuses a borrowed object store", async () => {
   const provider = looper({})
   const seen: Record<string, string> = {}
-  const { report } = await loopNight(
+  const { report } = await loopRun(
     `queue:
   - skill: implement
     then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
@@ -3090,7 +3090,7 @@ const pusher: Provider = {
 it('runs after_unit once per unit with its PR or report, and goes on past a failing one', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
   const logs: string[] = []
-  const { report } = await loopNight(afterUnitQueue(out), [githubPr(1), issue(2)], pusher, {
+  const { report } = await loopRun(afterUnitQueue(out), [githubPr(1), issue(2)], pusher, {
     ctx: { env: { PATH: process.env.PATH }, log: (line) => logs.push(line) },
   })
 
@@ -3115,9 +3115,9 @@ it('runs after_unit once per unit with its PR or report, and goes on past a fail
 it('runs no after_unit on a dry run, nor once interrupted, past those of the units that finished', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
   const items = [githubPr(1), issue(2)]
-  await loopNight(afterUnitQueue(out), items, pusher, { dryRun: true })
+  await loopRun(afterUnitQueue(out), items, pusher, { dryRun: true })
   const stop = new AbortController()
-  const { report } = await loopNight(afterUnitQueue(out), items, pusher, {
+  const { report } = await loopRun(afterUnitQueue(out), items, pusher, {
     signal: stop.signal,
     ctx: {
       env: { PATH: process.env.PATH },
@@ -3147,7 +3147,7 @@ after_unit:
 `
   const provider = looper({ 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' })
   const firedBefore: Record<string, number> = {}
-  await loopNight(yaml, [issue(1)], {
+  await loopRun(yaml, [issue(1)], {
     ...provider,
     async *run(job, signal) {
       const lines = await readFile(out, 'utf8').catch(() => '')
@@ -3196,13 +3196,13 @@ repos:
 queue:
   - skill: implement
 `)
-  const plan = planNight({
+  const plan = planRun({
     config,
     items: [issue(1)],
-    allowances: { claude: allowance(config.budget, null, 0) },
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await runNight({
+  await runUnits({
     config,
     configDir: root,
     plan,

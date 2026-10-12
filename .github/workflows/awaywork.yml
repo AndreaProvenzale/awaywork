@@ -9,7 +9,7 @@ on:
 concurrency: awaywork
 
 jobs:
-  night:
+  run:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Rome

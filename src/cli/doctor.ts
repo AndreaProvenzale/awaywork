@@ -9,7 +9,6 @@ import type { Config } from '../config/schema.js'
 import { hasSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
-import { windowsOf } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { staleWorkflow, suffixOf, workflows } from '../scheduler/github-actions.js'
@@ -35,7 +34,7 @@ export interface Check {
 export function doctorCommand(program: Command): void {
   program
     .command('doctor')
-    .description('check binaries, credentials, quota and sources before a night')
+    .description('check binaries, credentials, quota and sources before a run')
     .option('--json', 'print the checks as a JSON array of { status, what, detail }')
     .action(async (opts: { json?: boolean }) => {
       const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
@@ -88,7 +87,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
     return checks
   }
-  for (const warning of await staleSchedules(path, windowsOf(config)))
+  for (const warning of await staleSchedules(path, config.windows))
     report('warn', 'schedule', warning)
   const root = await gitRoot()
   const workflow = root && (await staleWorkflow(root))
@@ -111,8 +110,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
     await provider.probe(ctx).then(
       (quota) => {
-        const a = allowance(budget, quota, Date.now(), undefined, config.windows)
-        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} tonight`, describeAllowance(a))
+        const a = allowance(budget, quota, Date.now(), config.windows)
+        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(a))
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),
     )

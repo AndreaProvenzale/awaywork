@@ -5,7 +5,7 @@ description: Address the unresolved review threads on the developer's pull reque
 
 # Address review
 
-The unit is a pull request with unresolved review threads, or tonight's
+The unit is a pull request with unresolved review threads, or this run's
 branch after a review in a loop. Answer every thread or finding.
 
 - Start from `threads.md`, or with no threads from the review in

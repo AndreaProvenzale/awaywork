@@ -30,16 +30,16 @@ export async function runSetup(
   return [`setup failed: ${failed}`, tail].filter(Boolean).join('\n')
 }
 
-/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0, and `stopped` that Ctrl-C or `night.end` cut it short, `timedOut` that it hit the time limit. */
+/** Runs a shell command in the clone like setup; `failed` says why it didn't exit 0, and `stopped` that Ctrl-C or the window's end cut it short, `timedOut` that it hit the time limit. */
 export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
   { secrets, signal, until }: SetupOptions,
 ): Promise<{ output: string; failed?: string; stopped?: true; timedOut?: true }> {
-  const nightEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
+  const windowEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
   const deadline = AbortSignal.timeout(
-    Math.max(0, nightEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
+    Math.max(0, windowEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
   const subprocess = execa(command, {
@@ -61,11 +61,11 @@ export async function runCommand(
   if (!result.failed) return { output }
   if (!stop.aborted) return { output, failed: result.shortMessage }
   // A hang fails like a non-zero exit for `until`; a `when` treats `timedOut` as unchecked.
-  if (!signal?.aborted && !nightEnds)
+  if (!signal?.aborted && !windowEnds)
     return { output, failed: `timed out after ${TIMEOUT_MS / 60_000} min`, timedOut: true }
   return {
     output,
-    failed: signal?.aborted ? 'interrupted' : 'the night window ended',
+    failed: signal?.aborted ? 'interrupted' : 'the window ended',
     stopped: true,
   }
 }

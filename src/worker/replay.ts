@@ -115,7 +115,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const worker = await runWorker(provider, job, allowance, {
     log,
     signal: r.signal,
-    maxMinutes: entry?.budget.unit_minutes,
+    maxMinutes: r.config.limits.unit_minutes,
     watch: r.watch,
   })
   await restoreGitConfig(dir, gitConfig)

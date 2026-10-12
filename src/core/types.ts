@@ -210,9 +210,9 @@ export interface Condition {
   command?: string
   /** `when` only: globs, holding when the chain's commits change a matching path, against where the chain started. */
   changed?: string[]
-  /** `when` only: holds when the long window resets within this many nights. */
-  nights_until_reset?: number
-  /** `when` only: holds when at least this share of the long window is left under tonight's ceiling. */
+  /** `when` only: holds when the long window resets within this many runs. */
+  runs_until_reset?: number
+  /** `when` only: holds when at least this share of the long window is left under this run's ceiling. */
   headroom?: number
 }
 
@@ -253,7 +253,7 @@ export interface Unit {
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** The URL of the awaywork PR whose branch `base` is: tonight's draft PR, or one a rule took up again. */
+  /** The URL of the awaywork PR whose branch `base` is: this run's draft PR, or one a rule took up again. */
   stackedOn?: string
   branch: string
   rule: Step
