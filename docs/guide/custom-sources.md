@@ -185,7 +185,7 @@ function stackTrace(event) {
 const items = []
 for (const [project, repo] of Object.entries(repos)) {
   for (const issue of await get(`projects/${org}/${project}/issues/?query=${query}`)) {
-    const event = await get(`issues/${issue.id}/events/latest/`)
+    const event = await get(`organizations/${org}/issues/${issue.id}/events/latest/`)
     items.push({
       id: issue.id,
       key: issue.shortId,
@@ -212,6 +212,7 @@ console.log(JSON.stringify(items))
   3 attempts" never kicks in. Cap the rule with `units:` if that's a lot.
 - **Frames come oldest first** from Sentry; the script flips them so the
   throwing line is on top.
+- **EU-region org?** Swap `sentry.io` for `de.sentry.io`.
 
 ## On GitHub Actions
 
