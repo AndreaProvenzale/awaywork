@@ -111,7 +111,8 @@ awaywork report --list         # recent runs, to pick an id for report <id>
 it follows.
 
 The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the
-plan, the worker's log, its context files and the report.
+plan, the worker's log, its context files and the report. The id is the
+run's start time in UTC.
 
 ## On a schedule
 

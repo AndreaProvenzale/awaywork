@@ -23,7 +23,7 @@ import { afterUnit } from './notify.js'
 import { type Outcome, publish } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { runCommand, runSetup } from './setup.js'
+import { maskSecrets, runCommand, runSetup } from './setup.js'
 import {
   commandEnv,
   configSecrets,
@@ -61,6 +61,16 @@ export interface RunInput {
   skillDirs?: { user: string; builtin: string }
 }
 
+/** The units `name` names, by unit id or item key in any case. */
+export function namedUnits(plan: RunPlan, name: string): Set<string> {
+  const only = slug(name)
+  return new Set(
+    plan.units
+      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
+      .map((p) => p.unit.id),
+  )
+}
+
 /**
  * Runs the plan's units one at a time, re-routing as windows fill, and publishes each.
  * A draft PR stacks on this run's draft PR it follows, or on the awaywork PR a rule took up.
@@ -72,12 +82,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const only = input.only && slug(input.only)
-  const wanted = new Set(
-    input.plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
-      .map((p) => p.unit.id),
-  )
+  const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
   if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
   // A loop round needs its whole loop, and a chained unit the units it follows.
   for (let size = 0; size !== wanted.size; ) {
@@ -88,7 +93,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (p.after && wanted.has(p.unit.id)) wanted.add(p.after)
     }
   }
-  const planned = input.plan.units.filter((p) => !only || wanted.has(p.unit.id))
+  const planned = input.plan.units.filter((p) => !input.only || wanted.has(p.unit.id))
   const secrets = configSecrets(input.config, input.providers, input.sources)
 
   // This run's draft PRs by repo and branch, and the PR branches pushed onto.
@@ -268,7 +273,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         },
         input.signal,
       )
-      if (failure) input.ctx.log(`after_unit failed for ${id}: ${failure}`)
+      if (failure)
+        input.ctx.log(
+          `after_unit failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`,
+        )
     }
   }
 

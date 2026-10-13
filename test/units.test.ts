@@ -175,6 +175,34 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   expect(runLine('20260925-020000', undefined)).toBe('20260925-020000  no report')
 })
 
+it('reports a run with no provider and a multi-line warning', () => {
+  const at = new Date(2026, 9, 12, 22, 34, 18)
+  const plan = { queue: [], defaultQueue: true, units: [], skipped: [], allowances: {} }
+  const run = { runId: 'r', dryRun: false, startedAt: at, finishedAt: at, plan, results: [] }
+  expect(formatReport({ ...run, quotas: {} }, ['source chores: failed\n\nnot set'])).toBe(
+    [
+      '# Awaywork r',
+      '',
+      '2026-10-12 22:34:18 to 2026-10-12 22:34:18, local time',
+      '',
+      '## Warnings',
+      '',
+      '- source chores: failed',
+      '',
+      '  not set',
+      '',
+      '## Units',
+      '',
+      'None.',
+      '',
+      '## Quota',
+      '',
+      'None.',
+      '',
+    ].join('\n'),
+  )
+})
+
 it('prepares workspaces without running a worker on a dry run, for one unit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {

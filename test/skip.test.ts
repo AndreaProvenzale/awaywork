@@ -37,13 +37,26 @@ describe('skip', () => {
     })
   })
 
-  it('refuses a key without a known source', async () => {
+  it('refuses a key not named source:key', async () => {
     const path = await statePath()
-    for (const key of ['acme/api#5', 'trello:ENG-12', 'github:'])
+    for (const key of ['acme/api#5', 'github:', ':acme/api#5'])
       await expect(skipItem(key, {}, sources, path, now)).rejects.toThrow(
         'name the item as source:key',
       )
     await expect(unskipItem('T-7', sources, path)).rejects.toThrow('name the item as source:key')
+  })
+
+  it('refuses a key whose source is not configured, naming the configured ones', async () => {
+    const path = await statePath()
+    const refusal = (source: string) =>
+      `source "${source}" is not configured; the config has github, asana, tracker (name the item as source:key, e.g. github:acme/api#5)`
+    await expect(skipItem('trello:ENG-12', {}, sources, path, now)).rejects.toThrow(
+      refusal('trello'),
+    )
+    await expect(unskipItem('trello:ENG-12', sources, path)).rejects.toThrow(refusal('trello'))
+    await expect(
+      skipItem('https://github.com/acme/api/issues/5', {}, sources, path, now),
+    ).rejects.toThrow(refusal('https'))
   })
 
   it('takes the key of a configured custom source', async () => {

@@ -5,14 +5,13 @@ import { ruleSteps } from '../core/queue.js'
 import { builtinSkills, parseSkill, resolveSkill, type SkillMeta } from '../core/skills.js'
 import type { Config } from './schema.js'
 
-/** Skills in a directory, one folder with a SKILL.md each; a missing directory has none. */
+/** Skills in a directory, one folder with a SKILL.md each, linked ones included; a missing directory has none. */
 export async function loadSkills(dir: string): Promise<Record<string, SkillMeta>> {
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  const names = await readdir(dir).catch(() => [])
   const skills: Record<string, SkillMeta> = {}
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const text = await readFile(join(dir, entry.name, 'SKILL.md'), 'utf8').catch(() => undefined)
-    if (text !== undefined) skills[entry.name] = parseSkill(text)
+  for (const name of names) {
+    const text = await readFile(join(dir, name, 'SKILL.md'), 'utf8').catch(() => undefined)
+    if (text !== undefined) skills[name] = parseSkill(text)
   }
   return skills
 }

@@ -262,7 +262,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
     const target = join(w.dir, skillsDir, name)
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
-      await cp(findSkill(name, roots), target, { recursive: true })
+      await cp(findSkill(name, roots), target, { recursive: true, dereference: true })
       w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
       if (w.unit.foreign) replaced.push(target)
       continue
@@ -276,7 +276,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
       await rm(target, { recursive: true })
       replaced.push(target)
     }
-    await cp(findSkill(name, roots), target, { recursive: true })
+    await cp(findSkill(name, roots), target, { recursive: true, dereference: true })
     mine.add(target)
     excluded.push(`/${skillsDir}/${name}/`)
   }
@@ -290,7 +290,10 @@ async function buildPlugin(plugin: string, names: string[], roots: string[]) {
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
   await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
   for (const name of names)
-    await cp(findSkill(name, roots), join(plugin, 'skills', name), { recursive: true })
+    await cp(findSkill(name, roots), join(plugin, 'skills', name), {
+      recursive: true,
+      dereference: true,
+    })
 }
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */

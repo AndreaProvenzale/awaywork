@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { link, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { link, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -162,6 +162,61 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
       })
       expect(prompt).toContain('Follow the link.')
+    }
+  })
+
+  it('copies a linked skill folder as a real folder, kept out of git', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
+    await mkdir(join(root, 'elsewhere/house-style'), { recursive: true })
+    await writeFile(join(root, 'elsewhere/house-style/SKILL.md'), '---\nname: house-style\n---\n')
+    await mkdir(join(root, 'skills'))
+    await symlink(join(root, 'elsewhere/house-style'), join(root, 'skills/house-style'))
+    for (const provider of [claude, codex]) {
+      const dir = join(root, `clone-${provider.id}`)
+      const plugin = join(root, `plugin-${provider.id}`)
+      await prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign: false,
+          network: true,
+          untrusted: false,
+          branch: 'away/acme-api-1',
+          rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
+          skill: 'fix-ci',
+          skills: ['house-style'],
+          providers: [provider.id],
+          instructions: [],
+          deliver: 'draft_pr',
+        },
+        dir,
+        plugin,
+        config: parseConfig(
+          `providers: [${provider.id}: {}]\nsources: { github: { repos: [acme/*] } }`,
+        ),
+        configDir: root,
+        forge: {
+          ...fakeForge(),
+          async clone(_repo: string, _branch: string, into: string) {
+            await mkdir(into)
+            await execa(bin('git'), ['init', '-q', '-b', 'main', into])
+            await writeFile(join(into, 'README.md'), 'hi')
+            await git(into, 'add', '.')
+            await git(into, 'commit', '-qm', 'init')
+          },
+        },
+        sources: { fake: fakeSource() as Source },
+        provider,
+        ctx: { env: {}, log: () => {} },
+      })
+      const copy =
+        provider === claude
+          ? join(plugin, 'skills/house-style')
+          : join(dir, '.agents/skills/house-style')
+      expect((await lstat(copy)).isDirectory()).toBe(true)
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
     }
   })
 

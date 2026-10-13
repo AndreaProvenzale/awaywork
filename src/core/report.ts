@@ -33,16 +33,20 @@ export interface RunReport {
   quotas: Record<string, Quota>
 }
 
-/** The morning report as markdown: units, skipped items, quota against each ceiling, report-only outputs. */
-export function formatReport(r: RunReport): string {
+/** `2026-10-09 20:11:02` in local time; sv-SE is the locale that formats so. */
+export const localTime = (d: Date) => d.toLocaleString('sv-SE')
+
+/** The morning report as markdown: plan warnings, units, skipped items, quota against each ceiling, report-only outputs. */
+export function formatReport(r: RunReport, warnings: string[] = []): string {
   const out = [
     `# Awaywork ${r.runId}${r.dryRun ? ' (dry run)' : ''}`,
     '',
-    `${r.startedAt.toISOString()} to ${r.finishedAt.toISOString()}`,
-    '',
-    '## Units',
+    `${localTime(r.startedAt)} to ${localTime(r.finishedAt)}, local time`,
     '',
   ]
+  if (warnings.length > 0)
+    out.push('## Warnings', '', ...warnings.map((w) => `- ${w.replace(/\n(?=.)/g, '\n  ')}`), '')
+  out.push('## Units', '')
   if (r.results.length === 0) out.push('None.')
   else {
     out.push('| # | Unit | Skill | Provider | Status | Result |', '|---|---|---|---|---|---|')
@@ -58,6 +62,7 @@ export function formatReport(r: RunReport): string {
     for (const s of r.plan.skipped) out.push(`- ${s.item.source} ${s.item.key}: ${s.reason}`)
   }
   out.push('', '## Quota', '')
+  if (Object.keys(r.plan.allowances).length === 0) out.push('None.')
   for (const [id, a] of Object.entries(r.plan.allowances)) {
     const units = r.results.filter((u) => u.provider === id)
     out.push(`- ${id}: ${quotaLine(a, r.quotas[id], units)}`)

@@ -56,8 +56,7 @@ export async function runCommand(
   const result = await subprocess
   release()
 
-  const values = secrets.flatMap((name) => env[name] || [])
-  const output = values.reduce((out, value) => out.replaceAll(value, '***'), result.all.trim())
+  const output = maskSecrets(result.all.trim(), secrets, env)
   if (!result.failed) return { output }
   if (!stop.aborted) return { output, failed: result.shortMessage }
   // A hang fails like a non-zero exit for `until`; a `when` treats `timedOut` as unchecked.
@@ -68,4 +67,10 @@ export async function runCommand(
     failed: signal?.aborted ? 'interrupted' : 'the window ended',
     stopped: true,
   }
+}
+
+/** `text` with the values of the `secrets` named in `env` masked. */
+export function maskSecrets(text: string, secrets: string[], env: NodeJS.ProcessEnv): string {
+  const values = secrets.flatMap((name) => env[name] || [])
+  return values.reduce((out, value) => out.replaceAll(value, '***'), text)
 }

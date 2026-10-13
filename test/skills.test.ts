@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -33,12 +33,19 @@ describe('skills', () => {
     expect(parseSkill('no frontmatter')).toEqual({})
   })
 
-  it('loads a skills dir and tolerates a missing one', async () => {
+  it('loads a skills dir, linked skills included, and tolerates a missing one', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-skills-'))
     await mkdir(join(dir, 'triage'))
     await writeFile(join(dir, 'triage', 'SKILL.md'), '---\nmetadata: { deliver: report }\n---\n')
     await mkdir(join(dir, 'not-a-skill'))
-    expect(await loadSkills(dir)).toEqual({ triage: { deliver: 'report' } })
+    await writeFile(join(dir, 'notes.md'), 'not a skill either')
+    const elsewhere = await mkdtemp(join(tmpdir(), 'awaywork-elsewhere-'))
+    await writeFile(join(elsewhere, 'SKILL.md'), '---\ndescription: Linked.\n---\n')
+    await symlink(elsewhere, join(dir, 'linked'))
+    expect(await loadSkills(dir)).toEqual({
+      triage: { deliver: 'report' },
+      linked: { description: 'Linked.' },
+    })
     expect(await loadSkills(join(dir, 'missing'))).toEqual({})
   })
 })
