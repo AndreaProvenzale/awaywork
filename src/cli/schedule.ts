@@ -17,6 +17,7 @@ import {
   isSelfHosted,
   REPO_CONFIG,
   removeWorkflow,
+  runsOnOf,
   suffixOf,
   WORKFLOW,
   type Workflow,
@@ -240,13 +241,19 @@ export interface Io {
   env: NodeJS.ProcessEnv
   /** Runs `gh secret set` with these args, the value on stdin. */
   setSecret: (args: string[], value: string) => Promise<void>
-  /** Asks what the flags leave open; otherwise keeps what the repo has, or the defaults. */
+  /**
+   * Asks what the flags leave open, offers secrets and confirms replacements; otherwise keeps
+   * what the repo has, or the defaults.
+   */
   interactive?: boolean
 }
 
 /** Sets a secret of the current repo; the value goes through stdin, never argv. */
 const ghSecretSet = async (args: string[], value: string) =>
   void (await execa('gh', ['secret', 'set', ...args], { input: value }))
+
+/** The Ask for confirming a replacement; none without a terminal. */
+const confirmer = (io: Io) => (io.interactive ? io.ask : undefined)
 
 const terminal: Io = {
   run: exec,
@@ -318,11 +325,12 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
-    if (person === undefined && io.interactive) person = await askPerson(io, sharedRepo)
+    if (person === undefined && io.interactive) person = await askPerson(io, root, sharedRepo)
     const current = await readFile(join(root, workflowOf(person)), 'utf8').catch(() => '')
-    const selfHosted = io.interactive
-      ? await askSelfHosted(io.ask, isSelfHosted(current))
-      : isSelfHosted(current)
+    // `self-hosted` matches any runner the repo can use, a teammate's too.
+    const selfHosted =
+      !person &&
+      (io.interactive ? await askSelfHosted(io.ask, isSelfHosted(current)) : isSelfHosted(current))
     const runner = selfHosted ? 'self-hosted' : 'github-hosted'
     const used = loaded.providers.flatMap((p) => {
       const provider = providers[p.id]
@@ -339,18 +347,23 @@ export async function installWorkflow(
       setup: Object.values(loaded.sources).flatMap((cfg) =>
         isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
       ),
-      selfHosted,
+      // A label picking the machine, as in `[self-hosted, macOS]`, stays.
+      runsOn: selfHosted
+        ? (isSelfHosted(current) && runsOnOf(current)) || 'self-hosted'
+        : 'ubuntu-latest',
     }
     const { personal, shared } = secretsOf(loaded)
     if (person)
       return await installForPerson(root, path, person, current, base, { personal, shared }, io)
     const secrets = [...personal, ...shared]
     const text = workflow({ ...base, config: REPO_CONFIG, secrets })
-    const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, io.ask)
-    const unset = await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
-      if (e instanceof Cancelled) return secrets
-      throw e
-    })
+    const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, confirmer(io))
+    const unset = io.interactive
+      ? await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
+          if (e instanceof Cancelled) return secrets
+          throw e
+        })
+      : secrets
     if (changed.length || unset.length) console.log('Before the first run:')
     if (changed.length) console.log(`  commit ${and(changed)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
@@ -365,8 +378,9 @@ const loginOf = async (run: Exec) =>
   (await run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')).toLowerCase()
 
 /** Who the workflow is for: undefined for a repo of your own, else your name in a shared one. */
-async function askPerson(io: Io, sharedRepo: boolean): Promise<string | undefined> {
+async function askPerson(io: Io, root: string, sharedRepo: boolean): Promise<string | undefined> {
   if (!sharedRepo) {
+    if (existsSync(join(root, WORKFLOW))) return undefined
     const whose = await io.ask.select(
       'Whose control repo is this?',
       [
@@ -430,7 +444,7 @@ async function installForPerson(
     secrets: [...personal, ...shared],
     person: { name: person, personal, environment },
   })
-  const changed = await syncRepo(root, file, text, path, config, io.ask)
+  const changed = await syncRepo(root, file, text, path, config, confirmer(io))
 
   const suffixed = (name: string) => name + suffixOf(person)
   const listed = await repoSecrets(io.run, (list, e) =>
@@ -461,12 +475,13 @@ async function installForPerson(
   }
   let unsetPersonal = personal
   let unsetShared = shared.filter((name) => !existing.has(name))
-  try {
-    unsetPersonal = await offerSecrets(personal, io.env, io.ask, io.setSecret, own)
-    unsetShared = await offerSecrets(unsetShared, io.env, io.ask, io.setSecret, team)
-  } catch (e) {
-    if (!(e instanceof Cancelled)) throw e
-  }
+  if (io.interactive)
+    try {
+      unsetPersonal = await offerSecrets(personal, io.env, io.ask, io.setSecret, own)
+      unsetShared = await offerSecrets(unsetShared, io.env, io.ask, io.setSecret, team)
+    } catch (e) {
+      if (!(e instanceof Cancelled)) throw e
+    }
   if (changed.length || unsetPersonal.length || unsetShared.length)
     console.log('Before the first run:')
   if (changed.length) console.log(`  commit ${and(changed)}`)
@@ -504,10 +519,12 @@ async function environmentFor(
       return undefined
     }
     console.log(`GitHub refuses the environment ${person}: ${reasonOf(e)}`)
-    const fallback = await io.ask.confirm(
-      `Store ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
-      false,
-    )
+    const fallback =
+      io.interactive &&
+      (await io.ask.confirm(
+        `Store ${person}'s secrets as repository secrets ending in ${suffixOf(person)}, which any branch's workflow can read?`,
+        false,
+      ))
     if (fallback) return false
     console.error('Changed nothing')
     return undefined
@@ -661,7 +678,7 @@ async function syncRepo(
   text: string,
   path: string,
   config: string,
-  ask: Ask,
+  ask?: Ask,
 ): Promise<string[]> {
   const changed = []
   if (await sync(root, file, ask, (staged) => writeFile(staged, text))) {
@@ -680,9 +697,15 @@ const and = (names: string[]) =>
 
 /**
  * Copies `from`, a file or a folder replaced as a whole, to `to` under the repo root; when the
- * repo's copy differs, only after showing the diff and asking. True when it copied.
+ * repo's copy differs, only after showing the diff and asking, and never without `ask`.
+ * True when it copied.
  */
-export async function syncCopy(from: string, root: string, to: string, ask: Ask): Promise<boolean> {
+export async function syncCopy(
+  from: string,
+  root: string,
+  to: string,
+  ask?: Ask,
+): Promise<boolean> {
   // A linked skill is committed as its files, not as a link to this machine.
   const stage = (staged: string) => cp(from, staged, { recursive: true, dereference: true })
   const copied = await sync(root, to, ask, stage)
@@ -694,7 +717,7 @@ export async function syncCopy(from: string, root: string, to: string, ask: Ask)
 async function sync(
   root: string,
   to: string,
-  ask: Ask,
+  ask: Ask | undefined,
   stage: (staged: string) => Promise<void>,
 ): Promise<boolean> {
   const tmp = await mkdtemp(join(tmpdir(), 'awaywork-'))
@@ -712,6 +735,11 @@ async function sync(
       }
       if (diff.exitCode !== 1) throw new ConfigError(to, [`git diff failed: ${diff.stderr.trim()}`])
       console.log(diff.stdout)
+      if (!ask) {
+        console.log(`Kept ${to}; run this again in a terminal to replace it`)
+        process.exitCode = 1
+        return false
+      }
       const folder = statSync(staged).isDirectory()
       const question = folder
         ? `Replace all of ${to} with the changes above, deleting anything only the repo's copy has?`

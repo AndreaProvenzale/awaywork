@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { Cancelled } from '../src/cli/ask.js'
-import { type Io, installSchedule } from '../src/cli/schedule.js'
+import { type Io, installSchedule, whereToRun } from '../src/cli/schedule.js'
+import type { Ask } from '../src/core/types.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
@@ -57,6 +58,25 @@ it("asks where it runs in a terminal; this machine takes the platform's schedule
   const { config, io } = await setup()
   await installSchedule(config, undefined, undefined, io([[/^Where should it run/, initial]], true))
   expect(installed).toEqual([defaultScheduler()])
+})
+
+it('offers later at the end of init only, not in schedule install', async () => {
+  const { config, io } = await setup()
+  const offered: string[][] = []
+  const recording = (ask: Ask): Ask => ({
+    ...ask,
+    select: (message, choices, init) => {
+      offered.push(choices.map((c) => c.value))
+      return ask.select(message, choices, init)
+    },
+  })
+  const install = io([[/^Where should it run/, initial]], true)
+  await installSchedule(config, undefined, undefined, { ...install, ask: recording(install.ask) })
+  await whereToRun(recording(scriptedAsk([[/^Where should it run/, initial]])), true)
+  expect(offered).toEqual([
+    ['', 'github-actions'],
+    ['', 'github-actions', 'later'],
+  ])
 })
 
 it('asks the GitHub Actions questions after picking it', async () => {

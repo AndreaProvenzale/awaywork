@@ -103,8 +103,9 @@ Before the first run:
 The runner is GitHub-hosted by default: a fresh VM each run, with no
 Codex. Self-hosted is a machine of yours, see
 [Running Codex](#running-codex). Without a terminal,
-`awaywork schedule install --with github-actions` asks nothing and keeps
-the runner the workflow already has, GitHub-hosted for a new one.
+`awaywork schedule install --with github-actions` asks nothing: it keeps
+the runner the workflow already has, GitHub-hosted for a new one, and
+offers no secret.
 
 This writes `.github/workflows/awaywork.yml`: a cron at each window's
 start in your current timezone, plus `workflow_dispatch` for a
@@ -154,6 +155,8 @@ Run `schedule install --with github-actions` again after changing your
 config or skills, or to refresh the workflow. Of the workflow, config and
 skills, one that matches is up to date; one that differs shows the diff
 and is replaced only if you say yes, so a hand edit never goes silently.
+Without a terminal nobody can say yes: it keeps the repo's copy, prints
+the diff and exits 1, so run it again in a terminal to replace it.
 The skills folder is replaced as a whole: a skill only the repo has, say a
 teammate's, goes with it. With no skills of your own, the repo's stay.
 
@@ -172,9 +175,13 @@ Nor does it keep the head a [`deliver: push`](./configuration.md#push)
 left, so the PR doesn't wait for your review: the rule pushes again
 every run its `where` holds. A self-hosted runner keeps
 `~/.local/state/awaywork` of the user it runs as, so all of that
-carries over between runs as on your machine. When that user is you,
-on the machine you use awaywork from, the runner shares that state with
-your local runs: `awaywork skip` there reaches it.
+carries over between runs as on your machine.
+
+Pick one per machine, though: a local schedule or a runner. Nothing
+keeps two runs apart, so with both on one machine they start together
+when a window opens and work the same items on the same state dir.
+Moving to the runner, run `awaywork schedule remove` outside the control
+repo first; inside it, that deletes the workflow too.
 
 ### Credentials on a runner
 
@@ -205,14 +212,24 @@ So run it one of two ways:
   headless box, `codex login --device-auth` does it without a browser
   ([Codex's docs](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)).
   Pick self-hosted at *Which runner?*: the workflow says
-  `runs-on: self-hosted` and keeps Codex, with no secret for it.
+  `runs-on: self-hosted` and keeps Codex, with no secret for it. A
+  label you add there, like `[self-hosted, macOS]`, stays on a re-run.
 
 On a self-hosted runner the job runs on your machine, so the action
 keeps its hands off it: no freeing disk, no provider CLIs installed
 over yours, no git config written. It installs awaywork alone into the
 job's temp dir, which the runner empties every job, and runs the
 `codex` and `claude` already on the runner's `PATH`, next to `git` and
-`gh`. Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub
+`gh`. A runner installed
+[as a service](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application)
+doesn't read your shell profile: its `PATH` is the one `./config.sh`
+saved to `.path` in the runner's folder, which
+[`runsvc.sh`](https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh)
+exports, and other variables sit in `.env` next to it. So a `codex` or
+`claude` from nvm or Homebrew can be missing there: configure the runner
+from a shell where `codex --version` works, or add their folders to
+`.path` and restart the service (`./svc.sh stop`, then `./svc.sh start`).
+Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub
 recommends self-hosted runners only for private repos, since a fork's
 pull request could otherwise run code on your machine: keep the control
 repo private.
@@ -230,6 +247,11 @@ GitHub login. Or, from a script:
 ```sh
 awaywork schedule install --with github-actions --as alice
 ```
+
+A person's workflow always runs on GitHub-hosted runners, so no Codex:
+`runs-on: self-hosted` matches any runner the repo can use, and your job
+could land on a teammate's machine, on their Codex login and state dir,
+with your tokens in its env.
 
 The name is lowercase letters, digits and `-`. Once the repo holds an
 `awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`, install

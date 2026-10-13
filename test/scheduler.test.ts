@@ -415,14 +415,47 @@ describe('schedule install --with github-actions', () => {
 
     await install()
     expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    await install([[/^Which runner\?$/, initial]], true)
+    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+  })
+
+  it('keeps a runs-on labelled by hand on a re-run', async () => {
+    const { root, install } = await setup()
     await install(
       [
         [/^Whose control repo is this\?$/, initial],
-        [/^Which runner\?$/, initial],
+        [/^Which runner\?$/, 'self-hosted'],
       ],
       true,
     )
+    const labelled = (await readFile(join(root, WORKFLOW), 'utf8')).replace(
+      'runs-on: self-hosted',
+      'runs-on: [self-hosted, macOS]',
+    )
+    await writeFile(join(root, WORKFLOW), labelled)
+    await install()
+    await install([[/^Which runner\?$/, initial]], true)
     expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    expect(parse(labelled).jobs.run['runs-on']).toEqual(['self-hosted', 'macOS'])
+  })
+
+  it('keeps what differs without a terminal, shows the diff and exits 1', async () => {
+    const { root, config, install } = await setup()
+    await install()
+    const generated = await readFile(join(root, WORKFLOW), 'utf8')
+    await writeFile(join(root, WORKFLOW), `${generated}# mine\n`)
+    out = []
+    await installWorkflow(config, undefined, {
+      run: async () => root,
+      ask: scriptedAsk([]),
+      env: { GH_TOKEN: 'ghp_secret' },
+      setSecret: async () => {},
+    })
+    expect(process.exitCode).toBe(1)
+    expect(out.join('\n')).toContain('-# mine')
+    expect(out).toContain(`Kept ${WORKFLOW}; run this again in a terminal to replace it`)
+    expect(out).toContain('  add these repository secrets: GH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN')
+    expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(`${generated}# mine\n`)
   })
 
   it('shows what changed and asks; declined keeps, accepted replaces the skills folder as a whole', async () => {
@@ -432,19 +465,27 @@ describe('schedule install --with github-actions', () => {
     await writeFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'TEAM')
     await writeFile(config, `${CONFIG}skills: [mine]\n`)
     await writeFile(join(home, 'skills/mine/SKILL.md'), 'CHANGED')
-    await install([
-      [/^Overwrite \.awaywork\/config\.yml/, false],
-      [/^Replace all of \.awaywork\/skills/, initial],
-    ])
+    await install(
+      [
+        [/^Which runner\?$/, initial],
+        [/^Overwrite \.awaywork\/config\.yml/, false],
+        [/^Replace all of \.awaywork\/skills/, initial],
+      ],
+      true,
+    )
     expect(out).toContain('Kept .awaywork/skills')
     expect(await readFile(join(root, REPO_SKILLS, 'team/SKILL.md'), 'utf8')).toBe('TEAM')
-    await install([
-      [/^Overwrite \.awaywork\/config\.yml with the changes above\?$/, false],
+    await install(
       [
-        /^Replace all of \.awaywork\/skills with the changes above, deleting anything only the repo's copy has\?$/,
-        true,
+        [/^Which runner\?$/, initial],
+        [/^Overwrite \.awaywork\/config\.yml with the changes above\?$/, false],
+        [
+          /^Replace all of \.awaywork\/skills with the changes above, deleting anything only the repo's copy has\?$/,
+          true,
+        ],
       ],
-    ])
+      true,
+    )
     expect(out.join('\n')).toContain('+skills: [mine]')
     expect(out.join('\n')).toContain('-TEAM')
     expect(out).toContain('Kept .awaywork/config.yml')
@@ -459,12 +500,22 @@ describe('schedule install --with github-actions', () => {
     await install()
     const generated = await readFile(join(root, WORKFLOW), 'utf8')
     await writeFile(join(root, WORKFLOW), `${generated}# mine\n`)
-    await install([
-      [/^Overwrite \.github\/workflows\/awaywork\.yml with the changes above\?$/, false],
-    ])
+    await install(
+      [
+        [/^Which runner\?$/, initial],
+        [/^Overwrite \.github\/workflows\/awaywork\.yml with the changes above\?$/, false],
+      ],
+      true,
+    )
     expect(out).toContain('Kept .github/workflows/awaywork.yml')
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(`${generated}# mine\n`)
-    await install([[/^Overwrite \.github\/workflows\/awaywork\.yml/, initial]])
+    await install(
+      [
+        [/^Which runner\?$/, initial],
+        [/^Overwrite \.github\/workflows\/awaywork\.yml/, initial],
+      ],
+      true,
+    )
     expect(await readFile(join(root, WORKFLOW), 'utf8')).toBe(generated)
     expect(out).toContain('  commit .github/workflows/awaywork.yml')
   })
