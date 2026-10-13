@@ -35,16 +35,12 @@ const sidebar: DefaultTheme.SidebarItem[] = [
     ],
   },
   {
-    text: 'Research and design',
+    text: 'Research',
     collapsed: true,
     items: [
-      { text: 'Design', link: '/design' },
-      { text: 'Plan', link: '/plan' },
-      { text: 'Lessons', link: '/lessons' },
       { text: 'Providers', link: '/providers' },
       { text: 'Sources', link: '/sources' },
       { text: 'End-to-end pass', link: '/e2e' },
-      { text: 'Landscape', link: '/landscape' },
     ],
   },
 ]

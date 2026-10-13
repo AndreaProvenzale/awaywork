@@ -41,6 +41,10 @@ queue:
     where: { type: issue, label: awaywork }
 ```
 
+The label isn't enough on its own: the GitHub source reads only the
+issues assigned to you, so a labelled issue nobody assigned to you plans
+nothing.
+
 Within a rule, items come in the source's order (GitHub: newest first)
 unless the rule sets `order`.
 

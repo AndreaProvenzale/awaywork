@@ -7,8 +7,8 @@ description: Research on which coding subscriptions can run headless and remotel
 Can each coding subscription's quota be spent headlessly, on a machine
 other than the developer's? Researched from vendor docs, ToS and changelogs.
 Tags: **[V]** vendor docs, **[C]** community or press, **[I]** inference.
-Anything [C] or [I] that the design depends on needs a burn test like the
-Claude one in `lessons.md`.
+Anything [C] or [I] that the design depends on needs a burn test, recorded
+under [Real runs](#real-runs).
 
 ## Summary
 
@@ -89,9 +89,13 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Agent SDK with subscription OAuth is not permitted; enforcement against
   third-party harnesses from 4 April 2026. [C]
   https://www.theregister.com/software/2026/02/20/anthropic-clarifies-ban-on-third-party-tool-access-to-claude/5014546
+- Anthropic announced moving `claude -p`, the Agent SDK and GitHub
+  Actions to a separate credit billed at API prices, then paused the
+  change and promised notice. If it returns, headless runs stop drawing
+  on the subscription. [C]
 - Quota: status-line JSON `rate_limits.five_hour` / `seven_day` [V]
   https://code.claude.com/docs/en/statusline; `rate_limit_event` in
-  `claude -p --output-format stream-json --verbose` (tested, `lessons.md`).
+  `claude -p --output-format stream-json --verbose` (tested, [Real runs](#real-runs)).
 - `--max-turns` ends the run itself: with 2, the stream stops after two
   model messages with a `result` of subtype `error_max_turns` and exit 1
   (2.1.282). `num_turns` in the result counts more than model messages
@@ -330,6 +334,91 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Alibaba: https://www.alibabacloud.com/help/en/model-studio/coding-plan
 - MiniMax: https://platform.minimax.io/docs/token-plan/quickstart
 - OpenCode Go: https://opencode.ai/docs/go/
+
+## Real runs
+
+What real runs showed. The prototype was a private set of scheduled
+GitHub Actions running headless Claude Code on one team's leftovers.
+
+### Claude Code on a hosted runner
+
+- A `claude setup-token` token runs headless Claude Code on a GitHub
+  runner, billed to the subscription: 9 Fable turns (22k output, 227k
+  cached input, $1.76 list) moved the session window 9% → 13% and the
+  weekly window 35% → 36% while the developer's machine was idle. The
+  result's `costBasis: list` says nothing about billing. [V, prototype]
+- Reading quota: [V, prototype]
+
+  | Where | `claude -p /usage` | `api.anthropic.com/api/oauth/usage` | `rate_limit_event` |
+  |---|---|---|---|
+  | Logged-in machine | Works | Not tested | Works |
+  | Runner with setup-token | Prints a cost summary instead | 403, then 429 for 1 h | Works |
+
+  One Haiku turn reads it anywhere:
+
+  ```sh
+  claude -p "reply ok" --model claude-haiku-4-5-20251001 --max-turns 1 \
+    --output-format stream-json --verbose \
+    | jq -c 'select(.type == "rate_limit_event") | .rate_limit_info' | tail -1
+  ```
+
+  ```json
+  {"status":"allowed","rateLimitType":"five_hour","unifiedWindows":{
+   "five_hour":{"utilization":0.02,"resetsAt":1790254200},
+   "seven_day":{"utilization":0.36,"resetsAt":1790391600}}}
+  ```
+
+  Identical to `/usage` on the same machine at the same moment, with no
+  per-model weekly window. A worker's own stream carries it after each
+  response.
+- OAuth-only MCP servers (claude.ai connectors) don't work with a
+  setup-token; REST with a personal token, or an MCP server with a bearer
+  key, does. [V, prototype]
+
+### Runners die quietly
+
+Two fix units ended with "The hosted runner lost communication with the
+server" after 75–85 min, with no log and no artifact. A monitor and a
+diagnosis pass on the same runner found disk exhaustion (6 GB yarn
+cache, 2 GB `node_modules`) plus a whole-repo type check larger than the
+7 GB runner, started as a background task. [V, prototype] What came out
+of it: the action frees about 20 GB of preinstalled SDKs (`action.yml`),
+a watchdog stops a unit below 1.5 GB of memory or 2 GB of disk, and the
+harness forbids whole-repo checks, builds and background commands.
+
+- Claude Code's background Bash tasks start their own session, so a
+  process-group kill misses them. [V, prototype] They stay children of
+  `claude` while it runs. [I]
+- Node can't become a child subreaper without a native addon, and a
+  cgroup needs a delegated subtree or root, which a laptop run doesn't
+  have. [I] So the watchdog polls `ps` every 2 s and at the end kills each
+  recorded descendant still alive with the same start time: a detached
+  grandchild whose parent exited is killed [V, tested on macOS; the same
+  test runs on Linux in CI]. One born and orphaned between two polls
+  escapes. [I]
+- Memory is `process.availableMemory()`: on macOS it matched `vm_stat`
+  free + inactive + speculative (45 GB against 44 GB), where
+  `os.freemem()` counted free pages only (24 GB). [V, tested] On Linux
+  libuv reads `MemAvailable`, capped by the cgroup limit. [C]
+
+### awaywork's burn tests
+
+- One Claude unit (Claude Code 2.1.282, the developer's login,
+  `implement` on an issue of this repo, a 3% cap per run): 57 s, 6
+  turns, one commit and a PR body. The publisher pushed a new branch and
+  opened a draft PR with the footer and the trailer, and the next `plan`
+  skipped the issue as waiting for review. Neither window moved at 1%
+  resolution, so stopping at the ceiling wasn't exercised. A new issue
+  took a few seconds to show up in GitHub search. [V, tested]
+- Two providers (`providers: [codex, claude]`, Codex 0.149.1 on a free
+  ChatGPT plan, Claude Code 2.1.283, a 3% cap per run, `review` with
+  `deliver: report` on two PRs): Codex took the first unit, read its
+  month at 20% against an 11.7% ceiling and was stopped after 1 min 30 s,
+  keeping the report it had written. The second unit was re-routed to
+  Claude, which finished in 28 turns (session 9% → 11%, week unmoved).
+  The first probe refreshed a 12-day-old `auth.json`, and the login
+  stayed valid. That build read Codex's quota mid-run, outside the lock;
+  it now reads it after the run. [V, tested]
 
 ## Unverified, burn-test before relying on it
 

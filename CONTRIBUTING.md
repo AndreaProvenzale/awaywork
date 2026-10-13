@@ -1,8 +1,25 @@
 # Contributing
 
 Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and
-coding agents alike. [docs/plan.md](docs/plan.md) has the contracts and
-config semantics every change keeps to.
+coding agents alike. The config semantics every change keeps to are in
+the guides, [How it works](docs/guide/how-it-works.md) and
+[Configuration](docs/guide/configuration.md).
+
+## Where things live
+
+| Path | What |
+|---|---|
+| `src/core/` | The contracts between modules (`types.ts`) and the foreman: queue, units, budget, prompt, report |
+| `src/sources/`, `src/providers/` | One adapter per file, plus the registry in `index.ts` |
+| `src/forge/` | GitHub through `gh`: clone, find PRs, push, draft PRs |
+| `src/worker/` | The workspace, the worker run, the watchdog and publishing |
+| `src/config/`, `src/cli/`, `src/scheduler/` | Config schema and loading, one file per command, launchd/systemd/cron/Actions |
+| `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
+| `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |
+
+The `Provider` and `Source` contracts are spelled out in
+[docs/extend/](docs/extend/providers.md): a change to them updates those
+pages in the same PR.
 
 ## Setup
 

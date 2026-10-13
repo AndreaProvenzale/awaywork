@@ -30,6 +30,7 @@ interface Source {
   id: string
   configSchema: ZodObject                  // strict; nested under sources.<id>
   fields: Record<string, ZodType>          // what `where` may match; `prefix.*` declares prefix.<any>
+  link?: string | false                    // default PR link line, e.g. `Part of {key}`; false: none to configure
   secrets(cfg): string[]                   // env var names it reads
   items(cfg, ctx): Promise<Item[]>         // the user's open items
   prefetch(item, dir, ctx): Promise<void>  // write the context files the worker reads

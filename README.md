@@ -97,6 +97,9 @@ queue:
     provider: codex
 ```
 
+The label isn't enough on its own: awaywork reads only the issues
+assigned to you, so assign yourself too.
+
 `awaywork queue` reorders rules from the keyboard. Skills are plain
 markdown: `awaywork skills eject fix-ci` and hack away.
 
@@ -134,7 +137,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 |---|---|---|
-| Claude Code, Codex (experimental, not on hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
+| Claude Code, Codex (experimental, not on hosted runners) | GitHub, Asana, Linear (beta), Jira Cloud (beta) | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own:
 [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md),
@@ -155,9 +158,8 @@ Needs Node 22+, `git`, and `gh auth login`.
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 
-Research and design notes: [providers](docs/providers.md),
-[sources](docs/sources.md), [design](docs/design.md), [plan](docs/plan.md),
-[lessons](docs/lessons.md), [e2e](docs/e2e.md).
+Research notes: [providers](docs/providers.md),
+[sources](docs/sources.md), [e2e](docs/e2e.md).
 
 ## License
 

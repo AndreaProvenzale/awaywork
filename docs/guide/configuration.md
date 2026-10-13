@@ -150,12 +150,15 @@ awaywork only reads with it and never hands it to the agent, unless
 you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just
 for awaywork so you can revoke it alone.
 
-Linear takes a personal API key (Settings > Account > Security & access).
+**Linear is beta:** its tests read a live workspace, but no real run has
+used it yet. It takes a personal API key (Settings > Account >
+Security & access).
 awaywork only reads with it and never hands it to the agent, unless
 you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear
 offers the choice, give the key read access only.
 
-Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
+**Jira is beta:** its tests read a live site, but no real run has used it
+yet. Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
 API tokens). Prefer "Create API token with scopes", app Jira, scope
 `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork
 calls `api.atlassian.com`, as scoped tokens require. A token without
@@ -257,6 +260,11 @@ a stacked draft PR's, or an awaywork PR's a rule took up again. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
+::: warning Experimental
+`verify` has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
+
 `verify` runs in the clone after the agent, outside the model, before
 the work is published; set it on a repo or a rule (the rule wins and
 covers its `then` steps). Use it for lint, format or the repo's tests.
@@ -271,6 +279,11 @@ skips it.
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.awaywork/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
+
+::: warning Experimental
+`network: false` has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
 
 `network: false` on a repo or a rule cuts the agent's commands off the
 network; the rule wins over the repo and covers its `then` steps. Unset,
@@ -317,7 +330,7 @@ where:
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
   updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
-  label: awaywork                # on a list field: contains
+  label: awaywork                # on a list field: contains; GitHub issues must also be assigned to you
   "fields.Priority": High           # an Asana custom field
   blocked: false                    # Linear, Jira, Asana: no open blocker
   any:                              # at least one entry holds; each is a where, ANDed with the keys above
@@ -424,6 +437,11 @@ queue:
         max: 3
 ```
 
+::: warning Experimental
+`until`'s `command` has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
+
 - Every round works in the clone of the draft PR unit before the loop,
   on its branch, and nothing is pushed until the loop ends: then that
   unit opens one draft PR with every round's commits. Its body ends with
@@ -486,6 +504,12 @@ queue:
 
 #### `when`
 
+::: warning Experimental
+The `command` check and the quota checks (`runs_until_reset`,
+`headroom`) have only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
+
 A step, in a chain or a loop, runs only when its `when` holds. Otherwise
 it is skipped and the chain goes on from the unit before, as if the step
 weren't there:
@@ -541,6 +565,11 @@ queue:
   such as `review`.
 
 ### `push`
+
+::: warning Experimental
+`deliver: push` has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
 
 By default awaywork only pushes branches that don't exist yet. `deliver:
 push` is the opt-in to add commits onto your own open PR instead of
@@ -614,6 +643,11 @@ and the GitHub Actions workflow passes them from repository secrets.
 
 ## After each unit
 
+::: warning Experimental
+`after_unit` has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
+
 To act as units finish, say to post to your own tools or record metrics,
 `after_unit.command` runs in a shell once for every unit of a run, as
 soon as its result is final, before the next unit starts. A loop's host
@@ -632,6 +666,11 @@ after_unit:
 ```
 
 ## MCP servers
+
+::: warning Experimental
+MCP servers have only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
 
 Declare servers once under `mcp`, then give them to the rules or steps
 that need them with `mcp: [names]`. No unit gets a server its rule or

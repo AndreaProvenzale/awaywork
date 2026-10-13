@@ -5,12 +5,12 @@ description: What unit and burn tests have not run for real yet, and the end-to-
 # End-to-end pass before v1
 
 What the unit tests and burn tests have not yet run for real, and the
-pass that runs it before the first release. Results go to `lessons.md`,
-with tags as in `providers.md`.
+pass that runs it before the first release. Results go to
+[Real runs](./providers.md#real-runs), with tags as in `providers.md`.
 
 ## Already run for real
 
-From `lessons.md`:
+From [Real runs](./providers.md#real-runs):
 
 - Claude: `implement` to draft PR, `review` to a report, and skipping an
   item that links an open awaywork PR.
@@ -166,7 +166,7 @@ For each unit, check:
   a long unit: killed mid-run, output kept, the next unit re-routed to
   Codex.
 - Codex free costs 5–11% of the month per unit against a paced ~3% a
-  night (`providers.md`): raise its `per_run` for the pass only.
+  run (`providers.md`): raise its `per_run` for the pass only.
 - A provider without a quota reading: `fallback` caps units and turns.
 
 ### 5. Unattended
@@ -185,8 +185,9 @@ For each unit, check:
 ### 6. A whole run
 
 One `awaywork run --scheduled` with both providers and both sources.
-Record it in `lessons.md` like the earlier burn tests, and retag the
-[C]/[I] claims it settles in `providers.md` and `sources.md`.
+Record it in [Real runs](./providers.md#real-runs) like the earlier
+burn tests, and retag the [C]/[I] claims it settles in `providers.md`
+and `sources.md`.
 
 ## Then
 
