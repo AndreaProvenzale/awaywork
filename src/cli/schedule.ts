@@ -14,6 +14,7 @@ import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import {
   configOf,
+  isPlainSelfHosted,
   isSelfHosted,
   REPO_CONFIG,
   removeWorkflow,
@@ -352,7 +353,7 @@ export async function installWorkflow(
         ? (isSelfHosted(current) && runsOnOf(current)) || 'self-hosted'
         : 'ubuntu-latest',
     }
-    if (base.runsOn === 'self-hosted')
+    if (selfHosted && (base.runsOn === 'self-hosted' || isPlainSelfHosted(current)))
       console.log(
         "`runs-on: self-hosted` matches any self-hosted runner the repo can use, an organization's too; give yours a label of its own and add it, as in `runs-on: [self-hosted, alice-mac]`",
       )

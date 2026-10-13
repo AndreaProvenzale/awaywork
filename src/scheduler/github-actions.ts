@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { isMap, isNode, isScalar, parseDocument } from 'yaml'
 import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
@@ -117,9 +118,15 @@ export function runsOnOf(workflow: string): string | undefined {
     .trimEnd()
 }
 
-/** Whether a workflow's job runs on a self-hosted runner. */
-export const isSelfHosted = (workflow: string) =>
-  [runsOnPair(workflow)?.value.toJSON()].flat().includes('self-hosted')
+/** Whether a workflow's job runs on a self-hosted runner, by label, label list or `{ group, labels }`. */
+export function isSelfHosted(workflow: string): boolean {
+  const value = runsOnPair(workflow)?.value.toJSON()
+  return [value?.labels ?? value].flat().includes('self-hosted')
+}
+
+/** Whether the job's `runs-on` is just `self-hosted`, which matches any self-hosted runner the repo can use. */
+export const isPlainSelfHosted = (workflow: string) =>
+  isDeepStrictEqual([runsOnPair(workflow)?.value.toJSON()].flat(), ['self-hosted'])
 
 /** Deletes the workflow, or a person's, under a repo root; false when there was none. */
 export async function removeWorkflow(root: string, person?: string): Promise<boolean> {

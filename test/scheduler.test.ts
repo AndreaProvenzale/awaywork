@@ -421,8 +421,40 @@ describe('schedule install --with github-actions', () => {
     expect(out[1]).toBe(`${WORKFLOW} is up to date`)
   })
 
-  it.each(['runs-on: [self-hosted, macOS]', 'runs-on:\n      - self-hosted\n      - macOS'])(
-    'keeps a runs-on labelled by hand on a re-run: %j',
+  it.each([
+    'runs-on: [self-hosted, macOS]',
+    'runs-on:\n      - self-hosted\n      - macOS',
+    'runs-on: { group: mine, labels: [self-hosted, macOS] }',
+    'runs-on:\n      group: mine\n      labels: self-hosted',
+  ])('keeps a runs-on labelled by hand on a re-run: %j', async (label) => {
+    const { root, install } = await setup()
+    await install(
+      [
+        [/^Whose control repo is this\?$/, initial],
+        [/^Which runner\?$/, 'self-hosted'],
+      ],
+      true,
+    )
+    const file = join(root, WORKFLOW)
+    await writeFile(file, (await readFile(file, 'utf8')).replace('runs-on: self-hosted', label))
+    await install()
+    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    await writeFile(file, `${await readFile(file, 'utf8')}# mine\n`)
+    await install(
+      [
+        [/^Which runner\?$/, initial],
+        [/^Overwrite \.github\/workflows\/awaywork\.yml/, true],
+      ],
+      true,
+    )
+    const generated = await readFile(file, 'utf8')
+    expect(generated).not.toContain('# mine')
+    expect(generated).toContain(`    ${label}\n`)
+    expect(parse(generated).jobs.run['runs-on']).toEqual(parse(label)['runs-on'])
+  })
+
+  it.each(['runs-on: "self-hosted"', 'runs-on: [self-hosted]', 'runs-on: self-hosted # my box'])(
+    'still hints at a label of its own for a plain %j',
     async (label) => {
       const { root, install } = await setup()
       await install(
@@ -435,19 +467,10 @@ describe('schedule install --with github-actions', () => {
       const file = join(root, WORKFLOW)
       await writeFile(file, (await readFile(file, 'utf8')).replace('runs-on: self-hosted', label))
       await install()
-      expect(out[0]).toBe(`${WORKFLOW} is up to date`)
-      await writeFile(file, `${await readFile(file, 'utf8')}# mine\n`)
-      await install(
-        [
-          [/^Which runner\?$/, initial],
-          [/^Overwrite \.github\/workflows\/awaywork\.yml/, true],
-        ],
-        true,
-      )
-      const generated = await readFile(file, 'utf8')
-      expect(generated).not.toContain('# mine')
-      expect(generated).toContain(`    ${label}\n`)
-      expect(parse(generated).jobs.run['runs-on']).toEqual(['self-hosted', 'macOS'])
+      expect(out.slice(0, 2)).toEqual([
+        expect.stringMatching(/^`runs-on: self-hosted` matches any self-hosted runner/),
+        `${WORKFLOW} is up to date`,
+      ])
     },
   )
 
