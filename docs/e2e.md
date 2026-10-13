@@ -129,7 +129,7 @@ and leaves one closed PR.
   `config check`, `queue` (reorder, save, comments kept), and
   `config edit` with a broken draft, which must be refused.
 
-### 2. One unit per skill
+### 2. One unit per skill and item
 
 Set up the item, read `plan`, then `run --unit <id>`.
 
