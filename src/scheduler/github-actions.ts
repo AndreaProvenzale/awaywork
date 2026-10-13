@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { isMap, isNode, isScalar, parseDocument } from 'yaml'
 import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
 
@@ -27,7 +28,7 @@ export interface Workflow {
   secrets: string[]
   /** Command sources' setup scripts, run in the config's folder. */
   setup: string[]
-  /** The job's `runs-on`, `ubuntu-latest` when unset. */
+  /** The job's `runs-on` as `runsOnOf` reads it, `ubuntu-latest` when unset. */
   runsOn?: string
   /** A person's workflow in a shared control repo. */
   person?: {
@@ -53,6 +54,7 @@ export function workflow(w: Workflow): string {
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
   const name = person ? `awaywork-${person.name}` : 'awaywork'
+  const runsOn = w.runsOn ?? 'ubuntu-latest'
   return `name: ${name}
 
 on:
@@ -72,7 +74,7 @@ permissions:
 
 jobs:
   run:
-    runs-on: ${w.runsOn ?? 'ubuntu-latest'}
+    runs-on:${runsOn.startsWith('\n') ? '' : ' '}${runsOn}
 ${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
       TZ: ${w.timezone}
     steps:
@@ -95,12 +97,29 @@ function indent(text: string, spaces: number): string {
     .join('\n')
 }
 
-/** The job's `runs-on` as written, e.g. `[self-hosted, macOS]`, when it fits on its line. */
-export const runsOnOf = (workflow: string) =>
-  /^\s+runs-on:[ \t]*(\S.*?)[ \t]*$/m.exec(workflow)?.[1]
+/** The job's `runs-on` key and value nodes, positioned in the workflow's text. */
+function runsOnPair(workflow: string) {
+  const job = parseDocument(workflow).getIn(['jobs', 'run'], true)
+  if (!isMap(job)) return
+  const pair = job.items.find((p) => isScalar(p.key) && p.key.value === 'runs-on')
+  return isScalar(pair?.key) && isNode(pair.value)
+    ? { key: pair.key, value: pair.value }
+    : undefined
+}
+
+/** The job's `runs-on` as written after the colon, e.g. `[self-hosted, macOS]`, or a block list from its newline. */
+export function runsOnOf(workflow: string): string | undefined {
+  const pair = runsOnPair(workflow)
+  if (!pair?.key.range || !pair.value.range) return
+  return workflow
+    .slice(pair.key.range[2], pair.value.range[2])
+    .replace(/^\s*:[ \t]*/, '')
+    .trimEnd()
+}
 
 /** Whether a workflow's job runs on a self-hosted runner. */
-export const isSelfHosted = (workflow: string) => /\bself-hosted\b/.test(runsOnOf(workflow) ?? '')
+export const isSelfHosted = (workflow: string) =>
+  [runsOnPair(workflow)?.value.toJSON()].flat().includes('self-hosted')
 
 /** Deletes the workflow, or a person's, under a repo root; false when there was none. */
 export async function removeWorkflow(root: string, person?: string): Promise<boolean> {

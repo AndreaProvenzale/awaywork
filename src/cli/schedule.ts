@@ -352,6 +352,10 @@ export async function installWorkflow(
         ? (isSelfHosted(current) && runsOnOf(current)) || 'self-hosted'
         : 'ubuntu-latest',
     }
+    if (base.runsOn === 'self-hosted')
+      console.log(
+        "`runs-on: self-hosted` matches any self-hosted runner the repo can use, an organization's too; give yours a label of its own and add it, as in `runs-on: [self-hosted, alice-mac]`",
+      )
     const { personal, shared } = secretsOf(loaded)
     if (person)
       return await installForPerson(root, path, person, current, base, { personal, shared }, io)
@@ -526,7 +530,11 @@ async function environmentFor(
         false,
       ))
     if (fallback) return false
-    console.error('Changed nothing')
+    console.error(
+      io.interactive
+        ? 'Changed nothing'
+        : 'Changed nothing; run this again in a terminal to fall back to suffixed repository secrets',
+    )
     return undefined
   }
 }

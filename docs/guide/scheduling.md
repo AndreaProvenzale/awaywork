@@ -212,8 +212,12 @@ So run it one of two ways:
   headless box, `codex login --device-auth` does it without a browser
   ([Codex's docs](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)).
   Pick self-hosted at *Which runner?*: the workflow says
-  `runs-on: self-hosted` and keeps Codex, with no secret for it. A
-  label you add there, like `[self-hosted, macOS]`, stays on a re-run.
+  `runs-on: self-hosted` and keeps Codex, with no secret for it. Every
+  self-hosted runner the repo can use matches that, an organization's
+  too, so a colleague's box could pick up your job: give your runner a
+  [label of its own](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/apply-labels)
+  and add it, as in `runs-on: [self-hosted, alice-mac]`. Install says
+  so while it's plain `self-hosted`, and keeps the labels on a re-run.
 
 On a self-hosted runner the job runs on your machine, so the action
 keeps its hands off it: no freeing disk, no provider CLIs installed
@@ -242,7 +246,9 @@ One repo for a team, with a workflow and a GitHub Environment per
 person. Each person runs `awaywork schedule install` inside it, picks
 GitHub Actions, then *shared, with a workflow per person* at *Whose
 control repo is this?*, and gives their name, which defaults to their
-GitHub login. Or, from a script:
+GitHub login. In a repo that already has your own `awaywork.yml`, that
+question isn't asked: pass `--as <name>` to move it to shared. Or, from
+a script:
 
 ```sh
 awaywork schedule install --with github-actions --as alice
@@ -312,7 +318,8 @@ organization's repo GitHub's docs ask for admin access, so an admin may
 have to set them. When GitHub refuses (HTTP 403, 404 or 422), install
 says why and asks before falling back, defaulting to no: the workflow
 loses its `environment:` line, and the same suffixed names become
-repository secrets. The API's answer decides, never a guess at
+repository secrets. Without a terminal it changes nothing and says to
+run it in one. The API's answer decides, never a guess at
 the plan. Any other error, like a network one, stops install, and so
 does a refusal once `awaywork-alice.yml` uses the environment: it is
 never downgraded.

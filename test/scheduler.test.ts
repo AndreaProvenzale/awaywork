@@ -412,32 +412,44 @@ describe('schedule install --with github-actions', () => {
     expect(job['runs-on']).toBe('self-hosted')
     expect(job.steps.at(-1).with.packages).toBe('')
     expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
+    const labelHint = /^`runs-on: self-hosted` matches any self-hosted runner .* a label of its own/
+    expect(out[0]).toMatch(labelHint)
 
     await install()
-    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    expect(out.slice(0, 2)).toEqual([expect.stringMatching(labelHint), `${WORKFLOW} is up to date`])
     await install([[/^Which runner\?$/, initial]], true)
-    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    expect(out[1]).toBe(`${WORKFLOW} is up to date`)
   })
 
-  it('keeps a runs-on labelled by hand on a re-run', async () => {
-    const { root, install } = await setup()
-    await install(
-      [
-        [/^Whose control repo is this\?$/, initial],
-        [/^Which runner\?$/, 'self-hosted'],
-      ],
-      true,
-    )
-    const labelled = (await readFile(join(root, WORKFLOW), 'utf8')).replace(
-      'runs-on: self-hosted',
-      'runs-on: [self-hosted, macOS]',
-    )
-    await writeFile(join(root, WORKFLOW), labelled)
-    await install()
-    await install([[/^Which runner\?$/, initial]], true)
-    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
-    expect(parse(labelled).jobs.run['runs-on']).toEqual(['self-hosted', 'macOS'])
-  })
+  it.each(['runs-on: [self-hosted, macOS]', 'runs-on:\n      - self-hosted\n      - macOS'])(
+    'keeps a runs-on labelled by hand on a re-run: %j',
+    async (label) => {
+      const { root, install } = await setup()
+      await install(
+        [
+          [/^Whose control repo is this\?$/, initial],
+          [/^Which runner\?$/, 'self-hosted'],
+        ],
+        true,
+      )
+      const file = join(root, WORKFLOW)
+      await writeFile(file, (await readFile(file, 'utf8')).replace('runs-on: self-hosted', label))
+      await install()
+      expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+      await writeFile(file, `${await readFile(file, 'utf8')}# mine\n`)
+      await install(
+        [
+          [/^Which runner\?$/, initial],
+          [/^Overwrite \.github\/workflows\/awaywork\.yml/, true],
+        ],
+        true,
+      )
+      const generated = await readFile(file, 'utf8')
+      expect(generated).not.toContain('# mine')
+      expect(generated).toContain(`    ${label}\n`)
+      expect(parse(generated).jobs.run['runs-on']).toEqual(['self-hosted', 'macOS'])
+    },
+  )
 
   it('keeps what differs without a terminal, shows the diff and exits 1', async () => {
     const { root, config, install } = await setup()

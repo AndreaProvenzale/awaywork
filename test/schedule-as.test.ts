@@ -298,6 +298,26 @@ it('falls back to suffixed repository secrets when GitHub refuses the environmen
   expect(out).toContain('  add these repository secrets: SLACK_WEBHOOK, HOOK_TOKEN, MCP_DB_URL')
 })
 
+it('asks nothing without a terminal: no secret offered, no fallback taken', async () => {
+  const { root, config, set, io } = await setup()
+  await installWorkflow(config, 'alice', { ...io([]), interactive: false })
+  expect(process.exitCode).toBeUndefined()
+  expect(set).toEqual([])
+  expect(out).toContain(
+    '  add these secrets to environment alice: GH_TOKEN__ALICE, CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
+  )
+
+  const refused = await setup({ refuse: true })
+  out = []
+  await installWorkflow(refused.config, 'alice', { ...refused.io([]), interactive: false })
+  expect(process.exitCode).toBe(1)
+  expect(out).toContain(
+    'Changed nothing; run this again in a terminal to fall back to suffixed repository secrets',
+  )
+  expect(existsSync(join(refused.root, '.github/workflows/awaywork-alice.yml'))).toBe(false)
+  expect(existsSync(join(root, '.github/workflows/awaywork-alice.yml'))).toBe(true)
+})
+
 it('stops when the person declines the fallback, which a refused read also leads to', async () => {
   const { root, set, install } = await setup({ get: 'gh: Resource not accessible (HTTP 403)' })
   await install([[FALLBACK, initial]])
