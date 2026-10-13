@@ -14,11 +14,13 @@ findings of the review in `previous/report.md`. Sort out every one.
   checks first when there are any.
 - Checks: find the first real error, not the last line. Reproduce it
   with the narrowest command, fix the cause, rerun it. A red AI-review
-  check can mean the bot ran out of turns. A failure unrelated to the
-  diff (a flaky test, an outage, a broken main) is reported, not fixed.
-- Threads: humans before bots. Bot findings repeat per run: the file
-  groups copies by title, and one fix answers every copy. Keep each fix
-  to what the thread asks; never touch code no thread points at.
+  check can mean the bot ran out of turns: say so, change no code for
+  it. A failure unrelated to the diff (a flaky test, an outage, a broken
+  main) is reported, not fixed.
+- Threads and review findings: humans before bots. Bot findings repeat
+  per run: the file groups copies by title, and one fix answers every
+  copy. Keep each fix to what the thread or finding asks; touch no
+  other code.
 - QA feedback and error reports: reproduce with a test when you can.
   What you can't reproduce, or what needs a device, is flagged with what
   you checked. A request for new behavior rather than a fix is escalated.
