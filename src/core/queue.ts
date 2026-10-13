@@ -66,7 +66,7 @@ export function rank(items: Item[], queue: Rule[]): { ranked: Ranked[]; unmatche
 }
 
 /** Compares items for a rule's `order`; items without the timestamp go last, in input order. */
-export function byOrder(order: Order | undefined): (a: Item, b: Item) => number {
+function byOrder(order: Order | undefined): (a: Item, b: Item) => number {
   if (!order) return () => 0
   const field = order === 'updated' ? 'updated' : 'created'
   const sign = order === 'oldest' ? 1 : -1
@@ -135,10 +135,7 @@ export function bounds(want: Comparison): [keyof Comparison, number][] {
   return Object.entries(want) as [keyof Comparison, number][]
 }
 
-export const ages: Record<
-  keyof Age,
-  { words: string; holds: (age: number, span: number) => boolean }
-> = {
+const ages: Record<keyof Age, { words: string; holds: (age: number, span: number) => boolean }> = {
   older_than: { words: 'older than', holds: (age, span) => age > span },
   newer_than: { words: 'newer than', holds: (age, span) => age < span },
 }
@@ -147,7 +144,7 @@ export const spanPattern = /^\d+[mhdw]$/
 const spanUnits: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
 
 /** Milliseconds in a span like `3d`. */
-export function spanMs(span: string): number {
+function spanMs(span: string): number {
   return Number(span.slice(0, -1)) * (spanUnits[span.slice(-1)] ?? Number.NaN)
 }
 
@@ -218,7 +215,7 @@ export function ruleSteps(rule: Rule): { step: Step; at: (string | number)[] }[]
   ]
 }
 
-export interface RuleMatches {
+interface RuleMatches {
   taken: Item[]
   /** Items this rule matches that an earlier rule took, with that rule's index. */
   shadowed: { item: Item; by: number }[]

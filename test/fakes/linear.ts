@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { recordedFetch } from './asana.js'
 
-export const linearFixture = (name: string) =>
+const linearFixture = (name: string) =>
   readFileSync(new URL(`../fixtures/linear/${name}`, import.meta.url), 'utf8')
 
 /** Routes on the GraphQL body: the operation name and its variables. */

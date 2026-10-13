@@ -25,7 +25,7 @@ import {
   staleSchedules,
 } from './schedule.js'
 
-export interface Check {
+interface Check {
   status: Status
   what: string
   detail: string

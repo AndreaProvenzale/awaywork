@@ -1,6 +1,6 @@
 import type { Scalar } from './types.js'
 
-export interface PromptParts {
+interface PromptParts {
   harness: string
   skill: string
   params?: Record<string, Scalar>

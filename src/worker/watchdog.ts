@@ -3,7 +3,7 @@ import { execa } from 'execa'
 
 const GB = 2 ** 30
 
-export interface WatchdogLimits {
+interface WatchdogLimits {
   intervalMs: number
   minMemory: number
   minDisk: number

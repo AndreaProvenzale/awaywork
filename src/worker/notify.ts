@@ -7,7 +7,7 @@ const TIMEOUT_MS = 60_000
  * Runs a user command in a shell with `env` added, stopped on `signal`; returns why it failed, never throws.
  * Like setup, it runs in its own process group, killed when it exits or is stopped.
  */
-export async function runHook(
+async function runHook(
   command: string,
   env: Record<string, string>,
   signal?: AbortSignal,
