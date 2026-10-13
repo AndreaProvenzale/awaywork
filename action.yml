@@ -1,5 +1,5 @@
 name: awaywork
-description: Run awaywork once on a hosted runner, from a checked-out repo
+description: Run awaywork once from a checked-out repo, on a GitHub-hosted or self-hosted runner
 branding:
   icon: moon
   color: purple
@@ -12,7 +12,7 @@ inputs:
     description: The awaywork version to install
     required: true
   packages:
-    description: Extra npm packages to install, such as the providers' CLIs, space-separated
+    description: Extra npm packages to install on a GitHub-hosted runner, such as the providers' CLIs, space-separated
     default: ''
 
 runs:
@@ -27,23 +27,39 @@ runs:
         fi
     # Preinstalled SDKs the runner doesn't need, about 20 GB (lessons.md, "Runners die quietly").
     - name: Free disk
+      if: runner.environment == 'github-hosted'
       shell: bash
       run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
     - uses: actions/setup-node@v5
       with:
         node-version: 22
     - name: Install
+      if: runner.environment == 'github-hosted'
       shell: bash
       run: npm install -g "awaywork@$VERSION" $PACKAGES
       env:
         VERSION: ${{ inputs.version }}
         PACKAGES: ${{ inputs.packages }}
+    # The machine's own installs and logins stay as they are; this folder is emptied every job.
+    - name: Install for this job
+      if: runner.environment != 'github-hosted'
+      shell: bash
+      run: |
+        npm install -g --prefix "$RUNNER_TEMP/awaywork" "awaywork@$VERSION"
+        echo "$RUNNER_TEMP/awaywork/bin" >> "$GITHUB_PATH"
+      env:
+        VERSION: ${{ inputs.version }}
+    # For this job only: a self-hosted machine's git config is the developer's own.
     - name: Commit as the token's user
       shell: bash
       run: |
         user=$(gh api user --jq '"\(.id)+\(.login)"')
-        git config --global user.name "${user#*+}"
-        git config --global user.email "$user@users.noreply.github.com"
+        {
+          echo "GIT_AUTHOR_NAME=${user#*+}"
+          echo "GIT_COMMITTER_NAME=${user#*+}"
+          echo "GIT_AUTHOR_EMAIL=$user@users.noreply.github.com"
+          echo "GIT_COMMITTER_EMAIL=$user@users.noreply.github.com"
+        } >> "$GITHUB_ENV"
     - name: Run
       shell: bash
       run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}

@@ -1,5 +1,5 @@
 ---
-description: Run awaywork in its windows on your machine with launchd, systemd or cron, or in GitHub Actions with repository secrets.
+description: Run awaywork in its windows on your machine with launchd, systemd or cron, or in GitHub Actions on GitHub's runners or your own.
 ---
 
 # Scheduling
@@ -9,6 +9,20 @@ the [`windows`](./configuration.md#windows-limits-and-budget) and starts
 no unit after the one it is in ends. A unit still
 running at the window's end stops there with status `stopped: window ended`,
 and what it left is published as for a quota stop.
+
+In a terminal, `awaywork schedule install` asks where it runs:
+
+```
+◆  Where should it run on a schedule?
+│  ● this machine
+│  ○ GitHub Actions, from the repo in this directory
+│  ↑/↓ to navigate • Enter: confirm
+└
+```
+
+`--with` answers that up front, and without a terminal (a script, a
+coding agent) it asks nothing and takes this machine. `awaywork init`
+ends with the same question, plus *later*.
 
 ## On your machine
 
@@ -58,18 +72,39 @@ stays on does that.
 
 ## In GitHub Actions
 
-Run it on a hosted runner instead, from a repo of your own (a private
-"awaywork" repo works well). On a team, each person keeping their own
-control repo is the simple setup: it needs nothing beyond this section,
-and nobody's token sits in a repo a teammate can write to. Teammates can
-point theirs at the same repos, since each run only sees its own
-token's `@me`. To share one repo instead, see
-[Shared control repo](#shared-control-repo).
+Run it from a repo of your own instead (a private "awaywork" repo works
+well), on GitHub's runners or on a machine of yours. On a team, each
+person keeping their own control repo is the simple setup: it needs
+nothing beyond this section, and nobody's token sits in a repo a
+teammate can write to. Teammates can point theirs at the same repos,
+since each run only sees its own token's `@me`. To share one repo
+instead, see [Shared control repo](#shared-control-repo).
 
-```sh
-cd my-awaywork-repo
-awaywork schedule install --with github-actions
 ```
+$ cd my-awaywork-repo
+$ awaywork schedule install
+│
+◇  Where should it run on a schedule?
+│  GitHub Actions, from the repo in this directory
+│
+◇  Whose control repo is this?
+│  just mine
+│
+◇  Which runner?
+│  self-hosted
+Wrote .github/workflows/awaywork.yml
+Copied ~/.config/awaywork/config.yml to .awaywork/config.yml
+Before the first run:
+  commit .github/workflows/awaywork.yml and .awaywork/config.yml
+  add these repository secrets: GH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN
+  GH_TOKEN is a classic personal access token of yours with the `repo` and `workflow` scopes (…)
+```
+
+The runner is GitHub-hosted by default: a fresh VM each run, with no
+Codex. Self-hosted is a machine of yours, see
+[Running Codex](#running-codex). Without a terminal,
+`awaywork schedule install --with github-actions` asks nothing and keeps
+the runner the workflow already has, GitHub-hosted for a new one.
 
 This writes `.github/workflows/awaywork.yml`: a cron at each window's
 start in your current timezone, plus `workflow_dispatch` for a
@@ -97,10 +132,11 @@ in the configured repos; `workflow` lets it push branches that change
 workflow files.
 
 The workflow calls awaywork's action, `AndreaProvenzale/awaywork@v1`,
-which installs the awaywork version you generated it with. The
-action frees about 20 GB of preinstalled SDKs first (runners otherwise
-die quietly on large repos), commits as the token's user, and appends the
-morning report to the job summary. Fixes to those steps reach you through
+which installs the awaywork version you generated it with. On a
+GitHub-hosted runner it first frees about 20 GB of preinstalled SDKs
+(runners otherwise die quietly on large repos). It commits as the
+token's user, through the job's env rather than git config, and appends
+the morning report to the job summary. Fixes to those steps reach you through
 `v1`; to upgrade awaywork itself, raise `version` in the workflow, or
 upgrade awaywork and run `schedule install --with github-actions`
 again.
@@ -129,39 +165,76 @@ A stdio [MCP server](./configuration.md#mcp-servers) runs on the runner,
 so its `command` must be there: `npx` and `node` are, other binaries
 need a setup step. An HTTP server must be reachable from GitHub's runners.
 
-A runner starts with an empty state dir, so it keeps no attempts or
-skips: an item unchanged since the last run runs again, none is given up
-on, and `awaywork skip` on your machine doesn't reach it. Nor does it
-keep the head a [`deliver: push`](./configuration.md#push) left, so the
-PR doesn't wait for your review: the rule pushes again every run its
-`where` holds.
+A GitHub-hosted runner starts with an empty state dir, so it keeps no
+attempts or skips: an item unchanged since the last run runs again, none
+is given up on, and `awaywork skip` on your machine doesn't reach it.
+Nor does it keep the head a [`deliver: push`](./configuration.md#push)
+left, so the PR doesn't wait for your review: the rule pushes again
+every run its `where` holds. A self-hosted runner keeps
+`~/.local/state/awaywork` of the user it runs as, so all of that
+carries over between runs as on your machine. When that user is you,
+on the machine you use awaywork from, the runner shares that state with
+your local runs: `awaywork skip` there reaches it.
 
 ### Credentials on a runner
 
 | Provider | Secret | Notes |
 |---|---|---|
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
+| Codex | none | Self-hosted runners only, on the machine's own login |
+
+### Running Codex
 
 Codex is experimental and doesn't run on GitHub-hosted runners: it uses
 the machine's own `codex login`, which Codex rotates in place, and a
-fresh runner has none to keep. `schedule install` says so and leaves it
-out of the workflow, and a run on a hosted runner routes its units to
-your other providers. Run Codex locally, or on a self-hosted runner
-logged in with `codex login`.
+fresh runner has none to keep. With a GitHub-hosted runner,
+`schedule install` says so and leaves it out of the workflow, and a run
+there routes its units to your other providers:
+
+```
+codex won't run in this workflow: a GitHub-hosted runner has no Codex login, and one copied there goes stale since Codex rotates it in place; run Codex locally or on a self-hosted runner
+```
+
+So run it one of two ways:
+
+- **Locally**, with launchd, systemd or cron, as in
+  [On your machine](#on-your-machine).
+- **On a self-hosted runner**: a machine of yours
+  [added as the control repo's runner](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners),
+  logged in with `codex login` as the user the runner runs as. On a
+  headless box, `codex login --device-auth` does it without a browser
+  ([Codex's docs](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)).
+  Pick self-hosted at *Which runner?*: the workflow says
+  `runs-on: self-hosted` and keeps Codex, with no secret for it.
+
+On a self-hosted runner the job runs on your machine, so the action
+keeps its hands off it: no freeing disk, no provider CLIs installed
+over yours, no git config written. It installs awaywork alone into the
+job's temp dir, which the runner empties every job, and runs the
+`codex` and `claude` already on the runner's `PATH`, next to `git` and
+`gh`. Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub
+recommends self-hosted runners only for private repos, since a fork's
+pull request could otherwise run code on your machine: keep the control
+repo private.
 
 ## Shared control repo
 
+Experimental: tested against a fake GitHub only, never run live yet.
+
 One repo for a team, with a workflow and a GitHub Environment per
-person. Each person runs, inside it:
+person. Each person runs `awaywork schedule install` inside it, picks
+GitHub Actions, then *shared, with a workflow per person* at *Whose
+control repo is this?*, and gives their name, which defaults to their
+GitHub login. Or, from a script:
 
 ```sh
 awaywork schedule install --with github-actions --as alice
 ```
 
 The name is lowercase letters, digits and `-`. Once the repo holds an
-`awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`,
-install without `--as` refuses and suggests `--as` with your GitHub
-login. It writes:
+`awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`, install
+asks for your name right away; without a terminal it refuses without
+`--as` and suggests it with your GitHub login. It writes:
 
 | File | What |
 |---|---|

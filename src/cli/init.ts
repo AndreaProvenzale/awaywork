@@ -16,7 +16,7 @@ import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
 import { Cancelled, defaultAsk, terminalAsk } from './ask.js'
 import { describeRule } from './format.js'
-import { installSchedule } from './schedule.js'
+import { installSchedule, whereToRun } from './schedule.js'
 
 export function initCommand(program: Command): void {
   program
@@ -75,13 +75,15 @@ export function initCommand(program: Command): void {
         parseConfig(text, path)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, text)
-        const scheduler = opts.yes ? 'later' : await whereToRun(terminalAsk).catch(() => 'later')
+        const scheduler = opts.yes
+          ? 'later'
+          : await whereToRun(terminalAsk, true).catch(() => 'later')
         if (scheduler === 'later')
           return outro(
             `Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`,
           )
         outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan`)
-        await installSchedule(program.opts().config, scheduler || undefined)
+        await installSchedule(program.opts().config, scheduler)
       } catch (e) {
         if (e instanceof Cancelled) {
           cancel(opts.yes ? `Nothing written: ${e.message}` : 'Nothing written')
@@ -117,18 +119,6 @@ function presets({ provider, source, window }: InitOptions): [RegExp, unknown][]
   if (window) presets.push([/^Window starts/, window[0]], [/^Window ends/, window[1]])
   return presets
 }
-
-/** The `schedule install --with` value: '' for this machine's default, or 'later'. */
-const whereToRun = (ask: Ask) =>
-  ask.select(
-    'Where should it run on a schedule?',
-    [
-      { value: '', label: 'this machine' },
-      { value: 'github-actions', label: 'GitHub Actions, from the repo in this directory' },
-      { value: 'later', label: 'later, with awaywork schedule install' },
-    ],
-    '',
-  )
 
 export interface InitInput {
   ask: Ask

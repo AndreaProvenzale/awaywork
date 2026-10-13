@@ -14,6 +14,7 @@ import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import {
   configOf,
+  isSelfHosted,
   REPO_CONFIG,
   removeWorkflow,
   suffixOf,
@@ -53,11 +54,11 @@ export function scheduleCommand(program: Command): void {
     .description('start `awaywork run` when a window opens; it starts no unit after it closes')
     .option(
       '--with <scheduler>',
-      `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: launchd on macOS, else systemd if it runs, else cron)`,
+      `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: asks in a terminal, else launchd on macOS, else systemd if it runs, else cron)`,
     )
     .option(
       '--as <person>',
-      `with ${GITHUB_ACTIONS}: install for one person of a shared control repo`,
+      `${GITHUB_ACTIONS} for one person of a shared control repo (experimental)`,
     )
     .action((opts: { with?: string; as?: string }) =>
       installSchedule(program.opts().config, opts.with, opts.as),
@@ -161,20 +162,43 @@ export async function staleSchedules(
 export const gitRoot = (run: Exec = exec) =>
   run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
-/** Installs the scheduled job with the named scheduler, or the platform's default. */
+/** The `--with` value: '' for this machine's default scheduler. */
+export const whereToRun = (ask: Ask, later = false) =>
+  ask.select(
+    'Where should it run on a schedule?',
+    [
+      { value: '', label: 'this machine' },
+      { value: GITHUB_ACTIONS, label: 'GitHub Actions, from the repo in this directory' },
+      ...(later ? [{ value: 'later', label: 'later, with awaywork schedule install' }] : []),
+    ],
+    '',
+  )
+
+/**
+ * Installs the scheduled job with the named scheduler, '' for the platform's default; without
+ * one, asks in a terminal, else takes the default. `--as` implies GitHub Actions.
+ */
 export async function installSchedule(
   config: string | undefined,
   id?: string,
   person?: string,
+  io: Io = terminal,
 ): Promise<void> {
-  if (id === GITHUB_ACTIONS) return installWorkflow(config, person)
+  if (id === undefined && person !== undefined) id = GITHUB_ACTIONS
+  if (id === undefined && io.interactive)
+    try {
+      id = await whereToRun(io.ask)
+    } catch (e) {
+      return cancelled(e)
+    }
+  if (id === GITHUB_ACTIONS) return installWorkflow(config, person, io)
   if (person !== undefined) {
     console.error(`--as goes with --with ${GITHUB_ACTIONS}`)
     process.exitCode = 1
     return
   }
   const all = localSchedulers()
-  const scheduler = all[id ?? defaultScheduler()]
+  const scheduler = all[id || defaultScheduler()]
   if (!scheduler) {
     console.error(
       `unknown scheduler "${id}"; use ${[...Object.keys(all), GITHUB_ACTIONS].join(', ')}`,
@@ -216,13 +240,28 @@ export interface Io {
   env: NodeJS.ProcessEnv
   /** Runs `gh secret set` with these args, the value on stdin. */
   setSecret: (args: string[], value: string) => Promise<void>
+  /** Asks what the flags leave open; otherwise keeps what the repo has, or the defaults. */
+  interactive?: boolean
 }
 
 /** Sets a secret of the current repo; the value goes through stdin, never argv. */
 const ghSecretSet = async (args: string[], value: string) =>
   void (await execa('gh', ['secret', 'set', ...args], { input: value }))
 
-const terminal: Io = { run: exec, ask: terminalAsk, env: process.env, setSecret: ghSecretSet }
+const terminal: Io = {
+  run: exec,
+  ask: terminalAsk,
+  env: process.env,
+  setSecret: ghSecretSet,
+  interactive: Boolean(process.stdin.isTTY),
+}
+
+/** Reports a prompt the user left; rethrows anything else. */
+function cancelled(e: unknown): void {
+  if (!(e instanceof Cancelled)) throw e
+  console.error('Cancelled')
+  process.exitCode = 1
+}
 
 const PERSON = /^[a-z0-9][a-z0-9-]*$/
 
@@ -268,10 +307,10 @@ export async function installWorkflow(
     process.exitCode = 1
     return
   }
-  if (!person && (await isShared(root))) {
-    const login = await io.run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')
+  const sharedRepo = await isShared(root)
+  if (!person && sharedRepo && !io.interactive) {
     console.error(
-      `This is a shared control repo, with a workflow per person; run \`awaywork schedule install --with ${GITHUB_ACTIONS} --as ${login.toLowerCase() || '<name>'}\``,
+      `This is a shared control repo, with a workflow per person; run \`awaywork schedule install --with ${GITHUB_ACTIONS} --as ${(await loginOf(io.run)) || '<name>'}\``,
     )
     process.exitCode = 1
     return
@@ -279,9 +318,15 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
+    if (person === undefined && io.interactive) person = await askPerson(io, sharedRepo)
+    const current = await readFile(join(root, workflowOf(person)), 'utf8').catch(() => '')
+    const selfHosted = io.interactive
+      ? await askSelfHosted(io.ask, isSelfHosted(current))
+      : isSelfHosted(current)
+    const runner = selfHosted ? 'self-hosted' : 'github-hosted'
     const used = loaded.providers.flatMap((p) => {
       const provider = providers[p.id]
-      const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })
+      const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: runner })
       if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
       return provider && !unavailable ? [provider] : []
     })
@@ -289,13 +334,16 @@ export async function installWorkflow(
       starts: startsOf(loaded.windows),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       version: packageVersion,
-      packages: used.map((p) => p.package),
+      // A self-hosted runner keeps the machine's own CLIs and their logins.
+      packages: selfHosted ? [] : used.map((p) => p.package),
       setup: Object.values(loaded.sources).flatMap((cfg) =>
         isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
       ),
+      selfHosted,
     }
     const { personal, shared } = secretsOf(loaded)
-    if (person) return await installForPerson(root, path, person, base, { personal, shared }, io)
+    if (person)
+      return await installForPerson(root, path, person, current, base, { personal, shared }, io)
     const secrets = [...personal, ...shared]
     const text = workflow({ ...base, config: REPO_CONFIG, secrets })
     const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, io.ask)
@@ -309,10 +357,47 @@ export async function installWorkflow(
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
   } catch (e) {
     if (!(e instanceof Cancelled)) return reportConfigError(e)
-    console.error('Cancelled')
-    process.exitCode = 1
+    cancelled(e)
   }
 }
+
+const loginOf = async (run: Exec) =>
+  (await run('gh', ['api', 'user', '--jq', '.login']).catch(() => '')).toLowerCase()
+
+/** Who the workflow is for: undefined for a repo of your own, else your name in a shared one. */
+async function askPerson(io: Io, sharedRepo: boolean): Promise<string | undefined> {
+  if (!sharedRepo) {
+    const whose = await io.ask.select(
+      'Whose control repo is this?',
+      [
+        { value: 'mine', label: 'just mine' },
+        { value: 'shared', label: 'shared, with a workflow per person', hint: 'experimental' },
+      ],
+      'mine',
+    )
+    if (whose === 'mine') return undefined
+  }
+  const message = 'Your name in this shared control repo'
+  const initial = await loginOf(io.run)
+  let name = await io.ask.text(message, { initial })
+  while (!PERSON.test(name))
+    name = await io.ask.text(`${message} (lowercase letters, digits and -)`, { initial })
+  return name
+}
+
+const askSelfHosted = async (ask: Ask, selfHosted: boolean) =>
+  (await ask.select(
+    'Which runner?',
+    [
+      { value: 'github-hosted', label: 'GitHub-hosted', hint: 'a fresh VM each run, no Codex' },
+      {
+        value: 'self-hosted',
+        label: 'self-hosted',
+        hint: "a machine of yours added as this repo's runner, on its own codex login",
+      },
+    ],
+    selfHosted ? 'self-hosted' : 'github-hosted',
+  )) === 'self-hosted'
 
 /** Whether the repo holds a person's workflow or config, as a shared control repo does. */
 async function isShared(root: string): Promise<boolean> {
@@ -327,12 +412,12 @@ async function installForPerson(
   root: string,
   path: string,
   person: string,
+  current: string,
   base: Omit<Workflow, 'config' | 'secrets' | 'person'>,
   { personal, shared }: { personal: string[]; shared: string[] },
   io: Io,
 ): Promise<void> {
   const file = workflowOf(person)
-  const current = await readFile(join(root, file), 'utf8').catch(() => '')
   const environment = await environmentFor(io, person, current)
   if (environment === undefined) {
     process.exitCode = 1

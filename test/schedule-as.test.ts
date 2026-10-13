@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { installWorkflow, removePersonWorkflow, secretsOf, syncCopy } from '../src/cli/schedule.js'
+import {
+  installSchedule,
+  installWorkflow,
+  removePersonWorkflow,
+  secretsOf,
+  syncCopy,
+} from '../src/cli/schedule.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
@@ -386,6 +392,40 @@ it('refuses an install without --as in a shared control repo, before writing any
     expect(existsSync(join(root, '.awaywork/config.yml'))).toBe(false)
     process.exitCode = undefined
   }
+})
+
+it('asks for your name instead in a terminal, defaulting to your GitHub login, until it is valid', async () => {
+  const { root, config, io, job } = await setup({ login: 'Alice' })
+  await mkdir(join(root, '.github/workflows'), { recursive: true })
+  await writeFile(join(root, '.github/workflows/awaywork-bob.yml'), '')
+  await installWorkflow(config, undefined, {
+    ...io([
+      [/^Your name in this shared control repo$/, 'Alice Smith'],
+      [/^Your name in this shared control repo \(lowercase letters, digits and -\)$/, initial],
+      [/^Which runner\?$/, initial],
+      [/GH_TOKEN__ALICE/, false],
+      [/SLACK_WEBHOOK/, false],
+    ]),
+    interactive: true,
+  })
+  expect(process.exitCode).toBeUndefined()
+  expect((await job())['runs-on']).toBe('ubuntu-latest')
+})
+
+it('asks only which runner when --as names the person, and --as alone means GitHub Actions', async () => {
+  const { config, io, job } = await setup()
+  const secrets = (): [RegExp, unknown][] => [
+    [/GH_TOKEN__ALICE/, false],
+    [/SLACK_WEBHOOK/, false],
+  ]
+  await installSchedule(config, undefined, 'alice', {
+    ...io([[/^Which runner\?$/, 'self-hosted'], ...secrets()]),
+    interactive: true,
+  })
+  expect((await job())['runs-on']).toBe('self-hosted')
+  out = []
+  await installSchedule(config, undefined, 'alice', io(secrets()))
+  expect(out).toContain('.github/workflows/awaywork-alice.yml is up to date')
 })
 
 it('syncs again: unchanged says so, changed shows the diff and asks, declined keeps', async () => {

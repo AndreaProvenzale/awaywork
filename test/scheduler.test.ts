@@ -155,6 +155,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.concurrency).toBe('awaywork')
   expect(parsed.permissions).toEqual({ contents: 'read' })
   expect(parsed.jobs.run.environment).toBeUndefined()
+  expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
   expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
   expect(parsed.jobs.run.steps).toEqual([
     { uses: 'actions/checkout@v5', with: { 'persist-credentials': false } },
@@ -180,14 +181,37 @@ it('ships an action that installs the pinned version and runs awaywork once', as
   const runs = action.runs.steps.map((s: { run?: string }) => s.run ?? '')
   expect(runs[0]).toContain('if [ -z "$GH_TOKEN" ]; then')
   expect(runs[0]).toContain("::error::GH_TOKEN is empty: the job's secrets didn't reach it.")
-  expect(runs[1]).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
-  expect(runs).toContain('npm install -g "awaywork@$VERSION" $PACKAGES')
   expect(runs).toContain(
     "awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
   )
   const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
   expect(step("Commit as the token's user").run).toContain(
-    'git config --global user.email "$user@users.noreply.github.com"',
+    'echo "GIT_COMMITTER_EMAIL=$user@users.noreply.github.com"',
+  )
+})
+
+it("touches a self-hosted machine's disk, global installs and git config not at all", async () => {
+  const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
+  const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
+  const hosted = "runner.environment == 'github-hosted'"
+  expect(step('Free disk')).toMatchObject({ if: hosted })
+  expect(step('Free disk').run).toMatch(/^sudo rm -rf \/usr\/share\/dotnet /)
+  expect(step('Install')).toMatchObject({
+    if: hosted,
+    run: 'npm install -g "awaywork@$VERSION" $PACKAGES',
+  })
+  const local = step('Install for this job')
+  expect(local.if).toBe("runner.environment != 'github-hosted'")
+  expect(local.run).toBe(
+    'npm install -g --prefix "$RUNNER_TEMP/awaywork" "awaywork@$VERSION"\necho "$RUNNER_TEMP/awaywork/bin" >> "$GITHUB_PATH"\n',
+  )
+  const commit = step("Commit as the token's user")
+  expect(commit.if).toBeUndefined()
+  expect(commit.run).not.toContain('git config')
+  expect(commit.run).toContain('} >> "$GITHUB_ENV"')
+  const unguarded = action.runs.steps.filter((s: { if?: string; run?: string }) => !s.if)
+  expect(unguarded.map((s: { run?: string }) => s.run ?? '').join('\n')).not.toMatch(
+    /sudo|npm install|git config/,
   )
   expect(step('Morning report')).toMatchObject({
     if: 'always()',
@@ -326,7 +350,7 @@ describe('schedule install --with github-actions', () => {
     await mkdir(join(home, 'skills/mine'), { recursive: true })
     await writeFile(join(home, 'skills/mine/SKILL.md'), 'MINE')
     await symlink(join(home, 'elsewhere/linked'), join(home, 'skills/linked'))
-    const install = async (script: [RegExp, unknown][] = []) => {
+    const install = async (script: [RegExp, unknown][] = [], interactive = false) => {
       out = []
       const ask = scriptedAsk(script)
       await installWorkflow(config, undefined, {
@@ -334,6 +358,7 @@ describe('schedule install --with github-actions', () => {
         ask,
         env: {},
         setSecret: async () => {},
+        interactive,
       })
       expect(process.exitCode).toBeUndefined()
     }
@@ -370,6 +395,34 @@ describe('schedule install --with github-actions', () => {
     const steps = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps
     expect(steps.at(-1).with.packages).toBe('@anthropic-ai/claude-code')
     expect(Object.keys(steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
+  })
+
+  it('asks whose repo and which runner; self-hosted keeps codex, installs no CLI and adds no secret for it', async () => {
+    const { root, config, install } = await setup()
+    await writeFile(config, CONFIG.replace('[claude]', '[claude, codex]'))
+    await install(
+      [
+        [/^Whose control repo is this\?$/, initial],
+        [/^Which runner\?$/, 'self-hosted'],
+      ],
+      true,
+    )
+    expect(out.join('\n')).not.toMatch(/won't run/)
+    const job = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run
+    expect(job['runs-on']).toBe('self-hosted')
+    expect(job.steps.at(-1).with.packages).toBe('')
+    expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
+
+    await install()
+    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
+    await install(
+      [
+        [/^Whose control repo is this\?$/, initial],
+        [/^Which runner\?$/, initial],
+      ],
+      true,
+    )
+    expect(out[0]).toBe(`${WORKFLOW} is up to date`)
   })
 
   it('shows what changed and asks; declined keeps, accepted replaces the skills folder as a whole', async () => {

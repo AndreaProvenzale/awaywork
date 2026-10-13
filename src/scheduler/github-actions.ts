@@ -27,6 +27,8 @@ export interface Workflow {
   secrets: string[]
   /** Command sources' setup scripts, run in the config's folder. */
   setup: string[]
+  /** Runs on the developer's own runner, with its own provider logins. */
+  selfHosted?: boolean
   /** A person's workflow in a shared control repo. */
   person?: {
     name: string
@@ -70,7 +72,7 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ${w.selfHosted ? 'self-hosted' : 'ubuntu-latest'}
 ${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
       TZ: ${w.timezone}
     steps:
@@ -92,6 +94,9 @@ function indent(text: string, spaces: number): string {
     .map((line) => ' '.repeat(spaces) + line)
     .join('\n')
 }
+
+/** Whether a workflow's job runs on a self-hosted runner. */
+export const isSelfHosted = (workflow: string) => /^\s+runs-on:.*\bself-hosted\b/m.test(workflow)
 
 /** Deletes the workflow, or a person's, under a repo root; false when there was none. */
 export async function removeWorkflow(root: string, person?: string): Promise<boolean> {
