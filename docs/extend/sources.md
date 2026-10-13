@@ -43,7 +43,8 @@ interface Source {
   payload in `raw`.
 - **Fields** are what users write rules against, in the tracker's own
   names: `section: QA`, not a mapped status. Set `repo` when the tracker
-  can say which repo an item's code lives in (Asana's `repo_map`);
+  can say which repo an item's code lives in (Asana, Jira and Linear
+  all read a `repo_map` option; reuse it);
   without a linked PR or a `repo` the item is skipped. Set `created` and
   `updated` (ISO timestamps) so a rule's `order` can sort the items.
 - **Linked PRs**: the forge finds the user's PRs that carry the item's
