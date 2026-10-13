@@ -22,7 +22,7 @@ claim tagged **[V]** (vendor docs), **[C]** (community) or **[I]**
 - Where it looks for skills and project instructions.
 
 Every [C] or [I] claim the code depends on needs a burn test, recorded in
-[Lessons](../lessons.md).
+[Real runs](../providers.md#real-runs).
 
 ## The contract
 
@@ -88,4 +88,4 @@ the registry.
   subscription, skipped unless `AWAYWORK_REAL=1`.
 
 Then a burn test: one real unit with `awaywork run --unit`, recorded in
-`lessons.md` with what the quota did.
+[Real runs](../providers.md#real-runs) with what the quota did.

@@ -24,7 +24,7 @@ function problems(text: string): string[] {
 }
 
 describe('config', () => {
-  it('parses the example from plan.md', () => {
+  it('parses the full example', () => {
     const cfg = parseConfig(example)
     expect(cfg.providers.map((p) => p.id)).toEqual(['claude', 'codex'])
     expect(cfg.queue?.[3]).toMatchObject({

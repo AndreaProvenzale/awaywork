@@ -2,7 +2,7 @@
 
 Open-source CLI that schedules headless coding agents to spend idle
 subscription quota. Read `README.md`, then `docs/`: `guide/` and
-`extend/` for users and contributors, the rest is research and design.
+`extend/` for users and contributors, the rest is research.
 
 ## How we work
 

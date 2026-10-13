@@ -16,6 +16,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
   - [Codex](https://developers.openai.com/codex): `codex login`.
 - Optionally an Asana personal access token, a Linear personal API key
   or an Atlassian API token for Jira Cloud, if your tasks live there.
+  Linear and Jira are beta: no real run has used them yet.
 
 ## Install
 
@@ -55,6 +56,8 @@ sources:
 With no `queue`, the [default queue](./how-it-works.md#the-queue) applies.
 Assigned GitHub issues need a rule of their own, e.g. `implement` for
 issues labelled `awaywork` (see [Configuration](./configuration.md)).
+The label isn't enough on its own: awaywork reads only the issues
+assigned to you, so assign yourself too.
 
 Check it:
 
