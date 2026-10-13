@@ -152,9 +152,9 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
       return items
     },
 
-    /** Writes issue.md: description, fields and comments. */
+    /** Writes item.md: description, fields and comments. */
     async prefetch(item, dir) {
-      await writeFile(join(dir, 'issue.md'), taskMarkdown(item))
+      await writeFile(join(dir, 'item.md'), taskMarkdown(item))
     },
 
     /** Maps teams to repos and lists the account's real team keys and workflow state names. */

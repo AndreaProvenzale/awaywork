@@ -166,8 +166,8 @@ describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
 
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
       await jira.prefetch(found.blocker, dir, ctx)
-      expect(await readdir(dir)).toEqual(['issue.md'])
-      expect(await readFile(join(dir, 'issue.md'), 'utf8')).toContain(`e2e comment ${run}`)
+      expect(await readdir(dir)).toEqual(['item.md'])
+      expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(`e2e comment ${run}`)
     }, 120_000)
 
     it('offers the real project and status names at init', async () => {

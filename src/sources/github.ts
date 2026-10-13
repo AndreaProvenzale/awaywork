@@ -200,9 +200,9 @@ export function githubSource(run: Exec = exec): Source<Config> {
       return [...byId.values()]
     },
 
-    /** Writes pr.md, diff.patch, threads.md and checks.md for a PR; issue.md for an issue. */
+    /** Writes item.md, plus diff.patch, threads.md and checks.md for a PR. */
     async prefetch(item, dir) {
-      if (item.type !== 'pr') return writeFile(join(dir, 'issue.md'), itemMarkdown(item))
+      if (item.type !== 'pr') return writeFile(join(dir, 'item.md'), itemMarkdown(item))
       const repo = item.fields.repo as string
       const [owner = '', name = ''] = repo.split('/')
       const number = Number(item.key.split('#')[1])
@@ -215,7 +215,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
       const diff = await run('gh', ['pr', 'diff', String(number), '-R', repo])
       const checks = pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []
       await Promise.all([
-        writeFile(join(dir, 'pr.md'), itemMarkdown(item) + reviewsMarkdown(pr)),
+        writeFile(join(dir, 'item.md'), itemMarkdown(item) + reviewsMarkdown(pr)),
         writeFile(join(dir, 'diff.patch'), diff),
         writeFile(join(dir, 'threads.md'), threadsMarkdown(pr.reviewThreads.nodes)),
         writeFile(join(dir, 'checks.md'), await checksMarkdown(run, repo, checks)),

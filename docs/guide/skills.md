@@ -145,7 +145,7 @@ queue:
   it, and a [loop](./configuration.md#loops)'s `until` can match it.
 - Say what the output must state, as the built-ins do: what was checked,
   how, and what couldn't be.
-- Context is in `.away/context/<item>/`: `pr.md`, `diff.patch`,
-  `threads.md`, `checks.md` for a PR; `issue.md` or `task.md` otherwise.
+- Context is in `.away/context/<item>/`: `item.md` for every item, plus
+  `diff.patch`, `threads.md` and `checks.md` for a PR.
 - `skills: [name]` on a rule, or at the top level for every unit, adds
   extra skills the agent may call, such as your team's conventions.
