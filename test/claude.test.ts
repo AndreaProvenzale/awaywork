@@ -3,6 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execa } from 'execa'
 import { describe, expect, it, vi } from 'vitest'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { claudeProvider, toEvents } from '../src/providers/claude.js'
@@ -119,6 +120,29 @@ describe('claude provider', () => {
       GH_CONFIG_DIR: '/work/.away/gh',
     })
     expect(commandEnv(env, '/work', [])).toEqual({ ...env, GH_CONFIG_DIR: '/work/.away/gh' })
+  })
+
+  it("commits as the identity the action puts in the job's env, with no git config at all", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'awaywork-identity-'))
+    const email = '583231+octocat@users.noreply.github.com'
+    const job = {
+      PATH: process.env.PATH,
+      HOME: repo,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_AUTHOR_NAME: 'octocat',
+      GIT_AUTHOR_EMAIL: email,
+      GIT_COMMITTER_NAME: 'octocat',
+      GIT_COMMITTER_EMAIL: email,
+    }
+    const env = workerEnv(job, repo, [])
+    const git = (...args: string[]) =>
+      execa('git', ['-C', repo, ...args], { env, extendEnv: false })
+    await git('init', '-q')
+    await git('commit', '-q', '--allow-empty', '-m', 'work')
+    expect((await git('log', '--format=%an <%ae>|%cn <%ce>')).stdout).toBe(
+      `octocat <${email}>|octocat <${email}>`,
+    )
   })
 
   it('passes the model only when one is set', async () => {

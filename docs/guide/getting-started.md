@@ -120,9 +120,9 @@ run's start time in UTC.
 ## On a schedule
 
 ```sh
-awaywork schedule install      # launchd; --with systemd or cron on Linux
+awaywork schedule install      # asks where; this machine is launchd, systemd or cron
 ```
 
 The job starts when a window opens (default `01:00`) and stops when it
-ends (`07:00`). To run in GitHub Actions instead, add
-`--with github-actions`; see [Scheduling](./scheduling.md).
+ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or
+pass `--with github-actions`; see [Scheduling](./scheduling.md).

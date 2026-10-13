@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
-import { installWorkflow, removePersonWorkflow, secretsOf, syncCopy } from '../src/cli/schedule.js'
+import {
+  installSchedule,
+  installWorkflow,
+  removePersonWorkflow,
+  secretsOf,
+  syncCopy,
+} from '../src/cli/schedule.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
@@ -97,6 +103,7 @@ async function setup(gh: Gh = {}) {
   const set: string[][] = []
   const env = { GH_TOKEN: 'ghp_secret', SLACK_WEBHOOK: 'hook_secret', DATABASE_URL: 'db_secret' }
   const io = (script: [RegExp, unknown][], more: NodeJS.ProcessEnv = {}) => ({
+    interactive: true,
     run,
     ask: scriptedAsk(script),
     env: { ...env, ...more },
@@ -291,6 +298,26 @@ it('falls back to suffixed repository secrets when GitHub refuses the environmen
   expect(out).toContain('  add these repository secrets: SLACK_WEBHOOK, HOOK_TOKEN, MCP_DB_URL')
 })
 
+it('asks nothing without a terminal: no secret offered, no fallback taken', async () => {
+  const { root, config, set, io } = await setup()
+  await installWorkflow(config, 'alice', { ...io([]), interactive: false })
+  expect(process.exitCode).toBeUndefined()
+  expect(set).toEqual([])
+  expect(out).toContain(
+    '  add these secrets to environment alice: GH_TOKEN__ALICE, CLAUDE_CODE_OAUTH_TOKEN__ALICE, ASANA_TOKEN__ALICE',
+  )
+
+  const refused = await setup({ refuse: true })
+  out = []
+  await installWorkflow(refused.config, 'alice', { ...refused.io([]), interactive: false })
+  expect(process.exitCode).toBe(1)
+  expect(out).toContain(
+    'Changed nothing; run this again in a terminal to fall back to suffixed repository secrets',
+  )
+  expect(existsSync(join(refused.root, '.github/workflows/awaywork-alice.yml'))).toBe(false)
+  expect(existsSync(join(root, '.github/workflows/awaywork-alice.yml'))).toBe(true)
+})
+
 it('stops when the person declines the fallback, which a refused read also leads to', async () => {
   const { root, set, install } = await setup({ get: 'gh: Resource not accessible (HTTP 403)' })
   await install([[FALLBACK, initial]])
@@ -377,7 +404,7 @@ it('refuses an install without --as in a shared control repo, before writing any
     const { root, config, io } = await setup(gh)
     await mkdir(dirname(join(root, file)), { recursive: true })
     await writeFile(join(root, file), '')
-    await installWorkflow(config, undefined, io([]))
+    await installWorkflow(config, undefined, { ...io([]), interactive: false })
     expect(process.exitCode).toBe(1)
     expect(out).toEqual([
       `This is a shared control repo, with a workflow per person; run \`awaywork schedule install --with github-actions --as ${name}\``,
@@ -386,6 +413,44 @@ it('refuses an install without --as in a shared control repo, before writing any
     expect(existsSync(join(root, '.awaywork/config.yml'))).toBe(false)
     process.exitCode = undefined
   }
+})
+
+it('asks for your name instead in a terminal, defaulting to your GitHub login, until it is valid', async () => {
+  const { root, config, io, job } = await setup({ login: 'Alice' })
+  await mkdir(join(root, '.github/workflows'), { recursive: true })
+  await writeFile(join(root, '.github/workflows/awaywork-bob.yml'), '')
+  await installWorkflow(
+    config,
+    undefined,
+    io([
+      [/^Your name in this shared control repo$/, 'Alice Smith'],
+      [/^Your name in this shared control repo \(lowercase letters, digits and -\)$/, initial],
+      [/GH_TOKEN__ALICE/, false],
+      [/SLACK_WEBHOOK/, false],
+    ]),
+  )
+  expect(process.exitCode).toBeUndefined()
+  expect((await job())['runs-on']).toBe('ubuntu-latest')
+})
+
+it('asks no runner for a person, whose workflow stays GitHub-hosted, and --as alone means GitHub Actions', async () => {
+  const { root, config, io, job } = await setup()
+  const secrets = (): [RegExp, unknown][] => [
+    [/GH_TOKEN__ALICE/, false],
+    [/SLACK_WEBHOOK/, false],
+  ]
+  await installSchedule(config, undefined, 'alice', io(secrets()))
+  expect((await job())['runs-on']).toBe('ubuntu-latest')
+  const file = join(root, '.github/workflows/awaywork-alice.yml')
+  await writeFile(file, (await readFile(file, 'utf8')).replace('ubuntu-latest', 'self-hosted'))
+  await installSchedule(
+    config,
+    undefined,
+    'alice',
+    io([[/^Overwrite \.github\/workflows\/awaywork-alice\.yml/, true], ...secrets()]),
+  )
+  expect(out.join('\n')).toContain('-    runs-on: self-hosted\n+    runs-on: ubuntu-latest')
+  expect((await job())['runs-on']).toBe('ubuntu-latest')
 })
 
 it('syncs again: unchanged says so, changed shows the diff and asks, declined keeps', async () => {

@@ -46,17 +46,14 @@ Looks sane? Run one unit for real:
 awaywork run --unit acme-api-1
 ```
 
-Then schedule it for when you're away, on your machine:
+Then schedule it for when you're away:
 
 ```sh
-awaywork schedule install    # launchd, systemd or cron
+awaywork schedule install    # asks: this machine (launchd, systemd or cron) or GitHub Actions
 ```
 
-Or on GitHub Actions, from a repo of your own:
-
-```sh
-awaywork schedule install --with github-actions    # add the secrets it lists
-```
+GitHub Actions runs from a repo of your own, on GitHub's runners or on a
+machine of yours, which is how Codex runs there; add the secrets it lists.
 
 Next morning:
 

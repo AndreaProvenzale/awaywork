@@ -299,10 +299,11 @@ Usage: awaywork schedule install [options]
 start `awaywork run` when a window opens; it starts no unit after it closes
 
 Options:
-  --with <scheduler>  launchd, systemd, cron, github-actions (default: launchd
-                      on macOS, else systemd if it runs, else cron)
-  --as <person>       with github-actions: install for one person of a shared
-                      control repo
+  --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
+                      terminal, else launchd on macOS, else systemd if it runs,
+                      else cron)
+  --as <person>       github-actions for one person of a shared control repo
+                      (experimental)
   -h, --help          display help for command
 ```
 

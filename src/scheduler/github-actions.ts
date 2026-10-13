@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
+import { isMap, isNode, isScalar, parseDocument } from 'yaml'
 import { skillsDirOf } from '../config/paths.js'
 import type { Start } from './index.js'
 
@@ -27,6 +29,8 @@ export interface Workflow {
   secrets: string[]
   /** Command sources' setup scripts, run in the config's folder. */
   setup: string[]
+  /** The job's `runs-on` as `runsOnOf` reads it, `ubuntu-latest` when unset. */
+  runsOn?: string
   /** A person's workflow in a shared control repo. */
   person?: {
     name: string
@@ -51,6 +55,7 @@ export function workflow(w: Workflow): string {
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
   const name = person ? `awaywork-${person.name}` : 'awaywork'
+  const runsOn = w.runsOn ?? 'ubuntu-latest'
   return `name: ${name}
 
 on:
@@ -70,7 +75,7 @@ permissions:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on:${runsOn.startsWith('\n') ? '' : ' '}${runsOn}
 ${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
       TZ: ${w.timezone}
     steps:
@@ -92,6 +97,36 @@ function indent(text: string, spaces: number): string {
     .map((line) => ' '.repeat(spaces) + line)
     .join('\n')
 }
+
+/** The job's `runs-on` key and value nodes, positioned in the workflow's text. */
+function runsOnPair(workflow: string) {
+  const job = parseDocument(workflow).getIn(['jobs', 'run'], true)
+  if (!isMap(job)) return
+  const pair = job.items.find((p) => isScalar(p.key) && p.key.value === 'runs-on')
+  return isScalar(pair?.key) && isNode(pair.value)
+    ? { key: pair.key, value: pair.value }
+    : undefined
+}
+
+/** The job's `runs-on` as written after the colon, e.g. `[self-hosted, macOS]`, or a block list from its newline. */
+export function runsOnOf(workflow: string): string | undefined {
+  const pair = runsOnPair(workflow)
+  if (!pair?.key.range || !pair.value.range) return
+  return workflow
+    .slice(pair.key.range[2], pair.value.range[2])
+    .replace(/^\s*:[ \t]*/, '')
+    .trimEnd()
+}
+
+/** Whether a workflow's job runs on a self-hosted runner, by label, label list or `{ group, labels }`. */
+export function isSelfHosted(workflow: string): boolean {
+  const value = runsOnPair(workflow)?.value.toJSON()
+  return [value?.labels ?? value].flat().includes('self-hosted')
+}
+
+/** Whether the job's `runs-on` is just `self-hosted`, which matches any self-hosted runner the repo can use. */
+export const isPlainSelfHosted = (workflow: string) =>
+  isDeepStrictEqual([runsOnPair(workflow)?.value.toJSON()].flat(), ['self-hosted'])
 
 /** Deletes the workflow, or a person's, under a repo root; false when there was none. */
 export async function removeWorkflow(root: string, person?: string): Promise<boolean> {
