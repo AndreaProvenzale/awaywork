@@ -191,8 +191,8 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Free-plan cost: one trivial `exec` (two shell calls, one edit) moved the
   month 0% → 2%; a small `implement` unit (a typo, a commit, the PR body)
   4% → 9%; ten tool calls of a `review` that read a 1,000-line diff
-  9% → 20%. So the paced ceiling (~3% a run on a 30-day window) is
-  below one unit. [V, tested]
+  9% → 20%. So the paced ceiling (~3% a run on a 30-day window, with
+  one run a day) is below one unit. [V, tested]
 - The access token lasts 10 days (`exp - iat` of the JWT) and `auth.json`
   says when it was last refreshed. [V, tested]
 - The first probe refreshed a 12-day-old `auth.json` in place

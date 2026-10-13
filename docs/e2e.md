@@ -25,7 +25,7 @@ From [Real runs](./providers.md#real-runs):
 | Jira | A scoped token never ran: one token passed on both the site and the gateway, so it is classic [I]. |
 | Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
-| Claude ceiling | Never stopped mid-run: real units stayed below 1% of either window. |
+| Claude ceiling | Never stopped mid-run: no real Claude unit reached its ceiling. |
 | Scheduling | `schedule install` never fired a run; the `github-actions` workflow never ran on a runner (`timezone` is [C]). |
 | Codex remote | Not on GitHub-hosted runners; a self-hosted runner is untested. |
 | Setup UX | `init`, `queue` and `config edit` never ran against real accounts. |

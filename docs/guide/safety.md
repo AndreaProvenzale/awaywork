@@ -145,8 +145,9 @@ reach.
 
 ## Network
 
-`network: false` is experimental: only run in tests so far, see
-[Configuration](./configuration.md#repos-and-instructions).
+`network: false` is experimental: only run in tests so far, see the
+`network: false` part of
+[Repos and instructions](./configuration.md#repos-and-instructions).
 
 The network is on by default. With `network: false` on a repo or a
 rule, each agent's own OS sandbox runs its commands without it. That
