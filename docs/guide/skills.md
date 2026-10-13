@@ -12,11 +12,8 @@ same folder works for Claude Code and Codex.
 
 | Skill | For | Delivers |
 |---|---|---|
-| `fix-ci` | Your PR with failing checks | draft PR |
-| `address-review` | Your PR with unresolved review threads, an awaywork PR with unresolved threads you started, or this run's review in a [loop](./configuration.md#loops) | draft PR |
-| `qa-feedback` | A task back from QA, with your PR | draft PR |
-| `continue` | A task in progress, with your PR | draft PR |
-| `implement` | An issue or task with no PR yet | draft PR |
+| `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./configuration.md#loops) | draft PR |
+| `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps | draft PR |
 | `review` | A PR awaiting your review, or this run's own after a `then`; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
@@ -63,8 +60,8 @@ in-repo skill resolves at run time.
 ## Tweak a built-in
 
 ```sh
-awaywork skills eject fix-ci
-$EDITOR ~/.config/awaywork/skills/fix-ci/SKILL.md
+awaywork skills eject fix
+$EDITOR ~/.config/awaywork/skills/fix/SKILL.md
 ```
 
 The ejected copy shadows the built-in from then on.

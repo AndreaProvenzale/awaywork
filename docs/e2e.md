@@ -23,7 +23,7 @@ From [Real runs](./providers.md#real-runs):
 |---|---|
 | Asana | Custom fields and dependencies (paid) never read live: `real-asana.test.ts` ran on a free plan only. |
 | Jira | A scoped token never ran: one token passed on both the site and the gateway, so it is classic [I]. |
-| Skills | `fix-ci`, `address-review`, `qa-feedback`, `continue`, `plan` never ran. |
+| Skills | `fix` and `plan` never ran; `implement` never ran on a task with my PR. |
 | Codex, `draft_pr` | Codex has only written reports, never pushed or opened a PR. |
 | Claude ceiling | Never stopped mid-run: no real Claude unit reached its ceiling. |
 | Scheduling | `schedule install` never fired a run; the `github-actions` workflow never ran on a runner (`timezone` is [C]). |
@@ -99,7 +99,7 @@ and leaves one closed PR.
 ## Before starting
 
 - `review_requested` needs a second GitHub account: nobody can request
-  their own review. `address-review` can use review comments left on
+  their own review. `fix` can use review comments left on
   one's own PR.
 - The workflow from `schedule install --with github-actions` calls
   `AndreaProvenzale/awaywork@v1` with the CLI's own version, and only a
@@ -135,11 +135,11 @@ Set up the item, read `plan`, then `run --unit <id>`.
 
 | Skill | Item | Provider | Deliver |
 |---|---|---|---|
-| `fix-ci` | my PR, checks failing | Claude | draft PR |
-| `address-review` | my PR, threads left on it | Codex | draft PR |
+| `fix` | my PR, checks failing | Claude | draft PR |
+| `fix` | my PR, threads left on it | Codex | draft PR |
 | `review` | PR with my review requested by a second account | Codex | report |
-| `qa-feedback` | Asana task in `QA`, linked PR | Claude | draft PR |
-| `continue` | Asana task in `In progress`, linked PR | Codex | draft PR |
+| `fix` | Asana task in `QA`, linked PR | Claude | draft PR |
+| `implement` | Asana task in `In progress`, linked PR | Codex | draft PR |
 | `plan` | Asana task in `Current sprint`, no PR, repo from `repo_map` | Claude | report |
 | `implement` | assigned GitHub issue, no PR | Claude | draft PR |
 

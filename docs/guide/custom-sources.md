@@ -22,10 +22,10 @@ sources:
     link: "Refs {key}"                  # optional: the line that links a PR, see below
 
 queue:
-  - skill: qa-feedback
+  - skill: fix
     source: board
     where: { column: QA }
-  - skill: continue
+  - skill: implement
     source: board
     where: { column: In progress }
 ```

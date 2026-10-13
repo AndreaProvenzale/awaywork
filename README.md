@@ -24,8 +24,8 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 $ awaywork plan
 Queue
-  #1  fix-ci     type=pr mine=true checks=failing
-  #2  review     type=pr review_requested=true trusted=true
+  #1  fix     type=pr mine=true checks=failing
+  #2  review  type=pr review_requested=true trusted=true
 
 Providers
   provider  window     used  ceiling  set by   resets in  session / stop at
@@ -34,7 +34,7 @@ Providers
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  away/acme-api-1
+  1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
   2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
@@ -61,7 +61,7 @@ Next morning:
 $ awaywork report
 | # | Unit       | Skill  | Provider | Status        | Result                                  |
 |---|------------|--------|----------|---------------|-----------------------------------------|
-| 1 | acme-api-1 | fix-ci | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
+| 1 | acme-api-1 | fix    | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
 | 2 | acme-api-2 | review | claude   | done          | report below                            |
 
 - claude: seven_day 36% to 45%, ceiling 51%; session 10% to 10%, stop at 90%
@@ -77,12 +77,12 @@ defaults:
 
 | When | Skill | You get |
 |---|---|---|
-| your PR has red checks | `fix-ci` | draft PR |
-| a task lands in `QA` | `qa-feedback` | draft PR |
-| your PR has unresolved threads | `address-review` | draft PR |
-| you left threads on an awaywork PR | `address-review` | draft PR on it |
+| your PR has red checks | `fix` | draft PR |
+| a task lands in `QA` | `fix` | draft PR |
+| your PR has unresolved threads | `fix` | draft PR |
+| you left threads on an awaywork PR | `fix` | draft PR on it |
 | someone requested your review | `review` | report |
-| a task is `In progress` | `continue` | draft PR |
+| a task is `In progress` | `implement` | draft PR |
 | a task is in `Current sprint` | `plan` | report |
 
 Adding a rule takes a few lines of YAML:
@@ -98,7 +98,7 @@ The label isn't enough on its own: awaywork reads only the issues
 assigned to you, so assign yourself too.
 
 `awaywork queue` reorders rules from the keyboard. Skills are plain
-markdown: `awaywork skills eject fix-ci` and hack away.
+markdown: `awaywork skills eject fix` and hack away.
 
 ## How much quota it burns
 

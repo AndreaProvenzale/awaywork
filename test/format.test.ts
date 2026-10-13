@@ -27,7 +27,7 @@ describe('describeRule', () => {
 providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
 queue:
-  - skill: fix-ci
+  - skill: fix
     where: { type: pr, any: [{ checks: failing, label: urgent }, { any: [{ mine: true }] }], draft: false }
 `)
     expect(describeRule(cfg.queue?.[0] as Rule)).toBe(
@@ -50,7 +50,7 @@ describe('formatPlan', () => {
 providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
 queue:
-  - skill: fix-ci
+  - skill: fix
     where: { checks: failing }
     when: { runs_until_reset: 1 }
 `)

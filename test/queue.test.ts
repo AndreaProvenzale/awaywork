@@ -6,7 +6,7 @@ import type { Order, Rule } from '../src/core/types.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
 const rule = (where: Rule['where'], source?: string): Rule => ({
-  skill: 'fix-ci',
+  skill: 'fix',
   source,
   where,
   provider: [],

@@ -17,7 +17,7 @@ repos:
     instructions: notes/acme-api.md
 instructions: [notes/me.md]     # every unit
 queue:                          # first matching rule wins; top = highest priority
-  - skill: fix-ci
+  - skill: fix
     where: { type: pr, mine: true, checks: failing }
   - skill: implement
     source: github

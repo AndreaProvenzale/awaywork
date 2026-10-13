@@ -21,15 +21,15 @@ it('returns why a failing command failed, with its output, instead of throwing',
 it('runs the after_unit command with the unit, status and PR in its env, and none of what is absent', async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
   const command = `echo "$AWAYWORK_UNIT $AWAYWORK_SKILL $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" > '${out}'`
-  const unit = { runId: '1', id: 'a-1', skill: 'fix-ci', status: 'done' }
+  const unit = { runId: '1', id: 'a-1', skill: 'fix', status: 'done' }
   expect(await afterUnit(command, { ...unit, pr: 'https://x/pull/2' })).toBeUndefined()
-  expect(await readFile(out, 'utf8')).toBe('a-1 fix-ci done https://x/pull/2|\n')
+  expect(await readFile(out, 'utf8')).toBe('a-1 fix done https://x/pull/2|\n')
 })
 
 it.each(['sleep 30', 'sleep 30; true'])(
   'stops a running after_unit command and what it started on abort: %s',
   async (command) => {
-    const unit = { runId: '1', id: 'a-1', skill: 'fix-ci', status: 'done' }
+    const unit = { runId: '1', id: 'a-1', skill: 'fix', status: 'done' }
     const started = Date.now()
     expect(await afterUnit(command, unit, AbortSignal.timeout(100))).toMatch(/canceled/)
     expect(Date.now() - started).toBeLessThan(5000)
