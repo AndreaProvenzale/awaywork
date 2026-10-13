@@ -38,7 +38,7 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
-export interface WorkspaceInput {
+interface WorkspaceInput {
   unit: Unit
   /** The clone; it must not exist yet. */
   dir: string

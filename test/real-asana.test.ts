@@ -53,7 +53,7 @@ describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
   const comment = `e2e comment ${run}`
   const value = `e2e value ${run}`
   const due = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10)
-  const cfg = { workspace, projects: [project], project_repos: { [project]: repo } }
+  const cfg = { workspace, projects: [project], repo_map: { [project]: repo } }
   let me: Named & { workspaces: Named[] }
   let projectName = ''
   let section = { gid: '', name: '' }

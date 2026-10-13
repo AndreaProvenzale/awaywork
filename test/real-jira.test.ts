@@ -21,7 +21,7 @@ const cfg = {
   email: JIRA_EMAIL,
   ...(JIRA_CLOUD_ID && { cloud_id: JIRA_CLOUD_ID }),
   jql: `project = ${project}`,
-  project_repos: { [project]: repo },
+  repo_map: { [project]: repo },
   token_env: 'JIRA_API_TOKEN',
 }
 
@@ -183,7 +183,7 @@ describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
         site: JIRA_SITE,
         email: JIRA_EMAIL,
         ...(JIRA_CLOUD_ID && { cloud_id: JIRA_CLOUD_ID }),
-        project_repos: { [project]: repo },
+        repo_map: { [project]: repo },
       })
       expect(setup?.values?.project).toContain(project)
       expect(setup?.values?.status).toContain(status)

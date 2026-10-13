@@ -173,7 +173,7 @@ YouTrack, Shortcut, Plane.
   whose `status.statusCategory.key` is not `done` [I, tested by
   `real-jira.test.ts`]. A site that renamed the `Blocks` link type is
   not seen.
-- **Repo for an issue.** `project_repos` maps a project key to `owner/repo`.
+- **Repo for an issue.** `repo_map` maps a project key to `owner/repo`.
 
 ### Asana
 - PAT has the user's full access; read scopes exist for OAuth apps only
@@ -218,7 +218,7 @@ YouTrack, Shortcut, Plane.
   tasks through the forge instead: my PRs whose branch or title carries
   the task key, or whose body holds the task URL.
 - **Repo for a task.** Asana has no notion of a repo, so a task with no
-  linked PR takes its repo from `project_repos` (project gid to
+  linked PR takes its repo from `repo_map` (project gid to
   `owner/repo`) in the source config.
 
 ### Trello
@@ -246,7 +246,7 @@ YouTrack, Shortcut, Plane.
   relations are read: at 50, the issues query would pass the
   10,000-point complexity limit [V]
   https://linear.app/developers/rate-limiting.
-- **Repo for an issue.** `team_repos` maps a team key to `owner/repo`.
+- **Repo for an issue.** `repo_map` maps a team key to `owner/repo`.
 
 ### GitHub
 - `@me` works in GraphQL `search` queries (`author:`, `assignee:`,

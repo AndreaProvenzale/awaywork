@@ -153,7 +153,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 export const codex = codexProvider()
 
 /** A permission profile that reads anywhere, writes the clone (its .git too) and tmp, with no network or web search. */
-export function offline(dir: string): string[] {
+function offline(dir: string): string[] {
   const writable = [dir, join(dir, '.git')].map((path) => `${JSON.stringify(path)}="write"`)
   const filesystem = `{":root"="read",":tmpdir"="write",${writable.join(',')}}`
   return [

@@ -49,7 +49,7 @@ sources:
   asana:
     workspace: "123"
     token_env: ASANA_TOKEN
-    project_repos: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+    repo_map: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
 branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
@@ -138,9 +138,9 @@ including someone else's PR:
 | Source | Keys |
 |---|---|
 | `github` | `repos`: `owner/name` globs such as `acme/*` |
-| `asana` | `workspace` gid, optional `projects` (gids), `project_repos` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
-| `linear` | optional `team_repos` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
-| `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `project_repos` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
+| `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
+| `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
+| `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
 
 Every source but `github` also takes a [`link`](#linking-prs).

@@ -6,7 +6,7 @@ import { taskMarkdown } from './asana.js'
 
 const config = z
   .strictObject({
-    team_repos: z
+    repo_map: z
       .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
       .optional()
       .describe("Team key -> owner/repo where its issues' code lives"),
@@ -147,7 +147,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
           token,
           (d: { issue: { comments: Connection<Comment> } }) => d.issue.comments,
         )
-        items.push(toItem(issue, comments, cfg.team_repos))
+        items.push(toItem(issue, comments, cfg.repo_map))
       }
       return items
     },
@@ -178,7 +178,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
         if (repo.trim()) repos[key] = repo.trim()
       }
       return {
-        config: Object.keys(repos).length > 0 ? { team_repos: repos } : {},
+        config: Object.keys(repos).length > 0 ? { repo_map: repos } : {},
         values: {
           team: teams.map((t) => t.key),
           state: [...new Set(teams.flatMap((t) => t.states.nodes.map((s) => s.name)))],
@@ -196,9 +196,9 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
   return token
 }
 
-function toItem(issue: Issue, comments: Comment[], teamRepos: Config['team_repos'] = {}): Item {
+function toItem(issue: Issue, comments: Comment[], repoMap: Config['repo_map'] = {}): Item {
   const labels = issue.labels.nodes.map((l) => l.name)
-  const repo = teamRepos[issue.team.key]
+  const repo = repoMap[issue.team.key]
   return {
     source: 'linear',
     id: issue.id,

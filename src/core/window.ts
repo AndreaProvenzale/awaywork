@@ -2,11 +2,11 @@ import type { Config } from '../config/schema.js'
 
 export type Window = Config['windows'][number]
 
-export const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
 
 const DAY = 24 * 60 * 60 * 1000
 
-export const clock = (time: string) => time.split(':').map(Number) as [number, number]
+const clock = (time: string) => time.split(':').map(Number) as [number, number]
 
 /** Where a window opens (local time) as a scheduler trigger, same-time windows merged as launchd reads them back: weekdays are 0 (Sunday) to 6. */
 export function startsOf(windows: Window[]): { hour: number; minute: number; days?: number[] }[] {

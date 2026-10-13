@@ -93,7 +93,7 @@ describe('jira source', () => {
   })
 
   it("states the repo mapped to an issue's project", async () => {
-    const found = await source.items({ ...cfg, project_repos: { ENG: 'acme/api' } }, ctx)
+    const found = await source.items({ ...cfg, repo_map: { ENG: 'acme/api' } }, ctx)
     expect(found.map((i) => i.fields.repo)).toEqual(['acme/api', undefined])
   })
 
@@ -247,7 +247,7 @@ describe('jira source', () => {
     expect(setup?.config).toEqual({
       site: 'acme.atlassian.net',
       email: 'dev@acme.test',
-      project_repos: { ENG: 'acme/api' },
+      repo_map: { ENG: 'acme/api' },
     })
     expect(http.calls.map((c) => c.url.split('?')[0])).toEqual([
       'https://acme.atlassian.net/rest/api/3/project/search',
@@ -285,9 +285,9 @@ describe('jira source', () => {
 
   it('takes a site host and projects mapped to owner/repo', () => {
     const configured = (site: string, repo: string) =>
-      `providers: [claude]\nsources: { jira: { site: ${site}, email: a@b.c, project_repos: { ENG: ${repo} } } }`
+      `providers: [claude]\nsources: { jira: { site: ${site}, email: a@b.c, repo_map: { ENG: ${repo} } } }`
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/api'))).not.toThrow()
-    expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('project_repos')
+    expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('https://acme.atlassian.net', 'acme/api'))).toThrow('site')
   })
 })

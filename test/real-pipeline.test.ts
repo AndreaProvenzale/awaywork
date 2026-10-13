@@ -125,7 +125,7 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
       providers: ['claude'],
       sources: {
         github: { repos: [repo] },
-        asana: { workspace, projects: [project], project_repos: { [project]: repo } },
+        asana: { workspace, projects: [project], repo_map: { [project]: repo } },
       },
       queue: [
         { skill: 'implement', source: 'github', where: { type: 'issue', label } },

@@ -4,7 +4,7 @@ import { killGroupWhenDone } from '../core/group.js'
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
 
-export interface SetupOptions {
+interface SetupOptions {
   /** Names in the env whose values are masked in the output. */
   secrets: string[]
   signal?: AbortSignal

@@ -28,7 +28,7 @@ export interface ReplayState {
   previous?: { skill: string; outcome?: Outcome }
 }
 
-export interface ReplayInput {
+interface ReplayInput {
   config: Config
   configDir: string
   /** The past run's directory. */
@@ -44,7 +44,7 @@ export interface ReplayInput {
   skillDirs?: { user: string; builtin: string }
 }
 
-export interface ReplayResult extends WorkerResult {
+interface ReplayResult extends WorkerResult {
   /** The clone, on the unit's branch, with whatever the worker committed. */
   dir: string
   /** Where the worker's `out/` was copied. */

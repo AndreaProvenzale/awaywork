@@ -84,7 +84,7 @@ describe('asana source', () => {
 
   it("states the repo mapped to a task's first mapped project", async () => {
     const found = await source.items(
-      { ...cfg, project_repos: { '13': 'acme/web', '11': 'acme/api' } },
+      { ...cfg, repo_map: { '13': 'acme/web', '11': 'acme/api' } },
       ctx,
     )
     expect(found.map((i) => i.fields.repo)).toEqual(['acme/api', undefined, 'acme/api'])
@@ -147,9 +147,9 @@ describe('asana config and linking', () => {
 
   it('maps projects to repos written as owner/repo', () => {
     const mapped = (repo: string) =>
-      `providers: [claude]\nsources: { asana: { workspace: "100", project_repos: { "11": ${repo} } } }`
+      `providers: [claude]\nsources: { asana: { workspace: "100", repo_map: { "11": ${repo} } } }`
     expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
-    expect(() => parseConfig(mapped('api'))).toThrow('project_repos')
+    expect(() => parseConfig(mapped('api'))).toThrow('repo_map')
     expect(() => parseConfig(yaml('{ repo: acme/api }'))).not.toThrow()
   })
 

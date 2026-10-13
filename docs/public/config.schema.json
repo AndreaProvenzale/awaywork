@@ -318,7 +318,7 @@
                 "type": "string"
               }
             },
-            "project_repos": {
+            "repo_map": {
               "description": "Project gid -> owner/repo where its tasks' code lives",
               "type": "object",
               "propertyNames": {
@@ -348,7 +348,7 @@
         "linear": {
           "type": "object",
           "properties": {
-            "team_repos": {
+            "repo_map": {
               "description": "Team key -> owner/repo where its issues' code lives",
               "type": "object",
               "propertyNames": {
@@ -392,7 +392,7 @@
               "description": "JQL condition ANDed with my unresolved issues",
               "type": "string"
             },
-            "project_repos": {
+            "repo_map": {
               "description": "Project key -> owner/repo where its issues' code lives",
               "type": "object",
               "propertyNames": {

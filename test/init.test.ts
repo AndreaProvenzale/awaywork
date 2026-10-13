@@ -117,7 +117,7 @@ describe('init', () => {
       asana: {
         workspace: '100',
         projects: ['300'],
-        project_repos: { '300': 'acme/api' },
+        repo_map: { '300': 'acme/api' },
         token_env: 'ASANA_TOKEN',
       },
     })
@@ -145,7 +145,7 @@ describe('init', () => {
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry(env) })
     const cfg = parseConfig(text)
     expect(cfg.sources).toEqual({
-      linear: { team_repos: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
+      linear: { repo_map: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
       ['qa-feedback', { state: 'QA' }],
@@ -179,7 +179,7 @@ describe('init', () => {
         site: 'acme.atlassian.net',
         email: 'dev@acme.test',
         cloud_id: '0a1b2c3d-0000-4000-8000-000000000001',
-        project_repos: { ENG: 'acme/api' },
+        repo_map: { ENG: 'acme/api' },
         token_env: 'JIRA_API_TOKEN',
       },
     })

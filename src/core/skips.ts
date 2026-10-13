@@ -8,7 +8,7 @@ export interface Skip {
 }
 
 /** Per item, by `source:key`. */
-export type Skips = Record<string, Skip>
+type Skips = Record<string, Skip>
 
 export async function loadSkips(path: string): Promise<Skips> {
   const text = await readFile(path, 'utf8').catch(() => '{}')

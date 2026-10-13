@@ -8,7 +8,7 @@ const config = z
   .strictObject({
     workspace: z.string().describe('Workspace gid'),
     projects: z.array(z.string()).optional().describe('Only tasks in these project gids'),
-    project_repos: z
+    repo_map: z
       .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
       .optional()
       .describe("Project gid -> owner/repo where its tasks' code lives"),
@@ -149,7 +149,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           ctx.log(`asana: couldn't read the dependencies of ${task.gid}: ${e.message}`)
           return undefined
         })
-        items.push(toItem(task, stories, dependencies, cfg.project_repos))
+        items.push(toItem(task, stories, dependencies, cfg.repo_map))
       }
       return items
     },
@@ -214,7 +214,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
         config: {
           workspace,
           ...(picked.length > 0 && { projects: picked }),
-          ...(Object.keys(repos).length > 0 && { project_repos: repos }),
+          ...(Object.keys(repos).length > 0 && { repo_map: repos }),
         },
         values: { section: [...new Set(sections.flat().map((s) => s.name))] },
       }
@@ -234,7 +234,7 @@ function toItem(
   task: Task,
   stories: Story[],
   dependencies: { completed: boolean }[] | undefined,
-  projectRepos: Config['project_repos'] = {},
+  repoMap: Config['repo_map'] = {},
 ): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
   const tags = task.tags.map((t) => t.name)
@@ -243,7 +243,7 @@ function toItem(
     const value = fieldValue(f)
     return value === undefined ? [] : [[`fields.${f.name}`, value] as const]
   })
-  const repo = task.memberships.map((m) => projectRepos[m.project.gid]).find(Boolean)
+  const repo = task.memberships.map((m) => repoMap[m.project.gid]).find(Boolean)
   const customId = customFields.find((f) => f.representation_type === 'custom_id')
   return {
     source: 'asana',
