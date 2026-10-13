@@ -62,7 +62,7 @@ describe('linear source', () => {
   })
 
   it("states the repo mapped to an issue's team", async () => {
-    const found = await source.items({ ...cfg, team_repos: { ENG: 'acme/api' } }, ctx)
+    const found = await source.items({ ...cfg, repo_map: { ENG: 'acme/api' } }, ctx)
     expect(found.map((i) => i.fields.repo)).toEqual(['acme/api', undefined])
   })
 
@@ -89,8 +89,8 @@ describe('linear source', () => {
 
   it('maps teams to repos written as owner/repo', () => {
     const mapped = (repo: string) =>
-      `providers: [claude]\nsources: { linear: { team_repos: { ENG: ${repo} } } }`
+      `providers: [claude]\nsources: { linear: { repo_map: { ENG: ${repo} } } }`
     expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
-    expect(() => parseConfig(mapped('api'))).toThrow('team_repos')
+    expect(() => parseConfig(mapped('api'))).toThrow('repo_map')
   })
 })

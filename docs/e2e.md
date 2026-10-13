@@ -43,9 +43,9 @@ env is set; run one with `pnpm vitest run test/real-<id>.test.ts`.
 | Source | Live test | Env |
 |---|---|---|
 | GitHub | Seeds an assigned, labelled issue with a comment, and a PR closing it with a file, a failing Actions job and a review thread of mine; checks fields, `linkedPrs`, every prefetched file, the job's log in `checks.md` and `init`. With a second account, a PR of theirs requesting my review: `review_requested`, `author`, `trusted`, `reviewers` | `AWAYWORK_GITHUB_SANDBOX` (`owner/name`), `gh` as its owner, or an admin of an org repo that allows deleting issues, with the `workflow` scope and Actions on; `AWAYWORK_GITHUB_REVIEWER_TOKEN`, optional, a token of another account with write access |
-| Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `project_repos`, `task.md` and `init` | `ASANA_TOKEN`, `AWAYWORK_ASANA_WORKSPACE`, `AWAYWORK_ASANA_PROJECT` (a project gid there) |
-| Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `team_repos`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `AWAYWORK_LINEAR_TEAM`: the key of a team its user belongs to |
-| Jira | Seeds two issues assigned to me in a test project, one labelled, with a priority and a comment, blocking the other; checks fields, `project_repos`, `blocked`, `issue.md` and `init` offering the real project and status | `JIRA_API_TOKEN`, `JIRA_SITE` (host), `JIRA_EMAIL`, `AWAYWORK_JIRA_PROJECT` (a key whose project has a `Task` type); `JIRA_CLOUD_ID` for a scoped token |
+| Asana | Seeds two tasks of mine in a new section of a test project, tagged and due, one commented and blocked by the other; checks fields, `repo_map`, `task.md` and `init` | `ASANA_TOKEN`, `AWAYWORK_ASANA_WORKSPACE`, `AWAYWORK_ASANA_PROJECT` (a project gid there) |
+| Linear | Seeds two issues assigned to me in a started state, one labelled, prioritized and commented, blocking the other; checks fields, `repo_map`, the prefetched `issue.md` and `init` | `LINEAR_API_KEY` with Read and Write (or full access), `AWAYWORK_LINEAR_TEAM`: the key of a team its user belongs to |
+| Jira | Seeds two issues assigned to me in a test project, one labelled, with a priority and a comment, blocking the other; checks fields, `repo_map`, `blocked`, `issue.md` and `init` offering the real project and status | `JIRA_API_TOKEN`, `JIRA_SITE` (host), `JIRA_EMAIL`, `AWAYWORK_JIRA_PROJECT` (a key whose project has a `Task` type); `JIRA_CLOUD_ID` for a scoped token |
 | Command | None needed: local and deterministic, the contract test runs `test/fixtures/command/items.mjs` | |
 
 The GitHub test polls `items` until search indexes the seeded items and
@@ -115,7 +115,7 @@ and leaves one closed PR.
   small TypeScript project with a CI job that can be turned red, a PR
   template and agent instructions.
 - An Asana project with sections `QA`, `In progress`, `Current sprint`,
-  mapped to the sandbox in `project_repos`, and a token made only for
+  mapped to the sandbox in `repo_map`, and a token made only for
   these tests.
 - A dedicated config passed with `--config`.
 
@@ -140,7 +140,7 @@ Set up the item, read `plan`, then `run --unit <id>`.
 | `review` | PR with my review requested by a second account | Codex | report |
 | `qa-feedback` | Asana task in `QA`, linked PR | Claude | draft PR |
 | `continue` | Asana task in `In progress`, linked PR | Codex | draft PR |
-| `plan` | Asana task in `Current sprint`, no PR, repo from `project_repos` | Claude | report |
+| `plan` | Asana task in `Current sprint`, no PR, repo from `repo_map` | Claude | report |
 | `implement` | assigned GitHub issue, no PR | Claude | draft PR |
 
 For each unit, check:

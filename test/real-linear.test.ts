@@ -129,7 +129,7 @@ describe.skipIf(!token || !team)('linear source, live', () => {
 
   it('reads the seeded issues with their fields and comments', async () => {
     const items = await linear.items(
-      { team_repos: { [team]: repo }, token_env: 'LINEAR_API_KEY' },
+      { repo_map: { [team]: repo }, token_env: 'LINEAR_API_KEY' },
       ctx,
     )
     for (const item of items)
@@ -179,7 +179,7 @@ describe.skipIf(!token || !team)('linear source, live', () => {
       [/GitHub repo for issues in/, repo],
     ])
     const setup = await linear.init?.(ask, ctx)
-    expect(setup?.config).toEqual({ team_repos: { [team]: repo } })
+    expect(setup?.config).toEqual({ repo_map: { [team]: repo } })
     expect(setup?.values?.team).toContain(team)
     expect(setup?.values?.state).toContain(state)
   }, 30_000)

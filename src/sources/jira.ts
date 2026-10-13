@@ -17,7 +17,7 @@ const config = z
       .optional()
       .describe('Site cloud id: set for a scoped token, which calls api.atlassian.com'),
     jql: z.string().optional().describe('JQL condition ANDed with my unresolved issues'),
-    project_repos: z
+    repo_map: z
       .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
       .optional()
       .describe("Project key -> owner/repo where its issues' code lives"),
@@ -232,7 +232,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
           site,
           email,
           ...(cfg.cloud_id && { cloud_id: cfg.cloud_id }),
-          ...(Object.keys(repos).length > 0 && { project_repos: repos }),
+          ...(Object.keys(repos).length > 0 && { repo_map: repos }),
         },
         values: {
           project: projects.map((p) => p.key),
@@ -253,7 +253,7 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
 
 function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, cfg: Config): Item {
   const f = issue.fields
-  const repo = cfg.project_repos?.[f.project.key]
+  const repo = cfg.repo_map?.[f.project.key]
   const custom = [...names].flatMap(([id, name]) => {
     const value = fieldValue(f[id])
     return value === undefined ? [] : [[`fields.${name}`, value] as const]

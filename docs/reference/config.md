@@ -157,7 +157,7 @@ My incomplete Asana tasks.
 |---|---|---|---|
 | `workspace` (required) | string |  | Workspace gid |
 | `projects` | string[] |  | Only tasks in these project gids |
-| `project_repos` | map |  | Project gid -> owner/repo where its tasks' code lives |
+| `repo_map` | map |  | Project gid -> owner/repo where its tasks' code lives |
 | `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
 
@@ -167,7 +167,7 @@ My open Linear issues.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `team_repos` | map |  | Team key -> owner/repo where its issues' code lives |
+| `repo_map` | map |  | Team key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
 
@@ -181,7 +181,7 @@ My unresolved Jira Cloud issues.
 | `email` (required) | string |  | Atlassian account email the API token belongs to |
 | `cloud_id` | string |  | Site cloud id: set for a scoped token, which calls api.atlassian.com |
 | `jql` | string |  | JQL condition ANDed with my unresolved issues |
-| `project_repos` | map |  | Project key -> owner/repo where its issues' code lives |
+| `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 
