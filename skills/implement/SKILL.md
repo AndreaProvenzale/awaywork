@@ -15,10 +15,10 @@ request. When a plan from earlier in this run is in
   cut from it. Read the PR description and diff first, work out what is
   done and what is left, and do only the unambiguous next steps, in the
   style of the existing commits. Never undo or rewrite what the
-  developer did.
-- When the item is ambiguous, implement the most likely reading and say
-  so. When it is too ambiguous to implement, write the questions instead
-  of guessing.
+  developer did. Leave anything that needs a decision for them.
+- When an item without a PR is ambiguous, implement the most likely
+  reading and say so. When it is too ambiguous to implement, write the
+  questions instead of guessing.
 - Add or update tests for what you change.
 
 In the PR body: the item linked, what you implemented, the reading you
