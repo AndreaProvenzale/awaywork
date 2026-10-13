@@ -2,7 +2,7 @@
 description: What unit and burn tests have not run for real yet, and the end-to-end pass before the first release.
 ---
 
-# End-to-end pass before v1
+# End-to-end pass before the first release
 
 What the unit tests and burn tests have not yet run for real, and the
 pass that runs it before the first release. Results go to
@@ -184,7 +184,7 @@ For each unit, check:
 
 ### 6. A whole run
 
-One `awaywork run --scheduled` with both providers and both sources.
+One `awaywork run --scheduled` with both providers, GitHub and Asana.
 Record it in [Real runs](./providers.md#real-runs) like the earlier
 burn tests, and retag the [C]/[I] claims it settles in `providers.md`
 and `sources.md`.

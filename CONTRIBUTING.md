@@ -18,7 +18,8 @@ the guides, [How it works](docs/guide/how-it-works.md) and
 | `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |
 
 The `Provider` and `Source` contracts are spelled out in
-[docs/extend/](docs/extend/providers.md): a change to them updates those
+[docs/extend/providers.md](docs/extend/providers.md) and
+[sources.md](docs/extend/sources.md): a change to them updates those
 pages in the same PR.
 
 ## Setup

@@ -112,6 +112,8 @@ isolation is [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
 
 ## MCP servers
 
+Experimental: only run in tests so far, see [Configuration](./configuration.md#mcp-servers).
+
 A rule's `mcp` gives its units your servers, and with them more reach,
 so the guide's advice is in three parts:
 
@@ -142,6 +144,9 @@ governs the agent's commands; a server reaches whatever it is built to
 reach.
 
 ## Network
+
+`network: false` is experimental: only run in tests so far, see
+[Configuration](./configuration.md#repos-and-instructions).
 
 The network is on by default. With `network: false` on a repo or a
 rule, each agent's own OS sandbox runs its commands without it. That
@@ -194,7 +199,8 @@ danger-full-access`, which it needs to commit. What that reaches is in
   a PR of yours, and on any branch awaywork opened in that run. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
   A `then` step on that branch in the same run runs `setup` without the
-  repo's `secrets`.
+  repo's `secrets`. Experimental: only run in tests so far, see
+  [Configuration](./configuration.md#push).
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
   not to force: the remote takes the new head only while the branch is
   still absent, or still at the commit the clone started from, and

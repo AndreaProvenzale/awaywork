@@ -191,7 +191,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
 - Free-plan cost: one trivial `exec` (two shell calls, one edit) moved the
   month 0% → 2%; a small `implement` unit (a typo, a commit, the PR body)
   4% → 9%; ten tool calls of a `review` that read a 1,000-line diff
-  9% → 20%. So the paced ceiling (~3% a night on a 30-day window) is
+  9% → 20%. So the paced ceiling (~3% a run on a 30-day window) is
   below one unit. [V, tested]
 - The access token lasts 10 days (`exp - iat` of the JWT) and `auth.json`
   says when it was last refreshed. [V, tested]
@@ -347,6 +347,8 @@ GitHub Actions running headless Claude Code on one team's leftovers.
   cached input, $1.76 list) moved the session window 9% → 13% and the
   weekly window 35% → 36% while the developer's machine was idle. The
   result's `costBasis: list` says nothing about billing. [V, prototype]
+- A real fix unit (one PR, 18 bot threads, 7 commits, 49 tool calls,
+  ~8 min on Opus) moved the session window 7% → 9%. [V, prototype]
 - Reading quota: [V, prototype]
 
   | Where | `claude -p /usage` | `api.anthropic.com/api/oauth/usage` | `rate_limit_event` |
@@ -400,6 +402,7 @@ harness forbids whole-repo checks, builds and background commands.
   free + inactive + speculative (45 GB against 44 GB), where
   `os.freemem()` counted free pages only (24 GB). [V, tested] On Linux
   libuv reads `MemAvailable`, capped by the cgroup limit. [C]
+- Disk is `statfs` on the clone's filesystem. [V]
 
 ### awaywork's burn tests
 
