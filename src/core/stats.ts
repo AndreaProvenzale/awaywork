@@ -8,7 +8,7 @@ export interface UnitStat {
   skill: string
   provider?: string
   status: 'done' | 'failed' | 'stopped'
-  /** Share of the long window used after the first reading; unknown when it reset in between or was read once. */
+  /** Share of the long window used since before the unit; unknown when it reset in between or the worker read no quota. */
   used?: number
   pr: boolean
 }
@@ -30,11 +30,9 @@ export function unitStats(results: UnitResult[]): UnitStat[] {
     const { unit } = u.planned
     const status =
       u.status === 'done' ? 'done' : u.status.startsWith('stopped') ? 'stopped' : 'failed'
-    const first = u.firstQuota?.windows.find((w) => w.span === 'long')
-    const last = u.quota?.windows.find((w) => w.name === first?.name)
-    // A single reading (Codex reads once, after the run) measures nothing.
-    const twoReadings = u.firstQuota !== u.quota
-    const sameWindow = twoReadings && first && last && first.resetsAt === last.resetsAt
+    const { baseline } = u
+    const last = u.quota?.windows.find((w) => w.name === baseline?.name)
+    const sameWindow = baseline && last && baseline.resetsAt === last.resetsAt
     return [
       {
         id: unit.id,
@@ -42,7 +40,7 @@ export function unitStats(results: UnitResult[]): UnitStat[] {
         skill: unit.skill,
         provider: u.provider,
         status,
-        used: sameWindow ? Math.max(0, last.used - first.used) : undefined,
+        used: sameWindow ? Math.max(0, last.used - baseline.used) : undefined,
         pr: u.outcome?.kind === 'pr',
       },
     ]

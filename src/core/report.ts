@@ -10,8 +10,8 @@ export interface UnitResult {
   status: WorkerStatus | 'prepared' | 'skipped' | 'error'
   reason?: string
   turns?: number
-  /** The worker's first and last quota reading, to tell what the unit used. */
-  firstQuota?: Quota
+  /** The long window before the unit and the worker's last quota reading, to tell what the unit used. */
+  baseline?: { name: string; used: number; resetsAt: number }
   quota?: Quota
   outcome?: Outcome
   /** The one word the unit wrote to `out/verdict`. */
