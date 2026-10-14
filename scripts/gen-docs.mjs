@@ -127,7 +127,7 @@ with:
 \`\`\`
 
 \`<key>\` stands for a map key you choose, \`[]\` for a list entry.
-\`awaywork config check\` validates what the schema cannot, such as
+\`awaywork doctor\` validates what the schema cannot, such as
 \`where\` keys and skill names.
 
 ${unique.join('\n\n')}

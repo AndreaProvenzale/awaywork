@@ -28,7 +28,7 @@ From [Real runs](./providers.md#real-runs):
 | Claude ceiling | Never stopped mid-run: no real Claude unit reached its ceiling. |
 | Scheduling | `schedule install` never fired a run; the `github-actions` workflow never ran on a runner (`timezone` is [C]). |
 | Codex remote | Not on GitHub-hosted runners; a self-hosted runner is untested. |
-| Setup UX | `init`, `queue` and `config edit` never ran against real accounts. |
+| Setup UX | `init`, `plan --rules` and `config edit` never ran against real accounts. |
 | Packaging | Never installed from a packed tarball; `harness.md` and `skills/` resolve from the package root (`src/config/paths.ts`). |
 
 ## Live source tests
@@ -126,8 +126,8 @@ and leaves one closed PR.
 - `pnpm build && npm pack`, install the tarball globally, then
   `awaywork --help`, `skills list` and `doctor` from outside this repo.
 - `init` with real accounts (Claude and Codex, GitHub and Asana),
-  `config check`, `queue` (reorder, save, comments kept), and
-  `config edit` with a broken draft, which must be refused.
+  `doctor`, `plan --rules`, and `config edit` with a broken draft,
+  which must be refused.
 
 ### 2. One unit per skill and item
 

@@ -97,7 +97,7 @@ queue:
 The label isn't enough on its own: awaywork reads only the issues
 assigned to you, so assign yourself too.
 
-`awaywork queue` reorders rules from the keyboard. Skills are plain
+`awaywork plan --rules` shows what each rule takes right now. Skills are plain
 markdown: `awaywork skills eject fix` and hack away.
 
 ## How much quota it burns

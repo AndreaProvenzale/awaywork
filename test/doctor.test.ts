@@ -57,6 +57,24 @@ describe('doctor', () => {
     const own = await runChecks(join(configDir, 'config.yml'), () => {})
     expect(own.map((c) => c.what)).not.toContain(join(configDir, 'skills'))
   })
+
+  it('fails a config whose queue names an unknown skill, and keeps checking', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    const config = 'providers: [codex]\nsources: { github: { repos: [a/b] } }\n'
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    await writeFile(path, config)
+    expect(await runChecks(path, () => {})).toContainEqual({ status: 'ok', what: path, detail: '' })
+    await writeFile(path, `${config}queue: [{ skill: nope }]\n`)
+    const checks = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: path,
+      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')})`,
+    })
+    expect(checks.at(-1)?.what).toBe('github')
+  })
 })
 
 describe('doctor in a control repo', () => {

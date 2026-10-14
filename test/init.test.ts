@@ -50,7 +50,7 @@ describe('init', () => {
     const text = await initConfig({ ask, installed: ['claude'], ghLogin: true, ...registry() })
     expect(text).toMatchInlineSnapshot(`
       "# awaywork config: \`awaywork config edit\` validates on save,
-      # \`awaywork queue\` reorders the queue, \`awaywork plan\` previews the next run.
+      # \`awaywork plan\` previews the next run, \`awaywork plan --rules\` what each rule takes.
       windows: [{ start: "23:30", end: "07:00" }]
       budget:                         # every provider; override one with - <id>: { budget: … }
         reserve: 10%                  # never go past 1 - reserve of any window

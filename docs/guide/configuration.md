@@ -12,7 +12,7 @@ listed in the [reference](../reference/config.md).
 
 ```sh
 awaywork config edit    # opens $VISUAL/$EDITOR on a copy; saved only once valid
-awaywork config check   # validate, including skill names
+awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
 

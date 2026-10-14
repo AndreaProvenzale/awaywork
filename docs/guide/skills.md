@@ -54,8 +54,8 @@ Claude Code gets the unit's skills as a plugin outside the clone
 every unit, someone else's PR included. Codex gets them copied into the
 clone's `.agents/skills/`: a repo that already has a skill of that name
 there keeps it, except on someone else's PR, where awaywork's copy
-replaces it. `config check` sees user and built-in skills only; an
-in-repo skill resolves at run time.
+replaces it. `doctor` and `config edit` see user and built-in skills
+only; an in-repo skill resolves at run time.
 
 ## Tweak a built-in
 

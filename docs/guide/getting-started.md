@@ -62,8 +62,7 @@ assigned to you, so assign yourself too.
 Check it:
 
 ```sh
-awaywork config check
-awaywork doctor   # binaries, credentials, quota, sources
+awaywork doctor   # the config, binaries, credentials, quota, sources
 ```
 
 ## Preview the next run
@@ -96,9 +95,21 @@ Skipped
   github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
 ```
 
-`awaywork queue` shows the same rules with what each matches now and lets
-you reorder them with the keyboard; `awaywork queue move 3 1` moves
-rule #3 to the top without one.
+`awaywork plan --rules` shows the same rules with what each takes now,
+and skips the quota probe:
+
+```
+Queue
+  #1  fix     type=pr mine=true checks=failing
+       1 taken: acme/api#1
+  #2  review  type=pr review_requested=true trusted=true
+       1 taken: acme/api#2
+  1 unmatched: acme/api#3
+```
+
+An item goes to the first rule it matches, so a later rule that
+matches it too gets a line like `1 taken by #1: acme/api#1`. To
+reorder, move the rules in `awaywork config edit`.
 
 ## Run one unit
 
