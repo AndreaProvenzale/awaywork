@@ -162,7 +162,12 @@ const stepSettings = {
     .record(z.string(), model)
     .optional()
     .describe("Model per provider for this rule, e.g. { claude: sonnet }; default the provider's"),
-  skills: z.array(z.string()).default([]).describe('Extra skills available to the worker'),
+  skills: z
+    .array(z.string())
+    .default([])
+    .describe(
+      "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+    ),
   mcp: z
     .array(z.string())
     .min(1)
@@ -449,7 +454,12 @@ export const configSchema = z
       .default({})
       .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
-    skills: z.array(z.string()).default([]).describe('Extra skills available to every unit'),
+    skills: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills",
+      ),
     mcp: z
       .record(z.string(), mcpServer)
       .default({})

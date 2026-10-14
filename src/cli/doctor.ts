@@ -91,7 +91,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const unknown = await unknownSkills(config, skillsDirOf(path))
   if (unknown.length === 0) report('ok', path)
   else
-    report('warn', path, `${unknown.join('; ')}; fine for a skill the repo has in .awaywork/skills`)
+    report(
+      'warn',
+      path,
+      `${unknown.join('; ')}; fine for a skill the repo has in .awaywork/skills, or for an extra one in .claude/skills or .agents/skills`,
+    )
   for (const warning of await staleSchedules(path, config.windows))
     report('warn', 'schedule', warning)
   const root = await gitRoot()

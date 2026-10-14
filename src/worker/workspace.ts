@@ -28,6 +28,8 @@ export const outputFile: Record<Deliver, string> = {
   push: 'report.md',
 }
 
+/** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
+const repoSkillDirs = ['.claude/skills', '.agents/skills']
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 /** Credentials that aren't tokens: askpass helpers and git config set through the env. */
 const credentialPlumbing = [
@@ -101,8 +103,13 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     builtin: builtinSkillsDir,
   }
   const roots = foreign ? [user, builtin] : [user, join(dir, '.awaywork', 'skills'), builtin]
-  if (provider.skillsDir) await copySkills(w, provider.skillsDir, names, roots)
-  else await buildPlugin(w.plugin, names, roots)
+  // The repo's own skill folders only add extra skills: they never shadow a name awaywork resolves.
+  const extraRoots = foreign ? roots : [...roots, ...repoSkillDirs.map((d) => join(dir, d))]
+  const sources = new Map(
+    names.map((name) => [name, findSkill(name, name === unit.skill ? roots : extraRoots)]),
+  )
+  if (provider.skillsDir) await copySkills(w, provider.skillsDir, sources)
+  else await buildPlugin(w.plugin, sources)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
   if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
@@ -123,7 +130,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
-  const skillFile = join(findSkill(unit.skill, roots), 'SKILL.md')
+  const skillFile = join(sources.get(unit.skill) as string, 'SKILL.md')
   const skill = skillFile.startsWith(`${dir}${sep}`)
     ? await readOutput(skillFile)
     : await readFile(skillFile, 'utf8')
@@ -252,17 +259,17 @@ export function configSecrets(
 const copied = new Map<string, Set<string>>()
 
 /** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or awaywork copied it. */
-async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[], roots: string[]) {
+async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<string, string>) {
   const excluded: string[] = []
   const replaced: string[] = []
   if (!w.reuse) copied.delete(w.dir)
   const mine = copied.get(w.dir) ?? new Set<string>()
   copied.set(w.dir, mine)
-  for (const name of names) {
+  for (const [name, source] of sources) {
     const target = join(w.dir, skillsDir, name)
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
-      await cp(findSkill(name, roots), target, { recursive: true, dereference: true })
+      await cp(source, target, { recursive: true, dereference: true })
       w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
       if (w.unit.foreign) replaced.push(target)
       continue
@@ -276,7 +283,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
       await rm(target, { recursive: true })
       replaced.push(target)
     }
-    await cp(findSkill(name, roots), target, { recursive: true, dereference: true })
+    await cp(source, target, { recursive: true, dereference: true })
     mine.add(target)
     excluded.push(`/${skillsDir}/${name}/`)
   }
@@ -286,11 +293,11 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, names: string[],
 }
 
 /** A plugin named `awaywork` holding the skills, so they load as `awaywork:<name>`. */
-async function buildPlugin(plugin: string, names: string[], roots: string[]) {
+async function buildPlugin(plugin: string, sources: Map<string, string>) {
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
   await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
-  for (const name of names)
-    await cp(findSkill(name, roots), join(plugin, 'skills', name), {
+  for (const [name, source] of sources)
+    await cp(source, join(plugin, 'skills', name), {
       recursive: true,
       dereference: true,
     })

@@ -220,6 +220,82 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     }
   })
 
+  describe("with skills in the repo's .claude/skills and .agents/skills", () => {
+    const prepare = async (provider: Provider, foreign = false) => {
+      const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
+      const dir = join(root, 'clone')
+      const plugin = join(root, 'plugin')
+      const prompt = await prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign,
+          network: true,
+          untrusted: false,
+          branch: 'away/acme-api-1',
+          rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
+          skill: 'fix',
+          skills: ['tdd', 'standard'],
+          providers: [provider.id],
+          instructions: [],
+          deliver: 'draft_pr',
+        },
+        dir,
+        plugin,
+        config: parseConfig(
+          `providers: [${provider.id}: {}]\nsources: { github: { repos: [acme/*] } }`,
+        ),
+        configDir: root,
+        forge: {
+          ...fakeForge(),
+          async clone(_repo: string, _branch: string, into: string) {
+            await execa(bin('git'), ['init', '-q', '-b', 'main', into])
+            for (const [path, text] of Object.entries({
+              '.claude/skills/fix': 'REPO FIX',
+              '.claude/skills/tdd': 'REPO TDD',
+              '.agents/skills/standard': 'REPO STANDARD',
+            })) {
+              await mkdir(join(into, path), { recursive: true })
+              await writeFile(join(into, path, 'SKILL.md'), text)
+            }
+            await git(into, 'add', '.')
+            await git(into, 'commit', '-qm', 'init')
+          },
+        },
+        sources: { fake: fakeSource() as Source },
+        provider,
+        ctx: { env: {}, log: () => {} },
+        skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
+      })
+      return { dir, plugin, prompt }
+    }
+
+    it('takes extra skills from them, never the main skill', async () => {
+      const { plugin, prompt } = await prepare(claude)
+      expect(prompt).not.toContain('REPO FIX')
+      expect(await readFile(join(plugin, 'skills/fix/SKILL.md'), 'utf8')).toBe(
+        await readFile(join(builtinSkillsDir, 'fix/SKILL.md'), 'utf8'),
+      )
+      expect(await readFile(join(plugin, 'skills/tdd/SKILL.md'), 'utf8')).toBe('REPO TDD')
+      expect(await readFile(join(plugin, 'skills/standard/SKILL.md'), 'utf8')).toBe('REPO STANDARD')
+    })
+
+    it('gives Codex the .claude/skills ones in .agents/skills, kept out of git', async () => {
+      const { dir } = await prepare(codex)
+      expect(await readFile(join(dir, '.agents/skills/tdd/SKILL.md'), 'utf8')).toBe('REPO TDD')
+      expect(await readFile(join(dir, '.agents/skills/standard/SKILL.md'), 'utf8')).toBe(
+        'REPO STANDARD',
+      )
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it('ignores them on a PR someone else opened', async () => {
+      await expect(prepare(claude, true)).rejects.toThrow('unknown skill "tdd"')
+    })
+  })
+
   describe('on a PR whose branch carries its own instructions and review skill', () => {
     const review = async (mine: boolean, provider: Provider = claude, stacked = false) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
