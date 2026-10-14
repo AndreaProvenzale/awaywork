@@ -11,7 +11,7 @@ const DAY = 24 * 60 * MINUTE
 export const HOSTED_JOB_MINUTES = 360
 /** GitHub's 360 default applies to self-hosted runners too; a window is always under 24 hours. */
 export const SELF_HOSTED_JOB_MINUTES = 1440
-/** How long a run there lasts at most, counted from its own start: the rest of the job publishes and reports. */
+/** How long a run on a GitHub-hosted runner lasts at most, counted from its own start: the rest of the job publishes and reports. */
 export const HOSTED_RUN_MINUTES = 340
 
 const clock = (time: string) => time.split(':').map(Number) as [number, number]

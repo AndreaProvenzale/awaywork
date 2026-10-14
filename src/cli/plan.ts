@@ -54,7 +54,7 @@ export async function probeAndPlan(
     ctx.env.RUNNER_ENVIRONMENT === 'github-hosted' ? tooLongForHosted(config.windows) : []
   if (long.length)
     warnings.push(
-      `GitHub-hosted runners end a job at 6 hours, so a run stops ${Math.floor(HOSTED_RUN_MINUTES / 60)}h${HOSTED_RUN_MINUTES % 60} after it starts, before ${long.map(describeWindow).join(', ')} ends`,
+      `GitHub-hosted runners end a job at 6 hours, so a run stops ${Math.floor(HOSTED_RUN_MINUTES / 60)}h${String(HOSTED_RUN_MINUTES % 60).padStart(2, '0')} after it starts, before ${long.map(describeWindow).join(', ')} ends`,
     )
 
   const items = await collectItems(config, ctx)
