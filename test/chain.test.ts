@@ -145,7 +145,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
     `queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 3 }
       - plan
 `,
     [issue(1)],
@@ -155,13 +155,11 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   expect(rows).toEqual([
     ['acme-api-1', 'done', { kind: 'pr', url, commits: 2 }],
     ['acme-api-1-review-1', 'done', { kind: 'none', reason: 'a report for the chain' }],
-    ['acme-api-1-address-review-1', 'done', { kind: 'none', reason: '1 commits for the chain' }],
+    ['acme-api-1-fix-1', 'done', { kind: 'none', reason: '1 commits for the chain' }],
     ['acme-api-1-review-2', 'done', { kind: 'none', reason: 'a report for the chain' }],
     ['acme-api-1-plan', 'done', { kind: 'none', reason: 'a report for the chain' }],
   ])
-  expect(report.results[0]?.loop).toBe(
-    '2 rounds of review ⇄ address-review; until held: verdict approve',
-  )
+  expect(report.results[0]?.loop).toBe('2 rounds of review ⇄ fix; until held: verdict approve')
   expect(opened).toEqual([
     {
       head: 'away/acme-api-1',
@@ -173,7 +171,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
         '',
         '## Awaywork chain',
         '',
-        'Loop: 2 rounds of review ⇄ address-review; until held: verdict approve; last verdict approve.',
+        'Loop: 2 rounds of review ⇄ fix; until held: verdict approve; last verdict approve.',
         '',
         '<details><summary>Report: acme-api-1-review-2</summary>',
         '',
@@ -191,9 +189,9 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
     },
   ])
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1-address-review-1.txt', 'acme-api-1.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix-1.txt', 'acme-api-1.txt'])
   expect(seen['acme-api-1-review-1']).toEqual(['diff.patch', 'pr.md'])
-  expect(seen['acme-api-1-address-review-1']).toEqual(['pr.md', 'report.md', 'verdict'])
+  expect(seen['acme-api-1-fix-1']).toEqual(['pr.md', 'report.md', 'verdict'])
   expect(formatPlan(plan)).toContain("in acme-api-1's clone")
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
@@ -208,18 +206,18 @@ it('takes chain shapes the per-step model refused: a loop after a loop, and a ga
     `queue:
   - skill: implement
     then:
-      - { skill: fix-ci, when: { verdict: changes } }
+      - { skill: fix, when: { verdict: changes } }
       - { loop: [review], until: { verdict: approve }, max: 2 }
-      - { loop: [address-review], until: { command: 'true' }, max: 1 }
+      - { loop: [fix], until: { command: 'true' }, max: 1 }
 `,
     [issue(1)],
     worker({ 'acme-api-1-review-1': 'approve' }),
   )
   expect(rows.map(([id, status]) => [id, status])).toEqual([
     ['acme-api-1', 'done'],
-    ['acme-api-1-fix-ci', 'skipped'],
+    ['acme-api-1-fix', 'skipped'],
     ['acme-api-1-review-1', 'done'],
-    ['acme-api-1-address-review-1', 'done'],
+    ['acme-api-1-fix-1', 'done'],
   ])
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
 })
@@ -253,7 +251,7 @@ it('reports on a PR someone else opened, and leaves out the steps that would com
 it('pushes the whole chain onto your PR once, with the reports in its summary', async () => {
   const { rows, pushedOnto, opened } = await run(
     `queue:
-  - { skill: address-review, deliver: push, where: { type: pr }, then: [review] }
+  - { skill: fix, deliver: push, where: { type: pr }, then: [review] }
 `,
     [githubPr(1)],
     worker({ 'acme-api-1-review': 'approve' }),
@@ -267,10 +265,10 @@ it('pushes the whole chain onto your PR once, with the reports in its summary', 
 it('ends the chain at a step that fails, publishes what it has, and counts a failure', async () => {
   const { rows, opened, report } = await run(
     `queue:
-  - { skill: implement, then: [fix-ci, review] }
+  - { skill: implement, then: [fix, review] }
 `,
     [issue(1)],
-    worker({}, { fail: ['acme-api-1-fix-ci'] }),
+    worker({}, { fail: ['acme-api-1-fix'] }),
   )
   expect(rows).toEqual([
     [
@@ -278,8 +276,8 @@ it('ends the chain at a step that fails, publishes what it has, and counts a fai
       'done',
       { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 2 },
     ],
-    ['acme-api-1-fix-ci', 'failed', { kind: 'none', reason: '1 commits for the chain' }],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-fix-ci failed'],
+    ['acme-api-1-fix', 'failed', { kind: 'none', reason: '1 commits for the chain' }],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
   ])
   expect(opened).toHaveLength(1)
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBe(1)
@@ -288,10 +286,10 @@ it('ends the chain at a step that fails, publishes what it has, and counts a fai
 it('passes over the steps after one that made nothing, and counts the chain finished', async () => {
   const { rows, opened, report } = await run(
     `queue:
-  - { skill: implement, then: [fix-ci, review] }
+  - { skill: implement, then: [fix, review] }
 `,
     [issue(1)],
-    worker({}, { idle: ['acme-api-1-fix-ci'] }),
+    worker({}, { idle: ['acme-api-1-fix'] }),
   )
   expect(rows.map(([id, status, out]) => [id, status, out])).toEqual([
     [
@@ -299,8 +297,8 @@ it('passes over the steps after one that made nothing, and counts the chain fini
       'done',
       { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
     ],
-    ['acme-api-1-fix-ci', 'done', { kind: 'none', reason: 'made nothing' }],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-fix-ci made nothing to follow'],
+    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'made nothing' }],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-fix made nothing to follow'],
   ])
   expect(opened).toHaveLength(1)
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
