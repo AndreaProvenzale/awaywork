@@ -5,6 +5,10 @@ hero:
   name: awaywork
   text: You're away, your agents work
   tagline: Your AI coding quota resets every week, used or not. Clock out, and your agents clock in on your leftovers. Draft PRs and a report by morning.
+  image:
+    light: /brand/mark.svg
+    dark: /brand/mark-dark.svg
+    alt: awaywork
   actions:
     - theme: brand
       text: Get started

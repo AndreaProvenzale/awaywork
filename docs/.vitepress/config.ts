@@ -51,7 +51,15 @@ export default defineConfig({
   description,
   cleanUrls: true,
   lastUpdated: false,
+  head: [
+    ['link', { rel: 'icon', href: '/awaywork/brand/favicon.ico', sizes: '32x32' }],
+    ['link', { rel: 'icon', href: '/awaywork/brand/favicon.svg', type: 'image/svg+xml' }],
+    ['link', { rel: 'apple-touch-icon', href: '/awaywork/brand/apple-touch-icon.png' }],
+    ['meta', { property: 'og:image', content: `${site}brand/og.png` }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+  ],
   themeConfig: {
+    logo: { light: '/brand/mark.svg', dark: '/brand/mark-dark.svg', alt: '' },
     nav: sidebar.map((group) => ({ text: group.text ?? '', link: group.items?.[0]?.link ?? '/' })),
     sidebar,
     search: { provider: 'local' },
