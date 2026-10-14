@@ -19,11 +19,17 @@ export function listedUnits(plan: RunPlan) {
   return plan.units.filter((p) => !p.loop || p.loop.round === 1)
 }
 
+/** A `Warnings` heading over indented warnings and a blank line, or nothing. */
+export function warningLines(warnings: string[], styled = false): string[] {
+  if (warnings.length === 0) return []
+  const heading = styled ? styleText('bold', 'Warnings') : 'Warnings'
+  return [heading, ...warnings.map((w) => `  ${w}`), '']
+}
+
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
   const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
-  const out: string[] = []
-  if (warnings.length > 0) out.push(style('bold', 'Warnings'), ...warnings.map((w) => `  ${w}`), '')
+  const out = warningLines(warnings, styled)
 
   out.push(style('bold', plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue'))
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])

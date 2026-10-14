@@ -50,7 +50,7 @@ Setting up:
 3. Put secrets in `~/.config/awaywork/env` (`NAME=value` lines, mode
    600), never in the config. Ask the user for them; don't read them from
    other tools' files.
-4. `awaywork doctor` until the config's line is `ok`.
+4. `awaywork doctor` until the config's line isn't `FAIL`.
 5. `awaywork plan`, and show the user the result.
 
 What each command does:

@@ -58,7 +58,7 @@ describe('doctor', () => {
     expect(own.map((c) => c.what)).not.toContain(join(configDir, 'skills'))
   })
 
-  it('fails a config whose queue names an unknown skill, and keeps checking', async () => {
+  it('warns about a skill it can find nowhere, since it may be in the repo', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
     const config = 'providers: [codex]\nsources: { github: { repos: [a/b] } }\n'
@@ -69,9 +69,9 @@ describe('doctor', () => {
     const checks = await runChecks(path, () => {})
     vi.unstubAllEnvs()
     expect(checks).toContainEqual({
-      status: 'FAIL',
+      status: 'warn',
       what: path,
-      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')})`,
+      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine if the repo has it in .awaywork/skills`,
     })
     expect(checks.at(-1)?.what).toBe('github')
   })

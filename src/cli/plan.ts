@@ -17,7 +17,7 @@ import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatRules, planJson } from './format.js'
+import { formatPlan, formatRules, planJson, warningLines } from './format.js'
 
 export function planCommand(program: Command): void {
   program
@@ -97,7 +97,7 @@ async function describeRules(config: Config): Promise<string> {
   const items = await collectItems(config, ctx)
   const secrets = configSecrets(config, providers, configuredSources(config))
   return [
-    ...warnings.map((w) => `warning: ${maskSecrets(w, secrets, ctx.env)}`),
+    ...warningLines(warnings.map((w) => maskSecrets(w, secrets, ctx.env))),
     config.queue ? 'Queue' : 'Queue (default: no queue in config)',
     ...formatRules(config.queue ?? defaultRules(Object.keys(config.sources)), items).map(
       (line) => `  ${line}`,

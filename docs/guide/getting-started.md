@@ -99,10 +99,14 @@ Skipped
 and skips the quota probe:
 
 ```
-Queue
-  #1  fix     type=pr mine=true checks=failing
+Queue (default: no queue in config)
+  #1  fix     source=github type=pr mine=true checks=failing
        1 taken: acme/api#1
-  #2  review  type=pr review_requested=true trusted=true
+  #2  fix     source=github type=pr mine=true unresolved_threads!=0
+       0 taken
+  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
+       0 taken
+  #4  review  source=github type=pr review_requested=true trusted=true
        1 taken: acme/api#2
   1 unmatched: acme/api#3
 ```

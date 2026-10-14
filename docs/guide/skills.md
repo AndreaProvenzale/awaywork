@@ -55,7 +55,8 @@ every unit, someone else's PR included. Codex gets them copied into the
 clone's `.agents/skills/`: a repo that already has a skill of that name
 there keeps it, except on someone else's PR, where awaywork's copy
 replaces it. `doctor` and `config edit` see user and built-in skills
-only; an in-repo skill resolves at run time.
+only, so `doctor` warns about a name it can't find and `config edit`
+refuses it; an in-repo skill resolves at run time.
 
 ## Tweak a built-in
 

@@ -89,7 +89,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     return checks
   }
   const unknown = await unknownSkills(config, skillsDirOf(path))
-  report(unknown.length > 0 ? 'FAIL' : 'ok', path, unknown.join('; '))
+  if (unknown.length === 0) report('ok', path)
+  else report('warn', path, `${unknown.join('; ')}; fine if the repo has it in .awaywork/skills`)
   for (const warning of await staleSchedules(path, config.windows))
     report('warn', 'schedule', warning)
   const root = await gitRoot()
