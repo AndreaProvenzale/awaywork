@@ -673,7 +673,7 @@ async function handOff(dir: string, start: string, unitDir: string): Promise<voi
   )
 }
 
-/** E.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
+/** E.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
 function describeLoop(loop: OpenLoop): string {
   const rounds = `${loop.rounds} ${loop.rounds === 1 ? 'round' : 'rounds'}`
   return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`

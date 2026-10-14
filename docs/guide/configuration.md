@@ -61,7 +61,7 @@ repos:
 instructions: [notes/me.md]     # every unit
 skills: [house-style]           # every unit, next to a rule's skills; yours, in skills/ beside this file
 queue:                          # first matching rule wins; top = highest priority
-  - skill: fix-ci
+  - skill: fix
     where: { type: pr, mine: true, checks: failing }
     branch: fix/{key}
   - skill: implement
@@ -186,7 +186,7 @@ Per-rule templates follow your repo's conventions:
 
 ```yaml
 queue:
-  - { skill: fix-ci, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
+  - { skill: fix, where: { type: pr, mine: true, checks: failing }, branch: "fix/{title}" }
   - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
 ```
 
@@ -352,7 +352,7 @@ A PR awaywork opened only matches a rule whose top-level `where` names
 PRs leave it waiting for your review. To act on it once you've reviewed it:
 
 ```yaml
-- skill: address-review
+- skill: fix
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
@@ -413,7 +413,7 @@ queue:
   routed and budgeted like any other. Its branch uses the usual template,
   with `-<skill>` appended when a draft PR earlier in the chain already
   took the name.
-- A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `address-review` then `loop: [review, address-review]`.
+- A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
 - Steps count against the [caps](#windows-limits-and-budget) like any unit, and
   against their rule's `units`. A chain whose first unit is over a cap
   doesn't start; a step over a cap is left out with the rest of the chain,
@@ -432,7 +432,7 @@ queue:
     then:
       - loop:
           - { skill: review, provider: codex }
-          - address-review
+          - fix
         until: { verdict: [approve, comments] }
         max: 3
 ```
@@ -521,7 +521,7 @@ queue:
     then:
       - loop:
           - review
-          - { skill: address-review, when: { verdict: changes } }
+          - { skill: fix, when: { verdict: changes } }
         until: { verdict: [approve, comments], command: pnpm test }
         max: 3
       - { skill: security-review, when: { changed: "src/auth/**" } }   # a skill of yours
@@ -577,7 +577,7 @@ stacking a draft PR on it, e.g. to have review threads addressed in place:
 
 ```yaml
 queue:
-  - skill: address-review
+  - skill: fix
     where: { type: pr, mine: true, unresolved_threads: { gt: 0 } }
     deliver: push
 ```

@@ -9,10 +9,10 @@ providers: [claude]             # codex is out of credits; add it back with its 
 sources:
   github: {repos: [AndreaProvenzale/*]}
 queue:                          # first matching rule wins; top = highest priority
-  - skill: address-review
+  - skill: fix
     source: github
     where: {type: pr, mine: true, unresolved_threads: {not: 0}}
-  - skill: fix-ci
+  - skill: fix
     source: github
     where: {type: pr, mine: true, checks: failing}
   - skill: review
@@ -24,6 +24,6 @@ queue:                          # first matching rule wins; top = highest priori
     then:
       - loop:
           - review
-          - address-review
+          - fix
         until: {verdict: approve}
         max: 3

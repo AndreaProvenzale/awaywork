@@ -35,7 +35,7 @@ describe('config', () => {
 
   it('parses `with` on a rule and a step, and rejects nested values and empty keys', () => {
     const cfg = parseConfig(
-      `${minimal}\nqueue:\n  - skill: review\n    with: { depth: quick }\n    then:\n      - skill: fix-ci\n        with: { tries: 2 }\n`,
+      `${minimal}\nqueue:\n  - skill: review\n    with: { depth: quick }\n    then:\n      - skill: fix\n        with: { tries: 2 }\n`,
     )
     expect(cfg.queue?.[0]?.with).toEqual({ depth: 'quick' })
     expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ with: { tries: 2 } })
@@ -64,7 +64,7 @@ describe('config', () => {
   })
 
   it('rejects a where key no source declares', () => {
-    expect(problems(`${minimal}queue: [{ skill: fix-ci, where: { colour: red } }]`)).toEqual([
+    expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
         /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description or .*github: repo, label/,
       ),
@@ -85,7 +85,7 @@ describe('config', () => {
   })
 
   it('validates where values, lists and negation', () => {
-    const rule = (where: string) => `${minimal}queue: [{ skill: fix-ci, where: ${where} }]`
+    const rule = (where: string) => `${minimal}queue: [{ skill: fix, where: ${where} }]`
     expect(problems(rule('{ checks: [failing, pending], mine: { not: false } }'))).toEqual([])
     expect(problems(rule('{ checks: red }'))).toEqual([
       'queue[0].where.checks: invalid value "red"',
@@ -142,9 +142,7 @@ describe('config', () => {
     expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
       'providers[0]: unknown provider "gemini"',
     ])
-    expect(
-      problems(`${minimal}queue: [{ skill: fix-ci, provider: codex, source: asana }]`),
-    ).toEqual([
+    expect(problems(`${minimal}queue: [{ skill: fix, provider: codex, source: asana }]`)).toEqual([
       'queue[0].source: source "asana" is not configured',
       'queue[0].provider: provider "codex" is not configured',
     ])
@@ -164,7 +162,7 @@ describe('config', () => {
     tools: [query]
 `
     const cfg = parseConfig(
-      `${minimal}${servers}queue:\n  - { skill: fix-ci, mcp: [sentry], then: [{ skill: review, mcp: [db] }] }\n`,
+      `${minimal}${servers}queue:\n  - { skill: fix, mcp: [sentry], then: [{ skill: review, mcp: [db] }] }\n`,
     )
     expect(cfg.mcp.db).toMatchObject({
       command: 'npx',
@@ -173,7 +171,7 @@ describe('config', () => {
     })
     expect(cfg.queue?.[0]?.mcp).toEqual(['sentry'])
     expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ mcp: ['db'] })
-    expect(problems(`${minimal}queue: [{ skill: fix-ci, mcp: [jira] }]`)).toEqual([
+    expect(problems(`${minimal}queue: [{ skill: fix, mcp: [jira] }]`)).toEqual([
       'queue[0].mcp: MCP server "jira" is not configured',
     ])
     const server = (yaml: string) => problems(`${minimal}mcp: { s: ${yaml} }`)
@@ -221,23 +219,23 @@ describe('config', () => {
 
   it('takes a model per provider and per rule', () => {
     const cfg = parseConfig(
-      `${minimal.replace('[claude: {}]', '[claude: { model: opus }, codex]')}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`,
+      `${minimal.replace('[claude: {}]', '[claude: { model: opus }, codex]')}queue: [{ skill: fix, model: { codex: gpt-5-codex } }]`,
     )
     expect(cfg.providers.map((p) => [p.id, p.model])).toEqual([
       ['claude', 'opus'],
       ['codex', undefined],
     ])
     expect(cfg.queue?.[0]?.model).toEqual({ codex: 'gpt-5-codex' })
-    expect(problems(`${minimal}queue: [{ skill: fix-ci, model: { codex: gpt-5-codex } }]`)).toEqual(
-      ['queue[0].model.codex: provider "codex" is not configured'],
-    )
+    expect(problems(`${minimal}queue: [{ skill: fix, model: { codex: gpt-5-codex } }]`)).toEqual([
+      'queue[0].model.codex: provider "codex" is not configured',
+    ])
   })
 
   it('takes then as one step or a list, each a skill name or a map', () => {
     const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
   - { skill: implement, then: review }
   - { skill: plan, then: [implement, { skill: review, provider: codex }] }
-  - { skill: fix-ci }
+  - { skill: fix }
 `)
     expect(
       cfg.queue?.map((r) => r.then?.map((s) => [(s as Step).skill, (s as Step).provider])),
@@ -269,7 +267,7 @@ describe('config', () => {
     const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
   - skill: implement
     then:
-      - loop: [{ skill: review, provider: codex }, address-review]
+      - loop: [{ skill: review, provider: codex }, fix]
         until: { verdict: [approve, comments] }
         max: 3
   - { skill: plan, then: { loop: implement, until: { verdict: { not: changes } }, max: 1 } }
@@ -279,7 +277,7 @@ describe('config', () => {
         {
           loop: [
             { skill: 'review', provider: ['codex'], skills: [], instructions: [] },
-            { skill: 'address-review', provider: [], skills: [], instructions: [] },
+            { skill: 'fix', provider: [], skills: [], instructions: [] },
           ],
           until: { verdict: ['approve', 'comments'] },
           max: 3,
@@ -307,7 +305,7 @@ describe('config', () => {
       'queue[0].then.until: expected verdict or command',
     ])
     expect(
-      loop('[review, { skill: fix-ci, deliver: push }], until: { verdict: approve }, max: 2'),
+      loop('[review, { skill: fix, deliver: push }], until: { verdict: approve }, max: 2'),
     ).toEqual([
       'queue[0].then[0].loop[1].deliver: a loop publishes through the unit before it: set deliver push there',
     ])
@@ -315,8 +313,8 @@ describe('config', () => {
       problems(`${minimal}queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }${between}
-      - { loop: [qa-feedback, fix-ci], until: { verdict: approve }, max: 2 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }${between}
+      - { loop: [plan, implement], until: { verdict: approve }, max: 2 }
 `)
     expect(loops('')).toEqual([
       "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
@@ -327,7 +325,7 @@ describe('config', () => {
   - skill: implement
     then:
       - { skill: review, when: { verdict: approve } }
-      - { loop: [address-review], until: { verdict: approve }, max: 2 }
+      - { loop: [fix], until: { verdict: approve }, max: 2 }
 `),
     ).toEqual([
       "queue[0].then[0].when: a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
@@ -337,7 +335,7 @@ describe('config', () => {
   - skill: implement
     then:
       - { skill: review, deliver: report, when: { verdict: approve } }
-      - { loop: [address-review], until: { verdict: approve }, max: 2 }
+      - { loop: [fix], until: { verdict: approve }, max: 2 }
 `),
     ).toEqual([])
   })
@@ -361,7 +359,7 @@ describe('config', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
     then:
-      - loop: [{ skill: address-review, when: { verdict: changes, command: "! pnpm test" } }, qa-feedback]
+      - loop: [{ skill: fix, when: { verdict: changes, command: "! pnpm test" } }, implement]
         until: { verdict: approve, command: pnpm test }
         max: 2
       - { skill: review, when: { changed: "src/auth/**" } }
@@ -370,8 +368,8 @@ describe('config', () => {
     expect(step).toMatchObject({ skill: 'review', when: { changed: ['src/auth/**'] } })
     expect(loop).toMatchObject({
       loop: [
-        { skill: 'address-review', when: { verdict: 'changes', command: '! pnpm test' } },
-        { skill: 'qa-feedback' },
+        { skill: 'fix', when: { verdict: 'changes', command: '! pnpm test' } },
+        { skill: 'implement' },
       ],
       until: { verdict: 'approve', command: 'pnpm test' },
     })
@@ -399,7 +397,7 @@ describe('config', () => {
   - skill: implement
     network: false
     then:
-      - { loop: [fix-ci], until: { command: pnpm test }, max: 1 }
+      - { loop: [fix], until: { command: pnpm test }, max: 1 }
       - { skill: review, when: { command: pnpm test } }
 `),
     ).toEqual([

@@ -89,7 +89,7 @@ it('runs, publishes and reports a run', async () => {
 providers: [claude: { model: opus }]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - { skill: fix-ci, where: { checks: failing } }
+  - { skill: fix, where: { checks: failing } }
   - { skill: review, where: { review_requested: true }, model: { claude: sonnet } }
 notify: { command: 'true', secrets: [NTFY_TOPIC] }
 `)
@@ -145,9 +145,9 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 
   const text = formatReport(report)
   expect(text).toContain(
-    '| 1 | acme-api-1 | fix-ci | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits) |',
+    '| 1 | acme-api-1 | fix | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits) |',
   )
-  expect(text).toContain(`| 2 | acme-api-3 | fix-ci | - | skipped | ${tried} |`)
+  expect(text).toContain(`| 2 | acme-api-3 | fix | - | skipped | ${tried} |`)
   expect(text).toContain(
     '| 3 | acme-api-2 | review | claude | done, 5 turns | report below, verdict approve |',
   )
@@ -161,8 +161,8 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   expect(shown).toContain(
     [
       '#  Unit        Skill   Provider  Status         Result',
-      '1  acme-api-1  fix-ci  claude    done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1 (1 commits)',
-      `2  acme-api-3  fix-ci  -         skipped        ${tried}`,
+      '1  acme-api-1  fix     claude    done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1 (1 commits)',
+      `2  acme-api-3  fix     -         skipped        ${tried}`,
     ].join('\n'),
   )
   expect(shown).not.toContain('|')
@@ -213,7 +213,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,
@@ -259,7 +259,7 @@ it('runs a chained unit with the units it follows, which a dry run leaves nothin
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci, then: review }]',
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix, then: review }]',
   )
   const plan = planRun({
     config,
@@ -299,7 +299,7 @@ it('stops a unit still running at the window end and publishes what it left', as
     },
   }
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,
@@ -536,11 +536,11 @@ mcp:
   jira: { command: jira-mcp, secrets: [JIRA_TOKEN] }
   sentry: { url: "https://mcp.sentry.dev/mcp", headers: { Authorization: "Bearer \${SENTRY_TOKEN}" }, secrets: [SENTRY_TOKEN] }
 queue:
-  - skill: fix-ci
+  - skill: fix
     where: { checks: failing }
     mcp: [db]
     deliver: report
-    then: [{ skill: address-review, mcp: [sentry], deliver: report }]
+    then: [{ skill: plan, mcp: [sentry], deliver: report }]
   - { skill: review, mcp: [sentry, jira] }
 `)
   const plan = planRun({
@@ -586,7 +586,7 @@ queue:
   const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR'] }
   expect(jobs).toEqual([
     { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-1-address-review', ...sentry },
+    { unit: 'acme-api-1-plan', ...sentry },
     { unit: 'acme-api-2', ...sentry },
     { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
     { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
@@ -607,7 +607,7 @@ it('stops a unit at unit_minutes', async () => {
     },
   }
   const config = parseConfig(
-    'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix-ci }]',
+    'limits: { unit_minutes: 5 }\nproviders: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
   )
   const plan = planRun({
     config,
@@ -860,7 +860,7 @@ it('pushes onto your own PR, and runs what follows on it without setup secrets',
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
-queue: [{ skill: fix-ci, deliver: push, then: { skill: implement, deliver: draft_pr } }]
+queue: [{ skill: fix, deliver: push, then: { skill: implement, deliver: draft_pr } }]
 repos:
   acme/api:
     setup: 'echo "$NPM_TOKEN" > .away/setup.txt'
@@ -929,12 +929,12 @@ repos:
     "Deliver: commits pushed onto `feature-1`, the developer's own pull request. Commit on this branch and write `.away/out/report.md`.",
   )
   expect(prompts[1]).toContain(
-    'This unit follows `fix-ci` on the same items, which pushed 1 commits onto `feature-1` in this run; you start from them.',
+    'This unit follows `fix` on the same items, which pushed 1 commits onto `feature-1` in this run; you start from them.',
   )
   expect(formatReport(report)).toContain(
-    '| 1 | acme-api-1 | fix-ci | claude | done, 1 turns | 1 commits pushed onto feature-1, report below |',
+    '| 1 | acme-api-1 | fix | claude | done, 1 turns | 1 commits pushed onto feature-1, report below |',
   )
-  expect(formatReport(report)).toContain('### acme-api-1: PR 1 (fix-ci)')
+  expect(formatReport(report)).toContain('### acme-api-1: PR 1 (fix)')
 })
 
 it("loops in the push unit's clone and pushes every round's commits onto your PR once", async () => {
@@ -945,7 +945,7 @@ it("loops in the push unit's clone and pushes every round's commits onto your PR
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - skill: fix-ci
+  - skill: fix
     deliver: push
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `)
@@ -1020,7 +1020,7 @@ it("doesn't open a push loop when the push unit wrote no report", async () => {
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - skill: fix-ci
+  - skill: fix
     deliver: push
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `)
@@ -1128,8 +1128,8 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
-      - { skill: qa-feedback, deliver: report }
+      - { loop: [review, fix], until: { verdict: approve }, max: 3 }
+      - plan
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
@@ -1173,21 +1173,13 @@ queue:
       { kind: 'report', text: 'acme-api-1-review-1 says changes.' },
       'changes',
     ],
-    [
-      'acme-api-1-address-review-1',
-      { kind: 'none', reason: "1 commits for the loop's PR" },
-      undefined,
-    ],
+    ['acme-api-1-fix-1', { kind: 'none', reason: "1 commits for the loop's PR" }, undefined],
     [
       'acme-api-1-review-2',
       { kind: 'report', text: 'acme-api-1-review-2 says approve.' },
       'approve',
     ],
-    [
-      'acme-api-1-qa-feedback',
-      { kind: 'report', text: 'acme-api-1-qa-feedback says nothing.' },
-      undefined,
-    ],
+    ['acme-api-1-plan', { kind: 'report', text: 'acme-api-1-plan says nothing.' }, undefined],
   ])
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['away/acme-api-1', '']])
   expect(opened[0]?.body).toBe(
@@ -1198,7 +1190,7 @@ queue:
       '',
       '## Awaywork loop',
       '',
-      '2 rounds of review ⇄ address-review; until held: verdict approve; last verdict approve.',
+      '2 rounds of review ⇄ fix; until held: verdict approve; last verdict approve.',
       '',
       '<details><summary>Last report: acme-api-1-review-2</summary>',
       '',
@@ -1209,21 +1201,21 @@ queue:
     ].join('\n'),
   )
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1')
-  expect(files.stdout.split('\n')).toEqual(['acme-api-1-address-review-1.txt', 'acme-api-1.txt'])
+  expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix-1.txt', 'acme-api-1.txt'])
   expect(seen).toEqual({
     'acme-api-1': [],
     'acme-api-1-review-1': ['diff.patch', 'pr.md'],
-    'acme-api-1-address-review-1': ['pr.md', 'report.md', 'verdict'],
+    'acme-api-1-fix-1': ['pr.md', 'report.md', 'verdict'],
     'acme-api-1-review-2': ['diff.patch', 'pr.md'],
-    'acme-api-1-qa-feedback': ['diff.patch', 'pr.md'],
+    'acme-api-1-plan': ['diff.patch', 'pr.md'],
   })
   expect(prompts[2]).toContain(
-    'This unit is round 1 of at most 3 of a loop (`review` ⇄ `address-review`) that ends once verdict approve.',
+    'This unit is round 1 of at most 3 of a loop (`review` ⇄ `fix`) that ends once verdict approve.',
   )
   expect(prompts[4]).toContain(`which opened ${url} in this run; you start from its branch.`)
   const text = formatReport(report)
   expect(text).toContain(
-    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ address-review; until held: verdict approve) | ${url} (2 commits) |`,
+    `| 1 | acme-api-1 | implement | claude | done, 1 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits) |`,
   )
   expect(text).toContain(
     '| 4 | acme-api-1-review-2 | review | claude | done, 1 turns | report below, verdict approve |',
@@ -1248,8 +1240,8 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
-      - { skill: qa-feedback, deliver: draft_pr }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
+      - { skill: plan, deliver: draft_pr }
 `)
   const plan = planRun({
     config,
@@ -1285,14 +1277,14 @@ queue:
 
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['away/acme-api-1-4', ''],
-    ['away/acme-api-1-qa-feedback', 'away/acme-api-1-4'],
+    ['away/acme-api-1-plan', 'away/acme-api-1-4'],
   ])
   expect(report.results.map((u) => [u.planned.unit.id, u.planned.unit.branch])).toEqual([
     ['acme-api-1', 'away/acme-api-1-4'],
     ['acme-api-1-review-1', 'away/acme-api-1-4'],
-    ['acme-api-1-address-review-1', 'away/acme-api-1-4'],
+    ['acme-api-1-fix-1', 'away/acme-api-1-4'],
     ['acme-api-1-review-2', 'away/acme-api-1-4'],
-    ['acme-api-1-qa-feedback', 'away/acme-api-1-qa-feedback'],
+    ['acme-api-1-plan', 'away/acme-api-1-plan'],
   ])
   expect(prompts[1]).toContain('Every round works in this clone on `away/acme-api-1-4`')
   expect(prompts[4]).toContain('cut from `away/acme-api-1-4`')
@@ -1387,7 +1379,7 @@ sources: { github: { repos: [acme/*] } }
 budget: { fallback: { units: 3, turns: 10 } }
 queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 3 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 3 }
 `)
   const plan = planRun({
     config,
@@ -1412,9 +1404,9 @@ queue:
 
   const noProvider = 'no provider left: claude used its 3 fallback units'
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.loop ?? u.reason])).toEqual([
-    ['acme-api-1', 'done', `1 round of review ⇄ address-review; ${noProvider}`],
+    ['acme-api-1', 'done', `1 round of review ⇄ fix; ${noProvider}`],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'done', undefined],
+    ['acme-api-1-fix-1', 'done', undefined],
     ['acme-api-1-review-2', 'skipped', noProvider],
   ])
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
@@ -1433,7 +1425,7 @@ queue:
     then: { loop: [implement, review], until: { verdict: approve }, max: 2 }
   - skill: review
     where: { type: pr }
-    then: { loop: { skill: qa-feedback, deliver: report }, until: { verdict: approve }, max: 1 }
+    then: { loop: { skill: fix, deliver: report }, until: { verdict: approve }, max: 1 }
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const plan = planRun({
@@ -1445,7 +1437,7 @@ queue:
   const verdicts = {
     'acme-api-1-review-1': 'changes',
     'acme-api-1-review-2': 'changes',
-    'acme-api-4-qa-feedback-1': 'approve',
+    'acme-api-4-fix-1': 'approve',
   }
   const report = await runUnits({
     config,
@@ -1469,7 +1461,7 @@ queue:
     ['acme-api-1-implement-2', 'none', undefined],
     ['acme-api-1-review-2', 'report', undefined],
     ['acme-api-4', 'report', undefined],
-    ['acme-api-4-qa-feedback-1', 'report', '1 round of qa-feedback; until held: verdict approve'],
+    ['acme-api-4-fix-1', 'report', '1 round of fix; until held: verdict approve'],
   ])
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([['away/acme-api-1', '']])
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1')
@@ -1482,13 +1474,13 @@ queue:
 it('ends a loop once its command passes, runs it once per commit without the askpass helper, and hands its output to the next step', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-loop-command-'))
   const { opened, forge } = await originForge(root)
-  const command = 'echo "run$GIT_ASKPASS" >> "$COUNT"; test -e acme-api-1-address-review-2.txt'
+  const command = 'echo "run$GIT_ASKPASS" >> "$COUNT"; test -e acme-api-1-fix-2.txt'
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { command: '${command}' }, max: 3 }
+    then: { loop: [review, fix], until: { command: '${command}' }, max: 3 }
 `)
   const plan = planRun({
     config,
@@ -1524,23 +1516,21 @@ queue:
   })
 
   expect(report.results[0]?.loop).toBe(
-    `2 rounds of review ⇄ address-review; until held: \`${command}\` passes`,
+    `2 rounds of review ⇄ fix; until held: \`${command}\` passes`,
   )
   expect(report.results.map((u) => u.planned.unit.id)).toEqual([
     'acme-api-1',
     'acme-api-1-review-1',
-    'acme-api-1-address-review-1',
+    'acme-api-1-fix-1',
     'acme-api-1-review-2',
-    'acme-api-1-address-review-2',
+    'acme-api-1-fix-2',
   ])
   // Reviews commit nothing: the check runs once per commit.
   expect(await readFile(count, 'utf8')).toBe('run\nrun\nrun\n')
-  expect(seen['acme-api-1-address-review-1']).toEqual(['check.log', 'pr.md', 'report.md'])
+  expect(seen['acme-api-1-fix-1']).toEqual(['check.log', 'pr.md', 'report.md'])
   expect(seen['acme-api-1-review-2']).toEqual(['check.log', 'diff.patch', 'pr.md'])
   const log = await readFile(join(root, 'run/units/acme-api-1-review-1/out/check.log'), 'utf8')
-  expect(log).toMatch(
-    /^\$ echo "run\$GIT_ASKPASS" >> "\$COUNT"; test -e acme-api-1-address-review-2\.txt\n/,
-  )
+  expect(log).toMatch(/^\$ echo "run\$GIT_ASKPASS" >> "\$COUNT"; test -e acme-api-1-fix-2\.txt\n/)
   expect(log).toMatch(/\nfailed: Command failed with exit code 1: .*\n$/)
   expect(prompts[2]).toContain(', which awaywork ran after it, in `check.log`.')
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
@@ -1555,7 +1545,7 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
-    then: { loop: address-review, until: { command: 'echo 3 tests failed; false' }, max: 1 }
+    then: { loop: fix, until: { command: 'echo 3 tests failed; false' }, max: 1 }
 `)
   const plan = planRun({
     config,
@@ -1578,7 +1568,7 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  expect(report.results[0]?.loop).toBe('1 round of address-review; max 1 round reached')
+  expect(report.results[0]?.loop).toBe('1 round of fix; max 1 round reached')
   const body = opened[0]?.body ?? ''
   expect(body).toContain(
     [
@@ -1672,6 +1662,8 @@ it("skips a step whose when doesn't hold and goes on from the unit before", asyn
   const root = await mkdtemp(join(tmpdir(), 'awaywork-when-'))
   const { origin, opened, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-4')
+  await mkdir(join(root, 'skills/triage'), { recursive: true })
+  await writeFile(join(root, 'skills/triage/SKILL.md'), '---\nname: triage\n---\n')
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -1680,19 +1672,19 @@ queue:
     where: { type: issue }
     then:
       - { skill: review, deliver: draft_pr, when: { changed: "docs/**" } }
-      - { skill: qa-feedback, deliver: draft_pr, when: { verdict: { not: approve }, changed: "*.txt" } }
-      - { skill: plan, when: { command: "test -e acme-api-1-qa-feedback.txt" } }
-      - { skill: continue, when: { verdict: approve } }
+      - { skill: fix, deliver: draft_pr, when: { verdict: { not: approve }, changed: "*.txt" } }
+      - { skill: plan, when: { command: "test -e acme-api-1-fix.txt" } }
+      - { skill: triage, when: { verdict: approve } }
   - skill: review
     where: { type: pr }
-    then: { skill: qa-feedback, deliver: report, when: { command: "true" } }
+    then: { skill: fix, deliver: report, when: { command: "true" } }
 `)
   const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({
     config,
     items: [item, githubPr(4, { mine: false, trusted: false, updated: '2026-01-01T00:00:00Z' })],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
-    skills: { builtin: builtinSkills },
+    skills: { user: { triage: {} }, builtin: builtinSkills },
   })
   const seen: Record<string, string[]> = {}
   const provider: Provider = {
@@ -1715,18 +1707,18 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
-    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
   })
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review', 'skipped', "when the branch changes docs/** didn't hold"],
-    ['acme-api-1-qa-feedback', 'done', undefined],
+    ['acme-api-1-fix', 'done', undefined],
     ['acme-api-1-plan', 'done', undefined],
-    ['acme-api-1-continue', 'skipped', "when verdict approve didn't hold"],
+    ['acme-api-1-triage', 'skipped', "when verdict approve didn't hold"],
     ['acme-api-4', 'done', undefined],
     [
-      'acme-api-4-qa-feedback',
+      'acme-api-4-fix',
       'skipped',
       "when `true` passes didn't hold (not run on an untrusted author's PR)",
     ],
@@ -1734,12 +1726,12 @@ queue:
   const url = 'https://example.com/acme/api/pull/away/acme-api-1'
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['away/acme-api-1', ''],
-    ['away/acme-api-1-qa-feedback', 'away/acme-api-1'],
+    ['away/acme-api-1-fix', 'away/acme-api-1'],
   ])
   expect(opened[1]?.body).toContain(`Stacked on ${url}: merge that first.`)
   expect(seen['acme-api-1-plan']).toEqual(['diff.patch', 'pr.md', 'when.log'])
   const prompt = await readFile(join(root, 'run/units/acme-api-1-plan/prompt.md'), 'utf8')
-  expect(prompt).toContain('Before you started, awaywork ran `test -e acme-api-1-qa-feedback.txt`')
+  expect(prompt).toContain('Before you started, awaywork ran `test -e acme-api-1-fix.txt`')
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
@@ -1765,7 +1757,7 @@ sources: { github: { repos: [acme/*] } }
 queue:
   - skill: implement
     then:
-      loop: [review, { skill: address-review, when: { verdict: changes } }]
+      loop: [review, { skill: fix, when: { verdict: changes } }]
       until: { verdict: approve }
       max: 2
 `)
@@ -1792,11 +1784,11 @@ queue:
   })
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.loop ?? u.reason])).toEqual([
-    ['acme-api-1', 'done', '2 rounds of review ⇄ address-review; max 2 rounds reached'],
+    ['acme-api-1', 'done', '2 rounds of review ⇄ fix; max 2 rounds reached'],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'done', undefined],
+    ['acme-api-1-fix-1', 'done', undefined],
     ['acme-api-1-review-2', 'done', undefined],
-    ['acme-api-1-address-review-2', 'skipped', "when verdict changes didn't hold"],
+    ['acme-api-1-fix-2', 'skipped', "when verdict changes didn't hold"],
   ])
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
   expect(opened[0]?.body).toContain('acme-api-1-review-2 says comments.')
@@ -1861,7 +1853,7 @@ it("matches changed against a taken-up awaywork PR's branch, not its own commits
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - skill: address-review
+  - skill: fix
     where: { type: pr, ours: true }
     then: { skill: review, when: { changed: "src/auth/**" } }
 `)
@@ -1963,7 +1955,7 @@ it('tells a loop to write the PR body until a unit wrote one, and to keep it aft
   await loopRun(
     `queue:
   - skill: plan
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     {
@@ -1974,7 +1966,7 @@ it('tells a loop to write the PR body until a unit wrote one, and to keep it aft
       },
     },
   )
-  const fix = prompts['acme-api-1-address-review-1']
+  const fix = prompts['acme-api-1-fix-1']
   expect(fix).toContain('Commit on this branch and write `.away/out/pr.md`.')
   expect(fix).not.toContain('PR body so far')
   expect(prompts['acme-api-1-review-2']).toContain('the PR body so far in `pr.md`')
@@ -2022,7 +2014,7 @@ it('records a loop interrupted after a report as unpublished, so its chain retri
 
 it("records an interrupted loop as unpublished even when it kept its host's report", async () => {
   const stop = new AbortController()
-  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
@@ -2030,13 +2022,13 @@ it("records an interrupted loop as unpublished even when it kept its host's repo
   const { report } = await loopRun(
     `queue:
   - skill: plan
-    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [item],
     {
       ...provider,
       async *run(job, signal) {
-        if (job.unit.id === 'acme-api-1-fix-ci-1') stop.abort()
+        if (job.unit.id === 'acme-api-1-fix-1') stop.abort()
         else yield* provider.run(job, signal)
       },
     },
@@ -2052,7 +2044,7 @@ it("records an interrupted loop as unpublished even when it kept its host's repo
 })
 
 it("counts a failed loop as a failure even when it kept its host's report", async () => {
-  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
@@ -2060,13 +2052,13 @@ it("counts a failed loop as a failure even when it kept its host's report", asyn
   const { report } = await loopRun(
     `queue:
   - skill: plan
-    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [item],
     {
       ...provider,
       async *run(job, signal) {
-        if (job.unit.id === 'acme-api-1-fix-ci-1') yield { type: 'done', ok: false, turns: 1 }
+        if (job.unit.id === 'acme-api-1-fix-1') yield { type: 'done', ok: false, turns: 1 }
         else yield* provider.run(job, signal)
       },
     },
@@ -2079,7 +2071,7 @@ it("counts a failed loop as a failure even when it kept its host's report", asyn
 })
 
 it("retries a loop that kept its host's report and reached the window end without counting a failure", async () => {
-  const provider = looper({ 'acme-api-1-qa-feedback-1': 'changes' })
+  const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const until = new Date(Date.now() + 60 * 60 * 1000)
   const item = fakeItem({
     ...issue(1),
@@ -2088,14 +2080,14 @@ it("retries a loop that kept its host's report and reached the window end withou
   const { report } = await loopRun(
     `queue:
   - skill: plan
-    then: { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [item],
     {
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        if (job.unit.id === 'acme-api-1-qa-feedback-1') until.setTime(0)
+        if (job.unit.id === 'acme-api-1-review-1') until.setTime(0)
       },
     },
     { until },
@@ -2111,19 +2103,19 @@ it('skips the step after a loop whose publish threw, though its host kept a repo
     `queue:
   - skill: plan
     then:
-      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 1 }
       - review
 `,
     [issue(1)],
-    looper({ 'acme-api-1-qa-feedback-1': 'changes' }),
+    looper({ 'acme-api-1-review-1': 'changes' }),
     { forge: { push: async () => Promise.reject(new Error('push refused')) } },
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
-    ['acme-api-1-qa-feedback-1', 'error', 'push refused'],
-    ['acme-api-1-fix-ci-1', 'done', undefined],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-qa-feedback-1 delivered nothing to follow'],
+    ['acme-api-1-review-1', 'error', 'push refused'],
+    ['acme-api-1-fix-1', 'done', undefined],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-review-1 delivered nothing to follow'],
   ])
 })
 
@@ -2137,7 +2129,7 @@ it('counts a failure when a loop that reached the window end fails to publish', 
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [item],
     {
@@ -2191,16 +2183,16 @@ it("runs the step after a loop that kept its host's report on the host's base", 
     `queue:
   - skill: plan
     then:
-      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
       - review
 `,
     [issue(1)],
-    looper({ 'acme-api-1-qa-feedback-1': 'approve' }),
+    looper({ 'acme-api-1-review-1': 'approve' }),
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
     ['acme-api-1', 'done', 'report'],
-    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review-1', 'done', 'report'],
     ['acme-api-1-review', 'done', 'report'],
   ])
   expect(opened).toEqual([])
@@ -2211,18 +2203,18 @@ it('runs the whole loop for a step after it that --unit names', async () => {
     `queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
-      - { skill: qa-feedback, deliver: report }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
+      - plan
 `,
     [issue(1), issue(2)],
     looper({ 'acme-api-1-review-1': 'approve' }),
-    { only: 'acme-api-1-qa-feedback' },
+    { only: 'acme-api-1-plan' },
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-1-review-1', 'done'],
-    ['acme-api-1-qa-feedback', 'done'],
+    ['acme-api-1-plan', 'done'],
   ])
 })
 
@@ -2231,7 +2223,7 @@ it("names why a loop didn't start after a host that failed", async () => {
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     {
@@ -2250,12 +2242,12 @@ it("names why a loop didn't start after a host that failed", async () => {
 })
 
 it("runs the steps after a loop that kept its host's report where that report ran", async () => {
-  const kept = { 'acme-api-1-qa-feedback-1': 'approve' }
+  const kept = { 'acme-api-1-review-1': 'approve' }
   const draft = await loopRun(
     `queue:
   - skill: plan
     then:
-      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
       - review
       - implement
 `,
@@ -2264,7 +2256,7 @@ it("runs the steps after a loop that kept its host's report where that report ra
   )
   expect(draft.report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
     ['acme-api-1', 'done', 'report'],
-    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review-1', 'done', 'report'],
     ['acme-api-1-review', 'done', 'report'],
     ['acme-api-1-implement', 'done', 'pr'],
   ])
@@ -2274,19 +2266,19 @@ it("runs the steps after a loop that kept its host's report where that report ra
     `queue:
   - skill: plan
     then:
-      - { loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 2 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
       - review
-      - { loop: [implement, { skill: address-review, deliver: report }], until: { verdict: approve }, max: 2 }
+      - { loop: [implement, plan], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
-    looper({ ...kept, 'acme-api-1-address-review-1': 'approve' }),
+    looper({ ...kept, 'acme-api-1-plan-1': 'approve' }),
   )
   expect(loop.report.results.map((u) => [u.planned.unit.id, u.status, u.outcome?.kind])).toEqual([
     ['acme-api-1', 'done', 'report'],
-    ['acme-api-1-qa-feedback-1', 'done', 'report'],
+    ['acme-api-1-review-1', 'done', 'report'],
     ['acme-api-1-review', 'done', 'report'],
     ['acme-api-1-implement-1', 'done', 'pr'],
-    ['acme-api-1-address-review-1', 'done', 'report'],
+    ['acme-api-1-plan-1', 'done', 'report'],
   ])
   expect(loop.opened.map((pr) => pr.base)).toEqual([''])
 })
@@ -2295,15 +2287,15 @@ it('waits for a verdict written in the loop before `until: { verdict: { not } }`
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [address-review, review], until: { verdict: { not: changes } }, max: 2 }
+    then: { loop: [fix, review], until: { verdict: { not: changes } }, max: 2 }
 `,
     [issue(1)],
     looper({ 'acme-api-1-review-1': 'approve' }),
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.loop])).toEqual([
-    ['acme-api-1', 'done', '1 round of address-review ⇄ review; until held: verdict not changes'],
-    ['acme-api-1-address-review-1', 'done', undefined],
+    ['acme-api-1', 'done', '1 round of fix ⇄ review; until held: verdict not changes'],
+    ['acme-api-1-fix-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
   ])
 })
@@ -2313,7 +2305,7 @@ it('ends a loop whose hand-off failed, and still finishes the run', async () => 
   const { report, opened } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     {
@@ -2330,9 +2322,7 @@ it('ends a loop whose hand-off failed, and still finishes the run', async () => 
     ['acme-api-1', 'error'],
     ['acme-api-1-review-1', 'done'],
   ])
-  expect(report.results[0]?.loop).toMatch(
-    /^1 round of review ⇄ address-review; acme-api-1-review-1 error: /,
-  )
+  expect(report.results[0]?.loop).toMatch(/^1 round of review ⇄ fix; acme-api-1-review-1 error: /)
   expect(opened).toEqual([])
 })
 
@@ -2346,7 +2336,7 @@ it("hands a round off without running the clone's diff command or writing throug
   await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     {
@@ -2357,7 +2347,7 @@ it("hands a round off without running the clone's diff command or writing throug
           await git(job.dir, 'config', 'diff.external', join(root, 'diff.sh'))
         }
         yield* provider.run(job, signal)
-        if (job.unit.id === 'acme-api-1-address-review-1')
+        if (job.unit.id === 'acme-api-1-fix-1')
           await symlink(outside, join(job.dir, '.away/out/diff.patch'))
       },
     },
@@ -2367,7 +2357,7 @@ it("hands a round off without running the clone's diff command or writing throug
       ctx: {
         env: {},
         log: (line) => {
-          if (line === 'acme-api-1-address-review-1: done') stop.abort()
+          if (line === 'acme-api-1-fix-1: done') stop.abort()
         },
       },
     },
@@ -2375,8 +2365,8 @@ it("hands a round off without running the clone's diff command or writing throug
 
   expect(existsSync(marker)).toBe(false)
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
-  const patch = join(root, 'run/units/acme-api-1-address-review-1/out/diff.patch')
-  expect(await readFile(patch, 'utf8')).toContain('+++ b/acme-api-1-address-review-1.txt')
+  const patch = join(root, 'run/units/acme-api-1-fix-1/out/diff.patch')
+  expect(await readFile(patch, 'utf8')).toContain('+++ b/acme-api-1-fix-1.txt')
 })
 
 it('refuses to publish a loop whose PR body a round turned into a symlink', async () => {
@@ -2387,14 +2377,14 @@ it('refuses to publish a loop whose PR body a round turned into a symlink', asyn
   const { report, opened } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 1 }
 `,
     [issue(1)],
     {
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        if (job.unit.id === 'acme-api-1-address-review-1') {
+        if (job.unit.id === 'acme-api-1-fix-1') {
           const body = join(job.dir, '.away/out/pr.md')
           await rm(body)
           await symlink(outside, body)
@@ -2417,7 +2407,7 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     {
@@ -2435,7 +2425,7 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'error', '.away/context in the clone is a symlink'],
+    ['acme-api-1-fix-1', 'error', '.away/context in the clone is a symlink'],
   ])
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
@@ -2445,7 +2435,7 @@ it('reads past FIFOs a round left as its verdict or report, and finishes the run
   const { report, opened } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 1 }
 `,
     [issue(1)],
     {
@@ -2465,7 +2455,7 @@ it('reads past FIFOs a round left as its verdict or report, and finishes the run
   const round = report.results.find((u) => u.planned.unit.id === 'acme-api-1-review-1')
   expect(round?.verdict).toBeUndefined()
   expect(round?.outcome).toEqual({ kind: 'none', reason: 'no report written' })
-  expect(report.results[0]?.loop).toBe('1 round of review ⇄ address-review; max 1 round reached')
+  expect(report.results[0]?.loop).toBe('1 round of review ⇄ fix; max 1 round reached')
   expect(opened).toHaveLength(1)
 }, 60_000)
 
@@ -2474,7 +2464,7 @@ it('ends a loop interrupted between rounds, and retries its chain without counti
   const { report, opened } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 2 }
 `,
     [issue(1)],
     looper({ 'acme-api-1-review-1': 'changes' }),
@@ -2492,9 +2482,9 @@ it('ends a loop interrupted between rounds, and retries its chain without counti
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'skipped', 'interrupted'],
+    ['acme-api-1-fix-1', 'skipped', 'interrupted'],
   ])
-  expect(report.results[0]?.loop).toBe('1 round of review ⇄ address-review; interrupted')
+  expect(report.results[0]?.loop).toBe('1 round of review ⇄ fix; interrupted')
   expect(report.results[0]?.outcome).toEqual({
     kind: 'none',
     reason: 'interrupted',
@@ -2509,7 +2499,7 @@ it("reads a loop's last verdict in the when of the step after it", async () => {
     `queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 2 }
+      - { loop: [review, fix], until: { verdict: approve }, max: 2 }
       - { skill: plan, when: { verdict: approve } }
 `,
     [issue(1)],
@@ -2542,9 +2532,9 @@ queue: [{ skill: implement, then: ${then} }]
     reason: `when \`true\` passes didn't hold (${noNetwork})`,
     passedOver: true,
   })
-  const loop = await offline(`{ loop: [address-review], until: { command: 'true' }, max: 3 }`)
+  const loop = await offline(`{ loop: [fix], until: { command: 'true' }, max: 3 }`)
   expect(loop.report.results[0]?.loop).toBe(
-    `1 round of address-review; until \`true\` passes not checked: ${noNetwork}`,
+    `1 round of fix; until \`true\` passes not checked: ${noNetwork}`,
   )
   expect(loop.opened[0]?.body).toContain('until `true` passes not checked')
   expect(loop.opened[0]?.body).not.toContain('Last check')
@@ -2552,27 +2542,27 @@ queue: [{ skill: implement, then: ${then} }]
   const dirty = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [address-review], until: { command: 'test -e fixed.txt' }, max: 1 }
+    then: { loop: [fix], until: { command: 'test -e fixed.txt' }, max: 1 }
 `,
     [issue(1)],
     {
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        if (job.unit.id === 'acme-api-1-address-review-1')
+        if (job.unit.id === 'acme-api-1-fix-1')
           await writeFile(join(job.dir, 'fixed.txt'), 'uncommitted')
       },
     },
     env,
   )
-  expect(dirty.report.results[0]?.loop).toBe('1 round of address-review; max 1 round reached')
+  expect(dirty.report.results[0]?.loop).toBe('1 round of fix; max 1 round reached')
   expect(dirty.opened[0]?.body).toContain('failed: uncommitted changes in the clone')
 
   const leftForNextStep = await loopRun(
     `queue:
   - skill: implement
     then:
-      loop: [address-review, { skill: fix-ci, when: { command: 'test -e fixed.txt' } }]
+      loop: [fix, { skill: implement, when: { command: 'test -e fixed.txt' } }]
       until: { verdict: approve }
       max: 1
 `,
@@ -2580,7 +2570,7 @@ queue: [{ skill: implement, then: ${then} }]
     {
       ...provider,
       async *run(job, signal) {
-        if (job.unit.id !== 'acme-api-1-address-review-1') return yield* provider.run(job, signal)
+        if (job.unit.id !== 'acme-api-1-fix-1') return yield* provider.run(job, signal)
         await writeFile(join(job.dir, 'fixed.txt'), 'uncommitted')
         yield { type: 'done', ok: true, turns: 1 }
       },
@@ -2588,7 +2578,7 @@ queue: [{ skill: implement, then: ${then} }]
     env,
   )
   expect(leftForNextStep.report.results[2]).toMatchObject({
-    planned: { unit: { id: 'acme-api-1-fix-ci-1' } },
+    planned: { unit: { id: 'acme-api-1-implement-1' } },
     status: 'done',
   })
 })
@@ -2597,7 +2587,7 @@ it("fences a failed check's output in the PR body past any backticks in it", asy
   const { opened } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [address-review], until: { command: "echo '\`\`\`\`'; false" }, max: 1 }
+    then: { loop: [fix], until: { command: "echo '\`\`\`\`'; false" }, max: 1 }
 `,
     [issue(1)],
     looper({}),
@@ -2631,7 +2621,7 @@ it("matches changed against the chain's draft PR after a report step", async () 
   - skill: implement
     then:
       - { skill: review, deliver: report }
-      - { skill: address-review, when: { changed: acme-api-1.txt } }
+      - { skill: fix, when: { changed: acme-api-1.txt } }
 `,
     [issue(1)],
     looper({}),
@@ -2640,7 +2630,7 @@ it("matches changed against the chain's draft PR after a report step", async () 
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-1-review', 'done'],
-    ['acme-api-1-address-review', 'done'],
+    ['acme-api-1-fix', 'done'],
   ])
 })
 
@@ -2649,7 +2639,7 @@ it('ends a loop on a round where every step was passed over, and says so in the 
     `queue:
   - skill: implement
     then:
-      loop: [{ skill: address-review, when: { command: 'false' } }]
+      loop: [{ skill: fix, when: { command: 'false' } }]
       until: { command: 'true' }
       max: 3
 `,
@@ -2660,18 +2650,16 @@ it('ends a loop on a round where every step was passed over, and says so in the 
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
-    ['acme-api-1-address-review-1', 'skipped'],
+    ['acme-api-1-fix-1', 'skipped'],
   ])
-  expect(report.results[0]?.loop).toBe("0 rounds of address-review; no step's when held")
-  expect(opened[0]?.body).toContain(
-    "## Awaywork loop\n\n0 rounds of address-review; no step's when held.",
-  )
+  expect(report.results[0]?.loop).toBe("0 rounds of fix; no step's when held")
+  expect(opened[0]?.body).toContain("## Awaywork loop\n\n0 rounds of fix; no step's when held.")
 
   const fixedOnce = await loopRun(
     `queue:
   - skill: implement
     then:
-      loop: [{ skill: address-review, when: { command: 'test ! -e acme-api-1-address-review-1.txt' } }]
+      loop: [{ skill: fix, when: { command: 'test ! -e acme-api-1-fix-1.txt' } }]
       until: { command: 'false' }
       max: 3
 `,
@@ -2681,10 +2669,10 @@ it('ends a loop on a round where every step was passed over, and says so in the 
   )
   expect(fixedOnce.report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
-    ['acme-api-1-address-review-1', 'done'],
-    ['acme-api-1-address-review-2', 'skipped'],
+    ['acme-api-1-fix-1', 'done'],
+    ['acme-api-1-fix-2', 'skipped'],
   ])
-  expect(fixedOnce.report.results[0]?.loop).toBe("1 round of address-review; no step's when held")
+  expect(fixedOnce.report.results[0]?.loop).toBe("1 round of fix; no step's when held")
 })
 
 it('checks a clone for uncommitted changes beyond what setup and earlier checks left', async () => {
@@ -2694,8 +2682,8 @@ queue:
   - skill: implement
     then:
       - review
-      - loop: [address-review]
-        until: { command: 'touch artifact.out; test -e acme-api-1-address-review-2.txt' }
+      - loop: [fix]
+        until: { command: 'touch artifact.out; test -e acme-api-1-fix-2.txt' }
         max: 3
 `,
     [issue(1)],
@@ -2706,10 +2694,10 @@ queue:
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-1-review', 'done'],
-    ['acme-api-1-address-review-1', 'done'],
-    ['acme-api-1-address-review-2', 'done'],
+    ['acme-api-1-fix-1', 'done'],
+    ['acme-api-1-fix-2', 'done'],
   ])
-  expect(report.results[2]?.loop).toMatch(/^2 rounds of address-review; until held/)
+  expect(report.results[2]?.loop).toMatch(/^2 rounds of fix; until held/)
 })
 
 it("doesn't run a nested repo's filter when it checks the clone for uncommitted changes", async () => {
@@ -2718,14 +2706,14 @@ it("doesn't run a nested repo's filter when it checks the clone for uncommitted 
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [address-review], until: { command: 'test ! -e ${ran}' }, max: 1 }
+    then: { loop: [fix], until: { command: 'test ! -e ${ran}' }, max: 1 }
 `,
     [issue(1)],
     {
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        if (job.unit.id !== 'acme-api-1-address-review-1') return
+        if (job.unit.id !== 'acme-api-1-fix-1') return
         const sub = join(job.dir, 'sub')
         const git = (dir: string, ...args: string[]) => execa(bin('git'), ['-C', dir, ...args])
         await git(job.dir, 'init', '-q', 'sub')
@@ -2742,7 +2730,7 @@ it("doesn't run a nested repo's filter when it checks the clone for uncommitted 
     { ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
   )
 
-  expect(report.results[0]?.loop).toMatch(/^1 round of address-review; until held/)
+  expect(report.results[0]?.loop).toMatch(/^1 round of fix; until held/)
 })
 
 it('skips a when step whose check was interrupted without passing over it, so the chain retries', async () => {
@@ -2806,7 +2794,7 @@ it("ends a loop at a refused when, instead of repeating its other steps on code 
 queue:
   - skill: implement
     then:
-      loop: [review, { skill: address-review, when: { command: '! false' } }]
+      loop: [review, { skill: fix, when: { command: '! false' } }]
       until: { verdict: approve }
       max: 3
 `,
@@ -2822,9 +2810,9 @@ queue:
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
-    ['acme-api-1-address-review-1', 'skipped', refused],
+    ['acme-api-1-fix-1', 'skipped', refused],
   ])
-  expect(report.results[0]?.loop).toBe(`1 round of review ⇄ address-review; ${refused}`)
+  expect(report.results[0]?.loop).toBe(`1 round of review ⇄ fix; ${refused}`)
   expect(opened).toHaveLength(1)
 })
 
@@ -2865,18 +2853,18 @@ it('counts a failure for a loop after a report that a refused when ended, since 
 queue:
   - skill: plan
     then:
-      loop: [{ skill: qa-feedback, deliver: report }, { skill: fix-ci, when: { command: 'true' } }]
+      loop: [review, { skill: fix, when: { command: 'true' } }]
       until: { verdict: approve }
       max: 2
 `,
     [item],
-    looper({ 'acme-api-1-qa-feedback-1': 'changes' }),
+    looper({ 'acme-api-1-review-1': 'changes' }),
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.passedOver])).toEqual([
     ['acme-api-1', 'done', undefined],
-    ['acme-api-1-qa-feedback-1', 'done', undefined],
-    ['acme-api-1-fix-ci-1', 'skipped', true],
+    ['acme-api-1-review-1', 'done', undefined],
+    ['acme-api-1-fix-1', 'skipped', true],
   ])
   expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
 })
@@ -2893,7 +2881,7 @@ it('ends a loop whose when check was interrupted, and retries its chain without 
     `queue:
   - skill: implement
     then:
-      loop: [review, { skill: address-review, when: { command: 'touch ${started}; sleep 5' } }]
+      loop: [review, { skill: fix, when: { command: 'touch ${started}; sleep 5' } }]
       until: { verdict: approve }
       max: 2
 `,
@@ -2958,7 +2946,7 @@ it("runs the step after a passed-over draft PR step on the base it would have ha
     deliver: report
     where: { label: second }
     then:
-      - { skill: address-review, deliver: draft_pr, when: { verdict: go } }
+      - { skill: fix, deliver: draft_pr, when: { verdict: go } }
       - { skill: plan, deliver: report }
 `,
     [item(1, 'first'), item(2, 'second')],
@@ -2968,7 +2956,7 @@ it("runs the step after a passed-over draft PR step on the base it would have ha
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
     ['acme-api-1', 'done'],
     ['acme-api-2', 'done'],
-    ['acme-api-2-address-review', 'skipped'],
+    ['acme-api-2-fix', 'skipped'],
     ['acme-api-2-plan', 'done'],
   ])
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
@@ -3003,14 +2991,14 @@ it("doesn't write a check's log through a symlink a round left in the clone", as
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: address-review, until: { command: 'true' }, max: 1 }
+    then: { loop: fix, until: { command: 'true' }, max: 1 }
 `,
     [issue(1)],
     {
       ...provider,
       async *run(job, signal) {
         yield* provider.run(job, signal)
-        if (job.unit.id === 'acme-api-1-address-review-1')
+        if (job.unit.id === 'acme-api-1-fix-1')
           await symlink(outside, join(job.dir, '.away/out/check.log'))
       },
     },
@@ -3029,25 +3017,23 @@ it('stacks on an awaywork PR a rule took up whenever a draft PR starts from its 
     const { opened } = await loopRun(
       `queue: [{ skill: review, where: { type: pr, ours: true }, then: ${then} }]`,
       [{ ...pr, linkedPrs: [link] }],
-      looper({ 'acme-api-9-qa-feedback-1': 'approve' }),
+      looper({ 'acme-api-9-review-1': 'approve' }),
     )
     return opened.map((o) => [o.head, o.base, o.body.includes(`Stacked on ${link.url}`)])
   }
 
+  expect(await stackedOn('[{ skill: fix, when: { verdict: changes } }, implement]')).toEqual([
+    ['away/acme-api-9-implement', 'away/acme-api-5', true],
+  ])
   expect(
-    await stackedOn('[{ skill: fix-ci, when: { verdict: changes } }, address-review]'),
-  ).toEqual([['away/acme-api-9-address-review', 'away/acme-api-5', true]])
-  expect(
-    await stackedOn(
-      '[{ loop: [{ skill: qa-feedback, deliver: report }, fix-ci], until: { verdict: approve }, max: 1 }, address-review]',
-    ),
-  ).toEqual([['away/acme-api-9-address-review', 'away/acme-api-5', true]])
+    await stackedOn('[{ loop: [review, fix], until: { verdict: approve }, max: 1 }, implement]'),
+  ).toEqual([['away/acme-api-9-implement', 'away/acme-api-5', true]])
 })
 
 it("doesn't open a push loop on a host whose report is blank", async () => {
   const { report } = await loopRun(
     `queue:
-  - skill: fix-ci
+  - skill: fix
     deliver: push
     then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
 `,
@@ -3077,7 +3063,7 @@ it("puts back a loop clone's git config after each worker, and refuses a borrowe
   const { report } = await loopRun(
     `queue:
   - skill: implement
-    then: { loop: [review, address-review], until: { verdict: approve }, max: 1 }
+    then: { loop: [review, fix], until: { verdict: approve }, max: 1 }
 `,
     [issue(1)],
     {
@@ -3087,22 +3073,22 @@ it("puts back a loop clone's git config after each worker, and refuses a borrowe
         seen[job.unit.id] = await readFile(config, 'utf8')
         if (job.unit.id === 'acme-api-1-review-1')
           await writeFile(config, '[core]\n\tsshCommand = touch pwned\n', { flag: 'a' })
-        if (job.unit.id === 'acme-api-1-address-review-1')
+        if (job.unit.id === 'acme-api-1-fix-1')
           await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '/elsewhere\n')
         yield* provider.run(job, signal)
       },
     },
   )
 
-  expect(seen['acme-api-1-address-review-1']).toBe(seen['acme-api-1-review-1'])
+  expect(seen['acme-api-1-fix-1']).toBe(seen['acme-api-1-review-1'])
   expect(report.results[0]?.loop).toBe(
-    '1 round of review ⇄ address-review; acme-api-1-address-review-1 error: .git/objects/info/alternates in the clone points elsewhere',
+    '1 round of review ⇄ fix; acme-api-1-fix-1 error: .git/objects/info/alternates in the clone points elsewhere',
   )
 })
 
 /** Pushes onto PR 1 and opens a draft PR after it, reports on issue 2, and runs a failing after_unit. */
 const afterUnitQueue = (out: string) => `queue:
-  - { skill: fix-ci, deliver: push, where: { type: pr }, then: implement }
+  - { skill: fix, deliver: push, where: { type: pr }, then: implement }
   - { skill: plan, where: { type: issue } }
 after_unit:
   command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'; exit 3
@@ -3176,8 +3162,8 @@ it("runs a loop's after_unit once it closes, with its host's PR and each round's
   const yaml = `queue:
   - skill: implement
     then:
-      - { loop: [review, address-review], until: { verdict: approve }, max: 3 }
-      - { skill: qa-feedback, deliver: report }
+      - { loop: [review, fix], until: { verdict: approve }, max: 3 }
+      - plan
 after_unit:
   command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'
 `
@@ -3195,9 +3181,9 @@ after_unit:
   expect(firedBefore).toEqual({
     'acme-api-1': 0,
     'acme-api-1-review-1': 0,
-    'acme-api-1-address-review-1': 0,
+    'acme-api-1-fix-1': 0,
     'acme-api-1-review-2': 0,
-    'acme-api-1-qa-feedback': 4,
+    'acme-api-1-plan': 4,
   })
   const lines = (await readFile(out, 'utf8')).trim().split('\n')
   expect(lines).toEqual([
@@ -3205,19 +3191,17 @@ after_unit:
     expect.stringMatching(
       /^acme-api-1-review-1 done \|\/.+\/units\/acme-api-1-review-1\/out\/report\.md$/,
     ),
-    'acme-api-1-address-review-1 done |',
+    'acme-api-1-fix-1 done |',
     expect.stringMatching(
       /^acme-api-1-review-2 done \|\/.+\/units\/acme-api-1-review-2\/out\/report\.md$/,
     ),
-    expect.stringMatching(
-      /^acme-api-1-qa-feedback done \|\/.+\/units\/acme-api-1-qa-feedback\/out\/report\.md$/,
-    ),
+    expect.stringMatching(/^acme-api-1-plan done \|\/.+\/units\/acme-api-1-plan\/out\/report\.md$/),
   ])
   const reports = lines.flatMap((line) => line.split('|')[1] || [])
   expect(await Promise.all(reports.map((file) => readFile(file, 'utf8')))).toEqual([
     'acme-api-1-review-1 says changes.',
     'acme-api-1-review-2 says approve.',
-    'acme-api-1-qa-feedback says nothing.',
+    'acme-api-1-plan says nothing.',
   ])
 })
 

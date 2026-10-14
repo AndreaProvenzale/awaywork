@@ -160,16 +160,10 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
     // The fake answered the quota probe, so the real binary never ran.
     expect(JSON.parse(await readFile(fakeArgv, 'utf8'))).toContain('claude-haiku-4-5-20251001')
     const units = [
-      {
-        key: issueKey,
-        title: `[e2e ${run}] issue`,
-        skill: 'implement',
-        deliver: 'draft_pr',
-        file: 'issue.md',
-      },
-      { key: task, title: taskName, skill: 'plan', deliver: 'report', file: 'task.md' },
+      { key: issueKey, title: `[e2e ${run}] issue`, skill: 'implement', deliver: 'draft_pr' },
+      { key: task, title: taskName, skill: 'plan', deliver: 'report' },
     ]
-    for (const { key, title, skill, deliver, file } of units) {
+    for (const { key, title, skill, deliver } of units) {
       const id = slug(key)
       expect(unitOf(plan, key)).toMatchObject({
         provider: 'claude',
@@ -180,8 +174,8 @@ describe.skipIf(!repo || !token || !workspace || !project)('pipeline, live, no q
       const runDir = out.match(/state in (\S+)/)?.[1] ?? ''
       const work = join(runDir, 'work', id, '.away')
       const context = join(work, 'context', id)
-      expect(await readdir(context)).toEqual([file])
-      expect(await readFile(join(context, file), 'utf8')).toContain(title)
+      expect(await readdir(context)).toEqual(['item.md'])
+      expect(await readFile(join(context, 'item.md'), 'utf8')).toContain(title)
       expect(await readFile(join(work, 'prompt.md'), 'utf8')).toContain(`- ${key}: ${title}`)
       expect(await readdir(join(runDir, 'plugins', id, 'skills'))).toEqual([skill])
     }

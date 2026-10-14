@@ -9,10 +9,7 @@ export type Origin = 'user' | 'repo' | 'builtin'
 export type SkillCatalog = Partial<Record<Origin, Record<string, SkillMeta>>>
 
 export const builtinSkills: Record<string, SkillMeta> = {
-  'fix-ci': {},
-  'address-review': {},
-  'qa-feedback': {},
-  continue: {},
+  fix: {},
   plan: { deliver: 'report' },
   implement: {},
   review: { deliver: 'report' },

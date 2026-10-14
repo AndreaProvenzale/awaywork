@@ -22,10 +22,10 @@ sources:
     link: "Refs {key}"                  # optional: the line that links a PR, see below
 
 queue:
-  - skill: qa-feedback
+  - skill: fix
     source: board
     where: { column: QA }
-  - skill: continue
+  - skill: implement
     source: board
     where: { column: In progress }
 ```
@@ -137,6 +137,82 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry
   no link line.
+
+## Recipe: Sentry errors
+
+An error with a stack trace is a problem listed on an item, so `fix`
+takes it like a red check. This one is a recipe to adapt, and it hasn't
+run against a real Sentry yet: point it at your org and projects, print
+your unresolved issues with their latest stack trace, and let a rule
+pick the loud ones.
+
+```yaml
+sources:
+  sentry:
+    command: node sentry.mjs
+    fields: [level, count]
+    secrets: [SENTRY_TOKEN]   # a personal auth token, read access to events
+
+queue:
+  - skill: fix
+    source: sentry
+    where: { level: [error, fatal], count: { gte: 10 } }
+```
+
+```js
+// sentry.mjs: your unresolved Sentry issues, one item each
+const org = 'acme'
+const repos = { api: 'acme/api', web: 'acme/web' } // Sentry project: GitHub repo
+const query = encodeURIComponent('is:unresolved assigned:me')
+
+async function get(path) {
+  const res = await fetch(`https://sentry.io/api/0/${path}`, {
+    headers: { Authorization: `Bearer ${process.env.SENTRY_TOKEN}` },
+  })
+  if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`)
+  return res.json()
+}
+
+function stackTrace(event) {
+  const exceptions = event.entries.find((e) => e.type === 'exception')?.data.values ?? []
+  return exceptions.map((ex) => [
+    `${ex.type}: ${ex.value}`,
+    ...(ex.stacktrace?.frames ?? []).toReversed()
+      .map((f) => `  at ${f.function ?? '?'} (${f.filename}:${f.lineNo})`),
+  ].join('\n')).join('\n\n')
+}
+
+const items = []
+for (const [project, repo] of Object.entries(repos)) {
+  for (const issue of await get(`projects/${org}/${project}/issues/?query=${query}`)) {
+    const event = await get(`organizations/${org}/issues/${issue.id}/events/latest/`)
+    items.push({
+      id: issue.id,
+      key: issue.shortId,
+      title: issue.title,
+      url: issue.permalink,
+      context: `Culprit: ${issue.culprit}\n\n\`\`\`\n${stackTrace(event)}\n\`\`\``,
+      fields: { repo, level: issue.level, count: Number(issue.count), updated: issue.lastSeen },
+    })
+  }
+}
+console.log(JSON.stringify(items))
+```
+
+- **`assigned:me`** keeps it to your errors, like any source. Drop it
+  if the whole project is yours.
+- **One request per issue** for the latest event: fine for a handful of
+  errors; cap the list or skip `context` if your project is noisier.
+- **No `type`**: items default to `task`, and only tasks get linked to
+  your open PRs, awaywork's included. So an error whose draft PR is
+  still open waits for you instead of getting a second one.
+- **`updated`** is `lastSeen`: an error that fires again after you closed
+  its draft PR is fair game again. So is one `fix` couldn't turn into a
+  PR: while it keeps firing, every run tries it again and "gave up after
+  3 attempts" never kicks in. Cap the rule with `units:` if that's a lot.
+- **Frames come oldest first** from Sentry; the script flips them so the
+  throwing line is on top.
+- **EU-region org?** Swap `sentry.io` for `de.sentry.io`.
 
 ## On GitHub Actions
 

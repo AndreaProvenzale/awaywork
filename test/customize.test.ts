@@ -21,7 +21,7 @@ describe('queue order in the config text', () => {
       'providers: [claude] # keep me',
       'queue:',
       '  # CI first',
-      '  - skill: fix-ci',
+      '  - skill: fix',
       '    where: { checks: failing } # red',
       '',
       '  - skill: review',
@@ -39,7 +39,7 @@ describe('queue order in the config text', () => {
         '      review_requested: true',
         '',
         '  # CI first',
-        '  - skill: fix-ci',
+        '  - skill: fix',
         '    where: { checks: failing } # red',
         'sources: { github: { repos: [a/b] } }',
         '',
@@ -97,7 +97,7 @@ describe('queue screen', () => {
     expect(matches[2]?.shadowed).toEqual([{ item: items[0], by: 0 }])
     expect(formatQueue(queue, items).flat()).toMatchInlineSnapshot(`
       [
-        "#1  fix-ci     type=pr mine=true checks=failing",
+        "#1  fix        type=pr mine=true checks=failing",
         "     1 taken: acme/api#1",
         "#2  implement  source=github type=issue label=awaywork repo=acme/api",
         "     0 taken",
@@ -150,7 +150,7 @@ describe('skills', () => {
     await writeFile(join(linked, 'SKILL.md'), '---\ndescription: Linked.\n---\n')
     await symlink(linked, join(userDir, 'house-style'))
     const text = await listSkills(userDir)
-    expect(text).toContain('fix-ci (built-in, draft_pr)\n  Fix the failing checks')
+    expect(text).toContain('fix (built-in, draft_pr)\n  Fix the problems reported on an item')
     expect(text).toContain('plan (built-in, report)')
     expect(text).toContain('review (user, shadows built-in, draft_pr)\n  Mine.')
     expect(text).toContain('house-style (user, draft_pr)\n  Linked.')
@@ -158,11 +158,11 @@ describe('skills', () => {
 
   it('ejects a built-in once, and only a built-in', async () => {
     const userDir = await tmp()
-    const to = await ejectSkill('fix-ci', userDir)
+    const to = await ejectSkill('fix', userDir)
     expect(await readFile(join(to, 'SKILL.md'), 'utf8')).toBe(
-      await readFile(join(builtinSkillsDir, 'fix-ci', 'SKILL.md'), 'utf8'),
+      await readFile(join(builtinSkillsDir, 'fix', 'SKILL.md'), 'utf8'),
     )
-    await expect(ejectSkill('fix-ci', userDir)).rejects.toThrow(/already exists/)
+    await expect(ejectSkill('fix', userDir)).rejects.toThrow(/already exists/)
     await expect(ejectSkill('nope', userDir)).rejects.toThrow(/no built-in skill "nope"/)
   })
 })

@@ -60,13 +60,13 @@ describe('init', () => {
       sources:
         github: {repos: [octo/*, acme/api]}
       queue:                          # first matching rule wins; top = highest priority
-        - skill: fix-ci
+        - skill: fix
           source: github
           where: {type: pr, mine: true, checks: failing}
-        - skill: address-review
+        - skill: fix
           source: github
           where: {type: pr, mine: true, unresolved_threads: {not: 0}}
-        - skill: address-review
+        - skill: fix
           source: github
           where: {type: pr, mine: true, ours: true, my_unresolved_threads: {not: 0}}
         - skill: review
@@ -105,8 +105,8 @@ describe('init', () => {
       [/^Asana projects/, ['300']],
       [/^GitHub repo for tasks in Platform/, 'acme/api'],
       [/^Starting queue/, initial],
-      [/^Which section holds the items for qa-feedback\? Fix the issues QA/, initial],
-      [/^Which section holds the items for continue/, 'Doing'],
+      [/^Which section holds the items for fix\? Fix the problems/, initial],
+      [/^Which section holds the items for implement/, 'Doing'],
       [/^Which section holds the items for plan/, ''],
       [/^Window starts/, initial],
       [/^Window ends/, initial],
@@ -122,8 +122,8 @@ describe('init', () => {
       },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['qa-feedback', { section: 'QA' }],
-      ['continue', { section: 'Doing' }],
+      ['fix', { section: 'QA' }],
+      ['implement', { section: 'Doing' }],
     ])
   })
 
@@ -135,8 +135,8 @@ describe('init', () => {
       [/^GitHub repo for issues in ENG/, 'acme/api'],
       [/^GitHub repo for issues in WEB/, ''],
       [/^Starting queue/, initial],
-      [/^Which state holds the items for qa-feedback/, initial],
-      [/^Which state holds the items for continue/, initial],
+      [/^Which state holds the items for fix/, initial],
+      [/^Which state holds the items for implement/, initial],
       [/^Which state holds the items for plan/, ''],
       [/^Window starts/, initial],
       [/^Window ends/, initial],
@@ -148,8 +148,8 @@ describe('init', () => {
       linear: { repo_map: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['qa-feedback', { state: 'QA' }],
-      ['continue', { state: 'In Progress' }],
+      ['fix', { state: 'QA' }],
+      ['implement', { state: 'In Progress' }],
     ])
   })
 
@@ -165,8 +165,8 @@ describe('init', () => {
       [/^GitHub repo for issues in ENG/, 'acme/api'],
       [/^GitHub repo for issues in WEB/, ''],
       [/^Starting queue/, initial],
-      [/^Which status holds the items for qa-feedback/, initial],
-      [/^Which status holds the items for continue/, initial],
+      [/^Which status holds the items for fix/, initial],
+      [/^Which status holds the items for implement/, initial],
       [/^Which status holds the items for plan/, initial],
       [/^Window starts/, initial],
       [/^Window ends/, initial],
@@ -184,8 +184,8 @@ describe('init', () => {
       },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['qa-feedback', { status: 'QA' }],
-      ['continue', { status: 'In Progress' }],
+      ['fix', { status: 'QA' }],
+      ['implement', { status: 'In Progress' }],
       ['plan', { status: 'To Do' }],
     ])
   })
@@ -252,12 +252,7 @@ describe('init --yes', () => {
     const cfg = parseConfig(text)
     expect(cfg.providers.map((p) => p.id)).toEqual(['codex'])
     expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] } })
-    expect(cfg.queue?.map((r) => r.skill)).toEqual([
-      'fix-ci',
-      'address-review',
-      'address-review',
-      'review',
-    ])
+    expect(cfg.queue?.map((r) => r.skill)).toEqual(['fix', 'fix', 'fix', 'review'])
     expect(cfg.windows).toEqual([{ start: '01:00', end: '07:00' }])
   })
 

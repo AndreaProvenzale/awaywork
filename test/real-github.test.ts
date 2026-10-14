@@ -196,14 +196,14 @@ jobs:
 
     const issueDir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await github.prefetch(found.issue, issueDir, ctx)
-    expect(await readFile(join(issueDir, 'issue.md'), 'utf8')).toContain(`e2e comment ${run}`)
+    expect(await readFile(join(issueDir, 'item.md'), 'utf8')).toContain(`e2e comment ${run}`)
 
     const prDir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await github.prefetch(found.pr, prDir, ctx)
     expect((await readdir(prDir)).sort()).toEqual([
       'checks.md',
       'diff.patch',
-      'pr.md',
+      'item.md',
       'threads.md',
     ])
     const read = (name: string) => readFile(join(prDir, name), 'utf8')

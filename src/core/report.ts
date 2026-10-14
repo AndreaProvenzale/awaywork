@@ -18,7 +18,7 @@ export interface UnitResult {
   verdict?: string
   /** Skipped because its `when` didn't hold: its chain goes on from the unit before. */
   passedOver?: true
-  /** How the loop this unit hosts went, e.g. `2 rounds of review ⇄ address-review; until held: verdict approve`. */
+  /** How the loop this unit hosts went, e.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
   loop?: string
 }
 

@@ -280,7 +280,7 @@ function deliveryRefusal(
   if (fork) return `deliver ${deliver}: ${base} is on a fork`
 }
 
-/** E.g. `matched no rule; closest #2 fix-ci: checks is passing, wants failing`. */
+/** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
 function noRuleReason(item: Item, queue: Rule[]): string {
   const closest = closestRule(item, queue)
   const why = isAwayworkPr(item)

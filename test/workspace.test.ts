@@ -69,13 +69,13 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         untrusted: false,
         branch: 'away/acme-api-1',
         rule: {
-          skill: 'fix-ci',
+          skill: 'fix',
           provider: [],
           skills: [],
           instructions: [],
           with: { tries: 2 },
         },
-        skill: 'fix-ci',
+        skill: 'fix',
         skills: ['house-style'],
         providers: ['claude'],
         instructions: [],
@@ -93,7 +93,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
 
     expect((await git(dir, 'branch', '--show-current')).stdout).toBe('away/acme-api-1')
     expect(existsSync(join(plugin, '.claude-plugin/plugin.json'))).toBe(true)
-    expect(existsSync(join(plugin, 'skills/fix-ci/SKILL.md'))).toBe(true)
+    expect(existsSync(join(plugin, 'skills/fix/SKILL.md'))).toBe(true)
     expect(existsSync(join(plugin, 'skills/house-style/SKILL.md'))).toBe(true)
     expect(existsSync(join(dir, '.claude/skills'))).toBe(false)
     expect(await readFile(join(dir, '.away/context/fake-1/item.md'), 'utf8')).toBe('CI is red')
@@ -107,7 +107,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(parts[0]).toContain(
       'Deliver: a draft PR. Commit on this branch and write `.away/out/pr.md`.',
     )
-    expect(parts[1]).toMatch(/^# Fix CI/)
+    expect(parts[1]).toMatch(/^# Fix\n/)
     expect(parts.slice(2)).toEqual([
       '## Parameters\n\n- tries: 2',
       'GLOBAL NOTE',
@@ -184,8 +184,8 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
-          rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
-          skill: 'fix-ci',
+          rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
+          skill: 'fix',
           skills: ['house-style'],
           providers: [provider.id],
           instructions: [],
@@ -280,7 +280,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         ctx: { env: {}, log: () => {} },
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
         previous: stacked
-          ? { skill: 'fix-ci', outcome: { kind: 'pr', url: 'u', commits: 1 }, out }
+          ? { skill: 'fix', outcome: { kind: 'pr', url: 'u', commits: 1 }, out }
           : undefined,
       })
       return { dir, plugin, prompt }
@@ -353,8 +353,8 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
-          rule: { skill: 'fix-ci', provider: [], skills: [], instructions: [] },
-          skill: 'fix-ci',
+          rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
+          skill: 'fix',
           skills: ['house-style'],
           providers: ['claude'],
           instructions: [],
@@ -372,7 +372,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         reuse,
       })
     await round(false)
-    const copy = join(dir, '.agents/skills/fix-ci/SKILL.md')
+    const copy = join(dir, '.agents/skills/fix/SKILL.md')
     const original = await readFile(copy, 'utf8')
     await writeFile(copy, 'EDITED')
     await writeFile(join(dir, '.agents/skills/house-style/SKILL.md'), 'EDITED REPO SKILL')
