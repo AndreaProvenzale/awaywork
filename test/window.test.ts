@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest'
-import { runEnd, runsLeft, startsOf, tooLongForHosted, windowEnd } from '../src/core/window.js'
+import {
+  hostedEnd,
+  runEnd,
+  runsLeft,
+  startsOf,
+  tooLongForHosted,
+  windowEnd,
+} from '../src/core/window.js'
 
 const at = (day: number, time: string) => new Date(`2026-09-${day}T${time}:00`)
 
@@ -44,6 +51,14 @@ it('stops a run on a GitHub-hosted runner 5h40 in, or at the window end when tha
     at(26, '07:00'),
   )
   expect(runEnd(long, at(25, '18:02'), {})).toEqual(at(26, '07:00'))
+})
+
+it('caps any run on a GitHub-hosted runner, scheduled or not', () => {
+  expect(hostedEnd(at(25, '12:00'), { RUNNER_ENVIRONMENT: 'github-hosted' })).toEqual(
+    at(25, '17:40'),
+  )
+  expect(hostedEnd(at(25, '12:00'), { RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
+  expect(hostedEnd(at(25, '12:00'), {})).toBeUndefined()
 })
 
 it('finds the windows longer than a GitHub-hosted job', () => {

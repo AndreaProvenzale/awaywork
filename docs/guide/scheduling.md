@@ -178,8 +178,8 @@ every run its `where` holds. A self-hosted runner keeps
 carries over between runs as on your machine.
 
 GitHub also ends a job on its hosted runners at 6 hours, whatever your
-window says. So there a scheduled run stops 5h40 after `awaywork run`
-starts, or at the window's end when that comes first, and the 20 minutes
+window says. So there a run stops 5h40 after `awaywork run` starts,
+or at the window's end when that comes first, and the 20 minutes
 left go to publishing and the report; the workflow sets
 `timeout-minutes: 360` to match. A longer window, like `18:00-07:00`,
 effectively lasts about 6 hours there, and `plan` on the runner says so:
@@ -190,8 +190,12 @@ Warnings
 ```
 
 The stop works like any window end: a running unit stops with
-`stopped: window ended` and publishes what it has. awaywork caps no run
-on a self-hosted runner.
+`stopped: window ended` and publishes what it has. A run from the
+Actions tab gets the same cap. On a self-hosted runner a run lasts the
+whole window: GitHub's default of 360 minutes applies to self-hosted jobs
+too, so that workflow sets `timeout-minutes: 1440`. One installed
+without it gets the line on your next
+`schedule install --with github-actions`.
 
 Pick one per machine, though: a local schedule or a runner. Nothing
 keeps two runs apart, so with both on one machine they start together

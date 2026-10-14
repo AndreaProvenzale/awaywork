@@ -9,7 +9,9 @@ const DAY = 24 * 60 * MINUTE
 
 /** GitHub cancels a job on its hosted runners after 6 hours. */
 export const HOSTED_JOB_MINUTES = 360
-/** How long a scheduled run there lasts at most, counted from its own start: the rest of the job publishes and reports. */
+/** GitHub's 360 default applies to self-hosted runners too; a window is always under 24 hours. */
+export const SELF_HOSTED_JOB_MINUTES = 1440
+/** How long a run there lasts at most, counted from its own start: the rest of the job publishes and reports. */
 export const HOSTED_RUN_MINUTES = 340
 
 const clock = (time: string) => time.split(':').map(Number) as [number, number]
@@ -52,11 +54,17 @@ export function windowEnd(windows: Window[], now: Date): Date | undefined {
   return open.length ? new Date(Math.max(...open.map(([, end]) => end.getTime()))) : undefined
 }
 
+/** When a run started at `now` must stop on a GitHub-hosted runner, or undefined elsewhere. */
+export const hostedEnd = (now: Date, env: NodeJS.ProcessEnv) =>
+  env.RUNNER_ENVIRONMENT === 'github-hosted'
+    ? new Date(now.getTime() + HOSTED_RUN_MINUTES * MINUTE)
+    : undefined
+
 /** When a scheduled run started at `now` stops: its window's end, or sooner on a GitHub-hosted runner. */
 export function runEnd(windows: Window[], now: Date, env: NodeJS.ProcessEnv): Date | undefined {
   const end = windowEnd(windows, now)
-  if (!end || env.RUNNER_ENVIRONMENT !== 'github-hosted') return end
-  return new Date(Math.min(end.getTime(), now.getTime() + HOSTED_RUN_MINUTES * MINUTE))
+  const cap = hostedEnd(now, env)
+  return end && cap && cap < end ? cap : end
 }
 
 const minutesOf = (time: string) => clock(time)[0] * 60 + clock(time)[1]

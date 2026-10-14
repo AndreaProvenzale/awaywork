@@ -411,7 +411,7 @@ describe('schedule install --with github-actions', () => {
     expect(out.join('\n')).not.toMatch(/won't run/)
     const job = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run
     expect(job['runs-on']).toBe('self-hosted')
-    expect(job['timeout-minutes']).toBeUndefined()
+    expect(job['timeout-minutes']).toBe(1440)
     expect(job.steps.at(-1).with.packages).toBe('')
     expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
     const labelHint = /^`runs-on: self-hosted` matches any self-hosted runner .* a label of its own/

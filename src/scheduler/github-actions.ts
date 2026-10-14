@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, isNode, isScalar, parseDocument } from 'yaml'
 import { skillsDirOf } from '../config/paths.js'
-import { HOSTED_JOB_MINUTES } from '../core/window.js'
+import { HOSTED_JOB_MINUTES, SELF_HOSTED_JOB_MINUTES } from '../core/window.js'
 import type { Start } from './index.js'
 
 export const WORKFLOW = '.github/workflows/awaywork.yml'
@@ -57,7 +57,7 @@ export function workflow(w: Workflow): string {
   )
   const name = person ? `awaywork-${person.name}` : 'awaywork'
   const runsOn = w.runsOn ?? 'ubuntu-latest'
-  const timeout = runsOn === 'ubuntu-latest' ? `    timeout-minutes: ${HOSTED_JOB_MINUTES}\n` : ''
+  const timeout = runsOn === 'ubuntu-latest' ? HOSTED_JOB_MINUTES : SELF_HOSTED_JOB_MINUTES
   return `name: ${name}
 
 on:
@@ -78,7 +78,8 @@ permissions:
 jobs:
   run:
     runs-on:${runsOn.startsWith('\n') ? '' : ' '}${runsOn}
-${timeout}${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
+    timeout-minutes: ${timeout}
+${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
       TZ: ${w.timezone}
     steps:
       - uses: actions/checkout@v5
