@@ -50,7 +50,7 @@ Or write a minimal config by hand:
 ```yaml
 providers: [claude]
 sources:
-  github: { repos: [my-org/*] }
+  github: { repos: [acme/*] }
 ```
 
 With no `queue`, the [default queue](./how-it-works.md#the-queue) applies.

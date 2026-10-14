@@ -23,7 +23,7 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 
 ```
 $ awaywork plan
-Queue (default: no queue in config)
+Queue
   #1  fix     source=github type=pr mine=true checks=failing
   #2  fix     source=github type=pr mine=true unresolved_threads!=0
   #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
