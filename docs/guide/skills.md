@@ -72,16 +72,21 @@ The ejected copy shadows the built-in from then on.
 
 ## Bring your repo's skills
 
-Your repo already has skills for Claude Code or Codex? Name them, no
-ejecting or copying:
+Your repo already has skills for Claude Code or Codex? Name them in a
+rule scoped to that repo, no ejecting or copying. Edit the config file
+by hand, though: they only resolve at run time, so `doctor` warns about
+them and `config edit` refuses them.
 
 ```yaml
-skills: [tdd-implementation]        # every unit
 queue:
   - skill: implement
-    skills: [writing-migrations]    # this rule's units
-    where: { type: issue }
+    skills: [tdd-implementation, writing-migrations]
+    where: { type: issue, repo: acme/api }
 ```
+
+Not in top-level `skills`: that list joins every unit, on your other
+repos and on PRs someone else opened too, and there they fail with
+`unknown skill`.
 
 An extra skill that isn't yours, in `.awaywork/skills/` or built in is
 looked up in the clone's `.claude/skills/`, then `.agents/skills/`. Those
