@@ -156,6 +156,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.permissions).toEqual({ contents: 'read' })
   expect(parsed.jobs.run.environment).toBeUndefined()
   expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
+  expect(parsed.jobs.run['timeout-minutes']).toBe(360)
   expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
   expect(parsed.jobs.run.steps).toEqual([
     { uses: 'actions/checkout@v5', with: { 'persist-credentials': false } },
@@ -410,6 +411,7 @@ describe('schedule install --with github-actions', () => {
     expect(out.join('\n')).not.toMatch(/won't run/)
     const job = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run
     expect(job['runs-on']).toBe('self-hosted')
+    expect(job['timeout-minutes']).toBeUndefined()
     expect(job.steps.at(-1).with.packages).toBe('')
     expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
     const labelHint = /^`runs-on: self-hosted` matches any self-hosted runner .* a label of its own/

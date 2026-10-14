@@ -177,6 +177,22 @@ every run its `where` holds. A self-hosted runner keeps
 `~/.local/state/awaywork` of the user it runs as, so all of that
 carries over between runs as on your machine.
 
+GitHub also ends a job on its hosted runners at 6 hours, whatever your
+window says. So there a scheduled run stops 5h40 after `awaywork run`
+starts, or at the window's end when that comes first, and the 20 minutes
+left go to publishing and the report; the workflow sets
+`timeout-minutes: 360` to match. A longer window, like `18:00-07:00`,
+effectively lasts about 6 hours there, and `plan` on the runner says so:
+
+```
+Warnings
+  GitHub-hosted runners end a job at 6 hours, so a run stops 5h40 after it starts, before 18:00-07:00 ends
+```
+
+The stop works like any window end: a running unit stops with
+`stopped: window ended` and publishes what it has. awaywork caps no run
+on a self-hosted runner.
+
 Pick one per machine, though: a local schedule or a runner. Nothing
 keeps two runs apart, so with both on one machine they start together
 when a window opens and work the same items on the same state dir.
