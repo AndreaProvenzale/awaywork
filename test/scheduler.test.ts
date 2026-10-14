@@ -47,7 +47,7 @@ const awkward: Schedule = {
 
 function recorder(crontab = '') {
   const calls: string[] = []
-  const run: Exec = async (_cmd, args) => {
+  const run: Exec = async (cmd, args) => {
     calls.push([cmd, ...args].join(' '))
     if (cmd === 'crontab' && args[0] === '-l') return crontab
     if (cmd === 'crontab') crontab = await readFile(args[0] ?? '', 'utf8')
@@ -81,7 +81,7 @@ it('retries bootstrap while launchd still holds the old job', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   let busy = 2
-  const flaky: Exec = async (_cmd, args) => {
+  const flaky: Exec = async (cmd, args) => {
     if (args[0] === 'bootstrap' && busy-- > 0) {
       calls.push('failed')
       throw new Error('Bootstrap failed: 5: Input/output error')
@@ -121,7 +121,7 @@ it('removes its unit files and fails in one line, with the cause, when systemctl
     throw new Error('Failed to connect to bus: No medium found')
   }
   await expect(systemd(home, run).install(schedule)).rejects.toThrow(
-    'systemctl failed (Failed to connect to bus: No medium found); systemd needs a user session: log in directly, or use --with cron',
+    'systemctl failed (Failed to connect to bus: No medium found); without a systemd user session, log in directly or use --with cron',
   )
   expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
   expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)

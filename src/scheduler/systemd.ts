@@ -33,7 +33,7 @@ export function systemd(home: string, run: Exec): Scheduler {
           '\n',
         )[0]
         throw new SchedulerError(
-          `systemctl failed (${reason}); systemd needs a user session: log in directly, or use --with cron`,
+          `systemctl failed (${reason}); without a systemd user session, log in directly or use --with cron`,
           { cause: e },
         )
       }
