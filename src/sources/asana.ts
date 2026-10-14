@@ -154,9 +154,9 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
       return items
     },
 
-    /** Writes task.md: description, fields and comments. */
+    /** Writes item.md: description, fields and comments. */
     async prefetch(item, dir) {
-      await writeFile(join(dir, 'task.md'), taskMarkdown(item))
+      await writeFile(join(dir, 'item.md'), taskMarkdown(item))
     },
 
     /** Picks a workspace and projects from the account and lists their real section names. */

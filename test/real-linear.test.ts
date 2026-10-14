@@ -169,8 +169,8 @@ describe.skipIf(!token || !team)('linear source, live', () => {
 
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await linear.prefetch(first, dir, ctx)
-    expect(await readdir(dir)).toEqual(['issue.md'])
-    expect(await readFile(join(dir, 'issue.md'), 'utf8')).toContain(comment)
+    expect(await readdir(dir)).toEqual(['item.md'])
+    expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(comment)
   }, 120_000)
 
   it('offers the real team and state names at init', async () => {

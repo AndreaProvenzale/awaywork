@@ -50,7 +50,7 @@ it('replays a unit on its base commit and saved context, and publishes nothing',
 providers: [claude]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - { skill: fix-ci, where: { checks: failing } }
+  - { skill: fix, where: { checks: failing } }
 `)
   const quota = {
     windows: [

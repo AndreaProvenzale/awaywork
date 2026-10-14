@@ -183,9 +183,9 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       return items
     },
 
-    /** Writes issue.md: description, fields and comments. */
+    /** Writes item.md: description, fields and comments. */
     async prefetch(item, dir) {
-      await writeFile(join(dir, 'issue.md'), taskMarkdown(item))
+      await writeFile(join(dir, 'item.md'), taskMarkdown(item))
     },
 
     /** Finds the site, maps projects to repos and lists the site's real status names. */

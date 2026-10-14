@@ -151,8 +151,8 @@ describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
 
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-real-'))
     await asana.prefetch(found.blocked, dir, ctx)
-    expect(await readdir(dir)).toEqual(['task.md'])
-    expect(await readFile(join(dir, 'task.md'), 'utf8')).toContain(comment)
+    expect(await readdir(dir)).toEqual(['item.md'])
+    expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(comment)
   }, 120_000)
 
   it('offers my real workspace, projects and sections at init', async () => {

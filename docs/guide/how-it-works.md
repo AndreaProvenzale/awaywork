@@ -35,7 +35,7 @@ it matches; an item that matches none is skipped. A rule names the
 
 ```yaml
 queue:
-  - skill: fix-ci
+  - skill: fix
     where: { type: pr, mine: true, checks: failing }
   - skill: implement
     where: { type: issue, label: awaywork }
@@ -53,16 +53,16 @@ rules whose source is configured:
 
 | # | Skill | Source | Where |
 |---|---|---|---|
-| 1 | `fix-ci` | GitHub | my PR, checks failing |
-| 2 | `qa-feedback` | Asana | section `QA` |
-| 3 | `qa-feedback` | Linear | state `QA` |
-| 4 | `qa-feedback` | Jira | status `QA` |
-| 5 | `address-review` | GitHub | my PR, unresolved threads |
-| 6 | `address-review` | GitHub | my awaywork PR, unresolved threads I started |
+| 1 | `fix` | GitHub | my PR, checks failing |
+| 2 | `fix` | Asana | section `QA` |
+| 3 | `fix` | Linear | state `QA` |
+| 4 | `fix` | Jira | status `QA` |
+| 5 | `fix` | GitHub | my PR, unresolved threads |
+| 6 | `fix` | GitHub | my awaywork PR, unresolved threads I started |
 | 7 | `review` | GitHub | my review requested, trusted author |
-| 8 | `continue` | Asana | section `In progress` |
-| 9 | `continue` | Linear | state `In Progress` |
-| 10 | `continue` | Jira | status `In Progress` |
+| 8 | `implement` | Asana | section `In progress` |
+| 9 | `implement` | Linear | state `In Progress` |
+| 10 | `implement` | Jira | status `In Progress` |
 | 11 | `plan` | Asana | section `Current sprint` |
 | 12 | `plan` | Linear | state `Todo` |
 | 13 | `plan` | Jira | status `To Do` |
@@ -84,7 +84,7 @@ line in its body.
 - A unit that links an open awaywork PR is skipped as **waiting for
   review**: awaywork doesn't add to work you haven't read from an
   earlier run. An awaywork PR only matches rules whose `where` names
-  `ours`, like the default `address-review` on threads you left on it:
+  `ours`, like the default `fix` on threads you left on it:
   that rule then takes the unit, even over a better-ranked item linked to
   the PR, and its draft PR stacks on the awaywork PR.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as
@@ -211,6 +211,6 @@ prints the same totals. The quota share is an estimate: it starts at the
 worker's first reading, includes any other use of the account meanwhile, and
 is `-` when the window reset mid-unit or the worker read the quota only once,
 as Codex does after its run. In a loop only the host unit carries the draft
-PR, so the loop's `review` and `address-review` rows show no PRs.
+PR, so the loop's `review` and `fix` rows show no PRs.
 `units.json` is written when the run ends, so a run that is killed leaves none.
 Runs from before have no `units.json` and are left out.

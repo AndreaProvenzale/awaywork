@@ -75,11 +75,11 @@ describe('linear source', () => {
     await expect(failing.items(cfg, ctx)).rejects.toThrow('Linear API: 400 Authentication required')
   })
 
-  it('prefetches issue.md with fields and comments', async () => {
+  it('prefetches item.md with fields and comments', async () => {
     const [eng12] = await items()
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
     await source.prefetch(eng12 as never, dir, ctx)
-    const issue = await readFile(join(dir, 'issue.md'), 'utf8')
+    const issue = await readFile(join(dir, 'item.md'), 'utf8')
     expect(issue).toContain('# ENG-12: Refill the rate-limit bucket\n\n')
     expect(issue).toContain('- state: QA\n')
     expect(issue).toContain('- labels: backend, bug\n')

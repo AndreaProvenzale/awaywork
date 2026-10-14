@@ -77,8 +77,8 @@ run would do, without running an agent:
 
 ```
 Queue
-  #1  fix-ci     type=pr mine=true checks=failing
-  #2  review     type=pr review_requested=true trusted=true
+  #1  fix     type=pr mine=true checks=failing
+  #2  review  type=pr review_requested=true trusted=true
 
 Providers
   provider  window     used  ceiling  set by   resets in  session / stop at
@@ -87,13 +87,13 @@ Providers
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix-ci (built-in)  claude    draft_pr  away/acme-api-1
+  1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
   2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
-  github acme/api#3: matched no rule; closest #1 fix-ci: checks is passing, wants failing
+  github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
 ```
 
 `awaywork queue` shows the same rules with what each matches now and lets

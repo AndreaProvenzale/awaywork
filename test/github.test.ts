@@ -249,7 +249,7 @@ describe('github source', () => {
     await source.prefetch(pr1 as never, dir, ctx)
     const read = (f: string) => readFile(join(dir, f), 'utf8')
 
-    const pr = await read('pr.md')
+    const pr = await read('item.md')
     expect(pr).toContain('# Add rate limits to the public API')
     expect(pr).toContain('### qa, 2026-01-01T10:00:00Z\n\nStill returns 500 on burst.')
     expect(pr).toContain('### lead, CHANGES_REQUESTED')
@@ -280,7 +280,7 @@ describe('github source', () => {
     const [, , , issue5] = await items()
     const dir = await tmp()
     await source.prefetch(issue5 as never, dir, ctx)
-    expect(await readFile(join(dir, 'issue.md'), 'utf8')).toBe(
+    expect(await readFile(join(dir, 'item.md'), 'utf8')).toBe(
       '# Rate limit the public API\n\nhttps://github.com/acme/api/issues/5\n\n' +
         'Clients can flood us.\n\n## Comments\n\n### ghost, 2026-01-01T09:00:00Z\n\n+1\n',
     )

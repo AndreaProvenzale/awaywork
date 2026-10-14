@@ -23,21 +23,21 @@ const rule = (skill: string, source: string, where: Where): Rule => ({
 
 /** The prototype's order; rules for unconfigured sources are dropped. */
 export const defaultQueue: Rule[] = [
-  rule('fix-ci', 'github', { type: 'pr', mine: true, checks: 'failing' }),
-  rule('qa-feedback', 'asana', { section: 'QA' }),
-  rule('qa-feedback', 'linear', { state: 'QA' }),
-  rule('qa-feedback', 'jira', { status: 'QA' }),
-  rule('address-review', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
-  rule('address-review', 'github', {
+  rule('fix', 'github', { type: 'pr', mine: true, checks: 'failing' }),
+  rule('fix', 'asana', { section: 'QA' }),
+  rule('fix', 'linear', { state: 'QA' }),
+  rule('fix', 'jira', { status: 'QA' }),
+  rule('fix', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
+  rule('fix', 'github', {
     type: 'pr',
     mine: true,
     ours: true,
     my_unresolved_threads: { not: 0 },
   }),
   rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
-  rule('continue', 'asana', { section: 'In progress' }),
-  rule('continue', 'linear', { state: 'In Progress' }),
-  rule('continue', 'jira', { status: 'In Progress' }),
+  rule('implement', 'asana', { section: 'In progress' }),
+  rule('implement', 'linear', { state: 'In Progress' }),
+  rule('implement', 'jira', { status: 'In Progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
   rule('plan', 'linear', { state: 'Todo' }),
   rule('plan', 'jira', { status: 'To Do' }),

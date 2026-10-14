@@ -10,14 +10,14 @@ describe('skills', () => {
   it('looks up user, then in-repo, then built-in skills', () => {
     const catalog = {
       user: { review: { deliver: 'draft_pr' as const } },
-      repo: { review: {}, 'fix-ci': {} },
+      repo: { review: {}, fix: {} },
       builtin: builtinSkills,
     }
     expect(resolveSkill('review', catalog)).toEqual({
       origin: 'user',
       meta: { deliver: 'draft_pr' },
     })
-    expect(resolveSkill('fix-ci', catalog)?.origin).toBe('repo')
+    expect(resolveSkill('fix', catalog)?.origin).toBe('repo')
     expect(resolveSkill('plan', catalog)).toEqual({
       origin: 'builtin',
       meta: { deliver: 'report' },
