@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { link, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
@@ -221,9 +221,16 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe("with skills in the repo's .claude/skills and .agents/skills", () => {
-    const prepare = async (provider: Provider, foreign = false) => {
+    /** `links` maps a path in the clone to a symlink target, in place of the skill folder there. */
+    const prepare = async (
+      provider: Provider,
+      foreign = false,
+      links: Record<string, string> = {},
+    ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
+      await mkdir(join(root, 'outside'))
+      await writeFile(join(root, 'outside/SKILL.md'), 'OUTSIDE')
       const plugin = join(root, 'plugin')
       const prompt = await prepareWorkspace({
         unit: {
@@ -257,8 +264,13 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
               '.claude/skills/tdd': 'REPO TDD',
               '.agents/skills/standard': 'REPO STANDARD',
             })) {
+              if (path in links) continue
               await mkdir(join(into, path), { recursive: true })
               await writeFile(join(into, path, 'SKILL.md'), text)
+            }
+            for (const [path, target] of Object.entries(links)) {
+              await mkdir(dirname(join(into, path)), { recursive: true })
+              await symlink(target, join(into, path))
             }
             await git(into, 'add', '.')
             await git(into, 'commit', '-qm', 'init')
@@ -293,6 +305,26 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
 
     it('ignores them on a PR someone else opened', async () => {
       await expect(prepare(claude, true)).rejects.toThrow('unknown skill "tdd"')
+    })
+
+    it('refuses a skill folder, or a file in one, linked out of the clone', async () => {
+      for (const provider of [claude, codex]) {
+        await expect(
+          prepare(provider, false, { '.claude/skills/tdd': '../../../outside' }),
+        ).rejects.toThrow('.claude/skills/tdd in the clone links outside it')
+        await expect(
+          prepare(provider, false, {
+            '.claude/skills/tdd/notes.md': '../../../../outside/SKILL.md',
+          }),
+        ).rejects.toThrow('.claude/skills/tdd/notes.md in the clone links outside it')
+      }
+    })
+
+    it('follows a link that stays in the clone', async () => {
+      const { plugin } = await prepare(claude, false, {
+        '.agents/skills/standard': '../../.claude/skills/tdd',
+      })
+      expect(await readFile(join(plugin, 'skills/standard/SKILL.md'), 'utf8')).toBe('REPO TDD')
     })
   })
 

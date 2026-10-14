@@ -7,10 +7,11 @@ import {
   mkdir,
   open,
   readFile,
+  realpath,
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
@@ -109,7 +110,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     names.map((name) => [name, findSkill(name, name === unit.skill ? roots : extraRoots)]),
   )
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, sources)
-  else await buildPlugin(w.plugin, sources)
+  else await buildPlugin(w.plugin, dir, sources)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
   if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
@@ -269,7 +270,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     const target = join(w.dir, skillsDir, name)
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
-      await cp(source, target, { recursive: true, dereference: true })
+      await copySkill(w.dir, source, target)
       w.ctx.log(`skill ${name}: restored awaywork's copy of ${skillsDir}/${name}`)
       if (w.unit.foreign) replaced.push(target)
       continue
@@ -283,7 +284,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
       await rm(target, { recursive: true })
       replaced.push(target)
     }
-    await cp(source, target, { recursive: true, dereference: true })
+    await copySkill(w.dir, source, target)
     mine.add(target)
     excluded.push(`/${skillsDir}/${name}/`)
   }
@@ -293,14 +294,25 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
 }
 
 /** A plugin named `awaywork` holding the skills, so they load as `awaywork:<name>`. */
-async function buildPlugin(plugin: string, sources: Map<string, string>) {
+async function buildPlugin(plugin: string, dir: string, sources: Map<string, string>) {
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
   await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
-  for (const [name, source] of sources)
-    await cp(source, join(plugin, 'skills', name), {
-      recursive: true,
-      dereference: true,
-    })
+  for (const [name, source] of sources) await copySkill(dir, source, join(plugin, 'skills', name))
+}
+
+/** Copies a skill folder as real files, refusing one in the clone `dir` that is, or holds, a link out of it. */
+async function copySkill(dir: string, source: string, target: string) {
+  const clone = `${await realpath(dir)}${sep}`
+  const inClone = source.startsWith(`${dir}${sep}`)
+  await cp(source, target, {
+    recursive: true,
+    dereference: true,
+    filter: async (src) => {
+      if (inClone && !(await realpath(src)).startsWith(clone))
+        throw new Error(`${relative(dir, src)} in the clone links outside it`)
+      return true
+    },
+  })
 }
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
