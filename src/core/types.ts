@@ -199,8 +199,6 @@ export interface Step {
   instructions: string[]
   /** Parameters listed in the prompt next to the skill. */
   with?: Record<string, Scalar>
-  deliver?: Deliver
-  branch?: string
   /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */
   when?: Condition
 }
@@ -227,11 +225,14 @@ export interface Loop {
 }
 
 export interface Rule extends Step {
+  /** How the chain publishes its commits: one draft PR, or a push onto your PR; report commits nothing. */
+  deliver?: Deliver
+  branch?: string
   source?: string
   where: Where
   order?: Order
   units?: number
-  /** Units run in turn after the rule's unit, each on what the one before delivered. */
+  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once at the end. */
   then?: (Step | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
@@ -258,7 +259,7 @@ export interface Unit {
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** The URL of the awaywork PR whose branch `base` is: this run's draft PR, or one a rule took up again. */
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again. */
   stackedOn?: string
   branch: string
   rule: Step

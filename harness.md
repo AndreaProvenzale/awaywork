@@ -44,7 +44,7 @@ The unit section below says which delivery this unit has.
 - **Report.** Write `.away/out/report.md` early and refine it as
   you go, so a run cut short still leaves one. Commit nothing.
 - **Push.** Commit as for a draft PR; awaywork pushes your commits
-  onto the developer's own pull request. Write `.away/out/report.md`
+  onto the developer's own pull request. Write `.away/out/pr.md`
   right after your first commit and keep it current: it says what you
   changed, and without it nothing is pushed.
 - **Verdict.** When the skill defines verdicts, also write the one word

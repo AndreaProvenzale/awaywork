@@ -77,7 +77,7 @@ async function deliver(
   if (!text)
     return {
       kind: 'none',
-      reason: `${commits.length} commits but no ${push ? 'report' : 'PR body'}, not pushed`,
+      reason: `${commits.length} commits but no ${push ? 'summary' : 'PR body'}, not pushed`,
       unpublished: true,
     }
   const pr = unit.items

@@ -175,13 +175,6 @@ const stepSettings = {
     .describe(
       "Parameters for the skill, listed in its prompt; a skill's metadata says which it reads",
     ),
-  deliver: z
-    .enum(['draft_pr', 'report', 'push'])
-    .optional()
-    .describe(
-      "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-    ),
-  branch: branch.optional().describe('Branch name template for this rule'),
 }
 const MAX_ROUNDS = 5
 const verdict = z.string().regex(/^[a-z][a-z_-]*$/, 'expected one lowercase word like approve')
@@ -257,13 +250,11 @@ const loop = z
     loop: z
       .union([step, z.array(step).min(1)])
       .transform((steps) => [steps].flat())
-      .describe('Steps run in turn every round, in the clone of the unit before'),
+      .describe("Steps run in turn every round, in the chain's clone"),
     until: condition.describe('Ends the loop as soon as it holds; checked after every step'),
     max: z.int().min(1).max(MAX_ROUNDS).describe(`At most this many rounds, up to ${MAX_ROUNDS}`),
   })
-  .describe(
-    'Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push',
-  )
+  .describe('Steps repeated until a condition holds')
 
 const rule: z.ZodType<Rule, unknown> = z
   .strictObject({
@@ -275,6 +266,13 @@ const rule: z.ZodType<Rule, unknown> = z
         'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source',
       ),
     ...stepSettings,
+    deliver: z
+      .enum(['draft_pr', 'report', 'push'])
+      .optional()
+      .describe(
+        "How the chain's commits publish: one draft PR, or pushed onto your own PR's branch; report commits nothing. Without commits, the chain reports",
+      ),
+    branch: branch.optional().describe('Branch name template for this rule'),
     order: z
       .enum(['oldest', 'newest', 'updated'])
       .optional()
@@ -291,7 +289,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .transform((steps) => [steps].flat())
       .default([])
       .describe(
-        "Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps",
+        "Steps run in turn after this rule's unit, in its clone; the chain publishes once at the end; a {loop} repeats its steps",
       ),
     network: z
       .boolean()
@@ -512,37 +510,8 @@ export const configSchema = z
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
       const offline = "a command can't run with network: false: awaywork has no sandbox for it"
-      // Back-to-back loops would share one host, and the second would never run.
       if (Array.isArray(r.then))
-        r.then.forEach((entry, j, then) => {
-          const before = then[j - 1]
-          if (j === 0 && isLoop(entry) && r.when && r.deliver !== 'report')
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'when'],
-              message:
-                "a loop works in the clone of the rule's unit, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on the rule",
-            })
-          if (before && isLoop(before) && isLoop(entry))
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'then', j, 'loop'],
-              message: "a loop can't follow another loop directly; put a step between them",
-            })
-          // The step before a loop hosts it unless it reports: passed over, the loop would never run.
-          if (
-            before &&
-            !isLoop(before) &&
-            before.when &&
-            before.deliver !== 'report' &&
-            isLoop(entry)
-          )
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'then', j - 1, 'when'],
-              message:
-                "a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
-            })
+        r.then.forEach((entry, j) => {
           if (r.network === false && isLoop(entry) && entry.until.command)
             ctx.addIssue({
               code: 'custom',
@@ -566,12 +535,6 @@ export const configSchema = z
             message: inLoop(path)
               ? `"${s.skill}" already runs in a loop of this chain`
               : `"${s.skill}" already runs earlier in this chain`,
-          })
-        if (s.deliver === 'push' && path.includes('loop'))
-          ctx.addIssue({
-            code: 'custom',
-            path: [...stepAt, 'deliver'],
-            message: 'a loop publishes through the unit before it: set deliver push there',
           })
         for (const p of s.provider)
           if (!providerIds.includes(p))

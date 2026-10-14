@@ -58,23 +58,21 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
       `#${p.rule + 1}`,
       `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
       p.provider ?? '-',
-      // A push loop's rounds commit for its push, not for a draft PR.
-      p.loop?.deliver === 'push' && p.unit.deliver === 'draft_pr' ? 'push' : p.unit.deliver,
-      p.unit.deliver === 'push' || p.loop?.deliver === 'push' ? p.unit.base : p.unit.branch,
+      p.unit.deliver,
+      p.unit.deliver === 'push' ? p.unit.base : p.unit.branch,
     ])
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
     const lines = table([header, ...rows])
     out.push(`  ${style('bold', lines[0] ?? '')}`)
     units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
-      if (p.after) out.push(`     after ${p.after}`)
+      if (p.chain) out.push(`     in ${p.chain}'s clone`)
       const unmet = p.quotaUnmet ? ` (${p.quotaUnmet})` : ''
       if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}${unmet}`)
       if (p.loop?.step === 0) {
-        const { skills, until, max, host, deliver } = p.loop
-        const publish = deliver === 'push' ? `one push onto ${p.unit.base}` : 'one draft PR'
+        const { skills, until, max } = p.loop
         out.push(
-          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; ${publish} from ${host}`,
+          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
         )
       }
       const [top, ...merged] = p.unit.items
