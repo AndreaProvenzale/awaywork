@@ -1,4 +1,9 @@
-# awaywork
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/public/brand/lockup-horizontal-dark.svg">
+    <img src="docs/public/brand/lockup-horizontal.svg" alt="awaywork" height="56">
+  </picture>
+</h1>
 
 > Your AI coding subscription resets every week, used or not.
 > While you're away, awaywork puts Claude Code, Codex and friends to work.
