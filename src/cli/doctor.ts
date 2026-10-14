@@ -6,7 +6,7 @@ import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
 import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { hasSkills } from '../config/skills.js'
+import { hasSkills, unknownSkills } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
@@ -34,7 +34,9 @@ interface Check {
 export function doctorCommand(program: Command): void {
   program
     .command('doctor')
-    .description('check binaries, credentials, quota and sources before a run')
+    .description(
+      'validate the config and check binaries, credentials, quota and sources before a run',
+    )
     .option('--json', 'print the checks as a JSON array of { status, what, detail }')
     .action(async (opts: { json?: boolean }) => {
       const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR
@@ -82,11 +84,14 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   let config: Config
   try {
     config = await loadConfig(path)
-    report('ok', path)
   } catch (e) {
     report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
     return checks
   }
+  const unknown = await unknownSkills(config, skillsDirOf(path))
+  if (unknown.length === 0) report('ok', path)
+  else
+    report('warn', path, `${unknown.join('; ')}; fine for a skill the repo has in .awaywork/skills`)
   for (const warning of await staleSchedules(path, config.windows))
     report('warn', 'schedule', warning)
   const root = await gitRoot()

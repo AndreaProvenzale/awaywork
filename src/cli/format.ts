@@ -2,8 +2,8 @@ import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import type { RunPlan } from '../core/foreman.js'
-import { bounds, comparisons, isAge, isLoop, isMatch, spans } from '../core/queue.js'
-import type { Rule, Where, WhereValue } from '../core/types.js'
+import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
@@ -19,11 +19,17 @@ export function listedUnits(plan: RunPlan) {
   return plan.units.filter((p) => !p.loop || p.loop.round === 1)
 }
 
+/** A `Warnings` heading over indented warnings and a blank line, or nothing. */
+export function warningLines(warnings: string[], styled = false): string[] {
+  if (warnings.length === 0) return []
+  const heading = styled ? styleText('bold', 'Warnings') : 'Warnings'
+  return [heading, ...warnings.map((w) => `  ${w}`), '']
+}
+
 /** The plan as text: every unit names its rule, skill origin and why it got its provider. */
 export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
   const style = (format: 'bold' | 'dim', text: string) => (styled ? styleText(format, text) : text)
-  const out: string[] = []
-  if (warnings.length > 0) out.push(style('bold', 'Warnings'), ...warnings.map((w) => `  ${w}`), '')
+  const out = warningLines(warnings, styled)
 
   out.push(style('bold', plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue'))
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])
@@ -96,6 +102,32 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
     for (const s of plan.skipped) out.push(`  ${s.item.source} ${s.item.key}: ${s.reason}`)
   }
   return out.join('\n')
+}
+
+/** What each rule takes now and what earlier rules take from it, then the unmatched items. */
+export function formatRules(rules: Rule[], items: Item[]): string[] {
+  const matches = ruleMatches(items, rules)
+  const keys = (list: Item[]) =>
+    list.length === 0
+      ? ''
+      : `: ${list
+          .slice(0, 3)
+          .map((i) => i.key)
+          .join(', ')}${list.length > 3 ? ', …' : ''}`
+  const width = Math.max(...rules.map((r) => r.skill.length))
+  const lines = rules.flatMap((rule, i) => {
+    const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
+    const block = [`#${i + 1}  ${rule.skill.padEnd(width)}  ${describeRule(rule)}`]
+    block.push(`     ${taken.length} taken${keys(taken)}`)
+    for (const by of new Set(shadowed.map((s) => s.by))) {
+      const list = shadowed.filter((s) => s.by === by).map((s) => s.item)
+      block.push(`     ${list.length} taken by #${by + 1}${keys(list)}`)
+    }
+    return block
+  })
+  const matched = new Set(matches.flatMap((m) => m.taken))
+  const unmatched = items.filter((i) => !matched.has(i))
+  return [...lines, `${unmatched.length} unmatched${keys(unmatched)}`]
 }
 
 export function describeRule(r: Rule): string {

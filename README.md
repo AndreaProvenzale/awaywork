@@ -24,19 +24,21 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 $ awaywork plan
 Queue
-  #1  fix     type=pr mine=true checks=failing
-  #2  review  type=pr review_requested=true trusted=true
+  #1  fix     source=github type=pr mine=true checks=failing
+  #2  fix     source=github type=pr mine=true unresolved_threads!=0
+  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
+  #4  review  source=github type=pr review_requested=true trusted=true
 
 Providers
-  provider  window     used  ceiling  set by   resets in  session / stop at
-  claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
-    other limits: reserve cap 90%, pacing 54%
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
+    other limits: reserve cap 90%
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
   1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
+  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 ```
 
@@ -64,7 +66,7 @@ $ awaywork report
 | 1 | acme-api-1 | fix    | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
 | 2 | acme-api-2 | review | claude   | done          | report below                            |
 
-- claude: seven_day 36% to 45%, ceiling 51%; session 10% to 10%, stop at 90%
+- claude: seven_day 36% to 45%, ceiling 54%; session 2% to 10%, stop at 90%
 ```
 
 **Docs:** https://andreaprovenzale.github.io/awaywork/ ·
@@ -97,7 +99,7 @@ queue:
 The label isn't enough on its own: awaywork reads only the issues
 assigned to you, so assign yourself too.
 
-`awaywork queue` reorders rules from the keyboard. Skills are plain
+`awaywork plan --rules` shows what each rule takes right now. Skills are plain
 markdown: `awaywork skills eject fix` and hack away.
 
 ## How much quota it burns

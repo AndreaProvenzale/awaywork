@@ -68,7 +68,7 @@ is the example to copy.
 export const sources: Record<string, Source<any>> = { github, asana, mine }
 ```
 
-Rules may then use `source: mine` and its fields; `config check` rejects
+Rules may then use `source: mine` and its fields; `doctor` rejects
 unknown `where` keys with the list of fields each source declares.
 
 ## Test it

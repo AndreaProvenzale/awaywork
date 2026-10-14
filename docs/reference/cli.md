@@ -24,11 +24,9 @@ Options:
 Commands:
   init [options]         detect installed agents, pick providers, sources and a
                          starting queue
-  config                 inspect and validate the config
+  config                 print the config schema or edit the config
   plan [options]         show the next run's units in order, with each
                          provider's ceiling; runs no worker
-  queue                  show what each rule matches now and reorder the rules
-                         with the keyboard
   skip [options] [key]   leave an item (source:key, e.g. github:acme/api#5)
                          alone in the coming runs; with no key, list skipped
                          items
@@ -44,8 +42,8 @@ Commands:
                          is pushed
   schedule               run awaywork when its windows open, on this machine or
                          in GitHub Actions
-  doctor [options]       check binaries, credentials, quota and sources before a
-                         run
+  doctor [options]       validate the config and check binaries, credentials,
+                         quota and sources before a run
   help [command]         display help for command
 ```
 
@@ -71,14 +69,13 @@ Options:
 ```text
 Usage: awaywork config [options] [command]
 
-inspect and validate the config
+print the config schema or edit the config
 
 Options:
   -h, --help      display help for command
 
 Commands:
   schema          print the config JSON Schema, for editor autocompletion
-  check           validate the config file
   edit            open the config in $VISUAL or $EDITOR; it is saved only once
                   valid
   help [command]  display help for command
@@ -90,17 +87,6 @@ Commands:
 Usage: awaywork config schema [options]
 
 print the config JSON Schema, for editor autocompletion
-
-Options:
-  -h, --help  display help for command
-```
-
-## awaywork config check
-
-```text
-Usage: awaywork config check [options]
-
-validate the config file
 
 Options:
   -h, --help  display help for command
@@ -126,32 +112,8 @@ show the next run's units in order, with each provider's ceiling; runs no worker
 
 Options:
   --json      print the plan and warnings as JSON
-  -h, --help  display help for command
-```
-
-## awaywork queue
-
-```text
-Usage: awaywork queue [options] [command]
-
-show what each rule matches now and reorder the rules with the keyboard
-
-Options:
-  -h, --help        display help for command
-
-Commands:
-  move <from> <to>  move the rule at position <from> to position <to>, as
-                    numbered by queue
-```
-
-## awaywork queue move
-
-```text
-Usage: awaywork queue move [options] <from> <to>
-
-move the rule at position <from> to position <to>, as numbered by queue
-
-Options:
+  --rules     show what each rule takes now and what earlier rules take from it,
+              instead of the units; probes no provider
   -h, --help  display help for command
 ```
 
@@ -335,7 +297,8 @@ Options:
 ```text
 Usage: awaywork doctor [options]
 
-check binaries, credentials, quota and sources before a run
+validate the config and check binaries, credentials, quota and sources before a
+run
 
 Options:
   --json      print the checks as a JSON array of { status, what, detail }

@@ -12,27 +12,13 @@ import { terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
 export function configCommand(program: Command): void {
-  const config = program.command('config').description('inspect and validate the config')
+  const config = program.command('config').description('print the config schema or edit the config')
 
   config
     .command('schema')
     .description('print the config JSON Schema, for editor autocompletion')
     .action(() => {
       console.log(JSON.stringify(z.toJSONSchema(configSchema, { io: 'input' }), null, 2))
-    })
-
-  config
-    .command('check')
-    .description('validate the config file')
-    .action(async () => {
-      const path = configPath(program.opts().config)
-      try {
-        const problems = await unknownSkills(await loadConfig(path), skillsDirOf(path))
-        if (problems.length > 0) throw new ConfigError(path, problems)
-        console.log(`${path}: ok`)
-      } catch (e) {
-        reportConfigError(e)
-      }
     })
 
   config
