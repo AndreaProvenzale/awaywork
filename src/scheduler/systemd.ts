@@ -27,7 +27,11 @@ export function systemd(home: string, run: Exec): Scheduler {
           if (old === undefined) await rm(file, { force: true })
           else await writeFile(file, old)
         }
-        const reason = (e instanceof Error ? e.message : String(e)).split('\n')[0]
+        await systemctl('daemon-reload').catch(() => '')
+        const { stderr } = e as { stderr?: string }
+        const reason = (stderr?.trim() || (e instanceof Error ? e.message : String(e))).split(
+          '\n',
+        )[0]
         throw new SchedulerError(
           `systemctl failed (${reason}); systemd needs a user session: log in directly, or use --with cron`,
           { cause: e },

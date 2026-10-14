@@ -47,7 +47,7 @@ const awkward: Schedule = {
 
 function recorder(crontab = '') {
   const calls: string[] = []
-  const run: Exec = async (cmd, args) => {
+  const run: Exec = async (_cmd, args) => {
     calls.push([cmd, ...args].join(' '))
     if (cmd === 'crontab' && args[0] === '-l') return crontab
     if (cmd === 'crontab') crontab = await readFile(args[0] ?? '', 'utf8')
@@ -81,7 +81,7 @@ it('retries bootstrap while launchd still holds the old job', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   let busy = 2
-  const flaky: Exec = async (cmd, args) => {
+  const flaky: Exec = async (_cmd, args) => {
     if (args[0] === 'bootstrap' && busy-- > 0) {
       calls.push('failed')
       throw new Error('Bootstrap failed: 5: Input/output error')
@@ -125,6 +125,37 @@ it('removes its unit files and fails in one line, with the cause, when systemctl
   )
   expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
   expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
+})
+
+it('reports the first line of stderr when the failure carries one', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const run: Exec = async () => {
+    throw Object.assign(
+      new Error('Command failed with exit code 1: systemctl --user daemon-reload'),
+      {
+        stderr: 'Failed to connect to bus: No medium found\nsecond line',
+      },
+    )
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow(
+    'systemctl failed (Failed to connect to bus: No medium found);',
+  )
+})
+
+it('reloads systemd after restoring the unit files', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const calls: string[] = []
+  const run: Exec = async (_cmd, args) => {
+    calls.push(args.join(' '))
+    if (args[1] === 'enable') throw new Error('boom')
+    return ''
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow('boom')
+  expect(calls).toEqual([
+    '--user daemon-reload',
+    '--user enable --now awaywork.timer',
+    '--user daemon-reload',
+  ])
 })
 
 it('restores the previous unit files when a reinstall fails', async () => {
