@@ -48,7 +48,9 @@ awaywork schedule remove
 - systemd user timers run only while you are logged in;
   `loginctl enable-linger` lifts that. Without a user session (after
   `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing;
-  log in directly, or use `--with cron`, which needs no session.
+  log in directly, or use `--with cron`, which needs no session. From
+  such a shell `schedule status` and `doctor` can't reach the timer and
+  report no schedule.
 - Output goes to `~/.local/state/awaywork/schedule.log`, each run
   starting with a line dated in local time; the morning report is
   `awaywork report`. Both list what went wrong before any unit started,

@@ -13,14 +13,25 @@ export function systemd(home: string, run: Exec): Scheduler {
     id: 'systemd',
     async install(s) {
       await mkdir(dir, { recursive: true })
+      const previous = await Promise.all(
+        files.map((f) => readFile(f, 'utf8').catch(() => undefined)),
+      )
       await writeFile(files[0], service(s))
       await writeFile(files[1], timer(s))
       try {
         await systemctl('daemon-reload')
         await systemctl('enable', '--now', 'awaywork.timer')
-      } catch {
-        for (const file of files) await rm(file, { force: true })
-        throw new SchedulerError('no systemd user session; log in directly, or use --with cron')
+      } catch (e) {
+        for (const [i, file] of files.entries()) {
+          const old = previous[i]
+          if (old === undefined) await rm(file, { force: true })
+          else await writeFile(file, old)
+        }
+        const reason = (e instanceof Error ? e.message : String(e)).split('\n')[0]
+        throw new SchedulerError(
+          `systemctl failed (${reason}); systemd needs a user session: log in directly, or use --with cron`,
+          { cause: e },
+        )
       }
       return files.join(', ')
     },
@@ -28,18 +39,16 @@ export function systemd(home: string, run: Exec): Scheduler {
       if (!existsSync(files[1])) return false
       await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
       for (const file of files) await rm(file, { force: true })
-      await systemctl('daemon-reload')
+      await systemctl('daemon-reload').catch(() => '')
       return true
     },
     async read() {
       if (!existsSync(files[1])) return undefined
-      if (
-        !(await systemctl('is-enabled', 'awaywork.timer').then(
-          () => true,
-          () => false,
-        ))
+      const enabled = await systemctl('is-enabled', 'awaywork.timer').then(
+        () => true,
+        () => false,
       )
-        return undefined
+      if (!enabled) return undefined
       return parseUnits(await readFile(files[0], 'utf8'), await readFile(files[1], 'utf8'))
     },
   }
