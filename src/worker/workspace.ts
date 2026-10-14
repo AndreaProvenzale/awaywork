@@ -81,13 +81,11 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const { foreign } = unit
   const names = [...new Set([unit.skill, ...unit.skills])]
   if (w.reuse) {
-    const skills = names.map((name) => `${provider.skillsDir}/${name}`)
     await refuseSymlinks(dir, [
       `${WORK_DIR}/out`,
       `${WORK_DIR}/context/previous`,
       `${WORK_DIR}/prompt.md`,
       '.git/info/exclude',
-      ...(provider.skillsDir ? skills : []),
     ])
   } else {
     // A replay checks out its saved commit: the PR may have moved since.
@@ -268,6 +266,13 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
   copied.set(w.dir, mine)
   for (const [name, source] of sources) {
     const target = join(w.dir, skillsDir, name)
+    const theirs = !mine.has(target) && existsSync(target)
+    if (theirs && !w.unit.foreign) {
+      w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
+      continue
+    }
+    // An earlier round's worker may have planted a link where awaywork now writes.
+    if (w.reuse) await refuseSymlinks(w.dir, [`${skillsDir}/${name}`])
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
       await copySkill(w.dir, source, target)
@@ -275,11 +280,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
       if (w.unit.foreign) replaced.push(target)
       continue
     }
-    if (existsSync(target)) {
-      if (!w.unit.foreign) {
-        w.ctx.log(`skill ${name}: kept the repo's own ${skillsDir}/${name}`)
-        continue
-      }
+    if (theirs) {
       w.ctx.log(`skill ${name}: replaced the PR author's ${skillsDir}/${name}`)
       await rm(target, { recursive: true })
       replaced.push(target)

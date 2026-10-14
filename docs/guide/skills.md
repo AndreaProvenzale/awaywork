@@ -88,7 +88,7 @@ Not in top-level `skills`: that list joins every unit, on your other
 repos and on PRs someone else opened too, and there they fail with
 `unknown skill`.
 
-An extra skill that isn't yours, in `.awaywork/skills/` or built in is
+An extra skill that isn't yours, in `.awaywork/skills/` or built in, is
 looked up in the clone's `.claude/skills/`, then `.agents/skills/`. Those
 folders only fill in names: a rule's main skill never comes from them, so
 a repo's own `.claude/skills/implement` doesn't replace the built-in. To

@@ -1,5 +1,16 @@
 import { existsSync } from 'node:fs'
-import { link, lstat, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import {
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
@@ -435,21 +446,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     })
   })
 
-  it("replaces the skills awaywork copied when a loop round reuses the clone, and keeps the repo's own", async () => {
+  /** A Codex loop on one clone whose repo `commit` fills, with `skills` as the extra skills. */
+  const codexLoop = async (skills: string[], commit: (into: string) => Promise<void>) => {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
     const dir = join(root, 'clone')
     const forge = {
       ...fakeForge(),
       async clone(_repo: string, _branch: string, into: string) {
         await execa(bin('git'), ['init', '-q', '-b', 'main', into])
-        await mkdir(join(into, '.agents/skills/house-style'), { recursive: true })
-        await writeFile(join(into, '.agents/skills/house-style/SKILL.md'), 'REPO SKILL')
+        await commit(into)
         await git(into, 'add', '.')
         await git(into, 'commit', '-qm', 'init')
       },
     }
-    await mkdir(join(root, 'skills/house-style'), { recursive: true })
-    await writeFile(join(root, 'skills/house-style/SKILL.md'), '---\nname: house-style\n---\nOurs.')
     const round = (reuse: boolean) =>
       prepareWorkspace({
         unit: {
@@ -463,7 +472,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           branch: 'away/acme-api-1',
           rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
           skill: 'fix',
-          skills: ['house-style'],
+          skills,
           providers: ['claude'],
           instructions: [],
           deliver: 'draft_pr',
@@ -479,6 +488,16 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
         reuse,
       })
+    return { root, dir, round }
+  }
+
+  it("replaces the skills awaywork copied when a loop round reuses the clone, and keeps the repo's own", async () => {
+    const { root, dir, round } = await codexLoop(['house-style'], async (into) => {
+      await mkdir(join(into, '.agents/skills/house-style'), { recursive: true })
+      await writeFile(join(into, '.agents/skills/house-style/SKILL.md'), 'REPO SKILL')
+    })
+    await mkdir(join(root, 'skills/house-style'), { recursive: true })
+    await writeFile(join(root, 'skills/house-style/SKILL.md'), '---\nname: house-style\n---\nOurs.')
     await round(false)
     const copy = join(dir, '.agents/skills/fix/SKILL.md')
     const original = await readFile(copy, 'utf8')
@@ -489,6 +508,33 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(await readFile(join(dir, '.agents/skills/house-style/SKILL.md'), 'utf8')).toBe(
       'EDITED REPO SKILL',
     )
+  })
+
+  it("keeps a skill the repo links in .agents/skills through a loop's rounds", async () => {
+    const { dir, round } = await codexLoop(['standard'], async (into) => {
+      await mkdir(join(into, '.claude/skills/tdd'), { recursive: true })
+      await writeFile(join(into, '.claude/skills/tdd/SKILL.md'), 'REPO TDD')
+      await mkdir(join(into, '.agents/skills'), { recursive: true })
+      await symlink('../../.claude/skills/tdd', join(into, '.agents/skills/standard'))
+    })
+    await round(false)
+    await round(true)
+    expect((await lstat(join(dir, '.agents/skills/standard'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(dir, '.agents/skills/standard/SKILL.md'), 'utf8')).toBe('REPO TDD')
+  })
+
+  it("refuses a loop round when a worker linked awaywork's skill copy, or the folder holding it", async () => {
+    const { root, dir, round } = await codexLoop([], (into) => writeFile(join(into, 'README'), ''))
+    await round(false)
+    const skills = join(dir, '.agents/skills')
+    await mkdir(join(root, 'elsewhere'))
+    await rm(join(skills, 'fix'), { recursive: true })
+    await symlink(join(root, 'elsewhere'), join(skills, 'fix'))
+    await expect(round(true)).rejects.toThrow('.agents/skills/fix in the clone is a symlink')
+    await rename(skills, join(root, 'skills-elsewhere'))
+    await symlink(join(root, 'skills-elsewhere'), skills)
+    await expect(round(true)).rejects.toThrow('.agents/skills in the clone is a symlink')
+    expect(await readdir(join(root, 'elsewhere'))).toEqual([])
   })
 
   it('refuses to write through a symlink or a hard link, leaving the target alone', async () => {
