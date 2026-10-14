@@ -71,7 +71,7 @@ describe('doctor', () => {
     expect(checks).toContainEqual({
       status: 'warn',
       what: path,
-      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine if the repo has it in .awaywork/skills`,
+      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine for a skill the repo has in .awaywork/skills`,
     })
     expect(checks.at(-1)?.what).toBe('github')
   })

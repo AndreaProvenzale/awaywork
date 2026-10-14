@@ -75,20 +75,22 @@ awaywork plan
 run would do, without running an agent:
 
 ```
-Queue
-  #1  fix     type=pr mine=true checks=failing
-  #2  review  type=pr review_requested=true trusted=true
+Queue (default: no queue in config)
+  #1  fix     source=github type=pr mine=true checks=failing
+  #2  fix     source=github type=pr mine=true unresolved_threads!=0
+  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
+  #4  review  source=github type=pr review_requested=true trusted=true
 
 Providers
-  provider  window     used  ceiling  set by   resets in  session / stop at
-  claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
-    other limits: reserve cap 90%, pacing 54%
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
+    other limits: reserve cap 90%
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
   1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
+  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
