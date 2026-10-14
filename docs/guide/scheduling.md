@@ -46,7 +46,9 @@ awaywork schedule remove
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job
   starts without your login shell's variables.
 - systemd user timers run only while you are logged in;
-  `loginctl enable-linger` lifts that.
+  `loginctl enable-linger` lifts that. Without a user session (after
+  `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing;
+  log in directly, or use `--with cron`, which needs no session.
 - Output goes to `~/.local/state/awaywork/schedule.log`, each run
   starting with a line dated in local time; the morning report is
   `awaywork report`. Both list what went wrong before any unit started,

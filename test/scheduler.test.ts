@@ -115,6 +115,27 @@ it('writes a persistent systemd user timer and its service', async () => {
   expect(await systemd(home, run).read()).toBeUndefined()
 })
 
+it('removes its unit files and fails in one line without a systemd user session', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const run: Exec = async () => {
+    throw new Error('Failed to connect to bus: No medium found')
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow(
+    'no systemd user session; log in directly, or use --with cron',
+  )
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
+})
+
+it('reads no job when the timer is not enabled', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  await systemd(home, recorder().run).install(schedule)
+  const disabled: Exec = async () => {
+    throw new Error('disabled')
+  }
+  expect(await systemd(home, disabled).read()).toBeUndefined()
+})
+
 it("adds one tagged crontab line, keeps the user's own and removes only its line", async () => {
   const cronTab = recorder('MAILTO=me\n\n0 9 * * * backup\n')
   const scheduler = cron(cronTab.run)

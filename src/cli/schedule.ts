@@ -31,6 +31,7 @@ import {
   describeStarts,
   type Schedule,
   type Scheduler,
+  SchedulerError,
   type Start,
   schedulers,
 } from '../scheduler/index.js'
@@ -214,14 +215,14 @@ export async function installSchedule(
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
-    for (const other of Object.values(all))
-      if (other !== scheduler && (await other.remove())) console.log(`Removed the ${other.id} job`)
     const where = await scheduler.install({
       command: [process.execPath, bin, 'run', '--scheduled', '--config', path],
       starts: startsOf(windows),
       path: process.env.PATH ?? '',
       log,
     })
+    for (const other of Object.values(all))
+      if (other !== scheduler && (await other.remove())) console.log(`Removed the ${other.id} job`)
     console.log(
       `Scheduled with ${scheduler.id} for ${windows.map(describeWindow).join(', ')}: ${where}`,
     )
@@ -231,7 +232,9 @@ export async function installSchedule(
         'User timers run only while you are logged in; `loginctl enable-linger` lifts that.',
       )
   } catch (e) {
-    reportConfigError(e)
+    if (!(e instanceof SchedulerError)) return reportConfigError(e)
+    console.error(e.message)
+    process.exitCode = 1
   }
 }
 

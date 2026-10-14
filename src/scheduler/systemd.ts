@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler } from './index.js'
+import { type Schedule, type Scheduler, SchedulerError } from './index.js'
 
 /** A user service plus a persistent timer, so a run missed while off starts at boot. */
 export function systemd(home: string, run: Exec): Scheduler {
@@ -15,8 +15,13 @@ export function systemd(home: string, run: Exec): Scheduler {
       await mkdir(dir, { recursive: true })
       await writeFile(files[0], service(s))
       await writeFile(files[1], timer(s))
-      await systemctl('daemon-reload')
-      await systemctl('enable', '--now', 'awaywork.timer')
+      try {
+        await systemctl('daemon-reload')
+        await systemctl('enable', '--now', 'awaywork.timer')
+      } catch {
+        for (const file of files) await rm(file, { force: true })
+        throw new SchedulerError('no systemd user session; log in directly, or use --with cron')
+      }
       return files.join(', ')
     },
     async remove() {
@@ -28,6 +33,13 @@ export function systemd(home: string, run: Exec): Scheduler {
     },
     async read() {
       if (!existsSync(files[1])) return undefined
+      if (
+        !(await systemctl('is-enabled', 'awaywork.timer').then(
+          () => true,
+          () => false,
+        ))
+      )
+        return undefined
       return parseUnits(await readFile(files[0], 'utf8'), await readFile(files[1], 'utf8'))
     },
   }
