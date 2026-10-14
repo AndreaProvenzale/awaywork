@@ -6,7 +6,7 @@ import { attemptsPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
 import { unitStats } from '../core/stats.js'
-import { describeWindow, windowEnd } from '../core/window.js'
+import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { notify } from '../worker/notify.js'
@@ -29,7 +29,10 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        const until = opts.scheduled ? windowEnd(config.windows, new Date()) : undefined
+        const now = new Date()
+        const until = opts.scheduled
+          ? runEnd(config.windows, now, process.env)
+          : hostedEnd(now, process.env)
         if (opts.scheduled && !until) {
           console.log(
             `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,

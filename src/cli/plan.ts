@@ -10,6 +10,7 @@ import { planRun, type RunPlan } from '../core/foreman.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
+import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -48,6 +49,13 @@ export async function probeAndPlan(
 }> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
+
+  const long =
+    ctx.env.RUNNER_ENVIRONMENT === 'github-hosted' ? tooLongForHosted(config.windows) : []
+  if (long.length)
+    warnings.push(
+      `GitHub-hosted runners end a job at 6 hours, so a run stops ${Math.floor(HOSTED_RUN_MINUTES / 60)}h${String(HOSTED_RUN_MINUTES % 60).padStart(2, '0')} after it starts, before ${long.map(describeWindow).join(', ')} ends`,
+    )
 
   const items = await collectItems(config, ctx)
 

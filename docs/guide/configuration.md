@@ -85,7 +85,9 @@ queue:                          # first matching rule wins; top = highest priori
 A run is one window opening, or one `awaywork run` by hand. A window's
 `start` is when a scheduled run begins; no unit starts after its `end`,
 and a running one stops there. Times are local to the machine, or to the
-workflow's `timezone` in GitHub Actions. The default is one window,
+workflow's `timezone` in GitHub Actions, where a GitHub-hosted runner
+[cuts a run at about 6 hours](./scheduling.md#in-github-actions)
+whatever the window says. The default is one window,
 `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to
 `sat`, the day it opens on), for quota that idles at weekends or over
 lunch:

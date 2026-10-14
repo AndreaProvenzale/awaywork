@@ -820,6 +820,30 @@ queue:
     }
   })
 
+  it('warns on a GitHub-hosted runner that a window over 6 hours ends early', async () => {
+    const skills = await mkdtemp(join(tmpdir(), 'awaywork-skills-'))
+    const warned = async (windows: string) => {
+      const yaml = `windows: ${windows}\nproviders: [claude]\nsources: { tracker: { command: "echo []", fields: [column] } }\n`
+      // No provider, so none is probed.
+      const config = { ...parseConfig(yaml), providers: [] }
+      const { warnings } = await probeAndPlan(config, skills, { retry: true })
+      return warnings.filter((w) => w.startsWith('GitHub-hosted'))
+    }
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    try {
+      expect(
+        await warned('[{ start: "18:00", end: "07:00" }, { start: "01:00", end: "07:00" }]'),
+      ).toEqual([
+        'GitHub-hosted runners end a job at 6 hours, so a run stops 5h40 after it starts, before 18:00-07:00 ends',
+      ])
+      expect(await warned('[{ start: "01:00", end: "07:00" }]')).toEqual([])
+      vi.stubEnv('RUNNER_ENVIRONMENT', 'self-hosted')
+      expect(await warned('[{ start: "18:00", end: "07:00" }]')).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("masks a failing source's secret in the warnings plan prints", async () => {
     const yaml =
       'providers: [codex]\nsources: { chores: { command: \'echo "auth failed for $CHORES_TOKEN" >&2; exit 1\', secrets: [CHORES_TOKEN] } }\n'
