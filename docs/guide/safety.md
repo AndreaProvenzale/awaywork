@@ -237,14 +237,15 @@ danger-full-access`, which it needs to commit. What that reaches is in
   config the clone had when it was cloned. It refuses a `.git` that
   borrows a repo or objects from elsewhere, or a symlinked `.git/index`,
   and the step errors: no check or `verify` runs on that clone, so a
-  slice with `verify` isn't published, and the only git left there is
-  publishing's `rev-list` and fetch, which only read it. In the clone,
-  publishing only reads the PR body or report, writes `diff.patch` next
-  to it, and appends the chain's notes, the items' link lines and a
-  stacked PR's "merge that first" line to the body. It refuses if the body, the
-  report or `diff.patch` is a symlink, and reads or writes only regular
-  files. The symlink check runs just before, so a worker process that
-  outlived the watchdog could still swap a path in between.
+  slice whose `verify` runs isn't published, and the only git left
+  there is publishing's `rev-list` and fetch, which only read it. In the
+  clone, publishing only reads the PR body or report, writes
+  `diff.patch` next to it, and appends the chain's notes, the items'
+  link lines and a stacked PR's "merge that first" line to the body. It
+  refuses if the body, the report or `diff.patch` is a symlink, and
+  reads or writes only regular files. The symlink check runs just
+  before, so a worker process that outlived the watchdog could still
+  swap a path in between.
 - A [stacked slice](./configuration.md#stack) never fetches anything
   into the clone: awaywork's own repo re-parents its commits onto the
   slice before's as pushed, while adding the trailer. In the clone it

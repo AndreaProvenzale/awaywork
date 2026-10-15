@@ -591,7 +591,7 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   ])
 })
 
-it("runs no git in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
+it("runs no check in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
   const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
   const base = worker()
   const provider: Provider = {
