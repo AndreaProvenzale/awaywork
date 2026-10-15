@@ -209,7 +209,8 @@ console.log(JSON.stringify(items))
 - **`updated`** is `lastSeen`: an error that fires again after you closed
   its draft PR is fair game again. One `fix` couldn't turn into a PR
   gets 3 tries however often it fires, then one a week ("gave up after
-  3 attempts").
+  3 attempts"). A GitHub-hosted runner keeps no attempts, so there it's
+  tried every run: cap the rule with `units:` if that's a lot.
 - **Frames come oldest first** from Sentry; the script flips them so the
   throwing line is on top.
 - **EU-region org?** Swap `sentry.io` for `de.sentry.io`.

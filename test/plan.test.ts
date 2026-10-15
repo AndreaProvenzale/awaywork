@@ -893,14 +893,14 @@ describe('attempts', () => {
 
   it('skips a unit none of whose items changed since a finished attempt', () => {
     const first = plan(yaml, [githubPr(1, { updated: at }), githubPr(2, { updated: at })], {})
-    const [done, stopped] = first.units
+    const [done, failed] = first.units
     const report = {
       runId: 'r1',
       startedAt,
       plan: first,
       results: [
         { planned: done, status: 'done' },
-        { planned: stopped, status: 'stopped: quota' },
+        { planned: failed, status: 'failed' },
       ],
     } as RunReport
     const attempts = recordAttempts({}, report)
@@ -1073,8 +1073,45 @@ describe('attempts', () => {
     expect(recorded({ status: 'error', reason: 'clone failed' })['github:acme/api#1']?.failed).toBe(
       3,
     )
-    for (const status of ['skipped', 'prepared', 'stopped: aborted'])
-      expect(recorded({ status })).toEqual(failed)
+    expect(recorded({ status: 'stopped: time' })['github:acme/api#1']?.failed).toBe(3)
+    const uncounted = [
+      'skipped',
+      'prepared',
+      'stopped: aborted',
+      'stopped: quota',
+      'stopped: session',
+      'stopped: window ended',
+    ]
+    for (const status of uncounted) expect(recorded({ status })).toEqual(failed)
+  })
+
+  it('never gives up on an item over stops it did not cause', () => {
+    let attempts: Attempts = {}
+    for (const [i, runId] of ['r1', 'r2', 'r3'].entries()) {
+      const planned = plan(yaml, [githubPr(1, { updated: `2026-01-0${i + 1}T00:00:00Z` })], {})
+      const results = [{ planned: planned.units[0], status: 'stopped: quota' }]
+      attempts = recordAttempts(attempts, { runId, startedAt, plan: planned, results } as RunReport)
+    }
+    expect(attempts).toEqual({})
+  })
+
+  it('tries again on the day a week after the failure, in a short DST week too', () => {
+    const failed = (at: Date) => ({
+      'github:acme/api#1': {
+        runId: 'r3',
+        skill: 'fix',
+        updated: at.toISOString(),
+        failed: 3,
+        failedAt: at.toISOString(),
+      },
+    })
+    const pr = githubPr(1, { updated: '2026-01-09T00:00:00Z' })
+    const midnight = new Date(2026, 0, 8, 0, 0, 5)
+    expect(plan(yaml, [pr], {}, {}, failed(midnight), midnight.getTime()).skipped).toMatchObject([
+      { reason: 'gave up after 3 attempts; next try on 2026-01-15' },
+    ])
+    const springForward = startedAt.getTime() + (7 * 24 - 1) * 3600_000 - 3000
+    expect(plan(yaml, [pr], {}, {}, failed(startedAt), springForward).units).toHaveLength(1)
   })
 })
 
