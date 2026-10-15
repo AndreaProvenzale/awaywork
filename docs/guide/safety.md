@@ -247,10 +247,10 @@ danger-full-access`, which it needs to commit. What that reaches is in
   slice before's as pushed, while adding the trailer. In the clone it
   runs one `git checkout -b` for the slice's new branch at the clone's
   tip, with no hook, fsmonitor or reflog. Before it, awaywork refuses a
-  symlink anywhere on the path to `.git/HEAD` or to the new branch's
-  ref, and deletes `.git/logs`, so git writes only that
-  branch, HEAD and the index, each by renaming a fresh lock file, and
-  nothing outside the clone.
+  symlink anywhere on the path to `.git/HEAD`, `.git/index` or the new
+  branch's ref, and deletes `.git/logs`, so git writes only that branch,
+  HEAD and the index, each by renaming a fresh lock file, and nothing
+  outside the clone.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from awaywork: a footer with the run id and
   the items it's for in the body, and an `Awaywork: <run id>` commit

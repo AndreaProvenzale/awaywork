@@ -159,11 +159,13 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
- * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere.
+ * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
+ * whose index, which git writes through a symlink, is one.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
   if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
+  await refuseSymlinks(dir, ['.git/index'])
   for (const path of ['commondir', 'objects/info/alternates'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)

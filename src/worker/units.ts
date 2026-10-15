@@ -667,8 +667,9 @@ const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
 /**
  * Puts the clone on a new `branch` at its HEAD. Git writes only the branch, HEAD and the index there,
- * each through a lock file it renames, so with the symlinks a worker may plant refused and no reflog
- * left to append to, nothing outside the clone is written; no hook or fsmonitor runs.
+ * each through a lock file it renames, so with the symlinks a worker may plant refused (the index's by
+ * restoreGitConfig) and no reflog left to append to, nothing outside the clone is written; no hook or
+ * fsmonitor runs.
  */
 async function cutBranch(dir: string, branch: string): Promise<void> {
   await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
@@ -679,6 +680,8 @@ async function cutBranch(dir: string, branch: string): Promise<void> {
 
 /** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
 async function uncommitted(dir: string): Promise<string[]> {
+  // Git refreshes the index through a symlink, and `verify` still runs after a failed restoreGitConfig.
+  await refuseSymlinks(dir, ['.git/index'])
   const status = ['status', '--porcelain', '--ignore-submodules=dirty']
   return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
 }

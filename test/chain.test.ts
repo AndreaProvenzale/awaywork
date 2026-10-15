@@ -1,4 +1,13 @@
-import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -545,6 +554,41 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
   for (const victim of Object.values(planted))
     expect(await readFile(victim, 'utf8')).toBe('untouched\n')
   expect(over).toEqual([''])
+})
+
+it('ends the chain on a .git/index a worker symlinked, writing nothing through it', async () => {
+  const victim = join(await mkdtemp(join(tmpdir(), 'awaywork-victim-')), 'index')
+  let planted: Buffer | undefined
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        const index = join(job.dir, '.git', 'index')
+        await copyFile(index, victim)
+        planted = await readFile(victim)
+        await rm(index)
+        await symlink(victim, index)
+        // Stat-dirty, so a git that refreshes the index writes it.
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  // `verify` runs `git status` in the clone after the failed step, as a `when` or `until` check does.
+  const { rows } = await run(
+    "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    provider,
+  )
+  expect(await readFile(victim)).toEqual(planted)
+  expect(rows).toEqual([
+    ['acme-api-1', 'error', '.git/index in the clone is a symlink'],
+    ['acme-api-1-fix', 'skipped', 'acme-api-1 error: .git/index in the clone is a symlink'],
+  ])
 })
 
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {

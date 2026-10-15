@@ -657,9 +657,10 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
   on.
 - A stacked slice whose first step commits nothing ends the chain; the
   slices before it stay published. So does a stacked step whose
-  [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end
-  ends the chain too, and the open slice publishes what it has. Ctrl-C
-  drops the open slice, and the ones that already ended stay published.
+  [`when`](#when) doesn't hold: the rest of the chain is passed over. A
+  failing step or the window's end ends the chain too, and the open
+  slice publishes what it has. Ctrl-C drops the open slice, and the ones
+  that already ended stay published.
 - `when: { changed }` still diffs from where the chain started, so it
   sees the earlier slices' commits too.
 - Each slice counts once against the [caps](#windows-limits-and-budget),
