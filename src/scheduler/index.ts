@@ -19,6 +19,9 @@ export interface Schedule {
   log: string
 }
 
+/** A scheduler install that failed for a reason the user can act on. */
+export class SchedulerError extends Error {}
+
 export interface Scheduler {
   id: string
   /** Installs or replaces the job; returns where it lives. */

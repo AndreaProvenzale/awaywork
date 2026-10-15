@@ -7,19 +7,28 @@ import { Cancelled } from '../src/cli/ask.js'
 import { type Io, installSchedule, whereToRun } from '../src/cli/schedule.js'
 import type { Ask } from '../src/core/types.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
-import { defaultScheduler, type Scheduler } from '../src/scheduler/index.js'
+import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-const { installed } = vi.hoisted(() => ({ installed: [] as string[] }))
+const { installed, removed } = vi.hoisted(() => ({
+  installed: [] as string[],
+  removed: [] as string[],
+}))
+
+let failCron = false
 
 vi.mock('../src/scheduler/index.js', async (original) => {
   const fake = (id: string): Scheduler => ({
     id,
     install: async () => {
+      if (id === 'cron' && failCron) throw new SchedulerError('cron failed')
       installed.push(id)
       return `/fake/${id}`
     },
-    remove: async () => false,
+    remove: async () => {
+      removed.push(id)
+      return false
+    },
     read: async () => undefined,
   })
   return {
@@ -32,6 +41,8 @@ let out: string[]
 beforeEach(() => {
   out = []
   installed.length = 0
+  removed.length = 0
+  failCron = false
   vi.spyOn(console, 'log').mockImplementation((line) => void out.push(String(line)))
   vi.spyOn(console, 'error').mockImplementation((line) => void out.push(String(line)))
 })
@@ -110,5 +121,14 @@ it('installs nothing when the question is left', async () => {
   await installSchedule(config, undefined, undefined, leave)
   expect(installed).toEqual([])
   expect(out).toEqual(['Cancelled'])
+  expect(process.exitCode).toBe(1)
+})
+
+it('leaves the other schedulers alone when the install fails', async () => {
+  const { config, io } = await setup()
+  failCron = true
+  await installSchedule(config, 'cron', undefined, io([], true))
+  expect(removed).toEqual([])
+  expect(out).toEqual(['cron failed'])
   expect(process.exitCode).toBe(1)
 })

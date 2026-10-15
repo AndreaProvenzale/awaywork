@@ -36,6 +36,9 @@ wins, in:
 2. `.awaywork/skills/<name>/` in the unit's repo, the team's;
 3. the built-ins.
 
+An extra skill, one in `skills`, also falls back to the repo's own
+skill folders: see [Bring your repo's skills](#bring-your-repo-s-skills).
+
 A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`)
 uses its own `skills/`, so move or link the folder there; `doctor` warns
 while `~/.config/awaywork/skills/` holds skills it doesn't use. On a PR someone
@@ -54,8 +57,9 @@ Claude Code gets the unit's skills as a plugin outside the clone
 every unit, someone else's PR included. Codex gets them copied into the
 clone's `.agents/skills/`: a repo that already has a skill of that name
 there keeps it, except on someone else's PR, where awaywork's copy
-replaces it. `config check` sees user and built-in skills only; an
-in-repo skill resolves at run time.
+replaces it. `doctor` and `config edit` see user and built-in skills
+only, so `doctor` warns about a name it can't find and `config edit`
+refuses it; an in-repo skill resolves at run time.
 
 ## Tweak a built-in
 
@@ -65,6 +69,43 @@ $EDITOR ~/.config/awaywork/skills/fix/SKILL.md
 ```
 
 The ejected copy shadows the built-in from then on.
+
+## Bring your repo's skills
+
+Your repo already has skills for Claude Code or Codex? Name them in a
+rule scoped to that repo, no ejecting or copying. Edit the config file
+by hand, though: they only resolve at run time, so `doctor` warns about
+them and `config edit` refuses them.
+
+```yaml
+queue:
+  - skill: implement
+    skills: [tdd-implementation, writing-migrations]
+    where: { type: issue, repo: acme/api }
+```
+
+Not in top-level `skills`: that list joins every unit, on your other
+repos and on PRs someone else opened too, and there they fail with
+`unknown skill`.
+
+An extra skill that isn't yours, in `.awaywork/skills/` or built in, is
+looked up in the clone's `.claude/skills/`, then `.agents/skills/`. Those
+folders only fill in names: a rule's main skill never comes from them, so
+a repo's own `.claude/skills/implement` doesn't replace the built-in. To
+make one a main skill, move it to `.awaywork/skills/`. Like
+`.awaywork/skills/`, they are skipped on a PR someone else opened, where
+a unit naming one fails with `unknown skill`.
+
+Claude Code loads `.claude/skills/` on its own anyway, so naming one there
+mostly matters for Codex, which gets a copy in `.agents/skills/`.
+
+Skills the model reaches for by itself port fine: a TDD loop, a migration
+checklist, the rules for a tricky domain. Workflow skills don't: one that
+waits for your approval, fetches or posts through `gh`, or is marked
+`disable-model-invocation` has nobody to approve, no forge login, or
+can't be called at all. Keep the built-in for the job and port the
+standard instead, e.g. a rule's instruction file saying "review against
+`.claude/skills/pr-review/references/review-standard.md`".
 
 ## Try an edit on a past unit
 

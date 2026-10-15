@@ -115,6 +115,80 @@ it('writes a persistent systemd user timer and its service', async () => {
   expect(await systemd(home, run).read()).toBeUndefined()
 })
 
+it('removes its unit files and fails in one line, with the cause, when systemctl fails', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const run: Exec = async () => {
+    throw new Error('Failed to connect to bus: No medium found')
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow(
+    'systemctl failed (Failed to connect to bus: No medium found); without a systemd user session, log in directly or use --with cron',
+  )
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
+})
+
+it('reports the first line of stderr when the failure carries one', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const run: Exec = async () => {
+    throw Object.assign(
+      new Error('Command failed with exit code 1: systemctl --user daemon-reload'),
+      {
+        stderr: 'Failed to connect to bus: No medium found\nsecond line',
+      },
+    )
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow(
+    'systemctl failed (Failed to connect to bus: No medium found);',
+  )
+})
+
+it('reloads systemd after restoring the unit files', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  const calls: string[] = []
+  const run: Exec = async (_cmd, args) => {
+    calls.push(args.join(' '))
+    if (args[1] === 'enable') throw new Error('boom')
+    return ''
+  }
+  await expect(systemd(home, run).install(schedule)).rejects.toThrow('boom')
+  expect(calls).toEqual([
+    '--user daemon-reload',
+    '--user enable --now awaywork.timer',
+    '--user daemon-reload',
+  ])
+})
+
+it('restores the previous unit files when a reinstall fails', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  await systemd(home, recorder().run).install(schedule)
+  const failing: Exec = async () => {
+    throw new Error('boom')
+  }
+  await expect(
+    systemd(home, failing).install({ ...schedule, starts: [{ hour: 3, minute: 0 }] }),
+  ).rejects.toThrow('boom')
+  expect(await systemd(home, recorder().run).read()).toEqual(schedule)
+})
+
+it('removes the unit files even when daemon-reload fails', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  await systemd(home, recorder().run).install(schedule)
+  const failing: Exec = async () => {
+    throw new Error('no bus')
+  }
+  expect(await systemd(home, failing).remove()).toBe(true)
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
+})
+
+it('reads no job when the timer is not enabled', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
+  await systemd(home, recorder().run).install(schedule)
+  const disabled: Exec = async () => {
+    throw new Error('disabled')
+  }
+  expect(await systemd(home, disabled).read()).toBeUndefined()
+})
+
 it("adds one tagged crontab line, keeps the user's own and removes only its line", async () => {
   const cronTab = recorder('MAILTO=me\n\n0 9 * * * backup\n')
   const scheduler = cron(cronTab.run)
@@ -156,6 +230,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.permissions).toEqual({ contents: 'read' })
   expect(parsed.jobs.run.environment).toBeUndefined()
   expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
+  expect(parsed.jobs.run['timeout-minutes']).toBe(360)
   expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
   expect(parsed.jobs.run.steps).toEqual([
     { uses: 'actions/checkout@v5', with: { 'persist-credentials': false } },
@@ -216,6 +291,22 @@ it("touches a self-hosted machine's disk, global installs and git config not at 
   expect(step('Morning report')).toMatchObject({
     if: 'always()',
     run: 'awaywork report >> "$GITHUB_STEP_SUMMARY" || true',
+  })
+})
+
+it("uploads only this run's report and units as an artifact named after the workflow", async () => {
+  const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
+  const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
+  expect(step('Run').id).toBe('run')
+  expect(step('Upload the run')).toEqual({
+    name: 'Upload the run',
+    if: "always() && steps.run.outputs.run-id != ''",
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name: '${{ github.workflow }}-${{ steps.run.outputs.run-id }}',
+      path: '${{ steps.run.outputs.run-dir }}/report.md\n${{ steps.run.outputs.run-dir }}/units.json\n',
+      'if-no-files-found': 'ignore',
+    },
   })
 })
 
@@ -410,6 +501,7 @@ describe('schedule install --with github-actions', () => {
     expect(out.join('\n')).not.toMatch(/won't run/)
     const job = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run
     expect(job['runs-on']).toBe('self-hosted')
+    expect(job['timeout-minutes']).toBe(1440)
     expect(job.steps.at(-1).with.packages).toBe('')
     expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
     const labelHint = /^`runs-on: self-hosted` matches any self-hosted runner .* a label of its own/

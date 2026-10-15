@@ -392,6 +392,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           mcp,
         }
+        if (a.kind === 'quota')
+          result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
         ran = true
         const worker = await runWorker(provider, job, a, {

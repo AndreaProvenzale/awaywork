@@ -50,7 +50,7 @@ Or write a minimal config by hand:
 ```yaml
 providers: [claude]
 sources:
-  github: { repos: [my-org/*] }
+  github: { repos: [acme/*] }
 ```
 
 With no `queue`, the [default queue](./how-it-works.md#the-queue) applies.
@@ -62,8 +62,7 @@ assigned to you, so assign yourself too.
 Check it:
 
 ```sh
-awaywork config check
-awaywork doctor   # binaries, credentials, quota, sources
+awaywork doctor   # the config, binaries, credentials, quota, sources
 ```
 
 ## Preview the next run
@@ -76,29 +75,47 @@ awaywork plan
 run would do, without running an agent:
 
 ```
-Queue
-  #1  fix     type=pr mine=true checks=failing
-  #2  review  type=pr review_requested=true trusted=true
+Queue (default: no queue in config)
+  #1  fix     source=github type=pr mine=true checks=failing
+  #2  fix     source=github type=pr mine=true unresolved_threads!=0
+  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
+  #4  review  source=github type=pr review_requested=true trusted=true
 
 Providers
-  provider  window     used  ceiling  set by   resets in  session / stop at
-  claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
-    other limits: reserve cap 90%, pacing 54%
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
+    other limits: reserve cap 90%
 
 Units
      unit        repo      rule  skill              provider  deliver   branch
   1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
      github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #2    review (built-in)  claude    report    away/acme-api-2
+  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
      github acme/api#2: Cache invalidation
 
 Skipped
   github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
 ```
 
-`awaywork queue` shows the same rules with what each matches now and lets
-you reorder them with the keyboard; `awaywork queue move 3 1` moves
-rule #3 to the top without one.
+`awaywork plan --rules` shows the same rules with what each takes now,
+and skips the quota probe:
+
+```
+Queue (default: no queue in config)
+  #1  fix     source=github type=pr mine=true checks=failing
+       1 taken: acme/api#1
+  #2  fix     source=github type=pr mine=true unresolved_threads!=0
+       0 taken
+  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
+       0 taken
+  #4  review  source=github type=pr review_requested=true trusted=true
+       1 taken: acme/api#2
+  1 unmatched: acme/api#3
+```
+
+An item goes to the first rule it matches, so a later rule that
+matches it too gets a line like `1 taken by #1: acme/api#1`. To
+reorder, move the rules in `awaywork config edit`.
 
 ## Run one unit
 

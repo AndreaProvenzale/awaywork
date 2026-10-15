@@ -46,7 +46,11 @@ awaywork schedule remove
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job
   starts without your login shell's variables.
 - systemd user timers run only while you are logged in;
-  `loginctl enable-linger` lifts that.
+  `loginctl enable-linger` lifts that. Without a user session (after
+  `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing;
+  log in directly, or use `--with cron`, which needs no session. From
+  such a shell `schedule status` and `doctor` can't reach the timer and
+  report no schedule.
 - Output goes to `~/.local/state/awaywork/schedule.log`, each run
   starting with a line dated in local time; the morning report is
   `awaywork report`. Both list what went wrong before any unit started,
@@ -136,8 +140,9 @@ The workflow calls awaywork's action, `AndreaProvenzale/awaywork@v1`,
 which installs the awaywork version you generated it with. On a
 GitHub-hosted runner it first frees about 20 GB of preinstalled SDKs
 (runners otherwise die quietly on large repos). It commits as the
-token's user, through the job's env rather than git config, and appends
-the morning report to the job summary. Fixes to those steps reach you through
+token's user, through the job's env rather than git config, appends
+the morning report to the job summary and uploads the run as an
+[artifact](#reports-from-the-runner). Fixes to those steps reach you through
 `v1`; to upgrade awaywork itself, raise `version` in the workflow, or
 upgrade awaywork and run `schedule install --with github-actions`
 again.
@@ -177,11 +182,58 @@ every run its `where` holds. A self-hosted runner keeps
 `~/.local/state/awaywork` of the user it runs as, so all of that
 carries over between runs as on your machine.
 
+GitHub also ends a job on its hosted runners at 6 hours, whatever your
+window says. So there a run stops 5h40 after `awaywork run` starts,
+or at the window's end when that comes first, and the 20 minutes
+left go to publishing and the report; the workflow sets
+`timeout-minutes: 360` to match. A longer window, like `18:00-07:00`,
+effectively lasts about 6 hours there, and `plan` on the runner says so:
+
+```
+Warnings
+  GitHub-hosted runners end a job at 6 hours, so a run stops 5h40 after it starts, before 18:00-07:00 ends
+```
+
+The stop works like any window end: a running unit stops with
+`stopped: window ended` and publishes what it has. A run from the
+Actions tab gets the same cap. On a self-hosted runner a run lasts the
+whole window: GitHub's default of 360 minutes applies to self-hosted jobs
+too, so that workflow sets `timeout-minutes: 1440`. One installed
+without it gets the line on your next
+`schedule install --with github-actions`.
+
 Pick one per machine, though: a local schedule or a runner. Nothing
 keeps two runs apart, so with both on one machine they start together
 when a window opens and work the same items on the same state dir.
 Moving to the runner, run `awaywork schedule remove` outside the control
 repo first; inside it, that deletes the workflow too.
+
+### Reports from the runner
+
+The runner's runs dir doesn't come back to your machine, so each run
+also uploads its `report.md` and `units.json` as an artifact named after
+the workflow and the run, like `awaywork-20261014-223527`. Inside the
+control repo, `awaywork report` and `report --list` fetch those through
+`gh` and mix them with your local runs, newest first. They find a
+workflow's runs by its file name, so keep its `name:` as
+`schedule install` wrote it:
+
+```
+$ cd my-awaywork-repo
+$ awaywork report --list
+20261015-160012  9 units, 3 draft PRs, 2 reports  (github: awaywork)
+20261014-223527  14 units, 2 draft PRs, 6 reports  (github: awaywork)
+20261012-203418  0 units, 0 draft PRs, 0 reports
+```
+
+`awaywork report` prints the newest of either, `report <id>` any of
+them. A run is downloaded once, into
+`~/.local/state/awaywork/remote/<owner>/<repo>/<artifact>/`, and never
+into `runs/`, so `stats`, `replay` and attempts stay about your own machine.
+Artifacts expire with the repo's retention (90 days unless you changed
+it), and an expired run drops off the list. If `gh` can't get to
+GitHub, you get one `warning:` line and your local runs. Outside the
+control repo, `report` only knows your local runs.
 
 ### Credentials on a runner
 

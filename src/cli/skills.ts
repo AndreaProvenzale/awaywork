@@ -45,6 +45,7 @@ export async function listSkills(userDir: string, builtinDir = builtinSkillsDir)
   const footer = [
     `User skills: ${userDir}`,
     'In-repo skills in .awaywork/skills/ resolve at run time, between user and built-in.',
+    "Extra skills (a rule's skills) also come from the repo's .claude/skills/ and .agents/skills/, after built-in.",
   ]
   return [...lines, '', ...footer].join('\n')
 }

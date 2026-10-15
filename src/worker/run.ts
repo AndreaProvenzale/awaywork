@@ -15,8 +15,7 @@ export type WorkerStatus =
 export interface WorkerResult {
   status: WorkerStatus
   turns: number
-  /** The first and the last reading the worker saw. */
-  firstQuota?: Quota
+  /** The last reading the worker saw. */
   quota?: Quota
   reason?: string
 }
@@ -68,7 +67,6 @@ export async function runWorker(
     for await (const event of provider.run(job, abort.signal)) {
       if (event.type === 'log') log(event.line)
       if (event.type === 'quota') {
-        result.firstQuota ??= event.quota
         result.quota = event.quota
         const limit = overLimit(event.quota, allowance)
         if (limit) stop(limit.status, limit.reason)

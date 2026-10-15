@@ -16,7 +16,7 @@ with:
 ```
 
 `<key>` stands for a map key you choose, `[]` for a list entry.
-`awaywork config check` validates what the schema cannot, such as
+`awaywork doctor` validates what the schema cannot, such as
 `where` keys and skill names.
 
 ## Top level
@@ -31,7 +31,7 @@ with:
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
-| `skills` | string[] | `[]` | Extra skills available to every unit |
+| `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs with the morning report when a run ends; a failure is only logged |
@@ -232,7 +232,7 @@ First matching rule wins; top = highest priority.
 | `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
-| `skills` | string[] | `[]` | Extra skills available to the worker |
+| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
@@ -305,7 +305,7 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | `skill` (required) | string |  | The skill that does the work |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
-| `skills` | string[] | `[]` | Extra skills available to the worker |
+| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |

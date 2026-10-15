@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCommand } from '../src/cli/run.js'
 import { runsDir } from '../src/config/paths.js'
 
@@ -44,6 +44,10 @@ async function latestRun() {
 }
 
 describe('run command', () => {
+  beforeEach(() => {
+    vi.stubEnv('GITHUB_OUTPUT', '')
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
@@ -57,6 +61,14 @@ describe('run command', () => {
     const { report } = await latestRun()
     expect(report).toMatch(/\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d to \S+ \S+, local time\n/)
     expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
+  })
+
+  it("hands the run's id and dir to the next steps of an Actions job", async () => {
+    const outputs = join(await mkdtemp(join(tmpdir(), 'awaywork-out-')), 'output')
+    vi.stubEnv('GITHUB_OUTPUT', outputs)
+    await run([])
+    const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+    expect(await readFile(outputs, 'utf8')).toBe(`run-id=${id}\nrun-dir=${join(runsDir, id)}\n`)
   })
 
   it('refuses a unit not in the plan in one line, leaving no run dir', async () => {

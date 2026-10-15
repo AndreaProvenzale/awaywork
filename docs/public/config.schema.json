@@ -532,7 +532,7 @@
     },
     "skills": {
       "default": [],
-      "description": "Extra skills available to every unit",
+      "description": "Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills",
       "type": "array",
       "items": {
         "type": "string"
@@ -656,7 +656,7 @@
           },
           "skills": {
             "default": [],
-            "description": "Extra skills available to the worker",
+            "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
             "type": "array",
             "items": {
               "type": "string"
@@ -790,7 +790,7 @@
                       },
                       "skills": {
                         "default": [],
-                        "description": "Extra skills available to the worker",
+                        "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                         "type": "array",
                         "items": {
                           "type": "string"
@@ -987,7 +987,7 @@
                               },
                               "skills": {
                                 "default": [],
-                                "description": "Extra skills available to the worker",
+                                "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                                 "type": "array",
                                 "items": {
                                   "type": "string"
@@ -1181,7 +1181,7 @@
                                 },
                                 "skills": {
                                   "default": [],
-                                  "description": "Extra skills available to the worker",
+                                  "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                                   "type": "array",
                                   "items": {
                                     "type": "string"
@@ -1454,7 +1454,7 @@
                             },
                             "skills": {
                               "default": [],
-                              "description": "Extra skills available to the worker",
+                              "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                               "type": "array",
                               "items": {
                                 "type": "string"
@@ -1651,7 +1651,7 @@
                                     },
                                     "skills": {
                                       "default": [],
-                                      "description": "Extra skills available to the worker",
+                                      "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                                       "type": "array",
                                       "items": {
                                         "type": "string"
@@ -1845,7 +1845,7 @@
                                       },
                                       "skills": {
                                         "default": [],
-                                        "description": "Extra skills available to the worker",
+                                        "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
                                         "type": "array",
                                         "items": {
                                           "type": "string"

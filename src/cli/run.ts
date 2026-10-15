@@ -1,20 +1,24 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, runsDir, skillsDirOf } from '../config/paths.js'
+import { attemptsPath, remoteDir, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
 import { unitStats } from '../core/stats.js'
-import { describeWindow, windowEnd } from '../core/window.js'
+import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
+import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
+import { type Exec, exec } from '../forge/gh.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
+import { workflows } from '../scheduler/github-actions.js'
 import { notify } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
 import { probeAndPlan } from './plan.js'
+import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
 
 export function runCommand(program: Command): void {
@@ -29,7 +33,10 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        const until = opts.scheduled ? windowEnd(config.windows, new Date()) : undefined
+        const now = new Date()
+        const until = opts.scheduled
+          ? runEnd(config.windows, now, process.env)
+          : hostedEnd(now, process.env)
         if (opts.scheduled && !until) {
           console.log(
             `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
@@ -50,6 +57,8 @@ export function runCommand(program: Command): void {
         const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
+        if (process.env.GITHUB_OUTPUT)
+          await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
         await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
         console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
@@ -88,28 +97,75 @@ export function runCommand(program: Command): void {
     .command('report [id]')
     .description("print a run's morning report; the latest by default")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
-    .action(async (id: string | undefined, opts: { list?: boolean }) => {
-      const runs = (await readdir(runsDir).catch(() => [])).sort()
-      if (opts.list) {
-        if (runs.length === 0) console.log(`no runs in ${runsDir}`)
-        for (const run of runs.slice(-20).reverse()) {
-          const text = await readFile(join(runsDir, run, 'report.md'), 'utf8').catch(
-            () => undefined,
-          )
-          console.log(runLine(run, text))
-        }
-        return
-      }
-      const run = id ?? runs.at(-1)
-      if (!run) {
-        console.error(`no runs in ${runsDir}`)
-        process.exitCode = 1
-        return
-      }
-      const text = await readFile(join(runsDir, run, 'report.md'), 'utf8').catch(() => undefined)
-      if (text === undefined) {
-        console.error(`no report for run ${run} in ${runsDir}`)
-        process.exitCode = 1
-      } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
-    })
+    .action((id: string | undefined, opts: { list?: boolean }) => printReport(id, !!opts.list))
+}
+
+interface Run {
+  id: string
+  dir: string
+  uploaded?: UploadedRun
+}
+
+/** Prints a run's report, or lists the last 20; inside a control repo, with the runs its workflows uploaded. */
+export async function printReport(id: string | undefined, list: boolean, run: Exec = exec) {
+  const local = (await readdir(runsDir).catch(() => [])).sort()
+  const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
+  const runs: Run[] = [
+    ...local.map((id) => ({ id, dir: join(runsDir, id) })),
+    ...uploaded
+      .filter((r) => !local.includes(r.id))
+      .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
+  ].sort((a, b) => a.id.localeCompare(b.id))
+  const read = (r: Run) => readFile(join(r.dir, 'report.md'), 'utf8').catch(() => undefined)
+
+  if (list) {
+    if (runs.length === 0) console.log(`no runs in ${runsDir}`)
+    const last = runs.slice(-20).reverse()
+    const fetched = last.map((r) => r.uploaded && fetchRun(r.uploaded, r.dir, run))
+    const failed = (await Promise.allSettled(fetched)).find((f) => f.status === 'rejected')
+    if (failed) warnRemote(failed.reason)
+    for (const r of last) {
+      const tag = r.uploaded ? `  (github: ${r.uploaded.workflow})` : ''
+      console.log(runLine(r.id, await read(r)) + tag)
+    }
+    return
+  }
+  let picked = id ? runs.find((r) => r.id === id) : runs.at(-1)
+  if (picked?.uploaded)
+    try {
+      await fetchRun(picked.uploaded, picked.dir, run)
+    } catch (e) {
+      warnRemote(e)
+      picked = id ? undefined : runs.findLast((r) => !r.uploaded)
+    }
+  const which = id ?? picked?.id
+  if (!which) {
+    console.error(`no runs in ${runsDir}`)
+    process.exitCode = 1
+    return
+  }
+  const text = picked && (await read(picked))
+  if (text === undefined) {
+    console.error(`no report for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`)
+    process.exitCode = 1
+  } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
+}
+
+/** The runs the control repo in this directory uploaded: none outside one, and none with a warning when GitHub fails. */
+async function remoteRuns(run: Exec): Promise<UploadedRun[]> {
+  // A runner's own report is of the run it just made, never of an earlier upload.
+  if (process.env.GITHUB_ACTIONS) return []
+  const root = await gitRoot(run)
+  const names = root ? (await workflows(root)).map((file) => basename(file, '.yml')) : []
+  if (names.length === 0) return []
+  return uploadedRuns(names, run).catch((e: unknown) => {
+    warnRemote(e)
+    return []
+  })
+}
+
+function warnRemote(e: unknown) {
+  const { stderr, message } = e as { stderr?: string; message?: string }
+  const reason = (stderr || message || String(e)).trim().split('\n')[0]
+  console.error(`warning: runs on GitHub left out: ${reason}`)
 }

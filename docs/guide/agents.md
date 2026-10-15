@@ -50,21 +50,22 @@ Setting up:
 3. Put secrets in `~/.config/awaywork/env` (`NAME=value` lines, mode
    600), never in the config. Ask the user for them; don't read them from
    other tools' files.
-4. `awaywork config check` until it prints `ok`.
+4. `awaywork doctor` until the config's line isn't `FAIL`.
 5. `awaywork plan`, and show the user the result.
 
 What each command does:
 
 | Command | Effect |
 |---|---|
-| `config check`, `config schema`, `skills list`, `report` | Read-only, local |
+| `config schema`, `skills list`, `report` | Read-only, local |
 | `plan`, `doctor` | Read-only on sources and forge; probe each provider's quota (one tiny model call for Claude) |
+| `plan --rules` | Read-only on sources and forge; probes no provider |
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
 | `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
-| `init`, `queue`, `config edit` | Interactive; need a terminal |
+| `init`, `config edit` | Interactive; need a terminal |
 
 Machine-readable output:
 

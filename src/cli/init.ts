@@ -31,7 +31,7 @@ export function initCommand(program: Command): void {
       const path = configPath(program.opts().config)
       if (!opts.yes && !process.stdin.isTTY) {
         console.error(
-          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`awaywork config schema` describes it) and run `awaywork config check`',
+          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`awaywork config schema` describes it) and run `awaywork doctor`',
         )
         process.exitCode = 1
         return
@@ -178,7 +178,7 @@ export async function initConfig(input: InitInput): Promise<string> {
 
   const defaults = defaultRules(Object.keys(configs))
   const kept = await ask.multiselect(
-    'Starting queue, top rule first (reorder later with awaywork queue)',
+    'Starting queue, top rule first (reorder later with awaywork config edit)',
     defaults.map((r, i) => ({ value: String(i), label: r.skill, hint: describeRule(r) })),
     defaults.map((_, i) => String(i)),
   )
@@ -222,7 +222,7 @@ export function renderConfig(c: {
 }): string {
   return [
     '# awaywork config: `awaywork config edit` validates on save,',
-    '# `awaywork queue` reorders the queue, `awaywork plan` previews the next run.',
+    '# `awaywork plan` previews the next run, `awaywork plan --rules` what each rule takes.',
     `windows: [{ start: "${c.window.start}", end: "${c.window.end}" }]`,
     'budget:                         # every provider; override one with - <id>: { budget: … }',
     commented('  reserve: 10%', 'never go past 1 - reserve of any window'),
