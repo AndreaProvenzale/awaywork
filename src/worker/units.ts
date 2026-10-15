@@ -766,7 +766,7 @@ async function appendChainNotes(file: string, reports: StepReport[], loops: Open
     const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
     lines.push('', `Loop: ${describeLoop(loop)}${verdict}.`)
     const { check } = loop
-    if (check?.failed && !check.refused)
+    if (check?.failed)
       lines.push(
         '',
         checkDetails(
@@ -793,7 +793,7 @@ function checkDetails(summary: string, check: RanCheck): string {
 async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
-  const verb = check.refused ? 'not run' : check.stopped ? 'stopped' : 'failed'
+  const verb = check.stopped ? 'stopped' : 'failed'
   const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
   await writeOutput(file, `${body}\n\n## Awaywork verify\n\n${checkDetails(summary, check)}\n`)
 }

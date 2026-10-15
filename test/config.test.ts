@@ -330,7 +330,6 @@ describe('config', () => {
       ),
     ).toEqual([
       "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
-      'queue[0].then.when: expected verdict, command or changed',
     ])
   })
 

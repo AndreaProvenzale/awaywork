@@ -289,7 +289,7 @@ queue:
     const items = [githubPr(1, { checks: 'failing' })]
     const units = (rule: string, quota: Quota | null) =>
       plan(yaml(rule), items, { claude: quota }).units.map((u) => u.quotaUnmet)
-    const unmet = "the quota part doesn't hold on the probe"
+    const unmet = "doesn't hold on the probe"
     expect(units('when: { runs_until_reset: 1 }', week(0.36))).toEqual([unmet, undefined])
     expect(units('when: { runs_until_reset: 3 }', week(0.36))).toEqual([undefined, undefined])
     expect(units('when: { headroom: 10% }', week(0.36))).toEqual([undefined, undefined])

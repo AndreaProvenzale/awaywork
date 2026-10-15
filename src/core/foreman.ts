@@ -203,7 +203,7 @@ export function planRun(input: {
         ],
         deliver: reports(step) ? 'report' : deliver,
       }
-      const unmet = provider && quotaUnmet(step.when, allowances[provider])
+      const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({
         unit,
         rule: ruleIndex,
@@ -259,20 +259,10 @@ export function planRun(input: {
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
 
-function quotaOf(when: Condition | undefined): Condition | undefined {
-  const { runs_until_reset, headroom } = when ?? {}
-  if (runs_until_reset === undefined && headroom === undefined) return undefined
-  return {
-    ...(runs_until_reset !== undefined && { runs_until_reset }),
-    ...(headroom !== undefined && { headroom }),
-  }
-}
-
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
-  const quota = quotaOf(when)
-  if (!quota || !a) return undefined
+  if (!when || !a) return undefined
   if (a.kind === 'fallback') return 'no quota reading'
-  return holds(quota, quotaFacts(a)) ? undefined : "the quota part doesn't hold on the probe"
+  return holds(when, quotaFacts(a)) ? undefined : "doesn't hold on the probe"
 }
 
 function stepsOf(entry: ThenStep | Loop): ThenStep[] {

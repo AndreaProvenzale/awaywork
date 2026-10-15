@@ -274,7 +274,7 @@ than writing them to your home directory, which the agent shares.
 [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
 :::
 
-`verify` runs in the clone once the chain ends, outside the model,
+`verify` runs in the clone once each slice ends, outside the model,
 before it is published; it's a repo setting. Use it for lint, format or
 the repo's tests. A failure doesn't stop the publish: the PR body or the
 push's summary gets the tail of its output. It runs once per commit,
@@ -782,6 +782,10 @@ two events. `AWAYWORK_EVENT` says which:
   path of what the step wrote: its report, or for a step that commits,
   the PR body as it left it.
 
+The command gets both events. One that's only for the morning report
+starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires
+on every step.
+
 ::: warning Experimental
 The `unit` event has only run in tests so far, never in a real run. Tried it?
 [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
@@ -817,7 +821,9 @@ notify:                         # a Slack incoming webhook, the morning report o
 
 ```yaml
 notify:                         # a line per step
-  command: echo "$AWAYWORK_EVENT $AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
+  command: >-
+    [ "$AWAYWORK_EVENT" = unit ] || exit 0;
+    echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
 ```
 
 `secrets` names the env vars the command reads: workers never see them,
@@ -832,15 +838,21 @@ is config. The `unit` event has the PR's URL, so `gh` does it:
 ```yaml
 notify:
   command: |
+    set -e
     [ "$AWAYWORK_EVENT" = unit ] && [ -n "$AWAYWORK_PR_URL" ] || exit 0
-    # every step of the PR fires; only the first finds it still a draft
+    # every step of the PR fires; once one got through, it's no longer a draft
     [ "$(gh pr view "$AWAYWORK_PR_URL" --json isDraft -q .isDraft)" = true ] || exit 0
     gh pr edit "$AWAYWORK_PR_URL" --add-label awaywork --add-reviewer octocat
     gh pr ready "$AWAYWORK_PR_URL"
 ```
 
+`set -e` stops at a `gh` that fails, a missing label say: the hook's
+failure is logged, the PR stays a draft, and the next step tries again.
+
 `gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave
-it out on a chain with [`stack`](#stack), whose PRs sit on each other.
+it out on a chain with [`stack`](#stack), whose PRs sit on each other,
+and on a rule that takes up an awaywork PR, whose new PR sits on that
+one's branch.
 
 That's your command with your token, not a worker: workers never comment
 or ping anyone. A requested reviewer gets a notification, and so can the

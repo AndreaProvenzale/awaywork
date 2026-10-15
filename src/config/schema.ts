@@ -233,7 +233,10 @@ const when = z
           : undefined,
     },
   )
-  .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
+  .refine((c) => Object.keys(c).length > 0, {
+    message: 'expected verdict, command or changed',
+    when: (payload) => payload.issues.length === 0,
+  })
 const ruleWhen = z
   .strictObject(quotaKeys)
   .refine((c) => Object.keys(c).length > 0, 'expected runs_until_reset or headroom')
