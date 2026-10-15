@@ -47,5 +47,5 @@ export async function unknownSkillsWarning(
 ): Promise<string | undefined> {
   const unknown = await unknownSkills(config, userDir)
   if (unknown.length === 0) return undefined
-  return `${unknown.join('; ')}; fine for a skill the repo has in .awaywork/skills, or for an extra one in .claude/skills or .agents/skills; a run fails on one that is in none`
+  return `${unknown.join('; ')}; fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`
 }

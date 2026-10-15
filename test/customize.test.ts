@@ -125,7 +125,7 @@ describe('config edit', () => {
       'saved',
     )
     expect(await unknownSkillsWarning(await loadConfig(path), join(dir, 'skills'))).toBe(
-      `queue[0]: unknown skill "ours" (not built in, not in ${join(dir, 'skills')}); fine for a skill the repo has in .awaywork/skills, or for an extra one in .claude/skills or .agents/skills; a run fails on one that is in none`,
+      `queue[0]: unknown skill "ours" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`,
     )
   })
 })
