@@ -64,5 +64,7 @@ git push --follow-tags
 
 npm publishes through trusted publishing, without a token. It can only be
 configured for a package that exists, so the very first version goes out
-by hand: `pnpm build && npm publish --tag next`, then on npmjs.com add
-the trusted publisher (this repo, workflow `release.yml`).
+by hand: `npm version` as above, `pnpm build && npm publish --tag next`,
+then still `git push --follow-tags`, since workflows find the action by
+that tag (`release.yml` failing to republish it is fine). Then on
+npmjs.com add the trusted publisher (this repo, workflow `release.yml`).
