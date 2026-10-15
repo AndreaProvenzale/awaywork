@@ -105,13 +105,14 @@ three times, and `runs_until_reset` counts window openings.
 
 A readable quota decides how much work fits, not how much you can review
 in a morning. `limits.units` caps the units planned per run,
-`limits.units_per_repo` those in any one repo, and a rule's `units` those
-from that rule. None is set by default. Units past a cap are skipped in
-queue order, with the cap named in `awaywork plan` and the report. A
-[`then`](#then) step counts as a unit of the rule that started its chain.
-Only units routed to a provider count, and caps apply to each `awaywork
-run`, like `fallback.units`. `limits.unit_minutes` stops any worker
-after that many minutes, whichever provider runs it.
+`limits.units_per_repo` those in any one repo, and a rule's `units`
+those from that rule. None is set by default. Units past a cap are
+skipped in queue order, with the cap named in `awaywork plan` and the
+report. A rule's [`then`](#then) chain is one unit, counted once. Only
+units whose first step is routed to a provider count, and caps apply to
+each `awaywork run`, like `fallback.units`, which every step draws on.
+`limits.unit_minutes` stops any worker after that many minutes,
+whichever provider runs it.
 
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
@@ -200,7 +201,7 @@ the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 The guardrail is that awaywork only pushes a branch that doesn't
 exist on the remote yet, unless a rule opts in to [`push`](#push). When
 the name is taken, the unit takes the first free one of `<branch>-2` to
-`<branch>-10`, and the `then` steps and loop rounds after it follow.
+`<branch>-10`, and every step of its chain works on it.
 Not when awaywork already tried there: when a PR on the taken branch,
 open or closed unmerged, has a footer naming one of the unit's items, the
 unit is skipped as `awaywork tried this in <PR>; delete <branch> to
@@ -244,9 +245,13 @@ sources:
 ## Repos and instructions
 
 `repos.<owner/name>` holds the `setup` and `test` commands for that
-repo, plus an instructions file. `setup` runs in the clone before the
-agent starts, outside the model; the agent is told it already ran.
-Anything it leaves running is stopped when it exits. A setup that fails,
+repo, plus an instructions file. `setup` runs once per unit, in the fresh
+clone before any agent starts, outside the model; the agent is told it
+already ran. A chain's later steps share that clone and don't run it
+again, so dependencies a step adds aren't installed for the steps after
+it: a `when` or `until` command that needs them installs them itself,
+like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves
+running is stopped when it exits. A setup that fails,
 takes over 15 minutes or reaches the window's end skips the unit, with the
 tail of its output in the report.
 
@@ -257,8 +262,8 @@ Their values are masked in setup's output. On a PR someone else opened,
 setup runs the author's install scripts, so it gets none of them, and
 it runs only when the author has write access or org membership;
 otherwise the agent is told it didn't run. It gets none of them either
-on a branch a worker wrote: a `then` step's after a draft PR or a push,
-a stacked draft PR's, or an awaywork PR's a rule took up again. Read
+on the branch of an awaywork PR a rule took up again, which a worker
+wrote. Read
 them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
 than writing them to your home directory, which the agent shares.
 
@@ -267,15 +272,14 @@ than writing them to your home directory, which the agent shares.
 [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
 :::
 
-`verify` runs in the clone after the agent, outside the model, before
-the work is published; set it on a repo or a rule (the rule wins and
-covers its `then` steps). Use it for lint, format or the repo's tests.
-A failure doesn't stop the publish: the PR body or push report gets the
-tail of its output. It runs once per commit, with none of the secrets,
-and not on a PR by an untrusted author or with `network: false`, where
-it is reported as not run. An empty `verify: ""` on a rule turns the
-repo's off. A `report` delivery has nothing to publish and
-skips it.
+`verify` runs in the clone once the chain ends, outside the model,
+before it is published; set it on a repo or a rule (the rule wins). Use
+it for lint, format or the repo's tests. A failure doesn't stop the
+publish: the PR body or the push's summary gets the tail of its output.
+It runs once per commit, with none of the secrets, and not on a PR by an
+untrusted author or with `network: false`, where it is reported as not
+run. An empty `verify: ""` on a rule turns the repo's off. A `report`
+delivery has nothing to publish and skips it.
 
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
@@ -315,11 +319,11 @@ the repo's PR template, its recent commit style and your instructions
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | `draft_pr`, `report`, or `push`: commits onto your own open PR's branch, see [`push`](#push); default from the skill |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `push` onto your own open PR's branch (see [`push`](#push)), or `report`, where no step commits |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
-| `units` | At most this many units per run from this rule, its `then` steps included |
-| `then` | Steps that run after this rule's unit, in the same run; see [`then`](#then) |
+| `units` | At most this many units per run from this rule; a chain counts once |
+| `then` | Steps that run after this rule's skill, in the same clone; see [`then`](#then) |
 | `network` | `false` cuts the agent's commands off the network, `then` steps included; default the repo's |
 
 ### `where`
@@ -378,9 +382,10 @@ timestamp go last.
 
 ### `then`
 
-Steps run right after the rule's unit, one after the other, each on what
-the one before delivered. A step is a skill name, or a map when you want
-to set more:
+Steps run right after the rule's skill, one after the other, in the same
+clone and on the same branch. The whole chain is one unit: it publishes
+once, when it ends, as one draft PR, one push or one report. A step is a
+skill name, or a map when you want to set more:
 
 ```yaml
 queue:
@@ -391,35 +396,98 @@ queue:
   - skill: plan
     where: { section: Ready }
     model: { claude: opus }
+    mcp: [sentry]
     then:
       - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
-      - { skill: review, provider: codex }
+      - { skill: review, provider: codex, mcp: [] }
 ```
 
-- A step takes the rule keys except `source`, `where`, `order`, `units`
-  and `then`, plus [`when`](#when). It inherits none of the rule's: an
-  unset key has the same default as on a rule. Top-level `instructions`
-  and `skills` still apply, as to every unit.
-- After a draft PR, the next step starts from that PR's branch, and a
-  draft PR it opens is stacked on it: its body names that PR to merge
-  first. After a report, it starts from the same base. After a push, it
-  starts from your PR's branch, pushed commits included.
-- The step finds what the one before delivered in
-  `.away/context/previous/`: `pr.md` and `diff.patch`, `report.md`,
-  or both `report.md` and `diff.patch` after a push.
-- A step runs only when the one before delivered; otherwise the rest of
-  the chain is skipped, with the reason in the report. Once a unit in the
-  chain opened a draft PR, the next run doesn't retry: the item waits
-  for your review of it. Otherwise the whole chain runs again.
-- Each step is a unit of its own in `plan` and the report (`<unit>-<skill>`),
-  routed and budgeted like any other. Its branch uses the usual template,
-  with `-<skill>` appended when a draft PR earlier in the chain already
-  took the name.
-- A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
-- Steps count against the [caps](#windows-limits-and-budget) like any unit, and
-  against their rule's `units`. A chain whose first unit is over a cap
-  doesn't start; a step over a cap is left out with the rest of the chain,
-  and the unit before it names the cap.
+- A step takes `provider`, `model`, `skills`, `mcp` and `instructions`,
+  plus `with` and [`when`](#when). It inherits the first five from the
+  rule unless it sets its own, and `[]` clears a list: above, `implement`
+  gets `sentry`, `review` gets no MCP server and keeps `opus` should it
+  route to Claude. `with` and `when` are the step's own. Top-level
+  `instructions` and `skills` still apply, as to every unit.
+- A skill commits unless its metadata says it reports, as the built-in
+  `plan` and `review` do. The rule's `deliver` says where the chain's
+  commits go: one draft PR (`draft_pr`, the default), a [`push`](#push)
+  onto your own PR, or `report`, where no step commits. A chain that
+  committed nothing publishes its steps' reports, joined, as one report.
+  Steps have no `deliver` or `branch` of their own: a committing skill
+  that should only report is a [skill of your own](./skills.md#write-your-own).
+- Each step finds what the one before left in `.away/context/previous/`:
+  its `report.md` and `verdict`, what the chain did so far in `pr.md`,
+  its commits in `diff.patch`, and, in a loop, the `until` command's
+  output in `check.log`.
+- A step that leaves nothing for the next one ends the chain: a
+  committing step that commits nothing (`implement` writing questions
+  instead of code), or a report step that writes no report. The steps
+  after it are passed over and the chain counts as finished. A step that
+  fails or stops, and the window's end, end it too: the chain publishes
+  what it has. A draft PR it opened, or commits it [pushed](#push) onto
+  your PR, wait for your review; otherwise the chain runs again the next
+  run. Ctrl-C publishes nothing.
+- The PR body is the `pr.md` the steps kept current, plus an
+  `## Awaywork chain` section with how each loop went, its failing check
+  if any, and the latest report of each report step:
+
+  ```markdown
+  Rate-limit the export endpoint
+
+  Closes #12. ...
+
+  ## Awaywork chain
+
+  Loop: 2 rounds of review ⇄ fix; until held: verdict approve; last verdict approve.
+
+  <details><summary>Report: acme-api-12-review-2</summary>
+
+  Approve.
+
+  </details>
+  ```
+
+- A chain is one row in `plan`, with its steps under it. Every step is
+  routed (`plan` routes every round of a loop up to its `max`), and
+  budgeted live:
+
+  ```
+  Units
+       unit         repo      rule  skill                 provider  deliver   branch
+    1  acme-api-12  acme/api  #1    implement (built-in)  claude    draft_pr  away/acme-api-12
+       github acme/api#12: Rate-limit the export endpoint
+       then loop review ⇄ fix until verdict approve, at most 3 rounds
+         review (built-in) on codex
+         fix (built-in) on claude
+       then docs (user) on claude, when the branch changes src/**
+  ```
+
+- A chain counts once against the [caps](#windows-limits-and-budget) and
+  its rule's `units`, as soon as its first step has a provider. A chain
+  over a cap is skipped whole, naming the cap.
+- On someone else's PR or a PR from a fork, a chain that could commit
+  (a step's skill commits and `deliver` isn't `report`) is skipped with
+  the reason. `deliver: report` turns it into a review chain.
+- A skill runs at most once outside loops, and once across the chain's
+  loops: a loop may repeat the rule's skill, as in `fix` then
+  `loop: [review, fix]`.
+- Steps are named `<unit>-<skill>`, and `<unit>-<skill>-<round>` in a
+  loop. Each leaves a folder under the run's `units/<unit>/`, numbered in
+  the order the steps ran, next to `out/` with what the chain published:
+
+  ```
+  units/acme-api-12/
+    1-implement/   context/  prompt.md  worker.log  out/  replay.json
+    2-review/
+    3-fix/
+    4-review/
+    5-docs/
+    out/           pr.md  diff.patch
+  ```
+
+  [`awaywork replay`](../reference/cli.md#awaywork-replay) rebuilds a
+  unit's first step: the later ones start from commits that only ever
+  existed in the clone.
 
 #### Loops
 
@@ -444,16 +512,9 @@ queue:
 [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
 :::
 
-- Every round works in the clone of the draft PR unit before the loop,
-  on its branch, and nothing is pushed until the loop ends: then that
-  unit opens one draft PR with every round's commits. Its body ends with
-  how the loop went, the last verdict and the last report a round
-  wrote. If that unit doesn't finish `done` with commits, it publishes
-  as usual and the loop doesn't run. After a [`push`](#push) unit, the
-  loop works in that unit's clone the same way and ends with one push
-  onto your PR, the summary in its report. After a report, the loop
-  starts from a fresh clone on the same base, and its first unit opens
-  the draft PR.
+- Rounds are steps like any other: they work in the chain's clone, and
+  their commits publish with the rest of the chain. The PR body says how
+  the loop went.
 - `until` is checked after every step and ends the loop as soon as it
   holds; with both keys, both must. `verdict` is the latest word a step
   wrote to `.away/out/verdict` (built-in `review` writes `approve`,
@@ -463,46 +524,30 @@ queue:
   `command` is a shell command awaywork runs in the clone after the
   step, outside the model; it holds when it exits 0. `max` is at most 5.
 - A command runs like `setup` on a branch a worker wrote: without the
-  repo's `secrets`, for at most 15 minutes, and not past the window's end. It
-  runs again only once a step committed. In `until` it doesn't hold
-  while the clone has uncommitted changes beyond what `setup` and earlier
-  checks left, since the branch wouldn't publish them; a `when` command
-  sees them, as the step will.
+  repo's `secrets`, for at most 15 minutes, and not past the window's
+  end. `setup` doesn't run again before it, so a command that needs
+  dependencies a step added installs them itself, like
+  `pnpm i --frozen-lockfile && pnpm test`. It runs again only once a
+  step committed. In `until` it doesn't hold while the clone has
+  uncommitted changes beyond what `setup` and earlier checks left, since
+  the branch wouldn't publish them; a `when` command sees them, as the
+  step will.
 - A command isn't run on a PR whose author isn't trusted, or with
   `network: false` (it would run the worker's code outside the worker's
   sandbox): config refuses one on a rule with `network: false`, but a
   repo's `network: false` is only known at run time. A command that isn't
   run doesn't hold for `when`, and ends the loop either way. One that
   runs past its 15 minutes fails, like one that exits non-zero. One
-  stopped by the window's end ends the loop, which publishes what it has;
-  outside a loop it skips a `when` step without passing over it, so the
-  chain is tried again the next run. After Ctrl-C the chain is tried
-  again in both cases.
-- A step finds the one before's output in `.away/context/previous/`:
-  its `report.md` and `verdict`, the PR body so far in `pr.md`, its
-  commits in `diff.patch`, and the command's output in `check.log`. When
-  the loop ends with the command failing, the tail of its output goes
-  into the PR body too.
-- Each round is routed and budgeted live. No provider left, the window's end,
-  or a step that fails or stops ends the loop, which still publishes what
-  it has and says why; a loop after a report that ends this way with no
-  commits runs again, counting a failure unless a round couldn't run
-  for the window's end or no provider left. An interrupt (Ctrl-C) publishes
-  nothing, and the chain runs again the next run without counting as
-  a failure.
-- Rounds are units of their own in the report (`<unit>-<skill>-<round>`);
-  `plan` lists round 1, but routes every round up to `max`, so a loop
-  holds fallback units for all of them. A loop counts once against the
-  caps, since it opens one draft PR, and once as an attempt: when it
-  published, the item waits for your review. The caps count every unit
-  that could still route if each loop ended after round 1, so a later
-  item `plan` shows without a provider can still count.
-- A loop's branch comes from its first step's `branch`, and only after a
-  report: after a draft PR, the rounds work on that PR's branch.
-- A step after the loop follows the loop's draft PR, or, when a loop
-  after a report ended at `until`, `max` or a round where no step's
-  `when` held, with nothing committed, runs where the loop's host ran.
-  A loop can't follow another loop directly: put a step between them.
+  stopped by the window's end ends the chain, which publishes what it
+  has as in [`then`](#then); a `when` it stopped doesn't pass over its
+  step. After Ctrl-C the chain publishes nothing and is tried again.
+  When the loop ends with the command failing, the tail of its output
+  goes into the PR body.
+- A step that leaves nothing for the next one ends only its loop: a
+  `fix` that disputes every finding commits nothing, and the next
+  `review` would only repeat itself. The steps after the loop still run.
+- Loops can follow loops, and a step with a `when` can come right before
+  one.
 
 #### `when`
 
@@ -513,8 +558,7 @@ The `command` check and the quota checks (`runs_until_reset`,
 :::
 
 A step, in a chain or a loop, runs only when its `when` holds. Otherwise
-it is skipped and the chain goes on from the unit before, as if the step
-weren't there:
+it is passed over and the chain goes on as if the step weren't there:
 
 ```yaml
 queue:
@@ -529,16 +573,15 @@ queue:
       - { skill: security-review, when: { changed: "src/auth/**" } }   # a skill of yours
 ```
 
-- `verdict` is the step before's or, after a loop, the latest one
-  written in it, or the host's own when the loop wrote none. It matches
-  as in `until`, except that `{ not: … }` also holds when no verdict was
-  written.
-- `command` runs as in `until`, in the step's clone before its agent
-  starts. Prefix `!` to run a step only when a check fails, such as a
-  fixer with `when: { command: "! pnpm test" }`; it finds the output in
-  `.away/context/previous/when.log`. A check that times out says
-  nothing: the step is skipped without being passed over, so the chain
-  retries each run.
+- `verdict` is the latest verdict written in the chain, by any step
+  before this one. It matches as in `until`, except that `{ not: … }`
+  also holds when no verdict was written.
+- `command` runs as in `until`, in the chain's clone before the step's
+  agent starts. Prefix `!` to run a step only when a check fails, such
+  as a fixer with `when: { command: "! pnpm test" }`; it finds the
+  output in `.away/context/previous/when.log`. A check that times out
+  says nothing: it ends the chain without passing over the step, and the
+  chain publishes what it has as in [`then`](#then).
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
   default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading
@@ -551,20 +594,13 @@ queue:
   of the window is left under this run's ceiling, so a loop with a high `max` or a second review
   can run only on spare quota. Both read the quota the run last saw, as
   the budget does, and don't hold when the quota can't be read. A rule
-  takes a `when` with these two keys only, to skip its own unit.
+  takes a `when` with these two keys only, to skip its whole chain.
 - Every key set must hold. `plan` shows each step's `when`, notes when its
   quota part doesn't hold on the probe or has no quota reading, and the
   report says which one didn't hold.
-- A skipped step doesn't end a loop, unless its command didn't run: it
-  wouldn't in a later round either. A round whose steps were all passed
-  over ends it too, since the next would be the same. After a report, a
-  loop's first unit opens its clone: when its `when` doesn't hold, the
-  loop doesn't run.
-- The step right before a loop can't have a `when` unless it sets
-  `deliver: report`, since the loop works in its clone: gate the loop's
-  steps, or put a step between. The check reads `deliver` as written, not
-  the skill's default, so set it even on a skill that reports by default,
-  such as `review`.
+- A passed-over step doesn't end a loop, unless its command didn't run:
+  it wouldn't in a later round either. A round whose steps were all
+  passed over ends it too, since the next would be the same.
 
 ### `push`
 
@@ -586,13 +622,10 @@ queue:
 
 - Only onto an open PR you authored, awaywork's own included (they
   are opened with your login). On someone else's PR, a PR from a fork,
-  or an item with no PR of yours, the unit is skipped with the reason.
-- A `then` step can push only onto the rule's own PR. After a draft PR,
-  even with a report in between, its base is that run's new branch,
-  not your PR: the step is left out with the rest of the chain.
-- A [loop](#loops) after a push unit pushes every round's commits once,
-  when it ends. A loop's own steps can't set `deliver: push`: the unit
-  before the loop does.
+  or an item with no PR of yours, a chain that could commit is skipped
+  with the reason.
+- The chain pushes once, when it ends: every step's commits, a
+  [loop](#loops)'s rounds included.
 - A fast-forward only: awaywork pushes only commits on top of where
   the clone started, and refuses when the branch moved since, so it
   never rewrites history. It reads the PR again right before the
@@ -602,9 +635,9 @@ queue:
   else's open PR in the repo. New commits that include a merge aren't pushed
   either. The commits get the `Awaywork:` trailer, which drops a
   commit's signature.
-- The agent writes `.away/out/report.md`; without it nothing is
-  pushed. The PR body stays as it is and the report goes into the
-  morning report.
+- The agent writes `.away/out/pr.md`, as for a draft PR, and the steps
+  keep it current; without it nothing is pushed. The PR body stays as it
+  is: `pr.md`, with the chain's notes, goes into the morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
 - After a push, the PR waits for your review: no rule takes it while
   its head is still the commit awaywork pushed. Any commit on top
@@ -651,14 +684,15 @@ and the GitHub Actions workflow passes them from repository secrets.
 :::
 
 To act as units finish, say to post to your own tools or record metrics,
-`after_unit.command` runs in a shell once for every unit of a run, as
-soon as its result is final, before the next unit starts. A loop's host
-and rounds wait for the loop to publish, so the host gets its PR. A dry
-run runs none, and Ctrl-C stops the running one and starts no more.
-Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT`, `AWAYWORK_SKILL` and
-`AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus
-`AWAYWORK_PR_URL` when the unit opened a draft PR and `AWAYWORK_REPORT`,
-the path of its report, when it wrote one. Like `notify`, a command that
+`after_unit.command` runs in a shell once for every step of a unit, as
+soon as the unit published, before the next unit starts. A dry run runs
+none, and Ctrl-C stops the running one and starts no more. Its env has
+`AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g.
+`acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`,
+`failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit
+that opened a draft PR, and `AWAYWORK_REPORT`, the path of what the step
+wrote: its report, or for a step that commits, the PR body as it left
+it. Like `notify`, a command that
 fails or takes over a minute is logged and the run goes on, and `secrets`
 are withheld from workers.
 
@@ -675,8 +709,9 @@ MCP servers have only run in tests so far, never in a real run. Tried it?
 :::
 
 Declare servers once under `mcp`, then give them to the rules or steps
-that need them with `mcp: [names]`. No unit gets a server its rule or
-step doesn't name, and a `then` step doesn't inherit its rule's.
+that need them with `mcp: [names]`. No step gets a server its rule or
+step doesn't name: a `then` step gets its rule's unless it names its
+own, and `mcp: []` gives it none.
 
 ```yaml
 mcp:

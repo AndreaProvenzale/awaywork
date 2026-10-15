@@ -1,12 +1,11 @@
 import { randomBytes } from 'node:crypto'
-import { cp, mkdir, readFile, rm } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { type Allowance, MAX_TURNS } from '../core/budget.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
-import type { Outcome } from './publish.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
 import {
@@ -19,13 +18,11 @@ import {
   workerEnv,
 } from './workspace.js'
 
-/** What a unit leaves in `units/<id>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
+/** What a chain's first step leaves in `units/<id>/1-<skill>/replay.json` so it can be rebuilt: the clone's commit before any worker ran. */
 export interface ReplayState {
   unit: Unit
   provider: string
   commit: string
-  /** The unit it followed: its skill and what it delivered. */
-  previous?: { skill: string; outcome?: Outcome }
 }
 
 interface ReplayInput {
@@ -53,16 +50,18 @@ interface ReplayResult extends WorkerResult {
 }
 
 /**
- * Rebuilds a past unit from its run dir: the same base commit and saved context, today's skills and instructions.
+ * Rebuilds a past unit's first step from its run dir: the same base commit and saved context, today's skills and instructions.
  * Nothing is published; the clone stays under `replays/` in that run dir.
  */
 export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
-  const unitDir = join(r.runDir, 'units', r.unitId)
+  const chainDir = join(r.runDir, 'units', r.unitId)
+  const first = (await readdir(chainDir).catch(() => [])).find((name) => name.startsWith('1-'))
+  const unitDir = join(chainDir, first ?? '')
   const raw = await readFile(join(unitDir, 'replay.json'), 'utf8').catch(
     (e: NodeJS.ErrnoException) => {
       if (e.code !== 'ENOENT') throw e
       throw new Error(
-        `no replay.json in ${unitDir}: the unit never started, the run or unit id is wrong, the run predates replay, or the unit is a later loop round (only a first run replays)`,
+        `no replay.json in ${chainDir}: the unit never started, the run or unit id is wrong, or the run predates replay; only a unit's first step replays, not a later step of its chain`,
       )
     },
   )
@@ -85,7 +84,6 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     plugin,
     ctx: r.ctx,
     sources: {},
-    previous: state.previous && { ...state.previous, out: '' },
     replay: { commit: state.commit, context: join(unitDir, 'context') },
   })
 

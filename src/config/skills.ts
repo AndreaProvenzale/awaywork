@@ -31,7 +31,7 @@ export async function unknownSkills(config: Config, userDir: string): Promise<st
   config.queue?.forEach((rule, i) => {
     for (const { step, at: path } of ruleSteps(rule)) {
       const at = `queue[${i}]${path.map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('')}`
-      for (const name of [step.skill, ...step.skills]) {
+      for (const name of [step.skill, ...(step.skills ?? [])]) {
         if (resolveSkill(name, catalog)) continue
         problems.push(`${at}: unknown skill "${name}" (not built in, not in ${userDir})`)
       }

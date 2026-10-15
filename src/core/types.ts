@@ -188,7 +188,7 @@ export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Compar
 /** Item facts that must all hold; `any` holds when one of its entries does. */
 export type Where = Record<string, WhereValue | Where[]>
 
-/** What a unit runs: a rule's own settings, or a step it chains after its unit. */
+/** What a unit runs: a rule's own settings, or a step of its chain with the rule's filled in. */
 export interface Step {
   skill: string
   provider: string[]
@@ -199,15 +199,17 @@ export interface Step {
   instructions: string[]
   /** Parameters listed in the prompt next to the skill. */
   with?: Record<string, Scalar>
-  deliver?: Deliver
-  branch?: string
   /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */
   when?: Condition
 }
 
+/** A `then` or loop step as written: the settings it leaves unset are the rule's. */
+export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
+
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
-  /** The latest verdict a step of the loop wrote, or for `when` the step before's. */
+  /** The latest verdict: for `until` the loop's, for `when` the chain's. */
   verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
   /** A shell command awaywork runs in the clone, outside the model; exit 0 holds. */
   command?: string
@@ -219,20 +221,23 @@ export interface Condition {
   headroom?: number
 }
 
-/** Steps run round after round in one clone, until `until` holds or `max` rounds ran; one publish at the end. */
+/** Steps run round after round in the chain's clone, until `until` holds or `max` rounds ran. */
 export interface Loop {
-  loop: Step[]
+  loop: ThenStep[]
   until: Condition
   max: number
 }
 
 export interface Rule extends Step {
+  /** How the chain publishes its commits: one draft PR, or a push onto your PR; report commits nothing. */
+  deliver?: Deliver
+  branch?: string
   source?: string
   where: Where
   order?: Order
   units?: number
-  /** Units run in turn after the rule's unit, each on what the one before delivered. */
-  then?: (Step | Loop)[]
+  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once at the end. */
+  then?: (ThenStep | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
   /** Command run after the worker, before publishing; unset takes the repo's. */
@@ -258,7 +263,7 @@ export interface Unit {
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** The URL of the awaywork PR whose branch `base` is: this run's draft PR, or one a rule took up again. */
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again. */
   stackedOn?: string
   branch: string
   rule: Step

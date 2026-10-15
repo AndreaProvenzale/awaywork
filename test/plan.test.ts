@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { describeAllowance, formatPlan, planJson } from '../src/cli/format.js'
+import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
 import { probeAndPlan } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
@@ -14,8 +14,8 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { type PlannedUnit, planRun } from '../src/core/foreman.js'
-import { type RunReport, summarize } from '../src/core/report.js'
+import { planRun } from '../src/core/foreman.js'
+import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
@@ -235,7 +235,7 @@ queue:
     expect(full.units[0]?.passed).toEqual(['claude at its ceiling (95% of 90%)'])
   })
 
-  it('resolves skills and delivery: rule, then skill default, then draft_pr', () => {
+  it('resolves skills and delivery: a skill commits unless it reports, whatever the rule says', () => {
     const yaml = `
 providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
@@ -252,7 +252,7 @@ queue:
     const result = plan(yaml, items, { claude: week(0.1) }, { user: { review: {} } })
     expect(result.units.map((u) => [u.unit.skill, u.origin, u.unit.deliver])).toEqual([
       ['review', 'user', 'draft_pr'],
-      ['plan', 'builtin', 'draft_pr'],
+      ['plan', 'builtin', 'report'],
       ['our-triage', undefined, 'draft_pr'],
     ])
     expect(formatPlan(result)).toContain('our-triage (in-repo?)')
@@ -305,223 +305,143 @@ queue:
     expect(units('when: { headroom: 1% }', last, week(0.95))).toEqual([undefined, undefined])
   })
 
-  it('chains steps: stacked on a draft PR, on the same base after a report', () => {
+  it("chains steps in one clone, each with the rule's settings unless it sets its own", () => {
     const yaml = `
 providers: [claude, codex]
 sources: { github: { repos: [acme/api] } }
+mcp: { sentry: { command: sentry-mcp } }
 queue:
   - skill: plan
     where: { type: issue }
     model: { claude: opus }
+    mcp: [sentry]
+    skills: [our-api]
+    instructions: notes/rule.md
+    with: { depth: 2 }
     then:
       - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
-      - { skill: review, provider: codex, branch: 'review/{key}' }
+      - { skill: review, provider: codex, mcp: [], skills: [], instructions: [] }
   - { skill: fix, where: { checks: failing }, then: review }
 `
     const items = [issue, githubPr(3, { checks: 'failing' })]
     const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
     expect(
-      result.units.map(({ unit, provider, after }) => [
+      result.units.map(({ unit, provider, chain }) => [
         unit.id,
-        unit.skill,
         provider,
         unit.deliver,
         unit.base,
         unit.branch,
-        after,
+        chain,
       ]),
     ).toEqual([
-      ['acme-api-5', 'plan', 'claude', 'report', '', 'away/acme-api-5', undefined],
-      [
-        'acme-api-5-implement',
-        'implement',
-        'claude',
-        'draft_pr',
-        '',
-        'away/acme-api-5',
-        'acme-api-5',
-      ],
-      [
-        'acme-api-5-review',
-        'review',
-        'codex',
-        'report',
-        'away/acme-api-5',
-        'review/acme-api-5',
-        'acme-api-5-implement',
-      ],
-      ['acme-api-3', 'fix', 'claude', 'draft_pr', 'feature-3', 'away/acme-api-3', undefined],
-      [
-        'acme-api-3-review',
-        'review',
-        'claude',
-        'report',
-        'away/acme-api-3',
-        'away/acme-api-3-review',
-        'acme-api-3',
-      ],
+      ['acme-api-5', 'claude', 'report', '', 'away/acme-api-5', undefined],
+      ['acme-api-5-implement', 'claude', 'draft_pr', '', 'away/acme-api-5', 'acme-api-5'],
+      ['acme-api-5-review', 'codex', 'report', '', 'away/acme-api-5', 'acme-api-5'],
+      ['acme-api-3', 'claude', 'draft_pr', 'feature-3', 'away/acme-api-3', undefined],
+      ['acme-api-3-review', 'claude', 'report', 'feature-3', 'away/acme-api-3', 'acme-api-3'],
     ])
-    expect(result.units[1]?.unit).toMatchObject({
-      rule: { model: { claude: 'sonnet' } },
-      instructions: ['notes/impl.md'],
-    })
+    expect(
+      result.units.slice(0, 3).map(({ unit }) => [unit.rule.model, unit.rule.mcp, unit.rule.with]),
+    ).toEqual([
+      [{ claude: 'opus' }, ['sentry'], { depth: 2 }],
+      [{ claude: 'sonnet' }, ['sentry'], undefined],
+      [{ claude: 'opus' }, [], undefined],
+    ])
+    expect(result.units.slice(0, 3).map(({ unit }) => [unit.instructions, unit.skills])).toEqual([
+      [['notes/rule.md'], ['our-api']],
+      [['notes/impl.md'], ['our-api']],
+      [[], []],
+    ])
     const text = formatPlan(result)
     expect(text).toContain('#1  plan  type=issue model=claude:opus then=implement,review')
+    expect(text).toMatch(
+      /1 {2}acme-api-5 .* plan \(built-in\) {2}claude {4}draft_pr {2}away\/acme-api-5\n/,
+    )
     expect(text).toContain(
-      '     after acme-api-5-implement\n     github acme/api#5: Add rate limits',
+      [
+        '     github acme/api#5: Add rate limits',
+        '     then implement (built-in) on claude',
+        '     then review (built-in) on codex',
+      ].join('\n'),
     )
   })
 
-  it('plans every round of a loop on the draft PR before it, or on a fresh clone after a report, and counts it once', () => {
+  it('plans every round of a loop, routing each, so a loop holds fallback units up to max', () => {
     const yaml = `
-limits: { units: 5 }
-providers: [claude, codex]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - skill: implement
-    where: { type: issue }
-    then:
-      - loop: [{ skill: review, provider: codex }, fix]
-        until: { verdict: approve }
-        max: 2
-      - fix
-  - skill: plan
-    where: { checks: failing }
-    then: { loop: [implement, review], until: { verdict: approve }, max: 1 }
-`
-    const items = [issue, githubPr(3, { checks: 'failing' }), githubPr(4, { checks: 'failing' })]
-    const result = plan(yaml, items, { claude: week(0.1), codex: week(0.1) })
-    const onBranch = (id: string, provider: string, deliver: string, round: string) => [
-      id,
-      provider,
-      deliver,
-      '',
-      'away/acme-api-5',
-      undefined,
-      `acme-api-5 ${round}`,
-    ]
-    expect(
-      result.units.map(({ unit, provider, after, loop }) => [
-        unit.id,
-        provider,
-        unit.deliver,
-        unit.base,
-        unit.branch,
-        after,
-        loop && `${loop.host} ${loop.round}.${loop.step}`,
-      ]),
-    ).toEqual([
-      ['acme-api-5', 'claude', 'draft_pr', '', 'away/acme-api-5', undefined, undefined],
-      onBranch('acme-api-5-review-1', 'codex', 'report', '1.0'),
-      onBranch('acme-api-5-fix-1', 'claude', 'draft_pr', '1.1'),
-      onBranch('acme-api-5-review-2', 'codex', 'report', '2.0'),
-      onBranch('acme-api-5-fix-2', 'claude', 'draft_pr', '2.1'),
-      [
-        'acme-api-5-fix',
-        'claude',
-        'draft_pr',
-        'away/acme-api-5',
-        'away/acme-api-5-fix',
-        'acme-api-5',
-        undefined,
-      ],
-      ['acme-api-3', 'claude', 'report', 'feature-3', 'away/acme-api-3', undefined, undefined],
-      [
-        'acme-api-3-implement-1',
-        'claude',
-        'draft_pr',
-        'feature-3',
-        'away/acme-api-3',
-        'acme-api-3',
-        'acme-api-3-implement-1 1.0',
-      ],
-      [
-        'acme-api-3-review-1',
-        'claude',
-        'report',
-        'feature-3',
-        'away/acme-api-3',
-        undefined,
-        'acme-api-3-implement-1 1.1',
-      ],
-    ])
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#4', 'over the cap: limits.units is 5'],
-    ])
-    const text = formatPlan(result)
-    expect(text).toContain('then=loop(review,fix),fix')
-    expect(text).toContain(
-      '     loop review ⇄ fix until verdict approve, at most 2 rounds; one draft PR from acme-api-5',
-    )
-    expect(text).not.toContain('acme-api-5-review-2')
-  })
-
-  it('lets a loop repeat the skill of the unit it follows', () => {
-    const yaml = `
-windows: [{ start: "01:00", end: "07:00" }]
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - skill: fix
-    where: { type: pr, unresolved_threads: { gt: 0 } }
-    then: { loop: [review, fix], until: { verdict: approve }, max: 1 }
-`
-    const result = plan(yaml, [githubPr(3, { unresolved_threads: 2 })], { claude: week(0.1) })
-    expect(result.units.map(({ unit, loop }) => [unit.id, unit.branch, loop?.host])).toEqual([
-      ['acme-api-3', 'away/acme-api-3', undefined],
-      ['acme-api-3-review-1', 'away/acme-api-3', 'acme-api-3'],
-      ['acme-api-3-fix-1', 'away/acme-api-3', 'acme-api-3'],
-    ])
-  })
-
-  it('routes every round, so a loop holds fallback units up to max', () => {
-    const yaml = `
-budget: { fallback: { units: 4, turns: 30 } }
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - skill: implement
-    where: { type: pr }
-    then: { loop: [review, fix], until: { verdict: [approve, comments] }, max: 3 }
-`
-    const result = plan(yaml, [githubPr(1), githubPr(2)], {})
-    const routed = result.units.map((u) => [u.unit.id, u.provider ?? '-'])
-    expect(routed.slice(0, 8)).toEqual([
-      ['acme-api-1', 'claude'],
-      ['acme-api-1-review-1', 'claude'],
-      ['acme-api-1-fix-1', 'claude'],
-      ['acme-api-1-review-2', 'claude'],
-      ['acme-api-1-fix-2', '-'],
-      ['acme-api-1-review-3', '-'],
-      ['acme-api-1-fix-3', '-'],
-      ['acme-api-2', '-'],
-    ])
-    expect(formatPlan(result)).toContain(
-      'loop review ⇄ fix until verdict approve or comments, at most 3 rounds',
-    )
-    const once = plan(yaml.replace('max: 3', 'max: 1'), [githubPr(1)], {})
-    expect(formatPlan(once)).toContain('at most 1 round;')
-  })
-
-  it('counts units against the caps as if every loop ended after round 1', () => {
-    const yaml = `
-limits: { units: 3 }
 budget: { fallback: { units: 6, turns: 30 } }
 providers: [claude]
 sources: { github: { repos: [acme/api] } }
 queue:
+  - skill: fix
+    where: { type: pr }
+    then:
+      - { loop: [review, fix], until: { verdict: [approve, comments] }, max: 3 }
+      - { skill: plan, when: { verdict: changes } }
+`
+    const result = plan(yaml, [githubPr(1), githubPr(2)], {})
+    expect(
+      result.units.map(({ unit, provider, loop }) => [
+        unit.id,
+        provider ?? '-',
+        loop && `${loop.round}.${loop.step}`,
+      ]),
+    ).toEqual([
+      ['acme-api-1', 'claude', undefined],
+      ['acme-api-1-review-1', 'claude', '1.0'],
+      ['acme-api-1-fix-1', 'claude', '1.1'],
+      ['acme-api-1-review-2', 'claude', '2.0'],
+      ['acme-api-1-fix-2', 'claude', '2.1'],
+      ['acme-api-1-review-3', 'claude', '3.0'],
+      ['acme-api-1-fix-3', '-', '3.1'],
+      ['acme-api-1-plan', '-', undefined],
+      ['acme-api-2', '-', undefined],
+      ['acme-api-2-review-1', '-', '1.0'],
+      ['acme-api-2-fix-1', '-', '1.1'],
+      ['acme-api-2-review-2', '-', '2.0'],
+      ['acme-api-2-fix-2', '-', '2.1'],
+      ['acme-api-2-review-3', '-', '3.0'],
+      ['acme-api-2-fix-3', '-', '3.1'],
+      ['acme-api-2-plan', '-', undefined],
+    ])
+    const text = formatPlan(result)
+    expect(text).toContain('then=loop(review,fix),plan')
+    expect(text).toContain(
+      [
+        '     then loop review ⇄ fix until verdict approve or comments, at most 3 rounds',
+        '       review (built-in) on claude',
+        '       fix (built-in) on claude',
+        '     then plan (built-in) on no provider left (claude used its 6 fallback units), when verdict changes',
+      ].join('\n'),
+    )
+    expect(text).not.toContain('acme-api-1-review-2')
+    const once = plan(yaml.replace('max: 3', 'max: 1'), [githubPr(1)], {})
+    expect(formatPlan(once)).toContain('at most 1 round\n')
+  })
+
+  it('counts a chain once against the caps, and leaves one over a cap out whole', () => {
+    const yaml = `
+limits: { units: 3 }
+budget: { fallback: { units: 20, turns: 30 } }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
   - skill: implement
     where: { type: pr }
+    units: 2
     then: { loop: [review, fix], until: { verdict: approve }, max: 3 }
+  - { skill: fix, where: { type: issue } }
 `
-    const result = plan(yaml, [githubPr(1), githubPr(2), githubPr(3)], {})
-    expect(result.units.filter((u) => !u.loop || u.loop.round === 1).map((u) => u.unit.id)).toEqual(
-      ['acme-api-1', 'acme-api-1-review-1', 'acme-api-1-fix-1', 'acme-api-2'],
-    )
-    expect(result.units.find((u) => u.unit.id === 'acme-api-2')?.capped).toBe(
-      'then loop: over the cap: limits.units is 3',
-    )
-    expect(result.skipped.map((s) => s.reason)).toEqual(['over the cap: limits.units is 3'])
+    const result = plan(yaml, [githubPr(1), githubPr(2), githubPr(3), issue], {})
+    expect(listedUnits(result).map((u) => u.unit.id)).toEqual([
+      'acme-api-1',
+      'acme-api-2',
+      'acme-api-5',
+    ])
+    expect(result.units).toHaveLength(15)
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#3', 'over the cap: rule #1 units is 2'],
+    ])
   })
 
   it("keeps a chain on someone else's PR foreign, and skips it whole on an invalid branch", () => {
@@ -532,11 +452,70 @@ queue:
       true,
       true,
     ])
-    const result = plan(yaml('fix', 'bad.lock'), [theirs], {})
+    const result = plan(yaml('review', 'plan'), [{ ...theirs, key: 'acme/api#2.lock' }], {})
     expect(result.units).toEqual([])
     expect(result.skipped.map((s) => s.reason)).toEqual([
-      'then bad.lock: branch template away/{key} renders an invalid name "away/acme-api-2-bad.lock"',
+      'branch template away/{key} renders an invalid name "away/acme-api-2.lock"',
     ])
+  })
+
+  it("refuses a chain that could commit onto someone else's PR or a fork, and reports there", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: review, where: { type: pr }, then: { loop: [review, implement], until: { verdict: approve }, max: 2 } }
+  - { skill: review, where: { type: issue }, deliver: report, then: [implement] }
+`
+    const theirs = githubPr(2, { mine: false })
+    const forked = githubPr(3)
+    const fork = { ...(forked.linkedPrs[0] as PrRef), branch: 'main', head: 'f0f0f0f', fork: true }
+    const closing = { ...issue, linkedPrs: [{ ...fork, number: 4, branch: 'patch' }] }
+    const result = plan(yaml, [theirs, { ...forked, linkedPrs: [fork] }, closing], {})
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#2', "deliver draft_pr: feature-2 is someone else's PR, and implement commits"],
+      ['acme/api#3', 'deliver draft_pr: main is on a fork, and implement commits'],
+    ])
+    // With deliver: report no step commits, so the chain reports on the fork, at its head.
+    expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base, unit.fork])).toEqual([
+      ['acme-api-5', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
+      ['acme-api-5-implement', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
+    ])
+    expect(formatPlan(result)).toMatch(/acme-api-5\s+acme\/api .* report\s+away\/acme-api-5\n/)
+    const mine = plan(yaml, [githubPr(1)], {})
+    expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
+      'acme-api-1-implement-1',
+      'feature-1',
+    ])
+  })
+
+  it("pushes a chain only onto your own PR's branch, the deliver of every step that commits", () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue:
+  - { skill: fix, where: { type: pr }, deliver: push, then: [review, { loop: [implement], until: { verdict: approve }, max: 2 }] }
+  - { skill: implement, where: { type: issue }, deliver: push }
+`
+    const mine = githubPr(1)
+    const theirs = githubPr(2, { mine: false })
+    const result = plan(yaml, [mine, theirs, issue], {})
+    expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base])).toEqual([
+      ['acme-api-1', 'push', 'feature-1'],
+      ['acme-api-1-review', 'report', 'feature-1'],
+      ['acme-api-1-implement-1', 'push', 'feature-1'],
+      ['acme-api-1-implement-2', 'push', 'feature-1'],
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+      ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
+      ['acme/api#5', 'deliver push: no PR of yours to push onto'],
+    ])
+    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+    // A chain that starts with a report still pushes what a later step commits.
+    const relayed = plan(yaml.replace('skill: fix,', 'skill: plan,'), [mine], {})
+    expect(formatPlan(relayed)).toMatch(
+      /acme-api-1\s+acme\/api .* plan \(built-in\)\s+claude\s+push\s+feature-1\n/,
+    )
   })
 
   it('lets a push or draft PR rule take the first linked PR that is yours', () => {
@@ -560,109 +539,6 @@ queue:
         `deliver ${deliver}: feature-2 is someone else's PR`,
       ])
     }
-  })
-
-  it("stacks no draft PR onto someone else's PR, after a report either", () => {
-    const yaml = `
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - { skill: review, where: { type: pr }, then: [implement, { loop: [review, implement], until: { verdict: approve }, max: 2 }] }
-  - { skill: review, where: { type: issue }, then: { loop: [review, implement], until: { verdict: approve }, max: 2 } }
-`
-    const theirs = githubPr(2, { mine: false })
-    const closing = { ...issue, linkedPrs: githubPr(3, { mine: false }).linkedPrs }
-    const result = plan(yaml, [theirs, closing], {})
-    expect(result.units.map(({ unit, capped }) => [unit.id, unit.deliver, capped])).toEqual([
-      ['acme-api-2', 'report', "then implement: deliver draft_pr: feature-2 is someone else's PR"],
-      ['acme-api-5', 'report', "then loop: deliver draft_pr: feature-3 is someone else's PR"],
-    ])
-    expect(formatPlan(result)).toContain(
-      "then implement: deliver draft_pr: feature-2 is someone else's PR",
-    )
-    const mine = plan(yaml, [githubPr(1)], {})
-    expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
-      'acme-api-1-implement',
-      'feature-1',
-    ])
-  })
-
-  it('reports on a PR from a fork, at its head, and refuses a draft PR or a push there', () => {
-    const forked = githubPr(3)
-    const fork = { ...(forked.linkedPrs[0] as PrRef), branch: 'main', head: 'f0f0f0f', fork: true }
-    const pr = { ...forked, linkedPrs: [fork] }
-    const yaml = (deliver: string) =>
-      `providers: [claude]\nsources: { github: { repos: [acme/api] } }\nqueue: [{ skill: review, deliver: ${deliver}, then: implement }]`
-    const report = plan(yaml('report'), [pr], {})
-    expect(report.units.map(({ unit, capped }) => [unit.base, unit.fork, capped])).toEqual([
-      [
-        'main',
-        { number: 3, head: 'f0f0f0f' },
-        'then implement: deliver draft_pr: main is on a fork',
-      ],
-    ])
-    for (const deliver of ['draft_pr', 'push']) {
-      const refused = plan(yaml(deliver), [pr], {})
-      expect(refused.units).toEqual([])
-      expect(formatPlan(refused)).toContain(`deliver ${deliver}: main is on a fork`)
-    }
-  })
-
-  it("pushes only onto your own PR's branch, never onto someone else's or this run's draft PR", () => {
-    const yaml = `
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - { skill: fix, where: { type: pr }, deliver: push, then: [{ skill: review, deliver: push }, { skill: implement, deliver: draft_pr }, { skill: plan, deliver: push }] }
-  - { skill: implement, where: { type: issue }, deliver: push }
-`
-    const mine = githubPr(1)
-    const theirs = githubPr(2, { mine: false })
-    const result = plan(yaml, [mine, theirs, issue], {})
-    expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base])).toEqual([
-      ['acme-api-1', 'push', 'feature-1'],
-      ['acme-api-1-review', 'push', 'feature-1'],
-      ['acme-api-1-implement', 'draft_pr', 'feature-1'],
-    ])
-    expect(result.units[2]?.capped).toBe(
-      'then plan: deliver push: away/acme-api-1 is a draft PR opened in this run, not your own PR',
-    )
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
-      ['acme/api#5', 'deliver push: no PR of yours to push onto'],
-    ])
-    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
-    const relayed = plan(
-      `
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue: [{ skill: implement, where: { type: pr }, then: [{ skill: review, deliver: report }, { skill: fix, deliver: push }] }]
-`,
-      [mine],
-      {},
-    )
-    expect(relayed.units.at(-1)?.capped).toBe(
-      'then fix: deliver push: away/acme-api-1 is a draft PR opened in this run, not your own PR',
-    )
-    const forked = githubPr(3)
-    const fork = { ...(forked.linkedPrs[0] as PrRef), fork: true }
-    expect(plan(yaml, [{ ...forked, linkedPrs: [fork] }], {}).skipped[0]?.reason).toBe(
-      'deliver push: feature-3 is on a fork',
-    )
-  })
-
-  it("lists a push loop's rounds on the PR branch they push onto", () => {
-    const yaml = `
-providers: [claude]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - skill: fix
-    deliver: push
-    then: { loop: [review, implement], until: { verdict: approve }, max: 2 }
-`
-    expect(formatPlan(plan(yaml, [githubPr(1)], {}))).toMatch(
-      /acme-api-1-implement-1\s+acme\/api .* push\s+feature-1\n/,
-    )
   })
 
   it('gathers every instruction file for the unit in prompt order', () => {
@@ -726,52 +602,6 @@ queue:
       ['acme/api#2', 'over the cap: rule #1 units is 1'],
       ['acme/api#4', 'over the cap: limits.units_per_repo is 2'],
       ['acme/ops#7', 'over the cap: limits.units is 4'],
-    ])
-  })
-
-  it("counts then steps against the caps and their rule's units", () => {
-    const yaml = `
-limits: { units: 4 }
-providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-queue:
-  - { skill: implement, where: { type: issue }, units: 3, then: review }
-  - { skill: fix, where: { checks: failing } }
-`
-    const inRepo = (repo: string, n: number) =>
-      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
-    const items = [
-      inRepo('acme/api', 1),
-      inRepo('acme/web', 2),
-      inRepo('acme/app', 3),
-      githubPr(4, { checks: 'failing' }),
-      githubPr(5, { checks: 'failing' }),
-    ]
-    const result = plan(yaml, items, { claude: week(0.1) })
-    expect(result.units.map((u) => u.unit.id)).toEqual([
-      'acme-api-1',
-      'acme-api-1-review',
-      'acme-web-2',
-      'acme-api-4',
-    ])
-    expect(result.units.map((u) => u.capped)).toEqual([
-      undefined,
-      undefined,
-      'then review: over the cap: rule #1 units is 3',
-      undefined,
-    ])
-    expect(formatPlan(result)).toContain(
-      '     github acme/web#2: Fix the thing\n     then review: over the cap: rule #1 units is 3',
-    )
-    const planned = result.units[2] as PlannedUnit
-    const report = { runId: 'r1', dryRun: false, startedAt: new Date(0), finishedAt: new Date(0) }
-    const results = [{ planned, provider: 'claude', status: 'done' as const, turns: 3 }]
-    expect(summarize({ ...report, plan: result, results, quotas: {} }, 'report.md')).toContain(
-      'acme-web-2  done, 3 turns (then review: over the cap: rule #1 units is 3)',
-    )
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/app#3', 'over the cap: rule #1 units is 3'],
-      ['acme/api#5', 'over the cap: limits.units is 4'],
     ])
   })
 
@@ -998,7 +828,7 @@ queue:
     expect(result.units[0]?.unit.items.map((i) => i.key)).toEqual(['acme/api#9', 'acme/api#5'])
   })
 
-  it('loops on the draft PR stacked on an awaywork PR it takes up', () => {
+  it('loops on the branch of an awaywork PR it takes up', () => {
     const ours = githubPr(9, { ours: true, unresolved_threads: 1, my_unresolved_threads: 1 })
     const pr = { ...(ours.linkedPrs[0] as PrRef), branch: 'away/acme-api-5', ours: true }
     const yaml = `
@@ -1009,7 +839,7 @@ queue:
     where: { type: pr, ours: true }
     then: { loop: [review, fix], until: { verdict: approve }, max: 2 }`
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }], {})
-    expect(result.units.map(({ unit, loop }) => [unit.id, unit.base, loop?.host])).toEqual([
+    expect(result.units.map(({ unit, chain }) => [unit.id, unit.base, chain])).toEqual([
       ['acme-api-9', 'away/acme-api-5', undefined],
       ['acme-api-9-review-1', 'away/acme-api-5', 'acme-api-9'],
       ['acme-api-9-fix-1', 'away/acme-api-5', 'acme-api-9'],
@@ -1131,58 +961,42 @@ describe('attempts', () => {
     expect(await readdir(dir)).toEqual(['attempts.json'])
   })
 
-  it('records a chain once, only when every unit finished', () => {
-    const chain = yaml.replace('{ skill: fix }', '{ skill: plan, then: [implement, review] }')
-    const first = plan(chain, [githubPr(1, { updated: at })], {})
-    const [head, implement, review] = first.units.map((planned) => ({ planned }))
-    const outcomes = {
-      review: { kind: 'report', text: 'r' },
-      pr: { kind: 'pr', url: 'u', commits: 1 },
-    }
-    const record = (...results: object[]) =>
-      recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
-    const planned = { ...head, status: 'done', outcome: outcomes.review }
-    const opened = { ...implement, status: 'done', outcome: outcomes.pr }
-
-    expect(record(planned, { ...implement, status: 'failed' })).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1 },
-    })
-    expect(record({ ...head, status: 'prepared' })).toEqual({})
-    expect(record(planned, opened)).toEqual({})
-    const gaveUp = { ...implement, status: 'done', outcome: { kind: 'none', reason: 'no commits' } }
-    const attempts = record(planned, gaveUp, { ...review, status: 'skipped' })
-    expect(attempts).toEqual({ 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at } })
-    const reviewed = { ...review, status: 'done', outcome: outcomes.review }
-    expect(record(planned, opened, reviewed)).toEqual(attempts)
-
-    const again = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
-    expect(again.units).toEqual([])
-    expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
-  })
-
-  it("counts a loop through its host's draft PR, whatever its rounds did", () => {
+  it('records a chain once, by its one publish and how its steps ended', () => {
     const chain = yaml.replace(
       '{ skill: fix }',
-      '{ skill: implement, then: { loop: [review, fix], until: { verdict: approve }, max: 2 } }',
+      '{ skill: plan, then: [implement, { loop: review, until: { verdict: approve }, max: 2 }] }',
     )
     const first = plan(chain, [githubPr(1, { updated: at })], {})
-    const [host, review] = first.units.map((planned) => ({ planned }))
+    const [head, implement, review] = first.units.map((planned) => ({ planned }))
     const record = (...results: object[]) =>
       recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
-    const failedRound = { ...review, status: 'failed' }
+    const published = { ...head, status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } }
+    const finished = { 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at } }
+    const failure = { 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1 } }
 
     expect(
-      record(
-        { ...host, status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } },
-        failedRound,
-      ),
-    ).toEqual({ 'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at } })
+      record(published, { ...implement, status: 'done' }, { ...review, status: 'done' }),
+    ).toEqual(finished)
+    // A step that left nothing passes over the rest: the chain finished.
+    const idle = { ...implement, status: 'done', made: 'nothing' }
+    expect(record(published, idle, { ...review, status: 'skipped', passedOver: true })).toEqual(
+      finished,
+    )
+    expect(
+      record(published, { ...implement, status: 'failed' }, { ...review, status: 'skipped' }),
+    ).toEqual(failure)
     const unpublished = { kind: 'none', reason: 'push failed', unpublished: true }
-    expect(record({ ...host, status: 'done', outcome: unpublished }, failedRound)).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'implement', updated: at, failed: 1 },
-    })
+    expect(
+      record({ ...published, outcome: unpublished }, { ...implement, status: 'done' }),
+    ).toEqual(failure)
     const interrupted = { kind: 'none', reason: 'interrupted', unpublished: true }
-    expect(record({ ...host, status: 'done', outcome: interrupted }, failedRound)).toEqual({})
+    const aborted = { ...implement, status: 'stopped: aborted' }
+    expect(record({ ...published, outcome: interrupted }, aborted)).toEqual({})
+    expect(record({ ...head, status: 'prepared' })).toEqual({})
+
+    const again = plan(chain, [githubPr(1, { updated: at })], {}, {}, finished)
+    expect(again.units).toEqual([])
+    expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
   })
 
   it('gives up on an item after three chains that did not finish, until it changes', () => {

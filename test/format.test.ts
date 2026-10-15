@@ -37,10 +37,10 @@ queue:
 })
 
 describe('listedUnits', () => {
-  it('lists only round 1 of a loop', () => {
-    const unit = (loop?: { round: number }) => ({ loop })
-    const units = [unit(), unit({ round: 1 }), unit({ round: 2 }), unit({ round: 3 })]
-    expect(listedUnits({ units } as never)).toEqual([units[0], units[1]])
+  it('lists one unit per chain', () => {
+    const unit = (chain?: string) => ({ chain })
+    const units = [unit(), unit('a'), unit('a'), unit()]
+    expect(listedUnits({ units } as never)).toEqual([units[0], units[3]])
   })
 })
 

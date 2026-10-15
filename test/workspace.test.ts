@@ -116,7 +116,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       '- FAKE-1: Fix the thing (https://example.com/1); context in `.away/context/fake-1/`',
     )
     expect(parts[0]).toContain(
-      'Deliver: a draft PR. Commit on this branch and write `.away/out/pr.md`.',
+      'Deliver: commits for a draft PR. Commit on this branch and write `.away/out/pr.md`, the PR body.',
     )
     expect(parts[1]).toMatch(/^# Fix\n/)
     expect(parts.slice(2)).toEqual([
@@ -340,10 +340,8 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    const review = async (mine: boolean, provider: Provider = claude, stacked = false) => {
+    const review = async (mine: boolean, provider: Provider = claude) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
-      const out = join(root, 'previous')
-      await mkdir(out)
       const dir = join(root, 'clone')
       const plugin = join(root, 'plugin')
       const forge = {
@@ -398,9 +396,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         provider,
         ctx: { env: {}, log: () => {} },
         skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
-        previous: stacked
-          ? { skill: 'fix', outcome: { kind: 'pr', url: 'u', commits: 1 }, out }
-          : undefined,
       })
       return { dir, plugin, prompt }
     }
@@ -423,11 +418,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       )
       expect(existsSync(join(dir, '.agents/skills/review/extra.md'))).toBe(false)
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
-    })
-
-    it('says a stacked branch is built on the PR someone else opened', async () => {
-      const { prompt } = await review(false, claude, true)
-      expect(prompt).toContain('`sessions` is built on a pull request someone else opened')
     })
 
     it("keeps them on the developer's own PR", async () => {

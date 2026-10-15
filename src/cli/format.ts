@@ -1,7 +1,7 @@
 import { styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
-import type { RunPlan } from '../core/foreman.js'
+import type { PlannedUnit, RunPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 
@@ -14,9 +14,9 @@ export function planJson(plan: RunPlan, warnings: string[] = []): string {
   )
 }
 
-// A loop's later rounds repeat its first: only round 1 is listed.
+/** One per chain: its first step stands for it. */
 export function listedUnits(plan: RunPlan) {
-  return plan.units.filter((p) => !p.loop || p.loop.round === 1)
+  return plan.units.filter((p) => !p.chain)
 }
 
 /** A `Warnings` heading over indented warnings and a blank line, or nothing. */
@@ -57,43 +57,51 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   const units = listedUnits(plan)
   if (units.length === 0) out.push('  none')
   else {
-    const rows = units.map((p, i) => [
-      String(i + 1),
-      p.unit.id,
-      p.unit.repo,
-      `#${p.rule + 1}`,
-      `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`,
-      p.provider ?? '-',
-      // A push loop's rounds commit for its push, not for a draft PR.
-      p.loop?.deliver === 'push' && p.unit.deliver === 'draft_pr' ? 'push' : p.unit.deliver,
-      p.unit.deliver === 'push' || p.loop?.deliver === 'push' ? p.unit.base : p.unit.branch,
-    ])
+    const stepsOf = (head: PlannedUnit) => plan.units.filter((p) => p.chain === head.unit.id)
+    const rows = units.map((p, i) => {
+      const deliver = [p, ...stepsOf(p)].find((s) => s.unit.deliver !== 'report')?.unit.deliver
+      return [
+        String(i + 1),
+        p.unit.id,
+        p.unit.repo,
+        `#${p.rule + 1}`,
+        describeSkill(p),
+        p.provider ?? '-',
+        deliver ?? 'report',
+        deliver === 'push' ? p.unit.base : p.unit.branch,
+      ]
+    })
     const header = ['', 'unit', 'repo', 'rule', 'skill', 'provider', 'deliver', 'branch']
     const lines = table([header, ...rows])
     out.push(`  ${style('bold', lines[0] ?? '')}`)
     units.forEach((p, i) => {
       out.push(`  ${lines[i + 1]}`)
-      if (p.after) out.push(`     after ${p.after}`)
       const unmet = p.quotaUnmet ? ` (${p.quotaUnmet})` : ''
       if (p.unit.rule.when) out.push(`     when ${describeCondition(p.unit.rule.when)}${unmet}`)
-      if (p.loop?.step === 0) {
-        const { skills, until, max, host, deliver } = p.loop
-        const publish = deliver === 'push' ? `one push onto ${p.unit.base}` : 'one draft PR'
-        out.push(
-          `     loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}; ${publish} from ${host}`,
-        )
-      }
       const [top, ...merged] = p.unit.items
       out.push(`     ${top?.source} ${top?.key}: ${top?.title}`)
       merged.forEach((item, j) => {
         const rule = p.itemRules[j + 1] ?? p.rule
         out.push(`     + ${item.source} ${item.key}: same feature, matched #${rule + 1}`)
       })
-      if (p.capped) out.push(`     ${p.capped}`)
       if (p.passed.length > 0 || !p.provider)
         out.push(
           `     provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
         )
+      // A loop's later rounds repeat its first: only round 1 is listed.
+      for (const s of stepsOf(p).filter((s) => !s.loop || s.loop.round === 1)) {
+        if (s.loop?.step === 0) {
+          const { skills, until, max } = s.loop
+          out.push(
+            `     then loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
+          )
+        }
+        const unmet = s.quotaUnmet ? ` (${s.quotaUnmet})` : ''
+        const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}${unmet}` : ''
+        const passed = s.passed.length > 0 ? ` (${s.passed.join('; ')})` : ''
+        const on = `on ${s.provider ?? 'no provider left'}${passed}`
+        out.push(`     ${s.loop ? '  ' : 'then '}${describeSkill(s)} ${on}${when}`)
+      }
     })
   }
 
@@ -128,6 +136,10 @@ export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matched = new Set(matches.flatMap((m) => m.taken))
   const unmatched = items.filter((i) => !matched.has(i))
   return [...lines, `${unmatched.length} unmatched${keys(unmatched)}`]
+}
+
+function describeSkill(p: PlannedUnit): string {
+  return `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`
 }
 
 export function describeRule(r: Rule): string {

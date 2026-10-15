@@ -700,7 +700,7 @@
             }
           },
           "deliver": {
-            "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
+            "description": "Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
             "type": "string",
             "enum": [
               "draft_pr",
@@ -740,13 +740,13 @@
             "additionalProperties": false
           },
           "units": {
-            "description": "At most this many units per run from this rule, its then steps included",
+            "description": "At most this many units per run from this rule; a chain counts once",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "then": {
-            "description": "Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps",
+            "description": "Steps run in turn after this rule's unit, in its clone; the chain publishes once at the end; a {loop} repeats its steps",
             "anyOf": [
               {
                 "anyOf": [
@@ -763,7 +763,7 @@
                         "description": "The skill that does the work"
                       },
                       "provider": {
-                        "description": "Providers for this rule, in order; default the providers order",
+                        "description": "Providers for this step, in order; default the rule's, [] the providers order",
                         "anyOf": [
                           {
                             "type": "string"
@@ -777,7 +777,7 @@
                         ]
                       },
                       "model": {
-                        "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                        "description": "Model per provider for this step; default the rule's",
                         "type": "object",
                         "propertyNames": {
                           "type": "string"
@@ -789,23 +789,21 @@
                         }
                       },
                       "skills": {
-                        "default": [],
-                        "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                        "description": "Extra skills available to the worker; default the rule's, [] none",
                         "type": "array",
                         "items": {
                           "type": "string"
                         }
                       },
                       "mcp": {
-                        "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                        "minItems": 1,
+                        "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                         "type": "array",
                         "items": {
                           "type": "string"
                         }
                       },
                       "instructions": {
-                        "description": "Instruction files added for this rule",
+                        "description": "Instruction files added for this step; default the rule's, [] none",
                         "anyOf": [
                           {
                             "type": "string"
@@ -833,25 +831,12 @@
                           ]
                         }
                       },
-                      "deliver": {
-                        "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                        "type": "string",
-                        "enum": [
-                          "draft_pr",
-                          "report",
-                          "push"
-                        ]
-                      },
-                      "branch": {
-                        "description": "Branch name template for this rule",
-                        "type": "string"
-                      },
                       "when": {
                         "description": "Run this step only when every key holds; otherwise skip it",
                         "type": "object",
                         "properties": {
                           "verdict": {
-                            "description": "The step before's verdict; a list means any of, {not} negates",
+                            "description": "The latest verdict in the chain; a list means any of, {not} negates",
                             "anyOf": [
                               {
                                 "anyOf": [
@@ -937,13 +922,13 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
               },
               {
                 "type": "object",
                 "properties": {
                   "loop": {
-                    "description": "Steps run in turn every round, in the clone of the unit before",
+                    "description": "Steps run in turn every round, in the chain's clone",
                     "anyOf": [
                       {
                         "anyOf": [
@@ -960,7 +945,7 @@
                                 "description": "The skill that does the work"
                               },
                               "provider": {
-                                "description": "Providers for this rule, in order; default the providers order",
+                                "description": "Providers for this step, in order; default the rule's, [] the providers order",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -974,7 +959,7 @@
                                 ]
                               },
                               "model": {
-                                "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                "description": "Model per provider for this step; default the rule's",
                                 "type": "object",
                                 "propertyNames": {
                                   "type": "string"
@@ -986,23 +971,21 @@
                                 }
                               },
                               "skills": {
-                                "default": [],
-                                "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                                "description": "Extra skills available to the worker; default the rule's, [] none",
                                 "type": "array",
                                 "items": {
                                   "type": "string"
                                 }
                               },
                               "mcp": {
-                                "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                                "minItems": 1,
+                                "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                                 "type": "array",
                                 "items": {
                                   "type": "string"
                                 }
                               },
                               "instructions": {
-                                "description": "Instruction files added for this rule",
+                                "description": "Instruction files added for this step; default the rule's, [] none",
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -1030,25 +1013,12 @@
                                   ]
                                 }
                               },
-                              "deliver": {
-                                "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                                "type": "string",
-                                "enum": [
-                                  "draft_pr",
-                                  "report",
-                                  "push"
-                                ]
-                              },
-                              "branch": {
-                                "description": "Branch name template for this rule",
-                                "type": "string"
-                              },
                               "when": {
                                 "description": "Run this step only when every key holds; otherwise skip it",
                                 "type": "object",
                                 "properties": {
                                   "verdict": {
-                                    "description": "The step before's verdict; a list means any of, {not} negates",
+                                    "description": "The latest verdict in the chain; a list means any of, {not} negates",
                                     "anyOf": [
                                       {
                                         "anyOf": [
@@ -1134,7 +1104,7 @@
                             "additionalProperties": false
                           }
                         ],
-                        "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                        "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                       },
                       {
                         "minItems": 1,
@@ -1154,7 +1124,7 @@
                                   "description": "The skill that does the work"
                                 },
                                 "provider": {
-                                  "description": "Providers for this rule, in order; default the providers order",
+                                  "description": "Providers for this step, in order; default the rule's, [] the providers order",
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -1168,7 +1138,7 @@
                                   ]
                                 },
                                 "model": {
-                                  "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                  "description": "Model per provider for this step; default the rule's",
                                   "type": "object",
                                   "propertyNames": {
                                     "type": "string"
@@ -1180,23 +1150,21 @@
                                   }
                                 },
                                 "skills": {
-                                  "default": [],
-                                  "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                                  "description": "Extra skills available to the worker; default the rule's, [] none",
                                   "type": "array",
                                   "items": {
                                     "type": "string"
                                   }
                                 },
                                 "mcp": {
-                                  "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                                  "minItems": 1,
+                                  "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                                   "type": "array",
                                   "items": {
                                     "type": "string"
                                   }
                                 },
                                 "instructions": {
-                                  "description": "Instruction files added for this rule",
+                                  "description": "Instruction files added for this step; default the rule's, [] none",
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -1224,25 +1192,12 @@
                                     ]
                                   }
                                 },
-                                "deliver": {
-                                  "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                                  "type": "string",
-                                  "enum": [
-                                    "draft_pr",
-                                    "report",
-                                    "push"
-                                  ]
-                                },
-                                "branch": {
-                                  "description": "Branch name template for this rule",
-                                  "type": "string"
-                                },
                                 "when": {
                                   "description": "Run this step only when every key holds; otherwise skip it",
                                   "type": "object",
                                   "properties": {
                                     "verdict": {
-                                      "description": "The step before's verdict; a list means any of, {not} negates",
+                                      "description": "The latest verdict in the chain; a list means any of, {not} negates",
                                       "anyOf": [
                                         {
                                           "anyOf": [
@@ -1328,7 +1283,7 @@
                               "additionalProperties": false
                             }
                           ],
-                          "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                          "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                         }
                       }
                     ]
@@ -1405,7 +1360,7 @@
                   "max"
                 ],
                 "additionalProperties": false,
-                "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
+                "description": "Steps repeated until a condition holds"
               },
               {
                 "minItems": 1,
@@ -1427,7 +1382,7 @@
                               "description": "The skill that does the work"
                             },
                             "provider": {
-                              "description": "Providers for this rule, in order; default the providers order",
+                              "description": "Providers for this step, in order; default the rule's, [] the providers order",
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -1441,7 +1396,7 @@
                               ]
                             },
                             "model": {
-                              "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                              "description": "Model per provider for this step; default the rule's",
                               "type": "object",
                               "propertyNames": {
                                 "type": "string"
@@ -1453,23 +1408,21 @@
                               }
                             },
                             "skills": {
-                              "default": [],
-                              "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                              "description": "Extra skills available to the worker; default the rule's, [] none",
                               "type": "array",
                               "items": {
                                 "type": "string"
                               }
                             },
                             "mcp": {
-                              "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                              "minItems": 1,
+                              "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                               "type": "array",
                               "items": {
                                 "type": "string"
                               }
                             },
                             "instructions": {
-                              "description": "Instruction files added for this rule",
+                              "description": "Instruction files added for this step; default the rule's, [] none",
                               "anyOf": [
                                 {
                                   "type": "string"
@@ -1497,25 +1450,12 @@
                                 ]
                               }
                             },
-                            "deliver": {
-                              "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                              "type": "string",
-                              "enum": [
-                                "draft_pr",
-                                "report",
-                                "push"
-                              ]
-                            },
-                            "branch": {
-                              "description": "Branch name template for this rule",
-                              "type": "string"
-                            },
                             "when": {
                               "description": "Run this step only when every key holds; otherwise skip it",
                               "type": "object",
                               "properties": {
                                 "verdict": {
-                                  "description": "The step before's verdict; a list means any of, {not} negates",
+                                  "description": "The latest verdict in the chain; a list means any of, {not} negates",
                                   "anyOf": [
                                     {
                                       "anyOf": [
@@ -1601,13 +1541,13 @@
                           "additionalProperties": false
                         }
                       ],
-                      "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                      "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                     },
                     {
                       "type": "object",
                       "properties": {
                         "loop": {
-                          "description": "Steps run in turn every round, in the clone of the unit before",
+                          "description": "Steps run in turn every round, in the chain's clone",
                           "anyOf": [
                             {
                               "anyOf": [
@@ -1624,7 +1564,7 @@
                                       "description": "The skill that does the work"
                                     },
                                     "provider": {
-                                      "description": "Providers for this rule, in order; default the providers order",
+                                      "description": "Providers for this step, in order; default the rule's, [] the providers order",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -1638,7 +1578,7 @@
                                       ]
                                     },
                                     "model": {
-                                      "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                      "description": "Model per provider for this step; default the rule's",
                                       "type": "object",
                                       "propertyNames": {
                                         "type": "string"
@@ -1650,23 +1590,21 @@
                                       }
                                     },
                                     "skills": {
-                                      "default": [],
-                                      "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                                      "description": "Extra skills available to the worker; default the rule's, [] none",
                                       "type": "array",
                                       "items": {
                                         "type": "string"
                                       }
                                     },
                                     "mcp": {
-                                      "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                                      "minItems": 1,
+                                      "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                                       "type": "array",
                                       "items": {
                                         "type": "string"
                                       }
                                     },
                                     "instructions": {
-                                      "description": "Instruction files added for this rule",
+                                      "description": "Instruction files added for this step; default the rule's, [] none",
                                       "anyOf": [
                                         {
                                           "type": "string"
@@ -1694,25 +1632,12 @@
                                         ]
                                       }
                                     },
-                                    "deliver": {
-                                      "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                                      "type": "string",
-                                      "enum": [
-                                        "draft_pr",
-                                        "report",
-                                        "push"
-                                      ]
-                                    },
-                                    "branch": {
-                                      "description": "Branch name template for this rule",
-                                      "type": "string"
-                                    },
                                     "when": {
                                       "description": "Run this step only when every key holds; otherwise skip it",
                                       "type": "object",
                                       "properties": {
                                         "verdict": {
-                                          "description": "The step before's verdict; a list means any of, {not} negates",
+                                          "description": "The latest verdict in the chain; a list means any of, {not} negates",
                                           "anyOf": [
                                             {
                                               "anyOf": [
@@ -1798,7 +1723,7 @@
                                   "additionalProperties": false
                                 }
                               ],
-                              "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                              "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                             },
                             {
                               "minItems": 1,
@@ -1818,7 +1743,7 @@
                                         "description": "The skill that does the work"
                                       },
                                       "provider": {
-                                        "description": "Providers for this rule, in order; default the providers order",
+                                        "description": "Providers for this step, in order; default the rule's, [] the providers order",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -1832,7 +1757,7 @@
                                         ]
                                       },
                                       "model": {
-                                        "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+                                        "description": "Model per provider for this step; default the rule's",
                                         "type": "object",
                                         "propertyNames": {
                                           "type": "string"
@@ -1844,23 +1769,21 @@
                                         }
                                       },
                                       "skills": {
-                                        "default": [],
-                                        "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+                                        "description": "Extra skills available to the worker; default the rule's, [] none",
                                         "type": "array",
                                         "items": {
                                           "type": "string"
                                         }
                                       },
                                       "mcp": {
-                                        "description": "MCP servers the worker gets, by their name under the top-level mcp",
-                                        "minItems": 1,
+                                        "description": "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
                                         "type": "array",
                                         "items": {
                                           "type": "string"
                                         }
                                       },
                                       "instructions": {
-                                        "description": "Instruction files added for this rule",
+                                        "description": "Instruction files added for this step; default the rule's, [] none",
                                         "anyOf": [
                                           {
                                             "type": "string"
@@ -1888,25 +1811,12 @@
                                           ]
                                         }
                                       },
-                                      "deliver": {
-                                        "description": "Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's",
-                                        "type": "string",
-                                        "enum": [
-                                          "draft_pr",
-                                          "report",
-                                          "push"
-                                        ]
-                                      },
-                                      "branch": {
-                                        "description": "Branch name template for this rule",
-                                        "type": "string"
-                                      },
                                       "when": {
                                         "description": "Run this step only when every key holds; otherwise skip it",
                                         "type": "object",
                                         "properties": {
                                           "verdict": {
-                                            "description": "The step before's verdict; a list means any of, {not} negates",
+                                            "description": "The latest verdict in the chain; a list means any of, {not} negates",
                                             "anyOf": [
                                               {
                                                 "anyOf": [
@@ -1992,7 +1902,7 @@
                                     "additionalProperties": false
                                   }
                                 ],
-                                "description": "A skill name, or a map with the rule keys other than source, where, order, units and then, plus when"
+                                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                               }
                             }
                           ]
@@ -2069,7 +1979,7 @@
                         "max"
                       ],
                       "additionalProperties": false,
-                      "description": "Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push"
+                      "description": "Steps repeated until a condition holds"
                     }
                   ]
                 }

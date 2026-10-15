@@ -20,7 +20,7 @@ const git = async (dir: string, ...args: string[]) =>
 
 /**
  * Delivers a finished unit: a draft PR only with commits, a PR body and a branch new to the remote;
- * a push only with commits, a report, and a fast-forward onto the developer's own PR branch.
+ * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
@@ -77,7 +77,7 @@ async function deliver(
   if (!text)
     return {
       kind: 'none',
-      reason: `${commits.length} commits but no ${push ? 'report' : 'PR body'}, not pushed`,
+      reason: `${commits.length} commits but no ${push ? 'summary' : 'PR body'}, not pushed`,
       unpublished: true,
     }
   const pr = unit.items

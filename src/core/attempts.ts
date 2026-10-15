@@ -1,6 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { PlannedUnit } from './foreman.js'
 import type { RunReport, UnitResult } from './report.js'
 import type { Item, PrRef } from './types.js'
 
@@ -52,47 +51,27 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
 }
 
 /**
- * Attempts plus the items of every chain that ran: finished when its unit and `then` steps
- * were each done, up to the end or to a unit that made nothing. A stopped or failed unit, or
- * work left unpublished, retries its chain and counts one failure; a unit that didn't run
- * (skipped, a dry run, aborted) counts nothing; a step whose `when` didn't hold is passed
- * over. A loop counts through its host, which holds the loop's draft PR: its rounds don't
- * count on their own. An interrupted loop counts nothing, like an aborted unit, and so does
- * a host that kept its report when its last round didn't run.
+ * Attempts plus the items of every chain that ran: finished when each of its steps that ran was
+ * done and its one publish left nothing behind. A stopped or failed step, or work left
+ * unpublished, retries the chain and counts one failure; a step that didn't run (skipped, a dry
+ * run, aborted) counts nothing; a step passed over, by its `when` or after one that made
+ * nothing, doesn't count.
  */
 export function recordAttempts(attempts: Attempts, report: RunReport): Attempts {
   const next = { ...attempts }
-  const result = (id: string) => report.results.find((r) => r.planned.unit.id === id)
-  const step = (id: string) => report.plan.units.find((p) => p.after === id)
-  for (const head of report.plan.units.filter((p) => !p.after && !p.loop)) {
+  for (const head of report.plan.units.filter((p) => !p.chain)) {
+    const id = head.unit.id
+    const chain = report.results.filter((r) => r.planned.unit.id === id || r.planned.chain === id)
     // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.
-    if (result(head.unit.id)?.passedOver) continue
-    let at: PlannedUnit | undefined = head
-    let short: UnitResult | undefined
-    let finished = true
-    let pushed: string | undefined
-    while (at) {
-      const r = result(at.unit.id)
-      if (r?.passedOver) {
-        at = step(at.unit.id)
-        continue
-      }
-      if (r?.outcome?.kind === 'pushed') pushed = r.outcome.head
-      if (r?.status !== 'done' || (r.outcome?.kind === 'none' && r.outcome.unpublished)) {
-        finished = false
-        short = r
-      }
-      at = finished && (r?.outcome?.kind ?? 'none') !== 'none' ? step(at.unit.id) : undefined
-    }
-    // A kept report its loop left unpublished (`loop …`) counts by the round the loop ended on:
-    // one that didn't run counts nothing, as a plain chain's step; one passed over by a refused
-    // `when` would end it there again.
-    const unfinished = short?.outcome?.kind === 'none' && short.outcome.reason.startsWith('loop ')
-    const ended = unfinished
-      ? (report.results.findLast((r) => r.planned.loop?.host === short?.planned.unit.id) ?? short)
-      : short
-    const aborted = !finished && (!ran(short) || (!ran(ended) && !ended?.passedOver))
-    // A push stays recorded even when what followed it was aborted.
+    if (chain[0]?.passedOver) continue
+    const outcome = chain[0]?.outcome
+    const pushed = outcome?.kind === 'pushed' ? outcome.head : undefined
+    const short = chain.find((r) => !r.passedOver && r.status !== 'done')
+    const unpublished = outcome?.kind === 'none' && outcome.unpublished
+    const finished = chain.length > 0 && !short && !unpublished
+    // Work left unpublished is the chain's own failure, whatever a later step missed.
+    const aborted = !finished && !ran(unpublished ? chain[0] : (short ?? chain[0]))
+    // A push stays recorded even when a step after it didn't run.
     if (aborted && !pushed) continue
     const { skill } = head.unit
     for (const item of head.unit.items) {

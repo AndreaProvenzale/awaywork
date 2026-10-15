@@ -170,15 +170,14 @@ describe('publish', () => {
   })
 
   it('fast-forwards the new commits with trailers onto your own PR branch, from where the clone started', async () => {
-    const report = (text: string) => writeFile(join(dir, '.away/out/report.md'), text)
     const forge = pushingForge()
     await commit('first')
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: '1 commits but no report, not pushed',
+      reason: '1 commits but no summary, not pushed',
       unpublished: true,
     })
-    await report('Fixed the flaky test.\n')
+    await body('Fixed the flaky test.\n')
     for (const refused of [{ base: '' }, { foreign: true }])
       expect(await publish({ ...unit('push'), ...refused }, dir, forge, 'r1', start)).toEqual({
         kind: 'none',
@@ -206,7 +205,6 @@ describe('publish', () => {
     await commit('side')
     await git(dir, 'checkout', '-q', '-')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
-    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
     await body('Title')
     const merged = {
       kind: 'none',
@@ -243,7 +241,7 @@ describe('publish', () => {
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
     await git(dir, 'update-ref', 'refs/remotes/origin/sneaky', 'HEAD')
     await commit('after')
-    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
+    await body('Fixed.\n')
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '4 commits include a merge, not pushed',
@@ -259,10 +257,9 @@ describe('publish', () => {
     await git(dir, 'config', 'core.fsmonitor', hook)
     await git(dir, 'config', 'diff.external', hook)
     await writeFile(join(dir, 'uncommitted.txt'), 'left behind')
-    await writeFile(join(dir, '.away/out/report.md'), 'Fixed.\n')
+    await body('Title')
     const forge = pushingForge()
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toMatchObject({ kind: 'pushed' })
-    await body('Title')
     await publish(unit(), dir, forge, 'r1', start)
     expect(forge.pushed).toEqual([
       ['first|r1', 'init|'],

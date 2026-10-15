@@ -92,36 +92,35 @@ line in its body.
   awaywork pushed (kept in the state dir, so not on a runner).
 - A unit none of whose items changed since a worker last finished the
   same skill on it is skipped as **unchanged since run `<id>`**, so a
-  review or a unit that gave up isn't redone every run. A rule's `then`
-  chain counts as one attempt, recorded only when every unit of the chain
-  finished; commits left unpushed retry. "Changed" is the item's
-  `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`,
-  and a unit picked with `run --unit` isn't skipped.
+  review or a unit that gave up isn't redone every run. A unit's chain
+  counts as one attempt, finished when every step that ran was done and
+  its one publish left nothing behind; commits left unpushed retry.
+  "Changed" is the item's `updated` time; attempts live in
+  `~/.local/state/awaywork/attempts.json`, and a unit picked with
+  `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, a stop,
   commits left unpushed) is skipped as **gave up after 3 attempts** until
   one of its items changes or it matches another skill. A plan report
   followed by a failed implement is one failure; a finished attempt
-  clears the count, and skipped, dry-run and aborted units don't count,
-  nor does a loop after a report that ended on one.
+  clears the count, and skipped, dry-run and aborted units don't count.
   `run --unit` runs it anyway.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an
   item, and any unit it joins, alone until `awaywork unskip` or the
   `--until` date; `plan` lists it under Skipped with the `--reason`.
   Skips live in `~/.local/state/awaywork/skips.json`, and
   `run --unit` runs the item anyway.
-- Units run one at a time, in queue order; a rule's
-  [`then`](./configuration.md#then) steps run right after its unit. A
-  [loop](./configuration.md#loops) repeats its steps in one clone and
-  publishes once, when it ends. A step with a
+- Units run one at a time, in queue order. A unit is a chain: the rule's
+  skill, then its [`then`](./configuration.md#then) steps, one after the
+  other in one clone, publishing once when the chain ends. A
+  [loop](./configuration.md#loops) repeats steps, and a step with a
   [`when`](./configuration.md#when) runs only when its condition holds.
-- A draft PR stacks only on a PR it builds on: the draft PR a `then`
-  step follows, or the awaywork PR a rule took up. Its body names the
-  PR to merge first, and on a repo with GitHub's
+- A draft PR stacks only on the awaywork PR a rule took up. Its body
+  names the PR to merge first, and on a repo with GitHub's
   [stacked PRs](https://gh.io/stacks) awaywork links the two into a
-  stack. Every other draft PR starts from the default branch, so you can
-  merge, park or close each one on its own.
+  stack. Every other draft PR starts from the default branch or your
+  PR's branch, so you can merge, park or close each one on its own.
 - Optional [caps](./configuration.md#windows-limits-and-budget) limit the units
-  per run, per repo and per rule.
+  per run, per repo and per rule; a chain counts once.
 
 ## Budget
 
@@ -150,13 +149,13 @@ unit goes to the next provider.
 ## The worker
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
-draft PR a `then` step follows, else the linked PR's branch, else the
-default branch. A PR from a fork is fetched from the repo's
-`refs/pull/<number>/head`, and the unit fails if that is no longer the
-head commit its source read. A branch name
-that's taken on the remote gets a `-2` to `-10` suffix, unless
-awaywork already tried there ([Branch names](./configuration.md#branch-names)).
-A loop's rounds reuse the clone of the unit the loop started from.
+linked PR's branch, else the default branch. A PR from a fork is fetched
+from the repo's `refs/pull/<number>/head`, and the unit fails if that is
+no longer the head commit its source read. A branch name that's taken on
+the remote gets a `-2` to `-10` suffix, unless awaywork already tried
+there ([Branch names](./configuration.md#branch-names)). `setup` runs
+there once, before any agent, and every step of the unit's chain then
+works in that clone, on that branch.
 
 - `.away/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -178,27 +177,41 @@ A loop's rounds reuse the clone of the unit the loop started from.
 
 | `deliver` | What happens |
 |---|---|
-| `draft_pr` | The worker commits and writes `.away/out/pr.md` (first line the title). awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens a draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a PR from a fork: there a rule is skipped with the reason, and a `then` step is left out with the rest of the chain; a report still works. |
-| `report` | The worker writes `.away/out/report.md`; nothing is pushed. It goes into the morning report. |
-| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/report.md`; awaywork adds the trailer and pushes the commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; the report goes into the morning report. No `report.md`, no push. Experimental, see [Configuration](./configuration.md#push). |
+| `draft_pr` | The default. The worker commits and writes `.away/out/pr.md` (first line the title), which a chain's later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a PR from a fork: there a chain that could commit is skipped with the reason; a report still works. |
+| `report` | No step commits. Each writes `.away/out/report.md`; nothing is pushed. A chain's reports, joined, go into the morning report. |
+| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/pr.md`, as for a draft PR; awaywork adds the trailer and pushes the chain's commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Experimental, see [Configuration](./configuration.md#push). |
 
 Either way, a skill that defines verdicts also writes one word to
 `.away/out/verdict`, such as `approve`. The report shows it next to
 the unit's result, and a [loop](./configuration.md#loops) can end on it.
 
-`review` and `plan` default to `report`, every other skill to `draft_pr`;
-a rule can override either. `push` is never a skill's default. A draft
-PR's body gets its items' [`link`](./configuration.md#linking-prs) lines,
-and ends with a footer naming awaywork, the run and the unit's items,
-which is how the next plan recognises it and links it to them.
+A skill commits unless its metadata says it reports, as `review` and
+`plan` do; the rule's `deliver` says where the commits go, and a chain
+that committed nothing reports whatever its `deliver`. `push` is never a
+skill's default. A draft PR's body gets its items'
+[`link`](./configuration.md#linking-prs) lines, and ends with a footer
+naming awaywork, the run and the unit's items, which is how the next
+plan recognises it and links it to them.
 
 ## The morning report
 
 `awaywork report` prints the last run: units done and skipped with the
 reason, each provider's windows before and after against the ceiling, and
-the report-only outputs. On a terminal its tables are aligned and statuses
-coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
-in the job summary.
+the report-only outputs. A unit with `then` steps is one row, with its
+steps under it:
+
+```
+#  Unit                    Skill                                  Provider       Status                                                                        Result
+1  acme-api-12             implement → loop(review ⇄ fix) → docs  claude, codex  done, 70 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (3 commits), verdict approve
+   └ acme-api-12           implement                              claude         done, 14 turns                                                                1 commit
+   └ acme-api-12-review-1  review                                 codex          done, 14 turns                                                                a report, verdict changes
+   └ acme-api-12-fix-1     fix                                    claude         done, 14 turns                                                                1 commit
+   └ acme-api-12-review-2  review                                 codex          done, 14 turns                                                                a report, verdict approve
+   └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commit
+```
+
+On a terminal its tables are aligned and statuses coloured; piped, it is
+the markdown as saved, so in GitHub Actions it lands in the job summary.
 `awaywork report --list` lists recent runs with their units, draft PRs
 and reports; `awaywork report <id>` prints one of them. Inside a control
 repo both also show the runs GitHub Actions
@@ -212,8 +225,8 @@ long quota window their workers used, and the draft PRs opened. `--json`
 prints the same totals. The quota share is an estimate: it starts at the
 quota read before the unit (the plan's probe, then the previous unit's last
 reading on that provider), includes any other use of the account meanwhile,
-and is `-` when the window reset mid-unit or the worker read no quota. In a
-loop only the host unit carries the draft PR, so the loop's `review` and `fix`
-rows show no PRs.
+and is `-` when the window reset mid-unit or the worker read no quota. It
+counts a chain's steps one by one, and only its first step carries the
+draft PR, so the rows of the skills after it show no PRs.
 `units.json` is written when the run ends, so a run that is killed leaves none.
 Runs from before have no `units.json` and are left out.
