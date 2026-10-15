@@ -118,6 +118,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     // The worker's sandbox is the provider's: awaywork has none to run worker-written code in.
     if (!unit.network) return refusal('not run without network: it has no sandbox')
+    await restoreGit(dir)
     const before = await uncommitted(dir)
     const baseline = baselines.get(dir) ?? new Set()
     const left = before.filter((line) => !baseline.has(line))
@@ -680,8 +681,6 @@ async function cutBranch(dir: string, branch: string): Promise<void> {
 
 /** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
 async function uncommitted(dir: string): Promise<string[]> {
-  // Git refreshes the index through a symlink, and `verify` still runs after a failed restoreGitConfig.
-  await refuseSymlinks(dir, ['.git/index'])
   const status = ['status', '--porcelain', '--ignore-submodules=dirty']
   return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
 }

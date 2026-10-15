@@ -591,6 +591,47 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   ])
 })
 
+it("runs no git in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '')
+        await writeFile(join(job.dir, '.gitattributes'), '* filter=evil\n')
+        const clean = `sh -c 'echo "$ZZ_SECRET" >> ${marker}; cat'`
+        await git(job.dir, 'config', 'filter.evil.clean', clean)
+        // Stat-dirty, so `git status` cleans it through the filter.
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { rows } = await run(
+      "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(rows).toEqual([
+      ['acme-api-1', 'error', '.git/objects/info/alternates in the clone points elsewhere'],
+      [
+        'acme-api-1-fix',
+        'skipped',
+        'acme-api-1 error: .git/objects/info/alternates in the clone points elsewhere',
+      ],
+    ])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
   const { rows, opened, report } = await run(
     `queue:
