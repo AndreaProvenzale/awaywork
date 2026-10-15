@@ -45,11 +45,11 @@ not asked of the model.
   awaywork writes anything there, so a link to somewhere else can't make
   it write or delete outside the clone, and none of it lands in the run
   dir. Copying `.away` there never replaces awaywork's own `replay.json`
-  or `worker.log`. Skills stay
-  in the clone on every round: awaywork copies no symlink out of it, and
-  refuses the unit if the folder it copies Codex's skills into links
-  outside it, so a branch that commits `.agents/skills` as a link to
-  somewhere else can't make it delete or write there. A loop's rounds
+  or `worker.log`. Skills stay in the clone on every round: awaywork
+  copies no symlink out of it, and refuses the unit if the folder it
+  copies Codex's skills into links outside it, so a branch that commits
+  `.agents/skills` as a link to somewhere else can't make it delete or
+  write there. A loop's rounds
   share one clone: between them, awaywork runs no diff driver or
   fsmonitor its git config names, ends the loop if a round left a
   symlink where awaywork writes, and reads or writes only regular files
