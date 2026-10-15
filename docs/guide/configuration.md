@@ -424,10 +424,9 @@ queue:
   instead of code), or a report step that writes no report. The steps
   after it are passed over and the chain counts as finished. A step that
   fails or stops, and the window's end, end it too: the chain publishes
-  what it has. A draft PR it opened, or commits it
-  [pushed](#push) onto your PR, wait for your review; otherwise the
-  chain runs again the next run.
-  Ctrl-C publishes nothing.
+  what it has. A draft PR it opened, or commits it [pushed](#push) onto
+  your PR, wait for your review; otherwise the chain runs again the next
+  run. Ctrl-C publishes nothing.
 - The PR body is the `pr.md` the steps kept current, plus an
   `## Awaywork chain` section with how each loop went, its failing check
   if any, and the latest report of each report step:
