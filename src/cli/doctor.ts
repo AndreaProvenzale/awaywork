@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
@@ -11,11 +11,11 @@ import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { staleWorkflow, workflows } from '../scheduler/github-actions.js'
+import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
-import { gitRoot, type RepoSecrets, reasonOf, repoSecrets, staleSchedules } from './schedule.js'
+import { gitRoot, staleSchedules } from './schedule.js'
 
 interface Check {
   status: Status
@@ -142,10 +142,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   return checks
 }
 
-/** Checks that every secret each awaywork workflow names exists in the repo or the org. */
+/** Checks that every secret the awaywork workflow names exists in the repo or the org. */
 export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
-  const files = await workflows(root)
-  if (!files.length) return []
+  const file = join(root, WORKFLOW)
+  if (!existsSync(file)) return []
   const failures: string[] = []
   const listed = await repoSecrets(run, (list, e) =>
     failures.push(`${list === 'repo' ? "the repo's" : "the organization's"}: ${reasonOf(e)}`),
@@ -160,16 +160,13 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
       },
     ]
   const checks: Check[] = []
-  for (const file of files) {
-    const what = basename(file)
-    // A workflow that doesn't parse won't run either.
-    try {
-      const jobs = parse(await readFile(file, 'utf8'))?.jobs
-      for (const job of Object.values<Job>(jobs ?? {}))
-        checks.push(jobSecretCheck(what, job, listed))
-    } catch (e) {
-      checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
-    }
+  const what = basename(file)
+  // A workflow that doesn't parse won't run either.
+  try {
+    const jobs = parse(await readFile(file, 'utf8'))?.jobs
+    for (const job of Object.values<Job>(jobs ?? {})) checks.push(jobSecretCheck(what, job, listed))
+  } catch (e) {
+    checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
   }
   return checks
 }
@@ -196,4 +193,56 @@ function jobSecretCheck(what: string, job: Job, listed: RepoSecrets): Check {
   return missing.length
     ? { status: 'FAIL', what, detail: `add ${missing.join(', ')} to the repository secrets` }
     : { status: 'ok', what, detail: `secrets found: ${names.length}` }
+}
+
+/** gh's own last line of a failed call, e.g. "gh: Not Found (HTTP 404)". */
+const reasonOf = (e: unknown) =>
+  (
+    String((e as { stderr?: string }).stderr ?? '').trim() ||
+    (e instanceof Error ? e.message : String(e))
+  )
+    .split('\n')
+    .at(-1)
+
+interface RepoSecrets {
+  repo: Set<string>
+  /** The org's secrets shared with the repo. */
+  org: Set<string>
+}
+
+const ghNames = async (run: Exec, args: string[]) =>
+  new Set((await run('gh', args)).split('\n').filter(Boolean))
+
+/** The names of the current repo's secrets; throws when gh can't list them. */
+const secretNames = (run: Exec) =>
+  ghNames(run, ['secret', 'list', '--json', 'name', '--jq', '.[].name'])
+
+/** Lists the current repo's secrets and its org's; a list gh can't get is empty, after `failed` hears why. */
+async function repoSecrets(
+  run: Exec,
+  failed: (list: 'repo' | 'org', e: unknown) => void,
+): Promise<RepoSecrets> {
+  const repo = await secretNames(run).catch((e) => {
+    failed('repo', e)
+    return new Set<string>()
+  })
+  const org = await orgSecrets(run).catch((e) => {
+    failed('org', e)
+    return new Set<string>()
+  })
+  return { repo, org }
+}
+
+/** The org's secrets shared with the repo, none for a user's repo; throws when gh can't. */
+async function orgSecrets(run: Exec): Promise<Set<string>> {
+  const type = await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner.type'])
+  // Only an org-owned repo has org secrets; listing a user's fails.
+  if (type !== 'Organization') return new Set<string>()
+  return ghNames(run, [
+    'api',
+    '--paginate',
+    'repos/{owner}/{repo}/actions/organization-secrets',
+    '--jq',
+    '.secrets[].name',
+  ])
 }

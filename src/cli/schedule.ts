@@ -20,7 +20,6 @@ import {
   runsOnOf,
   WORKFLOW,
   workflow,
-  workflows,
 } from '../scheduler/github-actions.js'
 import {
   defaultScheduler,
@@ -88,9 +87,9 @@ export function scheduleCommand(program: Command): void {
         console.log(`Log: ${job.log}`)
       }
       const root = await gitRoot()
-      for (const file of root ? await workflows(root) : []) {
+      if (root && existsSync(join(root, WORKFLOW))) {
         found = true
-        console.log(`Scheduled with ${GITHUB_ACTIONS}: ${file}`)
+        console.log(`Scheduled with ${GITHUB_ACTIONS}: ${join(root, WORKFLOW)}`)
       }
       if (!found) console.log('No scheduled job installed')
     })
@@ -351,58 +350,6 @@ const askSelfHosted = async (ask: Ask, selfHosted: boolean) =>
     ],
     selfHosted ? 'self-hosted' : 'github-hosted',
   )) === 'self-hosted'
-
-/** gh's own last line of a failed call, e.g. "gh: Must have admin rights to Repository. (HTTP 403)". */
-export const reasonOf = (e: unknown) =>
-  (
-    String((e as { stderr?: string }).stderr ?? '').trim() ||
-    (e instanceof Error ? e.message : String(e))
-  )
-    .split('\n')
-    .at(-1)
-
-export interface RepoSecrets {
-  repo: Set<string>
-  /** The org's secrets shared with the repo. */
-  org: Set<string>
-}
-
-const ghNames = async (run: Exec, args: string[]) =>
-  new Set((await run('gh', args)).split('\n').filter(Boolean))
-
-/** The names of the current repo's secrets; throws when gh can't list them. */
-const secretNames = (run: Exec) =>
-  ghNames(run, ['secret', 'list', '--json', 'name', '--jq', '.[].name'])
-
-/** Lists the current repo's secrets and its org's; a list gh can't get is empty, after `failed` hears why. */
-export async function repoSecrets(
-  run: Exec,
-  failed: (list: 'repo' | 'org', e: unknown) => void,
-): Promise<RepoSecrets> {
-  const repo = await secretNames(run).catch((e) => {
-    failed('repo', e)
-    return new Set<string>()
-  })
-  const org = await orgSecrets(run).catch((e) => {
-    failed('org', e)
-    return new Set<string>()
-  })
-  return { repo, org }
-}
-
-/** The org's secrets shared with the repo, none for a user's repo; throws when gh can't. */
-async function orgSecrets(run: Exec): Promise<Set<string>> {
-  const type = await run('gh', ['api', 'repos/{owner}/{repo}', '--jq', '.owner.type'])
-  // Only an org-owned repo has org secrets; listing a user's fails.
-  if (type !== 'Organization') return new Set<string>()
-  return ghNames(run, [
-    'api',
-    '--paginate',
-    'repos/{owner}/{repo}/actions/organization-secrets',
-    '--jq',
-    '.secrets[].name',
-  ])
-}
 
 /** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
 async function syncRepo(

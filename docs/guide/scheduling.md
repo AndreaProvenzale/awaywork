@@ -187,8 +187,8 @@ skills, one that matches is up to date; one that differs shows the diff
 and is replaced only if you say yes, so a hand edit never goes silently.
 Without a terminal nobody can say yes: it keeps the repo's copy, prints
 the diff and exits 1, so run it again in a terminal to replace it.
-The skills folder is replaced as a whole: a skill only the repo has, say a
-teammate's, goes with it. With no skills of your own, the repo's stay.
+The skills folder is replaced as a whole: a skill only the repo has, say
+one you added by hand, goes with it. With no skills of your own, the repo's stay.
 
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you

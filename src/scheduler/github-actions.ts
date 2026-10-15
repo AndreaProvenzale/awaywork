@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { readdir, readFile, rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, isNode, isScalar, parseDocument } from 'yaml'
@@ -120,16 +120,6 @@ export async function removeWorkflow(root: string): Promise<boolean> {
   if (!existsSync(file)) return false
   await rm(file)
   return true
-}
-
-/** The paths of every awaywork workflow under a repo root. */
-export async function workflows(root: string): Promise<string[]> {
-  const dir = join(root, dirname(WORKFLOW))
-  const files = await readdir(dir).catch(() => [])
-  return files
-    .filter((f) => /^awaywork.*\.yml$/.test(f))
-    .sort()
-    .map((f) => join(dir, f))
 }
 
 /** Warns when the repo's workflow predates awaywork's action and runs its steps inline. */

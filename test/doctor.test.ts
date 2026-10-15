@@ -143,24 +143,28 @@ describe('doctor in a control repo', () => {
     ])
   })
 
-  it("fails a workflow that doesn't parse and checks the rest", async () => {
+  it("fails a workflow that doesn't parse", async () => {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
-    const dir = join(root, '.github/workflows')
-    await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, 'awaywork-a.yml'), 'jobs: { n: { env: [ }')
-    await writeFile(join(dir, 'awaywork-b.yml'), 'jobs: { n: }')
-    await writeFile(join(dir, 'awaywork-d.yml'), 'jobs: { n: { env: { A: "${{ secrets.A }}" } } }')
+    await mkdir(join(root, '.github/workflows'), { recursive: true })
     const run: Exec = async (_cmd, args) => (args[1] === 'repos/{owner}/{repo}' ? 'User' : 'A')
-    const checks = await workflowSecretChecks(root, run)
+    const checksOf = async (text: string) => {
+      await writeFile(join(root, '.github/workflows/awaywork.yml'), text)
+      return workflowSecretChecks(root, run)
+    }
+    const checks = [
+      ...(await checksOf('jobs: { n: { env: [ }')),
+      ...(await checksOf('jobs: { n: }')),
+      ...(await checksOf('jobs: { n: { env: { A: "${{ secrets.A }}" } } }')),
+    ]
     expect(checks.map((c) => [c.status, c.what])).toEqual([
-      ['FAIL', 'awaywork-a.yml'],
-      ['FAIL', 'awaywork-b.yml'],
-      ['ok', 'awaywork-d.yml'],
+      ['FAIL', 'awaywork.yml'],
+      ['FAIL', 'awaywork.yml'],
+      ['ok', 'awaywork.yml'],
     ])
     expect(checks.every((c) => !c.detail.includes('\n'))).toBe(true)
   })
 
-  it('adds no checks to a repo without awaywork workflows', async () => {
+  it('adds no checks to a repo without the awaywork workflow', async () => {
     const calls: string[] = []
     const run: Exec = async (cmd, args) => {
       calls.push([cmd, ...args].join(' '))

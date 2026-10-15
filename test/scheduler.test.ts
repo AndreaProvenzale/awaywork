@@ -15,7 +15,6 @@ import {
   staleWorkflow,
   WORKFLOW,
   workflow,
-  workflows,
 } from '../src/scheduler/github-actions.js'
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
@@ -235,7 +234,6 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.name).toBe('awaywork')
   expect(parsed.concurrency).toBe('awaywork')
   expect(parsed.permissions).toEqual({ contents: 'read' })
-  expect(parsed.jobs.run.environment).toBeUndefined()
   expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
   expect(parsed.jobs.run['timeout-minutes']).toBe(360)
   expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
@@ -335,18 +333,6 @@ it("runs command sources' setup in the config's folder before awaywork", () => {
     run: 'cargo build --release\ncp target/release/tracker bin/\n',
   })
   expect(setup).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('AndreaProvenzale/')))
-})
-
-it('lists every awaywork workflow in a repo', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
-  expect(await workflows(root)).toEqual([])
-  const dir = join(root, '.github/workflows')
-  await mkdir(dir, { recursive: true })
-  for (const f of ['awaywork.yml', 'awaywork-nightly.yml', 'ci.yml'])
-    await writeFile(join(dir, f), '')
-  expect(await workflows(root)).toEqual(
-    ['awaywork-nightly.yml', 'awaywork.yml'].map((f) => join(dir, f)),
-  )
 })
 
 it('removes only its own workflow from a repo', async () => {
