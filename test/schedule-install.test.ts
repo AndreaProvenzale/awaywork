@@ -10,32 +10,39 @@ import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-const { installed, removed, woke } = vi.hoisted(() => ({
+const { installed, removed, woke, commands } = vi.hoisted(() => ({
   installed: [] as string[],
   removed: [] as string[],
   woke: [] as string[],
+  commands: [] as string[][],
 }))
 
 let failCron = false
 let failWake = false
+let wakeReason: string | undefined
+let wakeDefault = true
 
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
-  wakeFor: async () => ({
-    question: 'Wake this machine when a window opens?',
-    install: async () => {
-      if (failWake) throw Object.assign(new Error('sudo failed'), { stderr: 'no password' })
-      woke.push('wake')
+  keepAwake: async () => ['/usr/bin/caffeinate', '-i'],
+  wakeFor: async () =>
+    wakeReason ?? {
+      question: 'Wake this machine when a window opens?',
+      initial: wakeDefault,
+      install: async () => {
+        if (failWake) throw Object.assign(new Error('sudo failed'), { stderr: 'no password' })
+        woke.push('wake')
+      },
     },
-  }),
 }))
 
 vi.mock('../src/scheduler/index.js', async (original) => {
   const fake = (id: string): Scheduler => ({
     id,
-    install: async () => {
+    install: async (s) => {
       if (id === 'cron' && failCron) throw new SchedulerError('cron failed')
       installed.push(id)
+      commands.push(s.command)
       return `/fake/${id}`
     },
     remove: async () => {
@@ -56,8 +63,11 @@ beforeEach(() => {
   installed.length = 0
   removed.length = 0
   woke.length = 0
+  commands.length = 0
   failCron = false
   failWake = false
+  wakeReason = undefined
+  wakeDefault = true
   vi.spyOn(console, 'log').mockImplementation((line) => void out.push(String(line)))
   vi.spyOn(console, 'error').mockImplementation((line) => void out.push(String(line)))
 })
@@ -101,6 +111,44 @@ it('wakes the machine when asked in a terminal, and only says how without one', 
   expect(out.at(-1)).toBe(
     '`awaywork schedule install` in a terminal also wakes this machine for the runs',
   )
+})
+
+it("takes the wake's default answer, no when it replaces power events", async () => {
+  const { config, io } = await setup()
+  wakeDefault = false
+  await installSchedule(config, 'cron', undefined, io([[/^Wake this machine/, initial]], true))
+  expect(woke).toEqual([])
+})
+
+it('keeps the run awake by wrapping the scheduled command', async () => {
+  const { config, io } = await setup()
+  await installSchedule(config, 'cron', undefined, io([], false))
+  expect(commands[0]?.slice(0, 3)).toEqual(['/usr/bin/caffeinate', '-i', process.execPath])
+})
+
+it('says why it cannot wake without asking', async () => {
+  const { config, io } = await setup()
+  wakeReason = 'pmset repeats one wake time'
+  await installSchedule(config, 'cron', undefined, io([], true))
+  expect(installed).toEqual(['cron'])
+  expect(out.at(-1)).toBe('pmset repeats one wake time')
+  expect(process.exitCode).toBeUndefined()
+})
+
+it('takes leaving the wake question as no, and keeps the job', async () => {
+  const { config, io } = await setup()
+  const terminal = io([], true)
+  const ask: Ask = {
+    ...terminal.ask,
+    confirm: async () => {
+      throw new Cancelled('cancelled')
+    },
+  }
+  await installSchedule(config, 'cron', undefined, { ...terminal, ask })
+  expect(installed).toEqual(['cron'])
+  expect(woke).toEqual([])
+  expect(out).not.toContain('Cancelled')
+  expect(process.exitCode).toBeUndefined()
 })
 
 it('keeps the job when setting the wake fails', async () => {

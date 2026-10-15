@@ -14,16 +14,22 @@ const systemdRuns = () => existsSync('/run/systemd/system')
 const pad = (n: number) => String(n).padStart(2, '0')
 
 /** Holds the machine awake while a run lasts; after a scheduled wake it sleeps again within minutes. */
-export function keepAwake(platform = process.platform): string[] {
+export async function keepAwake(run: Exec, platform = process.platform): Promise<string[]> {
   if (platform === 'darwin') return ['/usr/bin/caffeinate', '-i']
-  return platform === 'linux' && systemdRuns()
-    ? ['systemd-inhibit', '--what=idle', '--who=awaywork', '--why=scheduled run']
-    : []
+  if (platform !== 'linux') return []
+  const args = ['--what=idle', '--who=awaywork', '--why=scheduled run']
+  // Without systemd or a system D-Bus, systemd-inhibit fails before the run starts.
+  return run('systemd-inhibit', [...args, 'true']).then(
+    () => ['systemd-inhibit', ...args],
+    () => [],
+  )
 }
 
 /** Wakes the machine from sleep when a window opens; root sets it, so it goes through sudo. */
 export interface Wake {
   question: string
+  /** The answer Enter gives: no when it replaces power events already set. */
+  initial: boolean
   install(): Promise<void>
 }
 
@@ -38,14 +44,19 @@ export async function wakeFor(
   return undefined
 }
 
-/** The removal command for a wake that may be set; sudo asks for a password, so the user runs it. */
+/** The wake left set and the command removing it; sudo asks for a password, so the user runs it. */
 export async function wakeUndo(
   run: Exec,
   platform = process.platform,
 ): Promise<string | undefined> {
-  if (platform === 'darwin') return (await repeating(run)) ? 'sudo pmset repeat cancel' : undefined
+  if (platform === 'darwin') {
+    const events = await repeating(run)
+    return events
+      ? `Repeating power events stay (${events}); \`sudo pmset repeat cancel\` removes them all`
+      : undefined
+  }
   if (existsSync(join(UNIT_DIR, `${UNIT}.timer`)))
-    return `sudo systemctl disable --now ${UNIT}.timer && sudo rm ${UNIT_DIR}/${UNIT}.{service,timer}`
+    return `A repeating wake stays; \`sudo systemctl disable --now ${UNIT}.timer && sudo rm ${UNIT_DIR}/${UNIT}.{service,timer}\` removes it`
   return undefined
 }
 
@@ -59,25 +70,23 @@ export function pmsetArgs(starts: Start[]): string[] | undefined {
   return ['pmset', 'repeat', 'wake', letters, `${pad(first.hour)}:${pad(first.minute)}:00`]
 }
 
+/** The repeating power events pmset has, joined by "; ". */
 const repeating = async (run: Exec) =>
-  (await run('pmset', ['-g', 'sched']).catch(() => '')).match(
-    /Repeating power events:\n((?:[ \t]+.*(?:\n|$))+)/,
-  )?.[1]
+  (await run('pmset', ['-g', 'sched']).catch(() => ''))
+    .match(/Repeating power events:\n((?:[ \t]+.*(?:\n|$))+)/)?.[1]
+    ?.trim()
+    .split('\n')
+    .map((l) => l.trim())
+    .join('; ')
 
 async function pmsetWake(starts: Start[], run: Exec): Promise<Wake | string> {
   const args = pmsetArgs(starts)
   if (!args)
     return `pmset repeats one wake time and the windows start at ${describeStarts(starts)}; keep this Mac awake for them`
   const current = await repeating(run)
-  const replacing = current
-    ? `, replacing ${current
-        .trim()
-        .split('\n')
-        .map((l) => l.trim())
-        .join('; ')}`
-    : ''
   return {
-    question: `Wake this Mac when the window opens (sudo ${args.join(' ')}${replacing})?`,
+    question: `Wake this Mac when the window opens (sudo ${args.join(' ')}${current ? `, replacing ${current}` : ''})?`,
+    initial: !current,
     install: async () => void (await run('sudo', args)),
   }
 }
@@ -104,6 +113,7 @@ ExecStart=true
 export function timerWake(starts: Start[], run: Exec): Wake {
   return {
     question: `Wake this machine from suspend when a window opens (sudo, ${UNIT_DIR}/${UNIT}.timer with WakeSystem=true)?`,
+    initial: true,
     async install() {
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
       try {

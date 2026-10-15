@@ -84,9 +84,10 @@ terminal, `schedule install` offers one after the job:
 ```
 
 - macOS: `pmset` keeps a single repeating wake, so this needs every
-  window to start at the same time, and it replaces a repeating power
-  event you already had (the question names it). Keep a laptop on the
-  charger; with the lid closed on battery it may not wake fully.
+  window to start at the same time, and it replaces the repeating power
+  events you already had, a scheduled sleep or shutdown too. The question
+  lists them and then defaults to No. Keep a laptop on the charger; with
+  the lid closed on battery it may not wake fully.
 - Linux: a root timer, `/etc/systemd/system/awaywork-wake.timer` with
   `WakeSystem=true`, resumes from suspend at each window start. A
   background job may block idle but not sleep, so a desktop that suspends

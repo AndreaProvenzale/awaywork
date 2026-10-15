@@ -83,7 +83,7 @@ export function scheduleCommand(program: Command): void {
         removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
       )
       const undo = await wakeUndo(exec)
-      if (undo) console.log(`A repeating wake stays; \`${undo}\` removes it`)
+      if (undo) console.log(undo)
     })
 
   schedule
@@ -219,8 +219,9 @@ export async function installSchedule(
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
     const starts = startsOf(windows)
+    const awake = await keepAwake(io.run)
     const where = await scheduler.install({
-      command: [...keepAwake(), process.execPath, bin, 'run', '--scheduled', '--config', path],
+      command: [...awake, process.execPath, bin, 'run', '--scheduled', '--config', path],
       starts,
       path: process.env.PATH ?? '',
       log,
@@ -253,9 +254,10 @@ async function offerWake(starts: Start[], io: Io): Promise<void> {
       '`awaywork schedule install` in a terminal also wakes this machine for the runs',
     )
   try {
-    if (!(await io.ask.confirm(wake.question))) return
+    if (!(await io.ask.confirm(wake.question, wake.initial))) return
   } catch (e) {
-    return cancelled(e)
+    if (e instanceof Cancelled) return
+    throw e
   }
   try {
     await wake.install()
