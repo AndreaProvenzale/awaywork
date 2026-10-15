@@ -31,9 +31,9 @@ describe('where', () => {
   it.each([
     ['a scalar equals', { checks: 'failing' }, true],
     ['a scalar mismatch', { checks: 'passing' }, false],
-    ['a string equals in any case', { checks: 'Failing' }, true],
-    ['a list is any of, in any case', { checks: ['PENDING', 'FAILING'] }, true],
-    ['not ignores case', { checks: { not: 'FAILING' } }, false],
+    ['a string equals in any case', { repo: 'ACME/api' }, true],
+    ['a list is any of, in any case', { repo: ['acme/web', 'Acme/API'] }, true],
+    ['not ignores case', { repo: { not: 'ACME/API' } }, false],
     ['a list field contains a string in any case', { label: 'AwayWork' }, true],
     ['a number does not equal its string', { unresolved_threads: '3' }, false],
     ['a list is any of', { checks: ['pending', 'failing'] }, true],
