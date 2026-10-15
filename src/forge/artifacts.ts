@@ -13,8 +13,8 @@ export interface UploadedRun {
   actionsRun: string
 }
 
-/** The unexpired runs the named workflows uploaded to the repo in the current directory. */
-export async function uploadedRuns(workflows: string[], run: Exec = exec): Promise<UploadedRun[]> {
+/** The unexpired runs the named workflow uploaded to the repo in the current directory. */
+export async function uploadedRuns(name: string, run: Exec = exec): Promise<UploadedRun[]> {
   const repo = (
     await run('gh', ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'])
   ).trim()
@@ -28,7 +28,7 @@ export async function uploadedRuns(workflows: string[], run: Exec = exec): Promi
   return out.split('\n').flatMap((line) => {
     const [artifact = '', actionsRun = ''] = line.split('\t')
     const [, workflow = '', id = ''] = /^(.+)-(\d{8}-\d{6})$/.exec(artifact) ?? []
-    return workflows.includes(workflow) ? [{ id, workflow, repo, artifact, actionsRun }] : []
+    return workflow === name ? [{ id, workflow, repo, artifact, actionsRun }] : []
   })
 }
 

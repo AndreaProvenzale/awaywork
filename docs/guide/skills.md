@@ -47,10 +47,7 @@ skill from `~/.claude/skills/`, link it into yours:
 `ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 
 On a runner, yours are the copy `schedule install --with github-actions`
-puts next to the repo's config: `.awaywork/skills/`, or, in a
-[shared control repo](./scheduling.md#shared-control-repo), each
-person's own `.awaywork/<person>/skills/`. A teammate's skills never
-reach your units.
+puts next to the repo's config: `.awaywork/skills/`.
 
 Claude Code gets the unit's skills as a plugin outside the clone
 (`--plugin-dir`), named `awaywork:<name>`, so they are callable on

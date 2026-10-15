@@ -86,18 +86,18 @@ describe('report command', () => {
 
   it("lists local runs and the control repo's uploaded ones in one list, newest first", async () => {
     const run = await controlRepo(
-      ['awaywork.yml', 'awaywork-alice.yml'],
+      ['awaywork.yml'],
       [
         'awaywork-20261014-223527\t11',
-        'awaywork-alice-20261016-010203\t12',
-        'awaywork-bob-20261016-020000\t13',
+        'awaywork-20261016-010203\t12',
+        'ci-20261016-020000\t13',
         'coverage\t14',
       ].join('\n'),
     )
     const { out, err } = output()
     await printReport(undefined, true, run)
     expect(out).toEqual([
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork-alice)',
+      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
       '20261015-220000  1 units, 0 draft PRs, 1 reports',
       '20261014-223527  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
       '20261013-220000  2 units, 1 draft PRs, 1 reports',
@@ -105,25 +105,10 @@ describe('report command', () => {
     expect(err).toEqual([])
     expect(run.calls).toContainEqual(
       expect.stringMatching(
-        /^gh run download 12 -R acme\/control -n awaywork-alice-20261016-010203 -D \S+$/,
+        /^gh run download 12 -R acme\/control -n awaywork-20261016-010203 -D \S+$/,
       ),
     )
-    expect(run.calls.join('\n')).not.toContain('bob')
-  })
-
-  it('keeps apart two workflows whose runs share an id', async () => {
-    const run = await controlRepo(
-      ['awaywork-alice.yml', 'awaywork-bob.yml'],
-      'awaywork-alice-20261016-010203\t12\nawaywork-bob-20261016-010203\t13',
-    )
-    const { out, err } = output()
-    await printReport(undefined, true, run)
-    expect(err).toEqual([])
-    expect(out.slice(0, 2)).toEqual([
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork-bob)',
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork-alice)',
-    ])
-    expect(run.calls.filter((c) => c.startsWith('gh run download'))).toHaveLength(2)
+    expect(run.calls.join('\n')).not.toContain('ci-')
   })
 
   it('prints the newest run of either, from the cache once downloaded', async () => {

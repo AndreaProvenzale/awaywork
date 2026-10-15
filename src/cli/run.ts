@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
@@ -11,7 +12,7 @@ import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
-import { workflows } from '../scheduler/github-actions.js'
+import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notify } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
@@ -156,9 +157,8 @@ async function remoteRuns(run: Exec): Promise<UploadedRun[]> {
   // A runner's own report is of the run it just made, never of an earlier upload.
   if (process.env.GITHUB_ACTIONS) return []
   const root = await gitRoot(run)
-  const names = root ? (await workflows(root)).map((file) => basename(file, '.yml')) : []
-  if (names.length === 0) return []
-  return uploadedRuns(names, run).catch((e: unknown) => {
+  if (!root || !existsSync(join(root, WORKFLOW))) return []
+  return uploadedRuns(basename(WORKFLOW, '.yml'), run).catch((e: unknown) => {
     warnRemote(e)
     return []
   })

@@ -14,9 +14,7 @@ import {
   removeWorkflow,
   staleWorkflow,
   WORKFLOW,
-  type Workflow,
   workflow,
-  workflows,
 } from '../src/scheduler/github-actions.js'
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
@@ -236,7 +234,6 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.name).toBe('awaywork')
   expect(parsed.concurrency).toBe('awaywork')
   expect(parsed.permissions).toEqual({ contents: 'read' })
-  expect(parsed.jobs.run.environment).toBeUndefined()
   expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
   expect(parsed.jobs.run['timeout-minutes']).toBe(360)
   expect(parsed.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
@@ -338,81 +335,6 @@ it("runs command sources' setup in the config's folder before awaywork", () => {
   expect(setup).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('AndreaProvenzale/')))
 })
 
-const alice: Workflow = {
-  starts: [{ hour: 22, minute: 0 }],
-  timezone: 'Europe/Rome',
-  config: '.awaywork/alice/config.yml',
-  version: '0.3.1',
-  packages: [],
-  secrets: ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'SLACK_WEBHOOK'],
-  setup: ['make tracker'],
-}
-const personal = ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']
-
-it("writes a person's workflow with their environment, suffixed secrets, concurrency and config folder", () => {
-  const job = parse(workflow({ ...alice, person: { name: 'alice', personal, environment: true } }))
-  expect(job.name).toBe('awaywork-alice')
-  expect(job.concurrency).toBe('awaywork-alice')
-  expect(job.jobs.run.environment).toEqual({ name: 'alice', deployment: false })
-  expect(job.jobs.run.env).toEqual({ TZ: 'Europe/Rome' })
-  expect(job.jobs.run.steps[2].env).toEqual({
-    GH_TOKEN: '${{ secrets.GH_TOKEN__ALICE }}',
-    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__ALICE }}',
-    SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
-  })
-  expect(job.jobs.run.steps[1]['working-directory']).toBe('.awaywork/alice')
-  expect(job.jobs.run.steps[2].with.config).toBe('.awaywork/alice/config.yml')
-})
-
-it('keeps a person named like a YAML number a string', () => {
-  const job = parse(
-    workflow({
-      ...alice,
-      config: '.awaywork/007/config.yml',
-      person: { name: '007', personal, environment: true },
-    }),
-  )
-  expect(job.name).toBe('awaywork-007')
-  expect(job.concurrency).toBe('awaywork-007')
-  expect(job.jobs.run.environment).toEqual({ name: '007', deployment: false })
-  expect(job.jobs.run.steps[1]['working-directory']).toBe('.awaywork/007')
-  expect(job.jobs.run.steps[2].with.config).toBe('.awaywork/007/config.yml')
-})
-
-it('differs without an environment only by its environment line', () => {
-  const person = { name: 'mary-jo', personal, environment: false }
-  const job = parse(workflow({ ...alice, person }))
-  expect(job.name).toBe('awaywork-mary-jo')
-  expect(job.concurrency).toBe('awaywork-mary-jo')
-  expect(job.jobs.run.environment).toBeUndefined()
-  expect(job.jobs.run.steps[2].env).toEqual({
-    GH_TOKEN: '${{ secrets.GH_TOKEN__MARY_JO }}',
-    CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN__MARY_JO }}',
-    SLACK_WEBHOOK: '${{ secrets.SLACK_WEBHOOK }}',
-  })
-  const env = workflow({ ...alice, person: { ...person, environment: true } }).split('\n')
-  expect(workflow({ ...alice, person }).split('\n')).toEqual(
-    env.filter((line) => !line.includes('environment:')),
-  )
-})
-
-it("lists every awaywork workflow in a repo and removes only one person's", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
-  expect(await workflows(root)).toEqual([])
-  const dir = join(root, '.github/workflows')
-  await mkdir(dir, { recursive: true })
-  for (const f of ['awaywork.yml', 'awaywork-bob.yml', 'awaywork-alice.yml', 'ci.yml'])
-    await writeFile(join(dir, f), '')
-  expect(await workflows(root)).toEqual(
-    ['awaywork-alice.yml', 'awaywork-bob.yml', 'awaywork.yml'].map((f) => join(dir, f)),
-  )
-  expect(await removeWorkflow(root, 'alice')).toBe(true)
-  expect(await removeWorkflow(root, 'alice')).toBe(false)
-  expect(await workflows(root)).toEqual(
-    ['awaywork-bob.yml', 'awaywork.yml'].map((f) => join(dir, f)),
-  )
-})
-
 it('removes only its own workflow from a repo', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-repo-'))
   await mkdir(join(root, '.github/workflows'), { recursive: true })
@@ -452,7 +374,7 @@ describe('schedule install --with github-actions', () => {
     const install = async (script: [RegExp, unknown][] = [], interactive = false) => {
       out = []
       const ask = scriptedAsk(script)
-      await installWorkflow(config, undefined, {
+      await installWorkflow(config, {
         run: async () => root,
         ask,
         env: {},
@@ -496,16 +418,35 @@ describe('schedule install --with github-actions', () => {
     expect(Object.keys(steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
   })
 
-  it('asks whose repo and which runner; self-hosted keeps codex, installs no CLI and adds no secret for it', async () => {
+  it('names each secret the config needs once', async () => {
+    const { root, config, install } = await setup()
+    await writeFile(
+      config,
+      `providers: [claude]
+sources: { github: { repos: [acme/api] }, asana: { workspace: "100" } }
+repos: { acme/api: { secrets: [DATABASE_URL] } }
+notify: { command: "true", secrets: [SLACK_WEBHOOK, ASANA_TOKEN] }
+after_unit: { command: "true", secrets: [HOOK_TOKEN] }
+mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
+`,
+    )
+    await install()
+    const steps = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps
+    expect(Object.keys(steps.at(-1).env)).toEqual([
+      'GH_TOKEN',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'ASANA_TOKEN',
+      'SLACK_WEBHOOK',
+      'HOOK_TOKEN',
+      'DATABASE_URL',
+      'MCP_DB_URL',
+    ])
+  })
+
+  it('asks which runner; self-hosted keeps codex, installs no CLI and adds no secret for it', async () => {
     const { root, config, install } = await setup()
     await writeFile(config, CONFIG.replace('[claude]', '[claude, codex]'))
-    await install(
-      [
-        [/^Whose control repo is this\?$/, initial],
-        [/^Which runner\?$/, 'self-hosted'],
-      ],
-      true,
-    )
+    await install([[/^Which runner\?$/, 'self-hosted']], true)
     expect(out.join('\n')).not.toMatch(/won't run/)
     const job = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run
     expect(job['runs-on']).toBe('self-hosted')
@@ -528,13 +469,7 @@ describe('schedule install --with github-actions', () => {
     'runs-on:\n      group: mine\n      labels: self-hosted',
   ])('keeps a runs-on labelled by hand on a re-run: %j', async (label) => {
     const { root, install } = await setup()
-    await install(
-      [
-        [/^Whose control repo is this\?$/, initial],
-        [/^Which runner\?$/, 'self-hosted'],
-      ],
-      true,
-    )
+    await install([[/^Which runner\?$/, 'self-hosted']], true)
     const file = join(root, WORKFLOW)
     await writeFile(file, (await readFile(file, 'utf8')).replace('runs-on: self-hosted', label))
     await install()
@@ -557,13 +492,7 @@ describe('schedule install --with github-actions', () => {
     'still hints at a label of its own for a plain %j',
     async (label) => {
       const { root, install } = await setup()
-      await install(
-        [
-          [/^Whose control repo is this\?$/, initial],
-          [/^Which runner\?$/, 'self-hosted'],
-        ],
-        true,
-      )
+      await install([[/^Which runner\?$/, 'self-hosted']], true)
       const file = join(root, WORKFLOW)
       await writeFile(file, (await readFile(file, 'utf8')).replace('runs-on: self-hosted', label))
       await install()
@@ -580,7 +509,7 @@ describe('schedule install --with github-actions', () => {
     const generated = await readFile(join(root, WORKFLOW), 'utf8')
     await writeFile(join(root, WORKFLOW), `${generated}# mine\n`)
     out = []
-    await installWorkflow(config, undefined, {
+    await installWorkflow(config, {
       run: async () => root,
       ask: scriptedAsk([]),
       env: { GH_TOKEN: 'ghp_secret' },
@@ -698,9 +627,9 @@ it('offers to set only the secrets it has values for, and never prints them', as
     ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'ASANA_TOKEN', 'SLACK_WEBHOOK'],
     { GH_TOKEN: 'ghp_secret', ASANA_TOKEN: 'asana_secret', SLACK_WEBHOOK: 'hook_secret' },
     ask,
-    async ([name], value) => {
+    async (name, value) => {
       if (name === 'SLACK_WEBHOOK') throw new Error('gh failed')
-      set.push([name ?? '', value])
+      set.push([name, value])
     },
   )
   expect(set).toEqual([['GH_TOKEN', 'ghp_secret']])

@@ -281,16 +281,8 @@ The generated workflow passes them only to awaywork's step, checks out
 without keeping a credential, and gives the job's `GITHUB_TOKEN` read
 access only: awaywork pushes with your `GH_TOKEN`. Still, anyone with
 write access to the repo can read them: a branch they push can
-carry a workflow that prints them. So the default is a control repo of
-your own. A [shared control repo](./scheduling.md#shared-control-repo)
-puts each person's credentials in an environment only the default branch
-can deploy to (install warns about an existing one any branch can),
-which makes protecting that branch the guard. Its
-fallback, suffixed repository secrets, has no branch limit, and neither
-do the shared repository and org secrets. The repo then holds
-teammates' subscription credentials, each set by its owner: awaywork
-neither stores nor proxies them, but keeping them together is the
-team's choice.
+carry a workflow that prints them. So keep the control repo your own,
+one per person on a team.
 
 ## Vendor terms
 

@@ -247,7 +247,7 @@ Options:
 Commands:
   install [options]  start `awaywork run` when a window opens; it starts no unit
                      after it closes
-  remove [options]   remove the scheduled job, and
+  remove             remove the scheduled job, and
                      .github/workflows/awaywork.yml in the current repo
   status             show the installed scheduled job
   help [command]     display help for command
@@ -264,8 +264,6 @@ Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
                       terminal, else launchd on macOS, else systemd if it runs,
                       else cron)
-  --as <person>       github-actions for one person of a shared control repo
-                      (experimental)
   -h, --help          display help for command
 ```
 
@@ -277,8 +275,7 @@ Usage: awaywork schedule remove [options]
 remove the scheduled job, and .github/workflows/awaywork.yml in the current repo
 
 Options:
-  --as <person>  remove only that person's workflow from the current repo
-  -h, --help     display help for command
+  -h, --help  display help for command
 ```
 
 ## awaywork schedule status

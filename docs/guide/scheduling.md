@@ -101,11 +101,11 @@ terminal, `schedule install` offers one after the job:
 
 Run it from a repo of your own instead (a private "awaywork" repo works
 well), on GitHub's runners or on a machine of yours. On a team, each
-person keeping their own control repo is the simple setup: it needs
-nothing beyond this section, and nobody's token sits in a repo a
+person keeps their own control repo, so nobody's token sits in a repo a
 teammate can write to. Teammates can point theirs at the same repos,
-since each run only sees its own token's `@me`. To share one repo
-instead, see [Shared control repo](#shared-control-repo).
+since each run only sees its own token's `@me`. A team base config
+those repos extend is an open issue,
+[#119](https://github.com/AndreaProvenzale/awaywork/issues/119).
 
 ```
 $ cd my-awaywork-repo
@@ -113,9 +113,6 @@ $ awaywork schedule install
 │
 ◇  Where should it run on a schedule?
 │  GitHub Actions, from the repo in this directory
-│
-◇  Whose control repo is this?
-│  just mine
 │
 ◇  Which runner?
 │  self-hosted
@@ -152,6 +149,11 @@ value is in your environment or `~/.config/awaywork/env`, with
 
 `doctor`, run inside the repo, checks that every secret the workflow
 names exists in the repo or its org, and fails naming the missing ones.
+A workflow that doesn't parse fails, since it won't run either. When gh
+can't list the repo's or the org's secrets (no access, no remote, not
+logged in), it warns why instead of guessing what's missing. The action
+fails before anything else when `GH_TOKEN` is empty, which is how a job
+whose secrets didn't reach it shows.
 
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
 access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
@@ -185,8 +187,8 @@ skills, one that matches is up to date; one that differs shows the diff
 and is replaced only if you say yes, so a hand edit never goes silently.
 Without a terminal nobody can say yes: it keeps the repo's copy, prints
 the diff and exits 1, so run it again in a terminal to replace it.
-The skills folder is replaced as a whole: a skill only the repo has, say a
-teammate's, goes with it. With no skills of your own, the repo's stay.
+The skills folder is replaced as a whole: a skill only the repo has, say
+one you added by hand, goes with it. With no skills of your own, the repo's stay.
 
 A workflow generated before the action existed runs its steps inline and
 misses those fixes; `doctor`, run inside the repo, warns until you
@@ -312,136 +314,3 @@ Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub
 recommends self-hosted runners only for private repos, since a fork's
 pull request could otherwise run code on your machine: keep the control
 repo private.
-
-## Shared control repo
-
-Experimental: tested against a fake GitHub only, never run live yet.
-
-One repo for a team, with a workflow and a GitHub Environment per
-person. Each person runs `awaywork schedule install` inside it, picks
-GitHub Actions, then *shared, with a workflow per person* at *Whose
-control repo is this?*, and gives their name, which defaults to their
-GitHub login. In a repo that already has your own `awaywork.yml`, that
-question isn't asked: pass `--as <name>` to move it to shared. Or, from
-a script:
-
-```sh
-awaywork schedule install --with github-actions --as alice
-```
-
-A person's workflow always runs on GitHub-hosted runners, so no Codex:
-`runs-on: self-hosted` matches any runner the repo can use, and your job
-could land on a teammate's machine, on their Codex login and state dir,
-with your tokens in its env.
-
-The name is lowercase letters, digits and `-`. Once the repo holds an
-`awaywork-<person>.yml` or a `.awaywork/<person>/config.yml`, install
-asks for your name right away; without a terminal it refuses without
-`--as` and suggests it with your GitHub login. It writes:
-
-| File | What |
-|---|---|
-| `.github/workflows/awaywork-alice.yml` | The same workflow, named `awaywork-alice`, with `concurrency: awaywork-alice` and `environment: { name: "alice", deployment: false }` |
-| `.awaywork/alice/config.yml` | A copy of the config in use; `setup` steps run in this folder |
-| `.awaywork/alice/skills/` | A copy of your [skills](./skills.md#where-skills-come-from), when you have any |
-
-First it reads the environment `alice`. One that exists is kept as it
-is, with a warning when any branch can deploy to it, or when its branch
-policies don't name the default branch, so the job can't use it: fix
-either in the repo's Settings > Environments. Otherwise install creates
-it and lets only the default branch deploy to it. `deployment: false`
-keeps the job out of the Deployments panel. The token still decides who
-"me" is: the config names no one, and each job spends its own person's
-subscription quota.
-
-### Secrets come in layers
-
-A job sees its environment's secrets, the repo's and the org secrets
-shared with the repo. For the same name, the lowest wins: environment
-over repository over organization.
-
-| Layer | Holds | Install |
-|---|---|---|
-| Organization | Company-wide values, like a notify webhook | never sets it |
-| Repository | What the team shares: the repos', MCP servers', `notify`'s and `after_unit`'s `secrets` | offers each, unless the repo or, in an org's repo, the org has it; when it can't list them, it says why and offers each |
-| Environment `alice` | Alice's own: `GH_TOKEN`, the providers' and the sources' `secrets` | offers each |
-
-Alice's own secrets are suffixed, `__` then the name upper-cased with
-`-` as `_`, and the workflow maps each back:
-
-```yaml
-GH_TOKEN: ${{ secrets.GH_TOKEN__ALICE }}
-```
-
-So a repo or org `GH_TOKEN`, say yours from when the repo was your solo
-control repo, never stands in for hers. A name in both groups counts as
-personal. To keep a shared value to yourself, set it under its own name
-in your environment: it wins. As for one repo per person, the values
-come from your env and are never printed.
-
-Once you have an environment, a fallback's suffixed repository secrets
-(below) still reach any branch and fill in for any your environment
-lacks: install warns about each and how to delete it.
-
-### Without an environment
-
-Creating an environment needs admin access to the repo, and GitHub's
-docs reserve environment secrets on private repos for paid plans. In a
-personal account's repo, a collaborator with write access can set
-repository secrets, so the fallback works for them; in an
-organization's repo GitHub's docs ask for admin access, so an admin may
-have to set them. When GitHub refuses (HTTP 403, 404 or 422), install
-says why and asks before falling back, defaulting to no: the workflow
-loses its `environment:` line, and the same suffixed names become
-repository secrets. Without a terminal it changes nothing and says to
-run it in one. The API's answer decides, never a guess at
-the plan. Any other error, like a network one, stops install, and so
-does a refusal once `awaywork-alice.yml` uses the environment: it is
-never downgraded.
-
-The fallback has no branch limit: any branch's workflow can read every
-teammate's token.
-
-### Risks
-
-- **Write access reads every secret.** Anyone who can push a branch can
-  push a workflow that prints the repo's secrets. Each environment's
-  default-branch limit is the guard, so protect the default branch:
-  required reviews, no direct pushes. The fallback has no such guard.
-- **The shared layers have no guard.** Repository and org secrets reach
-  any branch, so keep there only what the whole team may see.
-  Subscription tokens go in personal environments.
-- **The repo holds teammates' credentials.** Each person sets their own,
-  but keeping them together is the team's choice; one control repo per
-  person avoids it.
-
-### Sync, status and remove
-
-Running the same command again is the sync, as for one repo per person:
-`awaywork-alice.yml`, `.awaywork/alice/config.yml` and
-`.awaywork/alice/skills/` are each replaced only after a diff and a
-yes.
-
-`schedule status` lists every `.github/workflows/awaywork*.yml`.
-`schedule remove --as alice` deletes `awaywork-alice.yml` only: the
-environment and its secrets stay until
-`gh api -X DELETE repos/{owner}/{repo}/environments/alice`, and a
-fallback's suffixed repository secrets, readable from any branch, until
-`gh secret delete` for each, which it lists.
-
-The action fails before anything else when `GH_TOKEN` is empty, which is
-how a job whose secrets didn't reach it shows.
-
-### Checking with doctor
-
-`awaywork doctor`, run inside the repo, reads each
-`awaywork*.yml`: its `environment` and every `secrets.X` its job's and
-steps' `env:` name. Each must exist in that environment, the repo or the org: one
-line per workflow says how many were found, or fails naming the missing
-ones and where they go. With an environment, a name with the person's
-suffix goes there and the rest to the repo; without one, all go to the
-repo. Once the person has an environment, it warns about their suffixed
-secrets still at repo level, as install does. A workflow that doesn't
-parse fails, since it won't run either. When gh can't list the repo's or
-the org's secrets (no access, no remote, not logged in), it warns why
-instead of guessing what's missing.
