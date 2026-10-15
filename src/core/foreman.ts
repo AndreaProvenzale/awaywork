@@ -46,7 +46,11 @@ export interface PlannedUnit {
   quotaUnmet?: string
   /** The rule's unit whose chain this step is part of, by id: it works in that unit's clone. */
   chain?: string
+  /** The chain's slice this step is in, counted from 0; unset in the first. */
+  slice?: number
   loop?: LoopRound
+  /** On a chain's first step: the slice a cap left out, and the cap. */
+  capped?: string
 }
 
 export interface LoopRound {
@@ -148,22 +152,32 @@ export function planRun(input: {
       skip(committing === rule ? refused : `${refused}, and ${committing.skill} commits`)
       continue
     }
-    const cap = [
-      { name: 'limits.units', max: config.limits.units, count: counted },
-      {
-        name: 'limits.units_per_repo',
-        max: config.limits.units_per_repo,
-        count: perRepo[repo] ?? 0,
-      },
-      { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
-    ].find((c) => c.max !== undefined && c.count >= c.max)
-    if (cap) {
-      skip(`over the cap: ${cap.name} is ${cap.max}`)
+    const unstackable = stackRefusal(rule, reports)
+    if (unstackable) {
+      skip(unstackable)
+      continue
+    }
+    const overCap = () => {
+      const cap = [
+        { name: 'limits.units', max: config.limits.units, count: counted },
+        {
+          name: 'limits.units_per_repo',
+          max: config.limits.units_per_repo,
+          count: perRepo[repo] ?? 0,
+        },
+        { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
+      ].find((c) => c.max !== undefined && c.count >= c.max)
+      return cap && `over the cap: ${cap.name} is ${cap.max}`
+    }
+    const capped = overCap()
+    if (capped) {
+      skip(capped)
       continue
     }
 
     const id = slug(items[0]?.key ?? '')
     const at = { base, foreign, untrusted: pr ? !pr.trusted : false, fork, branch }
+    let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
       const step = written === rule ? rule : inherit(rule, written)
       const skill = resolveSkill(step.skill, input.skills)
@@ -200,25 +214,38 @@ export function planRun(input: {
         passed,
         ...(unmet && { quotaUnmet: unmet }),
         ...(written !== rule && { chain: id }),
+        ...(slice > 0 && { slice }),
         ...(loop && { loop }),
       })
       return provider
     }
-    // A chain publishes once, so it counts once, when its first step routes.
-    if (add(rule, id)) {
+    // A slice publishes once, so it counts once, when its first step routes.
+    const count = (routed: string | undefined) => {
+      if (!routed) return
       counted++
       perRepo[repo] = (perRepo[repo] ?? 0) + 1
       perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     }
+    count(add(rule, id))
     for (const [j, entry] of (rule.then ?? []).entries()) {
+      if (entry.stack) {
+        const left = overCap()
+        if (left) {
+          const head = units.find((u) => u.unit.id === id) as PlannedUnit
+          head.capped = `stack ${isLoop(entry) ? 'loop' : entry.skill}: ${left}`
+          break
+        }
+        slice++
+      }
       if (!isLoop(entry)) {
-        add(entry, `${id}-${slug(entry.skill)}`)
+        const routed = add(entry, `${id}-${slug(entry.skill)}`)
+        if (entry.stack) count(routed)
         continue
       }
       const skills = entry.loop.map((s) => s.skill)
       for (let round = 1; round <= entry.max; round++)
-        for (const [s, step] of entry.loop.entries())
-          add(step, `${id}-${slug(step.skill)}-${round}`, {
+        for (const [s, step] of entry.loop.entries()) {
+          const routed = add(step, `${id}-${slug(step.skill)}-${round}`, {
             at: j,
             round,
             step: s,
@@ -226,6 +253,8 @@ export function planRun(input: {
             until: entry.until,
             max: entry.max,
           })
+          if (entry.stack && round === 1 && s === 0) count(routed)
+        }
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
@@ -260,6 +289,19 @@ function inherit(rule: Rule, step: ThenStep): Step {
     skills: step.skills ?? rule.skills,
     mcp: step.mcp ?? rule.mcp,
     instructions: step.instructions ?? rule.instructions,
+  }
+}
+
+/** Why a `stack` can't start a slice: its first step reports, or every step before it does. */
+function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string | undefined {
+  const steps: ThenStep[] = [rule]
+  for (const entry of rule.then ?? []) {
+    const first = stepsOf(entry)[0] as ThenStep
+    if (entry.stack && reports(first))
+      return `stack on ${first.skill}: it reports, so its draft PR would have nothing in it`
+    if (entry.stack && steps.every(reports))
+      return `stack on ${first.skill}: every step before it reports, so there is nothing to stack on`
+    steps.push(...stepsOf(entry))
   }
 }
 
@@ -314,12 +356,25 @@ function describeValue(value: unknown): string {
   return Array.isArray(value) ? value.join('|') || 'empty' : String(value)
 }
 
-/** E.g. `implement → loop(review ⇄ fix) → docs`. */
+/** E.g. `implement → loop(review ⇄ fix) → stack docs`. */
 export function describeChain(chain: PlannedUnit[]): string {
   return chain
     .filter((p) => !p.loop || (p.loop.round === 1 && p.loop.step === 0))
-    .map((p) => (p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill))
+    .map((p, i, listed) => {
+      const step = p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill
+      return i > 0 && p.slice !== listed[i - 1]?.slice ? `stack ${step}` : step
+    })
     .join(' → ')
+}
+
+/** A chain's steps, or their results, grouped by slice in order. */
+export function bySlice<T>(steps: T[], sliceOf: (step: T) => number | undefined): T[][] {
+  const slices: T[][] = []
+  for (const step of steps) {
+    const at = sliceOf(step) ?? 0
+    slices[at] = [...(slices[at] ?? []), step]
+  }
+  return slices.filter(Boolean)
 }
 
 export function slug(key: string): string {

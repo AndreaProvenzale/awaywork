@@ -60,14 +60,18 @@ interface WorkspaceInput {
   reuse?: boolean
   /** The rule's steps, e.g. `implement → loop(review ⇄ address-review)`, when it has more than one. */
   chain?: string
+  /** The step's slice, from 1, when the chain has more than one. */
+  slice?: { n: number; of: number }
   loop?: LoopRound
   /** A replay: the clone starts at `commit` and its context is copied from a past run's `context/`, with no source asked. */
   replay?: { commit: string; context: string }
 }
 
-interface Previous {
+export interface Previous {
   skill: string
   out: string
+  /** The slice before's draft PR, for a stacked slice's first step: its URL and the body as published. */
+  published?: { url: string; body: string }
 }
 
 /**
@@ -125,6 +129,8 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   const previous = join(work, 'context', 'previous')
   if (!w.replay) await rm(previous, { recursive: true, force: true })
   if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
+  if (w.previous?.published && !w.replay)
+    await cp(w.previous.published.body, join(previous, outputFile.draft_pr))
 
   const read = (path: string) => readFile(resolve(w.configDir, path), 'utf8')
   const repo: Partial<Config['repos'][string]> = w.config.repos[unit.repo] ?? {}
@@ -349,9 +355,14 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
   return [
     `## Your unit`,
     `Unit \`${unit.id}\`, skill \`${unit.skill}\`. You are on the new branch \`${unit.branch}\`, cut from ${base}.`,
-    ...(w.chain
+    ...(w.chain && !w.slice
       ? [
           `This unit is a step of a chain (${w.chain}) whose steps all work in this clone; the branch may already hold this run's commits. Awaywork publishes it once, when the chain ends.`,
+        ]
+      : []),
+    ...(w.chain && w.slice
+      ? [
+          `This unit is a step of a chain (${w.chain}) whose steps all work in this clone. Each slice, from the first step or a \`stack\` one on, publishes once when it ends, as a draft PR stacked on the slice before; this step is in slice ${w.slice.n} of ${w.slice.of}, and the branch may already hold its commits.`,
         ]
       : []),
     ...(w.loop ? [loopSection(w.loop)] : []),
@@ -381,12 +392,14 @@ function loopSection(loop: LoopRound): string {
   return `It is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}.`
 }
 
-function followUp({ skill, out }: Previous): string {
+function followUp({ skill, out, published }: Previous): string {
   const check = existsSync(join(out, 'check.log'))
     ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''
-  const body = existsSync(join(out, outputFile.draft_pr))
-    ? `, what the chain did so far in \`${outputFile.draft_pr}\``
-    : ''
+  const body = published
+    ? `, the body of the slice before's draft PR ${published.url} as published in \`${outputFile.draft_pr}\``
+    : existsSync(join(out, outputFile.draft_pr))
+      ? `, what the chain did so far in \`${outputFile.draft_pr}\``
+      : ''
   return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${body}, and its commits in \`diff.patch\`${check}.`
 }

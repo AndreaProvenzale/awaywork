@@ -8,7 +8,7 @@ import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
 export type Outcome =
-  | { kind: 'pr'; url: string; commits: number }
+  | { kind: 'pr'; url: string; commits: number; head: string }
   | { kind: 'report'; text: string }
   | { kind: 'pushed'; branch: string; commits: number; text: string; head: string }
   | { kind: 'none'; reason: string; unpublished?: true }
@@ -23,7 +23,8 @@ const git = async (dir: string, ...args: string[]) =>
  * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
- * config, attributes, hooks and refs, which the model can write, neither run nor count here.
+ * config, attributes, hooks and refs, which the model can write, neither run nor count here;
+ * a draft PR's commits as pushed are fetched back into it, with no hook or fsmonitor.
  */
 export async function publish(
   unit: Unit,
@@ -43,7 +44,11 @@ export async function publish(
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
     await git(repo, 'fetch', '-q', '--no-tags', dir, 'HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text)
+    const outcome = await deliver(unit, repo, forge, runId, start, file, text)
+    // The clone gets the commits as pushed, so a chain's next slice is cut from them.
+    if (outcome.kind === 'pr')
+      await git(dir, '-c', 'core.fsmonitor=false', 'fetch', '-q', '--no-tags', repo, outcome.head)
+    return outcome
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
@@ -122,7 +127,7 @@ async function deliver(
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId, unit.items)
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
-  return { kind: 'pr', url, commits: commits.length }
+  return { kind: 'pr', url, commits: commits.length, head }
 }
 
 /** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */

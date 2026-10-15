@@ -205,7 +205,10 @@ export interface Step {
 
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
 export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
-  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>> & {
+    /** Starts a new slice: a new branch cut from the slice before, and a draft PR stacked on its PR. */
+    stack?: boolean
+  }
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
@@ -226,6 +229,8 @@ export interface Loop {
   loop: ThenStep[]
   until: Condition
   max: number
+  /** Starts a new slice at the loop's first round. */
+  stack?: boolean
 }
 
 export interface Rule extends Step {
@@ -236,7 +241,7 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
-  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once at the end. */
+  /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
@@ -263,7 +268,7 @@ export interface Unit {
   network: boolean
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
-  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again. */
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
   stackedOn?: string
   branch: string
   rule: Step

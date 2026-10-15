@@ -28,7 +28,7 @@ describe('unitStats', () => {
       result({
         baseline: base(0.1),
         quota: quota(0.16),
-        outcome: { kind: 'pr', url: 'u', commits: 1 },
+        outcome: { kind: 'pr', url: 'u', commits: 1, head: 'h' },
       }),
       result({ status: 'stopped: quota' }),
       result({ status: 'skipped' }),

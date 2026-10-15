@@ -740,13 +740,13 @@
             "additionalProperties": false
           },
           "units": {
-            "description": "At most this many units per run from this rule; a chain counts once",
+            "description": "At most this many units per run from this rule; each of a chain's slices counts once",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "then": {
-            "description": "Steps run in turn after this rule's unit, in its clone; the chain publishes once at the end; a {loop} repeats its steps",
+            "description": "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
             "anyOf": [
               {
                 "anyOf": [
@@ -914,6 +914,10 @@
                           }
                         },
                         "additionalProperties": false
+                      },
+                      "stack": {
+                        "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -922,7 +926,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
               },
               {
                 "type": "object",
@@ -1096,6 +1100,10 @@
                                   }
                                 },
                                 "additionalProperties": false
+                              },
+                              "stack": {
+                                "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                "type": "boolean"
                               }
                             },
                             "required": [
@@ -1104,7 +1112,7 @@
                             "additionalProperties": false
                           }
                         ],
-                        "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                        "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
                       },
                       {
                         "minItems": 1,
@@ -1275,6 +1283,10 @@
                                     }
                                   },
                                   "additionalProperties": false
+                                },
+                                "stack": {
+                                  "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                  "type": "boolean"
                                 }
                               },
                               "required": [
@@ -1283,7 +1295,7 @@
                               "additionalProperties": false
                             }
                           ],
-                          "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                          "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
                         }
                       }
                     ]
@@ -1352,6 +1364,10 @@
                     "minimum": 1,
                     "maximum": 5,
                     "description": "At most this many rounds, up to 5"
+                  },
+                  "stack": {
+                    "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -1533,6 +1549,10 @@
                                 }
                               },
                               "additionalProperties": false
+                            },
+                            "stack": {
+                              "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -1541,7 +1561,7 @@
                           "additionalProperties": false
                         }
                       ],
-                      "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                      "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
                     },
                     {
                       "type": "object",
@@ -1715,6 +1735,10 @@
                                         }
                                       },
                                       "additionalProperties": false
+                                    },
+                                    "stack": {
+                                      "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                      "type": "boolean"
                                     }
                                   },
                                   "required": [
@@ -1723,7 +1747,7 @@
                                   "additionalProperties": false
                                 }
                               ],
-                              "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                              "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
                             },
                             {
                               "minItems": 1,
@@ -1894,6 +1918,10 @@
                                           }
                                         },
                                         "additionalProperties": false
+                                      },
+                                      "stack": {
+                                        "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                        "type": "boolean"
                                       }
                                     },
                                     "required": [
@@ -1902,7 +1930,7 @@
                                     "additionalProperties": false
                                   }
                                 ],
-                                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
+                                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
                               }
                             }
                           ]
@@ -1971,6 +1999,10 @@
                           "minimum": 1,
                           "maximum": 5,
                           "description": "At most this many rounds, up to 5"
+                        },
+                        "stack": {
+                          "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                          "type": "boolean"
                         }
                       },
                       "required": [

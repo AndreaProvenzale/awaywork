@@ -128,7 +128,12 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     [
       'acme-api-1',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
+      {
+        kind: 'pr',
+        url: 'https://example.com/acme/api/pull/away/acme-api-1',
+        commits: 1,
+        head: expect.any(String),
+      },
     ],
     ['acme-api-3', 'skipped', tried],
     ['acme-api-2', 'done', { kind: 'report', text: 'Approve.' }],
@@ -347,7 +352,12 @@ it('stops a unit still running at the window end and publishes what it left', as
     expect(report.results.map((u) => [u.status, u.outcome ?? u.reason])).toEqual([
       [
         'stopped: window ended',
-        { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
+        {
+          kind: 'pr',
+          url: 'https://example.com/acme/api/pull/away/acme-api-1',
+          commits: 1,
+          head: expect.any(String),
+        },
       ],
       ['skipped', 'the window ended'],
     ])
@@ -436,7 +446,12 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     [
       'acme-api-5',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-5', commits: 1 },
+      {
+        kind: 'pr',
+        url: 'https://example.com/acme/api/pull/away/acme-api-5',
+        commits: 1,
+        head: expect.any(String),
+      },
     ],
     ['acme-api-5-review', 'done', 'a report'],
     ['acme-api-6', 'done', { kind: 'none', reason: 'no commits' }],
@@ -766,6 +781,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     kind: 'pr',
     url: 'https://example.com/acme/api/pull/away/acme-api-3',
     commits: 1,
+    head: expect.any(String),
   })
   expect(opened.map((pr) => [pr.head, pr.base])).toEqual([
     ['away/acme-api-1', ''],
