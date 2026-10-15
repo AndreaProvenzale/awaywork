@@ -39,10 +39,20 @@ jobs:
           git config --global user.email "$user@users.noreply.github.com"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      - run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
+      - id: run
+        run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       - name: Morning report
         if: always()
         run: awaywork report >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload the run
+        if: always() && steps.run.outputs.run-id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.workflow }}-${{ steps.run.outputs.run-id }}
+          path: |
+            ${{ steps.run.outputs.run-dir }}/report.md
+            ${{ steps.run.outputs.run-dir }}/units.json
+          if-no-files-found: ignore

@@ -294,6 +294,22 @@ it("touches a self-hosted machine's disk, global installs and git config not at 
   })
 })
 
+it("uploads only this run's report and units as an artifact named after the workflow", async () => {
+  const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
+  const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
+  expect(step('Run').id).toBe('run')
+  expect(step('Upload the run')).toEqual({
+    name: 'Upload the run',
+    if: "always() && steps.run.outputs.run-id != ''",
+    uses: 'actions/upload-artifact@v4',
+    with: {
+      name: '${{ github.workflow }}-${{ steps.run.outputs.run-id }}',
+      path: '${{ steps.run.outputs.run-dir }}/report.md\n${{ steps.run.outputs.run-dir }}/units.json\n',
+      'if-no-files-found': 'ignore',
+    },
+  })
+})
+
 it("runs command sources' setup in the config's folder before awaywork", () => {
   const text = workflow({
     starts: [{ hour: 1, minute: 30 }],

@@ -25,6 +25,8 @@ export const packageVersion: string = JSON.parse(
 
 export const stateDir = join(homedir(), '.local', 'state', 'awaywork')
 export const runsDir = join(stateDir, 'runs')
+/** Runs downloaded from a control repo's artifacts, as `<owner>/<repo>/<run id>`. */
+export const remoteDir = join(stateDir, 'remote')
 export const attemptsPath = join(stateDir, 'attempts.json')
 export const skipsPath = join(stateDir, 'skips.json')
 

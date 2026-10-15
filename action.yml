@@ -63,6 +63,7 @@ runs:
           echo "GIT_COMMITTER_EMAIL=$user@users.noreply.github.com"
         } >> "$GITHUB_ENV"
     - name: Run
+      id: run
       shell: bash
       run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
       env:
@@ -73,3 +74,13 @@ runs:
       run: awaywork report >> "$GITHUB_STEP_SUMMARY" || true
       env:
         AWAYWORK_CONFIG: ${{ inputs.config }}
+    # `awaywork report` in the control repo reads runs from these; only this run's files, never the whole runs dir.
+    - name: Upload the run
+      if: always() && steps.run.outputs.run-id != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.workflow }}-${{ steps.run.outputs.run-id }}
+        path: |
+          ${{ steps.run.outputs.run-dir }}/report.md
+          ${{ steps.run.outputs.run-dir }}/units.json
+        if-no-files-found: ignore
