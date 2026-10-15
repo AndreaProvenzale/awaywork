@@ -332,7 +332,7 @@ the repo's PR template, its recent commit style and your instructions
 
 ```yaml
 where:
-  type: pr                          # equals
+  type: pr                          # equals, in any case
   checks: [failing, pending]        # any of
   review_requested: { not: true }   # not
   unresolved_threads: { gte: 2 }    # on a number field: gt, gte, lt, lte; combine for a range
@@ -345,6 +345,9 @@ where:
     - { label: urgent }
     - { checks: failing }
 ```
+
+Strings compare ignoring case, like `matches`, so `section: In progress`
+catches a section called `In Progress`. Numbers and booleans compare exactly.
 
 `title` and `description` are keys on every source. An invalid regex is a
 config error, and `plan` names the match an item failed; for `any`, it names

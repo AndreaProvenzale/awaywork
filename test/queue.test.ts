@@ -1,9 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { closestRule, failedIn, matches, rank, ruleMatches } from '../src/core/queue.js'
+import {
+  closestRule,
+  defaultRules,
+  failedIn,
+  matches,
+  rank,
+  ruleMatches,
+} from '../src/core/queue.js'
 import type { Order, Rule } from '../src/core/types.js'
 
-import { asanaTask, githubPr } from './fakes/items.js'
+import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const rule = (where: Rule['where'], source?: string): Rule => ({
   skill: 'fix',
@@ -24,6 +31,11 @@ describe('where', () => {
   it.each([
     ['a scalar equals', { checks: 'failing' }, true],
     ['a scalar mismatch', { checks: 'passing' }, false],
+    ['a string equals in any case', { checks: 'Failing' }, true],
+    ['a list is any of, in any case', { checks: ['PENDING', 'FAILING'] }, true],
+    ['not ignores case', { checks: { not: 'FAILING' } }, false],
+    ['a list field contains a string in any case', { label: 'AwayWork' }, true],
+    ['a number does not equal its string', { unresolved_threads: '3' }, false],
     ['a list is any of', { checks: ['pending', 'failing'] }, true],
     ['not negates a scalar', { unresolved_threads: { not: 0 } }, true],
     ['not negates a list', { checks: { not: ['failing', 'pending'] } }, false],
@@ -109,6 +121,14 @@ describe('rank', () => {
       ['T-2', 1],
     ])
     expect(unmatched.map((i) => i.key)).toEqual(['acme/api#1'])
+  })
+})
+
+describe('defaultRules', () => {
+  it('catch a state whose case differs from the guessed name', () => {
+    const queue = defaultRules(['linear'])
+    const task = fakeItem({ source: 'linear', fields: { state: 'In progress' } })
+    expect(queue.find((r) => matches(r, task))?.skill).toBe('implement')
   })
 })
 
