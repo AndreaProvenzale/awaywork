@@ -331,6 +331,13 @@ describe('config', () => {
     ).toEqual([
       "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
     ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: implement, then: { skill: review, when: { headroom: 50%, nope: 1 } } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
+    ])
   })
 
   it('takes a command in until, and when on then and loop steps but not on a rule', () => {
@@ -352,11 +359,11 @@ describe('config', () => {
       until: { verdict: 'approve', command: 'pnpm test' },
     })
     expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
-      [
-        'queue[0].when: Unrecognized key: "verdict"',
-        'queue[0].when: expected runs_until_reset or headroom',
-      ],
+      ['queue[0].when: Unrecognized key: "verdict"'],
     )
+    expect(problems(`${minimal}queue: [{ skill: implement, when: {} }]`)).toEqual([
+      'queue[0].when: expected runs_until_reset or headroom',
+    ])
     expect(
       problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
     ).toEqual(['queue[0].then.when: expected verdict, command or changed'])

@@ -841,7 +841,8 @@ notify:
     set -e
     [ "$AWAYWORK_EVENT" = unit ] && [ -n "$AWAYWORK_PR_URL" ] || exit 0
     # every step of the PR fires; once one got through, it's no longer a draft
-    [ "$(gh pr view "$AWAYWORK_PR_URL" --json isDraft -q .isDraft)" = true ] || exit 0
+    draft=$(gh pr view "$AWAYWORK_PR_URL" --json isDraft -q .isDraft)
+    [ "$draft" = true ] || exit 0
     gh pr edit "$AWAYWORK_PR_URL" --add-label awaywork --add-reviewer octocat
     gh pr ready "$AWAYWORK_PR_URL"
 ```

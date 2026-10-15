@@ -229,7 +229,7 @@ const when = z
     {
       error: (issue) =>
         issue.code === 'unrecognized_keys' && issue.keys.some((key) => key in quotaKeys)
-          ? `${issue.keys.join(', ')}: a quota check goes on the rule's when, which gates the whole chain`
+          ? `${issue.keys.filter((key) => key in quotaKeys).join(', ')}: a quota check goes on the rule's when, which gates the whole chain`
           : undefined,
     },
   )
@@ -237,9 +237,10 @@ const when = z
     message: 'expected verdict, command or changed',
     when: (payload) => payload.issues.length === 0,
   })
-const ruleWhen = z
-  .strictObject(quotaKeys)
-  .refine((c) => Object.keys(c).length > 0, 'expected runs_until_reset or headroom')
+const ruleWhen = z.strictObject(quotaKeys).refine((c) => Object.keys(c).length > 0, {
+  message: 'expected runs_until_reset or headroom',
+  when: (payload) => payload.issues.length === 0,
+})
 const stepObject = z.strictObject({
   skill,
   ...stepSettings,
