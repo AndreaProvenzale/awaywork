@@ -14,7 +14,7 @@ same folder works for Claude Code and Codex.
 |---|---|---|
 | `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./configuration.md#loops) | draft PR |
 | `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps | draft PR |
-| `review` | A PR awaiting your review, or this run's own after a `then`; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
+| `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
@@ -118,8 +118,8 @@ standard instead, e.g. a rule's instruction file saying "review against
 awaywork replay 20261006-020000 acme-api-1
 ```
 
-Replay rebuilds a unit of a past run: a clone at the commit the unit started
-from and its saved context. The unit is as recorded in that run: its skills
+Replay rebuilds the first step of a unit of a past run: a clone at the
+commit the unit started from and its saved context. The unit is as recorded in that run: its skills
 and its rule's `model`, `with` and `instructions` list, so editing those in
 the config changes nothing. What is read fresh is the files: each
 `SKILL.md`, every instruction file, and the repo's and provider's config.
@@ -128,11 +128,10 @@ ceilings, and never pushes or opens a PR. The clone stays on the unit's local
 branch under `replays/` in the run's state directory, with the worker's
 `out/` next to it. The saved context is the post-run copy, so files the
 worker edited under `context/` are replayed as edited. Setup gets none of the
-repo's `secrets`, and MCP servers are not started. Only a unit's first run
-replays: a [loop](./configuration.md#loops) round after the first reuses the
-first round's clone and records no `replay.json`, so does a unit that never
-started or one from a run before replay existed. A loop's first round
-replays without the prompt's loop section.
+repo's `secrets`, and MCP servers are not started. Only a unit's first step
+replays: a later [`then`](./configuration.md#then) step starts from commits
+that only ever existed in the chain's clone, and records no `replay.json`.
+Nor does a unit that never started, or one from a run before replay existed.
 
 ## Write your own
 
@@ -166,8 +165,10 @@ queue:
     where: { type: pr, mine: true, checks: failing, label: flaky }
 ```
 
-- `metadata.deliver` sets the default delivery: `draft_pr` or `report`.
-  `push` is only a rule's to set.
+- `metadata.deliver: report` makes the skill report instead of commit;
+  without it, it commits. Where its commits go is the rule's
+  [`deliver`](./configuration.md#then): a draft PR, or a `push` only a
+  rule can opt in to.
 - `with: { key: value }` on a rule or step lists those values in a
   Parameters section of the prompt, after the skill; a multi-line value
   comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or

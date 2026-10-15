@@ -196,11 +196,10 @@ danger-full-access`, which it needs to commit. What that reaches is in
   awaywork reads the PR again and refuses when it isn't yours, is
   closed or merged, or has auto-merge on, and when its branch is on a
   fork, is the default branch, is protected, or is also the branch of
-  someone else's open PR in the repo. It is refused on someone else's PR, on an item without
-  a PR of yours, and on any branch awaywork opened in that run. The commits land unreviewed on a
+  someone else's open PR in the repo. It is refused on someone else's PR and on an item without
+  a PR of yours. The commits land unreviewed on a
   branch your CI and teammates run, so opt in only where that's fine.
-  A `then` step on that branch in the same run runs `setup` without the
-  repo's `secrets`. Experimental: only run in tests so far, see
+  Experimental: only run in tests so far, see
   [Configuration](./configuration.md#push).
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
   not to force: the remote takes the new head only while the branch is
@@ -212,9 +211,9 @@ danger-full-access`, which it needs to commit. What that reaches is in
   the branch no longer holds the commit the clone started from: the
   harness forbids both, and either would carry commits that aren't the
   unit's.
-- Only a **draft** PR, into the default branch, your own PR's branch in
-  the repo (an awaywork PR a rule naming `ours` took up again included),
-  or a draft PR awaywork opened earlier in the same run. Never into
+- Only a **draft** PR, into the default branch or your own PR's branch
+  in the repo (an awaywork PR a rule naming `ours` took up again
+  included), one per unit, however many steps its chain has. Never into
   someone else's PR or a PR from a fork: only a report delivers there.
   A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
   It never merges, approves, requests reviewers or comments.
@@ -223,20 +222,21 @@ danger-full-access`, which it needs to commit. What that reaches is in
   Linking edits neither PR, but GitHub then merges a stack bottom-up:
   merging a PR merges the ones below it too, and GitHub rebases the
   ones above after a merge.
-- Only when the agent wrote a PR body, or its report for `push`. A run
-  killed before that publishes nothing.
+- Only when the agent wrote a PR body, `pr.md`, for a draft PR or a
+  push alike, and only once the unit's chain ended. A run killed before
+  that publishes nothing.
 - Publishing fetches the clone's HEAD into a repo awaywork creates
   for it, where it adds the trailer, diffs and pushes. The unit's
   commits are those after the commit the clone held before setup and
-  the agent ran. The clone's config, attributes, hooks and refs, which
+  the first agent ran. The clone's config, attributes, hooks and refs, which
   the agent can write, neither steer where a push goes, nor pick which
   commits get the trailer, nor run anything: after `setup`, each agent
   run and each check, awaywork puts back the config the clone had
   when it was cloned, and refuses a `.git` that borrows a repo or
   objects from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
-  appends the items' link lines and a stacked PR's "merge that first"
-  line to the body. It refuses if either is a symlink, and reads or
+  appends the chain's notes, the items' link lines and a stacked PR's
+  "merge that first" line to the body. It refuses if either is a symlink, and reads or
   writes only regular files. The
   symlink check runs just before, so a worker process that outlived the
   watchdog could still swap a path in between.

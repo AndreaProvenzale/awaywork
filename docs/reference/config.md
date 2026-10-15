@@ -236,12 +236,12 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
+| `deliver` | "draft_pr" \| "report" \| "push" |  | Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
-| `units` | integer |  | At most this many units per run from this rule, its then steps included |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit in the same run, each on what the one before delivered; a {loop} repeats its steps |
+| `units` | integer |  | At most this many units per run from this rule; a chain counts once |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; the chain publishes once at the end; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 | `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
@@ -303,14 +303,12 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
-| `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
-| `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet }; default the provider's |
-| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
-| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
-| `instructions` | string \| string[] |  | Instruction files added for this rule |
+| `provider` | string \| string[] |  | Providers for this step, in order; default the rule's, [] the providers order |
+| `model` | map |  | Model per provider for this step; default the rule's |
+| `skills` | string[] |  | Extra skills available to the worker; default the rule's, [] none |
+| `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none |
+| `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "report" \| "push" |  | Output: a draft PR, the morning report, or commits pushed onto your own PR's branch; default the skill's |
-| `branch` | string |  | Branch name template for this rule |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |
 
 ## `queue[].then.when`
@@ -319,7 +317,7 @@ Run this step only when every key holds; otherwise skip it.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `verdict` | string \| string[] \| object |  | The step before's verdict; a list means any of, {not} negates |
+| `verdict` | string \| string[] \| object |  | The latest verdict in the chain; a list means any of, {not} negates |
 | `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
 | `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
 | `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
@@ -335,11 +333,11 @@ Matches every verdict but these.
 
 ## `queue[].then` (loop)
 
-Steps repeated until a condition holds; the loop publishes once at the end, a draft PR or a push.
+Steps repeated until a condition holds.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the clone of the unit before |
+| `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the chain's clone |
 | `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
 | `max` (required) | integer |  | At most this many rounds, up to 5 |
 

@@ -37,9 +37,9 @@ Commands:
   report [options] [id]  print a run's morning report; the latest by default
   stats [options]        what each rule, skill and provider cost and delivered
                          across all runs
-  replay <run> <unit>    re-run a past run's unit on its base commit and saved
-                         context with today's skills and instructions; nothing
-                         is pushed
+  replay <run> <unit>    re-run a past run's unit, its first step, on its base
+                         commit and saved context with today's skills and
+                         instructions; nothing is pushed
   schedule               run awaywork when its windows open, on this machine or
                          in GitHub Actions
   doctor [options]       validate the config and check binaries, credentials,
@@ -227,8 +227,8 @@ Options:
 ```text
 Usage: awaywork replay [options] <run> <unit>
 
-re-run a past run's unit on its base commit and saved context with today's
-skills and instructions; nothing is pushed
+re-run a past run's unit, its first step, on its base commit and saved context
+with today's skills and instructions; nothing is pushed
 
 Options:
   -h, --help  display help for command

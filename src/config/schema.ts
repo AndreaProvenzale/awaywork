@@ -292,7 +292,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['draft_pr', 'report', 'push'])
       .optional()
       .describe(
-        "How the chain publishes: one draft PR (default), its commits pushed onto your own PR's branch, or a report, with no step committing; a chain without commits reports",
+        "Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
