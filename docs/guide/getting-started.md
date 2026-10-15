@@ -127,8 +127,8 @@ awaywork report --list         # recent runs, to pick an id for report <id>
 ```
 
 `--unit` takes the unit id from `plan` or an item key such as
-`acme/api#1`, in any case. A step of a rule's `then` runs with the units
-it follows.
+`acme/api#1`, in any case. A step of a rule's `then` runs its whole
+chain, from the first step.
 
 The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the
 plan, the worker's log, its context files and the report. The id is the

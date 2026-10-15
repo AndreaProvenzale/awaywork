@@ -105,13 +105,14 @@ three times, and `runs_until_reset` counts window openings.
 
 A readable quota decides how much work fits, not how much you can review
 in a morning. `limits.units` caps the units planned per run,
-`limits.units_per_repo` those in any one repo, and a rule's `units` those
-from that rule. None is set by default. Units past a cap are skipped in
-queue order, with the cap named in `awaywork plan` and the report. A
-rule's [`then`](#then) chain is one unit, counted once. Only units whose
-first step is routed to a provider count, and caps apply to each
-`awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker
-after that many minutes, whichever provider runs it.
+`limits.units_per_repo` those in any one repo, and a rule's `units`
+those from that rule. None is set by default. Units past a cap are
+skipped in queue order, with the cap named in `awaywork plan` and the
+report. A rule's [`then`](#then) chain is one unit, counted once. Only
+units whose first step is routed to a provider count, and caps apply to
+each `awaywork run`, like `fallback.units`, which every step draws on.
+`limits.unit_minutes` stops any worker after that many minutes,
+whichever provider runs it.
 
 Budgets are shares of each provider's quota windows; see
 [How it works](./how-it-works.md#budget) for how they combine. Start low:
@@ -272,13 +273,13 @@ than writing them to your home directory, which the agent shares.
 :::
 
 `verify` runs in the clone once the chain ends, outside the model,
-before it is published; set it on a repo or a rule (the rule wins).
-Use it for lint, format or the repo's tests. A failure doesn't stop the
-publish: the PR body or the push's summary gets the tail of its output. It runs once per commit, with none of the secrets,
-and not on a PR by an untrusted author or with `network: false`, where
-it is reported as not run. An empty `verify: ""` on a rule turns the
-repo's off. A `report` delivery has nothing to publish and
-skips it.
+before it is published; set it on a repo or a rule (the rule wins). Use
+it for lint, format or the repo's tests. A failure doesn't stop the
+publish: the PR body or the push's summary gets the tail of its output.
+It runs once per commit, with none of the secrets, and not on a PR by an
+untrusted author or with `network: false`, where it is reported as not
+run. An empty `verify: ""` on a rule turns the repo's off. A `report`
+delivery has nothing to publish and skips it.
 
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config

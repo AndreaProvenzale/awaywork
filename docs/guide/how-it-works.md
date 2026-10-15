@@ -94,9 +94,10 @@ line in its body.
   same skill on it is skipped as **unchanged since run `<id>`**, so a
   review or a unit that gave up isn't redone every run. A unit's chain
   counts as one attempt, finished when every step that ran was done and
-  its one publish left nothing behind; commits left unpushed retry. "Changed" is the item's
-  `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`,
-  and a unit picked with `run --unit` isn't skipped.
+  its one publish left nothing behind; commits left unpushed retry.
+  "Changed" is the item's `updated` time; attempts live in
+  `~/.local/state/awaywork/attempts.json`, and a unit picked with
+  `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, a stop,
   commits left unpushed) is skipped as **gave up after 3 attempts** until
   one of its items changes or it matches another skill. A plan report
@@ -148,13 +149,13 @@ unit goes to the next provider.
 ## The worker
 
 Each unit runs in a fresh clone on a new branch cut from its base: the
-linked PR's branch, else the default branch. A PR from a fork is fetched from the repo's
-`refs/pull/<number>/head`, and the unit fails if that is no longer the
-head commit its source read. A branch name
-that's taken on the remote gets a `-2` to `-10` suffix, unless
-awaywork already tried there ([Branch names](./configuration.md#branch-names)).
-`setup` runs there once, before any agent, and every step of the unit's
-chain then works in that clone, on that branch.
+linked PR's branch, else the default branch. A PR from a fork is fetched
+from the repo's `refs/pull/<number>/head`, and the unit fails if that is
+no longer the head commit its source read. A branch name that's taken on
+the remote gets a `-2` to `-10` suffix, unless awaywork already tried
+there ([Branch names](./configuration.md#branch-names)). `setup` runs
+there once, before any agent, and every step of the unit's chain then
+works in that clone, on that branch.
 
 - `.away/context/` holds the prefetched item: PR view, diff,
   unresolved threads and failed-check logs, or the issue or task with
@@ -187,9 +188,10 @@ the unit's result, and a [loop](./configuration.md#loops) can end on it.
 A skill commits unless its metadata says it reports, as `review` and
 `plan` do; the rule's `deliver` says where the commits go, and a chain
 that committed nothing reports whatever its `deliver`. `push` is never a
-skill's default. A draft PR's body gets its items' [`link`](./configuration.md#linking-prs) lines,
-and ends with a footer naming awaywork, the run and the unit's items,
-which is how the next plan recognises it and links it to them.
+skill's default. A draft PR's body gets its items'
+[`link`](./configuration.md#linking-prs) lines, and ends with a footer
+naming awaywork, the run and the unit's items, which is how the next
+plan recognises it and links it to them.
 
 ## The morning report
 
@@ -201,16 +203,15 @@ steps under it:
 ```
 #  Unit                    Skill                                  Provider       Status                                                                        Result
 1  acme-api-12             implement → loop(review ⇄ fix) → docs  claude, codex  done, 70 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (3 commits), verdict approve
-   └ acme-api-12           implement                              claude         done, 14 turns                                                                1 commits
+   └ acme-api-12           implement                              claude         done, 14 turns                                                                1 commit
    └ acme-api-12-review-1  review                                 codex          done, 14 turns                                                                a report, verdict changes
-   └ acme-api-12-fix-1     fix                                    claude         done, 14 turns                                                                1 commits
+   └ acme-api-12-fix-1     fix                                    claude         done, 14 turns                                                                1 commit
    └ acme-api-12-review-2  review                                 codex          done, 14 turns                                                                a report, verdict approve
-   └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commits
+   └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commit
 ```
 
- On a terminal its tables are aligned and statuses
-coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
-in the job summary.
+On a terminal its tables are aligned and statuses coloured; piped, it is
+the markdown as saved, so in GitHub Actions it lands in the job summary.
 `awaywork report --list` lists recent runs with their units, draft PRs
 and reports; `awaywork report <id>` prints one of them. Inside a control
 repo both also show the runs GitHub Actions

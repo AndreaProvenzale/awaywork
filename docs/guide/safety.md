@@ -193,12 +193,12 @@ danger-full-access`, which it needs to commit. What that reaches is in
 - The one exception is a rule with `deliver: push`: it adds commits onto
   **your own open PR's** branch, as a fast-forward, only while the
   branch is still where the clone started. Right before the push,
-  awaywork reads the PR again and refuses when it isn't yours, is
-  closed or merged, or has auto-merge on, and when its branch is on a
-  fork, is the default branch, is protected, or is also the branch of
-  someone else's open PR in the repo. It is refused on someone else's PR and on an item without
-  a PR of yours. The commits land unreviewed on a
-  branch your CI and teammates run, so opt in only where that's fine.
+  awaywork reads the PR again and refuses when it isn't yours, is closed
+  or merged, or has auto-merge on, and when its branch is on a fork, is
+  the default branch, is protected, or is also the branch of someone
+  else's open PR in the repo. It is refused on someone else's PR and on
+  an item without a PR of yours. The commits land unreviewed on a branch
+  your CI and teammates run, so opt in only where that's fine.
   Experimental: only run in tests so far, see
   [Configuration](./configuration.md#push).
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
@@ -225,21 +225,21 @@ danger-full-access`, which it needs to commit. What that reaches is in
 - Only when the agent wrote a PR body, `pr.md`, for a draft PR or a
   push alike, and only once the unit's chain ended. A run killed before
   that publishes nothing.
-- Publishing fetches the clone's HEAD into a repo awaywork creates
-  for it, where it adds the trailer, diffs and pushes. The unit's
-  commits are those after the commit the clone held before setup and
-  the first agent ran. The clone's config, attributes, hooks and refs, which
-  the agent can write, neither steer where a push goes, nor pick which
+- Publishing fetches the clone's HEAD into a repo awaywork creates for
+  it, where it adds the trailer, diffs and pushes. The unit's commits
+  are those after the commit the clone held before setup and the first
+  agent ran. The clone's config, attributes, hooks and refs, which the
+  agent can write, neither steer where a push goes, nor pick which
   commits get the trailer, nor run anything: after `setup`, each agent
-  run and each check, awaywork puts back the config the clone had
-  when it was cloned, and refuses a `.git` that borrows a repo or
-  objects from elsewhere, before it runs any git there. In the clone, publishing
+  run and each check, awaywork puts back the config the clone had when
+  it was cloned, and refuses a `.git` that borrows a repo or objects
+  from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
   appends the chain's notes, the items' link lines and a stacked PR's
-  "merge that first" line to the body. It refuses if either is a symlink, and reads or
-  writes only regular files. The
-  symlink check runs just before, so a worker process that outlived the
-  watchdog could still swap a path in between.
+  "merge that first" line to the body. It refuses if either is a
+  symlink, and reads or writes only regular files. The symlink check
+  runs just before, so a worker process that outlived the watchdog could
+  still swap a path in between.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from awaywork: a footer with the run id and
   the items it's for in the body, and an `Awaywork: <run id>` commit
