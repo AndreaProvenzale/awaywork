@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler } from './index.js'
+import { type Schedule, type Scheduler, SchedulerError } from './index.js'
 
 /** A user service plus a persistent timer, so a run missed while off starts at boot. */
 export function systemd(home: string, run: Exec): Scheduler {
@@ -13,21 +13,46 @@ export function systemd(home: string, run: Exec): Scheduler {
     id: 'systemd',
     async install(s) {
       await mkdir(dir, { recursive: true })
+      const previous = await Promise.all(
+        files.map((f) => readFile(f, 'utf8').catch(() => undefined)),
+      )
       await writeFile(files[0], service(s))
       await writeFile(files[1], timer(s))
-      await systemctl('daemon-reload')
-      await systemctl('enable', '--now', 'awaywork.timer')
+      try {
+        await systemctl('daemon-reload')
+        await systemctl('enable', '--now', 'awaywork.timer')
+      } catch (e) {
+        for (const [i, file] of files.entries()) {
+          const old = previous[i]
+          if (old === undefined) await rm(file, { force: true })
+          else await writeFile(file, old)
+        }
+        await systemctl('daemon-reload').catch(() => '')
+        const { stderr } = e as { stderr?: string }
+        const reason = (stderr?.trim() || (e instanceof Error ? e.message : String(e))).split(
+          '\n',
+        )[0]
+        throw new SchedulerError(
+          `systemctl failed (${reason}); without a systemd user session, log in directly or use --with cron`,
+          { cause: e },
+        )
+      }
       return files.join(', ')
     },
     async remove() {
       if (!existsSync(files[1])) return false
       await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
       for (const file of files) await rm(file, { force: true })
-      await systemctl('daemon-reload')
+      await systemctl('daemon-reload').catch(() => '')
       return true
     },
     async read() {
       if (!existsSync(files[1])) return undefined
+      const enabled = await systemctl('is-enabled', 'awaywork.timer').then(
+        () => true,
+        () => false,
+      )
+      if (!enabled) return undefined
       return parseUnits(await readFile(files[0], 'utf8'), await readFile(files[1], 'utf8'))
     },
   }
