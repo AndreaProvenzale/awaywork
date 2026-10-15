@@ -23,7 +23,17 @@ import {
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
-import type { Condition, Item, Loop, Rule, Step, Unit, Where, WhereValue } from './types.js'
+import type {
+  Condition,
+  Item,
+  Loop,
+  Rule,
+  Step,
+  ThenStep,
+  Unit,
+  Where,
+  WhereValue,
+} from './types.js'
 
 export interface PlannedUnit {
   unit: Unit
@@ -36,8 +46,6 @@ export interface PlannedUnit {
   quotaUnmet?: string
   /** The rule's unit whose chain this step is part of, by id: it works in that unit's clone. */
   chain?: string
-  /** The `then` step left out after this unit, and why: e.g. `then review: over the cap: …`. */
-  capped?: string
   loop?: LoopRound
 }
 
@@ -76,7 +84,6 @@ export function planRun(input: {
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
-  const sure: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
   const perRule: Record<number, number> = {}
   let counted = 0
@@ -116,45 +123,58 @@ export function planRun(input: {
       skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
       continue
     }
-    // The rule's deliver sets its own step's, and a report commits nothing anywhere in the chain.
-    const reports = (step: Step) =>
-      step === rule && rule.deliver
-        ? rule.deliver === 'report'
-        : rule.deliver === 'report' ||
-          resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
-    const commits = (entry: Step | Loop) => stepsOf(entry).some((s) => !reports(s))
-    const chain = [rule, ...(rule.then ?? [])]
+    // A skill commits unless it reports; `deliver: report` makes every step report.
+    const reports = (step: ThenStep) =>
+      rule.deliver === 'report' || resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
+    const committing = [rule, ...(rule.then ?? []).flatMap(stepsOf)].find((s) => !reports(s))
     const deliver = rule.deliver === 'push' ? 'push' : 'draft_pr'
-    const pr = (chain.some(commits) ? prs.find((p) => p.mine) : undefined) ?? prs[0]
+    const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no repo: no linked PR or repo field')
       continue
     }
-    const add = (
-      step: Step,
-      at: Pick<Unit, 'id' | 'base' | 'foreign' | 'untrusted' | 'fork' | 'branch'>,
-      chain?: string,
-      loop?: LoopRound,
-    ) => {
+    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
+    const branch = renderBranch(template, items[0] as Item)
+    if (!isValidRef(branch)) {
+      skip(`branch template ${template} renders an invalid name "${branch}"`)
+      continue
+    }
+    const base = pr?.branch ?? ''
+    const foreign = pr ? !pr.mine : false
+    const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
+    const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
+    if (refused) {
+      skip(committing === rule ? refused : `${refused}, and ${committing.skill} commits`)
+      continue
+    }
+    const cap = [
+      { name: 'limits.units', max: config.limits.units, count: counted },
+      {
+        name: 'limits.units_per_repo',
+        max: config.limits.units_per_repo,
+        count: perRepo[repo] ?? 0,
+      },
+      { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
+    ].find((c) => c.max !== undefined && c.count >= c.max)
+    if (cap) {
+      skip(`over the cap: ${cap.name} is ${cap.max}`)
+      continue
+    }
+
+    const id = slug(items[0]?.key ?? '')
+    const at = { base, foreign, untrusted: pr ? !pr.trusted : false, fork, branch }
+    const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
+      const step = written === rule ? rule : inherit(rule, written)
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      // Every round is routed, as the run does, so the plan holds fallback units for all of them.
+      // Every step is routed, as the run does, so the plan holds fallback units for all of them.
       const { provider, passed } = route(providers, allowances, routed)
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
-      // Caps count what can run when every loop ends after round 1, since the run routes again.
-      const runnable =
-        loop && loop.round > 1 ? undefined : route(providers, allowances, sure).provider
-      if (runnable) sure[runnable] = (sure[runnable] ?? 0) + 1
-      // A loop counts once against the caps.
-      if (runnable && (!loop || (loop.round === 1 && loop.step === 0))) {
-        counted++
-        perRepo[repo] = (perRepo[repo] ?? 0) + 1
-        perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
-      }
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
+        id: unitId,
         network: rule.network ?? config.repos[repo]?.network ?? true,
         verify: rule.verify ?? config.repos[repo]?.verify,
         items,
@@ -179,63 +199,26 @@ export function planRun(input: {
         provider,
         passed,
         ...(unmet && { quotaUnmet: unmet }),
-        chain,
+        ...(written !== rule && { chain: id }),
         ...(loop && { loop }),
       })
-      return unit
+      return provider
     }
-    const overCap = () => {
-      const cap = [
-        { name: 'limits.units', max: config.limits.units, count: counted },
-        {
-          name: 'limits.units_per_repo',
-          max: config.limits.units_per_repo,
-          count: perRepo[repo] ?? 0,
-        },
-        { name: `rule #${ruleIndex + 1} units`, max: rule.units, count: perRule[ruleIndex] ?? 0 },
-      ].find((c) => c.max !== undefined && c.count >= c.max)
-      return cap && `over the cap: ${cap.name} is ${cap.max}`
+    // A chain publishes once, so it counts once, when its first step routes.
+    if (add(rule, id)) {
+      counted++
+      perRepo[repo] = (perRepo[repo] ?? 0) + 1
+      perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1
     }
-
-    const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
-    const branch = renderBranch(template, items[0] as Item)
-    if (!isValidRef(branch)) {
-      skip(`branch template ${template} renders an invalid name "${branch}"`)
-      continue
-    }
-    const base = pr?.branch ?? ''
-    const foreign = pr ? !pr.mine : false
-    const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
-    // Steps up to the first that commits run anywhere; from it on, the chain needs a base it may publish onto.
-    const first = chain.findIndex(commits)
-    const refused = first >= 0 ? deliveryRefusal(deliver, base, foreign, !!fork) : undefined
-    if (refused && first === 0) {
-      skip(refused)
-      continue
-    }
-    const capped = overCap()
-    if (capped) {
-      skip(capped)
-      continue
-    }
-    const id = slug(items[0]?.key ?? '')
-    const at = { base, foreign, untrusted: pr ? !pr.trusted : false, fork, branch }
-    add(rule, { id, ...at })
     for (const [j, entry] of (rule.then ?? []).entries()) {
-      const left = (j + 1 >= first ? refused : undefined) || overCap()
-      if (left) {
-        const last = units.findLast((u) => !u.loop || u.loop.round === 1) as PlannedUnit
-        last.capped = `then ${isLoop(entry) ? 'loop' : entry.skill}: ${left}`
-        break
-      }
       if (!isLoop(entry)) {
-        add(entry, { id: `${id}-${slug(entry.skill)}`, ...at }, id)
+        add(entry, `${id}-${slug(entry.skill)}`)
         continue
       }
       const skills = entry.loop.map((s) => s.skill)
       for (let round = 1; round <= entry.max; round++)
         for (const [s, step] of entry.loop.entries())
-          add(step, { id: `${id}-${slug(step.skill)}-${round}`, ...at }, id, {
+          add(step, `${id}-${slug(step.skill)}-${round}`, {
             at: j,
             round,
             step: s,
@@ -264,8 +247,20 @@ function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): stri
   return holds(quota, quotaFacts(a)) ? undefined : "the quota part doesn't hold on the probe"
 }
 
-function stepsOf(entry: Step | Loop): Step[] {
+function stepsOf(entry: ThenStep | Loop): ThenStep[] {
   return isLoop(entry) ? entry.loop : [entry]
+}
+
+/** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
+function inherit(rule: Rule, step: ThenStep): Step {
+  return {
+    ...step,
+    provider: step.provider ?? rule.provider,
+    model: step.model ?? rule.model,
+    skills: step.skills ?? rule.skills,
+    mcp: step.mcp ?? rule.mcp,
+    instructions: step.instructions ?? rule.instructions,
+  }
 }
 
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
@@ -317,6 +312,14 @@ function describeWant(want: WhereValue): string {
 function describeValue(value: unknown): string {
   if (value === undefined || value === null) return 'unset'
   return Array.isArray(value) ? value.join('|') || 'empty' : String(value)
+}
+
+/** E.g. `implement → loop(review ⇄ fix) → docs`. */
+export function describeChain(chain: PlannedUnit[]): string {
+  return chain
+    .filter((p) => !p.loop || (p.loop.round === 1 && p.loop.step === 0))
+    .map((p) => (p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill))
+    .join(' → ')
 }
 
 export function slug(key: string): string {

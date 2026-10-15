@@ -1,4 +1,4 @@
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
@@ -7,7 +7,7 @@ import type { Config } from '../config/schema.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, type Facts, holds } from '../core/condition.js'
 import { footerItems, hasTrailer } from '../core/footer.js'
-import { type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
+import { describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type {
   Condition,
@@ -75,7 +75,8 @@ export function namedUnits(plan: RunPlan, name: string): Set<string> {
  * Runs the plan's chains one at a time, re-routing as windows fill. A rule's steps all work in one
  * clone, and the chain publishes once at the end: its commits as a draft PR or a push onto your PR,
  * else its reports. A draft PR stacks on the awaywork PR a rule took up.
- * Every unit leaves `units/<id>/` in the run dir: its context, prompt, output and worker log.
+ * Every step leaves `units/<id>/<n>-<skill>/` in the run dir: its context, prompt, output and worker
+ * log; what the chain published is in `units/<id>/out/`.
  */
 export async function runUnits(input: RunInput): Promise<RunReport> {
   const startedAt = new Date()
@@ -164,14 +165,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return { facts, check: ran }
   }
 
-  /** Runs after_unit for a finished chain's results. Once interrupted, none starts. */
+  /** Runs after_unit for each step of a finished chain: its own output, and the chain's PR. Once interrupted, none starts. */
   const afterUnits = async (chain: UnitResult[]) => {
     const hook = input.config.after_unit
     if (!hook || input.dryRun) return
+    const outcome = chain[0]?.outcome
+    const pr = outcome?.kind === 'pr' ? outcome.url : undefined
     for (const r of chain) {
       if (input.signal?.aborted) return
-      const { id, skill } = r.planned.unit
-      const { outcome } = r
+      const { id, skill, deliver } = r.planned.unit
+      const chainId = r.planned.chain ?? id
+      const out = r.step && join(input.runDir, 'units', chainId, r.step, 'out', outputFile[deliver])
       const failure = await afterUnit(
         hook.command,
         {
@@ -179,17 +183,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           id,
           skill,
           status: r.status,
-          pr: outcome?.kind === 'pr' ? outcome.url : undefined,
-          report:
-            outcome?.kind === 'report' || outcome?.kind === 'pushed'
-              ? join(
-                  input.runDir,
-                  'units',
-                  id,
-                  'out',
-                  outputFile[outcome.kind === 'report' ? 'report' : 'push'],
-                )
-              : undefined,
+          pr,
+          report: out && existsSync(out) ? out : undefined,
         },
         input.signal,
       )
@@ -216,9 +211,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
     const dir = join(input.runDir, 'work', first.unit.id)
+    const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const loops: Record<number, OpenLoop> = {}
-    const reports: { id: string; skill: string; text: string }[] = []
+    const reports: StepReport[] = []
     let cloned: string | undefined
     let previous: { skill: string; out: string } | undefined
     let verdict: string | undefined
@@ -230,8 +226,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     for (const p of chain) {
       if (p.loop) loops[p.loop.at] ??= { skills: p.loop.skills, rounds: 0 }
       const loop = p.loop && loops[p.loop.at]
-      // A loop's later rounds run only while it goes on; once the chain ended, only its first is listed.
-      if (loop?.ended || (ended && p.loop && p.loop.round > 1)) continue
+      // A loop's later rounds run only while it goes on: once the chain ended, or in a dry run, only its first is listed.
+      if (loop?.ended || ((ended || input.dryRun) && p.loop && p.loop.round > 1)) continue
       const skip = (reason: string, passedOver?: true) =>
         done.push({ planned: p, status: 'skipped', reason, ...(passedOver && { passedOver }) })
       const end = (reason: string) => {
@@ -276,7 +272,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const model = unit.rule.model?.[id] ?? entry?.model
       input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
-      const unitDir = join(input.runDir, 'units', unit.id)
+      const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
+      const unitDir = join(chainDir, step)
       const plugin = join(input.runDir, 'plugins', unit.id)
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
@@ -285,6 +282,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         planned: { ...p, unit: { ...p.unit, branch: unit.branch } },
         provider: id,
         status: 'prepared',
+        step,
       }
       done.push(result)
       let start: string | undefined
@@ -357,7 +355,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             // A refused check is refused every round: the loop would repeat without its step.
             else if (loop && p.loop && met.check?.refused) loop.ended = reason
             else if (loop && p.loop && p.loop.step === p.loop.skills.length - 1) {
-              // A round where no step ran changed nothing: the next one would pass over the same.
+              // A round where no step ran left nothing: the next one would pass over the same.
               const idle = loop.rounds < p.loop.round
               if (idle) loop.ended = "no step's when held"
               else if (isLast(p.loop)) loop.ended = maxReached(p.loop.max)
@@ -415,12 +413,19 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
         if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
-        result.outcome = { kind: 'none', reason: made(commits, report) }
+        result.made = made(commits, report)
+        // What the next step works from: a committing step's commits, a report step's report.
+        const left = unit.deliver === 'report' ? report !== '' : commits > 0
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
           interrupted = true
           ended = { reason: 'interrupted' }
         } else if (worker.status !== 'done') ended = { reason: `${unit.id} ${worker.status}` }
-        else if (loop && p.loop) {
+        else if (!left) {
+          const reason = `${unit.id} ${unit.deliver === 'report' ? 'wrote no report' : 'committed nothing'}`
+          // Inside a loop it ends only the loop: the steps after it still run.
+          if (loop) loop.ended = reason
+          else ended = { reason, passedOver: true }
+        } else if (loop && p.loop) {
           if (result.verdict) loop.verdict = result.verdict
           const logFile = join(dir, WORK_DIR, 'out', 'check.log')
           const until = await factsFor(
@@ -439,8 +444,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           else if (untilHolds(p.loop.until, until.facts))
             loop.ended = `until held: ${describeCondition(p.loop.until)}`
           else if (isLast(p.loop)) loop.ended = maxReached(p.loop.max)
-        } else if (!commits && !report)
-          ended = { reason: `${unit.id} made nothing to follow`, passedOver: true }
+        }
         if (loop && ended) loop.ended ??= ended.reason
       } catch (e) {
         Object.assign(result, { status: 'error', reason: (e as Error).message })
@@ -460,6 +464,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             previous = { skill: unit.skill, out: join(unitDir, 'out') }
           } catch (e) {
             ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }
+            if (loop) loop.ended ??= ended.reason
           }
         if (!input.dryRun) await rm(plugin, { recursive: true, force: true })
       }
@@ -475,9 +480,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           : await publishChain(first.unit, deliver, shape, dir, cloned, reports, loops)
         if (host.outcome.kind === 'pushed') pushed.add(`${repo} ${base}`)
       } catch (e) {
-        Object.assign(host, { status: 'error', reason: (e as Error).message, outcome: undefined })
+        // The steps ran as they did: only the publish failed.
+        host.outcome = { kind: 'none', reason: (e as Error).message, unpublished: true }
       } finally {
-        await cp(join(dir, WORK_DIR, 'out'), join(input.runDir, 'units', first.unit.id, 'out'), {
+        await cp(join(dir, WORK_DIR, 'out'), join(chainDir, 'out'), {
           recursive: true,
           filter: notSymlink,
         }).catch(() => {})
@@ -494,7 +500,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     shape: Pick<Unit, 'branch' | 'stackedOn'>,
     dir: string,
     cloned: string,
-    reports: { id: string; skill: string; text: string }[],
+    reports: StepReport[],
     loops: Record<number, OpenLoop>,
   ): Promise<Outcome> => {
     const out = join(dir, WORK_DIR, 'out')
@@ -637,18 +643,10 @@ async function readVerdict(dir: string): Promise<string | undefined> {
   return /^[a-z][a-z_-]*$/.test(word) ? word : undefined
 }
 
-/** What a step left for the chain, e.g. `2 commits and a report for the chain`. */
+/** What a step left for the chain, e.g. `2 commits and a report`. */
 function made(commits: number, report: string): string {
   const parts = [commits > 0 && `${commits} commits`, report && 'a report'].filter(Boolean)
-  return parts.length ? `${parts.join(' and ')} for the chain` : 'made nothing'
-}
-
-/** E.g. `implement → loop(review ⇄ address-review) → docs`. */
-function describeChain(chain: PlannedUnit[]): string {
-  return chain
-    .filter((p) => !p.loop || (p.loop.round === 1 && p.loop.step === 0))
-    .map((p) => (p.loop ? `loop(${p.loop.skills.join(' ⇄ ')})` : p.unit.skill))
-    .join(' → ')
+  return parts.length ? parts.join(' and ') : 'nothing'
 }
 
 /** The latest report of each skill: a loop's last review stands for its earlier ones. */

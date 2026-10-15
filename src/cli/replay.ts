@@ -12,7 +12,7 @@ export function replayCommand(program: Command): void {
   program
     .command('replay <run> <unit>')
     .description(
-      "re-run a past run's unit on its base commit and saved context with today's skills and instructions; nothing is pushed",
+      "re-run a past run's unit, its first step, on its base commit and saved context with today's skills and instructions; nothing is pushed",
     )
     .action(async (run: string, unit: string) => {
       try {

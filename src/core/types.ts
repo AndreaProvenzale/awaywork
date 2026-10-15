@@ -188,7 +188,7 @@ export type WhereValue = Scalar | Scalar[] | { not: Scalar | Scalar[] } | Compar
 /** Item facts that must all hold; `any` holds when one of its entries does. */
 export type Where = Record<string, WhereValue | Where[]>
 
-/** What a unit runs: a rule's own settings, or a step it chains after its unit. */
+/** What a unit runs: a rule's own settings, or a step of its chain with the rule's filled in. */
 export interface Step {
   skill: string
   provider: string[]
@@ -202,6 +202,10 @@ export interface Step {
   /** A `then` or loop step runs only when this holds, checked in its clone before the worker. */
   when?: Condition
 }
+
+/** A `then` or loop step as written: the settings it leaves unset are the rule's. */
+export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
@@ -217,9 +221,9 @@ export interface Condition {
   headroom?: number
 }
 
-/** Steps run round after round in one clone, until `until` holds or `max` rounds ran; one publish at the end. */
+/** Steps run round after round in the chain's clone, until `until` holds or `max` rounds ran. */
 export interface Loop {
-  loop: Step[]
+  loop: ThenStep[]
   until: Condition
   max: number
 }
@@ -233,7 +237,7 @@ export interface Rule extends Step {
   order?: Order
   units?: number
   /** Steps run in turn after the rule's unit, in its clone; the chain publishes once at the end. */
-  then?: (Step | Loop)[]
+  then?: (ThenStep | Loop)[]
   /** Whether the worker's commands, then steps included, may reach the network; unset takes the repo's. */
   network?: boolean
   /** Command run after the worker, before publishing; unset takes the repo's. */

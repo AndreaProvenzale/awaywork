@@ -7,7 +7,7 @@ import type {
   Order,
   Rule,
   Scalar,
-  Step,
+  ThenStep,
   Where,
   WhereValue,
 } from './types.js'
@@ -199,12 +199,12 @@ export function matchesValue(want: WhereValue, actual: unknown): boolean {
   return values.some((v) => wanted.includes(v))
 }
 
-export function isLoop(entry: Step | Loop): entry is Loop {
+export function isLoop(entry: ThenStep | Loop): entry is Loop {
   return 'loop' in entry
 }
 
 /** The rule and every step it chains, loop steps included, with the config path of each. */
-export function ruleSteps(rule: Rule): { step: Step; at: (string | number)[] }[] {
+export function ruleSteps(rule: Rule): { step: ThenStep; at: (string | number)[] }[] {
   return [
     { step: rule, at: [] },
     ...(rule.then ?? []).flatMap((entry, j) =>

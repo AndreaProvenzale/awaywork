@@ -240,9 +240,9 @@ describe('config', () => {
     expect(
       cfg.queue?.map((r) => r.then?.map((s) => [(s as Step).skill, (s as Step).provider])),
     ).toEqual([
-      [['review', []]],
+      [['review', undefined]],
       [
-        ['implement', []],
+        ['implement', undefined],
         ['review', ['codex']],
       ],
       [],
@@ -261,6 +261,10 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue: [{ skill: plan, then: { skill: review, units: 1 } }]`),
     ).toEqual(['queue[0].then: Unrecognized key: "units"'])
+    for (const key of ['deliver: push', 'branch: "fix/{key}"'])
+      expect(
+        problems(`${minimal}queue: [{ skill: plan, then: { skill: review, ${key} } }]`),
+      ).toEqual([`queue[0].then: Unrecognized key: "${key.split(':')[0]}"`])
   })
 
   it('takes a loop in then, with its steps once across loops, a verdict word and a bounded max', () => {
@@ -275,17 +279,14 @@ describe('config', () => {
     expect(cfg.queue?.map((r) => r.then)).toEqual([
       [
         {
-          loop: [
-            { skill: 'review', provider: ['codex'], skills: [], instructions: [] },
-            { skill: 'fix', provider: [], skills: [], instructions: [] },
-          ],
+          loop: [{ skill: 'review', provider: ['codex'] }, { skill: 'fix' }],
           until: { verdict: ['approve', 'comments'] },
           max: 3,
         },
       ],
       [
         {
-          loop: [{ skill: 'implement', provider: [], skills: [], instructions: [] }],
+          loop: [{ skill: 'implement' }],
           until: { verdict: { not: 'changes' } },
           max: 1,
         },
@@ -304,43 +305,20 @@ describe('config', () => {
     expect(loop('[review], until: {}, max: 1')).toEqual([
       'queue[0].then.until: expected verdict or command',
     ])
-    expect(
-      loop('[review, { skill: fix, deliver: push }], until: { verdict: approve }, max: 2'),
-    ).toEqual([
-      'queue[0].then[0].loop[1].deliver: a loop publishes through the unit before it: set deliver push there',
-    ])
-    const loops = (between: string) =>
-      problems(`${minimal}queue:
-  - skill: implement
-    then:
-      - { loop: [review, fix], until: { verdict: approve }, max: 2 }${between}
-      - { loop: [plan, implement], until: { verdict: approve }, max: 2 }
-`)
-    expect(loops('')).toEqual([
-      "queue[0].then[1].loop: a loop can't follow another loop directly; put a step between them",
-    ])
-    expect(loops('\n      - plan')).toEqual([])
+    // Loops can follow loops, and a step gated by when can come right before one.
     expect(
       problems(`${minimal}queue:
   - skill: implement
+    when: { headroom: 20% }
     then:
       - { skill: review, when: { verdict: approve } }
       - { loop: [fix], until: { verdict: approve }, max: 2 }
-`),
-    ).toEqual([
-      "queue[0].then[0].when: a loop works in the clone of the step before it, which can't be skipped by when; gate the loop's steps, put a step between, or set deliver: report on it",
-    ])
-    expect(
-      problems(`${minimal}queue:
-  - skill: implement
-    then:
-      - { skill: review, deliver: report, when: { verdict: approve } }
-      - { loop: [fix], until: { verdict: approve }, max: 2 }
+      - { loop: [plan], until: { verdict: approve }, max: 2 }
 `),
     ).toEqual([])
   })
 
-  it('takes a quota when on a rule and on a step, but not on a rule before a loop', () => {
+  it('takes a quota when on a rule and on a step', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
     when: { runs_until_reset: 1 }
@@ -348,11 +326,6 @@ describe('config', () => {
 `)
     expect(cfg.queue?.[0]).toMatchObject({ when: { runs_until_reset: 1 } })
     expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ when: { headroom: 0.2 } })
-    expect(
-      problems(
-        `${minimal}queue: [{ skill: implement, when: { headroom: 20% }, then: { loop: review, until: { verdict: approve }, max: 2 } }]`,
-      ),
-    ).toEqual([expect.stringContaining('queue[0].when: a loop works in the clone')])
   })
 
   it('takes a command in until, and when on then and loop steps but not on a rule', () => {

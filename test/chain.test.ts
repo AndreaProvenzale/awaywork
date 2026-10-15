@@ -134,7 +134,11 @@ async function run(yaml: string, items: Item[], provider: Provider) {
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
-  const rows = report.results.map((r) => [r.planned.unit.id, r.status, r.outcome ?? r.reason])
+  const rows = report.results.map((r) => [
+    r.planned.unit.id,
+    r.status,
+    r.outcome ?? r.made ?? r.reason,
+  ])
   return { ...env, plan, report, rows }
 }
 
@@ -154,10 +158,10 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   const url = 'https://example.com/acme/api/pull/away/acme-api-1'
   expect(rows).toEqual([
     ['acme-api-1', 'done', { kind: 'pr', url, commits: 2 }],
-    ['acme-api-1-review-1', 'done', { kind: 'none', reason: 'a report for the chain' }],
-    ['acme-api-1-fix-1', 'done', { kind: 'none', reason: '1 commits for the chain' }],
-    ['acme-api-1-review-2', 'done', { kind: 'none', reason: 'a report for the chain' }],
-    ['acme-api-1-plan', 'done', { kind: 'none', reason: 'a report for the chain' }],
+    ['acme-api-1-review-1', 'done', 'a report'],
+    ['acme-api-1-fix-1', 'done', '1 commits'],
+    ['acme-api-1-review-2', 'done', 'a report'],
+    ['acme-api-1-plan', 'done', 'a report'],
   ])
   expect(report.results[0]?.loop).toBe('2 rounds of review ⇄ fix; until held: verdict approve')
   expect(opened).toEqual([
@@ -192,7 +196,14 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix-1.txt', 'acme-api-1.txt'])
   expect(seen['acme-api-1-review-1']).toEqual(['diff.patch', 'pr.md'])
   expect(seen['acme-api-1-fix-1']).toEqual(['pr.md', 'report.md', 'verdict'])
-  expect(formatPlan(plan)).toContain("in acme-api-1's clone")
+  expect(formatPlan(plan)).toContain(
+    [
+      '     then loop review ⇄ fix until verdict approve, at most 3 rounds',
+      '       review (built-in) on claude',
+      '       fix (built-in) on claude',
+      '     then plan (built-in) on claude',
+    ].join('\n'),
+  )
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
@@ -222,17 +233,17 @@ it('takes chain shapes the per-step model refused: a loop after a loop, and a ga
   expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
 })
 
-it('reports on a PR someone else opened, and leaves out the steps that would commit', async () => {
+it('reports on a PR someone else opened, and refuses a chain there that could commit', async () => {
   const { rows, plan, opened } = await run(
     `queue:
-  - { skill: review, where: { review_requested: true }, then: [plan, implement] }
+  - { skill: review, where: { title: { matches: 'PR 1' } }, then: [plan] }
+  - { skill: review, where: { type: pr }, then: [implement] }
 `,
-    [githubPr(1, { mine: false, review_requested: true })],
+    [githubPr(1, { mine: false }), githubPr(2, { mine: false })],
     worker({ 'acme-api-1': 'comments' }),
   )
-  expect(plan.units.map((p) => [p.unit.id, p.capped])).toEqual([
-    ['acme-api-1', undefined],
-    ['acme-api-1-plan', "then implement: deliver draft_pr: feature-1 is someone else's PR"],
+  expect(plan.skipped.map((s) => [s.item.key, s.reason])).toEqual([
+    ['acme/api#2', "deliver draft_pr: feature-2 is someone else's PR, and implement commits"],
   ])
   expect(rows).toEqual([
     [
@@ -243,7 +254,7 @@ it('reports on a PR someone else opened, and leaves out the steps that would com
         text: '### acme-api-1\n\nacme-api-1 says comments.\n\n### acme-api-1-plan\n\nacme-api-1-plan says nothing.',
       },
     ],
-    ['acme-api-1-plan', 'done', { kind: 'none', reason: 'a report for the chain' }],
+    ['acme-api-1-plan', 'done', 'a report'],
   ])
   expect(opened).toEqual([])
 })
@@ -276,7 +287,7 @@ it('ends the chain at a step that fails, publishes what it has, and counts a fai
       'done',
       { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 2 },
     ],
-    ['acme-api-1-fix', 'failed', { kind: 'none', reason: '1 commits for the chain' }],
+    ['acme-api-1-fix', 'failed', '1 commits'],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
   ])
   expect(opened).toHaveLength(1)
@@ -297,8 +308,8 @@ it('passes over the steps after one that made nothing, and counts the chain fini
       'done',
       { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
     ],
-    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'made nothing' }],
-    ['acme-api-1-review', 'skipped', 'acme-api-1-fix made nothing to follow'],
+    ['acme-api-1-fix', 'done', 'nothing'],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
   ])
   expect(opened).toHaveLength(1)
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()

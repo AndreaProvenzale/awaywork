@@ -218,7 +218,7 @@ const when = z
     ...conditionKeys,
     ...quotaKeys,
     verdict: conditionKeys.verdict.describe(
-      "The step before's verdict; a list means any of, {not} negates",
+      'The latest verdict in the chain; a list means any of, {not} negates',
     ),
     changed: oneOrMany
       .optional()
@@ -236,6 +236,23 @@ const ruleWhen = z
 const stepObject = z.strictObject({
   skill,
   ...stepSettings,
+  provider: oneOrMany
+    .optional()
+    .describe("Providers for this step, in order; default the rule's, [] the providers order"),
+  model: stepSettings.model.describe("Model per provider for this step; default the rule's"),
+  skills: z
+    .array(z.string())
+    .optional()
+    .describe("Extra skills available to the worker; default the rule's, [] none"),
+  mcp: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "MCP servers the worker gets, by their name under the top-level mcp; default the rule's, [] none",
+    ),
+  instructions: oneOrMany
+    .optional()
+    .describe("Instruction files added for this step; default the rule's, [] none"),
   when: when.optional().describe('Run this step only when every key holds; otherwise skip it'),
 })
 const step = z
@@ -248,7 +265,7 @@ const step = z
     stepObject,
   ])
   .describe(
-    'A skill name, or a map with the rule keys other than source, where, order, units and then, plus when',
+    "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when",
   )
 const loop = z
   .strictObject({
@@ -275,7 +292,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['draft_pr', 'report', 'push'])
       .optional()
       .describe(
-        "How the chain's commits publish: one draft PR, or pushed onto your own PR's branch; report commits nothing. Without commits, the chain reports",
+        "How the chain publishes: one draft PR (default), its commits pushed onto your own PR's branch, or a report, with no step committing; a chain without commits reports",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
@@ -287,7 +304,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
-      .describe('At most this many units per run from this rule, its then steps included'),
+      .describe('At most this many units per run from this rule; a chain counts once'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, loop, z.array(z.union([step, loop])).min(1)])
@@ -546,7 +563,7 @@ export const configSchema = z
               ? `"${s.skill}" already runs in a loop of this chain`
               : `"${s.skill}" already runs earlier in this chain`,
           })
-        for (const p of s.provider)
+        for (const p of s.provider ?? [])
           if (!providerIds.includes(p))
             ctx.addIssue({
               code: 'custom',
