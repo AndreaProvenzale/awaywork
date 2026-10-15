@@ -104,8 +104,7 @@ describe('publish', () => {
     await commit('second')
     await body('Fix the thing\n\nChecked: tests pass.')
     const forge = pushingForge()
-    const outcome = await publish(unit(), dir, forge, '20260925-010000', start)
-    expect(outcome).toEqual({
+    expect(await publish(unit(), dir, forge, '20260925-010000', start)).toEqual({
       kind: 'pr',
       url: 'https://example.com/acme/api/pull/away/FAKE-1',
       commits: 2,
@@ -113,11 +112,6 @@ describe('publish', () => {
     })
     expect(forge.branches).toEqual(new Set(['acme/api:away/FAKE-1']))
     expect(forge.pushed).toEqual([['second|20260925-010000', 'first|20260925-010000', 'init|']])
-    // The clone has the commits as pushed, for a chain's next slice.
-    const head = outcome.kind === 'pr' ? outcome.head : ''
-    expect(await git(dir, 'log', '-1', '--format=%s|%(trailers:valueonly,separator=)', head)).toBe(
-      'second|20260925-010000',
-    )
   })
 
   it("appends its items' link lines, once each, before the stack note, and names the items to the forge", async () => {

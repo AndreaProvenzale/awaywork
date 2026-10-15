@@ -20,7 +20,7 @@ import type {
   Unit,
 } from '../core/types.js'
 import { afterUnit } from './notify.js'
-import { type Outcome, publish } from './publish.js'
+import { type Outcome, publish, type Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { maskSecrets, runCommand, runSetup } from './setup.js'
@@ -76,7 +76,7 @@ export function namedUnits(plan: RunPlan, name: string): Set<string> {
  * Runs the plan's chains one at a time, re-routing as windows fill. A rule's steps all work in one
  * clone, and each slice of the chain publishes once, when it ends: its commits as a draft PR or a
  * push onto your PR, else its reports. A draft PR stacks on the awaywork PR a rule took up, or on
- * the slice before, whose pushed tip the next slice's branch is cut from.
+ * the slice before, whose pushed tip the next slice's commits are published onto.
  * Every step leaves `units/<id>/<n>-<skill>/` in the run dir: its context, prompt, output and worker
  * log; what each slice published is in `units/<id>/out/`, `out-2/` and so on.
  */
@@ -219,6 +219,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length
+    // Slices publish from one repo of awaywork's own, where the next sits on the commits the one before pushed.
+    const stack: Stack | undefined =
+      slices > 1 ? { repo: join(input.runDir, 'publish', first.unit.id) } : undefined
     // Branches this chain published: a later slice passes them over, not taking them for an earlier attempt.
     const published = new Set<string>()
     let at = 0
@@ -226,7 +229,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let loops: Record<number, OpenLoop> = {}
     let reports: StepReport[] = []
     let cloned: string | undefined
-    // Where the open slice's commits start, and whether its branch is still to be cut from there.
+    // Where the open slice's commits start in the clone, and whether its branch is still to be cut there.
     let from: string | undefined
     let cut = false
     let previous: Previous | undefined
@@ -236,7 +239,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
 
-    /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut from what was pushed. */
+    /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find((r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped')
       const out = join(chainDir, at > 0 ? `out-${at + 1}` : 'out')
@@ -246,7 +249,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         try {
           lead.outcome = interrupted
             ? { kind: 'none', reason: 'interrupted', unpublished: true }
-            : await publishSlice({ ...first.unit, ...shape, deliver }, dir, from, reports, loops)
+            : await publishSlice(
+                { ...first.unit, ...shape, deliver },
+                dir,
+                from,
+                reports,
+                loops,
+                stack,
+              )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {
@@ -258,7 +268,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (last || ended) return
       const outcome = lead?.outcome
       if (outcome?.kind === 'pr') {
-        from = outcome.head
+        if (stack) stack.onto = outcome.head
         shape.stackedOn = outcome.url
         if (previous)
           previous.published = { url: outcome.url, body: join(out, outputFile.draft_pr) }
@@ -270,7 +280,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       shape.base = shape.branch
       cut = true
       try {
-        // The next slice writes its own PR body.
+        // The next slice's commits are those after the clone's tip, and it writes its own PR body.
+        from = await head(dir)
         await refuseSymlinks(dir, [`${WORK_DIR}/out`])
         await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
       } catch (e) {
@@ -354,7 +365,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
         if (cut) {
-          await cutBranch(dir, unit.branch, from as string)
+          await cutBranch(dir, unit.branch)
           cut = false
         }
         const prompt = await prepareWorkspace({
@@ -541,6 +552,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
     await endSlice(true)
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
+    if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }
 
@@ -551,6 +563,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     from: string,
     reports: StepReport[],
     loops: Record<number, OpenLoop>,
+    stack?: Stack,
   ): Promise<Outcome> => {
     const { deliver } = unit
     const out = join(dir, WORK_DIR, 'out')
@@ -566,7 +579,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
     await verify(unit, dir, from)
     if (input.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-    return publish(unit, dir, input.forge, input.runId, from)
+    return publish(unit, dir, input.forge, input.runId, from, stack)
   }
 
   /** Runs the unit's `verify` before it is published; a failure goes in the PR body, and the unit is still published. */
@@ -652,9 +665,16 @@ const git = async (dir: string, ...args: string[]) =>
 
 const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
-/** Puts the clone on a new `branch` at `from`, the slice before as pushed: same files, and no hook of a worker's runs. */
-async function cutBranch(dir: string, branch: string, from: string): Promise<void> {
-  await git(dir, '-c', 'core.hooksPath=/dev/null', 'checkout', '-q', '-b', branch, from)
+/**
+ * Puts the clone on a new `branch` at its HEAD. Git writes only the branch, HEAD and the index there,
+ * each through a lock file it renames, so with the symlinks a worker may plant refused and no reflog
+ * left to append to, nothing outside the clone is written; no hook or fsmonitor runs.
+ */
+async function cutBranch(dir: string, branch: string): Promise<void> {
+  await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
+  await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
+  const off = ['core.hooksPath=/dev/null', 'core.fsmonitor=false', 'core.logAllRefUpdates=false']
+  await git(dir, ...off.flatMap((c) => ['-c', c]), 'checkout', '-q', '-b', branch)
 }
 
 /** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */

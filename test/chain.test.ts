@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -397,7 +397,7 @@ const pr = (branch: string, commits: number) => ({
   head: expect.any(String),
 })
 
-it('opens a draft PR per slice: a stacked one on -2, cut from the slice before as pushed', async () => {
+it('opens a draft PR per slice: a stacked one on -2, on the slice before as pushed', async () => {
   const seen: Record<string, string[]> = {}
   const prompts: Record<string, string> = {}
   const bodies: Record<string, string> = {}
@@ -442,6 +442,12 @@ queue:
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
   const parent = await git(origin, 'rev-parse', 'away/acme-api-1-2^')
   expect(parent.stdout).toBe((await git(origin, 'rev-parse', 'away/acme-api-1')).stdout)
+  const format = '--format=%s|%(trailers:key=Awaywork,valueonly,separator=)'
+  expect((await git(origin, 'log', format, 'away/acme-api-1-2')).stdout.split('\n')).toEqual([
+    'Work on acme-api-1-fix|r1',
+    'Work on acme-api-1|r1',
+    'init|',
+  ])
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
 
@@ -504,6 +510,41 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
     ['acme-api-1', 'prepared', 'away/acme-api-1'],
     ['acme-api-1-fix', 'prepared', 'away/acme-api-1-2'],
   ])
+})
+
+it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
+  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
+  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+  const over: string[] = []
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      if (job.unit.id === 'acme-api-1-fix')
+        over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1')
+        for (const [path, victim] of Object.entries(planted)) {
+          await rm(join(job.dir, '.git', path), { force: true })
+          await symlink(victim, join(job.dir, '.git', path))
+        }
+      yield* events
+    },
+  }
+  const { rows } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    provider,
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  for (const victim of Object.values(planted))
+    expect(await readFile(victim, 'utf8')).toBe('untouched\n')
+  expect(over).toEqual([''])
 })
 
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
