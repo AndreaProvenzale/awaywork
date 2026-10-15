@@ -99,11 +99,14 @@ line in its body.
   `~/.local/state/awaywork/attempts.json`, and a unit picked with
   `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, a stop,
-  commits left unpushed) is skipped as **gave up after 3 attempts** until
-  one of its items changes or it matches another skill. A plan report
-  followed by a failed implement is one failure; a finished attempt
-  clears the count, and skipped, dry-run and aborted units don't count.
-  `run --unit` runs it anyway.
+  commits left unpushed) is skipped as **gave up after 3 attempts; next
+  try on `<date>`**, a week after the last one, even if its items changed
+  in between: a Sentry error that keeps firing doesn't get a fresh try
+  every night. That week-later try is one try: fail again and it waits
+  another week. A plan report followed by a failed implement is one
+  failure; a finished attempt clears the count, matching another skill
+  starts a new one, and skipped, dry-run and aborted units don't count.
+  `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an
   item, and any unit it joins, alone until `awaywork unskip` or the
   `--until` date; `plan` lists it under Skipped with the `--reason`.

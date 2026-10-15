@@ -1,11 +1,5 @@
 import type { Config } from '../config/schema.js'
-import {
-  type Attempts,
-  failedAttempts,
-  MAX_ATTEMPTS,
-  pushedOnto,
-  unchangedSince,
-} from './attempts.js'
+import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } from './attempts.js'
 import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
@@ -79,10 +73,12 @@ export function planRun(input: {
   allowances: Record<string, Allowance>
   skills: SkillCatalog
   skips?: Record<string, Skip>
-  /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times, is skipped. */
+  /** Earlier attempts: a unit none of whose items changed since its skill last finished, or failed 3 times within the week, is skipped. */
   attempts?: Attempts
+  /** The time attempts are judged at; defaults to now. */
+  now?: number
 }): RunPlan {
-  const { config, allowances, skips = {} } = input
+  const { config, allowances, skips = {}, now = Date.now() } = input
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
@@ -123,8 +119,12 @@ export function planRun(input: {
       skip(`unchanged since run ${since.sort().at(-1)}`)
       continue
     }
-    if (items.every((i) => failedAttempts(i, rule.skill, input.attempts ?? {}) >= MAX_ATTEMPTS)) {
-      skip(`gave up after ${MAX_ATTEMPTS} attempts; waiting for the item to change`)
+    const retries = items.map((i) => gaveUpUntil(i, rule.skill, input.attempts ?? {}, now))
+    if (retries.every(Boolean)) {
+      const next = Math.min(...retries.map(Number))
+      skip(
+        `gave up after ${MAX_ATTEMPTS} attempts; next try on ${new Date(next).toLocaleDateString('sv-SE')}`,
+      )
       continue
     }
     // A skill commits unless it reports; `deliver: report` makes every step report.
