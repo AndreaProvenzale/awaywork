@@ -316,3 +316,19 @@ it('passes over the steps after one that made nothing, and counts the chain fini
   expect(opened).toHaveLength(1)
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
 })
+
+it('ends the chain after a report step that wrote no report, and reports nothing', async () => {
+  const { rows, opened } = await run(
+    `queue:
+  - { skill: plan, then: [implement, review] }
+`,
+    [issue(1)],
+    worker({}, { idle: ['acme-api-1'] }),
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1-implement', 'skipped', 'acme-api-1 wrote no report'],
+    ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
+  ])
+  expect(opened).toEqual([])
+})

@@ -315,11 +315,12 @@ queue:
     where: { type: issue }
     model: { claude: opus }
     mcp: [sentry]
+    skills: [our-api]
     instructions: notes/rule.md
     with: { depth: 2 }
     then:
       - { skill: implement, model: { claude: sonnet }, instructions: notes/impl.md }
-      - { skill: review, provider: codex, mcp: [], instructions: [] }
+      - { skill: review, provider: codex, mcp: [], skills: [], instructions: [] }
   - { skill: fix, where: { checks: failing }, then: review }
 `
     const items = [issue, githubPr(3, { checks: 'failing' })]
@@ -347,10 +348,10 @@ queue:
       [{ claude: 'sonnet' }, ['sentry'], undefined],
       [{ claude: 'opus' }, [], undefined],
     ])
-    expect(result.units.slice(0, 3).map(({ unit }) => unit.instructions)).toEqual([
-      ['notes/rule.md'],
-      ['notes/impl.md'],
-      [],
+    expect(result.units.slice(0, 3).map(({ unit }) => [unit.instructions, unit.skills])).toEqual([
+      [['notes/rule.md'], ['our-api']],
+      [['notes/impl.md'], ['our-api']],
+      [[], []],
     ])
     const text = formatPlan(result)
     expect(text).toContain('#1  plan  type=issue model=claude:opus then=implement,review')
