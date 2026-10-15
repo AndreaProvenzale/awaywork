@@ -13,6 +13,7 @@ const quota = (used: number): Quota => ({
     { name: 'seven_day', span: 'long', used, resetsAt: 0 },
   ],
 })
+const base = (used: number) => ({ name: 'seven_day', used, resetsAt: 0 })
 const result = (over: Partial<UnitResult> & { skill?: string; rule?: number }): UnitResult =>
   ({
     planned: { rule: over.rule ?? 0, unit: { id: 'u', skill: over.skill ?? 'implement' } },
@@ -22,10 +23,10 @@ const result = (over: Partial<UnitResult> & { skill?: string; rule?: number }): 
   }) as UnitResult
 
 describe('unitStats', () => {
-  it('measures the long window between the first and last reading, and drops units that did not run', () => {
+  it('measures the long window between the baseline and the last reading, and drops units that did not run', () => {
     const stats = unitStats([
       result({
-        firstQuota: quota(0.1),
+        baseline: base(0.1),
         quota: quota(0.16),
         outcome: { kind: 'pr', url: 'u', commits: 1 },
       }),
@@ -46,12 +47,18 @@ describe('unitStats', () => {
     const reset: Quota = {
       windows: [{ name: 'seven_day', span: 'long', used: 0.02, resetsAt: 1 }],
     }
-    expect(unitStats([result({ firstQuota: quota(0.9), quota: reset })])[0]?.used).toBeUndefined()
+    expect(unitStats([result({ baseline: base(0.9), quota: reset })])[0]?.used).toBeUndefined()
   })
 
-  it('leaves the share unknown when the worker read the quota only once', () => {
-    const once = quota(0.4)
-    expect(unitStats([result({ firstQuota: once, quota: once })])[0]?.used).toBeUndefined()
+  it('measures a unit that read the quota once, as Codex does', () => {
+    expect(unitStats([result({ baseline: base(0.4), quota: quota(0.45) })])[0]?.used).toBeCloseTo(
+      0.05,
+    )
+  })
+
+  it('leaves the share unknown without a baseline or a reading', () => {
+    expect(unitStats([result({ quota: quota(0.4) })])[0]?.used).toBeUndefined()
+    expect(unitStats([result({ baseline: base(0.4) })])[0]?.used).toBeUndefined()
   })
 })
 

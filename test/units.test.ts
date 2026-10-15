@@ -133,6 +133,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     ['acme-api-2', 'done', { kind: 'report', text: 'Approve.' }],
   ])
   expect(models).toEqual(['opus', 'sonnet'])
+  expect(report.results.map((u) => u.baseline?.used)).toEqual([0.36, undefined, 0.45])
   const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR']
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1')

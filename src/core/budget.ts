@@ -9,6 +9,8 @@ export type Allowance =
       kind: 'quota'
       window: string
       used: number
+      /** When the long window resets, in unix seconds. */
+      resetsAt: number
       ceiling: number
       runs: number
       limits: { name: 'per_run' | 'reserve' | 'pacing'; value: number }[]
@@ -38,6 +40,7 @@ export function allowance(
     kind: 'quota',
     window: long.name,
     used: long.used,
+    resetsAt: long.resetsAt,
     ceiling: Math.min(...limits.map((l) => l.value)),
     runs,
     limits,
@@ -88,5 +91,5 @@ export function withQuota(a: Allowance, quota: Quota): Allowance {
   const long = quota.windows.find((w) => w.name === a.window)
   const short = quota.windows.find((w) => w.span === 'short')
   const session = a.session && short ? { ...a.session, used: short.used } : a.session
-  return { ...a, used: long?.used ?? a.used, session }
+  return { ...a, used: long?.used ?? a.used, resetsAt: long?.resetsAt ?? a.resetsAt, session }
 }

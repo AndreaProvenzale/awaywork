@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Budget } from '../src/config/schema.js'
-import { type Allowance, allowance, quotaFacts, route } from '../src/core/budget.js'
+import { type Allowance, allowance, quotaFacts, route, withQuota } from '../src/core/budget.js'
 import type { Quota } from '../src/core/types.js'
 
 // Thursday at 01:00 local time, as the default window opens.
@@ -110,4 +110,9 @@ it('paces over the windows left, not the days', () => {
   const weekly = [{ days: ['sat' as const], start: '10:00', end: '18:00' }]
   expect(ceiling(allowance(budget(), quota(0.36, 60), now, weekly))).toBe(0.9)
   expect(ceiling(allowance(budget(), quota(0.36, 60), now, daily))).toBe(0.54)
+})
+
+it('moves usage and the reset time to the last reading', () => {
+  const next = withQuota(allowance(budget(), quota(0.1, 10), now, daily), quota(0.2, 20))
+  expect(next).toMatchObject({ used: 0.2, resetsAt: hours(20) })
 })
