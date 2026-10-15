@@ -260,7 +260,7 @@ it('reports on a PR someone else opened, and refuses a chain there that could co
 })
 
 it('pushes the whole chain onto your PR once, with the reports in its summary', async () => {
-  const { rows, pushedOnto, opened } = await run(
+  const { rows, report, pushedOnto, opened } = await run(
     `queue:
   - { skill: fix, deliver: push, where: { type: pr }, then: [review] }
 `,
@@ -268,7 +268,9 @@ it('pushes the whole chain onto your PR once, with the reports in its summary', 
     worker({ 'acme-api-1-review': 'approve' }),
   )
   expect(rows[0]?.[2]).toMatchObject({ kind: 'pushed', branch: 'feature-1', commits: 1 })
-  expect((rows[0]?.[2] as { text: string }).text).toContain('acme-api-1-review says approve.')
+  expect(report.results[0]?.outcome).toMatchObject({
+    text: expect.stringContaining('acme-api-1-review says approve.'),
+  })
   expect(pushedOnto).toEqual(['feature-1'])
   expect(opened).toEqual([])
 })

@@ -95,8 +95,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
 
-  // The PR branches pushed onto in this run.
-  const pushed = new Set<string>()
   const checks = new Map<string, Check>()
   // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
   const baselines = new Map<string, Set<string>>()
@@ -313,9 +311,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (!a) continue
         const settings = input.config.repos[unit.repo]
         if (!reuse && settings?.setup && !unit.untrusted) {
-          // A PR someone else opened, or a branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
-          const written = pushed.has(`${unit.repo} ${unit.base}`) || pickedUp
-          const own = unit.foreign || written ? [] : settings.secrets
+          // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
+          const own = unit.foreign || pickedUp ? [] : settings.secrets
           const failed = await runSetup(
             settings.setup,
             dir,
@@ -478,7 +475,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         host.outcome = interrupted
           ? { kind: 'none', reason: 'interrupted', unpublished: true }
           : await publishChain(first.unit, deliver, shape, dir, cloned, reports, loops)
-        if (host.outcome.kind === 'pushed') pushed.add(`${repo} ${base}`)
       } catch (e) {
         // The steps ran as they did: only the publish failed.
         host.outcome = { kind: 'none', reason: (e as Error).message, unpublished: true }

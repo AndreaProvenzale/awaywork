@@ -77,7 +77,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
             `└ ${s.planned.unit.id}`,
             s.planned.unit.skill,
             s.provider ?? '-',
-            status(s),
+            stepStatus(s),
             stepResult(s),
           ])
     })
@@ -114,7 +114,7 @@ export function summarize(r: RunReport, reportPath: string): string {
   const rows = listed.flatMap(({ head, steps }) => [
     `  ${head.planned.unit.id}  ${status(chainOf(steps))}  ${result(chainOf(steps))}`,
     ...(steps.length > 1
-      ? steps.map((s) => `    ${s.planned.unit.id}  ${status(s)}  ${stepResult(s)}`)
+      ? steps.map((s) => `    ${s.planned.unit.id}  ${stepStatus(s)}  ${stepResult(s)}`)
       : []),
   ])
   return [head, ...rows, `Report: ${reportPath}`].join('\n')
@@ -142,6 +142,11 @@ function chainOf(steps: UnitResult[]): UnitResult {
 
 function providers(steps: UnitResult[]): string {
   return [...new Set(steps.flatMap((s) => s.provider ?? []))].join(', ') || '-'
+}
+
+/** A step's own status: how the chain's loops went is on the chain's row. */
+function stepStatus(u: UnitResult): string {
+  return status({ ...u, loop: undefined })
 }
 
 function stepResult(u: UnitResult): string {
