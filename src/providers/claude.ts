@@ -11,11 +11,6 @@ const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day:
 const stream = ['--output-format', 'stream-json', '--verbose']
 /** Auto-memory lives under ~/.claude whatever the setting sources. */
 const noMemory = { autoMemoryEnabled: false }
-/** Bash in the OS sandbox, which has no network; a missing sandbox fails instead of running unconfined. */
-const offline = {
-  ...noMemory,
-  sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
-}
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
 const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
@@ -93,11 +88,11 @@ export function claudeProvider(bin = 'claude'): Provider {
 
 export const claude = claudeProvider()
 
-/** The developer's settings file with auto-memory off, and the sandbox when offline; it applies whatever the setting sources. */
+/** The developer's settings file with auto-memory off; it applies whatever the setting sources. */
 async function settings(job: Job): Promise<string> {
   const { settings: file } = configSchema.parse(job.config ?? {})
   const theirs = file && JSON.parse(await readFile(resolve(job.configDir ?? '', file), 'utf8'))
-  return JSON.stringify({ ...theirs, ...(job.unit.network ? noMemory : offline) })
+  return JSON.stringify({ ...theirs, ...noMemory })
 }
 
 /** The servers as `.mcp.json`; the binary expands `${NAME}` from the worker's env. */

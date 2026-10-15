@@ -11,7 +11,7 @@ import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
 /** workspace-write can't commit (.git is read-only). */
-const ONLINE = ['--sandbox', 'danger-full-access']
+const FULL_ACCESS = ['--sandbox', 'danger-full-access']
 const TOOL_ITEMS = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search']
 const DAY_MINS = 24 * 60
 const HOSTED_RUNNER =
@@ -104,10 +104,8 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           '-c',
           `${k}=${JSON.stringify(v)}`,
         ])
-        // After the developer's overrides, so theirs of the same keys lose.
-        const sandbox = job.unit.network ? ONLINE : offline(job.dir)
         const mcp = mcpOverrides(job.mcp ?? {})
-        const args = [...EXEC, ...model, ...overrides, ...mcp, ...sandbox, '-C', job.dir, '-']
+        const args = [...EXEC, ...model, ...overrides, ...mcp, ...FULL_ACCESS, '-C', job.dir, '-']
         const child = execa(bin, args, {
           cwd: job.dir,
           env: job.env,
@@ -152,18 +150,6 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 
 export const codex = codexProvider()
 
-/** A permission profile that reads anywhere, writes the clone (its .git too) and tmp, with no network or web search. */
-function offline(dir: string): string[] {
-  const writable = [dir, join(dir, '.git')].map((path) => `${JSON.stringify(path)}="write"`)
-  const filesystem = `{":root"="read",":tmpdir"="write",${writable.join(',')}}`
-  return [
-    ...['-c', 'default_permissions="awaywork"'],
-    ...['-c', `permissions.awaywork.filesystem=${filesystem}`],
-    ...['-c', 'permissions.awaywork.network.enabled=false'],
-    ...['-c', 'web_search="disabled"'],
-  ]
-}
-
 /** `-c` overrides for the unit's MCP servers; their secrets reach them by name, kept out of the shell's env. */
 export function mcpOverrides(servers: Record<string, McpServer>): string[] {
   const set = (key: string, value: unknown) => ['-c', `${key}=${toml(value)}`]
@@ -188,8 +174,6 @@ export function mcpOverrides(servers: Record<string, McpServer>): string[] {
       enabled_tools: s.tools,
       // The default 10 s drops a server silently, e.g. an `npx -y` download on a fresh runner.
       startup_timeout_sec: 60,
-      // The offline profile refuses tools not annotated read-only without it.
-      default_tools_approval_mode: 'approve',
     }
     return Object.entries(fields).flatMap(([k, v]) =>
       v === undefined ? [] : set(`mcp_servers.${name}.${k}`, v),

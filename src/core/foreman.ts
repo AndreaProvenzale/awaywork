@@ -189,8 +189,7 @@ export function planRun(input: {
       const unit: Unit = {
         ...at,
         id: unitId,
-        network: rule.network ?? config.repos[repo]?.network ?? true,
-        verify: rule.verify ?? config.repos[repo]?.verify,
+        verify: config.repos[repo]?.verify,
         items,
         repo,
         rule: step,

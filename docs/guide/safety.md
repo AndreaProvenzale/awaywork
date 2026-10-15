@@ -18,7 +18,7 @@ not asked of the model.
   `GIT_CONFIG_COUNT` and friends. `setup` keeps those.
 - **Only its own agent's secret.** Every secret a configured source
   declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your
-  `token_env`), your `notify.secrets`, your `after_unit.secrets`, every repo's `secrets`, every
+  `token_env`), your `notify.secrets`, every repo's `secrets`, every
   MCP server's `secrets` and every
   other provider's (`CLAUDE_CODE_OAUTH_TOKEN` for a
   Codex worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs;
@@ -36,8 +36,7 @@ not asked of the model.
 - **Checks outside the agent.** An `until` or `when` command runs the
   code a worker wrote, like `setup` on a branch a worker wrote: none of
   the repo's `secrets`, but on your machine, outside the worker's
-  sandbox. So it doesn't run on an untrusted author's PR, or for a unit
-  with `network: false`.
+  sandbox. So it doesn't run on an untrusted author's PR.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.away/` (context, prompt,
   output) is excluded from git, so it can't be committed. A loop's rounds
@@ -79,9 +78,10 @@ not asked of the model.
 ## Not a sandbox
 
 All of the above keeps credentials out of the agent's way, not out of
-its reach. It runs as your user and can read what you can, offline or
-not; with network on its tools aren't sandboxed either
-([Network](#network)), so what it reads can leave [I, from the code]:
+its reach. It runs as your user and can read what you can, and its
+tools aren't sandboxed: Claude Code gets Bash and file tools
+pre-approved, Codex runs with `--sandbox danger-full-access`, which it
+needs to commit. So what it reads can leave [I, from the code]:
 
 - `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
 - gh's own login, by unsetting `GH_CONFIG_DIR`, and git's global
@@ -97,10 +97,10 @@ What that leaves open:
 - **Prompt injection.** Issue bodies, comments, review threads and CI
   logs are text someone else may have written. The harness tells the
   agent they're data, but a model can still be talked into things, and
-  with network on, what it runs has the reach above.
+  what it runs has the reach above.
 - **Hooks across a loop's rounds.** On your own repo, Claude Code loads
   the clone's `.claude/settings.json`, so one round can leave hooks the
-  next round runs, outside the sandbox when offline.
+  next round runs.
 - **MCP secrets in Claude's Bash** on your own items:
   [MCP servers](#mcp-servers), and
   [#155](https://github.com/AndreaProvenzale/awaywork/issues/155) to fix it.
@@ -137,53 +137,6 @@ so the guide's advice is in three parts:
   with the repo's `secrets` for `setup`. A server with an unset secret doesn't start either. The
   unit's log says which servers didn't start and why.
 
-Servers run outside the agent's sandbox, so `network: false` doesn't cut
-them off: a stdio server can reach the network, and so can the agent's
-own connection to an HTTP server [V, tested, both agents]. `network`
-governs the agent's commands; a server reaches whatever it is built to
-reach.
-
-## Network
-
-`network: false` is experimental: only run in tests so far, see the
-`network: false` part of
-[Repos and instructions](./configuration.md#repos-and-instructions).
-
-The network is on by default. With `network: false` on a repo or a
-rule, each agent's own OS sandbox runs its commands without it. That
-closes one way for injected instructions or someone else's code to send
-your agent's login out, not every way: the login stays in the agent's
-environment, reads aren't restricted, and the draft PR's commits and
-body are pushed without a secret scan.
-
-- **Claude Code**: Bash in its sandbox (`sandbox.enabled`), with no way
-  to run a command outside it and a failed start instead of an
-  unconfined shell when the sandbox is missing. Bash writes stay in the
-  clone and a temp dir; Write and Edit are held by Claude Code's
-  permissions, not the sandbox [V]. It replaces the `sandbox` of your
-  `settings` file. On your own repo the repo's config still loads: its
-  `.claude/settings.json` can allow domains, and its hooks and `.mcp.json`
-  servers run outside the sandbox [V]. On someone else's PR none of it
-  is loaded.
-- **Codex**: a permission profile that reads anywhere, writes the clone,
-  its `.git` and the temp dir, with no network and no web search. It
-  comes after your `config` values, so theirs for the same keys lose,
-  and a `sandbox_mode` there doesn't switch it off [V, tested].
-
-The agent's own requests to its vendor still go out, and so do its
-[MCP servers](#mcp-servers). `setup` runs before
-the agent, outside the sandbox, so it can still install dependencies,
-except on an untrusted author's PR, where it doesn't run.
-
-Offline is tested on macOS only. On Linux, Claude Code's sandbox needs
-bubblewrap and socat [V]; offline isn't verified there for either agent,
-so it may fail, e.g. on a stock GitHub Actions runner [I].
-
-With network on, the agent's tools are not sandboxed: Claude Code gets
-Bash and file tools pre-approved, Codex runs with `--sandbox
-danger-full-access`, which it needs to commit. What that reaches is in
-[Not a sandbox](#not-a-sandbox).
-
 ## What awaywork publishes
 
 - Only a branch that **doesn't exist** on the remote, checked before the
@@ -218,7 +171,9 @@ danger-full-access`, which it needs to commit. What that reaches is in
   branch. Never into someone else's PR or a PR from a fork: only a
   report delivers there.
   A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
-  It never merges, approves, requests reviewers or comments.
+  It never merges, approves, requests reviewers or comments; your own
+  [`notify` command](./configuration.md#pr-labels-reviewers-and-ready-for-review)
+  can, as you.
 - A draft PR stacked on an awaywork PR joins that PR's GitHub stack,
   or starts one with it, only while that PR tops its stack or has none.
   Linking edits neither PR, but GitHub then merges a stack bottom-up:

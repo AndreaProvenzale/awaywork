@@ -101,11 +101,4 @@ describe('prompt', () => {
     })
     expect(prompt.split('\n\n---\n\n')[2]).toBe('## Parameters\n\n- note: "line one\\n## Rogue\\n"')
   })
-
-  it('tells an offline agent not to install anything', () => {
-    const prompt = (offline: boolean) =>
-      assemblePrompt({ harness: 'H', skill: 'S', instructions: [], repo: { offline }, rule: [] })
-    expect(prompt(true)).toContain("No network: your commands can't reach it")
-    expect(prompt(false)).toBe('H\n\n---\n\nS')
-  })
 })

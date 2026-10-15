@@ -214,22 +214,26 @@ const quotaKeys = {
     .describe("Holds when at least this share of the long window is left under this run's ceiling"),
 }
 const when = z
-  .strictObject({
-    ...conditionKeys,
-    ...quotaKeys,
-    verdict: conditionKeys.verdict.describe(
-      'The latest verdict in the chain; a list means any of, {not} negates',
-    ),
-    changed: oneOrMany
-      .optional()
-      .describe(
-        "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
+  .strictObject(
+    {
+      ...conditionKeys,
+      verdict: conditionKeys.verdict.describe(
+        'The latest verdict in the chain; a list means any of, {not} negates',
       ),
-  })
-  .refine(
-    (c) => Object.keys(c).length > 0,
-    'expected verdict, command, changed, runs_until_reset or headroom',
+      changed: oneOrMany
+        .optional()
+        .describe(
+          "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
+        ),
+    },
+    {
+      error: (issue) =>
+        issue.code === 'unrecognized_keys' && issue.keys.some((key) => key in quotaKeys)
+          ? `${issue.keys.join(', ')}: a quota check goes on the rule's when, which gates the whole chain`
+          : undefined,
+    },
   )
+  .refine((c) => Object.keys(c).length > 0, 'expected verdict, command or changed')
 const ruleWhen = z
   .strictObject(quotaKeys)
   .refine((c) => Object.keys(c).length > 0, 'expected runs_until_reset or headroom')
@@ -327,14 +331,6 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
       ),
-    network: z
-      .boolean()
-      .optional()
-      .describe("Network for the worker's commands, then steps included; default the repo's"),
-    verify: z
-      .string()
-      .optional()
-      .describe("Command run before publishing, then steps included; default the repo's"),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -428,7 +424,6 @@ const repo = z.strictObject({
     ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
-  network: z.boolean().optional().describe("Network for the worker's commands; default on"),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])
@@ -502,21 +497,8 @@ export const configSchema = z
         command: z
           .string()
           .min(1)
-          .describe('Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env'),
-        secrets: z
-          .array(z.string().min(1))
-          .default([])
-          .describe('Env vars the command needs; withheld from workers, listed in Actions'),
-      })
-      .optional()
-      .describe('Runs with the morning report when a run ends; a failure is only logged'),
-    after_unit: z
-      .strictObject({
-        command: z
-          .string()
-          .min(1)
           .describe(
-            'Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env',
+            'Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT for a unit',
           ),
         secrets: z
           .array(z.string().min(1))
@@ -524,7 +506,9 @@ export const configSchema = z
           .describe('Env vars the command needs; withheld from workers, listed in Actions'),
       })
       .optional()
-      .describe('Run after each unit, once its result is final; a failure is only logged'),
+      .describe(
+        'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
+      ),
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)
@@ -550,15 +534,8 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
-      const offline = "a command can't run with network: false: awaywork has no sandbox for it"
       if (Array.isArray(r.then))
         r.then.forEach((entry, j) => {
-          if (r.network === false && isLoop(entry) && entry.until.command)
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'then', j, 'until', 'command'],
-              message: offline,
-            })
           if (entry.stack && (r.deliver ?? 'draft_pr') !== 'draft_pr')
             ctx.addIssue({
               code: 'custom',
@@ -582,8 +559,6 @@ export const configSchema = z
         const earlier = chain.findIndex(
           (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
         )
-        if (r.network === false && s.when?.command)
-          ctx.addIssue({ code: 'custom', path: [...stepAt, 'when', 'command'], message: offline })
         if (earlier < j)
           ctx.addIssue({
             code: 'custom',
