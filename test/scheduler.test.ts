@@ -240,7 +240,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   expect(parsed.jobs.run.steps).toEqual([
     { uses: 'actions/checkout@v5', with: { 'persist-credentials': false } },
     {
-      uses: 'AndreaProvenzale/awaywork@v1',
+      uses: 'AndreaProvenzale/awaywork@v0.3.1',
       env: {
         GH_TOKEN: '${{ secrets.GH_TOKEN }}',
         CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
@@ -613,6 +613,8 @@ it('warns about a workflow that runs its steps inline instead of calling the act
     join(root, WORKFLOW),
     workflow({ ...current, packages: [], secrets: [], setup: [] }),
   )
+  expect(await staleWorkflow(root)).toBeUndefined()
+  await writeFile(join(root, WORKFLOW), 'steps:\n  - uses: AndreaProvenzale/awaywork@v1\n')
   expect(await staleWorkflow(root)).toBeUndefined()
 })
 
