@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import { type Schedule, type Scheduler, SchedulerError } from './index.js'
+import { type Schedule, type Scheduler, SchedulerError, type Start } from './index.js'
 
 /** A user service plus a persistent timer, so a run missed while off starts at boot. */
 export function systemd(home: string, run: Exec): Scheduler {
@@ -97,17 +97,22 @@ StandardError=append:${s.log}
 `
 }
 
+export const onCalendar = (starts: Start[]) =>
+  starts
+    .map(
+      (start) =>
+        `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
+    )
+    .join('\n')
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
 export function timer(s: Schedule): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const calendar = s.starts.map(
-    (start) =>
-      `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
-  )
   return `[Unit]
 Description=awaywork scheduled run
 
 [Timer]
-${calendar.join('\n')}
+${onCalendar(s.starts)}
 Persistent=true
 
 [Install]

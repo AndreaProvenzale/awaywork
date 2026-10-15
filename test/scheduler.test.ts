@@ -21,6 +21,7 @@ import {
 import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
+import { keepAwake, pmsetArgs, timerWake, wakeFor, wakeTimer } from '../src/scheduler/wake.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
 const schedule: Schedule = {
@@ -764,4 +765,72 @@ it('writes a workflow cron per window', () => {
     { cron: '5 1 * * *', timezone: 'UTC' },
     { cron: '0 10 * * 0,6', timezone: 'UTC' },
   ])
+})
+
+describe('wake', () => {
+  it('holds a Mac awake with caffeinate while the run lasts', () => {
+    expect(keepAwake('darwin')).toEqual(['/usr/bin/caffeinate', '-i'])
+    expect(keepAwake('win32')).toEqual([])
+  })
+
+  it('repeats one pmset wake on the days of the windows starting then', () => {
+    expect(pmsetArgs([{ hour: 1, minute: 5 }])).toEqual([
+      'pmset',
+      'repeat',
+      'wake',
+      'MTWRFSU',
+      '01:05:00',
+    ])
+    expect(
+      pmsetArgs([
+        { hour: 1, minute: 5, days: [0, 6] },
+        { hour: 1, minute: 5, days: [1] },
+      ])?.[3],
+    ).toBe('MSU')
+    expect(pmsetArgs(weekly.starts)).toBeUndefined()
+  })
+
+  it('asks before replacing repeating power events, and says why it cannot wake for two times', async () => {
+    const sched = `Repeating power events:
+  wakepoweron at 7:00AM every day
+Scheduled power events:
+ [0]  wake at 10/16/2026 01:01:20 by 'com.apple.alarm'
+`
+    const calls: string[][] = []
+    const run: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args])
+      return cmd === 'pmset' ? sched : ''
+    }
+    const wake = await wakeFor([{ hour: 1, minute: 5 }], run, 'darwin')
+    if (!wake || typeof wake === 'string') throw new Error(`no wake: ${wake}`)
+    expect(wake.question).toBe(
+      'Wake this Mac when the window opens (sudo pmset repeat wake MTWRFSU 01:05:00, replacing wakepoweron at 7:00AM every day)?',
+    )
+    await wake.install()
+    expect(calls.at(-1)).toEqual(['sudo', 'pmset', 'repeat', 'wake', 'MTWRFSU', '01:05:00'])
+    expect(await wakeFor(weekly.starts, run, 'darwin')).toBe(
+      'pmset repeats one wake time and the windows start at 01:05, 10:00 on 0,6; keep this Mac awake for them',
+    )
+  })
+
+  it('installs a root timer that wakes the system at each start', async () => {
+    expect(wakeTimer(weekly.starts)).toContain(
+      'OnCalendar=*-*-* 01:05:00\nOnCalendar=Sun,Sat *-*-* 10:00:00\nWakeSystem=true',
+    )
+    const calls: string[][] = []
+    let installed = ''
+    const run: Exec = async (cmd, args) => {
+      calls.push([cmd, ...args])
+      if (args[0] === 'install') installed = await readFile(args[4] ?? '', 'utf8')
+      return ''
+    }
+    await timerWake(weekly.starts, run).install()
+    expect(installed).toBe(wakeTimer(weekly.starts))
+    expect(calls.map((c) => c.slice(0, 2).join(' '))).toEqual([
+      'sudo install',
+      'sudo systemctl',
+      'sudo systemctl',
+    ])
+    expect(calls.at(-1)).toEqual(['sudo', 'systemctl', 'enable', '--now', 'awaywork-wake.timer'])
+  })
 })
