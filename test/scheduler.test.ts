@@ -232,6 +232,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
   const parsed = parse(text)
   expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
   expect(parsed.name).toBe('awaywork')
+  expect(Object.keys(parsed.on.workflow_dispatch.inputs)).toEqual(['unit'])
   expect(parsed.concurrency).toBe('awaywork')
   expect(parsed.permissions).toEqual({ contents: 'read' })
   expect(parsed.jobs.run['runs-on']).toBe('ubuntu-latest')
@@ -249,6 +250,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
         config: '.awaywork/config.yml',
         version: '0.3.1',
         packages: '@anthropic-ai/claude-code',
+        unit: '${{ inputs.unit }}',
       },
     },
   ])
@@ -256,13 +258,13 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
 
 it('ships an action that installs the pinned version and runs awaywork once', async () => {
   const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
-  expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages'])
+  expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages', 'unit'])
   expect(action.runs.using).toBe('composite')
   const runs = action.runs.steps.map((s: { run?: string }) => s.run ?? '')
   expect(runs[0]).toContain('if [ -z "$GH_TOKEN" ]; then')
   expect(runs[0]).toContain("::error::GH_TOKEN is empty: the job's secrets didn't reach it.")
   expect(runs).toContain(
-    "awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}",
+    "awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }} ${UNIT:+--unit \"$UNIT\"}",
   )
   const step = (name: string) => action.runs.steps.find((s: { name?: string }) => s.name === name)
   expect(step("Commit as the token's user").run).toContain(
