@@ -253,7 +253,7 @@ export function configSecrets(
   ]
 }
 
-/** The skill copies awaywork made in each clone, which a loop's later rounds replace rather than keep. Per process: a resumed loop starts empty. */
+/** The skill copies awaywork made in each clone, which a chain's later steps replace rather than keep. Per process. */
 const copied = new Map<string, Set<string>>()
 
 /** Copies skills into the clone, keeping the repo's own unless someone else opened the PR or awaywork copied it. */
@@ -317,7 +317,7 @@ async function copySkill(dir: string, source: string, target: string) {
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
-  // In a loop's clone, the config is a worker's: run no fsmonitor command from it.
+  // In a chain's clone, the config is a worker's: run no fsmonitor command from it.
   const git = ['-C', dir, '-c', 'core.fsmonitor=false']
   const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
   await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
@@ -366,7 +366,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
         ]
       : []),
     `Items:\n${items.join('\n')}`,
-    ...(w.previous ? [followUp(w.previous, w.loop)] : []),
+    ...(w.previous ? [followUp(w.previous)] : []),
     ...(unit.rule.when?.command
       ? [
           `Before you started, awaywork ran \`${unit.rule.when.command}\`: its output is \`when.log\` in \`${WORK_DIR}/context/previous/\`.`,
@@ -381,9 +381,9 @@ function loopSection(loop: LoopRound): string {
   return `It is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}.`
 }
 
-function followUp({ skill, out }: Previous, loop?: LoopRound): string {
+function followUp({ skill, out }: Previous): string {
   const check = existsSync(join(out, 'check.log'))
-    ? `, and the output of \`${loop?.until.command}\`, which awaywork ran after it, in \`check.log\``
+    ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''
   return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them, the PR body so far in \`${outputFile.draft_pr}\`, and its commits in \`diff.patch\`${check}.`
 }

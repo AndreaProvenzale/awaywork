@@ -468,16 +468,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       input.ctx.log(`${unit.id}: ${result.status}`)
     }
 
-    const host = done.find((r) => r.planned.unit.id === first.unit.id && r.status !== 'skipped')
-    if (cloned !== undefined && host && ran && !input.dryRun) {
-      if (Object.keys(loops).length) host.loop = Object.values(loops).map(describeLoop).join('; ')
+    const lead = done.find((r) => r.planned.unit.id === first.unit.id && r.status !== 'skipped')
+    if (cloned !== undefined && lead && ran && !input.dryRun) {
+      if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
       try {
-        host.outcome = interrupted
+        lead.outcome = interrupted
           ? { kind: 'none', reason: 'interrupted', unpublished: true }
           : await publishChain(first.unit, deliver, shape, dir, cloned, reports, loops)
       } catch (e) {
         // The steps ran as they did: only the publish failed.
-        host.outcome = { kind: 'none', reason: (e as Error).message, unpublished: true }
+        lead.outcome = { kind: 'none', reason: (e as Error).message, unpublished: true }
       } finally {
         await cp(join(dir, WORK_DIR, 'out'), join(chainDir, 'out'), {
           recursive: true,
