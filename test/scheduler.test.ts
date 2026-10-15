@@ -837,6 +837,12 @@ Scheduled power events:
     )
     const none = await wakeFor([{ hour: 1, minute: 5 }], async () => '', 'darwin')
     expect(none && typeof none !== 'string' && none.initial).toBe(true)
+    const ours = await wakeFor(
+      [{ hour: 1, minute: 5 }],
+      async () => 'Repeating power events:\n  wake at 1:00AM every day\n',
+      'darwin',
+    )
+    expect(ours && typeof ours !== 'string' && ours.initial).toBe(true)
   })
 
   it('names the repeating power events a Mac keeps after remove', async () => {

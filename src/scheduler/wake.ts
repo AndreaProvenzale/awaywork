@@ -28,7 +28,7 @@ export async function keepAwake(run: Exec, platform = process.platform): Promise
 /** Wakes the machine from sleep when a window opens; root sets it, so it goes through sudo. */
 export interface Wake {
   question: string
-  /** The answer Enter gives: no when it replaces power events already set. */
+  /** The answer Enter gives: no when it replaces power events other than a wake. */
   initial: boolean
   install(): Promise<void>
 }
@@ -86,7 +86,7 @@ async function pmsetWake(starts: Start[], run: Exec): Promise<Wake | string> {
   const current = await repeating(run)
   return {
     question: `Wake this Mac when the window opens (sudo ${args.join(' ')}${current ? `, replacing ${current}` : ''})?`,
-    initial: !current,
+    initial: !current || current.split('; ').every((e) => e.startsWith('wake at ')),
     install: async () => void (await run('sudo', args)),
   }
 }

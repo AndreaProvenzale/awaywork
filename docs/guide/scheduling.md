@@ -74,7 +74,8 @@ awaywork schedule remove
 
 A sleeping machine runs nothing. Once a run starts it keeps the machine
 from idling back to sleep (`caffeinate -i` on macOS, `systemd-inhibit
---what=idle` on Linux), so the missing piece is the wake itself. In a
+--what=idle` on Linux when it works there), so the missing piece is the
+wake itself. In a
 terminal, `schedule install` offers one after the job:
 
 ```
@@ -86,7 +87,7 @@ terminal, `schedule install` offers one after the job:
 - macOS: `pmset` keeps a single repeating wake, so this needs every
   window to start at the same time, and it replaces the repeating power
   events you already had, a scheduled sleep or shutdown too. The question
-  lists them and then defaults to No. Keep a laptop on the charger; with
+  lists them and then defaults to No, unless all it replaces is a wake. Keep a laptop on the charger; with
   the lid closed on battery it may not wake fully.
 - Linux: a root timer, `/etc/systemd/system/awaywork-wake.timer` with
   `WakeSystem=true`, resumes from suspend at each window start. A
