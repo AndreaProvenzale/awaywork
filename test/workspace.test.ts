@@ -481,6 +481,15 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       ).rejects.toThrow('.away in the clone comes from the branch')
     })
 
+    it('refuses a .away folder the branch commits with a file link in it', async () => {
+      const victim = join(await mkdtemp(join(tmpdir(), 'awaywork-outside-')), 'victim')
+      await writeFile(victim, 'KEEP')
+      await expect(
+        review(false, claude, undefined, true, { at: '.away/context/fake-1/item.md', to: victim }),
+      ).rejects.toThrow('.away in the clone comes from the branch')
+      expect(await readFile(victim, 'utf8')).toBe('KEEP')
+    })
+
     it("keeps them on the developer's own PR", async () => {
       const { dir, plugin, prompt } = await review(true)
       expect(prompt).toContain('AUTHOR NOTE')

@@ -2325,6 +2325,54 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
 
+it("keeps awaywork's replay.json and worker.log in the unit dir over the ones a worker wrote", async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
+  const provider = looper({})
+  await loopRun(
+    'queue:\n  - skill: implement\n',
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        await writeFile(join(job.dir, '.away/replay.json'), '{"forged":true}')
+        await writeFile(join(job.dir, '.away/worker.log'), 'FORGED LOG')
+      },
+    },
+    { runDir },
+  )
+
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  const state = JSON.parse(await readFile(join(unitDir, 'replay.json'), 'utf8'))
+  expect(state.unit.id).toBe('acme-api-1')
+  expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).not.toContain('FORGED')
+  expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
+})
+
+it('copies nothing from the .away a branch ships into the unit dir', async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
+  const { report } = await loopRun('queue:\n  - skill: implement\n', [issue(1)], looper({}), {
+    runDir,
+    forge: {
+      clone: async (_repo, _branch, dir) => {
+        await execa(bin('git'), ['init', '-q', '-b', 'main', dir])
+        await mkdir(join(dir, '.away/out'), { recursive: true })
+        for (const file of ['replay.json', 'worker.log', 'out/pr.md'])
+          await writeFile(join(dir, '.away', file), 'FORGED')
+        await git(dir, 'add', '.')
+        await git(dir, 'commit', '-qm', 'init')
+      },
+    },
+  })
+
+  expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+    ['error', '.away in the clone comes from the branch, not awaywork'],
+  ])
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  expect(await readdir(unitDir)).toEqual(['worker.log'])
+  expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).toContain('comes from the branch')
+})
+
 it('reads past FIFOs a round left as its verdict or report, and finishes the run', async () => {
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const { report, opened } = await loopRun(
@@ -3165,4 +3213,14 @@ it('leaves the PR body alone when verify passes', async () => {
 it('notes a refused verify in the PR body', async () => {
   const body = await verifiedBody("verify: 'true', network: false")
   expect(body).toContain('not run: not run without network')
+})
+
+it("doesn't write a failed verify through a link it left for the PR body", async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+  await writeFile(join(outside, 'pr.md'), 'mine\n')
+  const body = await verifiedBody(
+    `verify: 'rm -r .away/out && ln -s ${outside} .away/out && false'`,
+  )
+  expect(body).toBe('')
+  expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
 })
