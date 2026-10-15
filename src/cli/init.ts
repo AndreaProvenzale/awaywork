@@ -14,7 +14,7 @@ import type { Ask, Ctx, Provider, Rule, Source } from '../core/types.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { Cancelled, defaultAsk, terminalAsk } from './ask.js'
+import { Cancelled, defaultAsk, printBrand, terminalAsk } from './ask.js'
 import { describeRule } from './format.js'
 import { installSchedule, whereToRun } from './schedule.js'
 
@@ -37,6 +37,7 @@ export function initCommand(program: Command): void {
         return
       }
       const ask = opts.yes ? defaultAsk(presets(opts), (line) => log.info(line)) : terminalAsk
+      if (!opts.yes) printBrand()
       intro('awaywork init')
       try {
         if (existsSync(path) && !opts.force) {

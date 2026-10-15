@@ -33,7 +33,7 @@ import {
 import { keepAwake, wakeFor, wakeUndo } from '../scheduler/wake.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
-import { Cancelled, terminalAsk } from './ask.js'
+import { Cancelled, printBrand, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
 
 const GITHUB_ACTIONS = 'github-actions'
@@ -55,7 +55,10 @@ export function scheduleCommand(program: Command): void {
       '--with <scheduler>',
       `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: asks in a terminal, else launchd on macOS, else systemd if it runs, else cron)`,
     )
-    .action((opts: { with?: string }) => installSchedule(program.opts().config, opts.with))
+    .action((opts: { with?: string }) => {
+      printBrand()
+      return installSchedule(program.opts().config, opts.with)
+    })
 
   schedule
     .command('remove')

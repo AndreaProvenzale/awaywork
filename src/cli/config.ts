@@ -8,7 +8,7 @@ import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load
 import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
 import { unknownSkills } from '../config/skills.js'
-import { terminalAsk } from './ask.js'
+import { printBrand, terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
 export function configCommand(program: Command): void {
@@ -32,6 +32,7 @@ export function configCommand(program: Command): void {
         process.exitCode = 1
         return
       }
+      printBrand()
       const draft = join(await mkdtemp(join(tmpdir(), 'awaywork-')), basename(path))
       const [bin = 'vi', ...args] = (process.env.VISUAL || process.env.EDITOR || 'vi').split(' ')
       const outcome = await editUntilValid({

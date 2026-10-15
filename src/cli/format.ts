@@ -292,3 +292,14 @@ export function statusMarker(status: Status, color: boolean): string {
   const [glyph, style] = markers[status]
   return styleText(style, glyph, { validateStream: false })
 }
+
+const amber = (text: string) => `\u001b[38;2;247;178;64m${text}\u001b[39m`
+
+/** The logo as a line: a crescent with an amber prompt in it, then the tagline. */
+export function brandHeader(color: boolean): string {
+  const tagline = "You're away, your agents work"
+  if (!color) return `☾ >_ awaywork  ${tagline}`
+  const style = (format: 'bold' | 'dim', text: string) =>
+    styleText(format, text, { validateStream: false })
+  return `☾ ${style('bold', amber('>_'))} ${style('bold', 'awaywork')}  ${style('dim', tagline)}`
+}

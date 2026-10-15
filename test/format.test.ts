@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { describeRule, formatPlan, listedUnits, statusMarker } from '../src/cli/format.js'
+import {
+  brandHeader,
+  describeRule,
+  formatPlan,
+  listedUnits,
+  statusMarker,
+} from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
 import { planRun } from '../src/core/foreman.js'
@@ -18,6 +24,18 @@ describe('statusMarker', () => {
     expect(statusMarker('ok', false)).toBe('ok  ')
     expect(statusMarker('warn', false)).toBe('warn')
     expect(statusMarker('FAIL', false)).toBe('FAIL')
+  })
+})
+
+describe('brandHeader', () => {
+  it('draws a bold amber prompt, a bold name and a dim tagline', () => {
+    expect(brandHeader(true)).toBe(
+      "☾ \u001b[1m\u001b[38;2;247;178;64m>_\u001b[39m\u001b[22m \u001b[1mawaywork\u001b[22m  \u001b[2mYou're away, your agents work\u001b[22m",
+    )
+  })
+
+  it('is plain text without color', () => {
+    expect(brandHeader(false)).toBe("☾ >_ awaywork  You're away, your agents work")
   })
 })
 
