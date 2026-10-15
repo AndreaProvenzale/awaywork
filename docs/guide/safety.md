@@ -238,12 +238,19 @@ danger-full-access`, which it needs to commit. What that reaches is in
   from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
   appends the chain's notes, the items' link lines and a stacked PR's
-  "merge that first" line to the body. After a draft PR it fetches the
-  commits as pushed back into the clone, with no hook or fsmonitor, so a
-  stacked slice is cut from them. It refuses if either file is a
-  symlink, and reads or writes only regular files. The symlink check
-  runs just before, so a worker process that outlived the watchdog could
-  still swap a path in between.
+  "merge that first" line to the body. It refuses if the body, the
+  report or `diff.patch` is a symlink, and reads or writes only regular
+  files. The symlink check runs just before, so a worker process that
+  outlived the watchdog could still swap a path in between.
+- A [stacked slice](./configuration.md#stack) never fetches anything
+  into the clone: awaywork's own repo re-parents its commits onto the
+  slice before's as pushed, while adding the trailer. In the clone it
+  runs one `git checkout -b` for the slice's new branch at the clone's
+  tip, with no hook, fsmonitor or reflog. Before it, awaywork refuses a
+  symlink anywhere on the path to `.git/HEAD` or to the new branch's
+  ref, and deletes `.git/logs`, so git writes only that
+  branch, HEAD and the index, each by renaming a fresh lock file, and
+  nothing outside the clone.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from awaywork: a footer with the run id and
   the items it's for in the body, and an `Awaywork: <run id>` commit

@@ -468,8 +468,9 @@ queue:
 
 - A chain counts once against the [caps](#windows-limits-and-budget) and
   its rule's `units`, as soon as its first step has a provider, and once
-  more per [stacked slice](#stack). A chain over a cap is skipped whole,
-  naming the cap.
+  more per [stacked slice](#stack). A chain whose first slice is over a
+  cap is skipped whole, naming the cap; a later slice over it is left
+  out.
 - On someone else's PR or a PR from a fork, a chain that could commit
   (a step's skill commits and `deliver` isn't `report`) is skipped with
   the reason. `deliver: report` turns it into a review chain.
@@ -564,7 +565,8 @@ The `command` check and the quota checks (`runs_until_reset`,
 :::
 
 A step, in a chain or a loop, runs only when its `when` holds. Otherwise
-it is passed over and the chain goes on as if the step weren't there:
+it is passed over and the chain goes on as if the step weren't there,
+unless the step [starts a slice](#stack):
 
 ```yaml
 queue:
@@ -636,9 +638,9 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
 `away/acme-api-12`.
 
 - A slice publishes as soon as its last step ends, before the next one
-  starts. Its commits get the `Awaywork:` trailer, and the next slice's
-  branch is cut from them as pushed, in the same clone: `setup` doesn't
-  run again.
+  starts. The next slice's branch is cut from its tip in the same clone,
+  so `setup` doesn't run again, and its commits are pushed on top of the
+  slice before's as pushed, each with the `Awaywork:` trailer.
 - Every slice renders the rule's [`branch`](#branch-names), so a later
   one takes the first free `-2` to `-10`. A branch the chain published
   this run never counts as awaywork having tried there.
@@ -654,7 +656,8 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
   report: there would be nothing to put in the PR, or nothing to stack
   on.
 - A stacked slice whose first step commits nothing ends the chain; the
-  slices before it stay published. A failing step or the window's end
+  slices before it stay published. So does a stacked step whose
+  [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end
   ends the chain too, and the open slice publishes what it has. Ctrl-C
   drops the open slice, and the ones that already ended stay published.
 - `when: { changed }` still diffs from where the chain started, so it
@@ -671,7 +674,7 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
     1  acme-api-12  acme/api  #1    implement (built-in)  claude    draft_pr  away/acme-api-12
        github acme/api#12: Rate-limit the export endpoint
        then loop review ⇄ fix until verdict approve, at most 3 rounds
-         review (built-in) on claude
+         review (built-in) on codex
          fix (built-in) on claude
        stack docs (user) on claude
   ```
@@ -679,23 +682,25 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
   The morning report has the chain's row, then each slice with its steps:
 
   ```
-  #  Unit                      Skill                                        Provider  Status                                                                        Result
-  1  acme-api-12               implement → loop(review ⇄ fix) → stack docs  claude    done, 70 turns                                                                https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commits)
-     └ slice 1                 implement → loop(review ⇄ fix)               claude    done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (2 commits), verdict approve
-       └ acme-api-12           implement                                    claude    done, 14 turns                                                                1 commit
-       └ acme-api-12-review-1  review                                       claude    done, 14 turns                                                                a report, verdict changes
-       └ acme-api-12-fix-1     fix                                          claude    done, 14 turns                                                                1 commit
-       └ acme-api-12-review-2  review                                       claude    done, 14 turns                                                                a report, verdict approve
-     └ slice 2                 docs                                         claude    done, 14 turns                                                                https://github.com/acme/api/pull/43 (1 commits)
-       └ acme-api-12-docs      docs                                         claude    done, 14 turns                                                                1 commit
+  #  Unit                      Skill                                        Provider       Status                                                                        Result
+  1  acme-api-12               implement → loop(review ⇄ fix) → stack docs  claude, codex  done, 70 turns                                                                https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commits)
+     └ slice 1                 implement → loop(review ⇄ fix)               claude, codex  done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (2 commits), verdict approve
+       └ acme-api-12           implement                                    claude         done, 14 turns                                                                1 commit
+       └ acme-api-12-review-1  review                                       codex          done, 14 turns                                                                a report, verdict changes
+       └ acme-api-12-fix-1     fix                                          claude         done, 14 turns                                                                1 commit
+       └ acme-api-12-review-2  review                                       codex          done, 14 turns                                                                a report, verdict approve
+     └ slice 2                 docs                                         claude         done, 14 turns                                                                https://github.com/acme/api/pull/43 (1 commits)
+       └ acme-api-12-docs      docs                                         claude         done, 14 turns                                                                1 commit
   ```
 
 - [`after_unit`](#after-each-unit) gives every step its own slice's PR
   in `AWAYWORK_PR_URL`, and `stats` counts each slice's draft PR.
 
 ::: warning Squash-merging the base
-Once the first PR is squash-merged, GitHub retargets the stacked one to
-the default branch, but it still carries the first one's commits.
+Once the first PR is squash-merged and its branch deleted (as GitHub's
+"Automatically delete head branches" does), GitHub retargets the stacked
+one to the default branch; with the branch kept, it still targets the
+merged branch. Either way it still carries the first one's commits.
 Merging the default branch into it usually resolves cleanly, since the
 content is the same. Workers never rebase, and nobody does that merge
 for you.
@@ -789,11 +794,11 @@ none, and Ctrl-C stops the running one and starts no more. Its env has
 `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g.
 `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`,
 `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit,
-or of a [slice](#stack), that opened a draft PR, and `AWAYWORK_REPORT`, the path of what the step
-wrote: its report, or for a step that commits, the PR body as it left
-it. Like `notify`, a command that
-fails or takes over a minute is logged and the run goes on, and `secrets`
-are withheld from workers.
+or of a [slice](#stack), that opened a draft PR, and `AWAYWORK_REPORT`,
+the path of what the step wrote: its report, or for a step that commits,
+the PR body as it left it. Like `notify`, a command that fails or takes
+over a minute is logged and the run goes on, and `secrets` are withheld
+from workers.
 
 ```yaml
 after_unit:
