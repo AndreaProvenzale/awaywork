@@ -13,6 +13,7 @@ import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
+import { unitStats } from '../src/core/stats.js'
 import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
 import { type RunInput, runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
@@ -927,7 +928,7 @@ repos:
       text: 'Work on acme-api-1-implement\n\nDone.',
       head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
     },
-    '1 commits',
+    '1 commit',
   ])
   const pushed = await git(
     origin,
@@ -954,7 +955,7 @@ repos:
     '| 1 | acme-api-1 | fix → implement | claude | done, 2 turns | 2 commits pushed onto feature-1, report below |',
   )
   expect(text).toContain(
-    '|  | └ acme-api-1-implement | implement | claude | done, 1 turns | 1 commits |',
+    '|  | └ acme-api-1-implement | implement | claude | done, 1 turns | 1 commit |',
   )
   expect(text).toContain(
     '### acme-api-1: PR 1 (fix)\n\nhttps://github.com/acme/api/pull/1\n\nWork on acme-api-1-implement',
@@ -1198,16 +1199,16 @@ queue:
   expect(text).toContain(
     [
       `| 1 | acme-api-1 | implement → loop(review ⇄ fix) → plan | claude | done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
-      '|  | └ acme-api-1 | implement | claude | done, 1 turns | 1 commits |',
+      '|  | └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
       '|  | └ acme-api-1-review-1 | review | claude | done, 1 turns | a report, verdict changes |',
-      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turns | 1 commits |',
+      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turns | 1 commit |',
       '|  | └ acme-api-1-review-2 | review | claude | done, 1 turns | a report, verdict approve |',
       '|  | └ acme-api-1-plan | plan | claude | done, 1 turns | a report |',
     ].join('\n'),
   )
   expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
   expect(summarize(report, 'report.md')).toContain(
-    `  acme-api-1  done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  ${url} (2 commits), verdict approve\n    acme-api-1  done, 1 turns  1 commits\n`,
+    `  acme-api-1  done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  ${url} (2 commits), verdict approve\n    acme-api-1  done, 1 turns  1 commit\n`,
   )
 })
 
@@ -2027,7 +2028,7 @@ it("publishes what a chain has at the window's end, and retries it without count
   expect(recordAttempts({}, report)).toEqual({})
 })
 
-it("keeps the steps' status when the chain's publish fails, and counts a failure", async () => {
+it("turns the chain's first step into an error when its publish fails, and counts a failure", async () => {
   const item = fakeItem({
     ...issue(1),
     fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
@@ -2041,15 +2042,11 @@ it("keeps the steps' status when the chain's publish fails, and counts a failure
     { forge: { push: async () => Promise.reject(new Error('push refused')) } },
   )
 
-  expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
-    ['acme-api-1', 'done'],
-    ['acme-api-1-review', 'done'],
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'error', 'push refused'],
+    ['acme-api-1-review', 'done', undefined],
   ])
-  expect(report.results[0]?.outcome).toEqual({
-    kind: 'none',
-    reason: 'push refused',
-    unpublished: true,
-  })
+  expect(unitStats(report.results).map((s) => s.status)).toEqual(['failed', 'done'])
   expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
 })
 
@@ -2151,8 +2148,8 @@ it('runs a loop right after a loop, and the steps after a loop that a step left 
     ['acme-api-1', 'done', 'a report'],
     ['acme-api-1-review-1', 'done', 'a report'],
     ['acme-api-1-fix-1', 'done', 'nothing'],
-    ['acme-api-1-implement-1', 'done', '1 commits'],
-    ['acme-api-1-implement-2', 'done', '1 commits'],
+    ['acme-api-1-implement-1', 'done', '1 commit'],
+    ['acme-api-1-implement-2', 'done', '1 commit'],
     ['acme-api-1-review', 'done', 'a report'],
   ])
   expect(report.results[0]?.loop).toBe(
@@ -2181,7 +2178,7 @@ it('waits for a verdict written in the loop before `until: { verdict: { not } }`
   ])
 })
 
-it('ends a chain whose clone a step broke, keeps the steps before done, and still finishes the run', async () => {
+it('ends a chain whose clone a step broke, fails its publish, and still finishes the run', async () => {
   const provider = looper({})
   const { report, opened } = await loopRun(
     `queue:
@@ -2200,11 +2197,11 @@ it('ends a chain whose clone a step broke, keeps the steps before done, and stil
   )
 
   expect(report.results.map((u) => [u.planned.unit.id, u.status])).toEqual([
-    ['acme-api-1', 'done'],
+    ['acme-api-1', 'error'],
     ['acme-api-1-review-1', 'error'],
   ])
   expect(report.results[0]?.loop).toMatch(/^1 round of review ⇄ fix; acme-api-1-review-1 error: /)
-  expect(report.results[0]?.outcome).toMatchObject({ kind: 'none', unpublished: true })
+  expect(report.results[0]?.reason).toMatch(/unknown revision/)
   expect(opened).toEqual([])
 })
 
@@ -2275,12 +2272,8 @@ it('refuses to publish a loop whose PR body a round turned into a symlink', asyn
     },
   )
 
-  expect(report.results[0]?.status).toBe('done')
-  expect(report.results[0]?.outcome).toEqual({
-    kind: 'none',
-    reason: '.away/out/pr.md in the clone is a symlink',
-    unpublished: true,
-  })
+  expect(report.results[0]?.status).toBe('error')
+  expect(report.results[0]?.reason).toBe('.away/out/pr.md in the clone is a symlink')
   expect(opened).toEqual([])
   expect(await readFile(outside, 'utf8')).toBe('mine\n')
 })
@@ -2819,6 +2812,28 @@ it('ends a loop whose until check was interrupted, and retries its chain without
   })
   expect(report.results[0]?.outcome).toMatchObject({ reason: 'interrupted', unpublished: true })
   expect(opened).toEqual([])
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
+it('publishes nothing from a report chain whose last until check was interrupted', async () => {
+  const stop = new AbortController()
+  const started = join(await mkdtemp(join(tmpdir(), 'awaywork-check-')), 'started')
+  const watch = setInterval(() => existsSync(started) && stop.abort(), 20)
+  const item = fakeItem({
+    ...issue(1),
+    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
+  })
+  const { report } = await loopRun(
+    `queue:
+  - skill: plan
+    then: { loop: [review], until: { command: 'touch ${started}; sleep 5' }, max: 1 }
+`,
+    [item],
+    looper({}),
+    { signal: stop.signal, ctx: { env: { PATH: process.env.PATH }, log: () => {} } },
+  ).finally(() => clearInterval(watch))
+
+  expect(report.results[0]?.outcome).toMatchObject({ reason: 'interrupted', unpublished: true })
   expect(recordAttempts({}, report)).toEqual({})
 })
 

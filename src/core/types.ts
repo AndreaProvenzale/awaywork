@@ -209,7 +209,7 @@ export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
-  /** The latest verdict a step of the loop wrote, or for `when` the step before's. */
+  /** The latest verdict: for `until` the loop's, for `when` the chain's. */
   verdict?: Scalar | Scalar[] | { not: Scalar | Scalar[] }
   /** A shell command awaywork runs in the clone, outside the model; exit 0 holds. */
   command?: string

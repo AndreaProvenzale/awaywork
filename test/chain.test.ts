@@ -159,7 +159,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   expect(rows).toEqual([
     ['acme-api-1', 'done', { kind: 'pr', url, commits: 2 }],
     ['acme-api-1-review-1', 'done', 'a report'],
-    ['acme-api-1-fix-1', 'done', '1 commits'],
+    ['acme-api-1-fix-1', 'done', '1 commit'],
     ['acme-api-1-review-2', 'done', 'a report'],
     ['acme-api-1-plan', 'done', 'a report'],
   ])
@@ -289,7 +289,7 @@ it('ends the chain at a step that fails, publishes what it has, and counts a fai
       'done',
       { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 2 },
     ],
-    ['acme-api-1-fix', 'failed', '1 commits'],
+    ['acme-api-1-fix', 'failed', '1 commit'],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
   ])
   expect(opened).toHaveLength(1)

@@ -471,13 +471,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const lead = done.find((r) => r.planned.unit.id === first.unit.id && r.status !== 'skipped')
     if (cloned !== undefined && lead && ran && !input.dryRun) {
       if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
+      interrupted ||= !!input.signal?.aborted
       try {
         lead.outcome = interrupted
           ? { kind: 'none', reason: 'interrupted', unpublished: true }
           : await publishChain(first.unit, deliver, shape, dir, cloned, reports, loops)
       } catch (e) {
-        // The steps ran as they did: only the publish failed.
-        lead.outcome = { kind: 'none', reason: (e as Error).message, unpublished: true }
+        Object.assign(lead, { status: 'error', reason: (e as Error).message })
       } finally {
         await cp(join(dir, WORK_DIR, 'out'), join(chainDir, 'out'), {
           recursive: true,
@@ -641,7 +641,10 @@ async function readVerdict(dir: string): Promise<string | undefined> {
 
 /** What a step left for the chain, e.g. `2 commits and a report`. */
 function made(commits: number, report: string): string {
-  const parts = [commits > 0 && `${commits} commits`, report && 'a report'].filter(Boolean)
+  const parts = [
+    commits > 0 && `${commits} ${commits === 1 ? 'commit' : 'commits'}`,
+    report && 'a report',
+  ].filter(Boolean)
   return parts.length ? parts.join(' and ') : 'nothing'
 }
 
