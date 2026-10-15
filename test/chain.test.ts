@@ -1,4 +1,13 @@
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -8,8 +17,11 @@ import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
+import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
+import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
+import { unitStats } from '../src/core/stats.js'
 import type { Item, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
@@ -49,8 +61,20 @@ async function originForge(root: string) {
   const opened: { head: string; base: string; body: string }[] = []
   const pushedOnto: string[] = []
   const fake = fakeForge()
+  // The PRs on each branch as the forge lists them, with the footer it adds.
+  const footers: Record<string, string> = {}
   const forge = {
     ...fake,
+    prsOn: async (repo: string, branch: string) =>
+      footers[branch]
+        ? [
+            {
+              url: `https://example.com/${repo}/pull/${branch}`,
+              body: footers[branch],
+              merged: false,
+            },
+          ]
+        : [],
     clone: async (_repo: string, branch: string, dir: string) => {
       await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
     },
@@ -64,27 +88,52 @@ async function originForge(root: string) {
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
       pushedOnto.push(branch)
     },
-    draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
+    draftPr: async (
+      repo: string,
+      head: string,
+      base: string,
+      bodyFile: string,
+      runId: string,
+      items: Pick<Item, 'source' | 'key'>[],
+    ) => {
       opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
+      footers[head] = footer(runId, items)
       return `https://example.com/${repo}/pull/${head}`
     },
   }
   return { origin, opened, pushedOnto, forge }
 }
 
-/** Reports with `verdicts[id]`, or commits `<id>.txt` and keeps the PR body; `fail` stops a unit at max turns, `idle` makes nothing. */
+/**
+ * Reports with `verdicts[id]`, or commits `<id>.txt` and keeps the PR body; `fail` stops a unit at max
+ * turns, `idle` makes nothing, `abort` presses Ctrl-C in it; `seen`, `prompts` and `bodies` keep each
+ * step's `previous/` listing, prompt and `previous/pr.md`.
+ */
 function worker(
   verdicts: Record<string, string> = {},
-  opts: { fail?: string[]; idle?: string[]; seen?: Record<string, string[]> } = {},
+  opts: {
+    fail?: string[]
+    idle?: string[]
+    abort?: { id: string; controller: AbortController }
+    seen?: Record<string, string[]>
+    prompts?: Record<string, string>
+    bodies?: Record<string, string>
+  } = {},
 ): Provider {
   return {
     ...fakeProvider('claude'),
     async *run(job) {
       const out = join(job.dir, '.away/out')
-      if (opts.seen)
-        opts.seen[job.unit.id] = (
-          await readdir(join(job.dir, '.away/context/previous')).catch(() => [])
-        ).sort()
+      const previous = join(job.dir, '.away/context/previous')
+      if (opts.seen) opts.seen[job.unit.id] = (await readdir(previous).catch(() => [])).sort()
+      if (opts.prompts) opts.prompts[job.unit.id] = job.prompt
+      if (opts.bodies)
+        opts.bodies[job.unit.id] = await readFile(join(previous, 'pr.md'), 'utf8').catch(() => '')
+      if (opts.abort?.id === job.unit.id) {
+        opts.abort.controller.abort()
+        yield { type: 'done', ok: false, turns: 1 }
+        return
+      }
       if (opts.idle?.includes(job.unit.id)) {
         yield { type: 'done', ok: true, turns: 1 }
         return
@@ -108,7 +157,12 @@ function worker(
   }
 }
 
-async function run(yaml: string, items: Item[], provider: Provider) {
+async function run(
+  yaml: string,
+  items: Item[],
+  provider: Provider,
+  opts: { signal?: AbortSignal; dryRun?: boolean } = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
   const env = await originForge(root)
   const config = parseConfig(
@@ -126,7 +180,8 @@ async function run(yaml: string, items: Item[], provider: Provider) {
     plan,
     runId: 'r1',
     runDir: join(root, 'run'),
-    dryRun: false,
+    dryRun: !!opts.dryRun,
+    signal: opts.signal,
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
@@ -157,7 +212,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   )
   const url = 'https://example.com/acme/api/pull/away/acme-api-1'
   expect(rows).toEqual([
-    ['acme-api-1', 'done', { kind: 'pr', url, commits: 2 }],
+    ['acme-api-1', 'done', { kind: 'pr', url, commits: 2, head: expect.any(String) }],
     ['acme-api-1-review-1', 'done', 'a report'],
     ['acme-api-1-fix-1', 'done', '1 commit'],
     ['acme-api-1-review-2', 'done', 'a report'],
@@ -287,7 +342,12 @@ it('ends the chain at a step that fails, publishes what it has, and counts a fai
     [
       'acme-api-1',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 2 },
+      {
+        kind: 'pr',
+        url: 'https://example.com/acme/api/pull/away/acme-api-1',
+        commits: 2,
+        head: expect.any(String),
+      },
     ],
     ['acme-api-1-fix', 'failed', '1 commit'],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
@@ -308,7 +368,12 @@ it('passes over the steps after one that made nothing, and counts the chain fini
     [
       'acme-api-1',
       'done',
-      { kind: 'pr', url: 'https://example.com/acme/api/pull/away/acme-api-1', commits: 1 },
+      {
+        kind: 'pr',
+        url: 'https://example.com/acme/api/pull/away/acme-api-1',
+        commits: 1,
+        head: expect.any(String),
+      },
     ],
     ['acme-api-1-fix', 'done', 'nothing'],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
@@ -331,4 +396,378 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
   expect(opened).toEqual([])
+})
+
+const pull = (branch: string) => `https://example.com/acme/api/pull/${branch}`
+const pr = (branch: string, commits: number) => ({
+  kind: 'pr',
+  url: pull(branch),
+  commits,
+  head: expect.any(String),
+})
+
+it('opens a draft PR per slice: a stacked one on -2, on the slice before as pushed', async () => {
+  const seen: Record<string, string[]> = {}
+  const prompts: Record<string, string> = {}
+  const bodies: Record<string, string> = {}
+  const hooked = join(await mkdtemp(join(tmpdir(), 'awaywork-hook-')), 'log')
+  const { rows, opened, origin, report, plan, forge } = await run(
+    `after_unit: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
+queue:
+  - skill: implement
+    then: [review, { skill: fix, stack: true }]
+`,
+    [issue(1)],
+    worker({}, { seen, prompts, bodies }),
+  )
+  // The forge lists slice 1's PR with a footer naming the item: slice 2 takes -2 rather than skip as tried.
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-review', 'done', 'a report'],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  const published = [
+    'Add rate limits',
+    '',
+    'Done.',
+    '',
+    '## Awaywork chain',
+    '',
+    '<details><summary>Report: acme-api-1-review</summary>',
+    '',
+    'acme-api-1-review says nothing.',
+    '',
+    '</details>',
+    '',
+  ].join('\n')
+  expect(opened).toEqual([
+    { head: 'away/acme-api-1', base: '', body: published },
+    {
+      head: 'away/acme-api-1-2',
+      base: 'away/acme-api-1',
+      body: `Add rate limits\n\nDone.\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
+    },
+  ])
+  expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
+  const parent = await git(origin, 'rev-parse', 'away/acme-api-1-2^')
+  expect(parent.stdout).toBe((await git(origin, 'rev-parse', 'away/acme-api-1')).stdout)
+  const format = '--format=%s|%(trailers:key=Awaywork,valueonly,separator=)'
+  expect((await git(origin, 'log', format, 'away/acme-api-1-2')).stdout.split('\n')).toEqual([
+    'Work on acme-api-1-fix|r1',
+    'Work on acme-api-1|r1',
+    'init|',
+  ])
+  const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
+  expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
+
+  expect(seen['acme-api-1-fix']).toEqual(['pr.md', 'report.md'])
+  expect(bodies['acme-api-1-fix']).toBe(published)
+  expect(prompts['acme-api-1-fix']).toContain(
+    [
+      'Unit `acme-api-1-fix`, skill `fix`. You are on the new branch `away/acme-api-1-2`, cut from `away/acme-api-1`.',
+      '',
+      'This unit is a step of a chain (implement → review → stack fix) whose steps all work in this clone. Each slice, from the first step or a `stack` one on, publishes once when it ends, as a draft PR stacked on the slice before; this step is in slice 2 of 2, and the branch may already hold its commits.',
+      '',
+      `\`away/acme-api-1\` is the earlier awaywork PR ${pull('away/acme-api-1')}: your PR stacks on it, so leave its commits as they are.`,
+    ].join('\n'),
+  )
+  expect(prompts['acme-api-1-fix']).toContain(
+    `the body of the slice before's draft PR ${pull('away/acme-api-1')} as published in \`pr.md\``,
+  )
+  expect(prompts['acme-api-1-fix']).toContain('Commit on this branch and write `.away/out/pr.md`')
+
+  expect(formatPlan(plan)).toContain(
+    '     then review (built-in) on claude\n     stack fix (built-in) on claude',
+  )
+  const text = formatReport(report)
+  expect(text).toContain(
+    [
+      `| 1 | acme-api-1 | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
+      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commits) |`,
+      '|  |   └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
+      '|  |   └ acme-api-1-review | review | claude | done, 1 turns | a report |',
+      `|  | └ slice 2 | fix | claude | done, 1 turns | ${pull('away/acme-api-1-2')} (1 commits) |`,
+      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turns | 1 commit |',
+    ].join('\n'),
+  )
+  expect(runLine('r1', text)).toBe('r1  1 units, 2 draft PRs, 0 reports')
+  expect(summarize(report, 'report.md').split('\n')[0]).toBe(
+    'Run r1: 2 draft PRs, 0 reports, 1 units',
+  )
+  expect((await readFile(hooked, 'utf8')).split('\n')).toEqual([
+    `acme-api-1 ${pull('away/acme-api-1')}`,
+    `acme-api-1-review ${pull('away/acme-api-1')}`,
+    `acme-api-1-fix ${pull('away/acme-api-1-2')}`,
+    '',
+  ])
+  expect(unitStats(report.results).map((s) => [s.id, s.pr])).toEqual([
+    ['acme-api-1', true],
+    ['acme-api-1-review', false],
+    ['acme-api-1-fix', true],
+  ])
+  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
+})
+
+it('prepares a stacked slice on its own branch in a dry run', async () => {
+  const { report } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+    { dryRun: true },
+  )
+  expect(report.results.map((r) => [r.planned.unit.id, r.status, r.planned.unit.branch])).toEqual([
+    ['acme-api-1', 'prepared', 'away/acme-api-1'],
+    ['acme-api-1-fix', 'prepared', 'away/acme-api-1-2'],
+  ])
+})
+
+it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
+  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
+  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+  const over: string[] = []
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      if (job.unit.id === 'acme-api-1-fix')
+        over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1')
+        for (const [path, victim] of Object.entries(planted)) {
+          await rm(join(job.dir, '.git', path), { force: true })
+          await symlink(victim, join(job.dir, '.git', path))
+        }
+      yield* events
+    },
+  }
+  const { rows } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    provider,
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  for (const victim of Object.values(planted))
+    expect(await readFile(victim, 'utf8')).toBe('untouched\n')
+  expect(over).toEqual([''])
+})
+
+it('ends the chain on a .git/index a worker symlinked, writing nothing through it', async () => {
+  const victim = join(await mkdtemp(join(tmpdir(), 'awaywork-victim-')), 'index')
+  let planted: Buffer | undefined
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        const index = join(job.dir, '.git', 'index')
+        await copyFile(index, victim)
+        planted = await readFile(victim)
+        await rm(index)
+        await symlink(victim, index)
+        // Stat-dirty, so a git that refreshes the index writes it.
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  // `verify` runs `git status` in the clone after the failed step, as a `when` or `until` check does.
+  const { rows } = await run(
+    "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    provider,
+  )
+  expect(await readFile(victim)).toEqual(planted)
+  expect(rows).toEqual([
+    ['acme-api-1', 'error', '.git/index in the clone is a symlink'],
+    ['acme-api-1-fix', 'skipped', 'acme-api-1 error: .git/index in the clone is a symlink'],
+  ])
+})
+
+it("runs no check in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        await writeFile(join(job.dir, '.git', 'objects', 'info', 'alternates'), '')
+        await writeFile(join(job.dir, '.gitattributes'), '* filter=evil\n')
+        const clean = `sh -c 'echo "$ZZ_SECRET" >> ${marker}; cat'`
+        await git(job.dir, 'config', 'filter.evil.clean', clean)
+        // Stat-dirty, so `git status` cleans it through the filter.
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { rows } = await run(
+      "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(rows).toEqual([
+      ['acme-api-1', 'error', '.git/objects/info/alternates in the clone points elsewhere'],
+      [
+        'acme-api-1-fix',
+        'skipped',
+        'acme-api-1 error: .git/objects/info/alternates in the clone points elsewhere',
+      ],
+    ])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
+it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
+  const { rows, opened, report } = await run(
+    `queue:
+  - skill: implement
+    then:
+      - { loop: [fix, review], until: { verdict: approve }, max: 2, stack: true }
+      - { skill: plan, when: { changed: acme-api-1.txt } }
+`,
+    [issue(1)],
+    worker({ 'acme-api-1-review-1': 'approve' }),
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix-1', 'done', pr('away/acme-api-1-2', 1)],
+    ['acme-api-1-review-1', 'done', 'a report'],
+    ['acme-api-1-plan', 'done', 'a report'],
+  ])
+  expect(report.results.map((r) => r.loop)).toEqual([
+    undefined,
+    '1 round of fix ⇄ review; until held: verdict approve',
+    undefined,
+    undefined,
+  ])
+  expect(opened.map((o) => [o.head, o.base])).toEqual([
+    ['away/acme-api-1', ''],
+    ['away/acme-api-1-2', 'away/acme-api-1'],
+  ])
+  expect(opened[0]?.body).toBe('Add rate limits\n\nDone.')
+  expect(opened[1]?.body).toContain('Loop: 1 round of fix ⇄ review; until held: verdict approve')
+  expect(opened[1]?.body).toContain('acme-api-1-plan says nothing.')
+})
+
+it('keeps the slices before when a step of a stacked slice fails, and publishes what that slice has', async () => {
+  const { rows, opened, report } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
+    [issue(1)],
+    worker({}, { fail: ['acme-api-1-fix'] }),
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'failed', pr('away/acme-api-1-2', 1)],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-fix failed'],
+  ])
+  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1', 'away/acme-api-1-2'])
+  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBe(1)
+})
+
+it('ends the chain when a stacked slice starts with a step that commits nothing', async () => {
+  const { rows, opened, report } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
+    [issue(1)],
+    worker({}, { idle: ['acme-api-1-fix'] }),
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
+  ])
+  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])
+  expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
+})
+
+it('drops the open slice on Ctrl-C and keeps the ones published before', async () => {
+  const controller = new AbortController()
+  const { rows, opened, origin, report } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }, review] }]\n',
+    [issue(1)],
+    worker({}, { abort: { id: 'acme-api-1-fix', controller } }),
+    { signal: controller.signal },
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    [
+      'acme-api-1-fix',
+      'stopped: aborted',
+      { kind: 'none', reason: 'interrupted', unpublished: true },
+    ],
+    ['acme-api-1-review', 'skipped', 'interrupted'],
+  ])
+  expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])
+  const branches = await git(origin, 'branch', '--format=%(refname:short)')
+  expect(branches.stdout.split('\n')).toEqual(['away/acme-api-1', 'feature-1', 'main'])
+  expect(recordAttempts({}, report)).toEqual({})
+})
+
+it('keeps the slices that fit under a cap, leaves out the rest and names the cap', async () => {
+  const { plan, opened, report } = await run(
+    `limits: { units: 3 }
+queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
+`,
+    [issue(1), issue(2)],
+    worker(),
+  )
+  expect(plan.units.map((p) => [p.unit.id, p.slice, p.capped])).toEqual([
+    ['acme-api-1', undefined, undefined],
+    ['acme-api-1-review', undefined, undefined],
+    ['acme-api-1-fix', 1, undefined],
+    ['acme-api-2', undefined, 'stack fix: over the cap: limits.units is 3'],
+    ['acme-api-2-review', undefined, undefined],
+  ])
+  expect(formatPlan(plan)).toContain(
+    '     then review (built-in) on claude\n     stack fix: over the cap: limits.units is 3',
+  )
+  // The repo's next chain starts from the default branch, not on this run's last PR.
+  expect(opened.map((o) => [o.head, o.base])).toEqual([
+    ['away/acme-api-1', ''],
+    ['away/acme-api-1-2', 'away/acme-api-1'],
+    ['away/acme-api-2', ''],
+  ])
+  expect(formatReport(report)).toContain(
+    '| 2 | acme-api-2 | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
+  )
+})
+
+it('refuses a stack on a step that reports, or after steps that all report', async () => {
+  const reasons = async (rule: string) =>
+    (await run(`queue: [${rule}]\n`, [issue(1)], worker())).plan.skipped.map((s) => s.reason)
+  expect(await reasons('{ skill: implement, then: [{ skill: review, stack: true }] }')).toEqual([
+    'stack on review: it reports, so its draft PR would have nothing in it',
+  ])
+  expect(
+    await reasons(
+      '{ skill: plan, then: [{ loop: [implement, review], until: { verdict: approve }, max: 1, stack: true }] }',
+    ),
+  ).toEqual(['stack on implement: every step before it reports, so there is nothing to stack on'])
+})
+
+it('stacks a chain on your own PR: slice 1 into its branch, slice 2 onto slice 1', async () => {
+  const { opened, forge } = await run(
+    'queue: [{ skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }]\n',
+    [githubPr(1)],
+    worker(),
+  )
+  expect(opened.map((o) => [o.head, o.base, o.body.includes('Stacked on')])).toEqual([
+    ['away/acme-api-1', 'feature-1', false],
+    ['away/acme-api-1-2', 'away/acme-api-1', true],
+  ])
+  expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
 })

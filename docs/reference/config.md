@@ -240,8 +240,8 @@ First matching rule wins; top = highest priority.
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
-| `units` | integer |  | At most this many units per run from this rule; a chain counts once |
-| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; the chain publishes once at the end; a {loop} repeats its steps |
+| `units` | integer |  | At most this many units per run from this rule; each of a chain's slices counts once |
+| `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps |
 | `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
 | `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
@@ -310,6 +310,7 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |
+| `stack` | boolean |  | Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR |
 
 ## `queue[].then.when`
 
@@ -340,6 +341,7 @@ Steps repeated until a condition holds.
 | `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the chain's clone |
 | `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
 | `max` (required) | integer |  | At most this many rounds, up to 5 |
+| `stack` | boolean |  | Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR |
 
 ## `queue[].then.loop`
 

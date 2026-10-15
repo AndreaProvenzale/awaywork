@@ -52,7 +52,7 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
 
 /**
  * Attempts plus the items of every chain that ran: finished when each of its steps that ran was
- * done and its one publish left nothing behind. A stopped or failed step, or work left
+ * done and no slice's publish left anything behind. A stopped or failed step, or work left
  * unpublished, retries the chain and counts one failure; a step that didn't run (skipped, a dry
  * run, aborted) counts nothing; a step passed over, by its `when` or after one that made
  * nothing, doesn't count.
@@ -64,13 +64,14 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     const chain = report.results.filter((r) => r.planned.unit.id === id || r.planned.chain === id)
     // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.
     if (chain[0]?.passedOver) continue
-    const outcome = chain[0]?.outcome
-    const pushed = outcome?.kind === 'pushed' ? outcome.head : undefined
+    // Each slice's outcome is on its first step.
+    const push = chain.find((r) => r.outcome?.kind === 'pushed')?.outcome
+    const pushed = push?.kind === 'pushed' ? push.head : undefined
     const short = chain.find((r) => !r.passedOver && r.status !== 'done')
-    const unpublished = outcome?.kind === 'none' && outcome.unpublished
+    const unpublished = chain.find((r) => r.outcome?.kind === 'none' && r.outcome.unpublished)
     const finished = chain.length > 0 && !short && !unpublished
     // Work left unpublished is the chain's own failure, whatever a later step missed.
-    const aborted = !finished && !ran(unpublished ? chain[0] : (short ?? chain[0]))
+    const aborted = !finished && !ran(unpublished ?? short ?? chain[0])
     // A push stays recorded even when a step after it didn't run.
     if (aborted && !pushed) continue
     const { skill } = head.unit

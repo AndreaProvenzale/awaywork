@@ -94,7 +94,7 @@ line in its body.
   same skill on it is skipped as **unchanged since run `<id>`**, so a
   review or a unit that gave up isn't redone every run. A unit's chain
   counts as one attempt, finished when every step that ran was done and
-  its one publish left nothing behind; commits left unpushed retry.
+  no publish left anything behind; commits left unpushed retry.
   "Changed" is the item's `updated` time; attempts live in
   `~/.local/state/awaywork/attempts.json`, and a unit picked with
   `run --unit` isn't skipped.
@@ -111,16 +111,18 @@ line in its body.
   `run --unit` runs the item anyway.
 - Units run one at a time, in queue order. A unit is a chain: the rule's
   skill, then its [`then`](./configuration.md#then) steps, one after the
-  other in one clone, publishing once when the chain ends. A
+  other in one clone, publishing once when the chain ends, or once per
+  slice when a step says [`stack`](./configuration.md#stack). A
   [loop](./configuration.md#loops) repeats steps, and a step with a
   [`when`](./configuration.md#when) runs only when its condition holds.
-- A draft PR stacks only on the awaywork PR a rule took up. Its body
-  names the PR to merge first, and on a repo with GitHub's
-  [stacked PRs](https://gh.io/stacks) awaywork links the two into a
-  stack. Every other draft PR starts from the default branch or your
-  PR's branch, so you can merge, park or close each one on its own.
+- A draft PR stacks only on the awaywork PR a rule took up, or on the
+  slice before it in its own chain. Its body names the PR to merge
+  first, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks)
+  awaywork links the two into a stack. Every other draft PR starts from
+  the default branch or your PR's branch, so you can merge, park or
+  close each one on its own.
 - Optional [caps](./configuration.md#windows-limits-and-budget) limit the units
-  per run, per repo and per rule; a chain counts once.
+  per run, per repo and per rule; each slice of a chain counts once.
 
 ## Budget
 
@@ -198,7 +200,8 @@ plan recognises it and links it to them.
 `awaywork report` prints the last run: units done and skipped with the
 reason, each provider's windows before and after against the ceiling, and
 the report-only outputs. A unit with `then` steps is one row, with its
-steps under it:
+steps under it (and with [stacked slices](./configuration.md#stack), each
+slice with its steps):
 
 ```
 #  Unit                    Skill                                  Provider       Status                                                                        Result
@@ -226,7 +229,7 @@ prints the same totals. The quota share is an estimate: it starts at the
 quota read before the unit (the plan's probe, then the previous unit's last
 reading on that provider), includes any other use of the account meanwhile,
 and is `-` when the window reset mid-unit or the worker read no quota. It
-counts a chain's steps one by one, and only its first step carries the
-draft PR, so the rows of the skills after it show no PRs.
+counts a chain's steps one by one, and only each slice's first step
+carries its draft PR, so the rows of the skills after it show no PRs.
 `units.json` is written when the run ends, so a run that is killed leaves none.
 Runs from before have no `units.json` and are left out.

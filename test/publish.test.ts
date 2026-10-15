@@ -108,6 +108,7 @@ describe('publish', () => {
       kind: 'pr',
       url: 'https://example.com/acme/api/pull/away/FAKE-1',
       commits: 2,
+      head: expect.any(String),
     })
     expect(forge.branches).toEqual(new Set(['acme/api:away/FAKE-1']))
     expect(forge.pushed).toEqual([['second|20260925-010000', 'first|20260925-010000', 'init|']])

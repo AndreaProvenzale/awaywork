@@ -8,10 +8,16 @@ import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
 export type Outcome =
-  | { kind: 'pr'; url: string; commits: number }
+  | { kind: 'pr'; url: string; commits: number; head: string }
   | { kind: 'report'; text: string }
   | { kind: 'pushed'; branch: string; commits: number; text: string; head: string }
   | { kind: 'none'; reason: string; unpublished?: true }
+
+/** A chain's own repo, kept across its slices, and the tip the slice before pushed in place of the clone's `start`. */
+export interface Stack {
+  repo: string
+  onto?: string
+}
 
 // No hooks, and history as it is, not as replace refs say.
 const safely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
@@ -24,6 +30,7 @@ const git = async (dir: string, ...args: string[]) =>
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
+ * A chain's later slice publishes from the chain's `stack` repo, onto the tip the slice before pushed.
  */
 export async function publish(
   unit: Unit,
@@ -31,6 +38,7 @@ export async function publish(
   forge: Forge,
   runId: string,
   start: string,
+  stack?: Stack,
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -39,13 +47,13 @@ export async function publish(
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
-  const repo = await mkdtemp(join(tmpdir(), 'awaywork-publish-'))
+  const repo = stack?.repo ?? (await mkdtemp(join(tmpdir(), 'awaywork-publish-')))
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
-    await git(repo, 'fetch', '-q', '--no-tags', dir, 'HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text)
+    await git(repo, 'fetch', '-q', '--no-tags', dir, '+HEAD:refs/heads/work')
+    return await deliver(unit, repo, forge, runId, start, file, text, stack?.onto)
   } finally {
-    await rm(repo, { recursive: true, force: true })
+    if (!stack) await rm(repo, { recursive: true, force: true })
   }
 }
 
@@ -57,6 +65,7 @@ async function deliver(
   start: string,
   file: string,
   text: string,
+  onto?: string,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   // The harness forbids rebasing: a branch that dropped `start` holds work that isn't the unit's alone.
@@ -103,7 +112,12 @@ async function deliver(
       unpublished: true,
     }
 
-  const head = await withTrailer(repo, commits, `${trailerKey}: ${runId}`)
+  const head = await withTrailer(
+    repo,
+    commits,
+    `${trailerKey}: ${runId}`,
+    new Map(onto ? [[start, onto]] : []),
+  )
   await git(repo, 'update-ref', 'HEAD', head)
   await writeOutput(
     join(dirname(file), 'diff.patch'),
@@ -122,12 +136,19 @@ async function deliver(
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId, unit.items)
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
-  return { kind: 'pr', url, commits: commits.length }
+  return { kind: 'pr', url, commits: commits.length, head }
 }
 
-/** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */
-async function withTrailer(repo: string, commits: string[], trailer: string): Promise<string> {
-  const fresh = new Map<string, string>()
+/**
+ * Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept, onto the
+ * parents `fresh` already maps, such as the slice before's tip to its pushed one; returns the new tip.
+ */
+async function withTrailer(
+  repo: string,
+  commits: string[],
+  trailer: string,
+  fresh: Map<string, string>,
+): Promise<string> {
   for (const sha of commits) {
     const format = '--format=%T%n%P%n%an%n%ae%n%ad%n%cn%n%ce%n%cd'
     const meta = await git(repo, 'log', '-1', format, '--date=raw', sha)

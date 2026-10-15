@@ -379,6 +379,28 @@ describe('config', () => {
     ])
   })
 
+  it('takes stack on a step or a loop of a draft_pr chain only, never inside a loop', () => {
+    const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
+    expect(
+      chain(
+        'then: [review, { skill: fix, stack: true }, { loop: [plan], until: { verdict: approve }, max: 1, stack: true }]',
+      ),
+    ).toEqual([])
+    expect(chain('deliver: push, then: [{ skill: fix, stack: true }]')).toEqual([
+      'queue[0].then[0].stack: stack needs deliver: draft_pr, not push: a stacked slice opens a draft PR',
+    ])
+    expect(chain('deliver: report, then: { skill: plan, stack: true }')).toEqual([
+      'queue[0].then[0].stack: stack needs deliver: draft_pr, not report: a stacked slice opens a draft PR',
+    ])
+    expect(
+      chain(
+        'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',
+      ),
+    ).toEqual([
+      'queue[0].then[0].loop[1].stack: a loop sits inside one slice: set stack on the loop',
+    ])
+  })
+
   it('takes a custom source with a command and matches rules on its declared fields', () => {
     const cfg = minimal.replace(
       'sources: { github: { repos: [acme/api] } }',
