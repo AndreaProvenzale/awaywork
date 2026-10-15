@@ -10,11 +10,6 @@ import type { Start } from './index.js'
 export const WORKFLOW = '.github/workflows/awaywork.yml'
 export const REPO_CONFIG = '.awaywork/config.yml'
 export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
-export const workflowOf = (person?: string) =>
-  person ? `.github/workflows/awaywork-${person}.yml` : WORKFLOW
-export const configOf = (person: string) => `.awaywork/${person}/config.yml`
-/** A person's own secrets are `<NAME>__<PERSON>`, so no shared secret can stand in for one. */
-export const suffixOf = (person: string) => `__${person.toUpperCase().replaceAll('-', '_')}`
 const ACTION_REPO = 'AndreaProvenzale/awaywork'
 const ACTION = `${ACTION_REPO}@v1`
 
@@ -32,14 +27,6 @@ export interface Workflow {
   setup: string[]
   /** The job's `runs-on` as `runsOnOf` reads it, `ubuntu-latest` when unset. */
   runsOn?: string
-  /** A person's workflow in a shared control repo. */
-  person?: {
-    name: string
-    /** Their own secrets, read suffixed. */
-    personal: string[]
-    /** Whether their secrets are in their environment rather than the repo's. */
-    environment: boolean
-  }
 }
 
 /**
@@ -47,18 +34,14 @@ export interface Workflow {
  * Only the action's step gets them, and the job's GITHUB_TOKEN only reads: awaywork pushes with GH_TOKEN.
  */
 export function workflow(w: Workflow): string {
-  const person = w.person
-  const from = (name: string) =>
-    person?.personal.includes(name) ? name + suffixOf(person.name) : name
-  const secrets = w.secrets.map((name) => `\n          ${name}: \${{ secrets.${from(name)} }}`)
+  const secrets = w.secrets.map((name) => `\n          ${name}: \${{ secrets.${name} }}`)
   const setup = w.setup.map(
     (script) =>
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
-  const name = person ? `awaywork-${person.name}` : 'awaywork'
   const runsOn = w.runsOn ?? 'ubuntu-latest'
   const timeout = runsOn === 'ubuntu-latest' ? HOSTED_JOB_MINUTES : SELF_HOSTED_JOB_MINUTES
-  return `name: ${name}
+  return `name: awaywork
 
 on:
   schedule:
@@ -70,7 +53,7 @@ ${w.starts
   .join('\n')}
   workflow_dispatch:
 
-concurrency: ${name}
+concurrency: awaywork
 
 permissions:
   contents: read
@@ -79,7 +62,7 @@ jobs:
   run:
     runs-on:${runsOn.startsWith('\n') ? '' : ' '}${runsOn}
     timeout-minutes: ${timeout}
-${person?.environment ? `    environment: { name: ${JSON.stringify(person.name)}, deployment: false }\n` : ''}    env:
+    env:
       TZ: ${w.timezone}
     steps:
       - uses: actions/checkout@v5
@@ -131,15 +114,15 @@ export function isSelfHosted(workflow: string): boolean {
 export const isPlainSelfHosted = (workflow: string) =>
   isDeepStrictEqual([runsOnPair(workflow)?.value.toJSON()].flat(), ['self-hosted'])
 
-/** Deletes the workflow, or a person's, under a repo root; false when there was none. */
-export async function removeWorkflow(root: string, person?: string): Promise<boolean> {
-  const file = join(root, workflowOf(person))
+/** Deletes the workflow under a repo root; false when there was none. */
+export async function removeWorkflow(root: string): Promise<boolean> {
+  const file = join(root, WORKFLOW)
   if (!existsSync(file)) return false
   await rm(file)
   return true
 }
 
-/** The paths of every awaywork workflow under a repo root, people's included. */
+/** The paths of every awaywork workflow under a repo root. */
 export async function workflows(root: string): Promise<string[]> {
   const dir = join(root, dirname(WORKFLOW))
   const files = await readdir(dir).catch(() => [])

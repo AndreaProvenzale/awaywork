@@ -11,19 +11,11 @@ import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
-import { staleWorkflow, suffixOf, workflows } from '../scheduler/github-actions.js'
+import { staleWorkflow, workflows } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { describeAllowance, type Status, statusMarker } from './format.js'
-import {
-  gitRoot,
-  leftoverWarning,
-  type RepoSecrets,
-  reasonOf,
-  repoSecrets,
-  secretNames,
-  staleSchedules,
-} from './schedule.js'
+import { gitRoot, type RepoSecrets, reasonOf, repoSecrets, staleSchedules } from './schedule.js'
 
 interface Check {
   status: Status
@@ -150,7 +142,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   return checks
 }
 
-/** Checks that every secret each awaywork workflow names exists in its environment, the repo or the org. */
+/** Checks that every secret each awaywork workflow names exists in the repo or the org. */
 export async function workflowSecretChecks(root: string, run: Exec = exec): Promise<Check[]> {
   const files = await workflows(root)
   if (!files.length) return []
@@ -174,7 +166,7 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
     try {
       const jobs = parse(await readFile(file, 'utf8'))?.jobs
       for (const job of Object.values<Job>(jobs ?? {}))
-        checks.push(...(await jobSecretChecks(what, job, listed, run)))
+        checks.push(jobSecretCheck(what, job, listed))
     } catch (e) {
       checks.push({ status: 'FAIL', what, detail: (e as Error).message.split('\n')[0] ?? '' })
     }
@@ -184,19 +176,12 @@ export async function workflowSecretChecks(root: string, run: Exec = exec): Prom
 
 /** The parts of a workflow's job these checks read. */
 interface Job {
-  environment?: string | { name?: string }
   env?: Record<string, unknown>
   steps?: { env?: Record<string, unknown> }[]
 }
 
-/** A job's secrets, in its env or its steps'; in an environment, the person's own are the names with their suffix. */
-async function jobSecretChecks(
-  what: string,
-  job: Job,
-  listed: RepoSecrets,
-  run: Exec,
-): Promise<Check[]> {
-  const environment = typeof job.environment === 'string' ? job.environment : job.environment?.name
+/** A job's secrets, in its env or its steps'. */
+function jobSecretCheck(what: string, job: Job, listed: RepoSecrets): Check {
   const envs = [job.env, ...(job.steps ?? []).map((step) => step?.env)]
   const names = [
     ...new Set(
@@ -207,39 +192,8 @@ async function jobSecretChecks(
         ),
     ),
   ]
-  const own = environment
-    ? await secretNames(run, environment).catch((e: Error) => e)
-    : new Set<string>()
-  if (own instanceof Error)
-    return [
-      {
-        status: 'warn',
-        what,
-        detail: `couldn't list environment ${environment}'s secrets: ${reasonOf(own)}`,
-      },
-    ]
-  const personal = (name: string) => !!environment && name.endsWith(suffixOf(environment))
-  const missing = names.filter(
-    (name) => !own.has(name) && !listed.repo.has(name) && !listed.org.has(name),
-  )
-  const toEnvironment = missing.filter(personal)
-  const toRepo = missing.filter((name) => !personal(name))
-  const checks: Check[] = [
-    missing.length
-      ? {
-          status: 'FAIL',
-          what,
-          detail: [
-            toEnvironment.length && `add ${toEnvironment.join(', ')} to environment ${environment}`,
-            toRepo.length && `add ${toRepo.join(', ')} to the repository secrets`,
-          ]
-            .filter(Boolean)
-            .join('; '),
-        }
-      : { status: 'ok', what, detail: `secrets found: ${names.length}` },
-  ]
-  const leftovers = names.filter((name) => personal(name) && listed.repo.has(name))
-  if (environment && leftovers.length)
-    checks.push({ status: 'warn', what, detail: leftoverWarning(environment, leftovers) })
-  return checks
+  const missing = names.filter((name) => !listed.repo.has(name) && !listed.org.has(name))
+  return missing.length
+    ? { status: 'FAIL', what, detail: `add ${missing.join(', ')} to the repository secrets` }
+    : { status: 'ok', what, detail: `secrets found: ${names.length}` }
 }
