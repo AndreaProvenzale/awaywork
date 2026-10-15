@@ -386,7 +386,7 @@ function followUp({ skill, out }: Previous): string {
     ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''
   const body = existsSync(join(out, outputFile.draft_pr))
-    ? `, the PR body so far in \`${outputFile.draft_pr}\``
+    ? `, what the chain did so far in \`${outputFile.draft_pr}\``
     : ''
   return `The step before, \`${skill}\`, left its output in \`${WORK_DIR}/context/previous/\`: \`${outputFile.report}\` and \`verdict\` when it wrote them${body}, and its commits in \`diff.patch\`${check}.`
 }

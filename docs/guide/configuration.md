@@ -416,15 +416,18 @@ queue:
   Steps have no `deliver` or `branch` of their own: a committing skill
   that should only report is a [skill of your own](./skills.md#write-your-own).
 - Each step finds what the one before left in `.away/context/previous/`:
-  its `report.md` and `verdict`, the PR body so far in `pr.md`, its
-  commits in `diff.patch`, and, in a loop, the `until` command's output
-  in `check.log`.
+  its `report.md` and `verdict`, what the chain did so far in `pr.md`,
+  its commits in `diff.patch`, and, in a loop, the `until` command's
+  output in `check.log`.
 - A step that leaves nothing for the next one ends the chain: a
   committing step that commits nothing (`implement` writing questions
   instead of code), or a report step that writes no report. The steps
   after it are passed over and the chain counts as finished. A step that
   fails or stops, and the window's end, end it too: the chain publishes
-  what it has and runs again the next run. Ctrl-C publishes nothing.
+  what it has. A draft PR it opened, or commits it
+  [pushed](#push) onto your PR, wait for your review; otherwise the
+  chain runs again the next run.
+  Ctrl-C publishes nothing.
 - The PR body is the `pr.md` the steps kept current, plus an
   `## Awaywork chain` section with how each loop went, its failing check
   if any, and the latest report of each report step:
@@ -537,8 +540,8 @@ queue:
   run doesn't hold for `when`, and ends the loop either way. One that
   runs past its 15 minutes fails, like one that exits non-zero. One
   stopped by the window's end ends the chain, which publishes what it
-  has; a `when` it stopped doesn't pass over its step, so the chain is
-  tried again the next run. After Ctrl-C the chain is tried again too.
+  has as in [`then`](#then); a `when` it stopped doesn't pass over its
+  step. After Ctrl-C the chain publishes nothing and is tried again.
   When the loop ends with the command failing, the tail of its output
   goes into the PR body.
 - A step that leaves nothing for the next one ends only its loop: a
@@ -578,8 +581,8 @@ queue:
   agent starts. Prefix `!` to run a step only when a check fails, such
   as a fixer with `when: { command: "! pnpm test" }`; it finds the
   output in `.away/context/previous/when.log`. A check that times out
-  says nothing: it ends the chain without passing over the step, so the
-  chain publishes what it has and retries the next run.
+  says nothing: it ends the chain without passing over the step, and the
+  chain publishes what it has as in [`then`](#then).
 - `changed` is a glob or a list; it holds when the chain's commits change
   a matching path, measured from where the chain started: the repo's
   default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading
