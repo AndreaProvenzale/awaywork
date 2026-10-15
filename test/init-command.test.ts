@@ -17,12 +17,16 @@ vi.mock('../src/forge/gh.js', async (original) => ({
   },
 }))
 
-const tty = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY }
+const tty = {
+  stdin: process.stdin.isTTY,
+  stdout: process.stdout.isTTY,
+  hasColors: process.stdout.hasColors,
+}
 afterEach(() => {
   vi.restoreAllMocks()
-  vi.unstubAllEnvs()
   process.stdin.isTTY = tty.stdin
   process.stdout.isTTY = tty.stdout
+  process.stdout.hasColors = tty.hasColors
   process.exitCode = undefined
 })
 
@@ -62,10 +66,24 @@ describe('init command', () => {
 })
 
 describe('printBrand', () => {
-  it('prints the plain header under NO_COLOR when both ends are terminals', () => {
+  const terminal = (truecolor: boolean) => {
     process.stdin.isTTY = true
     process.stdout.isTTY = true
-    vi.stubEnv('NO_COLOR', '1')
+    const hasColors = vi.fn(() => truecolor)
+    process.stdout.hasColors = hasColors
+    return hasColors
+  }
+
+  it('prints the amber header when the terminal has truecolor', () => {
+    const hasColors = terminal(true)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    printBrand()
+    expect(hasColors).toHaveBeenCalledWith(2 ** 24)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('\u001b[38;2;247;178;64m>_'))
+  })
+
+  it('prints the plain header when the terminal lacks truecolor', () => {
+    terminal(false)
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     printBrand()
     expect(log).toHaveBeenCalledWith("☾ >_ awaywork  You're away, your agents work\n")

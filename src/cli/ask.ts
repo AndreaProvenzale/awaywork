@@ -10,7 +10,7 @@ export class Cancelled extends Error {}
 /** The brand header, only in a terminal that can answer prompts. */
 export function printBrand(): void {
   if (process.stdin.isTTY && process.stdout.isTTY)
-    console.log(`${brandHeader(!process.env.NO_COLOR)}\n`)
+    console.log(`${brandHeader(process.stdout.hasColors(2 ** 24))}\n`)
 }
 
 function answer<T>(value: T): Exclude<T, symbol> {
