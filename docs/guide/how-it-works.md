@@ -200,7 +200,9 @@ the report-only outputs. On a terminal its tables are aligned and statuses
 coloured; piped, it is the markdown as saved, so in GitHub Actions it lands
 in the job summary.
 `awaywork report --list` lists recent runs with their units, draft PRs
-and reports; `awaywork report <id>` prints one of them. A
+and reports; `awaywork report <id>` prints one of them. Inside a control
+repo both also show the runs GitHub Actions
+[uploaded](./scheduling.md#reports-from-the-runner). A
 [`notify` command](./configuration.md#notify) can send it elsewhere.
 
 `awaywork stats` adds up every run since this feature, kept in each run's

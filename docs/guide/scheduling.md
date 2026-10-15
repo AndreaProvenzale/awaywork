@@ -136,8 +136,9 @@ The workflow calls awaywork's action, `AndreaProvenzale/awaywork@v1`,
 which installs the awaywork version you generated it with. On a
 GitHub-hosted runner it first frees about 20 GB of preinstalled SDKs
 (runners otherwise die quietly on large repos). It commits as the
-token's user, through the job's env rather than git config, and appends
-the morning report to the job summary. Fixes to those steps reach you through
+token's user, through the job's env rather than git config, appends
+the morning report to the job summary and uploads the run as an
+[artifact](#reports-from-the-runner). Fixes to those steps reach you through
 `v1`; to upgrade awaywork itself, raise `version` in the workflow, or
 upgrade awaywork and run `schedule install --with github-actions`
 again.
@@ -202,6 +203,31 @@ keeps two runs apart, so with both on one machine they start together
 when a window opens and work the same items on the same state dir.
 Moving to the runner, run `awaywork schedule remove` outside the control
 repo first; inside it, that deletes the workflow too.
+
+### Reports from the runner
+
+The runner's runs dir doesn't come back to your machine, so each run
+also uploads its `report.md` and `units.json` as an artifact named after
+the workflow and the run, like `awaywork-20261014-223527`. Inside the
+control repo, `awaywork report` and `report --list` fetch those through
+`gh` and mix them with your local runs, newest first:
+
+```
+$ cd my-awaywork-repo
+$ awaywork report --list
+20261015-160012  9 units, 3 draft PRs, 2 reports  (github: awaywork)
+20261014-223527  14 units, 2 draft PRs, 6 reports  (github: awaywork)
+20261012-203418  0 units, 0 draft PRs, 0 reports
+```
+
+`awaywork report` prints the newest of either, `report <id>` any of
+them. A run is downloaded once, into
+`~/.local/state/awaywork/remote/<owner>/<repo>/<id>/`, and never into
+`runs/`, so `stats`, `replay` and attempts stay about your own machine.
+Artifacts expire with the repo's retention (90 days unless you changed
+it), and an expired run drops off the list. If `gh` can't get to
+GitHub, you get one `warning:` line and your local runs. Outside the
+control repo, `report` only knows your local runs.
 
 ### Credentials on a runner
 
