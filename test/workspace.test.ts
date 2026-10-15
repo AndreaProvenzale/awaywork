@@ -340,12 +340,13 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to; `authorCopy` false names the author's skill `other`. */
+    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to; `authorCopy` false names the author's skill `other`; `away` is a link the branch commits under `.away`. */
     const review = async (
       mine: boolean,
       provider: Provider = claude,
       agentsSkills?: string,
       authorCopy = true,
+      away?: { at: string; to: string },
     ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
@@ -366,6 +367,10 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           if (agentsSkills) {
             await mkdir(join(into, '.agents'))
             await symlink(agentsSkills, join(into, '.agents/skills'))
+          }
+          if (away) {
+            await mkdir(dirname(join(into, away.at)), { recursive: true })
+            await symlink(away.to, join(into, away.at))
           }
           await git(into, 'add', '.')
           await git(into, 'commit', '-qm', 'init')
@@ -453,6 +458,28 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         expect((await git(dir, 'status', '--porcelain', '-uall')).stdout).toBe('')
       },
     )
+
+    it.each([
+      ['.away', 'context/previous'],
+      ['.away/context', 'previous'],
+    ])('refuses a %s the branch links outside the clone', async (at, previous) => {
+      const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+      await mkdir(join(outside, previous), { recursive: true })
+      await writeFile(join(outside, previous, 'keep.txt'), 'KEEP')
+      await writeFile(join(outside, 'prompt.md'), 'OUTSIDE PROMPT')
+      await expect(review(false, claude, undefined, true, { at, to: outside })).rejects.toThrow(
+        '.away in the clone comes from the branch',
+      )
+      expect(await readFile(join(outside, previous, 'keep.txt'), 'utf8')).toBe('KEEP')
+      expect(await readFile(join(outside, 'prompt.md'), 'utf8')).toBe('OUTSIDE PROMPT')
+      expect((await readdir(outside)).sort()).toEqual([previous.split('/')[0], 'prompt.md'])
+    })
+
+    it('refuses a .away the branch links inside the clone', async () => {
+      await expect(
+        review(false, claude, undefined, true, { at: '.away', to: '.claude' }),
+      ).rejects.toThrow('.away in the clone comes from the branch')
+    })
 
     it("keeps them on the developer's own PR", async () => {
       const { dir, plugin, prompt } = await review(true)

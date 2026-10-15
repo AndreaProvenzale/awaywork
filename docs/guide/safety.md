@@ -40,7 +40,10 @@ not asked of the model.
   with `network: false`.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.away/` (context, prompt,
-  output) is excluded from git, so it can't be committed. Skills stay
+  output) is excluded from git, so it can't be committed. A branch that
+  commits its own `.away`, a folder or a link, is refused before
+  awaywork writes anything there, so a link to somewhere else can't make
+  it write or delete outside the clone. Skills stay
   in the clone on every round: awaywork copies no symlink out of it, and
   refuses the unit if the folder it copies Codex's skills into links
   outside it, so a branch that commits `.agents/skills` as a link to
