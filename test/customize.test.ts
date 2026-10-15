@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest'
 import { editUntilValid } from '../src/cli/config.js'
 import { formatRules } from '../src/cli/format.js'
 import { ejectSkill, listSkills } from '../src/cli/skills.js'
-import { parseConfig } from '../src/config/load.js'
+import { loadConfig, parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
+import { unknownSkillsWarning } from '../src/config/skills.js'
 import { ruleMatches } from '../src/core/queue.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
@@ -107,13 +108,11 @@ describe('config edit', () => {
     const run = (edit: () => Promise<void>) =>
       editUntilValid({ path, original, draft: join(dir, 'd.yml'), edit, retry: async () => false })
     expect(await run(async () => {})).toBe('unchanged')
-    expect(await run(() => writeFile(join(dir, 'd.yml'), 'queue: [{ skill: nope }]'))).toBe(
-      'discarded',
-    )
+    expect(await run(() => writeFile(join(dir, 'd.yml'), 'providers: [gemini]'))).toBe('discarded')
     expect(await readFile(path, 'utf8')).toBe(original)
   })
 
-  it('knows the skills in skills/ beside the config', async () => {
+  it('saves a skill only the repo may have, and warns about it', async () => {
     const dir = await tmp()
     const path = join(dir, 'config.yml')
     const original = 'providers: [claude]\nsources: { github: { repos: [a/b] } }\n'
@@ -121,9 +120,12 @@ describe('config edit', () => {
     await writeFile(join(dir, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\n---\n')
     await writeFile(path, original)
     const draft = join(dir, 'd.yml')
-    const edit = () => writeFile(draft, `${original}queue: [{ skill: mine }]\n`)
+    const edit = () => writeFile(draft, `${original}queue: [{ skill: mine, skills: [ours] }]\n`)
     expect(await editUntilValid({ path, original, draft, edit, retry: async () => false })).toBe(
       'saved',
+    )
+    expect(await unknownSkillsWarning(await loadConfig(path), join(dir, 'skills'))).toBe(
+      `queue[0]: unknown skill "ours" (not built in, not in ${join(dir, 'skills')}); fine for a skill the repo has in .awaywork/skills, or for an extra one in .claude/skills or .agents/skills; a run fails on one that is in none`,
     )
   })
 })

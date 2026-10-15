@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../config/load.js'
 import { skillsDirOf } from '../config/paths.js'
 import { configSchema } from '../config/schema.js'
-import { unknownSkills } from '../config/skills.js'
+import { unknownSkillsWarning } from '../config/skills.js'
 import { terminalAsk } from './ask.js'
 import { staleSchedules } from './schedule.js'
 
@@ -53,6 +53,8 @@ export function configCommand(program: Command): void {
       )
       if (outcome === 'saved') {
         const config = await loadConfig(path)
+        const unknown = await unknownSkillsWarning(config, skillsDirOf(path))
+        if (unknown) console.error(`warning: ${unknown}`)
         for (const warning of await staleSchedules(path, config.windows))
           console.error(`warning: ${warning}`)
       }
@@ -73,8 +75,7 @@ export async function editUntilValid(input: {
     const text = await readFile(input.draft, 'utf8')
     if (text === input.original) return 'unchanged'
     try {
-      const problems = await unknownSkills(parseConfig(text, input.path), skillsDirOf(input.path))
-      if (problems.length > 0) throw new ConfigError(input.path, problems)
+      parseConfig(text, input.path)
       await writeFile(input.path, text)
       return 'saved'
     } catch (e) {
