@@ -291,12 +291,13 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     if (theirs) {
       w.ctx.log(`skill ${name}: replaced the PR author's ${skillsDir}/${name}`)
       await rm(target, { recursive: true })
-      // git sees tracked files only where a linked skills folder leads.
-      replaced.push(join(await realpath(dirname(target)), name))
     }
     await copySkill(w.dir, source, target)
     mine.add(target)
-    excluded.push(`/${skillsDir}/${name}/`)
+    // git sees files only where a linked skills folder leads.
+    const real = join(await realpath(dirname(target)), name)
+    if (theirs) replaced.push(real)
+    excluded.push(`/${relative(await realpath(w.dir), real)}/`)
   }
   if (excluded.length > 0)
     await writeOutput(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`, true)

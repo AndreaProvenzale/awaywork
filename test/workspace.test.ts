@@ -340,8 +340,13 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to. */
-    const review = async (mine: boolean, provider: Provider = claude, agentsSkills?: string) => {
+    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to; `authorCopy` false names the author's skill `other`. */
+    const review = async (
+      mine: boolean,
+      provider: Provider = claude,
+      agentsSkills?: string,
+      authorCopy = true,
+    ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
       const plugin = join(root, 'plugin')
@@ -353,9 +358,10 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           await writeFile(join(into, '.awaywork/instructions.md'), 'AUTHOR NOTE')
           await writeFile(join(into, '.awaywork/skills/review/SKILL.md'), 'AUTHOR SKILL')
           for (const skills of ['.claude/skills', ...(agentsSkills ? [] : ['.agents/skills'])]) {
-            await mkdir(join(into, skills, 'review'), { recursive: true })
-            await writeFile(join(into, skills, 'review/SKILL.md'), 'AUTHOR SKILL')
-            await writeFile(join(into, skills, 'review/extra.md'), 'AUTHOR EXTRA')
+            const author = join(into, skills, authorCopy ? 'review' : 'other')
+            await mkdir(author, { recursive: true })
+            await writeFile(join(author, 'SKILL.md'), 'AUTHOR SKILL')
+            await writeFile(join(author, 'extra.md'), 'AUTHOR EXTRA')
           }
           if (agentsSkills) {
             await mkdir(join(into, '.agents'))
@@ -437,13 +443,16 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       expect(await readFile(join(outside, 'review/SKILL.md'), 'utf8')).toBe('OUTSIDE SKILL')
     })
 
-    it('writes through a linked .agents/skills that stays in the clone', async () => {
-      const { dir } = await review(false, codex, '../.claude/skills')
-      expect(await readFile(join(dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
-        await builtinReview(),
-      )
-      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
-    })
+    it.each([true, false])(
+      'writes through a linked .agents/skills that stays in the clone (author copy: %s)',
+      async (authorCopy) => {
+        const { dir } = await review(false, codex, '../.claude/skills', authorCopy)
+        expect(await readFile(join(dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
+          await builtinReview(),
+        )
+        expect((await git(dir, 'status', '--porcelain', '-uall')).stdout).toBe('')
+      },
+    )
 
     it("keeps them on the developer's own PR", async () => {
       const { dir, plugin, prompt } = await review(true)

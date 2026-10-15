@@ -47,10 +47,10 @@ not asked of the model.
   somewhere else can't make it delete or write there. A loop's rounds
   share one clone: between them, awaywork runs no diff driver or
   fsmonitor its git config names, ends the loop if a round left a
-  symlink where awaywork writes, and reads or
-  writes only regular files there, so a FIFO can't hang it. Each check
-  runs just before its write, so a worker process that outlived the
-  watchdog could still swap a path in between.
+  symlink where awaywork writes, and reads or writes only regular files
+  there, so a FIFO can't hang it. Each check runs just before its
+  write, so a worker process that outlived the watchdog could still
+  swap a path in between.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md)
   wraps every skill: never push, pull, merge, rebase, switch branches,
   comment or change git config; targeted checks and the repo's documented
