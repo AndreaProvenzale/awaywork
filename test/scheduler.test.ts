@@ -627,9 +627,9 @@ it('offers to set only the secrets it has values for, and never prints them', as
     ['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'ASANA_TOKEN', 'SLACK_WEBHOOK'],
     { GH_TOKEN: 'ghp_secret', ASANA_TOKEN: 'asana_secret', SLACK_WEBHOOK: 'hook_secret' },
     ask,
-    async ([name], value) => {
+    async (name, value) => {
       if (name === 'SLACK_WEBHOOK') throw new Error('gh failed')
-      set.push([name ?? '', value])
+      set.push([name, value])
     },
   )
   expect(set).toEqual([['GH_TOKEN', 'ghp_secret']])

@@ -229,8 +229,8 @@ export interface Io {
   run: Exec
   ask: Ask
   env: NodeJS.ProcessEnv
-  /** Runs `gh secret set` with these args, the value on stdin. */
-  setSecret: (args: string[], value: string) => Promise<void>
+  /** Runs `gh secret set <name>`, the value on stdin. */
+  setSecret: (name: string, value: string) => Promise<void>
   /**
    * Asks what the flags leave open, offers secrets and confirms replacements; otherwise keeps
    * what the repo has, or the defaults.
@@ -239,8 +239,8 @@ export interface Io {
 }
 
 /** Sets a secret of the current repo; the value goes through stdin, never argv. */
-const ghSecretSet = async (args: string[], value: string) =>
-  void (await execa('gh', ['secret', 'set', ...args], { input: value }))
+const ghSecretSet = async (name: string, value: string) =>
+  void (await execa('gh', ['secret', 'set', name], { input: value }))
 
 /** The Ask for confirming a replacement; none without a terminal. */
 const confirmer = (io: Io) => (io.interactive ? io.ask : undefined)
@@ -449,7 +449,7 @@ export async function offerSecrets(
     const value = env[name]
     if (value && (await ask.confirm(`Set the ${name} repository secret from your env?`))) {
       try {
-        await set([name], value)
+        await set(name, value)
         ask.note(`Set ${name}`)
         continue
       } catch {

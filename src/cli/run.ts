@@ -158,7 +158,7 @@ async function remoteRuns(run: Exec): Promise<UploadedRun[]> {
   if (process.env.GITHUB_ACTIONS) return []
   const root = await gitRoot(run)
   if (!root || !existsSync(join(root, WORKFLOW))) return []
-  return uploadedRuns([basename(WORKFLOW, '.yml')], run).catch((e: unknown) => {
+  return uploadedRuns(basename(WORKFLOW, '.yml'), run).catch((e: unknown) => {
     warnRemote(e)
     return []
   })
