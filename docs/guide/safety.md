@@ -213,8 +213,10 @@ danger-full-access`, which it needs to commit. What that reaches is in
   unit's.
 - Only a **draft** PR, into the default branch or your own PR's branch
   in the repo (an awaywork PR a rule naming `ours` took up again
-  included), one per unit, however many steps its chain has. Never into
-  someone else's PR or a PR from a fork: only a report delivers there.
+  included), one per unit, however many steps its chain has, plus one
+  per [stacked slice](./configuration.md#stack), into the slice before's
+  branch. Never into someone else's PR or a PR from a fork: only a
+  report delivers there.
   A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
   It never merges, approves, requests reviewers or comments.
 - A draft PR stacked on an awaywork PR joins that PR's GitHub stack,
@@ -223,8 +225,8 @@ danger-full-access`, which it needs to commit. What that reaches is in
   merging a PR merges the ones below it too, and GitHub rebases the
   ones above after a merge.
 - Only when the agent wrote a PR body, `pr.md`, for a draft PR or a
-  push alike, and only once the unit's chain ended. A run killed before
-  that publishes nothing.
+  push alike, and only once the unit's chain, or its slice, ended. A run
+  killed before that publishes nothing more.
 - Publishing fetches the clone's HEAD into a repo awaywork creates for
   it, where it adds the trailer, diffs and pushes. The unit's commits
   are those after the commit the clone held before setup and the first
@@ -236,7 +238,9 @@ danger-full-access`, which it needs to commit. What that reaches is in
   from elsewhere, before it runs any git there. In the clone, publishing
   only reads the PR body or report, writes `diff.patch` next to it, and
   appends the chain's notes, the items' link lines and a stacked PR's
-  "merge that first" line to the body. It refuses if either is a
+  "merge that first" line to the body. After a draft PR it fetches the
+  commits as pushed back into the clone, with no hook or fsmonitor, so a
+  stacked slice is cut from them. It refuses if either file is a
   symlink, and reads or writes only regular files. The symlink check
   runs just before, so a worker process that outlived the watchdog could
   still swap a path in between.
