@@ -35,6 +35,7 @@ import {
   type Start,
   schedulers,
 } from '../scheduler/index.js'
+import { keepAwake, wakeFor, wakeUndo } from '../scheduler/wake.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { Cancelled, terminalAsk } from './ask.js'
@@ -81,6 +82,8 @@ export function scheduleCommand(program: Command): void {
       console.log(
         removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
       )
+      const undo = await wakeUndo(exec)
+      if (undo) console.log(undo)
     })
 
   schedule
@@ -215,9 +218,11 @@ export async function installSchedule(
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
+    const starts = startsOf(windows)
+    const awake = await keepAwake(io.run)
     const where = await scheduler.install({
-      command: [process.execPath, bin, 'run', '--scheduled', '--config', path],
-      starts: startsOf(windows),
+      command: [...awake, process.execPath, bin, 'run', '--scheduled', '--config', path],
+      starts,
       path: process.env.PATH ?? '',
       log,
     })
@@ -231,9 +236,35 @@ export async function installSchedule(
       console.log(
         'User timers run only while you are logged in; `loginctl enable-linger` lifts that.',
       )
+    await offerWake(starts, io)
   } catch (e) {
     if (!(e instanceof SchedulerError)) return reportConfigError(e)
     console.error(e.message)
+    process.exitCode = 1
+  }
+}
+
+/** Offers to wake the machine when a window opens; sudo asks for a password, so only in a terminal. */
+async function offerWake(starts: Start[], io: Io): Promise<void> {
+  const wake = await wakeFor(starts, io.run)
+  if (typeof wake === 'string') return console.log(wake)
+  if (!wake) return
+  if (!io.interactive)
+    return console.log(
+      '`awaywork schedule install` in a terminal also wakes this machine for the runs',
+    )
+  try {
+    if (!(await io.ask.confirm(wake.question, wake.initial))) return
+  } catch (e) {
+    if (e instanceof Cancelled) return
+    throw e
+  }
+  try {
+    await wake.install()
+    console.log('This machine wakes when a window opens')
+  } catch (e) {
+    const { stderr } = e as { stderr?: string }
+    console.error(`No wake set: ${stderr?.trim() || (e instanceof Error ? e.message : String(e))}`)
     process.exitCode = 1
   }
 }

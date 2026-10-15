@@ -70,9 +70,32 @@ awaywork schedule remove
 - The job bakes in the window starts, one trigger each. When you change them, `config edit` and
   `doctor` warn until `schedule install` runs again.
 
-The machine must be awake at each window's start. On a laptop, a sleep schedule
-that wakes it (macOS: `pmset repeat wakeorpoweron`) or a machine that
-stays on does that.
+### Waking up for it
+
+A sleeping machine runs nothing. Once a run starts it keeps the machine
+from idling back to sleep (`caffeinate -i` on macOS, `systemd-inhibit
+--what=idle` on Linux when it works there), so the missing piece is the
+wake itself. In a
+terminal, `schedule install` offers one after the job:
+
+```
+◆  Wake this Mac when the window opens (sudo pmset repeat wake MTWRFSU 01:00:00)?
+│  ● Yes / ○ No
+└
+```
+
+- macOS: `pmset` keeps a single repeating wake, so this needs every
+  window to start at the same time, and it replaces the repeating power
+  events you already had, a scheduled sleep or shutdown too. The question
+  lists them and then defaults to No, unless all it replaces is a wake. Keep a laptop on the charger; with
+  the lid closed on battery it may not wake fully.
+- Linux: a root timer, `/etc/systemd/system/awaywork-wake.timer` with
+  `WakeSystem=true`, resumes from suspend at each window start. A
+  background job may block idle but not sleep, so a desktop that suspends
+  on its own timer (GNOME's automatic suspend, say) can still put it
+  down mid-run; turn that off on AC power.
+- sudo wants a password, so without a terminal install only says how.
+  `schedule remove` leaves the wake and prints the command that removes it.
 
 ## In GitHub Actions
 
