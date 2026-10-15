@@ -11,7 +11,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
@@ -280,6 +280,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     }
     // An earlier round's worker may have planted a link where awaywork now writes.
     if (w.reuse) await refuseSymlinks(w.dir, [`${skillsDir}/${name}`])
+    await refuseOutside(w.dir, dirname(target))
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
       await copySkill(w.dir, source, target)
@@ -290,7 +291,8 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     if (theirs) {
       w.ctx.log(`skill ${name}: replaced the PR author's ${skillsDir}/${name}`)
       await rm(target, { recursive: true })
-      replaced.push(target)
+      // git sees tracked files only where a linked skills folder leads.
+      replaced.push(join(await realpath(dirname(target)), name))
     }
     await copySkill(w.dir, source, target)
     mine.add(target)
@@ -306,6 +308,16 @@ async function buildPlugin(plugin: string, dir: string, sources: Map<string, str
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
   await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
   for (const [name, source] of sources) await copySkill(dir, source, join(plugin, 'skills', name))
+}
+
+/** Throws unless `path`, or its nearest ancestor that exists, resolves inside the clone `dir`. */
+async function refuseOutside(dir: string, path: string): Promise<void> {
+  const clone = await realpath(dir)
+  let at = path
+  while (!(await lstat(at).catch(() => undefined))) at = dirname(at)
+  const real = await realpath(at).catch(() => '')
+  if (real !== clone && !real.startsWith(`${clone}${sep}`))
+    throw new Error(`${relative(dir, path)} in the clone links outside it`)
 }
 
 /** Copies a skill folder as real files, refusing one in the clone `dir` that is, or holds, a link out of it. */

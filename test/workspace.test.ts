@@ -340,7 +340,8 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    const review = async (mine: boolean, provider: Provider = claude) => {
+    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to. */
+    const review = async (mine: boolean, provider: Provider = claude, agentsSkills?: string) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
       const plugin = join(root, 'plugin')
@@ -351,10 +352,14 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           await mkdir(join(into, '.awaywork/skills/review'), { recursive: true })
           await writeFile(join(into, '.awaywork/instructions.md'), 'AUTHOR NOTE')
           await writeFile(join(into, '.awaywork/skills/review/SKILL.md'), 'AUTHOR SKILL')
-          for (const skills of ['.claude/skills', '.agents/skills']) {
+          for (const skills of ['.claude/skills', ...(agentsSkills ? [] : ['.agents/skills'])]) {
             await mkdir(join(into, skills, 'review'), { recursive: true })
             await writeFile(join(into, skills, 'review/SKILL.md'), 'AUTHOR SKILL')
             await writeFile(join(into, skills, 'review/extra.md'), 'AUTHOR EXTRA')
+          }
+          if (agentsSkills) {
+            await mkdir(join(into, '.agents'))
+            await symlink(agentsSkills, join(into, '.agents/skills'))
           }
           await git(into, 'add', '.')
           await git(into, 'commit', '-qm', 'init')
@@ -417,6 +422,26 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         await builtinReview(),
       )
       expect(existsSync(join(dir, '.agents/skills/review/extra.md'))).toBe(false)
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it('refuses to write through a linked .agents/skills that leaves the clone', async () => {
+      const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+      await mkdir(join(outside, 'review'))
+      await writeFile(join(outside, 'review/SKILL.md'), 'OUTSIDE SKILL')
+      await writeFile(join(outside, 'review/keep.txt'), 'KEEP')
+      await expect(review(false, codex, outside)).rejects.toThrow(
+        '.agents/skills in the clone links outside it',
+      )
+      expect(await readFile(join(outside, 'review/keep.txt'), 'utf8')).toBe('KEEP')
+      expect(await readFile(join(outside, 'review/SKILL.md'), 'utf8')).toBe('OUTSIDE SKILL')
+    })
+
+    it('writes through a linked .agents/skills that stays in the clone', async () => {
+      const { dir } = await review(false, codex, '../.claude/skills')
+      expect(await readFile(join(dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
+        await builtinReview(),
+      )
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
     })
 

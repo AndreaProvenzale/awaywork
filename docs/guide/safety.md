@@ -40,10 +40,14 @@ not asked of the model.
   with `network: false`.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential
   helper left in it, on a new branch. `.away/` (context, prompt,
-  output) is excluded from git, so it can't be committed. A loop's rounds
+  output) is excluded from git, so it can't be committed. Skills stay
+  in the clone on every round: awaywork copies no symlink out of it, and
+  refuses the unit if the folder it copies Codex's skills into links
+  outside it, so a branch that commits `.agents/skills` as a link to
+  somewhere else can't make it delete or write there. A loop's rounds
   share one clone: between them, awaywork runs no diff driver or
-  fsmonitor its git config names, copies no symlink out of it, ends the
-  loop if a round left a symlink where awaywork writes, and reads or
+  fsmonitor its git config names, ends the loop if a round left a
+  symlink where awaywork writes, and reads or
   writes only regular files there, so a FIFO can't hang it. Each check
   runs just before its write, so a worker process that outlived the
   watchdog could still swap a path in between.
