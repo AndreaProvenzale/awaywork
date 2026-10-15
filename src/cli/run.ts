@@ -114,7 +114,7 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
     ...local.map((id) => ({ id, dir: join(runsDir, id) })),
     ...uploaded
       .filter((r) => !local.includes(r.id))
-      .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.id), uploaded: r })),
+      .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
   const read = (r: Run) => readFile(join(r.dir, 'report.md'), 'utf8').catch(() => undefined)
 

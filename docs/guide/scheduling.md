@@ -210,7 +210,9 @@ The runner's runs dir doesn't come back to your machine, so each run
 also uploads its `report.md` and `units.json` as an artifact named after
 the workflow and the run, like `awaywork-20261014-223527`. Inside the
 control repo, `awaywork report` and `report --list` fetch those through
-`gh` and mix them with your local runs, newest first:
+`gh` and mix them with your local runs, newest first. They find a
+workflow's runs by its file name, so keep its `name:` as
+`schedule install` wrote it:
 
 ```
 $ cd my-awaywork-repo
@@ -222,8 +224,8 @@ $ awaywork report --list
 
 `awaywork report` prints the newest of either, `report <id>` any of
 them. A run is downloaded once, into
-`~/.local/state/awaywork/remote/<owner>/<repo>/<id>/`, and never into
-`runs/`, so `stats`, `replay` and attempts stay about your own machine.
+`~/.local/state/awaywork/remote/<owner>/<repo>/<artifact>/`, and never
+into `runs/`, so `stats`, `replay` and attempts stay about your own machine.
 Artifacts expire with the repo's retention (90 days unless you changed
 it), and an expired run drops off the list. If `gh` can't get to
 GitHub, you get one `warning:` line and your local runs. Outside the

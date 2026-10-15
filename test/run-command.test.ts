@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCommand } from '../src/cli/run.js'
 import { runsDir } from '../src/config/paths.js'
 
@@ -44,6 +44,10 @@ async function latestRun() {
 }
 
 describe('run command', () => {
+  beforeEach(() => {
+    vi.stubEnv('GITHUB_OUTPUT', '')
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllEnvs()

@@ -111,6 +111,21 @@ describe('report command', () => {
     expect(run.calls.join('\n')).not.toContain('bob')
   })
 
+  it('keeps apart two workflows whose runs share an id', async () => {
+    const run = await controlRepo(
+      ['awaywork-alice.yml', 'awaywork-bob.yml'],
+      'awaywork-alice-20261016-010203\t12\nawaywork-bob-20261016-010203\t13',
+    )
+    const { out, err } = output()
+    await printReport(undefined, true, run)
+    expect(err).toEqual([])
+    expect(out.slice(0, 2)).toEqual([
+      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork-bob)',
+      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork-alice)',
+    ])
+    expect(run.calls.filter((c) => c.startsWith('gh run download'))).toHaveLength(2)
+  })
+
   it('prints the newest run of either, from the cache once downloaded', async () => {
     const run = await controlRepo(['awaywork.yml'], 'awaywork-20261016-010203\t12')
     const { out } = output()
