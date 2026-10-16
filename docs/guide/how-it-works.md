@@ -67,8 +67,8 @@ rules whose source is configured:
 | 12 | `plan` | Linear | state `Todo` |
 | 13 | `plan` | Jira | status `To Do` |
 
-`awaywork init` writes the queue out, with your real Asana section,
-Linear state and Jira status names, so you can edit it.
+The section, state and status names are guesses; `awaywork init` replaces
+them with your tracker's real ones and writes the queue out so you can edit it.
 
 ## Units
 
