@@ -103,8 +103,10 @@ needs to commit. So what it reads can leave [I, from the code]:
 
 What that leaves open:
 
-- **Prompt injection.** Issue bodies, comments, review threads and CI
-  logs are text someone else may have written. The harness tells the
+- **Prompt injection.** On GitHub, comments and threads by people
+  outside the repo are [hidden](#public-repos), but issue bodies, CI
+  logs, other sources' text and whatever a trusted person quotes are
+  still text someone else may have written. The harness tells the
   agent they're data, but a model can still be talked into things, and
   what it runs has the reach above.
 - **Hooks across a loop's rounds.** On your own repo, Claude Code loads
@@ -118,6 +120,44 @@ What that leaves open:
 
 So run awaywork on a machine or runner where that's acceptable. Real
 isolation is [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
+
+## Public repos
+
+On a public repo anyone can comment on your issues, review your PR or
+reply in your threads, and all of it would land in the agent's context.
+So the GitHub source keeps only text by you, by owners, members and
+collaborators of the repo, and by apps installed on it (the review bots
+whose findings `fix` works on). Everyone else's comments, reviews and
+threads are dropped before the agent starts, leaving a line in their
+place:
+
+```
+_Hidden: 2 comments from outside the repo's owners, members and collaborators._
+```
+
+A thread a stranger started is hidden whole and doesn't count toward
+`unresolved_threads`, so it can't start a `fix` run; in your threads,
+only their replies go. It's always on, nothing to configure.
+
+What it can't hide:
+
+- The item's own title and body: an issue a stranger opened and you
+  took on is still their text. The default `review` rule already skips
+  their PRs (`trusted: true`).
+- An untrusted author's diff and files, when a rule of yours reviews
+  their PR anyway.
+- CI logs in `checks.md`: a PR's tests print whatever its code says.
+- What a trusted person or a bot quotes, like a review bot summing up a
+  stranger's comment.
+
+So the agent can still be steered, and it can read your `GH_TOKEN`
+([Not a sandbox](#not-a-sandbox)). On a runner, give the workflow a
+fine-grained token limited to the repos awaywork works on rather than
+a classic one that reaches every repo you can: read and write on
+Contents, Pull requests and Workflows, read on Issues, Actions and
+Commit statuses. It only reaches repos owned by you or by orgs that
+allow fine-grained tokens. Untested so far: `schedule install` still
+asks for a classic one.
 
 ## MCP servers
 

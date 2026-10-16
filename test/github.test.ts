@@ -122,7 +122,64 @@ describe('github source', () => {
       created: '2026-01-01T08:00:00Z',
       updated: '2026-02-01T08:00:00Z',
     })
-    expect(issue5?.comments).toEqual([{ author: 'ghost', body: '+1', at: '2026-01-01T09:00:00Z' }])
+    expect(issue5?.comments).toEqual([
+      { author: 'dev', body: 'Start with the public routes.', at: '2026-01-01T10:00:00Z' },
+    ])
+  })
+
+  it('keeps comments by you, apps and people with write access, and hides the rest', async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const by = (
+      login: string,
+      __typename: string,
+      authorAssociation: string,
+      viewerDidAuthor = false,
+    ) => ({
+      author: { login, __typename },
+      authorAssociation,
+      viewerDidAuthor,
+      body: login,
+      createdAt: '2026-01-01T09:00:00Z',
+    })
+    assigned.data.search.nodes[0].comments.nodes = [
+      by('me', 'User', 'NONE', true),
+      by('ci-bot', 'Bot', 'NONE'),
+      by('maintainer', 'User', 'COLLABORATOR'),
+      by('teammate', 'User', 'MEMBER'),
+      by('merged-once', 'User', 'CONTRIBUTOR'),
+      by('newcomer', 'User', 'FIRST_TIME_CONTRIBUTOR'),
+      by('imported', 'Mannequin', 'MANNEQUIN'),
+      { ...by('ghost', 'User', 'OWNER'), author: null },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => c.author)).toEqual([
+      'me',
+      'ci-bot',
+      'maintainer',
+      'teammate',
+    ])
+    const dir = await tmp()
+    await source.prefetch(issue5 as never, dir, ctx)
+    expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(
+      "\n_Hidden: 4 comments from outside the repo's owners, members and collaborators._\n",
+    )
+  })
+
+  it("counts only the unresolved threads a trusted author started, so a stranger's starts no fix", async () => {
+    const stranger = (isResolved: boolean) => ({
+      isResolved,
+      comments: {
+        nodes: [
+          { author: { __typename: 'User' }, authorAssociation: 'NONE', viewerDidAuthor: false },
+        ],
+      },
+    })
+    const starters = JSON.parse(fixture('threads.json'))
+    starters.data.nodes[0].reviewThreads.nodes = [stranger(false), stranger(true)]
+    const run = recorded([[/nodes\(ids:/, JSON.stringify(starters)], ...githubRoutes()])
+    const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
   })
 
   it('follows the files of a large PR page by page and stops at the cap', async () => {
@@ -206,7 +263,7 @@ describe('github source', () => {
     ])
   })
 
-  it('counts no threads of mine when reading who started them fails, and keeps every item', async () => {
+  it('counts no threads when reading who started them fails, and keeps every item', async () => {
     const routes = githubRoutes()
     const failing = async (cmd: string, args: string[]) => {
       if (args.join(' ').includes('nodes(ids:')) throw new Error('gh: Could not resolve to a node')
@@ -215,14 +272,14 @@ describe('github source', () => {
     log.length = 0
     const found = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
     expect(found).toHaveLength(5)
-    expect(found[0]?.fields.my_unresolved_threads).toBe(0)
+    expect(found[0]?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
     expect(log).toEqual([
       "github: couldn't read who started PR threads, counting none: gh: Could not resolve to a node",
     ])
 
     const missing = recorded([[/nodes\(ids:/, '{ "data": { "nodes": [null] } }'], ...routes])
     const [pr1] = await githubSource(missing).items({ repos: ['acme/*'] }, ctx)
-    expect(pr1?.fields.my_unresolved_threads).toBe(0)
+    expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
   })
 
   it('reads who started the threads in pages of 100 PRs', async () => {
@@ -243,7 +300,7 @@ describe('github source', () => {
     expect(pages.map((call) => call.join(' ').match(/PR_\d+/g)?.length)).toEqual([100, 1])
   })
 
-  it('prefetches a PR: view, diff, deduped threads, failed-check logs', async () => {
+  it('prefetches a PR: view, diff, deduped trusted threads, failed-check logs', async () => {
     const [pr1] = await items()
     const dir = await tmp()
     await source.prefetch(pr1 as never, dir, ctx)
@@ -254,6 +311,10 @@ describe('github source', () => {
     expect(pr).toContain('### qa, 2026-01-01T10:00:00Z\n\nStill returns 500 on burst.')
     expect(pr).toContain('### lead, CHANGES_REQUESTED')
     expect(pr).not.toContain('review-bot')
+    expect(pr).not.toContain('GH_TOKEN')
+    expect(pr).toContain(
+      "\n_Hidden: 1 review from outside the repo's owners, members and collaborators._\n",
+    )
     expect(await read('diff.patch')).toContain('+export const burst = 20')
 
     const threads = await read('threads.md')
@@ -264,7 +325,17 @@ describe('github source', () => {
         '- src/limit.ts:30 https://github.com/acme/api/pull/1#discussion_r2',
     )
     expect(threads).toContain('- src/server.ts:? ')
+    expect(threads).toContain(
+      '**dev**, 2026-01-01T11:30:00Z:\n\n429 is the standard for rate limits.\n',
+    )
     expect(threads).not.toContain('Typo.')
+    expect(threads).not.toContain('stranger')
+    expect(threads).toContain(
+      "\n_Hidden: 1 reply from outside the repo's owners, members and collaborators._\n",
+    )
+    expect(threads).toMatch(
+      /\n_Hidden: 1 unresolved thread from outside the repo's owners, members and collaborators\._\n$/,
+    )
 
     const checks = await read('checks.md')
     expect(checks).not.toContain('## lint')
@@ -282,7 +353,8 @@ describe('github source', () => {
     await source.prefetch(issue5 as never, dir, ctx)
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toBe(
       '# Rate limit the public API\n\nhttps://github.com/acme/api/issues/5\n\n' +
-        'Clients can flood us.\n\n## Comments\n\n### ghost, 2026-01-01T09:00:00Z\n\n+1\n',
+        'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
+        "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
     )
   })
 })

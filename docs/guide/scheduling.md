@@ -161,7 +161,8 @@ whose secrets didn't reach it shows.
 access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
 issues, checks and Actions logs, pushes new branches and opens draft PRs
 in the configured repos; `workflow` lets it push branches that change
-workflow files.
+workflow files. On a public repo, a fine-grained token reaches less if
+the agent gets steered: see [Public repos](./safety.md#public-repos).
 
 The workflow calls awaywork's action at the release you generated it
 with, say `AndreaProvenzale/awaywork@v0.3.1`, which installs that same
