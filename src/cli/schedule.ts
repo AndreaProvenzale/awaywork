@@ -38,10 +38,10 @@ import { reportConfigError } from './config.js'
 
 const GITHUB_ACTIONS = 'github-actions'
 const GH_TOKEN_HELP =
-  'GH_TOKEN is a classic personal access token of yours with the `repo` and `workflow` scopes ' +
-  '(https://github.com/settings/tokens/new?scopes=repo,workflow): `repo` reads your PRs, issues, ' +
-  'checks and Actions logs, pushes new branches and opens draft PRs; `workflow` lets it push ' +
-  'branches that change workflow files'
+  'GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` ' +
+  'scopes (https://github.com/settings/tokens/new?scopes=repo,workflow,read:org): `repo` reads your ' +
+  'PRs, issues, checks and Actions logs, pushes new branches and opens draft PRs; `workflow` lets ' +
+  'it push branches that change workflow files; `read:org` tells private org members from outsiders'
 
 export function scheduleCommand(program: Command): void {
   const schedule = program

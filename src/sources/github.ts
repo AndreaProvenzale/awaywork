@@ -18,6 +18,7 @@ const LOG_TAIL = 200
 const MAX_FILES = 500
 /** Author associations with write access or org membership; the rest can be anyone. */
 const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
+const BY = 'author { login __typename } authorAssociation viewerDidAuthor'
 
 const common = `
   id number title body url state createdAt updatedAt
@@ -25,7 +26,7 @@ const common = `
   author { login } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
-  comments(last: 50) { nodes { author { login } body createdAt } }`
+  comments(last: 50) { nodes { ${BY} body createdAt } }`
 
 const searchQuery = `query($q: String!) {
   search(query: $q, type: ISSUE, first: ${PAGE}) {
@@ -54,7 +55,7 @@ const threadStartersQuery = (ids: string[]) => `{
   nodes(ids: ${JSON.stringify(ids)}) {
     ... on PullRequest {
       id
-      reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { viewerDidAuthor } } } }
+      reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { ${BY} } } } }
     }
   }
 }`
@@ -70,11 +71,11 @@ const filesQuery = `query($owner: String!, $name: String!, $number: Int!, $after
 const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      reviews(last: 50) { nodes { author { login } state body submittedAt } }
+      reviews(last: 50) { nodes { ${BY} state body submittedAt } }
       reviewThreads(first: 100) {
         nodes {
           isResolved path line
-          comments(first: 50) { nodes { author { login } body createdAt url } }
+          comments(first: 50) { nodes { ${BY} body createdAt url } }
         }
       }
       commits(last: 1) {
@@ -91,7 +92,12 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
 type Nodes<T> = { nodes: T[] }
 type Files = Nodes<{ path: string }> & { pageInfo: { hasNextPage: boolean; endCursor: string } }
 type Login = { login: string } | null
-type Comment = { author: Login; body: string; createdAt: string }
+type By = {
+  author: { login: string; __typename: string } | null
+  authorAssociation: string
+  viewerDidAuthor: boolean
+}
+type Comment = By & { body: string; createdAt: string }
 type PrLink = {
   number: number
   url: string
@@ -140,7 +146,7 @@ type Check =
       description: string | null
     }
 interface PrDetails {
-  reviews: Nodes<{ author: Login; state: string; body: string; submittedAt: string }>
+  reviews: Nodes<By & { state: string; body: string; submittedAt: string }>
   reviewThreads: Nodes<Thread>
   commits: Nodes<{ commit: { statusCheckRollup: { contexts: Nodes<Check> } | null } }>
 }
@@ -195,7 +201,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
           byId.set(node.id, item)
         }
       }
-      await countMyThreads(run, byId, ctx.log)
+      await countThreads(run, byId, ctx.log)
       await readFiles(run, byId, ctx.log)
       return [...byId.values()]
     },
@@ -245,10 +251,12 @@ export function githubSource(run: Exec = exec): Source<Config> {
 export const github = githubSource()
 
 /**
- * Sets `my_unresolved_threads` on the PRs that have unresolved threads, in one query per page.
- * A page that fails leaves its PRs at 0 rather than losing every item.
+ * Sets `unresolved_threads` and `my_unresolved_threads` on the PRs that have unresolved threads,
+ * counting only those a trusted author started, in one query per page.
+ * A page that fails keeps the raw count and none as yours rather than losing every item;
+ * threads.md filters on its own.
  */
-async function countMyThreads(
+async function countThreads(
   run: Exec,
   byId: Map<string, Item>,
   log: (line: string) => void,
@@ -260,17 +268,19 @@ async function countMyThreads(
     const page = await graphql<{
       nodes: ({
         id: string
-        reviewThreads: Nodes<{ isResolved: boolean; comments: Nodes<{ viewerDidAuthor: boolean }> }>
+        reviewThreads: Nodes<{ isResolved: boolean; comments: Nodes<By> }>
       } | null)[]
     }>(run, threadStartersQuery(ids.slice(i, i + PAGE)), {}).catch((e: Error) => {
-      log(`github: couldn't read who started PR threads, counting none: ${e.message}`)
+      log(`github: couldn't read who started PR threads, counting all, none as yours: ${e.message}`)
     })
     for (const node of page?.nodes ?? []) {
       const item = node && byId.get(node.id)
-      if (item)
-        item.fields.my_unresolved_threads = node.reviewThreads.nodes.filter(
-          (t) => !t.isResolved && t.comments.nodes[0]?.viewerDidAuthor,
-        ).length
+      if (!item) continue
+      const visible = node.reviewThreads.nodes.filter((t) => !t.isResolved && startedByTrusted(t))
+      item.fields.unresolved_threads = visible.length
+      item.fields.my_unresolved_threads = visible.filter(
+        (t) => t.comments.nodes[0]?.viewerDidAuthor,
+      ).length
     }
   }
 }
@@ -348,7 +358,7 @@ function toItem(node: Node): Item {
       return who ? [who] : []
     }),
     labels,
-    comments: node.comments.nodes.map(toComment),
+    comments: node.comments.nodes.filter(isTrusted).map(toComment),
     linkedPrs: links.map(toPrRef),
     fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
     raw: node,
@@ -366,6 +376,22 @@ const toPrRef = (pr: PrLink): PrRef => ({
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,
 })
+
+/** You, an app installed on the repo, or someone with write access or org membership. */
+const isTrusted = (c: By) =>
+  c.author !== null &&
+  (c.viewerDidAuthor || c.author.__typename === 'Bot' || TRUSTED.includes(c.authorAssociation))
+
+const startedByTrusted = (t: { comments: Nodes<By> }) => {
+  const first = t.comments.nodes[0]
+  return first !== undefined && isTrusted(first)
+}
+
+/** Where text from someone else was left out, so the agent and you know. */
+const hiddenNote = (count: number, one: string, many: string) =>
+  count
+    ? `\n_Hidden: ${count} ${count > 1 ? many : one} from outside the repo's owners, members and collaborators._\n`
+    : ''
 
 const toComment = (c: Comment) => ({
   author: c.author?.login ?? 'ghost',
@@ -386,35 +412,49 @@ function globToRegExp(glob: string): RegExp {
 
 function itemMarkdown(item: Item): string {
   const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  const hidden = (item.raw as Node).comments.nodes.length - comments.length
   return [
     `# ${item.title}\n\n${item.url}\n\n${item.description}\n`,
-    ...(comments.length ? ['\n## Comments\n', ...comments] : []),
+    ...(comments.length || hidden ? ['\n## Comments\n', ...comments] : []),
+    hiddenNote(hidden, 'comment', 'comments'),
   ].join('')
 }
 
 function reviewsMarkdown(pr: PrDetails): string {
-  const reviews = pr.reviews.nodes.filter((r) => r.body.trim())
-  if (!reviews.length) return ''
-  return `\n## Reviews\n${reviews.map((r) => `\n### ${r.author?.login ?? 'ghost'}, ${r.state}, ${r.submittedAt}\n\n${r.body}\n`).join('')}`
+  const written = pr.reviews.nodes.filter((r) => r.body.trim())
+  if (!written.length) return ''
+  const reviews = written.filter(isTrusted)
+  const shown = reviews.map(
+    (r) => `\n### ${r.author?.login}, ${r.state}, ${r.submittedAt}\n\n${r.body}\n`,
+  )
+  return `\n## Reviews\n${shown.join('')}${hiddenNote(written.length - reviews.length, 'review', 'reviews')}`
 }
 
 /** Unresolved threads grouped by title (a comment's first line), since bot findings repeat per run. */
 function threadsMarkdown(threads: Thread[]): string {
+  const unresolved = threads.filter((t) => !t.isResolved)
+  const visible = unresolved.filter(startedByTrusted)
+  const note = hiddenNote(
+    unresolved.length - visible.length,
+    'unresolved thread',
+    'unresolved threads',
+  )
   const groups = new Map<string, Thread[]>()
-  for (const t of threads.filter((t) => !t.isResolved)) {
+  for (const t of visible) {
     const title = t.comments.nodes[0]?.body.trim().split('\n')[0] ?? ''
     groups.set(title, [...(groups.get(title) ?? []), t])
   }
-  if (!groups.size) return 'No unresolved review threads.\n'
-  return [...groups]
-    .map(([title, copies]) => {
-      const where = copies.map((t) => `- ${t.path}:${t.line ?? '?'} ${t.comments.nodes[0]?.url}`)
-      const discussion = (copies[0] as Thread).comments.nodes.map(
-        (c) => `**${c.author?.login ?? 'ghost'}**, ${c.createdAt}:\n\n${c.body}\n`,
-      )
-      return `## ${title}\n\n${copies.length} unresolved ${copies.length > 1 ? 'copies' : 'copy'}:\n${where.join('\n')}\n\n${discussion.join('\n')}`
-    })
-    .join('\n')
+  if (!groups.size) return `No unresolved review threads.\n${note}`
+  const sections = [...groups].map(([title, copies]) => {
+    const where = copies.map((t) => `- ${t.path}:${t.line ?? '?'} ${t.comments.nodes[0]?.url}`)
+    const comments = (copies[0] as Thread).comments.nodes
+    const discussion = comments
+      .filter(isTrusted)
+      .map((c) => `**${c.author?.login}**, ${c.createdAt}:\n\n${c.body}\n`)
+    const replies = hiddenNote(comments.length - discussion.length, 'reply', 'replies')
+    return `## ${title}\n\n${copies.length} unresolved ${copies.length > 1 ? 'copies' : 'copy'}:\n${where.join('\n')}\n\n${discussion.join('\n')}${replies}`
+  })
+  return sections.join('\n') + note
 }
 
 async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {

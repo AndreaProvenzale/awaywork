@@ -5,9 +5,54 @@
         "id": "PR_kwDOAAAAAc4AAAA1",
         "reviewThreads": {
           "nodes": [
-            { "isResolved": false, "comments": { "nodes": [{ "viewerDidAuthor": false }] } },
-            { "isResolved": false, "comments": { "nodes": [{ "viewerDidAuthor": true }] } },
-            { "isResolved": true, "comments": { "nodes": [{ "viewerDidAuthor": true }] } }
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "__typename": "Bot" },
+                    "authorAssociation": "NONE",
+                    "viewerDidAuthor": false
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "__typename": "User" },
+                    "authorAssociation": "OWNER",
+                    "viewerDidAuthor": true
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": true,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "__typename": "User" },
+                    "authorAssociation": "OWNER",
+                    "viewerDidAuthor": true
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "__typename": "User" },
+                    "authorAssociation": "CONTRIBUTOR",
+                    "viewerDidAuthor": false
+                  }
+                ]
+              }
+            }
           ]
         }
       }

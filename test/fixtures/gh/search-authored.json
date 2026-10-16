@@ -21,7 +21,9 @@
           "comments": {
             "nodes": [
               {
-                "author": { "login": "qa" },
+                "author": { "login": "qa", "__typename": "User" },
+                "authorAssociation": "COLLABORATOR",
+                "viewerDidAuthor": false,
                 "body": "Still returns 500 on burst.",
                 "createdAt": "2026-01-01T10:00:00Z"
               }
@@ -41,7 +43,12 @@
             "nodes": [{ "requestedReviewer": null }, { "requestedReviewer": { "login": "lead" } }]
           },
           "reviewThreads": {
-            "nodes": [{ "isResolved": false }, { "isResolved": false }, { "isResolved": true }]
+            "nodes": [
+              { "isResolved": false },
+              { "isResolved": false },
+              { "isResolved": true },
+              { "isResolved": false }
+            ]
           },
           "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "FAILURE" } } }] }
         },

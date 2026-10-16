@@ -19,7 +19,22 @@
           "assignees": { "nodes": [{ "login": "dev" }] },
           "labels": { "nodes": [{ "name": "awaywork" }, { "name": "backend" }] },
           "comments": {
-            "nodes": [{ "author": null, "body": "+1", "createdAt": "2026-01-01T09:00:00Z" }]
+            "nodes": [
+              {
+                "author": null,
+                "authorAssociation": "NONE",
+                "viewerDidAuthor": false,
+                "body": "+1",
+                "createdAt": "2026-01-01T09:00:00Z"
+              },
+              {
+                "author": { "login": "dev", "__typename": "User" },
+                "authorAssociation": "OWNER",
+                "viewerDidAuthor": true,
+                "body": "Start with the public routes.",
+                "createdAt": "2026-01-01T10:00:00Z"
+              }
+            ]
           },
           "closedByPullRequestsReferences": {
             "nodes": [
