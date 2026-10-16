@@ -34,8 +34,7 @@ with:
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
-| `notify` | object |  | Runs with the morning report when a run ends; a failure is only logged |
-| `after_unit` | object |  | Run after each unit, once its result is final; a failure is only logged |
+| `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
 
 ## `windows[]`
 
@@ -207,7 +206,6 @@ A custom source: any command that prints your open items as JSON.
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
-| `network` | boolean |  | Network for the worker's commands; default on |
 
 ## `mcp.<key>`
 
@@ -242,8 +240,6 @@ First matching rule wins; top = highest priority.
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
 | `units` | integer |  | At most this many units per run from this rule; each of a chain's slices counts once |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps |
-| `network` | boolean |  | Network for the worker's commands, then steps included; default the repo's |
-| `verify` | string |  | Command run before publishing, then steps included; default the repo's |
 
 ## `queue[].where`
 
@@ -320,8 +316,6 @@ Run this step only when every key holds; otherwise skip it.
 |---|---|---|---|
 | `verdict` | string \| string[] \| object |  | The latest verdict in the chain; a list means any of, {not} negates |
 | `command` | string |  | A shell command awaywork runs in the clone, outside the model; exit 0 holds |
-| `runs_until_reset` | integer |  | Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window |
-| `headroom` | percent |  | Holds when at least this share of the long window is left under this run's ceiling |
 | `changed` | string \| string[] |  | Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started |
 
 ## `queue[].then.when.verdict`
@@ -430,18 +424,9 @@ Same keys as `queue[].then.when.verdict`.
 
 ## `notify`
 
-Runs with the morning report when a run ends; a failure is only logged.
+Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `command` (required) | string |  | Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env |
-| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
-
-## `after_unit`
-
-Run after each unit, once its result is final; a failure is only logged.
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `command` (required) | string |  | Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env |
+| `command` (required) | string |  | Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT for a unit |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |

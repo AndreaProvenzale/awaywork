@@ -19,7 +19,7 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
-import { afterUnit } from './notify.js'
+import { notifyUnit } from './notify.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
@@ -116,8 +116,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     published: boolean,
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
-    // The worker's sandbox is the provider's: awaywork has none to run worker-written code in.
-    if (!unit.network) return refusal('not run without network: it has no sandbox')
     await restoreGit(dir)
     const before = await uncommitted(dir)
     const baseline = baselines.get(dir) ?? new Set()
@@ -166,9 +164,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return { facts, check: ran }
   }
 
-  /** Runs after_unit for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
-  const afterUnits = async (chain: UnitResult[]) => {
-    const hook = input.config.after_unit
+  /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
+  const notifyUnits = async (chain: UnitResult[]) => {
+    const hook = input.config.notify
     if (!hook || input.dryRun) return
     for (const slice of bySlice(chain, (r) => r.planned.slice)) {
       const outcome = slice.find((r) => r.outcome)?.outcome
@@ -179,7 +177,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const chainId = r.planned.chain ?? id
         const out =
           r.step && join(input.runDir, 'units', chainId, r.step, 'out', outputFile[deliver])
-        const failure = await afterUnit(
+        const failure = await notifyUnit(
           hook.command,
           {
             runId: input.runId,
@@ -192,9 +190,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           input.signal,
         )
         if (failure)
-          input.ctx.log(
-            `after_unit failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`,
-          )
+          input.ctx.log(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
       }
     }
   }
@@ -597,7 +593,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   for (const chain of chains) {
     const done = await runChain(chain)
     results.push(...done)
-    await afterUnits(done)
+    await notifyUnits(done)
   }
 
   const { runId, dryRun, plan } = input
@@ -770,7 +766,7 @@ async function appendChainNotes(file: string, reports: StepReport[], loops: Open
     const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
     lines.push('', `Loop: ${describeLoop(loop)}${verdict}.`)
     const { check } = loop
-    if (check?.failed && !check.refused)
+    if (check?.failed)
       lines.push(
         '',
         checkDetails(
@@ -797,7 +793,7 @@ function checkDetails(summary: string, check: RanCheck): string {
 async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
-  const verb = check.refused ? 'not run' : check.stopped ? 'stopped' : 'failed'
+  const verb = check.stopped ? 'stopped' : 'failed'
   const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
   await writeOutput(file, `${body}\n\n## Awaywork verify\n\n${checkDetails(summary, check)}\n`)
 }

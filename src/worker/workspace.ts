@@ -146,7 +146,6 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     repo: {
       setup: repo.setup,
       setupSkipped: unit.untrusted,
-      offline: !unit.network,
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
@@ -255,7 +254,6 @@ export function configSecrets(
     ...Object.values(providers).flatMap((p) => p.secrets),
     ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
     ...(config.notify?.secrets ?? []),
-    ...(config.after_unit?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),
   ]

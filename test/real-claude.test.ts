@@ -42,7 +42,6 @@ it.skipIf(!process.env.AWAYWORK_REAL)(
       repo: 'acme/api',
       base: '',
       foreign: false,
-      network: true,
       untrusted: false,
       branch: 'away/fake-1',
       rule: { skill: 'implement', provider: [], skills: [], instructions: [] },
