@@ -110,6 +110,8 @@ those repos extend is an open issue,
 ```
 $ cd my-awaywork-repo
 $ awaywork schedule install
+☾ >_ awaywork  You're away, your agents work
+
 │
 ◇  Where should it run on a schedule?
 │  GitHub Actions, from the repo in this directory

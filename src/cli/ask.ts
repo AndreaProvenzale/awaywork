@@ -3,8 +3,15 @@ import { dirname } from 'node:path'
 import { confirm, isCancel, log, multiselect, password, select, text } from '@clack/prompts'
 import { envFile } from '../config/paths.js'
 import type { Ask, Choice } from '../core/types.js'
+import { brandHeader } from './format.js'
 
 export class Cancelled extends Error {}
+
+/** The brand header, only in a terminal that can answer prompts. */
+export function printBrand(): void {
+  if (process.stdin.isTTY && process.stdout.isTTY)
+    console.log(`${brandHeader(process.stdout.hasColors(2 ** 24))}\n`)
+}
 
 function answer<T>(value: T): Exclude<T, symbol> {
   if (isCancel(value)) throw new Cancelled('cancelled')
