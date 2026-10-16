@@ -14,6 +14,9 @@ inputs:
   packages:
     description: Extra npm packages to install on a GitHub-hosted runner, such as the providers' CLIs, space-separated
     default: ''
+  unit:
+    description: Item key to run alone, ignoring the windows; empty runs the plan
+    default: ''
 
 runs:
   using: composite
@@ -65,8 +68,9 @@ runs:
     - name: Run
       id: run
       shell: bash
-      run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
+      run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }} ${UNIT:+--unit "$UNIT"}
       env:
+        UNIT: ${{ inputs.unit }}
         AWAYWORK_CONFIG: ${{ inputs.config }}
     - name: Morning report
       if: always()

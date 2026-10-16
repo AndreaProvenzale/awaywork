@@ -272,7 +272,6 @@ const secretsOf = (config: Config) => [
       ([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? [],
     ),
     ...(config.notify?.secrets ?? []),
-    ...(config.after_unit?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),
   ]),

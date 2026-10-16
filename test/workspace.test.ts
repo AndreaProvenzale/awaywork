@@ -76,7 +76,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         repo: 'acme/api',
         base: '',
         foreign: false,
-        network: true,
         untrusted: false,
         branch: 'away/acme-api-1',
         rule: {
@@ -143,7 +142,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: '',
           foreign: false,
-          network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
           rule: { skill, provider: [], skills: [], instructions: [] },
@@ -192,7 +190,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: '',
           foreign: false,
-          network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
           rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
@@ -250,7 +247,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: '',
           foreign,
-          network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
           rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
@@ -340,7 +336,14 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
   })
 
   describe('on a PR whose branch carries its own instructions and review skill', () => {
-    const review = async (mine: boolean, provider: Provider = claude) => {
+    /** `agentsSkills`, when given, is where the branch's `.agents/skills` links to; `authorCopy` false names the author's skill `other`; `away` is a link the branch commits under `.away`. */
+    const review = async (
+      mine: boolean,
+      provider: Provider = claude,
+      agentsSkills?: string,
+      authorCopy = true,
+      away?: { at: string; to: string },
+    ) => {
       const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
       const dir = join(root, 'clone')
       const plugin = join(root, 'plugin')
@@ -351,10 +354,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           await mkdir(join(into, '.awaywork/skills/review'), { recursive: true })
           await writeFile(join(into, '.awaywork/instructions.md'), 'AUTHOR NOTE')
           await writeFile(join(into, '.awaywork/skills/review/SKILL.md'), 'AUTHOR SKILL')
-          for (const skills of ['.claude/skills', '.agents/skills']) {
-            await mkdir(join(into, skills, 'review'), { recursive: true })
-            await writeFile(join(into, skills, 'review/SKILL.md'), 'AUTHOR SKILL')
-            await writeFile(join(into, skills, 'review/extra.md'), 'AUTHOR EXTRA')
+          for (const skills of ['.claude/skills', ...(agentsSkills ? [] : ['.agents/skills'])]) {
+            const author = join(into, skills, authorCopy ? 'review' : 'other')
+            await mkdir(author, { recursive: true })
+            await writeFile(join(author, 'SKILL.md'), 'AUTHOR SKILL')
+            await writeFile(join(author, 'extra.md'), 'AUTHOR EXTRA')
+          }
+          if (agentsSkills) {
+            await mkdir(join(into, '.agents'))
+            await symlink(agentsSkills, join(into, '.agents/skills'))
+          }
+          if (away) {
+            await mkdir(dirname(join(into, away.at)), { recursive: true })
+            await symlink(away.to, join(into, away.at))
           }
           await git(into, 'add', '.')
           await git(into, 'commit', '-qm', 'init')
@@ -377,7 +389,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: 'sessions',
           foreign: !mine,
-          network: true,
           untrusted: false,
           branch: 'away/acme-api-2',
           rule: { skill: 'review', provider: [], skills: [], instructions: [] },
@@ -420,6 +431,60 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
     })
 
+    it('refuses to write through a linked .agents/skills that leaves the clone', async () => {
+      const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+      await mkdir(join(outside, 'review'))
+      await writeFile(join(outside, 'review/SKILL.md'), 'OUTSIDE SKILL')
+      await writeFile(join(outside, 'review/keep.txt'), 'KEEP')
+      await expect(review(false, codex, outside)).rejects.toThrow(
+        '.agents/skills in the clone links outside it',
+      )
+      expect(await readFile(join(outside, 'review/keep.txt'), 'utf8')).toBe('KEEP')
+      expect(await readFile(join(outside, 'review/SKILL.md'), 'utf8')).toBe('OUTSIDE SKILL')
+    })
+
+    it.each([true, false])(
+      'writes through a linked .agents/skills that stays in the clone (author copy: %s)',
+      async (authorCopy) => {
+        const { dir } = await review(false, codex, '../.claude/skills', authorCopy)
+        expect(await readFile(join(dir, '.agents/skills/review/SKILL.md'), 'utf8')).toBe(
+          await builtinReview(),
+        )
+        expect((await git(dir, 'status', '--porcelain', '-uall')).stdout).toBe('')
+      },
+    )
+
+    it.each([
+      ['.away', 'context/previous'],
+      ['.away/context', 'previous'],
+    ])('refuses a %s the branch links outside the clone', async (at, previous) => {
+      const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+      await mkdir(join(outside, previous), { recursive: true })
+      await writeFile(join(outside, previous, 'keep.txt'), 'KEEP')
+      await writeFile(join(outside, 'prompt.md'), 'OUTSIDE PROMPT')
+      await expect(review(false, claude, undefined, true, { at, to: outside })).rejects.toThrow(
+        '.away in the clone comes from the branch',
+      )
+      expect(await readFile(join(outside, previous, 'keep.txt'), 'utf8')).toBe('KEEP')
+      expect(await readFile(join(outside, 'prompt.md'), 'utf8')).toBe('OUTSIDE PROMPT')
+      expect((await readdir(outside)).sort()).toEqual([previous.split('/')[0], 'prompt.md'])
+    })
+
+    it('refuses a .away the branch links inside the clone', async () => {
+      await expect(
+        review(false, claude, undefined, true, { at: '.away', to: '.claude' }),
+      ).rejects.toThrow('.away in the clone comes from the branch')
+    })
+
+    it('refuses a .away folder the branch commits with a file link in it', async () => {
+      const victim = join(await mkdtemp(join(tmpdir(), 'awaywork-outside-')), 'victim')
+      await writeFile(victim, 'KEEP')
+      await expect(
+        review(false, claude, undefined, true, { at: '.away/context/fake-1/item.md', to: victim }),
+      ).rejects.toThrow('.away in the clone comes from the branch')
+      expect(await readFile(victim, 'utf8')).toBe('KEEP')
+    })
+
     it("keeps them on the developer's own PR", async () => {
       const { dir, plugin, prompt } = await review(true)
       expect(prompt).toContain('AUTHOR NOTE')
@@ -457,7 +522,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           repo: 'acme/api',
           base: '',
           foreign: false,
-          network: true,
           untrusted: false,
           branch: 'away/acme-api-1',
           rule: { skill: 'fix', provider: [], skills: [], instructions: [] },

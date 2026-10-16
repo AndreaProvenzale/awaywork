@@ -145,7 +145,7 @@ value is in your environment or `~/.config/awaywork/env`, with
 
 1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
@@ -163,25 +163,25 @@ issues, checks and Actions logs, pushes new branches and opens draft PRs
 in the configured repos; `workflow` lets it push branches that change
 workflow files.
 
-The workflow calls awaywork's action, `AndreaProvenzale/awaywork@v1`,
-which installs the awaywork version you generated it with. On a
+The workflow calls awaywork's action at the release you generated it
+with, say `AndreaProvenzale/awaywork@v0.3.1`, which installs that same
+version (the `version` input). On a
 GitHub-hosted runner it first frees about 20 GB of preinstalled SDKs
 (runners otherwise die quietly on large repos). It commits as the
 token's user, through the job's env rather than git config, appends
 the morning report to the job summary and uploads the run as an
-[artifact](#reports-from-the-runner). Fixes to those steps reach you through
-`v1`; to upgrade awaywork itself, raise `version` in the workflow, or
-upgrade awaywork and run `schedule install --with github-actions`
-again.
+[artifact](#reports-from-the-runner). To upgrade, upgrade awaywork and
+run `schedule install --with github-actions` again: the CLI and the
+action move together, and fixes to the action's steps reach you the
+same way. Editing by hand, change the tag in `uses:` and `version` together.
 The job's `GITHUB_TOKEN` can only read (`permissions: contents: read`),
 checkout keeps no credential (`persist-credentials: false`), and only the
-action's step gets the secrets. Every step inside the action sees them:
-if you'd rather not follow `v1`, pin it to a commit SHA of this repo
-instead. A [custom source](./custom-sources.md)'s `setup` runs as a step
-of its own before the action, in the config's folder, without the secrets.
-
-The workflow works once awaywork has a stable release on npm, which
-also creates the `v1` tag.
+action's step gets the secrets. Every step inside the action sees them,
+which is why it's pinned: new action code never meets your secrets
+until you re-run `schedule install`. Want it tighter than a tag? Pin
+`uses:` to that release's commit SHA instead. A
+[custom source](./custom-sources.md)'s `setup` runs as a step of its own
+before the action, in the config's folder, without the secrets.
 
 Run `schedule install --with github-actions` again after changing your
 config or skills, or to refresh the workflow. Of the workflow, config and
@@ -234,6 +234,32 @@ keeps two runs apart, so with both on one machine they start together
 when a window opens and work the same items on the same state dir.
 Moving to the runner, run `awaywork schedule remove` outside the control
 repo first; inside it, that deletes the workflow too.
+
+### Run one item now
+
+Something just caught fire and you don't want to wait for the window?
+The workflow takes a `unit` input, an item key:
+
+```
+$ gh workflow run awaywork -f unit=API-12
+```
+
+That runs only `API-12`, outside any window, and retries it even if an
+earlier attempt failed. The input is the key and nothing else: the item
+is fetched again from its source and must still match one of your rules,
+so "only your items", the budget ceiling and the prompt stay as they are.
+
+Worth knowing:
+
+- The workflow's `concurrency: awaywork` doesn't cancel anything. A
+  dispatch during the nightly run waits for it, and GitHub keeps only the
+  newest pending run, so a second dispatch replaces the first.
+- It spends daytime quota, next to your own sessions. The ceiling still
+  holds.
+- "Run it when Sentry escalates" needs a relay: Sentry's alert webhooks
+  can't, as far as we know, send the auth header and body GitHub's
+  dispatch API wants. awaywork ships none, and holds no credentials for
+  one; a small function of yours that calls `gh workflow run` is enough.
 
 ### Reports from the runner
 

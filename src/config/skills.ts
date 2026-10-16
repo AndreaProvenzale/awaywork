@@ -39,3 +39,13 @@ export async function unknownSkills(config: Config, userDir: string): Promise<st
   })
   return problems
 }
+
+/** Unknown skills as a warning: the unit's repo may have them, and a run fails on any it doesn't. */
+export async function unknownSkillsWarning(
+  config: Config,
+  userDir: string,
+): Promise<string | undefined> {
+  const unknown = await unknownSkills(config, userDir)
+  if (unknown.length === 0) return undefined
+  return `${unknown.join('; ')}; fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`
+}

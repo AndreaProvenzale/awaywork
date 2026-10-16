@@ -11,7 +11,6 @@ export const WORKFLOW = '.github/workflows/awaywork.yml'
 export const REPO_CONFIG = '.awaywork/config.yml'
 export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 const ACTION_REPO = 'AndreaProvenzale/awaywork'
-const ACTION = `${ACTION_REPO}@v1`
 
 export interface Workflow {
   starts: Start[]
@@ -19,7 +18,7 @@ export interface Workflow {
   timezone: string
   /** Repo path of the config the run reads. */
   config: string
-  /** The awaywork version the runner installs. */
+  /** The awaywork version the runner installs; the action is pinned to its release tag. */
   version: string
   packages: string[]
   secrets: string[]
@@ -52,6 +51,10 @@ ${w.starts
   )
   .join('\n')}
   workflow_dispatch:
+    inputs:
+      unit:
+        description: Item key to run now, e.g. API-12; empty runs the plan
+        default: ""
 
 concurrency: awaywork
 
@@ -68,11 +71,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-${setup.join('')}      - uses: ${ACTION}
+${setup.join('')}      - uses: ${ACTION_REPO}@v${w.version}
 ${secrets.length ? `        env:${secrets.join('')}\n` : ''}        with:
           config: ${w.config}
           version: ${w.version}
           packages: ${JSON.stringify(w.packages.join(' '))}
+          unit: \${{ inputs.unit }}
 `
 }
 

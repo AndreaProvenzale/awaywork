@@ -88,7 +88,7 @@ queue:
       skills: { builtin: builtinSkills },
     })
     expect(formatPlan(plan)).toContain(
-      "     when the window resets within 1 run (the quota part doesn't hold on the probe)\n",
+      "     when the window resets within 1 run (doesn't hold on the probe)\n",
     )
   })
 })

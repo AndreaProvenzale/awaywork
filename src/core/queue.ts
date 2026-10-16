@@ -196,7 +196,14 @@ export function matchesValue(want: WhereValue, actual: unknown): boolean {
     )
   }
   const wanted: Scalar[] = [want].flat()
-  return values.some((v) => wanted.includes(v))
+  return values.some((v) => wanted.some((w) => equals(w, v)))
+}
+
+/** Strings compare ignoring case, so `In progress` matches a state called `In Progress`. */
+function equals(want: Scalar, actual: unknown): boolean {
+  return typeof want === 'string' && typeof actual === 'string'
+    ? want.toLowerCase() === actual.toLowerCase()
+    : want === actual
 }
 
 export function isLoop(entry: ThenStep | Loop): entry is Loop {

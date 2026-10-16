@@ -100,8 +100,7 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
             `     ${then} loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
           )
         }
-        const unmet = s.quotaUnmet ? ` (${s.quotaUnmet})` : ''
-        const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}${unmet}` : ''
+        const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}` : ''
         const passed = s.passed.length > 0 ? ` (${s.passed.join('; ')})` : ''
         const on = `on ${s.provider ?? 'no provider left'}${passed}`
         out.push(`     ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${when}`)
