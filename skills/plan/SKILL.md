@@ -7,13 +7,10 @@ metadata:
 
 # Plan
 
-The unit is a task with no pull request yet. The developer reads your
-plan in the morning; write no code.
+The unit is a task with no pull request yet. The developer reads your plan in the morning; write no code.
 
-- Read the code the task touches. Ground every step in files and
-  functions that exist; reuse what is there.
-- When the task is ambiguous, pick the most likely reading, say so, and
-  list the question.
+- Read the code the task touches. Ground every step in files and functions that exist; reuse what is there.
+- When the task is ambiguous, pick the most likely reading, say so, and list the question.
 
 The report:
 

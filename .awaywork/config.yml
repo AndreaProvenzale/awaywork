@@ -1,29 +1,29 @@
 # awaywork config: `awaywork config edit` validates on save,
 # `awaywork plan` previews the next run, `awaywork plan --rules` what each rule takes.
 windows: [{ start: "18:00", end: "07:00" }]
-budget:                         # every provider; override one with - <id>: { budget: … }
-  reserve: 10%                  # never go past 1 - reserve of any window
-  session_max: 90%              # stop a worker past this share of the short window
+budget: # every provider; override one with - <id>: { budget: … }
+  reserve: 10% # never go past 1 - reserve of any window
+  session_max: 90% # stop a worker past this share of the short window
   # per_run: 15%                # at most this share of the long window per run
-providers: [claude]             # codex is out of credits; add it back with its reviewer below
+providers: [claude] # codex is out of credits; add it back with its reviewer below
 sources:
-  github: {repos: [AndreaProvenzale/awaywork]}
-queue:                          # first matching rule wins; top = highest priority
+  github: { repos: [AndreaProvenzale/awaywork] }
+queue: # first matching rule wins; top = highest priority
   - skill: fix
     source: github
-    where: {type: pr, mine: true, unresolved_threads: {not: 0}}
+    where: { type: pr, mine: true, unresolved_threads: { not: 0 } }
   - skill: fix
     source: github
-    where: {type: pr, mine: true, checks: failing}
+    where: { type: pr, mine: true, checks: failing }
   - skill: review
     source: github
-    where: {type: pr, review_requested: true}
+    where: { type: pr, review_requested: true }
   - skill: implement
     source: github
-    where: {type: issue, label: awaywork}
+    where: { type: issue, label: awaywork }
     then:
       - loop:
           - review
           - fix
-        until: {verdict: approve}
+        until: { verdict: approve }
         max: 3
