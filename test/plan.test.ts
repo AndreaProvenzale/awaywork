@@ -35,6 +35,7 @@ function plan(
   quotas: Record<string, Quota | null>,
   skills: SkillCatalog = {},
   attempts: Attempts = {},
+  time = now,
 ) {
   const config = parseConfig(yaml)
   const allowances: Record<string, Allowance> = {}
@@ -46,6 +47,7 @@ function plan(
     allowances,
     skills: { builtin: builtinSkills, ...skills },
     attempts,
+    now: time,
   })
 }
 const rows = (p: ReturnType<typeof plan>) =>
@@ -854,22 +856,25 @@ describe('attempts', () => {
   const yaml =
     'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
   const at = '2026-01-01T00:00:00Z'
+  const startedAt = new Date(now)
+  const failedAt = startedAt.toISOString()
 
   it('skips a unit none of whose items changed since a finished attempt', () => {
     const first = plan(yaml, [githubPr(1, { updated: at }), githubPr(2, { updated: at })], {})
-    const [done, stopped] = first.units
+    const [done, failed] = first.units
     const report = {
       runId: 'r1',
+      startedAt,
       plan: first,
       results: [
         { planned: done, status: 'done' },
-        { planned: stopped, status: 'stopped: quota' },
+        { planned: failed, status: 'failed' },
       ],
     } as RunReport
     const attempts = recordAttempts({}, report)
     expect(attempts).toEqual({
       'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at },
-      'github:acme/api#2': { runId: 'r1', skill: 'fix', updated: at, failed: 1 },
+      'github:acme/api#2': { runId: 'r1', skill: 'fix', updated: at, failed: 1, failedAt },
     })
 
     const later = '2026-01-02T00:00:00Z'
@@ -913,8 +918,10 @@ describe('attempts', () => {
       unpublished: true,
     }
     const results = [{ planned: first.units[0], status: 'done', outcome }]
-    expect(recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at, failed: 1 },
+    expect(
+      recordAttempts({}, { runId: 'r1', startedAt, plan: first, results } as RunReport),
+    ).toEqual({
+      'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at, failed: 1, failedAt },
     })
   })
 
@@ -937,10 +944,12 @@ describe('attempts', () => {
     const first = plan(chain, [githubPr(1, { updated: at })], {})
     const [head, implement, review] = first.units.map((planned) => ({ planned }))
     const record = (...results: object[]) =>
-      recordAttempts({}, { runId: 'r1', plan: first, results } as RunReport)
+      recordAttempts({}, { runId: 'r1', startedAt, plan: first, results } as RunReport)
     const published = { ...head, status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } }
     const finished = { 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at } }
-    const failure = { 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1 } }
+    const failure = {
+      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1, failedAt },
+    }
 
     expect(
       record(published, { ...implement, status: 'done' }, { ...review, status: 'done' }),
@@ -967,32 +976,52 @@ describe('attempts', () => {
     expect(again.skipped.map((s) => s.reason)).toEqual(['unchanged since run r1'])
   })
 
-  it('gives up on an item after three chains that did not finish, until it changes', () => {
+  it('gives up after three chains that did not finish, however the item changed, for a week', () => {
     const chain = yaml.replace('{ skill: fix }', '{ skill: plan, then: implement }')
     const report = { kind: 'report', text: 'r' }
-    let attempts: Attempts = {}
-    for (const runId of ['r1', 'r2', 'r3']) {
-      const planned = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
+    const day = 24 * 3600_000
+    const fail = (attempts: Attempts, runId: string, updated: string, time = now) => {
+      const planned = plan(chain, [githubPr(1, { updated })], {}, {}, attempts, time)
       expect(planned.units).toHaveLength(2)
       const [head, implement] = planned.units
       const results = [
         { planned: head, status: 'done', outcome: report },
         { planned: implement, status: 'failed' },
       ]
-      attempts = recordAttempts(attempts, { runId, plan: planned, results } as RunReport)
+      const run = { runId, startedAt: new Date(time), plan: planned, results }
+      return recordAttempts(attempts, run as RunReport)
     }
+    let attempts: Attempts = {}
+    for (const [i, runId] of ['r1', 'r2', 'r3'].entries())
+      attempts = fail(attempts, runId, `2026-01-0${i + 1}T00:00:00Z`)
     expect(attempts).toEqual({
-      'github:acme/api#1': { runId: 'r3', skill: 'plan', updated: at, failed: 3 },
+      'github:acme/api#1': {
+        runId: 'r3',
+        skill: 'plan',
+        updated: '2026-01-03T00:00:00Z',
+        failed: 3,
+        failedAt,
+      },
     })
-    const gaveUp = plan(chain, [githubPr(1, { updated: at })], {}, {}, attempts)
-    expect(gaveUp.units).toEqual([])
-    expect(gaveUp.skipped.map((s) => s.reason)).toEqual([
-      'gave up after 3 attempts; waiting for the item to change',
+    const bumped = githubPr(1, { updated: '2026-01-05T00:00:00Z' })
+    const reasons = (attempts: Attempts, time: number) =>
+      plan(chain, [bumped], {}, {}, attempts, time).skipped.map((s) => s.reason)
+    expect(reasons(attempts, now + 6 * day)).toEqual([
+      'gave up after 3 attempts; next try on 2026-01-08',
     ])
-    const later = '2026-01-02T00:00:00Z'
-    expect(plan(chain, [githubPr(1, { updated: later })], {}, {}, attempts).units).toHaveLength(2)
+
+    attempts = fail(attempts, 'r4', '2026-01-05T00:00:00Z', now + 7 * day)
+    expect(attempts['github:acme/api#1']?.failed).toBe(4)
+    expect(reasons(attempts, now + 8 * day)).toEqual([
+      'gave up after 3 attempts; next try on 2026-01-15',
+    ])
     const other = chain.replace('skill: plan', 'skill: review')
     expect(plan(other, [githubPr(1, { updated: at })], {}, {}, attempts).units).toHaveLength(2)
+  })
+
+  it('tries once more an item given up on in an attempts file without failure times', () => {
+    const old = { 'github:acme/api#1': { runId: 'r3', skill: 'fix', updated: at, failed: 3 } }
+    expect(plan(yaml, [githubPr(1, { updated: at })], {}, {}, old).units).toHaveLength(1)
   })
 
   it('clears failures on a finished attempt and ignores units that did not run', () => {
@@ -1001,6 +1030,7 @@ describe('attempts', () => {
     const recorded = (result: object) =>
       recordAttempts(failed, {
         runId: 'r1',
+        startedAt,
         plan: first,
         results: [{ planned: first.units[0], ...result }],
       } as RunReport)
@@ -1011,8 +1041,45 @@ describe('attempts', () => {
     expect(recorded({ status: 'error', reason: 'clone failed' })['github:acme/api#1']?.failed).toBe(
       3,
     )
-    for (const status of ['skipped', 'prepared', 'stopped: aborted'])
-      expect(recorded({ status })).toEqual(failed)
+    expect(recorded({ status: 'stopped: time' })['github:acme/api#1']?.failed).toBe(3)
+    const uncounted = [
+      'skipped',
+      'prepared',
+      'stopped: aborted',
+      'stopped: quota',
+      'stopped: session',
+      'stopped: window ended',
+    ]
+    for (const status of uncounted) expect(recorded({ status })).toEqual(failed)
+  })
+
+  it('never gives up on an item over stops it did not cause', () => {
+    let attempts: Attempts = {}
+    for (const [i, runId] of ['r1', 'r2', 'r3'].entries()) {
+      const planned = plan(yaml, [githubPr(1, { updated: `2026-01-0${i + 1}T00:00:00Z` })], {})
+      const results = [{ planned: planned.units[0], status: 'stopped: quota' }]
+      attempts = recordAttempts(attempts, { runId, startedAt, plan: planned, results } as RunReport)
+    }
+    expect(attempts).toEqual({})
+  })
+
+  it('tries again on the day a week after the failure, in a short DST week too', () => {
+    const failed = (at: Date) => ({
+      'github:acme/api#1': {
+        runId: 'r3',
+        skill: 'fix',
+        updated: at.toISOString(),
+        failed: 3,
+        failedAt: at.toISOString(),
+      },
+    })
+    const pr = githubPr(1, { updated: '2026-01-09T00:00:00Z' })
+    const midnight = new Date(2026, 0, 8, 0, 0, 5)
+    expect(plan(yaml, [pr], {}, {}, failed(midnight), midnight.getTime()).skipped).toMatchObject([
+      { reason: 'gave up after 3 attempts; next try on 2026-01-15' },
+    ])
+    const springForward = startedAt.getTime() + (7 * 24 - 1) * 3600_000 - 3000
+    expect(plan(yaml, [pr], {}, {}, failed(startedAt), springForward).units).toHaveLength(1)
   })
 })
 
