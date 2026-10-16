@@ -529,10 +529,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (loop) loop.ended ??= ended.reason
       } finally {
         await new Promise((done) => logFile.end(done))
-        await cp(join(dir, WORK_DIR), unitDir, {
-          recursive: true,
-          filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
-        }).catch(() => {})
+        // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
+        if (cloned !== undefined)
+          await cp(join(dir, WORK_DIR), unitDir, {
+            recursive: true,
+            // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
+            force: false,
+            filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
+          }).catch(() => {})
         if (start)
           try {
             await restoreGit(dir)
@@ -584,6 +588,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     if (!unit.verify || (await commitsSince(dir, start)) === 0) return
     const result = await check(unit.verify, unit, dir, input.ctx.log, false)
     if (!result.failed) return
+    await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[unit.deliver]}`])
     await appendVerifyFailure(join(dir, WORK_DIR, 'out', outputFile[unit.deliver]), {
       command: unit.verify,
       ...result,

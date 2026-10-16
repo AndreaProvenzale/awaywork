@@ -96,6 +96,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
     await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    // Linked or not, a branch's own `.away` could lead awaywork's writes and deletes anywhere.
+    if (await lstat(join(dir, WORK_DIR)).catch(() => undefined))
+      throw new Error(`${WORK_DIR} in the clone comes from the branch, not awaywork`)
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
