@@ -51,6 +51,10 @@ ${w.starts
   )
   .join('\n')}
   workflow_dispatch:
+    inputs:
+      unit:
+        description: Item key to run now, e.g. API-12; empty runs the plan
+        default: ""
 
 concurrency: awaywork
 
@@ -72,6 +76,7 @@ ${secrets.length ? `        env:${secrets.join('')}\n` : ''}        with:
           config: ${w.config}
           version: ${w.version}
           packages: ${JSON.stringify(w.packages.join(' '))}
+          unit: \${{ inputs.unit }}
 `
 }
 

@@ -233,6 +233,32 @@ when a window opens and work the same items on the same state dir.
 Moving to the runner, run `awaywork schedule remove` outside the control
 repo first; inside it, that deletes the workflow too.
 
+### Run one item now
+
+Something just caught fire and you don't want to wait for the window?
+The workflow takes a `unit` input, an item key:
+
+```
+$ gh workflow run awaywork -f unit=API-12
+```
+
+That runs only `API-12`, outside any window, and retries it even if an
+earlier attempt failed. The input is the key and nothing else: the item
+is fetched again from its source and must still match one of your rules,
+so "only your items", the budget ceiling and the prompt stay as they are.
+
+Worth knowing:
+
+- The workflow's `concurrency: awaywork` doesn't cancel anything. A
+  dispatch during the nightly run waits for it, and GitHub keeps only the
+  newest pending run, so a second dispatch replaces the first.
+- It spends daytime quota, next to your own sessions. The ceiling still
+  holds.
+- "Run it when Sentry escalates" needs a relay: Sentry's alert webhooks
+  can't, as far as we know, send the auth header and body GitHub's
+  dispatch API wants. awaywork ships none, and holds no credentials for
+  one; a small function of yours that calls `gh workflow run` is enough.
+
 ### Reports from the runner
 
 The runner's runs dir doesn't come back to your machine, so each run
