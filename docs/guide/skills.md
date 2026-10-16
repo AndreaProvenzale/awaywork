@@ -12,7 +12,7 @@ same folder works for Claude Code and Codex.
 
 | Skill | For | Delivers |
 |---|---|---|
-| `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./configuration.md#loops) | draft PR |
+| `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./chains.md#loops) | draft PR |
 | `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps | draft PR |
 | `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
@@ -127,7 +127,7 @@ branch under `replays/` in the run's state directory, with the worker's
 `out/` next to it. The saved context is the post-run copy, so files the
 worker edited under `context/` are replayed as edited. Setup gets none of the
 repo's `secrets`, and MCP servers are not started. Only a unit's first step
-replays: a later [`then`](./configuration.md#then) step starts from commits
+replays: a later [`then`](./chains.md#then) step starts from commits
 that only ever existed in the chain's clone, and records no `replay.json`.
 Nor does a unit that never started, or one from a run before replay existed.
 
@@ -165,7 +165,7 @@ queue:
 
 - `metadata.deliver: report` makes the skill report instead of commit;
   without it, it commits. Where its commits go is the rule's
-  [`deliver`](./configuration.md#then): a draft PR, or a `push` only a
+  [`deliver`](./chains.md#then): a draft PR, or a `push` only a
   rule can opt in to.
 - `with: { key: value }` on a rule or step lists those values in a
   Parameters section of the prompt, after the skill; a multi-line value
@@ -179,7 +179,7 @@ queue:
 
 - A skill that judges can write one lowercase word to
   `.away/out/verdict`, such as `pass` or `fail`. The report shows
-  it, and a [loop](./configuration.md#loops)'s `until` can match it.
+  it, and a [loop](./chains.md#loops)'s `until` can match it.
 - Say what the output must state, as the built-ins do: what was checked,
   how, and what couldn't be.
 - Context is in `.away/context/<item>/`: `item.md` for every item, plus

@@ -203,7 +203,7 @@ need a setup step. An HTTP server must be reachable from GitHub's runners.
 A GitHub-hosted runner starts with an empty state dir, so it keeps no
 attempts or skips: an item unchanged since the last run runs again, none
 is given up on, and `awaywork skip` on your machine doesn't reach it.
-Nor does it keep the head a [`deliver: push`](./configuration.md#push)
+Nor does it keep the head a [`deliver: push`](./chains.md#push)
 left, so the PR doesn't wait for your review: the rule pushes again
 every run its `where` holds. A self-hosted runner keeps
 `~/.local/state/awaywork` of the user it runs as, so all of that
