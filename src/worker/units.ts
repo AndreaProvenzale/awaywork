@@ -1,31 +1,29 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join, relative } from 'node:path'
-import { execa } from 'execa'
-import { bin } from '../config/paths.js'
+import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
-import { describeCondition, type Facts, holds } from '../core/condition.js'
-import { footerItems, hasTrailer } from '../core/footer.js'
+import { describeCondition, holds } from '../core/condition.js'
 import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
-import type {
-  Condition,
-  Ctx,
-  Forge,
-  McpServer,
-  Provider,
-  Quota,
-  Source,
-  Unit,
-} from '../core/types.js'
+import type { Ctx, Forge, McpServer, Provider, Quota, Source } from '../core/types.js'
+import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { notifyUnit } from './notify.js'
-import { type Outcome, publish, type Stack } from './publish.js'
+import type { Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
-import { maskSecrets, runCommand, runSetup } from './setup.js'
+import { maskSecrets, runSetup } from './setup.js'
 import {
-  commandEnv,
+  cutBranch,
+  describeLoop,
+  freeBranch,
+  type OpenLoop,
+  type Publisher,
+  publishSlice,
+  type StepReport,
+} from './slices.js'
+import { handOff, isLast, made, maxReached, readVerdict, setupEnv } from './steps.js'
+import {
   configSecrets,
   notSymlink,
   outputFile,
@@ -33,14 +31,9 @@ import {
   prepareWorkspace,
   readOutput,
   refuseSymlinks,
-  restoreGitConfig,
   WORK_DIR,
   workerEnv,
-  writeOutput,
 } from './workspace.js'
-
-const CHECK_LOG_CHARS = 8000
-const MAX_SUFFIX = 10
 
 export interface RunInput {
   config: Config
@@ -97,71 +90,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
 
-  const checks = new Map<string, Check>()
-  // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
-  const baselines = new Map<string, Set<string>>()
-  // Each clone's git config as cloned, put back after anything ran the worker's code in it.
-  const gitConfigs = new Map<string, string>()
-  const restoreGit = (dir: string) => restoreGitConfig(dir, gitConfigs.get(dir) ?? '')
-
-  /**
-   * Runs a condition's command in the clone outside the model, once per commit, with none of the
-   * secrets. When it decides what is published (`until`), files left uncommitted fail it.
-   */
-  const check = async (
-    command: string,
-    unit: Unit,
-    dir: string,
-    log: (line: string) => void,
-    published: boolean,
-  ): Promise<Check> => {
-    if (unit.untrusted) return refusal("not run on an untrusted author's PR")
-    await restoreGit(dir)
-    const before = await uncommitted(dir)
-    const baseline = baselines.get(dir) ?? new Set()
-    const left = before.filter((line) => !baseline.has(line))
-    if (left.length && published)
-      return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
-    const key = `${dir} ${await head(dir)} ${command}`
-    const known = left.length ? undefined : checks.get(key)
-    if (known) return known
-    const result = await runCommand(command, dir, workerEnv(input.ctx.env, dir, secrets), {
-      secrets: [],
-      signal: input.signal,
-      until: input.until,
-    })
-    log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
-    await restoreGit(dir)
-    // Only what the check itself left joins the baseline, never what a worker left before it.
-    for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
-    baselines.set(dir, baseline)
-    if (!result.stopped && !left.length) checks.set(key, result)
-    return result
-  }
-
-  /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
-  const factsFor = async (
-    condition: Condition,
-    unit: Unit,
-    dir: string,
-    since: string,
-    verdict: string | undefined,
-    log: (line: string) => void,
-    logFile: string,
-    published = false,
-  ) => {
-    const facts: Facts = { verdict }
-    let ran: RanCheck | undefined
-    if (condition.command) {
-      const result = await check(condition.command, unit, dir, log, published)
-      ran = { command: condition.command, ...result }
-      facts.command = !ran.failed
-      await refuseSymlinks(dir, [relative(dir, logFile)])
-      await mkdir(dirname(logFile), { recursive: true })
-      await writeOutput(logFile, checkLog(ran))
-    }
-    if (condition.changed) facts.changed = await changes(dir, condition.changed, since)
-    return { facts, check: ran }
+  const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
+    env: input.ctx.env,
+    secrets,
+    signal: input.signal,
+    until: input.until,
+  })
+  const publisher: Publisher = {
+    forge: input.forge,
+    runId: input.runId,
+    signal: input.signal,
+    log: input.ctx.log,
+    check,
   }
 
   /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
@@ -247,6 +187,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           lead.outcome = interrupted
             ? { kind: 'none', reason: 'interrupted', unpublished: true }
             : await publishSlice(
+                publisher,
                 { ...first.unit, ...shape, deliver },
                 dir,
                 from,
@@ -381,7 +322,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (!reuse) {
           // Before setup or any worker touched the clone: the chain's commits are the ones after it.
           cloned = from = await head(dir)
-          gitConfigs.set(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+          rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
           const state: ReplayState = { unit, provider: id, commit: cloned }
           await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
         }
@@ -406,7 +347,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           }
           await restoreGit(dir)
         }
-        if (!reuse) baselines.set(dir, new Set(await uncommitted(dir)))
+        if (!reuse) await baseline(dir)
         const { when } = unit.rule
         if (when) {
           const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
@@ -557,44 +498,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return done
   }
 
-  /** Publishes a slice's commits since `from` as one draft PR or push, with its reports; without commits, its reports. */
-  const publishSlice = async (
-    unit: Unit,
-    dir: string,
-    from: string,
-    reports: StepReport[],
-    loops: Record<number, OpenLoop>,
-    stack?: Stack,
-  ): Promise<Outcome> => {
-    const { deliver } = unit
-    const out = join(dir, WORK_DIR, 'out')
-    if (deliver === 'report' || (await commitsSince(dir, from)) === 0) {
-      const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
-      if (!text)
-        return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'no commits' }
-      await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
-      await writeOutput(join(out, outputFile.report), `${text}\n`)
-      return { kind: 'report', text }
-    }
-    await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
-    await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
-    await verify(unit, dir, from)
-    if (input.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-    return publish(unit, dir, input.forge, input.runId, from, stack)
-  }
-
-  /** Runs the unit's `verify` before it is published; a failure goes in the PR body, and the unit is still published. */
-  const verify = async (unit: Unit, dir: string, start: string) => {
-    if (!unit.verify || (await commitsSince(dir, start)) === 0) return
-    const result = await check(unit.verify, unit, dir, input.ctx.log, false)
-    if (!result.failed) return
-    await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[unit.deliver]}`])
-    await appendVerifyFailure(join(dir, WORK_DIR, 'out', outputFile[unit.deliver]), {
-      command: unit.verify,
-      ...result,
-    })
-  }
-
   for (const chain of chains) {
     const done = await runChain(chain)
     results.push(...done)
@@ -603,213 +506,4 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   const { runId, dryRun, plan } = input
   return { runId, dryRun, startedAt, finishedAt: new Date(), plan, results, quotas }
-}
-
-/**
- * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
- * whose PR, open or closed unmerged, awaywork opened for one of the unit's items means it tried
- * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
- * one with no PR whose tip has awaywork's trailer is a push whose PR failed: either way the unit
- * is skipped until that branch is deleted, even where no attempts are kept. A branch the chain
- * `published` in this run is only taken.
- */
-async function freeBranch(
-  forge: Forge,
-  unit: Unit,
-  published: Set<string>,
-): Promise<{ branch: string } | { skip: string }> {
-  const items = unit.items.map((i) => `${i.source}:${i.key}`)
-  for (let n = 1; n <= MAX_SUFFIX; n++) {
-    const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
-    if (published.has(branch)) continue
-    if (!(await forge.branchExists(unit.repo, branch))) return { branch }
-    const prs = await forge.prsOn(unit.repo, branch)
-    if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
-      return { skip: `${branch} exists on ${unit.repo} without a PR; delete it to run again` }
-    const tried = prs.find(
-      (pr) => !pr.merged && footerItems(pr.body).some((item) => items.includes(item)),
-    )
-    if (tried)
-      return { skip: `awaywork tried this in ${tried.url}; delete ${branch} to run it again` }
-  }
-  return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
-}
-
-/** A loop of the chain, while its rounds run. */
-interface OpenLoop {
-  skills: string[]
-  rounds: number
-  verdict?: string
-  /** The last run of `until`'s command. */
-  check?: RanCheck
-  ended?: string
-}
-
-type StepReport = { id: string; skill: string; text: string }
-
-interface Check {
-  output: string
-  failed?: string
-  /** Cut short by Ctrl-C or the window's end: the condition is unknown, not false. */
-  stopped?: true
-  /** Hit the time limit: a `when` can't tell it from a negated check that passed, so it isn't false either. */
-  timedOut?: true
-  /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
-  refused?: true
-}
-
-type RanCheck = Check & { command: string }
-
-const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
-
-const git = async (dir: string, ...args: string[]) =>
-  (await execa(bin('git'), ['-C', dir, ...args])).stdout
-
-const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
-
-/**
- * Puts the clone on a new `branch` at its HEAD. Git writes only the branch, HEAD and the index there,
- * each through a lock file it renames, so with the symlinks a worker may plant refused (the index's by
- * restoreGitConfig) and no reflog left to append to, nothing outside the clone is written; no hook or
- * fsmonitor runs.
- */
-async function cutBranch(dir: string, branch: string): Promise<void> {
-  await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
-  await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
-  const off = ['core.hooksPath=/dev/null', 'core.fsmonitor=false', 'core.logAllRefUpdates=false']
-  await git(dir, ...off.flatMap((c) => ['-c', c]), 'checkout', '-q', '-b', branch)
-}
-
-/** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
-async function uncommitted(dir: string): Promise<string[]> {
-  const status = ['status', '--porcelain', '--ignore-submodules=dirty']
-  return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
-}
-
-async function commitsSince(dir: string, start: string): Promise<number> {
-  return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
-}
-
-/** `until` waits for a verdict written inside the loop, even one it only wants `{ not }` of. */
-function untilHolds(until: Condition, facts: Facts): boolean {
-  return (until.verdict === undefined || facts.verdict !== undefined) && holds(until, facts)
-}
-
-/** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
-async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
-  const paths = globs.map((glob) => `:(glob)${glob}`)
-  const since = `origin/${start || 'HEAD'}...HEAD`
-  return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
-}
-
-/** The command and the tail of its output, for the step after it. */
-function checkLog({ command, output, failed }: RanCheck): string {
-  const tail = output.slice(-CHECK_LOG_CHARS)
-  return `$ ${command}\n${tail}\n${failed ? `failed: ${failed}` : 'passed'}\n`
-}
-
-function isLast(loop: { round: number; max: number; step: number; skills: string[] }): boolean {
-  return loop.round === loop.max && loop.step === loop.skills.length - 1
-}
-
-function maxReached(max: number): string {
-  return `max ${max} ${max === 1 ? 'round' : 'rounds'} reached`
-}
-
-/** The one lowercase word a skill wrote to `out/verdict`, if any. */
-async function readVerdict(dir: string): Promise<string | undefined> {
-  const text = await readOutput(join(dir, WORK_DIR, 'out', 'verdict'))
-  const word = text.trim().toLowerCase()
-  return /^[a-z][a-z_-]*$/.test(word) ? word : undefined
-}
-
-/** What a step left for the chain, e.g. `2 commits and a report`. */
-function made(commits: number, report: string): string {
-  const parts = [
-    commits > 0 && `${commits} ${commits === 1 ? 'commit' : 'commits'}`,
-    report && 'a report',
-  ].filter(Boolean)
-  return parts.length ? parts.join(' and ') : 'nothing'
-}
-
-/** The latest report of each skill: a loop's last review stands for its earlier ones. */
-function latestReports(reports: StepReport[]): StepReport[] {
-  return reports.filter((r, i) => !reports.slice(i + 1).some((later) => later.skill === r.skill))
-}
-
-function joinReports(reports: StepReport[]): string {
-  return latestReports(reports)
-    .map((r) => `### ${r.id}\n\n${r.text}`)
-    .join('\n\n')
-}
-
-/** Saves a step's own commits for the next, and clears what only it wrote from the shared clone. */
-async function handOff(dir: string, start: string, unitDir: string): Promise<void> {
-  const diff = await git(dir, 'diff', '--no-ext-diff', '--no-textconv', start, 'HEAD')
-  // A round that cleaned the clone left no `out/` to copy.
-  await mkdir(join(unitDir, 'out'), { recursive: true })
-  if (diff) await writeFile(join(unitDir, 'out', 'diff.patch'), `${diff}\n`)
-  await refuseSymlinks(dir, [`${WORK_DIR}/out`])
-  const out = join(dir, WORK_DIR, 'out')
-  await Promise.all(
-    ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
-  )
-}
-
-/** E.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
-function describeLoop(loop: OpenLoop): string {
-  const rounds = `${loop.rounds} ${loop.rounds === 1 ? 'round' : 'rounds'}`
-  return `${rounds} of ${loop.skills.join(' ⇄ ')}; ${loop.ended ?? 'nothing ran'}`
-}
-
-/** awaywork's own notes in the PR body or push summary: how each loop went, its failing check, and the steps' reports. */
-async function appendChainNotes(file: string, reports: StepReport[], loops: OpenLoop[]) {
-  const body = (await readOutput(file)).trim()
-  if (!body || (reports.length === 0 && loops.length === 0)) return
-  const lines = ['', '', '## Awaywork chain']
-  for (const loop of loops) {
-    const verdict = loop.verdict ? `; last verdict ${loop.verdict}` : ''
-    lines.push('', `Loop: ${describeLoop(loop)}${verdict}.`)
-    const { check } = loop
-    if (check?.failed)
-      lines.push(
-        '',
-        checkDetails(
-          `Last check: \`${check.command}\` ${check.stopped ? 'stopped' : 'failed'}`,
-          check,
-        ),
-      )
-  }
-  for (const r of latestReports(reports))
-    lines.push('', `<details><summary>Report: ${r.id}</summary>`, '', r.text, '', '</details>')
-  await writeOutput(file, `${body}${lines.join('\n')}\n`)
-}
-
-/** A collapsible block with the command and the tail of its output. */
-function checkDetails(summary: string, check: RanCheck): string {
-  const log = checkLog(check).trim()
-  const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
-  return [`<details><summary>${summary}</summary>`, '', fence, log, fence, '', '</details>'].join(
-    '\n',
-  )
-}
-
-/** Appends a failed `verify` to the PR body or push report, so the reviewer sees it before the diff. */
-async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
-  const body = (await readOutput(file)).trim()
-  if (!body) return
-  const verb = check.stopped ? 'stopped' : 'failed'
-  const summary = `Verify \`${check.command}\` ${verb}: ${check.failed}`
-  await writeOutput(file, `${body}\n\n## Awaywork verify\n\n${checkDetails(summary, check)}\n`)
-}
-
-/** With every secret withheld except the repo's own. */
-function setupEnv(
-  env: NodeJS.ProcessEnv,
-  dir: string,
-  secrets: string[],
-  own: string[],
-): NodeJS.ProcessEnv {
-  const passed = own.filter((name) => env[name] !== undefined).map((name) => [name, env[name]])
-  return { ...commandEnv(env, dir, secrets), ...Object.fromEntries(passed) }
 }

@@ -1,0 +1,150 @@
+import { mkdir } from 'node:fs/promises'
+import { dirname, relative } from 'node:path'
+import { execa } from 'execa'
+import { bin } from '../config/paths.js'
+import { type Facts, holds } from '../core/condition.js'
+import type { Condition, Unit } from '../core/types.js'
+import { runCommand } from './setup.js'
+import { refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
+
+const CHECK_LOG_CHARS = 8000
+
+export interface Check {
+  output: string
+  failed?: string
+  /** Cut short by Ctrl-C or the window's end: the condition is unknown, not false. */
+  stopped?: true
+  /** Hit the time limit: a `when` can't tell it from a negated check that passed, so it isn't false either. */
+  timedOut?: true
+  /** Never runs on this unit: a `when` on it doesn't hold, and an `until` can't. */
+  refused?: true
+}
+
+export type RanCheck = Check & { command: string }
+
+export interface ChecksInput {
+  env: NodeJS.ProcessEnv
+  secrets: string[]
+  signal?: AbortSignal
+  until?: Date
+}
+
+/** The command checks of a run, with the baselines and git configs of the clones they share. */
+export function createChecks(input: ChecksInput) {
+  const checks = new Map<string, Check>()
+  // What each clone had uncommitted before a worker could leave anything: setup's and the checks' leftovers.
+  const baselines = new Map<string, Set<string>>()
+  // Each clone's git config as cloned, put back after anything ran the worker's code in it.
+  const gitConfigs = new Map<string, string>()
+  const restoreGit = (dir: string) => restoreGitConfig(dir, gitConfigs.get(dir) ?? '')
+  const rememberGitConfig = (dir: string, config: string) => gitConfigs.set(dir, config)
+  const baseline = async (dir: string) => {
+    baselines.set(dir, new Set(await uncommitted(dir)))
+  }
+
+  /**
+   * Runs a condition's command in the clone outside the model, once per commit, with none of the
+   * secrets. When it decides what is published (`until`), files left uncommitted fail it.
+   */
+  const check = async (
+    command: string,
+    unit: Unit,
+    dir: string,
+    log: (line: string) => void,
+    published: boolean,
+  ): Promise<Check> => {
+    if (unit.untrusted) return refusal("not run on an untrusted author's PR")
+    await restoreGit(dir)
+    const before = await uncommitted(dir)
+    const baseline = baselines.get(dir) ?? new Set()
+    const left = before.filter((line) => !baseline.has(line))
+    if (left.length && published)
+      return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
+    const key = `${dir} ${await head(dir)} ${command}`
+    const known = left.length ? undefined : checks.get(key)
+    if (known) return known
+    const result = await runCommand(command, dir, workerEnv(input.env, dir, input.secrets), {
+      secrets: [],
+      signal: input.signal,
+      until: input.until,
+    })
+    log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
+    await restoreGit(dir)
+    // Only what the check itself left joins the baseline, never what a worker left before it.
+    for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
+    baselines.set(dir, baseline)
+    if (!result.stopped && !left.length) checks.set(key, result)
+    return result
+  }
+
+  /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
+  const factsFor = async (
+    condition: Condition,
+    unit: Unit,
+    dir: string,
+    since: string,
+    verdict: string | undefined,
+    log: (line: string) => void,
+    logFile: string,
+    published = false,
+  ) => {
+    const facts: Facts = { verdict }
+    let ran: RanCheck | undefined
+    if (condition.command) {
+      const result = await check(condition.command, unit, dir, log, published)
+      ran = { command: condition.command, ...result }
+      facts.command = !ran.failed
+      await refuseSymlinks(dir, [relative(dir, logFile)])
+      await mkdir(dirname(logFile), { recursive: true })
+      await writeOutput(logFile, checkLog(ran))
+    }
+    if (condition.changed) facts.changed = await changes(dir, condition.changed, since)
+    return { facts, check: ran }
+  }
+
+  return { check, factsFor, restoreGit, rememberGitConfig, baseline }
+}
+
+export const git = async (dir: string, ...args: string[]) =>
+  (await execa(bin('git'), ['-C', dir, ...args])).stdout
+
+export const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
+
+export async function commitsSince(dir: string, start: string): Promise<number> {
+  return Number(await git(dir, 'rev-list', '--count', `${start}..HEAD`))
+}
+
+const refusal = (failed: string): Check => ({ output: '', failed, refused: true })
+
+/** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
+async function uncommitted(dir: string): Promise<string[]> {
+  const status = ['status', '--porcelain', '--ignore-submodules=dirty']
+  return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
+}
+
+/** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
+async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
+  const paths = globs.map((glob) => `:(glob)${glob}`)
+  const since = `origin/${start || 'HEAD'}...HEAD`
+  return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
+}
+
+/** The command and the tail of its output, for the step after it. */
+function checkLog({ command, output, failed }: RanCheck): string {
+  const tail = output.slice(-CHECK_LOG_CHARS)
+  return `$ ${command}\n${tail}\n${failed ? `failed: ${failed}` : 'passed'}\n`
+}
+
+/** `until` waits for a verdict written inside the loop, even one it only wants `{ not }` of. */
+export function untilHolds(until: Condition, facts: Facts): boolean {
+  return (until.verdict === undefined || facts.verdict !== undefined) && holds(until, facts)
+}
+
+/** A collapsible block with the command and the tail of its output. */
+export function checkDetails(summary: string, check: RanCheck): string {
+  const log = checkLog(check).trim()
+  const fence = '`'.repeat(Math.max(3, ...[...log.matchAll(/`+/g)].map((m) => m[0].length + 1)))
+  return [`<details><summary>${summary}</summary>`, '', fence, log, fence, '', '</details>'].join(
+    '\n',
+  )
+}
