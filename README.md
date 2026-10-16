@@ -163,7 +163,7 @@ Needs Node 22+, `git`, and `gh auth login`.
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 
 Research notes: [providers](docs/providers.md),
-[sources](docs/sources.md), [e2e](docs/e2e.md).
+[sources](docs/sources.md).
 
 ## License
 

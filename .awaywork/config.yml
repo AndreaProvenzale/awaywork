@@ -7,7 +7,7 @@ budget:                         # every provider; override one with - <id>: { bu
   # per_run: 15%                # at most this share of the long window per run
 providers: [claude]             # codex is out of credits; add it back with its reviewer below
 sources:
-  github: {repos: [AndreaProvenzale/*]}
+  github: {repos: [AndreaProvenzale/awaywork]}
 queue:                          # first matching rule wins; top = highest priority
   - skill: fix
     source: github
