@@ -161,7 +161,7 @@ So the agent can still be steered, and it can read your `GH_TOKEN`
 ([Not a sandbox](#not-a-sandbox)). The classic token `schedule install`
 asks for reaches every repo you can, not only the ones awaywork works
 on; whether that's fine or worth a dedicated account is your call. A
-fine-grained token would reach less, but they
+fine-grained token would reach less, but it
 [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations),
 which the `checks` field and `checks.md` read, so those likely break.
 Nobody has tried one yet.
