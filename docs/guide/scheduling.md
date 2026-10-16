@@ -123,7 +123,7 @@ Copied ~/.config/awaywork/config.yml to .awaywork/config.yml
 Before the first run:
   commit .github/workflows/awaywork.yml and .awaywork/config.yml
   add these repository secrets: GH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN
-  GH_TOKEN is a classic personal access token of yours with the `repo` and `workflow` scopes (…)
+  GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` scopes (…)
 ```
 
 The runner is GitHub-hosted by default: a fresh VM each run, with no
@@ -158,11 +158,12 @@ fails before anything else when `GH_TOKEN` is empty, which is how a job
 whose secrets didn't reach it shows.
 
 `GH_TOKEN` is your own token, since the work is yours: a classic personal
-access token with the `repo` and `workflow` scopes. `repo` reads your PRs,
-issues, checks and Actions logs, pushes new branches and opens draft PRs
-in the configured repos; `workflow` lets it push branches that change
-workflow files. On a public repo, a fine-grained token reaches less if
-the agent gets steered: see [Public repos](./safety.md#public-repos).
+access token with the `repo`, `workflow` and `read:org` scopes. `repo`
+reads your PRs, issues, checks and Actions logs, pushes new branches and
+opens draft PRs in the configured repos; `workflow` lets it push branches
+that change workflow files; `read:org` tells teammates who keep their
+org membership private from outsiders, whose text
+[gets hidden](./safety.md#public-repos).
 
 The workflow calls awaywork's action at the release you generated it
 with, say `AndreaProvenzale/awaywork@v0.3.1`, which installs that same

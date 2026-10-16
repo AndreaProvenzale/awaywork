@@ -263,7 +263,7 @@ describe('github source', () => {
     ])
   })
 
-  it('counts no threads when reading who started them fails, and keeps every item', async () => {
+  it('counts every unresolved thread, none mine, when reading who started them fails', async () => {
     const routes = githubRoutes()
     const failing = async (cmd: string, args: string[]) => {
       if (args.join(' ').includes('nodes(ids:')) throw new Error('gh: Could not resolve to a node')
@@ -272,14 +272,14 @@ describe('github source', () => {
     log.length = 0
     const found = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
     expect(found).toHaveLength(5)
-    expect(found[0]?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
+    expect(found[0]?.fields).toMatchObject({ unresolved_threads: 3, my_unresolved_threads: 0 })
     expect(log).toEqual([
-      "github: couldn't read who started PR threads, counting none: gh: Could not resolve to a node",
+      "github: couldn't read who started PR threads, counting all, none as yours: gh: Could not resolve to a node",
     ])
 
     const missing = recorded([[/nodes\(ids:/, '{ "data": { "nodes": [null] } }'], ...routes])
     const [pr1] = await githubSource(missing).items({ repos: ['acme/*'] }, ctx)
-    expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
+    expect(pr1?.fields).toMatchObject({ unresolved_threads: 3, my_unresolved_threads: 0 })
   })
 
   it('reads who started the threads in pages of 100 PRs', async () => {
@@ -345,6 +345,42 @@ describe('github source', () => {
     expect(checks).toContain('## sonar: FAILURE\n\nhttps://sonar.example.com/acme-api/1')
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
+  })
+
+  it('hides ghost reviews and replies, and every thread when no one trusted started any', async () => {
+    const [pr1] = await items()
+    const ghost = { author: null, authorAssociation: 'OWNER', viewerDidAuthor: false }
+    type Details = {
+      reviews: { nodes: object[] }
+      reviewThreads: { nodes: { comments: { nodes: object[] } }[] }
+    }
+    const prefetch = async (edit: (pr: Details) => void) => {
+      const details = JSON.parse(fixture('pr-1.json'))
+      edit(details.data.repository.pullRequest)
+      const view: [RegExp, string] = [
+        /owner=acme -f name=api -F number=1 /,
+        JSON.stringify(details),
+      ]
+      const dir = await tmp()
+      await githubSource(recorded([view, ...githubRoutes()])).prefetch(pr1 as never, dir, ctx)
+      return (f: string) => readFile(join(dir, f), 'utf8')
+    }
+
+    const ghosts = await prefetch((pr) => {
+      Object.assign(pr.reviews.nodes[0] ?? {}, ghost)
+      Object.assign(pr.reviewThreads.nodes[2]?.comments.nodes[1] ?? {}, ghost)
+    })
+    expect(await ghosts('item.md')).not.toContain('Needs a test for the burst case.')
+    expect(await ghosts('item.md')).toContain('_Hidden: 2 reviews from outside')
+    expect(await ghosts('threads.md')).not.toContain('429 is the standard')
+    expect(await ghosts('threads.md')).toContain('_Hidden: 2 replies from outside')
+
+    const strangers = await prefetch((pr) => {
+      for (const t of pr.reviewThreads.nodes) Object.assign(t.comments.nodes[0] ?? {}, ghost)
+    })
+    expect(await strangers('threads.md')).toBe(
+      "No unresolved review threads.\n\n_Hidden: 4 unresolved threads from outside the repo's owners, members and collaborators._\n",
+    )
   })
 
   it('prefetches an issue with its comments', async () => {

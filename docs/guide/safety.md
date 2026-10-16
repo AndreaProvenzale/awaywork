@@ -136,8 +136,15 @@ _Hidden: 2 comments from outside the repo's owners, members and collaborators._
 ```
 
 A thread a stranger started is hidden whole and doesn't count toward
-`unresolved_threads`, so it can't start a `fix` run; in your threads,
-only their replies go. It's always on, nothing to configure.
+`unresolved_threads`, so it doesn't start a `fix` run (if GitHub won't
+say who started a PR's threads, they all count, and the run still sees
+only the trusted ones). In a thread someone trusted started, only the
+strangers' replies go. It's always on, nothing to configure.
+
+Who's a member comes from GitHub, and to a token without `read:org` a
+teammate whose org membership is private can look like an outsider,
+comments hidden. `gh auth login` asks for `read:org` already, and
+so does `schedule install` for the runner's token.
 
 What it can't hide:
 
@@ -151,13 +158,13 @@ What it can't hide:
   stranger's comment.
 
 So the agent can still be steered, and it can read your `GH_TOKEN`
-([Not a sandbox](#not-a-sandbox)). On a runner, give the workflow a
-fine-grained token limited to the repos awaywork works on rather than
-a classic one that reaches every repo you can: read and write on
-Contents, Pull requests and Workflows, read on Issues, Actions and
-Commit statuses. It only reaches repos owned by you or by orgs that
-allow fine-grained tokens. Untested so far: `schedule install` still
-asks for a classic one.
+([Not a sandbox](#not-a-sandbox)). The classic token `schedule install`
+asks for reaches every repo you can, not only the ones awaywork works
+on; whether that's fine or worth a dedicated account is your call. A
+fine-grained token would reach less, but they
+[can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations),
+which the `checks` field and `checks.md` read, so those likely break.
+Nobody has tried one yet.
 
 ## MCP servers
 

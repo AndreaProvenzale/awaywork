@@ -253,7 +253,8 @@ export const github = githubSource()
 /**
  * Sets `unresolved_threads` and `my_unresolved_threads` on the PRs that have unresolved threads,
  * counting only those a trusted author started, in one query per page.
- * A page that fails leaves its PRs at 0 rather than losing every item.
+ * A page that fails keeps the raw count and none as yours rather than losing every item;
+ * threads.md filters on its own.
  */
 async function countThreads(
   run: Exec,
@@ -261,7 +262,7 @@ async function countThreads(
   log: (line: string) => void,
 ): Promise<void> {
   const ids = [...byId]
-    .filter(([, item]) => (item.raw as Node).reviewThreads?.nodes.some((t) => !t.isResolved))
+    .filter(([, item]) => Number(item.fields.unresolved_threads) > 0)
     .map(([id]) => id)
   for (let i = 0; i < ids.length; i += PAGE) {
     const page = await graphql<{
@@ -270,7 +271,7 @@ async function countThreads(
         reviewThreads: Nodes<{ isResolved: boolean; comments: Nodes<By> }>
       } | null)[]
     }>(run, threadStartersQuery(ids.slice(i, i + PAGE)), {}).catch((e: Error) => {
-      log(`github: couldn't read who started PR threads, counting none: ${e.message}`)
+      log(`github: couldn't read who started PR threads, counting all, none as yours: ${e.message}`)
     })
     for (const node of page?.nodes ?? []) {
       const item = node && byId.get(node.id)
@@ -332,7 +333,7 @@ function toItem(node: Node): Item {
     Object.assign(fields, {
       draft: node.isDraft,
       ours: isOurs(node.body),
-      unresolved_threads: 0,
+      unresolved_threads: node.reviewThreads?.nodes.filter((t) => !t.isResolved).length ?? 0,
       my_unresolved_threads: 0,
       review_requested: false,
       ...(node.additions !== undefined && {
@@ -421,8 +422,8 @@ function itemMarkdown(item: Item): string {
 
 function reviewsMarkdown(pr: PrDetails): string {
   const written = pr.reviews.nodes.filter((r) => r.body.trim())
-  const reviews = written.filter(isTrusted)
   if (!written.length) return ''
+  const reviews = written.filter(isTrusted)
   const shown = reviews.map(
     (r) => `\n### ${r.author?.login}, ${r.state}, ${r.submittedAt}\n\n${r.body}\n`,
   )
