@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/public/brand/lockup-horizontal-dark.svg">
-    <img src="docs/public/brand/lockup-horizontal.svg" alt="awaywork" height="56">
+    <source media="(prefers-color-scheme: dark)" srcset="https://andreaprovenzale.github.io/awaywork/brand/lockup-horizontal-dark.svg">
+    <img src="https://andreaprovenzale.github.io/awaywork/brand/lockup-horizontal.svg" alt="awaywork" height="56">
   </picture>
 </h1>
 
