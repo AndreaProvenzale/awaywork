@@ -6,7 +6,7 @@ import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
 import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
-import { hasSkills, unknownSkills } from '../config/skills.js'
+import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
@@ -80,14 +80,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
     return checks
   }
-  const unknown = await unknownSkills(config, skillsDirOf(path))
-  if (unknown.length === 0) report('ok', path)
-  else
-    report(
-      'warn',
-      path,
-      `${unknown.join('; ')}; fine for a skill the repo has in .awaywork/skills, or for an extra one in .claude/skills or .agents/skills`,
-    )
+  const unknown = await unknownSkillsWarning(config, skillsDirOf(path))
+  report(unknown ? 'warn' : 'ok', path, unknown)
   for (const warning of await staleSchedules(path, config.windows))
     report('warn', 'schedule', warning)
   const root = await gitRoot()

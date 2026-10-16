@@ -102,9 +102,9 @@ and leaves one closed PR.
   their own review. `fix` can use review comments left on
   one's own PR.
 - The workflow from `schedule install --with github-actions` calls
-  `AndreaProvenzale/awaywork@v1` with the CLI's own version, and only a
-  stable release moves `v1`: publish a release candidate first, and point
-  `uses:` at its tag and `version` at its number in the test repo.
+  `AndreaProvenzale/awaywork@v<version>` with the CLI's own version, so
+  run it with a published release, a candidate included: a local build
+  writes a tag that doesn't exist.
 - A scheduled job runs the `claude` binary on `PATH`, with whichever
   login is active then, not a shell function or alias wrapping it.
 - Back up `~/.codex/auth.json`.

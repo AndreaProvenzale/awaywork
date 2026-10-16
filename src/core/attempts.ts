@@ -4,15 +4,25 @@ import type { RunReport, UnitResult } from './report.js'
 import type { Item, PrRef } from './types.js'
 
 export const MAX_ATTEMPTS = 3
+// Hours short of a week, so next week's run at the same time isn't a day late, in a DST week too.
+const GAVE_UP_MS = (7 * 24 - 3) * 3600_000
 
 /**
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
- * then; `failed` counts the attempts in a row that didn't finish, absent once one did; `pushed` is
- * the head a `push` left on a PR branch.
+ * then; `failed` counts the attempts in a row with this skill that didn't finish, however the item
+ * changed, absent once one did, and `failedAt` is when the last of them started; `pushed` is the
+ * head a `push` left on a PR branch.
  */
 export type Attempts = Record<
   string,
-  { runId: string; skill: string; updated: string; failed?: number; pushed?: string }
+  {
+    runId: string
+    skill: string
+    updated: string
+    failed?: number
+    failedAt?: string
+    pushed?: string
+  }
 >
 
 export async function loadAttempts(path: string): Promise<Attempts> {
@@ -38,10 +48,29 @@ export function unchangedSince(item: Item, skill: string, attempts: Attempts): s
     : undefined
 }
 
-/** Attempts in a row that didn't finish, on the item as it is now and with this skill. */
+/** Attempts in a row with this skill that didn't finish, whether or not the item changed since. */
 export function failedAttempts(item: Item, skill: string, attempts: Attempts): number {
   const last = attempts[attemptKey(item)]
-  return last?.skill === skill && item.fields.updated === last.updated ? (last.failed ?? 0) : 0
+  return last?.skill === skill ? (last.failed ?? 0) : 0
+}
+
+/**
+ * When the item gets its next try with this skill, after it failed {@link MAX_ATTEMPTS} times in a
+ * row: the run a week after the last failure, which a fresh try that fails again moves on. Returns
+ * that day; undefined when it may run now, as an attempt recorded without a time may.
+ */
+export function gaveUpUntil(
+  item: Item,
+  skill: string,
+  attempts: Attempts,
+  now: number,
+): Date | undefined {
+  if (failedAttempts(item, skill, attempts) < MAX_ATTEMPTS) return undefined
+  const failedAt = Date.parse(attempts[attemptKey(item)]?.failedAt ?? '')
+  if (Number.isNaN(failedAt) || failedAt + GAVE_UP_MS <= now) return undefined
+  const day = new Date(failedAt)
+  day.setDate(day.getDate() + 7)
+  return day
 }
 
 /** The PR a chain pushed onto, while its head is still the one the push left: it waits for you. */
@@ -52,10 +81,10 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
 
 /**
  * Attempts plus the items of every chain that ran: finished when each of its steps that ran was
- * done and no slice's publish left anything behind. A stopped or failed step, or work left
- * unpublished, retries the chain and counts one failure; a step that didn't run (skipped, a dry
- * run, aborted) counts nothing; a step passed over, by its `when` or after one that made
- * nothing, doesn't count.
+ * done and no slice's publish left anything behind. A failed, errored or timed-out step, or work
+ * left unpublished, retries the chain and counts one failure; a step that didn't run (skipped, a
+ * dry run, aborted) or a stop the item didn't cause (quota, session, window end) counts nothing;
+ * a step passed over, by its `when` or after one that made nothing, doesn't count.
  */
 export function recordAttempts(attempts: Attempts, report: RunReport): Attempts {
   const next = { ...attempts }
@@ -71,7 +100,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     const unpublished = chain.find((r) => r.outcome?.kind === 'none' && r.outcome.unpublished)
     const finished = chain.length > 0 && !short && !unpublished
     // Work left unpublished is the chain's own failure, whatever a later step missed.
-    const aborted = !finished && !ran(unpublished ?? short ?? chain[0])
+    const aborted = !finished && !counts(unpublished ?? short ?? chain[0])
     // A push stays recorded even when a step after it didn't run.
     if (aborted && !pushed) continue
     const { skill } = head.unit
@@ -85,7 +114,10 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
           runId: report.runId,
           skill,
           updated: item.fields.updated,
-          ...(!finished && { failed: failedAttempts(item, skill, attempts) + 1 }),
+          ...(!finished && {
+            failed: failedAttempts(item, skill, attempts) + 1,
+            failedAt: report.startedAt.toISOString(),
+          }),
           ...(pushed && { pushed }),
         }
     }
@@ -93,9 +125,18 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
   return next
 }
 
-function ran(r: UnitResult | undefined): boolean {
+const UNCOUNTED: UnitResult['status'][] = [
+  'skipped',
+  'prepared',
+  'stopped: aborted',
+  'stopped: quota',
+  'stopped: session',
+  'stopped: window ended',
+]
+
+function counts(r: UnitResult | undefined): boolean {
   if (r?.outcome?.kind === 'none' && r.outcome.reason === 'interrupted') return false
-  return !!r && r.status !== 'skipped' && r.status !== 'prepared' && r.status !== 'stopped: aborted'
+  return !!r && !UNCOUNTED.includes(r.status)
 }
 
 function attemptKey(item: Item): string {

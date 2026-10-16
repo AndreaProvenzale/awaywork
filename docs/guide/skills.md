@@ -55,8 +55,9 @@ every unit, someone else's PR included. Codex gets them copied into the
 clone's `.agents/skills/`: a repo that already has a skill of that name
 there keeps it, except on someone else's PR, where awaywork's copy
 replaces it. `doctor` and `config edit` see user and built-in skills
-only, so `doctor` warns about a name it can't find and `config edit`
-refuses it; an in-repo skill resolves at run time.
+only, so they warn about a name they can't find; an in-repo skill
+resolves at run time, and a unit naming a skill that's nowhere fails
+with `unknown skill`.
 
 ## Tweak a built-in
 
@@ -70,9 +71,9 @@ The ejected copy shadows the built-in from then on.
 ## Bring your repo's skills
 
 Your repo already has skills for Claude Code or Codex? Name them in a
-rule scoped to that repo, no ejecting or copying. Edit the config file
-by hand, though: they only resolve at run time, so `doctor` warns about
-them and `config edit` refuses them.
+rule scoped to that repo, no ejecting or copying. They only resolve at
+run time, so `doctor` and `config edit` warn about them; `config edit`
+saves anyway.
 
 ```yaml
 queue:

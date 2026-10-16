@@ -11,7 +11,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { join, relative, resolve, sep } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
@@ -96,6 +96,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
     await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    // Linked or not, a branch's own `.away` could lead awaywork's writes and deletes anywhere.
+    if (await lstat(join(dir, WORK_DIR)).catch(() => undefined))
+      throw new Error(`${WORK_DIR} in the clone comes from the branch, not awaywork`)
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
@@ -146,7 +149,6 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     repo: {
       setup: repo.setup,
       setupSkipped: unit.untrusted,
-      offline: !unit.network,
       test: repo.test,
       instructions: repo.instructions && (await read(repo.instructions)),
     },
@@ -255,7 +257,6 @@ export function configSecrets(
     ...Object.values(providers).flatMap((p) => p.secrets),
     ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
     ...(config.notify?.secrets ?? []),
-    ...(config.after_unit?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),
   ]
@@ -280,6 +281,7 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     }
     // An earlier round's worker may have planted a link where awaywork now writes.
     if (w.reuse) await refuseSymlinks(w.dir, [`${skillsDir}/${name}`])
+    await refuseOutside(w.dir, dirname(target))
     if (mine.has(target)) {
       await rm(target, { recursive: true, force: true })
       await copySkill(w.dir, source, target)
@@ -290,11 +292,13 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
     if (theirs) {
       w.ctx.log(`skill ${name}: replaced the PR author's ${skillsDir}/${name}`)
       await rm(target, { recursive: true })
-      replaced.push(target)
     }
     await copySkill(w.dir, source, target)
     mine.add(target)
-    excluded.push(`/${skillsDir}/${name}/`)
+    // git sees files only where a linked skills folder leads.
+    const real = join(await realpath(dirname(target)), name)
+    if (theirs) replaced.push(real)
+    excluded.push(`/${relative(await realpath(w.dir), real)}/`)
   }
   if (excluded.length > 0)
     await writeOutput(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`, true)
@@ -306,6 +310,16 @@ async function buildPlugin(plugin: string, dir: string, sources: Map<string, str
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
   await writeFile(join(plugin, '.claude-plugin', 'plugin.json'), '{"name":"awaywork"}\n')
   for (const [name, source] of sources) await copySkill(dir, source, join(plugin, 'skills', name))
+}
+
+/** Throws unless `path`, or its nearest ancestor that exists, resolves inside the clone `dir`. */
+async function refuseOutside(dir: string, path: string): Promise<void> {
+  const clone = await realpath(dir)
+  let at = path
+  while (!(await lstat(at).catch(() => undefined))) at = dirname(at)
+  const real = await realpath(at).catch(() => '')
+  if (real !== clone && !real.startsWith(`${clone}${sep}`))
+    throw new Error(`${relative(dir, path)} in the clone links outside it`)
 }
 
 /** Copies a skill folder as real files, refusing one in the clone `dir` that is, or holds, a link out of it. */

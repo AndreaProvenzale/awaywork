@@ -1587,23 +1587,22 @@ queue:
   expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
 })
 
-it('skips a rule and a step whose quota when does not hold', async () => {
+it("skips a rule whose quota when doesn't hold, and runs one whose does", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-when-quota-'))
   const { forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - skill: implement
-    where: { type: issue }
-    then:
-      - { skill: review, when: { runs_until_reset: 1 } }
-      - { skill: plan, when: { headroom: 10% } }
+  - { skill: review, where: { title: { matches: one } }, deliver: report, when: { runs_until_reset: 1 } }
+  - { skill: implement, where: { title: { matches: two } }, when: { headroom: 10% } }
 `)
-  const item = { ...issue(1), fields: { repo: 'acme/api', updated: '2026-01-01T00:00:00Z' } }
   const plan = planRun({
     config,
-    items: [item],
+    items: [
+      { ...issue(1), title: 'one' },
+      { ...issue(2), title: 'two' },
+    ],
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
@@ -1621,10 +1620,10 @@ queue:
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
-  const [, review, planned] = report.results
+  const [review, implemented] = report.results
   expect(review?.status).toBe('skipped')
   expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
-  expect(planned?.status).toBe('done')
+  expect(implemented?.status).toBe('done')
 })
 
 it('records no attempt for a rule whose quota when does not hold', async () => {
@@ -2325,6 +2324,54 @@ it("ends a loop whose clone a round symlinked, before the next round's workspace
   expect(await readFile(join(root, 'previous', 'keep'), 'utf8')).toBe('mine\n')
 })
 
+it("keeps awaywork's replay.json and worker.log in the unit dir over the ones a worker wrote", async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
+  const provider = looper({})
+  await loopRun(
+    'queue:\n  - skill: implement\n',
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        await writeFile(join(job.dir, '.away/replay.json'), '{"forged":true}')
+        await writeFile(join(job.dir, '.away/worker.log'), 'FORGED LOG')
+      },
+    },
+    { runDir },
+  )
+
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  const state = JSON.parse(await readFile(join(unitDir, 'replay.json'), 'utf8'))
+  expect(state.unit.id).toBe('acme-api-1')
+  expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).not.toContain('FORGED')
+  expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
+})
+
+it('copies nothing from the .away a branch ships into the unit dir', async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
+  const { report } = await loopRun('queue:\n  - skill: implement\n', [issue(1)], looper({}), {
+    runDir,
+    forge: {
+      clone: async (_repo, _branch, dir) => {
+        await execa(bin('git'), ['init', '-q', '-b', 'main', dir])
+        await mkdir(join(dir, '.away/out'), { recursive: true })
+        for (const file of ['replay.json', 'worker.log', 'out/pr.md'])
+          await writeFile(join(dir, '.away', file), 'FORGED')
+        await git(dir, 'add', '.')
+        await git(dir, 'commit', '-qm', 'init')
+      },
+    },
+  })
+
+  expect(report.results.map((u) => [u.status, u.reason])).toEqual([
+    ['error', '.away in the clone comes from the branch, not awaywork'],
+  ])
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  expect(await readdir(unitDir)).toEqual(['worker.log'])
+  expect(await readFile(join(unitDir, 'worker.log'), 'utf8')).toContain('comes from the branch')
+})
+
 it('reads past FIFOs a round left as its verdict or report, and finishes the run', async () => {
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const { report, opened } = await loopRun(
@@ -2410,31 +2457,27 @@ it("reads a loop's last verdict in the when of the step after it", async () => {
   ])
 })
 
-it("doesn't run a check without network, or end a loop while the clone has uncommitted changes", async () => {
+it("doesn't run a check on an untrusted author's PR, or end a loop while the clone has uncommitted changes", async () => {
   const provider = looper({})
   const env = { ctx: { env: { PATH: process.env.PATH }, log: () => {} } }
-  const offline = (then: string) =>
+  const untrusted = (then: string) =>
     loopRun(
-      `repos: { acme/api: { network: false } }
-queue: [{ skill: implement, then: ${then} }]
-`,
-      [issue(1)],
+      `queue: [{ skill: review, deliver: report, then: ${then} }]\n`,
+      [githubPr(4, { mine: false, trusted: false })],
       provider,
       env,
     )
-  const noNetwork = 'not run without network: it has no sandbox'
-  const step = await offline(`{ skill: review, when: { command: 'true' } }`)
+  const refused = "not run on an untrusted author's PR"
+  const step = await untrusted(`{ skill: plan, when: { command: 'true' } }`)
   expect(step.report.results[1]).toMatchObject({
     status: 'skipped',
-    reason: `when \`true\` passes didn't hold (${noNetwork})`,
+    reason: `when \`true\` passes didn't hold (${refused})`,
     passedOver: true,
   })
-  const loop = await offline(`{ loop: [fix], until: { command: 'true' }, max: 3 }`)
+  const loop = await untrusted(`{ loop: [fix], until: { command: 'true' }, max: 3 }`)
   expect(loop.report.results[0]?.loop).toBe(
-    `1 round of fix; until \`true\` passes not checked: ${noNetwork}`,
+    `1 round of fix; until \`true\` passes not checked: ${refused}`,
   )
-  expect(loop.opened[0]?.body).toContain('until `true` passes not checked')
-  expect(loop.opened[0]?.body).not.toContain('Last check')
 
   const dirty = await loopRun(
     `queue:
@@ -2689,15 +2732,15 @@ it('skips a when step whose check timed out without passing over it, so the chai
 
 it("ends a loop at a refused when, instead of repeating its other steps on code that can't change", async () => {
   const { report, opened } = await loopRun(
-    `repos: { acme/api: { network: false } }
-queue:
+    `queue:
   - skill: implement
+    deliver: report
     then:
       loop: [review, { skill: fix, when: { command: '! false' } }]
       until: { verdict: approve }
       max: 3
 `,
-    [issue(1)],
+    [githubPr(1, { mine: false, trusted: false })],
     looper({
       'acme-api-1-review-1': 'changes',
       'acme-api-1-review-2': 'changes',
@@ -2705,25 +2748,22 @@ queue:
     }),
   )
 
-  const refused = "when `! false` passes didn't hold (not run without network: it has no sandbox)"
+  const refused = `when \`! false\` passes didn't hold (not run on an untrusted author's PR)`
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
     ['acme-api-1', 'done', undefined],
     ['acme-api-1-review-1', 'done', undefined],
     ['acme-api-1-fix-1', 'skipped', refused],
   ])
   expect(report.results[0]?.loop).toBe(`1 round of review ⇄ fix; ${refused}`)
-  expect(opened).toHaveLength(1)
+  expect(opened).toEqual([])
 })
 
 it("doesn't run a loop whose first step after a report has a refused when, and finishes the chain", async () => {
-  const item = fakeItem({
-    ...issue(1),
-    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
-  })
+  const item = githubPr(1, { mine: false, trusted: false, updated: '2026-09-01T00:00:00Z' })
   const { report, opened } = await loopRun(
-    `repos: { acme/api: { network: false } }
-queue:
+    `queue:
   - skill: plan
+    deliver: report
     then: { loop: [{ skill: review, when: { command: 'true' } }, implement], until: { verdict: approve }, max: 2 }
 `,
     [item],
@@ -2743,14 +2783,11 @@ queue:
 })
 
 it('reports a loop that a refused when ended, and counts the chain finished', async () => {
-  const item = fakeItem({
-    ...issue(1),
-    fields: { repo: 'acme/api', updated: '2026-09-01T00:00:00Z' },
-  })
+  const item = githubPr(1, { mine: false, trusted: false, updated: '2026-09-01T00:00:00Z' })
   const { report } = await loopRun(
-    `repos: { acme/api: { network: false } }
-queue:
+    `queue:
   - skill: plan
+    deliver: report
     then:
       loop: [review, { skill: fix, when: { command: 'true' } }]
       until: { verdict: approve }
@@ -2985,12 +3022,12 @@ it("puts back a loop clone's git config after each worker, and refuses a borrowe
   )
 })
 
-/** Pushes two steps onto PR 1, reports on issue 2, and runs a failing after_unit. */
-const afterUnitQueue = (out: string) => `queue:
+/** Pushes two steps onto PR 1, reports on issue 2, and runs a failing notify. */
+const notifyQueue = (out: string) => `queue:
   - { skill: fix, deliver: push, where: { type: pr }, then: implement }
   - { skill: plan, where: { type: issue } }
-after_unit:
-  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'; exit 3
+notify:
+  command: echo "$AWAYWORK_EVENT $AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'; exit 3
 `
 
 /** Commits unless it reports, and writes a PR body or a report as its unit delivers. */
@@ -3008,10 +3045,10 @@ const pusher: Provider = {
   },
 }
 
-it("runs after_unit once per step with its own output and its chain's PR, and goes on past a failing one", async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
+it("runs notify's unit event once per step with its own output and its chain's PR, and goes on past a failing one", async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')
   const logs: string[] = []
-  const { report } = await loopRun(afterUnitQueue(out), [githubPr(1), issue(2)], pusher, {
+  const { report } = await loopRun(notifyQueue(out), [githubPr(1), issue(2)], pusher, {
     ctx: { env: { PATH: process.env.PATH }, log: (line) => logs.push(line) },
   })
 
@@ -3021,28 +3058,30 @@ it("runs after_unit once per step with its own output and its chain's PR, and go
     ['acme-api-2', 'report'],
   ])
   expect((await readFile(out, 'utf8')).split('\n')).toEqual([
-    expect.stringMatching(/^acme-api-1 done \|\/.+\/run\/units\/acme-api-1\/1-fix\/out\/pr\.md$/),
     expect.stringMatching(
-      /^acme-api-1-implement done \|\/.+\/run\/units\/acme-api-1\/2-implement\/out\/pr\.md$/,
+      /^unit acme-api-1 done \|\/.+\/run\/units\/acme-api-1\/1-fix\/out\/pr\.md$/,
     ),
     expect.stringMatching(
-      /^acme-api-2 done \|\/.+\/run\/units\/acme-api-2\/1-plan\/out\/report\.md$/,
+      /^unit acme-api-1-implement done \|\/.+\/run\/units\/acme-api-1\/2-implement\/out\/pr\.md$/,
+    ),
+    expect.stringMatching(
+      /^unit acme-api-2 done \|\/.+\/run\/units\/acme-api-2\/1-plan\/out\/report\.md$/,
     ),
     '',
   ])
-  expect(logs.filter((line) => line.startsWith('after_unit'))).toEqual([
-    expect.stringMatching(/^after_unit failed for acme-api-1: .*exit code 3/),
-    expect.stringMatching(/^after_unit failed for acme-api-1-implement: /),
-    expect.stringMatching(/^after_unit failed for acme-api-2: /),
+  expect(logs.filter((line) => line.startsWith('notify'))).toEqual([
+    expect.stringMatching(/^notify failed for acme-api-1: .*exit code 3/),
+    expect.stringMatching(/^notify failed for acme-api-1-implement: /),
+    expect.stringMatching(/^notify failed for acme-api-2: /),
   ])
 })
 
-it('runs no after_unit on a dry run, nor once interrupted, past those of the chains that finished', async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-')), 'out.txt')
+it('runs no notify unit event on a dry run, nor once interrupted, past those of the chains that finished', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')
   const items = [githubPr(1), issue(2)]
-  await loopRun(afterUnitQueue(out), items, pusher, { dryRun: true })
+  await loopRun(notifyQueue(out), items, pusher, { dryRun: true })
   const stop = new AbortController()
-  const { report } = await loopRun(afterUnitQueue(out), items, pusher, {
+  const { report } = await loopRun(notifyQueue(out), items, pusher, {
     signal: stop.signal,
     ctx: {
       env: { PATH: process.env.PATH },
@@ -3058,18 +3097,18 @@ it('runs no after_unit on a dry run, nor once interrupted, past those of the cha
     ['acme-api-2', 'stopped: aborted'],
   ])
   expect(await readFile(out, 'utf8')).toMatch(
-    /^acme-api-1 done \|[^\n]+\nacme-api-1-implement done \|[^\n]+\n$/,
+    /^unit acme-api-1 done \|[^\n]+\nunit acme-api-1-implement done \|[^\n]+\n$/,
   )
 })
 
-it("runs a chain's after_unit once it published, with its PR and each step's own output, before the next chain runs", async () => {
-  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-after-unit-loop-')), 'out.txt')
+it("runs a chain's notify unit events once it published, with its PR and each step's own output, before the next chain runs", async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-loop-')), 'out.txt')
   const yaml = `queue:
   - skill: implement
     then:
       - { loop: [review, fix], until: { verdict: approve }, max: 3 }
       - plan
-after_unit:
+notify:
   command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'
 `
   const provider = looper({ 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' })
@@ -3162,7 +3201,12 @@ it('leaves the PR body alone when verify passes', async () => {
   expect(await verifiedBody("verify: 'true'")).not.toContain('Awaywork verify')
 })
 
-it('notes a refused verify in the PR body', async () => {
-  const body = await verifiedBody("verify: 'true', network: false")
-  expect(body).toContain('not run: not run without network')
+it("doesn't write a failed verify through a link it left for the PR body", async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+  await writeFile(join(outside, 'pr.md'), 'mine\n')
+  const body = await verifiedBody(
+    `verify: 'rm -r .away/out && ln -s ${outside} .away/out && false'`,
+  )
+  expect(body).toBe('')
+  expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
 })
