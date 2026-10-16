@@ -278,33 +278,26 @@ queue:
     ])
   })
 
-  it('says why a quota when fails, for the rule and its steps', () => {
-    const yaml = (rule: string, step: string) => `
+  it('says why a quota when fails, on the rule only', () => {
+    const yaml = (rule: string) => `
 providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
 queue:
   - skill: fix
     where: { checks: failing }
     ${rule}
-    then: { skill: review, ${step} }
+    then: review
 `
     const items = [githubPr(1, { checks: 'failing' })]
-    const units = (rule: string, step: string, quota: Quota | null) =>
-      plan(yaml(rule, step), items, { claude: quota }).units.map((u) => u.quotaUnmet)
-    const last = 'when: { runs_until_reset: 1 }'
-    expect(units('', last, week(0.36))).toEqual([
-      undefined,
-      "the quota part doesn't hold on the probe",
-    ])
-    expect(units('when: { headroom: 10% }', 'when: { runs_until_reset: 3 }', week(0.36))).toEqual([
-      undefined,
-      undefined,
-    ])
-    expect(units('when: { headroom: 20% }', last, week(0.36))[0]).toBe(
-      "the quota part doesn't hold on the probe",
-    )
-    expect(units('when: { headroom: 1% }', last, null)[0]).toBe('no quota reading')
-    expect(units('when: { headroom: 1% }', last, week(0.95))).toEqual([undefined, undefined])
+    const units = (rule: string, quota: Quota | null) =>
+      plan(yaml(rule), items, { claude: quota }).units.map((u) => u.quotaUnmet)
+    const unmet = "doesn't hold on the probe"
+    expect(units('when: { runs_until_reset: 1 }', week(0.36))).toEqual([unmet, undefined])
+    expect(units('when: { runs_until_reset: 3 }', week(0.36))).toEqual([undefined, undefined])
+    expect(units('when: { headroom: 10% }', week(0.36))).toEqual([undefined, undefined])
+    expect(units('when: { headroom: 20% }', week(0.36))).toEqual([unmet, undefined])
+    expect(units('when: { headroom: 1% }', null)[0]).toBe('no quota reading')
+    expect(units('when: { headroom: 1% }', week(0.95))).toEqual([undefined, undefined])
   })
 
   it("chains steps in one clone, each with the rule's settings unless it sets its own", () => {
@@ -546,31 +539,6 @@ queue:
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])
-  })
-
-  it('takes network from the rule, then the repo, else on', () => {
-    const yaml = `
-providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
-repos: { acme/web: { network: false } }
-queue:
-  - { skill: fix, where: { checks: failing }, network: true }
-  - { skill: review, where: { review_requested: true }, then: implement, network: false }
-  - { skill: implement, where: { type: issue } }
-`
-    const items = [
-      githubPr(1, { checks: 'failing' }),
-      githubPr(2, { review_requested: true }),
-      issue,
-      fakeItem({ ...issue, key: 'acme/web#5', fields: { repo: 'acme/web' } }),
-    ]
-    expect(plan(yaml, items, {}).units.map((u) => u.unit.network)).toEqual([
-      true,
-      false,
-      false,
-      true,
-      false,
-    ])
   })
 
   it('skips units past the run, repo and rule caps, naming the cap', () => {

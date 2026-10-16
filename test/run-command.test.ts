@@ -92,6 +92,14 @@ describe('run command', () => {
     }
   })
 
+  it('runs notify once with the run event and the morning report when the run ends', async () => {
+    const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')
+    const command = `echo "$AWAYWORK_EVENT $AWAYWORK_RUN_ID $AWAYWORK_REPORT" >> '${out}'`
+    await run([], undefined, `notify: { command: ${JSON.stringify(command)} }\n`)
+    const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+    expect(await readFile(out, 'utf8')).toBe(`run ${id} ${join(runsDir, id, 'report.md')}\n`)
+  })
+
   it("masks the notify command's secret in its failure", async () => {
     vi.stubEnv('NOTIFY_TOKEN', 's3cr3t-value')
     const { err } = await run(

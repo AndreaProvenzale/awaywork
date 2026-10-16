@@ -221,7 +221,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
   would share `auth.json` and could race a token refresh [I]. So a Codex
   worker stops at its ceiling only between units, never mid-run.
 - The `workspace-write` sandbox refuses `.git/index.lock`, so the model
-  cannot commit; workers with network run `--sandbox danger-full-access`,
+  cannot commit; workers run `--sandbox danger-full-access`,
   like Claude's unsandboxed Bash. [V, tested]
 - Network off with `.git` writable (0.149.1, macOS, `codex sandbox` and
   `codex exec` on a stub Responses API): `workspace-write` blocks the
@@ -257,8 +257,7 @@ the stock `claude` binary runs on them with `ANTHROPIC_BASE_URL` and
     "MCP tool call requires approval, but approval policy is never".
     Under `--sandbox danger-full-access` every tool runs. Under the
     offline permission profile only tools annotated `readOnlyHint` run,
-    unless the server sets `default_tools_approval_mode="approve"`, so
-    workers set it.
+    unless the server sets `default_tools_approval_mode="approve"`.
   - Under the offline profile the stdio server still fetched the network
     and wrote outside the clone, and the HTTP server was reached.
   - A server that fails to start or times out (default about 10 s) is
@@ -434,7 +433,6 @@ harness forbids whole-repo checks, builds and background commands.
   Two refreshes minutes apart both succeed [V, tested], but two processes
   writing one file at once was not tested.
 - Offline workers on Linux: Claude's bubblewrap sandbox and Codex's
-  Landlock profile were only tested on macOS, so the network stays on
-  by default until they are.
+  Landlock profile were only tested on macOS.
 - Codex remote: how an ephemeral runner saves the refreshed `auth.json`
   back to its secret; the workflow's `GITHUB_TOKEN` cannot write secrets.

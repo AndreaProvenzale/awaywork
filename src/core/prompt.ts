@@ -8,7 +8,6 @@ interface PromptParts {
   repo: {
     setup?: string
     setupSkipped?: boolean
-    offline?: boolean
     test?: string
     instructions?: string
   }
@@ -23,8 +22,6 @@ export function assemblePrompt(p: PromptParts): string {
       (p.repo.setupSkipped
         ? `Setup, not run because this PR's author isn't trusted: \`${p.repo.setup}\`. Don't run it or install dependencies.`
         : `Setup, already run: \`${p.repo.setup}\``),
-    p.repo.offline &&
-      "No network: your commands can't reach it, so don't install dependencies or download anything.",
     p.repo.test && `Test: \`${p.repo.test}\``,
   ].filter(Boolean)
   // A raw multi-line value would break the list and could add its own headings.

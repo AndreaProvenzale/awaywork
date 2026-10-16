@@ -318,14 +318,26 @@ describe('config', () => {
     ).toEqual([])
   })
 
-  it('takes a quota when on a rule and on a step', () => {
+  it('takes a quota when on a rule, not on a step', () => {
     const cfg = parseConfig(`${minimal}queue:
   - skill: implement
-    when: { runs_until_reset: 1 }
-    then: { skill: review, when: { headroom: 20% } }
+    when: { runs_until_reset: 1, headroom: 20% }
 `)
-    expect(cfg.queue?.[0]).toMatchObject({ when: { runs_until_reset: 1 } })
-    expect(cfg.queue?.[0]?.then?.[0]).toMatchObject({ when: { headroom: 0.2 } })
+    expect(cfg.queue?.[0]).toMatchObject({ when: { runs_until_reset: 1, headroom: 0.2 } })
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: implement, then: { skill: review, when: { headroom: 50% } } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: implement, then: { skill: review, when: { headroom: 50%, nope: 1 } } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then.when: headroom: a quota check goes on the rule's when, which gates the whole chain",
+    ])
   })
 
   it('takes a command in until, and when on then and loop steps but not on a rule', () => {
@@ -347,16 +359,14 @@ describe('config', () => {
       until: { verdict: 'approve', command: 'pnpm test' },
     })
     expect(problems(`${minimal}queue: [{ skill: implement, when: { verdict: approve } }]`)).toEqual(
-      [
-        'queue[0].when: Unrecognized key: "verdict"',
-        'queue[0].when: expected runs_until_reset or headroom',
-      ],
+      ['queue[0].when: Unrecognized key: "verdict"'],
     )
+    expect(problems(`${minimal}queue: [{ skill: implement, when: {} }]`)).toEqual([
+      'queue[0].when: expected runs_until_reset or headroom',
+    ])
     expect(
       problems(`${minimal}queue: [{ skill: implement, then: { skill: review, when: {} } }]`),
-    ).toEqual([
-      'queue[0].then.when: expected verdict, command, changed, runs_until_reset or headroom',
-    ])
+    ).toEqual(['queue[0].then.when: expected verdict, command or changed'])
     expect(
       problems(
         `${minimal}queue: [{ skill: implement, then: { loop: review, until: { changed: src }, max: 1 } }]`,
@@ -364,18 +374,6 @@ describe('config', () => {
     ).toEqual([
       'queue[0].then.until: Unrecognized key: "changed"',
       'queue[0].then.until: expected verdict or command',
-    ])
-    expect(
-      problems(`${minimal}queue:
-  - skill: implement
-    network: false
-    then:
-      - { loop: [fix], until: { command: pnpm test }, max: 1 }
-      - { skill: review, when: { command: pnpm test } }
-`),
-    ).toEqual([
-      "queue[0].then[0].until.command: a command can't run with network: false: awaywork has no sandbox for it",
-      "queue[0].then[1].when.command: a command can't run with network: false: awaywork has no sandbox for it",
     ])
   })
 
