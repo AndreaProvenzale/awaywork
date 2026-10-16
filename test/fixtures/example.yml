@@ -1,10 +1,10 @@
 windows: [{ start: "01:00", end: "07:00" }]
-budget:                         # defaults; any provider can override
-  reserve: 10%                  # never go past 1 - reserve of any window
-  per_run: 15%                  # at most this share of the long window per run
-  session_max: 90%              # stop a worker past this share of the short window
-  fallback: { units: 4, turns: 60 }   # when the quota can't be read
-providers:                      # order = routing preference
+budget: # defaults; any provider can override
+  reserve: 10% # never go past 1 - reserve of any window
+  per_run: 15% # at most this share of the long window per run
+  session_max: 90% # stop a worker past this share of the short window
+  fallback: { units: 4, turns: 60 } # when the quota can't be read
+providers: # order = routing preference
   - claude
   - codex: { budget: { per_run: 5% } }
 sources:
@@ -15,8 +15,8 @@ repos:
     setup: pnpm install --frozen-lockfile
     test: pnpm vitest run {files}
     instructions: notes/acme-api.md
-instructions: [notes/me.md]     # every unit
-queue:                          # first matching rule wins; top = highest priority
+instructions: [notes/me.md] # every unit
+queue: # first matching rule wins; top = highest priority
   - skill: fix
     where: { type: pr, mine: true, checks: failing }
   - skill: implement

@@ -13,10 +13,10 @@ inputs:
     required: true
   packages:
     description: Extra npm packages to install on a GitHub-hosted runner, such as the providers' CLIs, space-separated
-    default: ''
+    default: ""
   unit:
     description: Item key to run alone, ignoring the windows; empty runs the plan
-    default: ''
+    default: ""
 
 runs:
   using: composite

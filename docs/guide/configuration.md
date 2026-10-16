@@ -4,9 +4,7 @@ description: The awaywork config file by example and what stays stable, covering
 
 # Configuration
 
-One YAML file, `~/.config/awaywork/config.yml` by default;
-`--config <path>` or `AWAYWORK_CONFIG` point elsewhere. Every key is
-listed in the [reference](../reference/config.md).
+One YAML file, `~/.config/awaywork/config.yml` by default; `--config <path>` or `AWAYWORK_CONFIG` point elsewhere. Every key is listed in the [reference](../reference/config.md).
 
 ## Editing safely
 
@@ -16,26 +14,17 @@ awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
 
-For autocompletion and hover docs in editors with the YAML language
-server (VS Code's YAML extension, JetBrains, Neovim), put this first line
-in the file:
+For autocompletion and hover docs in editors with the YAML language server (VS Code's YAML extension, JetBrains, Neovim), put this first line in the file:
 
 ```yaml
 # yaml-language-server: $schema=https://andreaprovenzale.github.io/awaywork/config.schema.json
 ```
 
-`awaywork config schema` prints the same JSON Schema for the installed
-version.
+`awaywork config schema` prints the same JSON Schema for the installed version.
 
 ## Stability
 
-From 0.1.0-rc.1, the config schema holds across minor releases: a config
-that's valid on one stays valid on the next. Keys marked experimental are
-the exception: they have only run in tests, so they may change in a minor
-release, with a note in the release notes. Those are `verify`, `mcp`,
-`with`, `notify`'s `unit` event and, on the [Chains](./chains.md) page,
-`until`'s and `when`'s `command`, a rule's `when` (`runs_until_reset`,
-`headroom`), `stack` and `deliver: push`.
+From 0.1.0-rc.1, the config schema holds across minor releases: a config that's valid on one stays valid on the next. Keys marked experimental are the exception: they have only run in tests, so they may change in a minor release, with a note in the release notes. Those are `verify`, `mcp`, `with`, `notify`'s `unit` event and, on the [Chains](./chains.md) page, `until`'s and `when`'s `command`, a rule's `when` (`runs_until_reset`, `headroom`), `stack` and `deliver: push`.
 
 ## A full example
 
@@ -92,15 +81,7 @@ queue:                          # first matching rule wins; top = highest priori
 
 ## Windows, limits and budget
 
-A run is one window opening, or one `awaywork run` by hand. A window's
-`start` is when a scheduled run begins; no unit starts after its `end`,
-and a running one stops there. Times are local to the machine, or to the
-workflow's `timezone` in GitHub Actions, where a GitHub-hosted runner
-[cuts a run at about 6 hours](./scheduling.md#in-github-actions)
-whatever the window says. The default is one window,
-`01:00` to `07:00`. Add windows, each with optional `days` (`sun` to
-`sat`, the day it opens on), for quota that idles at weekends or over
-lunch:
+A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or to the workflow's `timezone` in GitHub Actions, where a GitHub-hosted runner [cuts a run at about 6 hours](./scheduling.md#in-github-actions) whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
 
 ```yaml
 windows:
@@ -108,48 +89,25 @@ windows:
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-The scheduler gets one trigger per window, and pacing divides the
-headroom by the runs left before the reset. Windows should not overlap.
-Budgets count runs, not days: three windows a day can spend `per_run`
-three times, and `runs_until_reset` counts window openings.
+The scheduler gets one trigger per window, and pacing divides the headroom by the runs left before the reset. Windows should not overlap. Budgets count runs, not days: three windows a day can spend `per_run` three times, and `runs_until_reset` counts window openings.
 
-A readable quota decides how much work fits, not how much you can review
-in a morning. `limits.units` caps the units planned per run,
-`limits.units_per_repo` those in any one repo, and a rule's `units`
-those from that rule. None is set by default. Units past a cap are
-skipped in queue order, with the cap named in `awaywork plan` and the
-report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only
-units whose first step is routed to a provider count, and caps apply to
-each `awaywork run`, like `fallback.units`, which every step draws on.
-`limits.unit_minutes` stops any worker after that many minutes,
-whichever provider runs it.
+A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it.
 
-Budgets are shares of each provider's quota windows; see
-[How it works](./how-it-works.md#budget) for how they combine. Start low:
-`per_run: 5%` for a week shows what a unit costs you before you raise it.
+Budgets are shares of each provider's quota windows; see [How it works](./how-it-works.md#budget) for how they combine. Start low: `per_run: 5%` for a week shows what a unit costs you before you raise it.
 
 ## Providers
 
-A list, in routing order. A bare name uses the defaults; a map overrides
-the budget for that provider or sets its `model`, passed as is to the
-binary (`claude --model`, `codex exec -m`). Without one, the binary picks
-its own default.
+A list, in routing order. A bare name uses the defaults; a map overrides the budget for that provider or sets its `model`, passed as is to the binary (`claude --model`, `codex exec -m`). Without one, the binary picks its own default.
 
-Workers skip your user-level agent config. To give them the hooks, env
-or settings you do want, list them here; they apply on every unit,
-including someone else's PR:
+Workers skip your user-level agent config. To give them the hooks, env or settings you do want, list them here; they apply on every unit, including someone else's PR:
 
-- `claude: { settings: <file> }`: a Claude Code settings file, relative
-  to the config file, passed as `--settings`. Auto-memory stays off, and
-  workers run in `dontAsk` mode: a tool that isn't pre-approved, by
-  awaywork or by your `permissions.allow`, is denied.
-- `codex: { config: { <key>: <value> } }`: each key passed as
-  `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
+- `claude: { settings: <file> }`: a Claude Code settings file, relative to the config file, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool that isn't pre-approved, by awaywork or by your `permissions.allow`, is denied.
+- `codex: { config: { <key>: <value> } }`: each key passed as `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
 ## Sources
 
 | Source | Keys |
-|---|---|
+| --- | --- |
 | `github` | `repos`: `owner/name` globs such as `acme/*` |
 | `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
@@ -158,42 +116,24 @@ including someone else's PR:
 
 Every source but `github` also takes a [`link`](#linking-prs).
 
-Asana has no read-only personal token: the token can do anything you can.
-awaywork only reads with it and never hands it to the agent, unless
-you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just
-for awaywork so you can revoke it alone.
+Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
-**Linear is beta:** its tests read a live workspace, but no real run has
-used it yet. It takes a personal API key (Settings > Account >
-Security & access).
-awaywork only reads with it and never hands it to the agent, unless
-you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear
-offers the choice, give the key read access only.
+**Linear is beta:** its tests read a live workspace, but no real run has used it yet. It takes a personal API key (Settings > Account > Security & access). awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only.
 
-**Jira is beta:** its tests read a live site, but no real run has used it
-yet. Jira Cloud takes an Atlassian API token (id.atlassian.com > Security >
-API tokens). Prefer "Create API token with scopes", app Jira, scope
-`read:jira-work`: `init` then finds the site's `cloud_id` and awaywork
-calls `api.atlassian.com`, as scoped tokens require. A token without
-scopes can do anything you can; awaywork only reads with it. Tokens
-expire after at most a year.
+**Jira is beta:** its tests read a live site, but no real run has used it yet. Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it. Tokens expire after at most a year.
 
-Jira custom fields that share a name are keyed by name and id, such as
-`fields.Team (customfield_10040)`.
+Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
 
 ## Branch names
 
-`branch` is a template rendered per unit, set globally, per repo or per
-rule (the most specific wins). It needs `{key}`, `{title}` (the item's
-title as a slug of at most 40 characters) or both: `feat/work` would name
-every unit the same, so it's refused.
+`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused.
 
-| Item | `{key}` |
-|---|---|
-| GitHub PR or issue `acme/api#12` | `acme-api-12` |
-| Asana task with custom ID `ENG-12` | `ENG-12` |
-| Linear issue `ENG-12` | `ENG-12` |
-| Jira issue `ENG-12` | `ENG-12` |
+| Item                               | `{key}`       |
+| ---------------------------------- | ------------- |
+| GitHub PR or issue `acme/api#12`   | `acme-api-12` |
+| Asana task with custom ID `ENG-12` | `ENG-12`      |
+| Linear issue `ENG-12`              | `ENG-12`      |
+| Jira issue `ENG-12`                | `ENG-12`      |
 
 Per-rule templates follow your repo's conventions:
 
@@ -203,47 +143,21 @@ queue:
   - { skill: implement, where: { type: issue }, branch: "feat/{title}" }
 ```
 
-The name is cosmetic: awaywork finds its own PRs by their footer, and
-yours as [Linking PRs](#linking-prs) says. Jira is the exception, since
-it links a PR only by the key in its branch or title: for Jira items keep
-the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
+The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that awaywork only pushes a branch that doesn't
-exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When
-the name is taken, the unit takes the first free one of `<branch>-2` to
-`<branch>-10`, and every step of its chain works on it; a
-[stacked slice](./chains.md#stack) renders the same name, so it takes the next free
-one.
-Not when awaywork already tried there: when a PR on the taken branch,
-open or closed unmerged, has a footer naming one of the unit's items, the
-unit is skipped as `awaywork tried this in <PR>; delete <branch> to
-run it again`. That record lives on GitHub, so it holds on a runner that
-keeps no [attempts](./how-it-works.md#units). A merged one landed, so
-the next pickup is a new round and takes a suffix. A taken branch with
-no PR whose tip has the `Awaywork:` trailer is a push whose PR
-failed, so it skips the unit too, until you delete it; one without the
-trailer, your own work in progress, is passed over for a suffix.
+The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders the same name, so it takes the next free one. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix.
 
 ## Linking PRs
 
-Trackers don't tell awaywork which PR is a task's, so it looks
-through your open PRs:
+Trackers don't tell awaywork which PR is a task's, so it looks through your open PRs:
 
-- A PR awaywork opened is linked by the items its footer names,
-  whatever its branch or title. It never falls back to names, so an
-  awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A
-  footer naming no items counts as none, so it is linked like yours.
-- One you wrote is linked when its branch or title holds the item's key
-  as a whole word, in any case, or its body holds the source's `link`
-  line. A bare key in the body doesn't count: "follow-up to ENG-12"
-  would mark ENG-12 as taken.
+- A PR awaywork opened is linked by the items its footer names, whatever its branch or title. It never falls back to names, so an awaywork PR for ENG-13 that mentions ENG-12 isn't ENG-12's. A footer naming no items counts as none, so it is linked like yours.
+- One you wrote is linked when its branch or title holds the item's key as a whole word, in any case, or its body holds the source's `link` line. A bare key in the body doesn't count: "follow-up to ENG-12" would mark ENG-12 as taken.
 
-`link` is one line in the tracker's own words, rendered from the item's
-`{key}`, `{id}` and `{url}`. awaywork writes it into its draft PRs
-too, so the tracker links them whatever the branch is called.
+`link` is one line in the tracker's own words, rendered from the item's `{key}`, `{id}` and `{url}`. awaywork writes it into its draft PRs too, so the tracker links them whatever the branch is called.
 
 | Source | Default `link` | Why |
-|---|---|---|
+| --- | --- | --- |
 | `linear` | `Part of {key}` | A non-closing magic word: merging leaves the issue to your workflow |
 | `asana` | `{url}` | Asana links a PR whose description holds the task URL |
 | `jira` | none | Jira links on the branch or title only |
@@ -256,74 +170,38 @@ sources:
 
 ## Repos and instructions
 
-`repos.<owner/name>` holds the `setup` and `test` commands for that
-repo, plus an instructions file. `setup` runs once per unit, in the fresh
-clone before any agent starts, outside the model; the agent is told it
-already ran. A chain's later steps share that clone and don't run it
-again, so dependencies a step adds aren't installed for the steps after
-it: a `when` or `until` command that needs them installs them itself,
-like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves
-running is stopped when it exits. A setup that fails,
-takes over 15 minutes or reaches the window's end skips the unit, with the
-tail of its output in the report.
+`repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
 
-`secrets` names the env vars setup needs, such as a private registry
-token: setup gets them and no other secret, the agent never sees them,
-and the GitHub Actions workflow passes them from repository secrets.
-Their values are masked in setup's output. On a PR someone else opened,
-setup runs the author's install scripts, so it gets none of them, and
-it runs only when the author has write access or org membership;
-otherwise the agent is told it didn't run. It gets none of them either
-on the branch of an awaywork PR a rule took up again, which a worker
-wrote. Read
-them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather
-than writing them to your home directory, which the agent shares.
+`secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
 
-::: warning Experimental
-`verify` has only run in tests so far, never in a real run. Tried it?
-[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-:::
+::: warning Experimental `verify` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-`verify` runs in the clone once each slice ends, outside the model,
-before it is published; it's a repo setting. Use it for lint, format or
-the repo's tests. A failure doesn't stop the publish: the PR body or the
-push's summary gets the tail of its output. It runs once per commit,
-with none of the secrets. A `report` delivery has nothing to publish and
-skips it.
+`verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
-`test` is given to the agent in its prompt. `instructions` at the top
-level, per repo and per rule are **file paths**, relative to the config
-file. A repo can also carry `.awaywork/instructions.md`, read from the
-clone unless the unit is on a PR someone else opened.
+`test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file. A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
 
 ### What runs in the clone
 
-Every command in your config that touches a unit's clone, side by side.
-All of them run in a shell in the clone, outside the model; none gets
-`GH_TOKEN` or any other forge token.
+Every command in your config that touches a unit's clone, side by side. All of them run in a shell in the clone, outside the model; none gets `GH_TOKEN` or any other forge token.
 
 | Command | When | Secrets | A failure |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](./chains.md#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
 | `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
 | `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
 | `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
 
-`verify`, `when` and `until` share their results: the same command on
-the same commit runs once. [Loops](./chains.md#loops) has the rest of their rules.
+`verify`, `when` and `until` share their results: the same command on the same commit runs once. [Loops](./chains.md#loops) has the rest of their rules.
 
-`skills` at the top level adds skills to every unit, like a rule's
-`skills`; see [Skills](./skills.md#where-skills-come-from).
+`skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
 
-PR titles, bodies and commit messages have no config: the agent follows
-the repo's PR template, its recent commit style and your instructions
-(e.g. "prefix PR titles with the task key").
+PR titles, bodies and commit messages have no config: the agent follows the repo's PR template, its recent commit style and your instructions (e.g. "prefix PR titles with the task key").
 
 ## Queue rules
 
 | Key | Meaning |
-|---|---|
+| --- | --- |
 | `skill` | The skill that does the work (`awaywork skills list`) |
 | `source` | Only items from this source |
 | `where` | Conditions on `type` and the source's fields |
@@ -358,84 +236,43 @@ where:
     - { checks: failing }
 ```
 
-Strings compare ignoring case, like `matches`, so `section: In progress`
-catches a section called `In Progress`. Numbers and booleans compare exactly,
-and fixed values like `type` and `checks` stay lowercase.
+Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
 
-`title` and `description` are keys on every source. An invalid regex is a
-config error, and `plan` names the match an item failed; for `any`, it names
-what each entry failed. An empty `any` entry is a config error, since it
-matches everything. A missing field equals nothing, and is neither older
-nor newer than anything; spans count back from when the plan runs. An unknown
-key is a config error that lists the keys each source offers. The
-[field table](./how-it-works.md#items)
-lists them too.
+`title` and `description` are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
 
-A PR awaywork opened only matches a rule whose top-level `where` names
-`ours` (inside `any` it is a config error), so rules written for your own
-PRs leave it waiting for your review. To act on it once you've reviewed it:
+A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
 
 ```yaml
 - skill: fix
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
 
-The unit's draft PR stacks on the awaywork PR, on a branch named
-after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the
-next pickup of #9 takes a `-2` branch; while the stacked PR is open or
-closed unmerged, it is skipped as `awaywork tried this in <PR>;
-delete away/acme-api-9 to run it again`. Resolve the threads it
-answered too: merging moves #9, and with your threads still open the
-rule takes it up again for the same threads.
-The rule runs on the threads you started, but the agent reads every
-unresolved thread, as on your other PRs. `ours` comes from the GitHub
-source: a custom source's `ours` field holds nothing back.
+The unit's draft PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
 
 ### `order`
 
-Within a rule, units run in the order the source returns items; for
-GitHub that is newest first, so with little quota the oldest can wait
-run after run. `order: oldest` runs them first. Items without the
-timestamp go last.
+Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last.
 
-A rule can run more steps after its skill, such as a review and a fix
-until the review approves: see [Chains](./chains.md).
+A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 
 ## Notify
 
-`notify.command` runs in a shell, as you and with your environment, on
-two events. `AWAYWORK_EVENT` says which:
+`notify.command` runs in a shell, as you and with your environment, on two events. `AWAYWORK_EVENT` says which:
 
-- `run`, once when a run ends, dry runs included: the morning report's
-  path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`.
-- `unit`, once for every step of a unit, as soon as the unit published,
-  before the next unit starts. A dry run fires none, and Ctrl-C stops the
-  running one and fires no more. Its env has `AWAYWORK_RUN_ID`,
-  `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`),
-  `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`,
-  `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a
-  [slice](./chains.md#stack), that opened a draft PR, and `AWAYWORK_REPORT`, the
-  path of what the step wrote: its report, or for a step that commits,
-  the PR body as it left it.
+- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`.
+- `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a [slice](./chains.md#stack), that opened a draft PR, and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it.
 
-The command gets both events. One that's only for the morning report
-starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires
-on every step.
+The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.
 
-::: warning Experimental
-The `unit` event has only run in tests so far, never in a real run. Tried it?
-[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-:::
+::: warning Experimental The `unit` event has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-There are no built-in integrations. A command that fails or takes over a
-minute is logged and the run goes on, and still succeeds:
+There are no built-in integrations. A command that fails or takes over a minute is logged and the run goes on, and still succeeds:
 
 ```
   notify failed for acme-api-1: Command failed with exit code 3: ...
 ```
 
-Anything it leaves running in the background is stopped when it exits.
-A command that only cares about one event exits early on the other:
+Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other:
 
 ```yaml
 notify:                         # ntfy, the morning report only
@@ -462,14 +299,11 @@ notify:                         # a line per step
     echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
 ```
 
-`secrets` names the env vars the command reads: workers never see them,
-and the GitHub Actions workflow passes them from repository secrets.
+`secrets` names the env vars the command reads: workers never see them, and the GitHub Actions workflow passes them from repository secrets.
 
 ### PR labels, reviewers and ready for review
 
-A draft PR gets the agent's title and body and nothing else: no labels,
-no reviewers, always a draft, into the base awaywork picked. None of that
-is config. The `unit` event has the PR's URL, so `gh` does it:
+A draft PR gets the agent's title and body and nothing else: no labels, no reviewers, always a draft, into the base awaywork picked. None of that is config. The `unit` event has the PR's URL, so `gh` does it:
 
 ```yaml
 notify:
@@ -483,29 +317,17 @@ notify:
     gh pr ready "$AWAYWORK_PR_URL"
 ```
 
-`set -e` stops at a `gh` that fails, a missing label say: the hook's
-failure is logged, the PR stays a draft, and the next step tries again.
+`set -e` stops at a `gh` that fails, a missing label say: the hook's failure is logged, the PR stays a draft, and the next step tries again.
 
-`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave
-it out on a chain with [`stack`](./chains.md#stack), whose PRs sit on each other,
-and on a rule that takes up an awaywork PR, whose new PR sits on that
-one's branch.
+`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave it out on a chain with [`stack`](./chains.md#stack), whose PRs sit on each other, and on a rule that takes up an awaywork PR, whose new PR sits on that one's branch.
 
-That's your command with your token, not a worker: workers never comment
-or ping anyone. A requested reviewer gets a notification, and so can the
-CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
+That's your command with your token, not a worker: workers never comment or ping anyone. A requested reviewer gets a notification, and so can the CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
 
 ## MCP servers
 
-::: warning Experimental
-MCP servers have only run in tests so far, never in a real run. Tried it?
-[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-:::
+::: warning Experimental MCP servers have only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Declare servers once under `mcp`, then give them to the rules or steps
-that need them with `mcp: [names]`. No step gets a server its rule or
-step doesn't name: a `then` step gets its rule's unless it names its
-own, and `mcp: []` gives it none.
+Declare servers once under `mcp`, then give them to the rules or steps that need them with `mcp: [names]`. No step gets a server its rule or step doesn't name: a `then` step gets its rule's unless it names its own, and `mcp: []` gives it none.
 
 ```yaml
 mcp:
@@ -528,34 +350,16 @@ queue:
       - { skill: review, mcp: [db] }
 ```
 
-The shape is a subset of Claude Code's `.mcp.json`, translated for each
-agent: a `command` with `args` and `env`, or a `url` with `headers`.
-`secrets` names the env vars the server needs. A stdio server receives
-its secrets in its env under those same names. An HTTP server gets each
-one in a header, as `${NAME}`, or as `Bearer ${NAME}` for
-`Authorization`. A secret can't appear in `command`, `args` or `url`,
-where it would show in the process list, nor in `env`, where Codex takes
-only literal values. Names starting
-with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and
-Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything
-outside the list is refused. Only units whose rule names a server get
-its secrets. `awaywork schedule` maps them into the Actions workflow,
-and `awaywork doctor` shows whether each one is set.
+The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
 
-Servers start for your own PRs and for issues and tasks, but not on
-someone else's PR or an issue it closes, nor when one of their secrets
-is unset. Only token-based servers work unattended: OAuth-only servers,
-such as claude.ai connectors, need a login a runner doesn't have. A server's secret is one the agent can read. A server's
-tools are tools that injected instructions can call. See
-[Safety](./safety.md#mcp-servers).
+Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers, such as claude.ai connectors, need a login a runner doesn't have. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
 
 ## Secrets
 
-The config holds env var **names** only. Values come from the environment
-or `~/.config/awaywork/env` (the environment wins).
+The config holds env var **names** only. Values come from the environment or `~/.config/awaywork/env` (the environment wins).
 
 | Variable | Used by |
-|---|---|
+| --- | --- |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`) |
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |

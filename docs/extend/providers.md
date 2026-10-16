@@ -4,25 +4,18 @@ description: How to add a coding-agent provider to awaywork, with the research i
 
 # Adding a provider
 
-A provider wraps one vendor's agent CLI. Adding one is a file in
-`src/providers/`, a line in the registry and a passing contract suite.
+A provider wraps one vendor's agent CLI. Adding one is a file in `src/providers/`, a line in the registry and a passing contract suite.
 
 ## Research first
 
-Before code, add the provider to [Providers](../providers.md) with each
-claim tagged **[V]** (vendor docs), **[C]** (community) or **[I]**
-(inference), and settle these with a real run:
+Before code, add the provider to [Providers](../providers.md) with each claim tagged **[V]** (vendor docs), **[C]** (community) or **[I]** (inference), and settle these with a real run:
 
-- It runs **headless** with the user's own subscription login, through
-  the vendor's **unmodified binary**. awaywork never calls a backing
-  API with a subscription credential; a provider that only works that way
-  is out.
+- It runs **headless** with the user's own subscription login, through the vendor's **unmodified binary**. awaywork never calls a backing API with a subscription credential; a provider that only works that way is out.
 - The terms allow unattended use, or at least don't forbid it.
 - Where its quota can be read, and what one unit costs.
 - Where it looks for skills and project instructions.
 
-Every [C] or [I] claim the code depends on needs a burn test, recorded in
-[Real runs](../providers.md#real-runs).
+Every [C] or [I] claim the code depends on needs a burn test, recorded in [Real runs](../providers.md#real-runs).
 
 ## The contract
 
@@ -46,27 +39,12 @@ interface Provider {
 }
 ```
 
-- `run` spawns the binary in `job.dir` with `job.prompt`, under
-  `job.maxTurns`, with `job.env` as its whole environment
-  (`extendEnv: false`): awaywork has already removed the forge tokens
-  and the other providers' and sources' secrets. It yields `log` lines,
-  `quota` whenever the stream reports one, and exactly one `done`. It
-  stops when `signal` aborts. `job.config` is the provider's entry in
-  the config, its paths relative to `job.configDir`; without a
-  `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
-- `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h
-  session and `long` for the week or month. Return `null` when the quota
-  can't be read; awaywork then applies `fallback`.
-- A turn cap the CLI lacks is enforced by counting tool calls and
-  aborting, as `codex.ts` does.
-- `unavailable` returns a one-line reason where the provider can't run,
-  as Codex on a GitHub-hosted runner: `plan` and `run` route around it,
-  `doctor` says why, and `schedule install --with github-actions` leaves
-  it out of the workflow.
+- `run` spawns the binary in `job.dir` with `job.prompt`, under `job.maxTurns`, with `job.env` as its whole environment (`extendEnv: false`): awaywork has already removed the forge tokens and the other providers' and sources' secrets. It yields `log` lines, `quota` whenever the stream reports one, and exactly one `done`. It stops when `signal` aborts. `job.config` is the provider's entry in the config, its paths relative to `job.configDir`; without a `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
+- `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h session and `long` for the week or month. Return `null` when the quota can't be read; awaywork then applies `fallback`.
+- A turn cap the CLI lacks is enforced by counting tool calls and aborting, as `codex.ts` does.
+- `unavailable` returns a one-line reason where the provider can't run, as Codex on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
 
-[`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts)
-is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts)
-shows a rotating credential and a per-machine lock.
+[`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts) is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts) shows a rotating credential and a per-machine lock.
 
 ## Register it
 
@@ -75,17 +53,12 @@ shows a rotating credential and a per-machine lock.
 export const providers: Record<string, Provider> = { claude, codex, mine }
 ```
 
-The config schema, `init`, `doctor`, `plan` and `schedule install --with github-actions` pick it up from
-the registry.
+The config schema, `init`, `doctor`, `plan` and `schedule install --with github-actions` pick it up from the registry.
 
 ## Test it
 
-- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from
-  `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)`
-  from `test/contracts/provider.contract.ts`.
+- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`.
 - Unit tests for the event parser against the recorded streams.
-- A `test/real-<id>.test.ts` that spends a few turns of a real
-  subscription, skipped unless `AWAYWORK_REAL=1`.
+- A `test/real-<id>.test.ts` that spends a few turns of a real subscription, skipped unless `AWAYWORK_REAL=1`.
 
-Then a burn test: one real unit with `awaywork run --unit`, recorded in
-[Real runs](../providers.md#real-runs) with what the quota did.
+Then a burn test: one real unit with `awaywork run --unit`, recorded in [Real runs](../providers.md#real-runs) with what the quota did.

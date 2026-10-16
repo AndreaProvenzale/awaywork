@@ -4,10 +4,7 @@ description: Plug any task tracker into awaywork with a command that prints your
 
 # Custom sources
 
-Your tracker isn't built in? Maybe it's an internal board, or a Jira
-nobody will ever let you share a token for. Write a command that prints
-your open items as JSON, and awaywork treats it like any other
-source. Use any language: Python, Go, Rust, bash, or an `npx` package.
+Your tracker isn't built in? Maybe it's an internal board, or a Jira nobody will ever let you share a token for. Write a command that prints your open items as JSON, and awaywork treats it like any other source. Use any language: Python, Go, Rust, bash, or an `npx` package.
 
 ## Config
 
@@ -30,13 +27,11 @@ queue:
     where: { column: In progress }
 ```
 
-The built-in queue only has rules for built-in sources, so a custom
-source needs rules of its own.
+The built-in queue only has rules for built-in sources, so a custom source needs rules of its own.
 
 ## Output
 
-The command prints a JSON array to stdout. Anything it writes to stderr
-shows up when it fails.
+The command prints a JSON array to stdout. Anything it writes to stderr shows up when it fails.
 
 ```json
 [
@@ -52,24 +47,17 @@ shows up when it fails.
 ]
 ```
 
-| Key | |
-|---|---|
+| Key |  |
+| --- | --- |
 | `id`, `key`, `title`, `url` | Required. `key` is the tracker's own reference; branch names use it, and your PRs are matched by it |
 | `type` | `task` (default) or `issue` |
 | `description`, `status`, `assignee`, `reviewers`, `labels`, `comments` | Optional |
 | `fields` | Strings, numbers, booleans or lists of them. Every key must be listed in `fields` in the config, except `repo`, `created` and `updated` |
 | `context` | Optional Markdown the worker reads instead of `description`: attachments, linked specs, whatever helps |
 
-- **`fields.repo`** (`owner/name`) says where the code lives. Without it,
-  a task is picked up only when you already have a PR linked to it, and
-  an issue not at all.
-- **`link`** in the config is the line, in your tracker's own words, that
-  links a PR to an item: awaywork writes it into its draft PRs, and
-  links a PR of yours whose body holds it, on top of the key in its
-  branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no
-  default. See [Linking PRs](./configuration.md#linking-prs).
-- **`created` and `updated`** are ISO timestamps, and a rule's `order`
-  sorts by them.
+- **`fields.repo`** (`owner/name`) says where the code lives. Without it, a task is picked up only when you already have a PR linked to it, and an issue not at all.
+- **`link`** in the config is the line, in your tracker's own words, that links a PR to an item: awaywork writes it into its draft PRs, and links a PR of yours whose body holds it, on top of the key in its branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no default. See [Linking PRs](./configuration.md#linking-prs).
+- **`created` and `updated`** are ISO timestamps, and a rule's `order` sorts by them.
 - The command gets 10 minutes before it is killed.
 
 ## House rules
@@ -82,10 +70,7 @@ The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source
 
 ## Recipe: chores
 
-When the queue is done and quota is left, a source can hand out work that
-needs no tracker item: tests for an untested module, a TODO to clear. Print
-one item per chore and repo, and put its rule last so it only gets what
-the rest leaves:
+When the queue is done and quota is left, a source can hand out work that needs no tracker item: tests for an untested module, a TODO to clear. Print one item per chore and repo, and put its rule last so it only gets what the rest leaves:
 
 ```yaml
 sources:
@@ -119,32 +104,17 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 })))))
 ```
 
-- **Attempts** keep a chore from redoing the same work: a unit whose items
-  haven't changed since a worker finished it is skipped, see
-  [how it works](./how-it-works.md). `updated` is the Monday of the week,
-  so a chore runs at most once a week, and not while its last draft PR is
-  still open; print the day's date to run it every day.
-- **Weekdays** are the script's call: print nothing on the days a chore
-  shouldn't run.
-- **`when`** is checked again when the unit starts: `plan` lists the chore
-  with its gate and notes when the probe has no headroom for it, and the
-  run skips it without the headroom.
+- **Attempts** keep a chore from redoing the same work: a unit whose items haven't changed since a worker finished it is skipped, see [how it works](./how-it-works.md). `updated` is the Monday of the week, so a chore runs at most once a week, and not while its last draft PR is still open; print the day's date to run it every day.
+- **Weekdays** are the script's call: print nothing on the days a chore shouldn't run.
+- **`when`** is checked again when the unit starts: `plan` lists the chore with its gate and notes when the probe has no headroom for it, and the run skips it without the headroom.
 
-  ::: warning Experimental
-  `headroom` has only run in tests so far, never in a real run. Tried it?
-  [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-  :::
+  ::: warning Experimental `headroom` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-- **No `link`** is set: a chore has no tracker page, so its draft PRs carry
-  no link line.
+- **No `link`** is set: a chore has no tracker page, so its draft PRs carry no link line.
 
 ## Recipe: Sentry errors
 
-An error with a stack trace is a problem listed on an item, so `fix`
-takes it like a red check. This one is a recipe to adapt, and it hasn't
-run against a real Sentry yet: point it at your org and projects, print
-your unresolved issues with their latest stack trace, and let a rule
-pick the loud ones.
+An error with a stack trace is a problem listed on an item, so `fix` takes it like a red check. This one is a recipe to adapt, and it hasn't run against a real Sentry yet: point it at your org and projects, print your unresolved issues with their latest stack trace, and let a rule pick the loud ones.
 
 ```yaml
 sources:
@@ -199,36 +169,20 @@ for (const [project, repo] of Object.entries(repos)) {
 console.log(JSON.stringify(items))
 ```
 
-- **`assigned:me`** keeps it to your errors, like any source. Drop it
-  if the whole project is yours.
-- **One request per issue** for the latest event: fine for a handful of
-  errors; cap the list or skip `context` if your project is noisier.
-- **No `type`**: items default to `task`, and only tasks get linked to
-  your open PRs, awaywork's included. So an error whose draft PR is
-  still open waits for you instead of getting a second one.
-- **`updated`** is `lastSeen`: an error that fires again after you closed
-  its draft PR is fair game again. One `fix` couldn't turn into a PR
-  gets 3 tries however often it fires, then one a week ("gave up after
-  3 attempts"). A GitHub-hosted runner keeps no attempts, so there it's
-  tried every run: cap the rule with `units:` if that's a lot.
-- **Frames come oldest first** from Sentry; the script flips them so the
-  throwing line is on top.
+- **`assigned:me`** keeps it to your errors, like any source. Drop it if the whole project is yours.
+- **One request per issue** for the latest event: fine for a handful of errors; cap the list or skip `context` if your project is noisier.
+- **No `type`**: items default to `task`, and only tasks get linked to your open PRs, awaywork's included. So an error whose draft PR is still open waits for you instead of getting a second one.
+- **`updated`** is `lastSeen`: an error that fires again after you closed its draft PR is fair game again. One `fix` couldn't turn into a PR gets 3 tries however often it fires, then one a week ("gave up after 3 attempts"). A GitHub-hosted runner keeps no attempts, so there it's tried every run: cap the rule with `units:` if that's a lot.
+- **Frames come oldest first** from Sentry; the script flips them so the throwing line is on top.
 - **EU-region org?** Swap `sentry.io` for `de.sentry.io`.
 
 ## On GitHub Actions
 
 The runner has only what's in the repo holding your config, so:
 
-- **Commit the command next to `config.yml`.** A path under `~/` works on
-  your laptop and nowhere else, and `awaywork doctor` warns about it.
-- **Build it in `setup`.** It runs in the config's folder before
-  awaywork's action, e.g. `cargo build --release` or `go build -o board .`.
-  It runs without the source's secrets: only the command gets them.
-  A binary built on your Mac won't run on the Linux runner. `ubuntu-latest`
-  ships Node, Python, Go and Rust.
-- **Add the `secrets` as repository secrets.**
-  `awaywork schedule install --with github-actions` writes them into the
-  workflow by name, and offers to set the ones your environment has.
+- **Commit the command next to `config.yml`.** A path under `~/` works on your laptop and nowhere else, and `awaywork doctor` warns about it.
+- **Build it in `setup`.** It runs in the config's folder before awaywork's action, e.g. `cargo build --release` or `go build -o board .`. It runs without the source's secrets: only the command gets them. A binary built on your Mac won't run on the Linux runner. `ubuntu-latest` ships Node, Python, Go and Rust.
+- **Add the `secrets` as repository secrets.** `awaywork schedule install --with github-actions` writes them into the workflow by name, and offers to set the ones your environment has.
 
 ## Try it
 

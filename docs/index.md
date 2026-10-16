@@ -37,5 +37,4 @@ awaywork plan             # a dry look at the next run; only a tiny quota probe
 awaywork schedule install # runs when you clock out
 ```
 
-Setting it up with a coding agent? Point it at
-[`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt) or [With an AI agent](./guide/agents.md).
+Setting it up with a coding agent? Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt) or [With an AI agent](./guide/agents.md).
