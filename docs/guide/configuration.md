@@ -274,32 +274,34 @@ than writing them to your home directory, which the agent shares.
 [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
 :::
 
-`verify` runs in the clone once the chain ends, outside the model,
-before it is published; set it on a repo or a rule (the rule wins). Use
-it for lint, format or the repo's tests. A failure doesn't stop the
-publish: the PR body or the push's summary gets the tail of its output.
-It runs once per commit, with none of the secrets, and not on a PR by an
-untrusted author or with `network: false`, where it is reported as not
-run. An empty `verify: ""` on a rule turns the repo's off. A `report`
-delivery has nothing to publish and skips it.
+`verify` runs in the clone once each slice ends, outside the model,
+before it is published; it's a repo setting. Use it for lint, format or
+the repo's tests. A failure doesn't stop the publish: the PR body or the
+push's summary gets the tail of its output. It runs once per commit,
+with none of the secrets. A `report` delivery has nothing to publish and
+skips it.
 
 `test` is given to the agent in its prompt. `instructions` at the top
 level, per repo and per rule are **file paths**, relative to the config
 file. A repo can also carry `.awaywork/instructions.md`, read from the
 clone unless the unit is on a PR someone else opened.
 
-::: warning Experimental
-`network: false` has only run in tests so far, never in a real run. Tried it?
-[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-:::
+### What runs in the clone
 
-`network: false` on a repo or a rule cuts the agent's commands off the
-network; the rule wins over the repo and covers its `then` steps. Unset,
-it is on. `setup` keeps the network, so it can install what the agent
-needs, but it doesn't run on an untrusted author's PR: there an offline
-agent has only the clone. Offline is tested on macOS only: on Linux,
-Claude Code's sandbox needs bubblewrap and socat, and neither agent's is
-verified there yet [I]. See [Safety](./safety.md#network).
+Every command in your config that touches a unit's clone, side by side.
+All of them run in a shell in the clone, outside the model; none gets
+`GH_TOKEN` or any other forge token.
+
+| Command | When | Secrets | A failure |
+|---|---|---|---|
+| `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
+| `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
+| `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary; the work is still published |
+| `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
+| `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
+
+`verify`, `when` and `until` share their results: the same command on
+the same commit runs once. [Loops](#loops) has the rest of their rules.
 
 `skills` at the top level adds skills to every unit, like a rule's
 `skills`; see [Skills](./skills.md#where-skills-come-from).
@@ -326,7 +328,7 @@ the repo's PR template, its recent commit style and your instructions
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](#then) |
-| `network` | `false` cuts the agent's commands off the network, `then` steps included; default the repo's |
+| `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](#when) |
 
 ### `where`
 
@@ -543,12 +545,9 @@ queue:
   uncommitted changes beyond what `setup` and earlier checks left, since
   the branch wouldn't publish them; a `when` command sees them, as the
   step will.
-- A command isn't run on a PR whose author isn't trusted, or with
-  `network: false` (it would run the worker's code outside the worker's
-  sandbox): config refuses one on a rule with `network: false`, but a
-  repo's `network: false` is only known at run time. A command that isn't
-  run doesn't hold for `when`, and ends the loop either way. One that
-  runs past its 15 minutes fails, like one that exits non-zero. One
+- A command isn't run on a PR whose author isn't trusted. A command that
+  isn't run doesn't hold for `when`, and ends the loop either way. One
+  that runs past its 15 minutes fails, like one that exits non-zero. One
   stopped by the window's end ends the chain, which publishes what it
   has as in [`then`](#then); a `when` it stopped doesn't pass over its
   step. After Ctrl-C the chain publishes nothing and is tried again.
@@ -599,20 +598,33 @@ queue:
   default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading
   `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches
   `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
-- `runs_until_reset` holds when at most that many window openings are
-  left before the provider's long window resets: `1` holds in the last
-  window before the reset, and in a manual run when at most one window
-  is left. `headroom` (e.g. `20%`) holds when at least that share
-  of the window is left under this run's ceiling, so a loop with a high `max` or a second review
-  can run only on spare quota. Both read the quota the run last saw, as
-  the budget does, and don't hold when the quota can't be read. A rule
-  takes a `when` with these two keys only, to skip its whole chain.
-- Every key set must hold. `plan` shows each step's `when`, notes when its
-  quota part doesn't hold on the probe or has no quota reading, and the
+- Every key set must hold. `plan` shows each step's `when`, and the
   report says which one didn't hold.
 - A passed-over step doesn't end a loop, unless its command didn't run:
   it wouldn't in a later round either. A round whose steps were all
   passed over ends it too, since the next would be the same.
+
+A rule's `when` is about quota instead, and skips its whole chain:
+
+```yaml
+queue:
+  - skill: implement
+    where: { type: issue, label: awaywork }
+    when: { headroom: 20% }     # only on spare quota
+    then:
+      - { loop: [review, fix], until: { verdict: approve }, max: 5 }
+```
+
+- `runs_until_reset` holds when at most that many window openings are
+  left before the provider's long window resets: `1` holds in the last
+  window before the reset, and in a manual run when at most one window
+  is left. `headroom` (e.g. `20%`) holds when at least that share of the
+  window is left under this run's ceiling, so a long chain runs only on
+  spare quota. Both read the quota the run last saw, as the budget does,
+  and don't hold when the quota can't be read.
+- They're rule keys only: on a step they're a config error, and a rule
+  takes no `verdict`, `command` or `changed`. `plan` notes when the
+  quota doesn't hold on the probe or has no reading.
 
 #### `stack`
 
@@ -698,7 +710,7 @@ rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into
        └ acme-api-12-docs      docs                                         claude         done, 14 turns                                                                1 commit
   ```
 
-- [`after_unit`](#after-each-unit) gives every step its own slice's PR
+- [`notify`](#notify)'s unit event gives every step its own slice's PR
   in `AWAYWORK_PR_URL`, and `stats` counts each slice's draft PR.
 
 ::: warning Squash-merging the base
@@ -759,56 +771,97 @@ queue:
 
 ## Notify
 
-To get the morning report where you already look, `notify.command` runs
-in a shell after every run, dry runs included, with the report's path in
-`AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`. There are no
-built-in integrations. A command that fails or takes over a minute is
-logged; the run still succeeds. Anything it leaves running in the
-background is stopped when it exits.
+`notify.command` runs in a shell, as you and with your environment, on
+two events. `AWAYWORK_EVENT` says which:
+
+- `run`, once when a run ends, dry runs included: the morning report's
+  path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`.
+- `unit`, once for every step of a unit, as soon as the unit published,
+  before the next unit starts. A dry run fires none, and Ctrl-C stops the
+  running one and fires no more. Its env has `AWAYWORK_RUN_ID`,
+  `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`),
+  `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`,
+  `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a
+  [slice](#stack), that opened a draft PR, and `AWAYWORK_REPORT`, the
+  path of what the step wrote: its report, or for a step that commits,
+  the PR body as it left it.
+
+The command gets both events. One that's only for the morning report
+starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires
+on every step.
+
+::: warning Experimental
+The `unit` event has only run in tests so far, never in a real run. Tried it?
+[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
+:::
+
+There are no built-in integrations. A command that fails or takes over a
+minute is logged and the run goes on, and still succeeds:
+
+```
+  notify failed for acme-api-1: Command failed with exit code 3: ...
+```
+
+Anything it leaves running in the background is stopped when it exits.
+A command that only cares about one event exits early on the other:
 
 ```yaml
-notify:                         # ntfy
+notify:                         # ntfy, the morning report only
   command: >-
+    [ "$AWAYWORK_EVENT" = run ] || exit 0;
     curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes"
     --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
 ```yaml
-notify:                         # a Slack incoming webhook
+notify:                         # a Slack incoming webhook, the morning report only
   command: >-
+    [ "$AWAYWORK_EVENT" = run ] || exit 0;
     jq -Rs '{text:.}' "$AWAYWORK_REPORT" |
     curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
 
+```yaml
+notify:                         # a line per step
+  command: >-
+    [ "$AWAYWORK_EVENT" = unit ] || exit 0;
+    echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
+```
+
 `secrets` names the env vars the command reads: workers never see them,
 and the GitHub Actions workflow passes them from repository secrets.
 
-## After each unit
+### PR labels, reviewers and ready for review
 
-::: warning Experimental
-`after_unit` has only run in tests so far, never in a real run. Tried it?
-[Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went.
-:::
-
-To act as units finish, say to post to your own tools or record metrics,
-`after_unit.command` runs in a shell once for every step of a unit, as
-soon as the unit published, before the next unit starts. A dry run runs
-none, and Ctrl-C stops the running one and starts no more. Its env has
-`AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g.
-`acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`,
-`failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit,
-or of a [slice](#stack), that opened a draft PR, and `AWAYWORK_REPORT`,
-the path of what the step wrote: its report, or for a step that commits,
-the PR body as it left it. Like `notify`, a command that fails or takes
-over a minute is logged and the run goes on, and `secrets` are withheld
-from workers.
+A draft PR gets the agent's title and body and nothing else: no labels,
+no reviewers, always a draft, into the base awaywork picked. None of that
+is config. The `unit` event has the PR's URL, so `gh` does it:
 
 ```yaml
-after_unit:
-  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL" >> ~/awaywork.log
+notify:
+  command: |
+    set -e
+    [ "$AWAYWORK_EVENT" = unit ] && [ -n "$AWAYWORK_PR_URL" ] || exit 0
+    # every step of the PR fires; once one got through, it's no longer a draft
+    draft=$(gh pr view "$AWAYWORK_PR_URL" --json isDraft -q .isDraft)
+    [ "$draft" = true ] || exit 0
+    gh pr edit "$AWAYWORK_PR_URL" --add-label awaywork --add-reviewer octocat
+    gh pr ready "$AWAYWORK_PR_URL"
 ```
+
+`set -e` stops at a `gh` that fails, a missing label say: the hook's
+failure is logged, the PR stays a draft, and the next step tries again.
+
+`gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave
+it out on a chain with [`stack`](#stack), whose PRs sit on each other,
+and on a rule that takes up an awaywork PR, whose new PR sits on that
+one's branch.
+
+That's your command with your token, not a worker: workers never comment
+or ping anyone. A requested reviewer gets a notification, and so can the
+CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
 
 ## MCP servers
 
@@ -878,6 +931,5 @@ or `~/.config/awaywork/env` (the environment wins).
 | A custom source's `secrets` | That source's command |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | Your `notify.secrets` | The notify command |
-| Your `after_unit.secrets` | The after-unit command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |
 | Your `mcp.<name>.secrets` | That MCP server, for the units whose rule names it |
