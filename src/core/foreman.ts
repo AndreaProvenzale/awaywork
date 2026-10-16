@@ -1,6 +1,6 @@
 import type { Config } from '../config/schema.js'
 import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } from './attempts.js'
-import { isValidRef, renderBranch } from './branch.js'
+import { defaultType, isValidRef, renderBranch } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
@@ -139,7 +139,11 @@ export function planRun(input: {
       continue
     }
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
-    const branch = renderBranch(template, items[0] as Item)
+    const branch = renderBranch(
+      template,
+      items[0] as Item,
+      (committing && resolveSkill(committing.skill, input.skills)?.meta.type) || defaultType,
+    )
     if (!isValidRef(branch)) {
       skip(`branch template ${template} renders an invalid name "${branch}"`)
       continue

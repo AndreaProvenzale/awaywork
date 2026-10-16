@@ -675,6 +675,14 @@ describe('branch', () => {
     )
   })
 
+  it('fills {type} with the conventional-commit type', () => {
+    const item = { key: 'ENG-12', title: 'Login with SSO' }
+    expect(renderBranch('{type}/{key}-{title}', item, 'fix')).toBe('fix/ENG-12-login-with-sso')
+    expect(renderBranch('{type}/{key}', item)).toBe('chore/ENG-12')
+    expect(templateProblem('{type}/{key}')).toBeUndefined()
+    expect(templateProblem('{type}/work')).toBe('must contain {key} or {title}')
+  })
+
   it('rejects templates that cannot make a branch name', () => {
     expect(templateProblem('away/{key}')).toBeUndefined()
     expect(templateProblem('feat/{title}')).toBeUndefined()

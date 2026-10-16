@@ -108,6 +108,7 @@ queue:
 ```
 
 - `metadata.deliver: report` makes the skill report instead of commit; without it, it commits. Where its commits go is the rule's [`deliver`](./chains.md#then): a draft PR, or a `push` only a rule can opt in to.
+- `metadata.type` is the conventional-commit type (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style` or `revert`) that fills `{type}` in a [branch name](./configuration.md#branch-names), e.g. `{type}/{key}-{title}` gives `feat/ENG-12-login-with-sso` for `implement` and `fix/ENG-14-null-token` for `fix`. The first skill of the chain that commits decides; without one, or with any other word, it's `chore`.
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 
   ::: warning Experimental `with` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::

@@ -1,6 +1,8 @@
 ---
 name: fix
 description: "Fix the problems reported on an item: failing checks, review threads, QA feedback, an error report. Use when something is broken or was sent back."
+metadata:
+  type: fix
 ---
 
 # Fix

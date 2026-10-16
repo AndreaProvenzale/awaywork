@@ -1,17 +1,19 @@
 import { parse } from 'yaml'
+import { type CommitType, commitTypes } from './branch.js'
 import type { Deliver } from './types.js'
 
 export interface SkillMeta {
   deliver?: Deliver
+  type?: CommitType
   description?: string
 }
 export type Origin = 'user' | 'repo' | 'builtin'
 export type SkillCatalog = Partial<Record<Origin, Record<string, SkillMeta>>>
 
 export const builtinSkills: Record<string, SkillMeta> = {
-  fix: {},
+  fix: { type: 'fix' },
   plan: { deliver: 'report' },
-  implement: {},
+  implement: { type: 'feat' },
   review: { deliver: 'report' },
 }
 
@@ -28,13 +30,15 @@ export function resolveSkill(
   }
 }
 
-/** Reads `description` and `metadata.deliver` from a SKILL.md frontmatter. */
+/** Reads `description`, `metadata.deliver` and `metadata.type` from a SKILL.md frontmatter. */
 export function parseSkill(text: string): SkillMeta {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
   const { description, metadata } = (frontmatter && parse(frontmatter)) || {}
   const deliver = metadata?.deliver
+  const type = commitTypes.find((t) => t === metadata?.type)
   return {
     ...((deliver === 'draft_pr' || deliver === 'report') && { deliver }),
+    ...(type && { type }),
     ...(typeof description === 'string' && { description }),
   }
 }

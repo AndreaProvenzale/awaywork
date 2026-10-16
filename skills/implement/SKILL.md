@@ -1,6 +1,8 @@
 ---
 name: implement
 description: Implement an issue or task, or take the next steps on one the developer already has a pull request for. Use when a ready or in-progress item needs code.
+metadata:
+  type: feat
 ---
 
 # Implement

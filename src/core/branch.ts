@@ -2,8 +2,28 @@ import type { Item } from './types.js'
 
 export const defaultBranch = 'away/{key}'
 
-/** `{key}` in its own case with runs outside [A-Za-z0-9._-] as `-`; `{title}` as a lowercase slug of at most 40 characters. */
-export function renderBranch(template: string, item: Pick<Item, 'key' | 'title'>): string {
+export const commitTypes = [
+  'feat',
+  'fix',
+  'docs',
+  'refactor',
+  'perf',
+  'test',
+  'build',
+  'ci',
+  'chore',
+  'style',
+  'revert',
+] as const
+export type CommitType = (typeof commitTypes)[number]
+export const defaultType: CommitType = 'chore'
+
+/** `{key}` in its own case with runs outside [A-Za-z0-9._-] as `-`; `{title}` as a lowercase slug of at most 40 characters; `{type}` is the conventional-commit type. */
+export function renderBranch(
+  template: string,
+  item: Pick<Item, 'key' | 'title'>,
+  type: CommitType = defaultType,
+): string {
   const key = item.key.replace(/[^A-Za-z0-9._-]+/g, '-')
   const title = item.title
     .toLowerCase()
@@ -11,7 +31,7 @@ export function renderBranch(template: string, item: Pick<Item, 'key' | 'title'>
     .replace(/^-+/, '')
     .slice(0, 40)
     .replace(/-+$/, '')
-  return template.replaceAll('{key}', key).replaceAll('{title}', title)
+  return template.replaceAll('{key}', key).replaceAll('{title}', title).replaceAll('{type}', type)
 }
 
 /** Why a template using only these placeholders, and at least one of them, isn't one. */
@@ -25,7 +45,7 @@ export function placeholderProblem(template: string, names: string[]): string | 
 
 /** Why a template can't make branch names, or undefined when it can. */
 export function templateProblem(template: string): string | undefined {
-  const problem = placeholderProblem(template, ['key', 'title'])
+  const problem = placeholderProblem(template.replaceAll('{type}', defaultType), ['key', 'title'])
   if (problem) return problem
   const sample = renderBranch(template, { key: 'ABC-1', title: 'Sample title' })
   if (!isValidRef(sample)) return `renders an invalid branch name, e.g. "${sample}"`
