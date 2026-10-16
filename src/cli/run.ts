@@ -13,7 +13,7 @@ import { type Exec, exec } from '../forge/gh.js'
 import { githubForge } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
-import { notify } from '../worker/notify.js'
+import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
@@ -86,7 +86,7 @@ export function runCommand(program: Command): void {
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
         if (config.notify) {
-          const failure = await notify(config.notify.command, { path: reportPath, runId })
+          const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
           if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
         }
       } catch (e) {
