@@ -507,10 +507,6 @@
           "instructions": {
             "description": "Instruction file for units in this repo",
             "type": "string"
-          },
-          "network": {
-            "description": "Network for the worker's commands; default on",
-            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -887,17 +883,6 @@
                             "type": "string",
                             "minLength": 1
                           },
-                          "runs_until_reset": {
-                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "headroom": {
-                            "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                            "type": "string",
-                            "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                          },
                           "changed": {
                             "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                             "anyOf": [
@@ -1073,17 +1058,6 @@
                                     "type": "string",
                                     "minLength": 1
                                   },
-                                  "runs_until_reset": {
-                                    "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                                    "type": "integer",
-                                    "exclusiveMinimum": 0,
-                                    "maximum": 9007199254740991
-                                  },
-                                  "headroom": {
-                                    "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                                    "type": "string",
-                                    "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                                  },
                                   "changed": {
                                     "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                     "anyOf": [
@@ -1255,17 +1229,6 @@
                                       "description": "A shell command awaywork runs in the clone, outside the model; exit 0 holds",
                                       "type": "string",
                                       "minLength": 1
-                                    },
-                                    "runs_until_reset": {
-                                      "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                                      "type": "integer",
-                                      "exclusiveMinimum": 0,
-                                      "maximum": 9007199254740991
-                                    },
-                                    "headroom": {
-                                      "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                                      "type": "string",
-                                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                                     },
                                     "changed": {
                                       "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
@@ -1522,17 +1485,6 @@
                                   "type": "string",
                                   "minLength": 1
                                 },
-                                "runs_until_reset": {
-                                  "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                                  "type": "integer",
-                                  "exclusiveMinimum": 0,
-                                  "maximum": 9007199254740991
-                                },
-                                "headroom": {
-                                  "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                                  "type": "string",
-                                  "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                                },
                                 "changed": {
                                   "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                   "anyOf": [
@@ -1708,17 +1660,6 @@
                                           "type": "string",
                                           "minLength": 1
                                         },
-                                        "runs_until_reset": {
-                                          "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                                          "type": "integer",
-                                          "exclusiveMinimum": 0,
-                                          "maximum": 9007199254740991
-                                        },
-                                        "headroom": {
-                                          "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                                          "type": "string",
-                                          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                                        },
                                         "changed": {
                                           "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                           "anyOf": [
@@ -1891,17 +1832,6 @@
                                             "type": "string",
                                             "minLength": 1
                                           },
-                                          "runs_until_reset": {
-                                            "description": "Holds when at most this many window openings are left before the provider's long window resets; 1 is the last window",
-                                            "type": "integer",
-                                            "exclusiveMinimum": 0,
-                                            "maximum": 9007199254740991
-                                          },
-                                          "headroom": {
-                                            "description": "Holds when at least this share of the long window is left under this run's ceiling",
-                                            "type": "string",
-                                            "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
-                                          },
                                           "changed": {
                                             "description": "Git globs from the repo root; holds when the chain's commits change a matching path, against where the chain started",
                                             "anyOf": [
@@ -2017,14 +1947,6 @@
                 }
               }
             ]
-          },
-          "network": {
-            "description": "Network for the worker's commands, then steps included; default the repo's",
-            "type": "boolean"
-          },
-          "verify": {
-            "description": "Command run before publishing, then steps included; default the repo's",
-            "type": "string"
           }
         },
         "required": [
@@ -2035,37 +1957,13 @@
       }
     },
     "notify": {
-      "description": "Runs with the morning report when a run ends; a failure is only logged",
+      "description": "Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged",
       "type": "object",
       "properties": {
         "command": {
           "type": "string",
           "minLength": 1,
-          "description": "Shell command; AWAYWORK_REPORT and AWAYWORK_RUN_ID are in its env"
-        },
-        "secrets": {
-          "default": [],
-          "description": "Env vars the command needs; withheld from workers, listed in Actions",
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "required": [
-        "command"
-      ],
-      "additionalProperties": false
-    },
-    "after_unit": {
-      "description": "Run after each unit, once its result is final; a failure is only logged",
-      "type": "object",
-      "properties": {
-        "command": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Shell command; AWAYWORK_RUN_ID, _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT are in its env"
+          "description": "Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT for a unit"
         },
         "secrets": {
           "default": [],

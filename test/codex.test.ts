@@ -27,7 +27,6 @@ const job = (maxTurns = 10): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
-    network: true,
     untrusted: false,
     branch: 'away/fake-1',
     rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
@@ -124,36 +123,8 @@ describe('codex provider', () => {
     }
     try {
       expect((await argv('gpt-5-codex')).join(' ')).toContain('-m gpt-5-codex')
+      expect((await argv()).join(' ')).toContain('--sandbox danger-full-access')
       expect(await argv()).not.toContain('-m')
-    } finally {
-      delete process.env.FAKE_ARGV
-    }
-  })
-
-  it('drops full access for a profile without network when the unit is offline', async () => {
-    process.env.FAKE_ARGV = join(tmp, 'argv.json')
-    const argv = async (network: boolean) => {
-      const unit = { ...job().unit, network }
-      const config = {
-        config: {
-          web_search: 'live',
-          default_permissions: 'open',
-          sandbox_mode: 'danger-full-access',
-        },
-      }
-      await collect(provider.run({ ...job(), unit, config }, new AbortController().signal))
-      return JSON.parse(await readFile(join(tmp, 'argv.json'), 'utf8')) as string[]
-    }
-    try {
-      expect((await argv(true)).join(' ')).toContain('--sandbox danger-full-access')
-      const offline = await argv(false)
-      expect(offline).not.toContain('--sandbox')
-      expect(offline).toContain('permissions.awaywork.network.enabled=false')
-      expect(offline.findLast((a) => a.startsWith('web_search='))).toBe('web_search="disabled"')
-      expect(offline.findLast((a) => a.startsWith('default_permissions='))).toBe(
-        'default_permissions="awaywork"',
-      )
-      expect(offline.join(' ')).toContain(`${JSON.stringify(join(tmp, '.git'))}="write"`)
     } finally {
       delete process.env.FAKE_ARGV
     }
@@ -193,13 +164,11 @@ describe('codex provider', () => {
       'mcp_servers.db.env_vars=["DATABASE_URL"]',
       'mcp_servers.db.enabled_tools=["query"]',
       'mcp_servers.db.startup_timeout_sec=60',
-      'mcp_servers.db.default_tools_approval_mode="approve"',
       'mcp_servers.sentry.url="https://mcp.sentry.dev/mcp"',
       'mcp_servers.sentry.bearer_token_env_var="SENTRY_TOKEN"',
       'mcp_servers.sentry.http_headers={"X-Org"="acme"}',
       'mcp_servers.sentry.env_http_headers={"X-Key"="KEY"}',
       'mcp_servers.sentry.startup_timeout_sec=60',
-      'mcp_servers.sentry.default_tools_approval_mode="approve"',
       'shell_environment_policy.exclude=["DATABASE_URL","SENTRY_TOKEN","KEY"]',
     ])
     expect(mcpOverrides({})).toEqual([])
