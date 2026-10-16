@@ -1,6 +1,6 @@
 {
   "name": "awaywork",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Schedule headless coding agents to spend idle subscription quota",
   "keywords": [
     "claude-code",

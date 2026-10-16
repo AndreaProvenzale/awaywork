@@ -162,7 +162,7 @@ so the guide's advice is in three parts:
   an item without a PR of yours. The commits land unreviewed on a branch
   your CI and teammates run, so opt in only where that's fine.
   Experimental: only run in tests so far, see
-  [Configuration](./configuration.md#push).
+  [Chains](./chains.md#push).
 - Both pushes carry git's `--force-with-lease` as a compare-and-swap,
   not to force: the remote takes the new head only while the branch is
   still absent, or still at the commit the clone started from, and
@@ -176,7 +176,7 @@ so the guide's advice is in three parts:
 - Only a **draft** PR, into the default branch or your own PR's branch
   in the repo (an awaywork PR a rule naming `ours` took up again
   included), one per unit, however many steps its chain has, plus one
-  per [stacked slice](./configuration.md#stack), into the slice before's
+  per [stacked slice](./chains.md#stack), into the slice before's
   branch. Never into someone else's PR or a PR from a fork: only a
   report delivers there.
   A fork PR is cloned from the repo's pull ref; nothing goes to the fork.
@@ -210,7 +210,7 @@ so the guide's advice is in three parts:
   reads or writes only regular files. The symlink check runs just
   before, so a worker process that outlived the watchdog could still
   swap a path in between.
-- A [stacked slice](./configuration.md#stack) never fetches anything
+- A [stacked slice](./chains.md#stack) never fetches anything
   into the clone: awaywork's own repo re-parents its commits onto the
   slice before's as pushed, while adding the trailer. In the clone it
   runs one `git checkout -b` for the slice's new branch at the clone's

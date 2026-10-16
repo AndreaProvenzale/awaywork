@@ -154,7 +154,8 @@ Needs Node 22+, `git`, and `gh auth login`.
 |---|---|
 | [Getting started](docs/guide/getting-started.md) | Install, first plan, first unit, first schedule |
 | [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery |
-| [Configuration](docs/guide/configuration.md) | The config file by example; [reference](docs/reference/config.md) |
+| [Configuration](docs/guide/configuration.md) | The config file by example; [reference](docs/reference/config.md). The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
+| [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |

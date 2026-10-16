@@ -13,6 +13,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Getting started', link: '/guide/getting-started' },
       { text: 'How it works', link: '/guide/how-it-works' },
       { text: 'Configuration', link: '/guide/configuration' },
+      { text: 'Chains', link: '/guide/chains' },
       { text: 'Custom sources', link: '/guide/custom-sources' },
       { text: 'Skills', link: '/guide/skills' },
       { text: 'Scheduling', link: '/guide/scheduling' },

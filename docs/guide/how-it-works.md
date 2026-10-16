@@ -116,11 +116,11 @@ line in its body.
   Skips live in `~/.local/state/awaywork/skips.json`, and
   `run --unit` runs the item anyway.
 - Units run one at a time, in queue order. A unit is a chain: the rule's
-  skill, then its [`then`](./configuration.md#then) steps, one after the
+  skill, then its [`then`](./chains.md#then) steps, one after the
   other in one clone, publishing once when the chain ends, or once per
-  slice when a step says [`stack`](./configuration.md#stack). A
-  [loop](./configuration.md#loops) repeats steps, and a step with a
-  [`when`](./configuration.md#when) runs only when its condition holds.
+  slice when a step says [`stack`](./chains.md#stack). A
+  [loop](./chains.md#loops) repeats steps, and a step with a
+  [`when`](./chains.md#when) runs only when its condition holds.
 - A draft PR stacks only on the awaywork PR a rule took up, or on the
   slice before it in its own chain. Its body names the PR to merge
   first, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks)
@@ -187,11 +187,11 @@ works in that clone, on that branch.
 |---|---|
 | `draft_pr` | The default. The worker commits and writes `.away/out/pr.md` (first line the title), which a chain's later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a PR from a fork: there a chain that could commit is skipped with the reason; a report still works. |
 | `report` | No step commits. Each writes `.away/out/report.md`; nothing is pushed. A chain's reports, joined, go into the morning report. |
-| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/pr.md`, as for a draft PR; awaywork adds the trailer and pushes the chain's commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Experimental, see [Configuration](./configuration.md#push). |
+| `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/pr.md`, as for a draft PR; awaywork adds the trailer and pushes the chain's commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. Experimental, see [Chains](./chains.md#push). |
 
 Either way, a skill that defines verdicts also writes one word to
 `.away/out/verdict`, such as `approve`. The report shows it next to
-the unit's result, and a [loop](./configuration.md#loops) can end on it.
+the unit's result, and a [loop](./chains.md#loops) can end on it.
 
 A skill commits unless its metadata says it reports, as `review` and
 `plan` do; the rule's `deliver` says where the commits go, and a chain
@@ -206,7 +206,7 @@ plan recognises it and links it to them.
 `awaywork report` prints the last run: units done and skipped with the
 reason, each provider's windows before and after against the ceiling, and
 the report-only outputs. A unit with `then` steps is one row, with its
-steps under it (and with [stacked slices](./configuration.md#stack), each
+steps under it (and with [stacked slices](./chains.md#stack), each
 slice with its steps):
 
 ```
