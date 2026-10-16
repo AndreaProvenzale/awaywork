@@ -40,7 +40,6 @@ const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Providers', link: '/providers' },
       { text: 'Sources', link: '/sources' },
-      { text: 'End-to-end pass', link: '/e2e' },
     ],
   },
 ]
