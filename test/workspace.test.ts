@@ -36,6 +36,7 @@ describe('workspace', () => {
     expect(Object.keys(shipped).sort()).toEqual(Object.keys(builtinSkills).sort())
     for (const [name, meta] of Object.entries(shipped)) {
       expect(meta.deliver).toBe(builtinSkills[name]?.deliver)
+      expect(meta.type).toBe(builtinSkills[name]?.type)
       expect(meta.description).toBeTruthy()
     }
   })

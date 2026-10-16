@@ -476,7 +476,9 @@ export const configSchema = z
     sources: sourcesConfig,
     branch: branch
       .default(defaultBranch)
-      .describe('Branch name template; {key} or {title} is required'),
+      .describe(
+        'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
+      ),
     repos: z
       .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
       .default({})

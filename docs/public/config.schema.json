@@ -465,7 +465,7 @@
     },
     "branch": {
       "default": "away/{key}",
-      "description": "Branch name template; {key} or {title} is required",
+      "description": "Branch name template; {key} or {title} is required, {type} is the conventional-commit type",
       "type": "string"
     },
     "repos": {

@@ -126,7 +126,7 @@ Jira custom fields that share a name are keyed by name and id, such as `fields.T
 
 ## Branch names
 
-`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused.
+`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the first skill in the chain that commits (see [`metadata.type`](./skills.md)).
 
 | Item                               | `{key}`       |
 | ---------------------------------- | ------------- |
