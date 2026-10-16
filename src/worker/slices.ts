@@ -117,11 +117,11 @@ async function verify(deps: Publisher, unit: Unit, dir: string, start: string) {
 }
 
 /** The latest report of each skill: a loop's last review stands for its earlier ones. */
-export function latestReports(reports: StepReport[]): StepReport[] {
+function latestReports(reports: StepReport[]): StepReport[] {
   return reports.filter((r, i) => !reports.slice(i + 1).some((later) => later.skill === r.skill))
 }
 
-export function joinReports(reports: StepReport[]): string {
+function joinReports(reports: StepReport[]): string {
   return latestReports(reports)
     .map((r) => `### ${r.id}\n\n${r.text}`)
     .join('\n\n')
@@ -134,7 +134,7 @@ export function describeLoop(loop: OpenLoop): string {
 }
 
 /** awaywork's own notes in the PR body or push summary: how each loop went, its failing check, and the steps' reports. */
-export async function appendChainNotes(file: string, reports: StepReport[], loops: OpenLoop[]) {
+async function appendChainNotes(file: string, reports: StepReport[], loops: OpenLoop[]) {
   const body = (await readOutput(file)).trim()
   if (!body || (reports.length === 0 && loops.length === 0)) return
   const lines = ['', '', '## Awaywork chain']
@@ -157,7 +157,7 @@ export async function appendChainNotes(file: string, reports: StepReport[], loop
 }
 
 /** Appends a failed `verify` to the PR body or push report, so the reviewer sees it before the diff. */
-export async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
+async function appendVerifyFailure(file: string, check: RanCheck): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
   const verb = check.stopped ? 'stopped' : 'failed'

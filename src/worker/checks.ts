@@ -56,8 +56,8 @@ export function createChecks(input: ChecksInput) {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     await restoreGit(dir)
     const before = await uncommitted(dir)
-    const baseline = baselines.get(dir) ?? new Set()
-    const left = before.filter((line) => !baseline.has(line))
+    const alreadyDirty = baselines.get(dir) ?? new Set()
+    const left = before.filter((line) => !alreadyDirty.has(line))
     if (left.length && published)
       return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
     const key = `${dir} ${await head(dir)} ${command}`
@@ -71,8 +71,8 @@ export function createChecks(input: ChecksInput) {
     log(`check ${command}: ${result.failed ?? 'passed'}${result.output && `\n${result.output}`}`)
     await restoreGit(dir)
     // Only what the check itself left joins the baseline, never what a worker left before it.
-    for (const line of await uncommitted(dir)) if (!before.includes(line)) baseline.add(line)
-    baselines.set(dir, baseline)
+    for (const line of await uncommitted(dir)) if (!before.includes(line)) alreadyDirty.add(line)
+    baselines.set(dir, alreadyDirty)
     if (!result.stopped && !left.length) checks.set(key, result)
     return result
   }
