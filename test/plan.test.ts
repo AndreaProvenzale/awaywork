@@ -720,6 +720,22 @@ queue:
     ])
   })
 
+  it('fills {type} from the first skill in the chain that commits', () => {
+    const branches = (queue: string) =>
+      plan(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '{type}/{key}'\nqueue: [${queue}]`,
+        [githubPr(1, { checks: 'failing', review_requested: true })],
+        {},
+      ).units.map((u) => u.unit.branch)
+    expect(branches('{ skill: implement }')).toEqual(['feat/acme-api-1'])
+    expect(branches('{ skill: fix }')).toEqual(['fix/acme-api-1'])
+    expect(branches('{ skill: review, then: implement }')).toEqual([
+      'feat/acme-api-1',
+      'feat/acme-api-1',
+    ])
+    expect(branches('{ skill: review }')).toEqual(['chore/acme-api-1'])
+  })
+
   it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
     const ours = githubPr(9, { checks: 'failing', ours: true })
     const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
