@@ -24,7 +24,6 @@ const job = (): Job => ({
     repo: 'acme/api',
     base: '',
     foreign: false,
-    network: true,
     untrusted: false,
     branch: 'away/fake-1',
     rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
@@ -176,7 +175,6 @@ describe('claude provider', () => {
         ...job().unit,
         base: 'sessions',
         foreign: !mine,
-        network: true,
         untrusted: false,
         items: [fakeItem({ linkedPrs: [pr] })],
       }
@@ -195,24 +193,6 @@ describe('claude provider', () => {
       await provider.probe({ env: process.env, log: () => {} })
       const probe = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
       expect(flag(probe, '--setting-sources')).toBe('')
-    } finally {
-      delete process.env.FAKE_ARGV
-    }
-  })
-
-  it('runs Bash in the sandbox, which has no network, when the unit is offline', async () => {
-    process.env.FAKE_ARGV = join(dir, 'argv.json')
-    try {
-      await writeFile(join(dir, 'worker.json'), '{"env":{"A":"1"},"sandbox":{"enabled":false}}')
-      const unit = { ...job().unit, network: false }
-      const run = { ...job(), unit, config: { settings: 'worker.json' }, configDir: dir }
-      await collect(provider.run(run, new AbortController().signal))
-      const args = JSON.parse(await readFile(join(dir, 'argv.json'), 'utf8')) as string[]
-      expect(JSON.parse(args[args.indexOf('--settings') + 1] as string)).toEqual({
-        env: { A: '1' },
-        autoMemoryEnabled: false,
-        sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
-      })
     } finally {
       delete process.env.FAKE_ARGV
     }

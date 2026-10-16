@@ -425,8 +425,7 @@ describe('schedule install --with github-actions', () => {
       `providers: [claude]
 sources: { github: { repos: [acme/api] }, asana: { workspace: "100" } }
 repos: { acme/api: { secrets: [DATABASE_URL] } }
-notify: { command: "true", secrets: [SLACK_WEBHOOK, ASANA_TOKEN] }
-after_unit: { command: "true", secrets: [HOOK_TOKEN] }
+notify: { command: "true", secrets: [SLACK_WEBHOOK, ASANA_TOKEN, HOOK_TOKEN] }
 mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
 `,
     )

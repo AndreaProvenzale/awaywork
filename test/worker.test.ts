@@ -15,7 +15,6 @@ const job: Job = {
     repo: 'acme/api',
     base: '',
     foreign: false,
-    network: true,
     untrusted: false,
     branch: 'away/fake-1',
     rule: { skill: 'fix', provider: [], skills: [], instructions: [] },

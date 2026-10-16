@@ -143,7 +143,7 @@ value is in your environment or `~/.config/awaywork/env`, with
 
 1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`,
-   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your `after_unit.secrets`, your
+   `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your
    repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 

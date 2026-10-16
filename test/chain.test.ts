@@ -412,7 +412,7 @@ it('opens a draft PR per slice: a stacked one on -2, on the slice before as push
   const bodies: Record<string, string> = {}
   const hooked = join(await mkdtemp(join(tmpdir(), 'awaywork-hook-')), 'log')
   const { rows, opened, origin, report, plan, forge } = await run(
-    `after_unit: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
+    `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
 queue:
   - skill: implement
     then: [review, { skill: fix, stack: true }]
@@ -580,7 +580,7 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   }
   // `verify` runs `git status` in the clone after the failed step, as a `when` or `until` check does.
   const { rows } = await run(
-    "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
     [issue(1)],
     provider,
   )
@@ -614,7 +614,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
   process.env.ZZ_SECRET = 'hunter2'
   try {
     const { rows } = await run(
-      "queue: [{ skill: implement, verify: 'true', then: [{ skill: fix, stack: true }] }]\n",
+      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
       [issue(1)],
       provider,
     )

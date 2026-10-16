@@ -34,16 +34,20 @@ async function runHook(
   return [why, result.all?.trim()].filter(Boolean).join('\n')
 }
 
-/** Runs the notify command with the report in its env. */
-export function notify(
+/** Runs the notify command for the run's end, with the morning report in its env. */
+export function notifyRun(
   command: string,
   report: { path: string; runId: string },
 ): Promise<string | undefined> {
-  return runHook(command, { AWAYWORK_REPORT: report.path, AWAYWORK_RUN_ID: report.runId })
+  return runHook(command, {
+    AWAYWORK_EVENT: 'run',
+    AWAYWORK_REPORT: report.path,
+    AWAYWORK_RUN_ID: report.runId,
+  })
 }
 
-/** Runs the after_unit command with one unit's result in its env. */
-export function afterUnit(
+/** Runs the notify command for one step of a finished unit, with its result in its env. */
+export function notifyUnit(
   command: string,
   unit: { runId: string; id: string; skill: string; status: string; pr?: string; report?: string },
   signal?: AbortSignal,
@@ -51,6 +55,7 @@ export function afterUnit(
   return runHook(
     command,
     {
+      AWAYWORK_EVENT: 'unit',
       AWAYWORK_RUN_ID: unit.runId,
       AWAYWORK_UNIT: unit.id,
       AWAYWORK_SKILL: unit.skill,
