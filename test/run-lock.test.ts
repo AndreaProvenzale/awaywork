@@ -21,4 +21,13 @@ describe('takeRunLock', () => {
     if ('release' in taken) await taken.release()
     expect('release' in (await takeRunLock(file, 'run-d'))).toBe(true)
   })
+
+  it('takes over an empty lock file and leaves a lock that is not ours on release', async () => {
+    await writeFile(file, '')
+    const taken = await takeRunLock(file, 'run-e')
+    expect('release' in taken).toBe(true)
+    await writeFile(file, '1 run-other')
+    if ('release' in taken) await taken.release()
+    expect(await readFile(file, 'utf8')).toBe('1 run-other')
+  })
 })
