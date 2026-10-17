@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Config } from '../config/schema.js'
 import { footer, footerItems, isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
@@ -111,6 +112,9 @@ async function pushHead(
     await rm(bare, { recursive: true, force: true })
   }
 }
+
+export const githubHost = (config: Config) =>
+  (config.sources.github as { host?: string } | undefined)?.host
 
 export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   const run = onHost(base, host === 'github.com' ? undefined : host)

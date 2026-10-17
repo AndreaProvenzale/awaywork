@@ -214,7 +214,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
 
     /** Writes item.md, plus diff.patch, threads.md and checks.md for a PR. */
     async prefetch(item, dir) {
-      const run = onHost(base, new URL(item.url).host)
+      const run = onHost(base, URL.canParse(item.url) ? new URL(item.url).host : undefined)
       if (item.type !== 'pr') return writeFile(join(dir, 'item.md'), itemMarkdown(item))
       const repo = item.fields.repo as string
       const [owner = '', name = ''] = repo.split('/')
