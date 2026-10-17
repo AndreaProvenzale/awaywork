@@ -64,7 +64,9 @@ export function runCommand(program: Command): void {
         console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
         const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const report = await runUnits({
           config,
           configDir: dirname(path),
