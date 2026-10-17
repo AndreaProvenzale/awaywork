@@ -76,7 +76,10 @@ export function runCommand(program: Command): void {
           until,
           providers,
           sources,
-          forge: githubForge(),
+          forge: githubForge(
+            undefined,
+            (config.sources.github as { host?: string } | undefined)?.host,
+          ),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })

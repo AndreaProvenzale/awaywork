@@ -147,6 +147,7 @@ My PRs, PRs awaiting my review and issues assigned to me; also the forge.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
+| `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
 
 ## `sources.asana`
 

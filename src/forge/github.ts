@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { footer, footerItems, isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
-import { type Exec, exec, graphql } from './gh.js'
+import { type Exec, exec, graphql, onHost } from './gh.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
@@ -74,15 +74,20 @@ type Stack = {
   pull_requests: { number: number }[]
 }
 
-const remote = (repo: string) => `https://github.com/${repo}.git`
-
 /**
  * Pushes `dir`'s HEAD from a bare repo of its own, so `dir`'s config, hooks and refs steer neither
  * where the push goes nor what runs. With `from`, only a descendant of it, while the branch is
  * still at it; without, only while the branch doesn't exist. The lease makes that a compare-and-swap
  * but lifts git's own fast-forward check, so the ancestry check here is what keeps history intact.
  */
-async function pushHead(run: Exec, dir: string, repo: string, branch: string, from?: string) {
+async function pushHead(
+  run: Exec,
+  remote: (repo: string) => string,
+  dir: string,
+  repo: string,
+  branch: string,
+  from?: string,
+) {
   const bare = await mkdtemp(join(tmpdir(), 'awaywork-push-'))
   const git = (...args: string[]) => run('git', ['-C', bare, ...pushSafely, ...args])
   try {
@@ -107,7 +112,9 @@ async function pushHead(run: Exec, dir: string, repo: string, branch: string, fr
   }
 }
 
-export function githubForge(run: Exec = exec): Forge {
+export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
+  const run = onHost(base, host === 'github.com' ? undefined : host)
+  const remote = (repo: string) => `https://${host}/${repo}.git`
   let myPrs: Promise<(PrNode & { items: string[] })[]> | undefined
 
   const forge: Forge = {
@@ -188,7 +195,7 @@ export function githubForge(run: Exec = exec): Forge {
     async push(dir, branch, { repo }) {
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)
-      await pushHead(run, dir, repo, branch)
+      await pushHead(run, remote, dir, repo, branch)
     },
 
     /** Reads the PR live: hours may have passed since planning. */
@@ -220,7 +227,7 @@ export function githubForge(run: Exec = exec): Forge {
           ? `${branch} is protected`
           : undefined)
       if (refused) throw new Error(`refusing to push onto ${branch} on ${repo}: ${refused}`)
-      await pushHead(run, dir, repo, branch, from)
+      await pushHead(run, remote, dir, repo, branch, from)
     },
 
     /** The body file's first line is the title; the rest, plus the footer, is the body. */

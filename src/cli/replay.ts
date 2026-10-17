@@ -32,7 +32,10 @@ export function replayCommand(program: Command): void {
               return source ? [[id, source]] : []
             }),
           ),
-          forge: githubForge(),
+          forge: githubForge(
+            undefined,
+            (config.sources.github as { host?: string } | undefined)?.host,
+          ),
           ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })

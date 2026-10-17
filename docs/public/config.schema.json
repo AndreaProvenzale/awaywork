@@ -296,6 +296,10 @@
                 "type": "string"
               },
               "description": "Repos to read, owner/name; * globs, e.g. acme/*"
+            },
+            "host": {
+              "description": "GitHub Enterprise host, e.g. github.acme.com; github.com by default",
+              "type": "string"
             }
           },
           "required": [

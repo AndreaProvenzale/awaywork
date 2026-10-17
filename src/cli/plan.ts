@@ -134,7 +134,11 @@ export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
       (e: Error) => ctx.log(`source ${id}: ${e.message}`),
     )
   }
-  await linkTasks(items, githubForge(), ctx)
+  await linkTasks(
+    items,
+    githubForge(undefined, (config.sources.github as { host?: string } | undefined)?.host),
+    ctx,
+  )
   return items
 }
 
