@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
-import { probeAndPlan } from '../src/cli/plan.js'
+import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -14,7 +14,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { planRun } from '../src/core/foreman.js'
+import { limitPlan, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
@@ -113,6 +113,18 @@ describe('plan', () => {
         asana T-8: no repo: no linked PR or repo field"
     `)
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
+  })
+
+  it('limits the plan to a repo glob or a rule, after the caps are applied', () => {
+    const items = [githubPr(1, { checks: 'failing' }), issue]
+    const full = plan(example, items, { claude: week(0.36), codex: null })
+    const ids = (p: typeof full) => p.units.map((u) => u.unit.id)
+    expect(ids(limitPlan(full, { rule: 2 }))).toEqual(['acme-api-5'])
+    expect(ids(limitPlan(full, { repo: 'ACME/*' }))).toEqual(ids(full))
+    expect(ids(limitPlan(full, { repo: 'acme/web' }))).toEqual([])
+    expect(ids(limitPlan(full, { repo: '' }))).toEqual([])
+    expect(ids(limitPlan(full, { repo: 'acme/api', rule: 1 }))).toEqual(['acme-api-1'])
+    expect(limitPlan(full, {}).units).toEqual(full.units)
   })
 
   it('uses the default queue for configured sources only', () => {
@@ -1100,4 +1112,11 @@ describe('plan --json', () => {
     expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
     expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
+})
+
+describe('ruleNumber', () => {
+  it('takes whole numbers from 1', () => expect(ruleNumber('3')).toBe(3))
+  it.each(['0', '-1', '1.5', 'abc'])('rejects %s', (text) =>
+    expect(() => ruleNumber(text)).toThrow('a rule number from 1'),
+  )
 })

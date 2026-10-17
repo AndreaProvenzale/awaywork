@@ -4,6 +4,7 @@ import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
+import { globToRegExp } from './glob.js'
 import {
   closestRule,
   defaultRules,
@@ -257,6 +258,16 @@ export function planRun(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** The plan's units for a repo glob (`*` matches within a segment, any case) and a 1-based rule; caps and routing stay as planned. */
+export function limitPlan(plan: RunPlan, only: { repo?: string; rule?: number }): RunPlan {
+  const repo = only.repo === undefined ? undefined : globToRegExp(only.repo)
+  const units = plan.units.filter(
+    (p) =>
+      (!repo || repo.test(p.unit.repo)) && (only.rule === undefined || p.rule + 1 === only.rule),
+  )
+  return { ...plan, units }
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {

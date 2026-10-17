@@ -1,4 +1,4 @@
-import { type Command, Option } from 'commander'
+import { type Command, InvalidArgumentError, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
@@ -6,7 +6,7 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
-import { planRun, type RunPlan } from '../core/foreman.js'
+import { limitPlan, planRun, type RunPlan } from '../core/foreman.js'
 import { defaultRules } from '../core/queue.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -25,18 +25,25 @@ export function planCommand(program: Command): void {
     .command('plan')
     .description("show the next run's units in order, with each provider's ceiling; runs no worker")
     .option('--json', 'print the plan and warnings as JSON')
+    .option('--repo <glob>', 'only units in repos matching owner/name, * globs')
+    .option('--rule <n>', 'only units of this queue rule, counted from 1', ruleNumber)
     .addOption(
       new Option(
         '--rules',
         'show what each rule takes now and what earlier rules take from it, instead of the units; probes no provider',
       ).conflicts('json'),
     )
-    .action(async (opts: { json?: boolean; rules?: boolean }) => {
+    .action(async (opts: { json?: boolean; rules?: boolean; repo?: string; rule?: number }) => {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
         if (opts.rules) return console.log(await describeRules(config))
-        const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path))
+        const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path), {
+          repo: opts.repo,
+          rule: opts.rule,
+        })
+        if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined))
+          console.error('no unit matches --repo/--rule')
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
@@ -44,11 +51,17 @@ export function planCommand(program: Command): void {
     })
 }
 
+export function ruleNumber(text: string): number {
+  const n = Number(text)
+  if (!Number.isInteger(n) || n < 1) throw new InvalidArgumentError('a rule number from 1')
+  return n
+}
+
 /** Collects items from every configured source, probes every provider and plans the run, masking secrets in warnings. */
 export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
-  opts: { retry?: boolean } = {},
+  opts: { retry?: boolean; repo?: string; rule?: number } = {},
 ): Promise<{
   plan: RunPlan
   warnings: string[]
@@ -90,7 +103,7 @@ export async function probeAndPlan(
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providers, sources)
   return {
-    plan: planRun({ config, items, allowances, skills, attempts, skips }),
+    plan: limitPlan(planRun({ config, items, allowances, skills, attempts, skips }), opts),
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
     ctx,
     sources,
