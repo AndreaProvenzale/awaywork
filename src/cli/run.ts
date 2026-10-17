@@ -64,6 +64,11 @@ export function runCommand(program: Command): void {
             process.exitCode = 1
             return
           }
+          if (!plan.units.length && (opts.repo || opts.rule)) {
+            console.error('no unit matches --repo/--rule; awaywork plan lists them')
+            process.exitCode = 1
+            return
+          }
           const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
           const runDir = join(runsDir, runId)
           await mkdir(runDir, { recursive: true })

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
-import { probeAndPlan } from '../src/cli/plan.js'
+import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -1111,4 +1111,11 @@ describe('plan --json', () => {
     expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
     expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
+})
+
+describe('ruleNumber', () => {
+  it('takes whole numbers from 1', () => expect(ruleNumber('3')).toBe(3))
+  it.each(['0', '-1', '1.5', 'abc'])('rejects %s', (text) =>
+    expect(() => ruleNumber(text)).toThrow('a rule number from 1'),
+  )
 })

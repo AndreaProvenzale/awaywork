@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { isOurs } from '../core/footer.js'
+import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql } from '../forge/gh.js'
 
@@ -403,11 +404,6 @@ function checkState(state: string | undefined): string | undefined {
   if (state === 'SUCCESS') return 'passing'
   if (state === 'FAILURE' || state === 'ERROR') return 'failing'
   if (state === 'PENDING' || state === 'EXPECTED') return 'pending'
-}
-
-function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
-  return new RegExp(`^${escaped}$`, 'i')
 }
 
 function itemMarkdown(item: Item): string {

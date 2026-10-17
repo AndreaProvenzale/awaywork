@@ -4,6 +4,7 @@ import { isValidRef, renderBranch } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
+import { globToRegExp } from './glob.js'
 import {
   closestRule,
   defaultRules,
@@ -266,11 +267,6 @@ export function limitPlan(plan: RunPlan, only: { repo?: string; rule?: number })
     (p) => (!repo || repo.test(p.unit.repo)) && (!only.rule || p.rule + 1 === only.rule),
   )
   return { ...plan, units }
-}
-
-function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
-  return new RegExp(`^${escaped}$`, 'i')
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
