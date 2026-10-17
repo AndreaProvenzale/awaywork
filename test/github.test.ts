@@ -398,7 +398,7 @@ describe('github source', () => {
 describe('github enterprise host', () => {
   const hosted = () => {
     const seen: (string | undefined)[] = []
-    const run: Exec = async (cmd, args, env) => {
+    const run: Exec = async (cmd, _args, env) => {
       seen.push(`${cmd}:${env?.GH_HOST}`)
       return cmd === 'gh' ? '[]' : ''
     }
