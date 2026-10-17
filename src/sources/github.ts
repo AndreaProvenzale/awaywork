@@ -10,6 +10,7 @@ const config = z
     repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
     host: z
       .string()
+      .regex(/^[^/\s]+$/, 'host only, no scheme or path')
       .optional()
       .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
   })
