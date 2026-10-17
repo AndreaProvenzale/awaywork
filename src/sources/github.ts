@@ -8,8 +8,16 @@ import { type Exec, exec, graphql } from '../forge/gh.js'
 const config = z
   .strictObject({
     repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
+    search: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        'Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested',
+      ),
   })
-  .describe('My PRs, PRs awaiting my review and issues assigned to me; also the forge')
+  .describe(
+    'My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge',
+  )
 type Config = z.infer<typeof config>
 
 const PAGE = 100
@@ -186,7 +194,11 @@ export function githubSource(run: Exec = exec): Source<Config> {
     async items(cfg, ctx) {
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
       const byId = new Map<string, Item>()
-      for (const { q, fields } of searches) {
+      const extra = (cfg.search ?? []).map((q) => ({
+        q: `is:open archived:false ${q}`,
+        fields: {},
+      }))
+      for (const { q, fields } of [...searches, ...extra]) {
         const { search } = await graphql<{ search: { issueCount: number; nodes: Node[] } }>(
           run,
           searchQuery,
