@@ -3,11 +3,16 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { isOurs } from '../core/footer.js'
 import type { Item, PrRef, Source } from '../core/types.js'
-import { type Exec, exec, graphql } from '../forge/gh.js'
+import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
 
 const config = z
   .strictObject({
     repos: z.array(z.string()).min(1).describe('Repos to read, owner/name; * globs, e.g. acme/*'),
+    host: z
+      .string()
+      .regex(/^[^/\s]+$/, 'host only, no scheme or path')
+      .optional()
+      .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
   })
   .describe('My PRs, PRs awaiting my review and issues assigned to me; also the forge')
 type Config = z.infer<typeof config>
@@ -157,7 +162,7 @@ const searches: { q: string; fields: Record<string, boolean> }[] = [
   { q: 'is:issue is:open archived:false assignee:@me', fields: { mine: true } },
 ]
 
-export function githubSource(run: Exec = exec): Source<Config> {
+export function githubSource(base: Exec = exec): Source<Config> {
   return {
     id: 'github',
     configSchema: config,
@@ -184,6 +189,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
 
     /** My open PRs, PRs awaiting my review and issues assigned to me, in the configured repos. */
     async items(cfg, ctx) {
+      const run = onHost(base, cfg.host)
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
       const byId = new Map<string, Item>()
       for (const { q, fields } of searches) {
@@ -208,6 +214,7 @@ export function githubSource(run: Exec = exec): Source<Config> {
 
     /** Writes item.md, plus diff.patch, threads.md and checks.md for a PR. */
     async prefetch(item, dir) {
+      const run = onHost(base, URL.canParse(item.url) ? new URL(item.url).host : undefined)
       if (item.type !== 'pr') return writeFile(join(dir, 'item.md'), itemMarkdown(item))
       const repo = item.fields.repo as string
       const [owner = '', name = ''] = repo.split('/')
@@ -230,8 +237,8 @@ export function githubSource(run: Exec = exec): Source<Config> {
 
     /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
     async init(ask) {
-      const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()
-      const orgs = (await run('gh', ['api', 'user/orgs', '--jq', '.[].login']))
+      const login = (await base('gh', ['api', 'user', '--jq', '.login'])).trim()
+      const orgs = (await base('gh', ['api', 'user/orgs', '--jq', '.[].login']))
         .split('\n')
         .filter(Boolean)
       const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''

@@ -395,6 +395,44 @@ describe('github source', () => {
   })
 })
 
+describe('github enterprise host', () => {
+  const hosted = () => {
+    const seen: (string | undefined)[] = []
+    const run: Exec = async (cmd, _args, env) => {
+      seen.push(`${cmd}:${env?.GH_HOST}`)
+      return cmd === 'gh' ? '[]' : ''
+    }
+    return Object.assign(run, { seen })
+  }
+
+  it('points gh at the host and clones from it', async () => {
+    const calls: string[][] = []
+    const run: Exec = async (cmd, args, env) => {
+      calls.push([cmd, env?.GH_HOST ?? '', ...args])
+      return '[]'
+    }
+    const forge = githubForge(run, 'git.acme.com')
+    await forge.branchExists('acme/api', 'x')
+    await forge.clone('acme/api', '', '/work/u1')
+    expect(calls[0]?.slice(0, 2)).toEqual(['gh', 'git.acme.com'])
+    expect(calls[1]).toContain('https://git.acme.com/acme/api.git')
+    expect(calls[1]?.[1]).toBe('')
+  })
+
+  it('reads the source through the host, and leaves gh alone without one', async () => {
+    const run = hosted()
+    await githubSource(run)
+      .items({ repos: ['acme/*'], host: 'git.acme.com' }, ctx)
+      .catch(() => {})
+    expect(new Set(run.seen)).toEqual(new Set(['gh:git.acme.com']))
+    const plain = hosted()
+    await githubSource(plain)
+      .items({ repos: ['acme/*'] }, ctx)
+      .catch(() => {})
+    expect(new Set(plain.seen)).toEqual(new Set(['gh:undefined']))
+  })
+})
+
 describe('github forge', () => {
   it('clones through gh login and leaves no credential helper in the clone', async () => {
     const run = recorded([[/^git /, '']])
