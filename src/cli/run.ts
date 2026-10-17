@@ -50,7 +50,9 @@ export function runCommand(program: Command): void {
         if (!opts.dryRun) {
           const lock = await takeRunLock(runLockPath, runId)
           if (!('release' in lock)) {
-            console.error(`already running (pid ${lock.pid}, run ${lock.runId})`)
+            console.error(
+              `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
+            )
             process.exitCode = 1
             return
           }
