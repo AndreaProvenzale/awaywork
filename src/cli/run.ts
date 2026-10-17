@@ -18,7 +18,7 @@ import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
-import { probeAndPlan } from './plan.js'
+import { probeAndPlan, ruleNumber } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
 
@@ -28,71 +28,81 @@ export function runCommand(program: Command): void {
     .description('plan the units, start a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
+    .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
+    .option('--rule <n>', 'run only units of this queue rule, counted from 1', ruleNumber)
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
-    .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
-      console.log(`awaywork run at ${localTime(new Date())}`)
-      try {
-        const path = configPath(program.opts().config)
-        const config = await loadConfig(path)
-        const now = new Date()
-        const until = opts.scheduled
-          ? runEnd(config.windows, now, process.env)
-          : hostedEnd(now, process.env)
-        if (opts.scheduled && !until) {
-          console.log(
-            `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
+    .action(
+      async (opts: {
+        dryRun?: boolean
+        unit?: string
+        repo?: string
+        rule?: number
+        scheduled?: boolean
+      }) => {
+        console.log(`awaywork run at ${localTime(new Date())}`)
+        try {
+          const path = configPath(program.opts().config)
+          const config = await loadConfig(path)
+          const now = new Date()
+          const until = opts.scheduled
+            ? runEnd(config.windows, now, process.env)
+            : hostedEnd(now, process.env)
+          if (opts.scheduled && !until) {
+            console.log(
+              `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
+            )
+            return
+          }
+          const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
+            config,
+            skillsDirOf(path),
+            { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
           )
-          return
-        }
-        const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
-          config,
-          skillsDirOf(path),
-          { retry: !!opts.unit },
-        )
-        for (const warning of warnings) console.error(`warning: ${warning}`)
-        if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
-          console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
-          process.exitCode = 1
-          return
-        }
-        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
-        const runDir = join(runsDir, runId)
-        await mkdir(runDir, { recursive: true })
-        if (process.env.GITHUB_OUTPUT)
-          await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
-        await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
-        console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
+          for (const warning of warnings) console.error(`warning: ${warning}`)
+          if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
+            console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
+            process.exitCode = 1
+            return
+          }
+          const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+          const runDir = join(runsDir, runId)
+          await mkdir(runDir, { recursive: true })
+          if (process.env.GITHUB_OUTPUT)
+            await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
+          await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
+          console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
-        const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
-        const report = await runUnits({
-          config,
-          configDir: dirname(path),
-          plan,
-          runId,
-          runDir,
-          dryRun: !!opts.dryRun,
-          only: opts.unit,
-          until,
-          providers,
-          sources,
-          forge: githubForge(),
-          ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
-          signal: abort.signal,
-        })
-        const reportPath = join(runDir, 'report.md')
-        await writeFile(reportPath, formatReport(report, warnings))
-        await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
-        await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
-        console.log(summarize(report, reportPath))
-        if (config.notify) {
-          const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
-          if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
+          const abort = new AbortController()
+          process.once('SIGINT', () => abort.abort())
+          const report = await runUnits({
+            config,
+            configDir: dirname(path),
+            plan,
+            runId,
+            runDir,
+            dryRun: !!opts.dryRun,
+            only: opts.unit,
+            until,
+            providers,
+            sources,
+            forge: githubForge(),
+            ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
+            signal: abort.signal,
+          })
+          const reportPath = join(runDir, 'report.md')
+          await writeFile(reportPath, formatReport(report, warnings))
+          await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
+          await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
+          console.log(summarize(report, reportPath))
+          if (config.notify) {
+            const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
+            if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
+          }
+        } catch (e) {
+          reportConfigError(e)
         }
-      } catch (e) {
-        reportConfigError(e)
-      }
-    })
+      },
+    )
 
   program
     .command('report [id]')

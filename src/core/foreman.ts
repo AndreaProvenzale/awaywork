@@ -259,6 +259,20 @@ export function planRun(input: {
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
 
+/** The plan's units for a repo glob (`*` matches within a segment, any case) and a 1-based rule; caps and routing stay as planned. */
+export function limitPlan(plan: RunPlan, only: { repo?: string; rule?: number }): RunPlan {
+  const repo = only.repo && globToRegExp(only.repo)
+  const units = plan.units.filter(
+    (p) => (!repo || repo.test(p.unit.repo)) && (!only.rule || p.rule + 1 === only.rule),
+  )
+  return { ...plan, units }
+}
+
+function globToRegExp(glob: string): RegExp {
+  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
+  return new RegExp(`^${escaped}$`, 'i')
+}
+
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
   if (!when || !a) return undefined
   if (a.kind === 'fallback') return 'no quota reading'

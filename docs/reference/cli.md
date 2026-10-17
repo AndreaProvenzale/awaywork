@@ -111,10 +111,12 @@ Usage: awaywork plan [options]
 show the next run's units in order, with each provider's ceiling; runs no worker
 
 Options:
-  --json      print the plan and warnings as JSON
-  --rules     show what each rule takes now and what earlier rules take from it,
-              instead of the units; probes no provider
-  -h, --help  display help for command
+  --json         print the plan and warnings as JSON
+  --repo <glob>  only units in repos matching owner/name, * globs
+  --rule <n>     only units of this queue rule, counted from 1
+  --rules        show what each rule takes now and what earlier rules take from
+                 it, instead of the units; probes no provider
+  -h, --help     display help for command
 ```
 
 ## awaywork skip
@@ -192,10 +194,13 @@ Usage: awaywork run [options]
 plan the units, start a worker per unit and publish draft PRs and reports
 
 Options:
-  --dry-run    prepare each workspace (clone, context, prompt) but run no worker
-  --unit <id>  run only this unit, by id or item key
-  --scheduled  run only inside a window and start no unit after it ends
-  -h, --help   display help for command
+  --dry-run      prepare each workspace (clone, context, prompt) but run no
+                 worker
+  --unit <id>    run only this unit, by id or item key
+  --repo <glob>  run only units in repos matching owner/name, * globs
+  --rule <n>     run only units of this queue rule, counted from 1
+  --scheduled    run only inside a window and start no unit after it ends
+  -h, --help     display help for command
 ```
 
 ## awaywork report

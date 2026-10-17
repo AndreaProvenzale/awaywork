@@ -97,11 +97,15 @@ An item goes to the first rule it matches, so a later rule that matches it too g
 ```sh
 awaywork run --dry-run         # clone, context and prompt, no agent
 awaywork run --unit acme-api-1 # one real unit
+awaywork run --repo 'acme/*'   # only units in matching repos
+awaywork run --rule 4          # only units of queue rule #4
 awaywork report                # the morning report of the last run
 awaywork report --list         # recent runs, to pick an id for report <id>
 ```
 
 `--unit` takes the unit id from `plan` or an item key such as `acme/api#1`, in any case. A step of a rule's `then` runs its whole chain, from the first step.
+
+`--repo <glob>` and `--rule <n>` (rules count from 1, as `plan` shows them) work on `plan` and `run`, and together they both have to hold. They cut the plan after it's made, so the caps and ceilings are what the full run would set: limiting to one repo doesn't free room for it.
 
 The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC.
 

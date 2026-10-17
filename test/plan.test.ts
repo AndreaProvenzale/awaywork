@@ -14,7 +14,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { planRun } from '../src/core/foreman.js'
+import { limitPlan, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
@@ -113,6 +113,17 @@ describe('plan', () => {
         asana T-8: no repo: no linked PR or repo field"
     `)
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
+  })
+
+  it('limits the plan to a repo glob or a rule, after the caps are applied', () => {
+    const items = [githubPr(1, { checks: 'failing' }), issue]
+    const full = plan(example, items, { claude: week(0.36), codex: null })
+    const ids = (p: typeof full) => p.units.map((u) => u.unit.id)
+    expect(ids(limitPlan(full, { rule: 2 }))).toEqual(['acme-api-5'])
+    expect(ids(limitPlan(full, { repo: 'ACME/*' }))).toEqual(ids(full))
+    expect(ids(limitPlan(full, { repo: 'acme/web' }))).toEqual([])
+    expect(ids(limitPlan(full, { repo: 'acme/api', rule: 1 }))).toEqual(['acme-api-1'])
+    expect(limitPlan(full, {}).units).toEqual(full.units)
   })
 
   it('uses the default queue for configured sources only', () => {
