@@ -42,7 +42,7 @@ export function planCommand(program: Command): void {
           repo: opts.repo,
           rule: opts.rule,
         })
-        if (!plan.units.length && (opts.repo || opts.rule))
+        if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined))
           console.error('no unit matches --repo/--rule')
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {

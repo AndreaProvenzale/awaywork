@@ -64,7 +64,7 @@ export function runCommand(program: Command): void {
             process.exitCode = 1
             return
           }
-          if (!plan.units.length && (opts.repo || opts.rule)) {
+          if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)) {
             console.error('no unit matches --repo/--rule; awaywork plan lists them')
             process.exitCode = 1
             return

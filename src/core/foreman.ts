@@ -262,9 +262,10 @@ export function planRun(input: {
 
 /** The plan's units for a repo glob (`*` matches within a segment, any case) and a 1-based rule; caps and routing stay as planned. */
 export function limitPlan(plan: RunPlan, only: { repo?: string; rule?: number }): RunPlan {
-  const repo = only.repo && globToRegExp(only.repo)
+  const repo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const units = plan.units.filter(
-    (p) => (!repo || repo.test(p.unit.repo)) && (!only.rule || p.rule + 1 === only.rule),
+    (p) =>
+      (!repo || repo.test(p.unit.repo)) && (only.rule === undefined || p.rule + 1 === only.rule),
   )
   return { ...plan, units }
 }

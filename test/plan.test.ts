@@ -122,6 +122,7 @@ describe('plan', () => {
     expect(ids(limitPlan(full, { rule: 2 }))).toEqual(['acme-api-5'])
     expect(ids(limitPlan(full, { repo: 'ACME/*' }))).toEqual(ids(full))
     expect(ids(limitPlan(full, { repo: 'acme/web' }))).toEqual([])
+    expect(ids(limitPlan(full, { repo: '' }))).toEqual([])
     expect(ids(limitPlan(full, { repo: 'acme/api', rule: 1 }))).toEqual(['acme-api-1'])
     expect(limitPlan(full, {}).units).toEqual(full.units)
   })
