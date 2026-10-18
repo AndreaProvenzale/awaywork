@@ -106,17 +106,18 @@ export async function publishSlice(
 /** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. */
 async function verify(deps: Publisher, unit: Unit, dir: string, start: string) {
   if (!unit.verify || (await commitsSince(dir, start)) === 0) return
-  const result = await deps.check(unit.verify, unit, dir, () => {}, false)
-  const out = join(dir, WORK_DIR, 'out')
-  await refuseSymlinks(dir, [`${WORK_DIR}/out/verify.log`])
-  await mkdir(out, { recursive: true })
-  await writeOutput(join(out, 'verify.log'), checkLog({ command: unit.verify, ...result }))
-  if (!result.failed) return
-  await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[unit.deliver]}`])
-  await appendVerifyFailure(join(dir, WORK_DIR, 'out', outputFile[unit.deliver]), {
+  const ran = {
     command: unit.verify,
-    ...result,
-  })
+    ...(await deps.check(unit.verify, unit, dir, () => {}, false)),
+  }
+  const out = join(dir, WORK_DIR, 'out')
+  await refuseSymlinks(dir, [
+    `${WORK_DIR}/out/verify.log`,
+    `${WORK_DIR}/out/${outputFile[unit.deliver]}`,
+  ])
+  await mkdir(out, { recursive: true })
+  await writeOutput(join(out, 'verify.log'), checkLog(ran))
+  if (ran.failed) await appendVerifyFailure(join(out, outputFile[unit.deliver]), ran)
 }
 
 /** The latest report of each skill: a loop's last review stands for its earlier ones. */
