@@ -125,7 +125,7 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
    └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commit
 ```
 
-On a terminal its tables are aligned and statuses coloured; piped, it is the markdown as saved, so in GitHub Actions it lands in the job summary. `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner). A [`notify` command](./configuration.md#notify) can send it elsewhere.
+On a terminal its tables are aligned and statuses coloured; piped, it is the markdown as saved, so in GitHub Actions it lands in the job summary. `awaywork report --json` prints the run's results as JSON instead (the units with their status, outcome and quota, written to `report.json` when the run ends; runs from before have none). `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner). A [`notify` command](./configuration.md#notify) can send it elsewhere.
 
 While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
 

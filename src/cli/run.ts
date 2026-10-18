@@ -112,6 +112,7 @@ export function runCommand(program: Command): void {
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))
+        await writeFile(join(runDir, reportJsonFile), JSON.stringify(report, null, 2))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
@@ -130,8 +131,13 @@ export function runCommand(program: Command): void {
     .command('report [id]')
     .description("print a run's morning report; the latest by default")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
-    .action((id: string | undefined, opts: { list?: boolean }) => printReport(id, !!opts.list))
+    .option('--json', "print the run's results as JSON instead of the markdown")
+    .action((id: string | undefined, opts: { list?: boolean; json?: boolean }) =>
+      printReport(id, !!opts.list, exec, !!opts.json),
+    )
 }
+
+const reportJsonFile = 'report.json'
 
 interface Run {
   id: string
@@ -140,7 +146,12 @@ interface Run {
 }
 
 /** Prints a run's report, or lists the last 20; inside a control repo, with the runs its workflows uploaded. */
-export async function printReport(id: string | undefined, list: boolean, run: Exec = exec) {
+export async function printReport(
+  id: string | undefined,
+  list: boolean,
+  run: Exec = exec,
+  json = false,
+) {
   const local = (await readdir(runsDir).catch(() => [])).sort()
   const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
   const runs: Run[] = [
@@ -149,7 +160,8 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
       .filter((r) => !local.includes(r.id))
       .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
-  const read = (r: Run) => readFile(join(r.dir, 'report.md'), 'utf8').catch(() => undefined)
+  const read = (r: Run) =>
+    readFile(join(r.dir, json ? reportJsonFile : 'report.md'), 'utf8').catch(() => undefined)
 
   if (list) {
     if (runs.length === 0) console.log(`no runs in ${runsDir}`)
@@ -179,7 +191,9 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
   }
   const text = picked && (await read(picked))
   if (text === undefined) {
-    console.error(`no report for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`)
+    console.error(
+      `no ${json ? 'JSON report' : 'report'} for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`,
+    )
     process.exitCode = 1
     const steps = picked ? await startedSteps(picked.dir) : []
     const running = steps.pop()
@@ -188,7 +202,7 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
       console.log(`Running (or cut short): ${running.name}`)
       console.log(`Its stream: ${running.log}`)
     }
-  } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
+  } else console.log(json || !process.stdout.isTTY ? text : formatReportForTerminal(text))
 }
 
 /** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */
