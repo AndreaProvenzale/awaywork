@@ -712,6 +712,14 @@ describe('branch', () => {
     )
   })
 
+  it('fills {type} with the conventional-commit type', () => {
+    const item = { key: 'ENG-12', title: 'Login with SSO' }
+    expect(renderBranch('{type}/{key}-{title}', item, 'fix')).toBe('fix/ENG-12-login-with-sso')
+    expect(renderBranch('{type}/{key}', item)).toBe('chore/ENG-12')
+    expect(templateProblem('{type}/{key}')).toBeUndefined()
+    expect(templateProblem('{type}/work')).toBe('must contain {key} or {title}')
+  })
+
   it('rejects templates that cannot make a branch name', () => {
     expect(templateProblem('away/{key}')).toBeUndefined()
     expect(templateProblem('feat/{title}')).toBeUndefined()
@@ -746,6 +754,48 @@ queue:
       'fix/acme-api-1',
       'feat/acme-api-2-pr-2',
       'bot/acme-web-5',
+    ])
+  })
+
+  it('fills {type} from the first skill in the chain that commits', () => {
+    const branches = (queue: string) =>
+      plan(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '{type}/{key}'\nqueue: [${queue}]`,
+        [githubPr(1, { checks: 'failing', review_requested: true })],
+        {},
+      ).units.map((u) => u.unit.branch)
+    expect(branches('{ skill: implement }')).toEqual(['feat/acme-api-1'])
+    expect(branches('{ skill: fix }')).toEqual(['fix/acme-api-1'])
+    expect(branches('{ skill: review, then: implement }')).toEqual([
+      'feat/acme-api-1',
+      'feat/acme-api-1',
+    ])
+    expect(branches('{ skill: review }')).toEqual(['chore/acme-api-1'])
+  })
+
+  it('gives a stacked slice the type of its own first skill', () => {
+    const branches = (branch: string, queue: string) =>
+      plan(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '${branch}'\nqueue: [${queue}]`,
+        [githubPr(1, { checks: 'failing', review_requested: true })],
+        {},
+        { user: { 'write-docs': { type: 'docs' }, tidy: {} } },
+      ).units.map((u) => u.unit.branch)
+    const chain = '{ skill: implement, then: [review, { skill: write-docs, stack: true }, tidy] }'
+    expect(branches('{type}/{key}', chain)).toEqual([
+      'feat/acme-api-1',
+      'feat/acme-api-1',
+      'docs/acme-api-1',
+      'docs/acme-api-1',
+    ])
+    expect(
+      branches('{type}/{key}', '{ skill: fix, then: [{ skill: tidy, stack: true }] }'),
+    ).toEqual(['fix/acme-api-1', 'chore/acme-api-1'])
+    expect(branches('away/{key}', chain)).toEqual([
+      'away/acme-api-1',
+      'away/acme-api-1',
+      'away/acme-api-1',
+      'away/acme-api-1',
     ])
   })
 

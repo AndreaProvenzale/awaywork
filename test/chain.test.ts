@@ -521,6 +521,22 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
   ])
 })
 
+it('publishes a stacked slice on the branch its own type names', async () => {
+  const { rows, opened } = await run(
+    "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    worker(),
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('feat/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('fix/acme-api-1', 1)],
+  ])
+  expect(opened.map((o) => [o.head, o.base])).toEqual([
+    ['feat/acme-api-1', ''],
+    ['fix/acme-api-1', 'feat/acme-api-1'],
+  ])
+})
+
 it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
   const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
   const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }

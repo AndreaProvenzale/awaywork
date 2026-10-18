@@ -30,6 +30,8 @@ describe('skills', () => {
       deliver: 'report',
     })
     expect(parseSkill('---\nname: x\nmetadata:\n  deliver: push\n---\n')).toEqual({})
+    expect(parseSkill('---\nname: x\nmetadata:\n  type: docs\n---\n')).toEqual({ type: 'docs' })
+    expect(parseSkill('---\nname: x\nmetadata:\n  type: release\n---\n')).toEqual({})
     expect(parseSkill('no frontmatter')).toEqual({})
   })
 
