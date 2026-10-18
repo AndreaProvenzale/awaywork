@@ -522,7 +522,7 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
 })
 
 it('publishes a stacked slice on the branch its own type names', async () => {
-  const { rows, opened, plan } = await run(
+  const { rows, opened } = await run(
     "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
     [issue(1)],
     worker(),
@@ -534,26 +534,6 @@ it('publishes a stacked slice on the branch its own type names', async () => {
   expect(opened.map((o) => [o.head, o.base])).toEqual([
     ['feat/acme-api-1', ''],
     ['fix/acme-api-1', 'feat/acme-api-1'],
-  ])
-  expect(formatPlan(plan)).toContain('     stack fix (built-in) on claude, branch fix/acme-api-1')
-})
-
-it('names a stacked slice in plan only when no earlier slice took its name', async () => {
-  const { opened, plan } = await run(
-    "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ loop: [fix, review], until: { verdict: approve }, max: 1, stack: true }, { skill: fix, stack: true }] }]\n",
-    [issue(1)],
-    worker(),
-  )
-  expect(opened.map((o) => o.head)).toEqual([
-    'feat/acme-api-1',
-    'fix/acme-api-1',
-    'fix/acme-api-1-2',
-  ])
-  expect(formatPlan(plan).split('\n').slice(-4)).toEqual([
-    '     stack loop fix ⇄ review until verdict approve, at most 1 round, branch fix/acme-api-1',
-    '       fix (built-in) on claude',
-    '       review (built-in) on claude',
-    '     stack fix (built-in) on claude',
   ])
 })
 

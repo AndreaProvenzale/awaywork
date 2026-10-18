@@ -90,27 +90,20 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
         )
       // A loop's later rounds repeat its first: only round 1 is listed.
       let slice = 0
-      // A slice named like an earlier one takes a suffix at run time, so only a name not seen yet is known.
-      const named = new Set([p.unit.branch])
       for (const s of stepsOf(p).filter((s) => !s.loop || s.loop.round === 1)) {
         // A stacked slice starts with `stack` where the others say `then`.
         const then = (s.slice ?? 0) !== slice ? 'stack' : 'then'
         slice = s.slice ?? 0
-        const branch =
-          then === 'stack' && !named.has(s.unit.branch) ? `, branch ${s.unit.branch}` : ''
-        named.add(s.unit.branch)
         if (s.loop?.step === 0) {
           const { skills, until, max } = s.loop
           out.push(
-            `     ${then} loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}${branch}`,
+            `     ${then} loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
           )
         }
         const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}` : ''
         const passed = s.passed.length > 0 ? ` (${s.passed.join('; ')})` : ''
         const on = `on ${s.provider ?? 'no provider left'}${passed}`
-        out.push(
-          `     ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${s.loop ? '' : branch}${when}`,
-        )
+        out.push(`     ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${when}`)
       }
       if (p.capped) out.push(`     ${p.capped}`)
     })
