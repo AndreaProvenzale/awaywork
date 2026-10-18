@@ -100,7 +100,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     forge: input.forge,
     runId: input.runId,
     signal: input.signal,
-    log: input.ctx.log,
     check,
   }
 

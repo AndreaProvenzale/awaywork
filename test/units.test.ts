@@ -3155,7 +3155,9 @@ notify:
   ])
 })
 
-async function verifiedBody(repoConfig: string): Promise<string> {
+/** The PR body, the unit's `out/` in the run dir and what the run printed. */
+async function verified(repoConfig: string) {
+  const lines: string[] = []
   const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
@@ -3182,29 +3184,36 @@ queue:
     providers: { claude: looper({}) },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    ctx: { env: { PATH: process.env.PATH }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  return opened[0]?.body ?? ''
+  const out = join(root, 'run', 'units', 'acme-api-1', 'out')
+  return { body: opened[0]?.body ?? '', out, lines }
 }
 
 it("publishes a unit whose verify failed with the command's output in the PR body", async () => {
-  const body = await verifiedBody("verify: 'echo 2 lint errors; false'")
+  const { body, out } = await verified("verify: 'echo 2 lint errors; false'")
+  expect(await readFile(join(out, 'verify.log'), 'utf8')).toContain('2 lint errors\nfailed: ')
   expect(body).toContain('## Awaywork verify')
   expect(body).toContain('`echo 2 lint errors; false` failed: Command failed with exit code 1')
   expect(body).toContain('2 lint errors')
 })
 
-it('leaves the PR body alone when verify passes', async () => {
-  expect(await verifiedBody("verify: 'true'")).not.toContain('Awaywork verify')
+it("leaves the PR body alone when verify passes, and its output out of the run's log", async () => {
+  const { body, out, lines } = await verified("verify: 'echo all clean'")
+  expect(body).not.toContain('Awaywork verify')
+  expect(await readFile(join(out, 'verify.log'), 'utf8')).toBe(
+    '$ echo all clean\nall clean\npassed\n',
+  )
+  expect(lines.join('\n')).not.toContain('all clean')
 })
 
 it("doesn't write a failed verify through a link it left for the PR body", async () => {
   const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
   await writeFile(join(outside, 'pr.md'), 'mine\n')
-  const body = await verifiedBody(
+  const { body } = await verified(
     `verify: 'rm -r .away/out && ln -s ${outside} .away/out && false'`,
   )
   expect(body).toBe('')
