@@ -38,10 +38,7 @@ export function planCommand(program: Command): void {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
         if (opts.rules) return console.log(await describeRules(config))
-        const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path), {
-          repo: opts.repo,
-          rule: opts.rule,
-        })
+        const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path), opts)
         if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined))
           console.error('no unit matches --repo/--rule')
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
