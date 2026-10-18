@@ -145,11 +145,14 @@ export function planRun(input: {
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
-    const branch = renderBranch(
-      template,
-      items[0] as Item,
-      (committing && resolveSkill(committing.skill, input.skills)?.meta.type) || defaultType,
-    )
+    // A slice's name takes the type of its first committing step; the list's words keep it a valid ref.
+    const branchOf = (step: ThenStep | undefined) =>
+      renderBranch(
+        template,
+        items[0] as Item,
+        (step && resolveSkill(step.skill, input.skills)?.meta.type) || defaultType,
+      )
+    const branch = branchOf(committing)
     if (!isValidRef(branch)) {
       skip(`branch template ${template} renders an invalid name "${branch}"`)
       continue
@@ -245,6 +248,7 @@ export function planRun(input: {
           break
         }
         slice++
+        at.branch = branchOf(stepsOf(entry)[0])
       }
       if (!isLoop(entry)) {
         const routed = add(entry, `${id}-${slug(entry.skill)}`)

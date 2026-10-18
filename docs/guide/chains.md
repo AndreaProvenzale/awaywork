@@ -163,7 +163,7 @@ queue:
 That publishes `away/acme-api-12` with the implement, review and fix rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into `away/acme-api-12`.
 
 - A slice publishes as soon as its last step ends, before the next one starts. The next slice's branch is cut from its tip in the same clone, so `setup` doesn't run again, and its commits are pushed on top of the slice before's as pushed, each with the `Awaywork:` trailer.
-- Every slice renders the rule's [`branch`](./configuration.md#branch-names), so a later one takes the first free `-2` to `-10`. A branch the chain published this run never counts as awaywork having tried there.
+- Every slice renders the rule's [`branch`](./configuration.md#branch-names) with the `{type}` of its own first skill: with `branch: "{type}/{key}"` and `metadata.type: docs` on your skill, the example gives `feat/acme-api-12` and `docs/acme-api-12`. A name that's taken, as every later slice's is with the default `away/{key}`, becomes the first free `-2` to `-10`. A branch the chain published this run never counts as awaywork having tried there.
 - The stacked PR's body ends with `Stacked on <PR>: merge that first.`, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks) the two are linked. Its first step finds the slice before's PR body, as published, in `.away/context/previous/pr.md`, next to what the step before left, and its prompt names the PR.
 - On a loop, `stack: true` starts the slice at the loop's first round. A loop sits inside one slice, so a step in a loop can't have it.
 - `stack` needs `deliver: draft_pr`, the default. `plan` skips a chain where it's on a step whose skill reports, or after steps that all report: there would be nothing to put in the PR, or nothing to stack on.

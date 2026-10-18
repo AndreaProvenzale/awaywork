@@ -773,6 +773,32 @@ queue:
     expect(branches('{ skill: review }')).toEqual(['chore/acme-api-1'])
   })
 
+  it('gives a stacked slice the type of its own first skill', () => {
+    const branches = (branch: string, queue: string) =>
+      plan(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nbranch: '${branch}'\nqueue: [${queue}]`,
+        [githubPr(1, { checks: 'failing', review_requested: true })],
+        {},
+        { user: { 'write-docs': { type: 'docs' }, tidy: {} } },
+      ).units.map((u) => u.unit.branch)
+    const chain = '{ skill: implement, then: [review, { skill: write-docs, stack: true }, tidy] }'
+    expect(branches('{type}/{key}', chain)).toEqual([
+      'feat/acme-api-1',
+      'feat/acme-api-1',
+      'docs/acme-api-1',
+      'docs/acme-api-1',
+    ])
+    expect(
+      branches('{type}/{key}', '{ skill: fix, then: [{ skill: tidy, stack: true }] }'),
+    ).toEqual(['fix/acme-api-1', 'chore/acme-api-1'])
+    expect(branches('away/{key}', chain)).toEqual([
+      'away/acme-api-1',
+      'away/acme-api-1',
+      'away/acme-api-1',
+      'away/acme-api-1',
+    ])
+  })
+
   it('skips a feature whose awaywork PR waits for review, whatever item links it', () => {
     const ours = githubPr(9, { checks: 'failing', ours: true })
     const pr = { ...(ours.linkedPrs[0] as PrRef), ours: true }
