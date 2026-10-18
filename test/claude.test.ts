@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -155,6 +155,20 @@ describe('claude provider', () => {
       expect(await argv()).not.toContain('--model')
     } finally {
       delete process.env.FAKE_ARGV
+    }
+  })
+
+  it("turns the account's claude.ai connectors off, in a run and a probe", async () => {
+    const file = join(dir, 'connectors')
+    process.env.FAKE_CONNECTORS = file
+    try {
+      await collect(provider.run(job(), new AbortController().signal))
+      expect(await readFile(file, 'utf8')).toBe('false')
+      await rm(file)
+      await provider.probe({ env: process.env, log: () => {} })
+      expect(await readFile(file, 'utf8')).toBe('false')
+    } finally {
+      delete process.env.FAKE_CONNECTORS
     }
   })
 

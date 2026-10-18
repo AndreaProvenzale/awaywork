@@ -4,6 +4,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 const args = process.argv.slice(2)
 if (process.env.FAKE_ARGV) writeFileSync(process.env.FAKE_ARGV, JSON.stringify(args))
+if (process.env.FAKE_CONNECTORS)
+  writeFileSync(process.env.FAKE_CONNECTORS, process.env.ENABLE_CLAUDEAI_MCP_SERVERS ?? 'unset')
 if (args.includes('--version')) {
   console.log('2.1.282 (Claude Code)')
 } else {
