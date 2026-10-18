@@ -4,11 +4,13 @@ import {
   describeRule,
   formatPlan,
   listedUnits,
+  reportJson,
   statusMarker,
 } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
 import { planRun } from '../src/core/foreman.js'
+import type { RunReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { githubPr } from './fakes/items.js'
@@ -90,5 +92,32 @@ queue:
     expect(formatPlan(plan)).toContain(
       "     when the window resets within 1 run (doesn't hold on the probe)\n",
     )
+  })
+})
+
+describe('reportJson', () => {
+  it("keeps the run header and drops every item's raw payload", () => {
+    const item = { ...githubPr(), raw: { secret: 'payload' } }
+    const report = {
+      runId: '20261015-220000',
+      dryRun: false,
+      startedAt: new Date('2026-10-15T22:00:00Z'),
+      finishedAt: new Date('2026-10-15T23:00:00Z'),
+      plan: { units: [{ item }] },
+      results: [],
+      quotas: {},
+    } as unknown as RunReport
+    const parsed = JSON.parse(reportJson(report))
+    expect(Object.keys(parsed)).toEqual([
+      'runId',
+      'dryRun',
+      'startedAt',
+      'finishedAt',
+      'plan',
+      'results',
+      'quotas',
+    ])
+    expect(parsed.startedAt).toBe('2026-10-15T22:00:00.000Z')
+    expect(parsed.plan.units[0].item.raw).toBeUndefined()
   })
 })

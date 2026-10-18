@@ -18,7 +18,7 @@ import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
+import { formatPlan, formatReportForTerminal, listedUnits, reportJson } from './format.js'
 import { probeAndPlan, ruleNumber } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
@@ -112,7 +112,7 @@ export function runCommand(program: Command): void {
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))
-        await writeFile(join(runDir, reportJsonFile), JSON.stringify(report, null, 2))
+        await writeFile(join(runDir, reportJsonFile), reportJson(report))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
@@ -161,7 +161,9 @@ export async function printReport(
       .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
   const read = (r: Run) =>
-    readFile(join(r.dir, json ? reportJsonFile : 'report.md'), 'utf8').catch(() => undefined)
+    readFile(join(r.dir, json && !list ? reportJsonFile : 'report.md'), 'utf8').catch(
+      () => undefined,
+    )
 
   if (list) {
     if (runs.length === 0) console.log(`no runs in ${runsDir}`)

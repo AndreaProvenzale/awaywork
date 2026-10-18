@@ -3,15 +3,19 @@ import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import type { PlannedUnit, RunPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import type { RunReport } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
+
+const withoutRaw = (key: string, value: unknown) => (key === 'raw' ? undefined : value)
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
-  return JSON.stringify(
-    { ...plan, warnings },
-    (key, value) => (key === 'raw' ? undefined : value),
-    2,
-  )
+  return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
+}
+
+/** The run's results as JSON; items drop their raw source payload. */
+export function reportJson(report: RunReport): string {
+  return JSON.stringify(report, withoutRaw, 2)
 }
 
 /** One per chain: its first step stands for it. */

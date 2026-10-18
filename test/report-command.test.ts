@@ -96,6 +96,17 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('lists with the markdown counts even with --json', async () => {
+    await writeFile(join(runsDir, '20261015-220000', 'report.json'), '{"runId":"20261015-220000"}')
+    const run = await controlRepo([], '')
+    const text = output()
+    await printReport(undefined, true, run)
+    const plain = [...text.out]
+    text.out.length = 0
+    await printReport(undefined, true, run, true)
+    expect(text.out).toEqual(plain)
+  })
+
   it("lists local runs and the control repo's uploaded ones in one list, newest first", async () => {
     const run = await controlRepo(
       ['awaywork.yml'],
