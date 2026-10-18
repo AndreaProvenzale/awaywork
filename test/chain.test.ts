@@ -84,7 +84,7 @@ async function originForge(root: string) {
     },
     fastForward: async (dir: string, branch: string, from: string) => {
       const head = await git(origin, 'rev-parse', `refs/heads/${branch}`)
-      if (head.stdout !== from) throw new Error(`${branch} moved`)
+      if (head.stdout !== from) return `${branch} moved`
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
       pushedOnto.push(branch)
     },

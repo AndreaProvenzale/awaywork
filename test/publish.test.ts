@@ -30,7 +30,7 @@ function pushingForge() {
     },
     fastForward: async (...args: Parameters<typeof fastForward>) => {
       pushed.push(await trailers(args[0]))
-      await fastForward(...args)
+      return fastForward(...args)
     },
   })
 }
@@ -196,6 +196,17 @@ describe('publish', () => {
     expect(forge.fastForwards).toEqual([`acme/api:feature-1 (#1) from ${start}`])
     expect(forge.branches.size).toBe(0)
     expect(forge.pushed).toEqual([['first|r1', 'init|']])
+  })
+
+  it('leaves a push the forge refuses unpublished, with its reason', async () => {
+    const forge = { ...fakeForge(), fastForward: async () => '#1 has auto-merge on' }
+    await commit('first')
+    await body('Fixed the flaky test.\n')
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: '#1 has auto-merge on, not pushed',
+      unpublished: true,
+    })
   })
 
   it('refuses commits that include a merge, pushed or as a draft PR', async () => {

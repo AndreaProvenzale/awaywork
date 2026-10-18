@@ -156,14 +156,14 @@ export interface Forge {
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
    * auto-merge, and still at `from`, and the branch is unprotected and backs no one else's PR;
-   * never forced.
+   * never forced. Returns why it refused, or nothing once pushed.
    */
   fastForward(
     dir: string,
     branch: string,
     from: string,
     opts: { repo: string; pr: number },
-  ): Promise<void>
+  ): Promise<string | undefined>
   draftPr(
     repo: string,
     head: string,
