@@ -138,7 +138,6 @@ Same keys as `providers[].claude.budget.fallback`.
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
 | `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
 | `instructions_file` | string | `"AGENTS.md"` | The file the CLI reads instructions from |
-| `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
 
 ## `providers[].<key>.budget`

@@ -311,11 +311,6 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "model": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "Model passed to the provider's binary; default the binary's"
-                },
                 "budget": {
                   "type": "object",
                   "properties": {

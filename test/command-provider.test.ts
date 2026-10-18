@@ -46,15 +46,12 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 }
 
 describe('command provider config', () => {
-  it('takes a name of your own with a command, model and budget', () => {
+  it('takes a name of your own with a command and budget', () => {
     const parsed = parseConfig(
-      config(
-        'gemini: { command: gemini -p, model: pro, secrets: [GEMINI_API_KEY], budget: { reserve: 5% } }',
-      ),
+      config('gemini: { command: gemini -p, secrets: [GEMINI_API_KEY], budget: { reserve: 5% } }'),
     )
     expect(parsed.providers.map((p) => p.id)).toEqual(['claude', 'gemini'])
     const gemini = parsed.providers[1]
-    expect(gemini?.model).toBe('pro')
     expect(gemini?.config).toMatchObject({
       command: 'gemini -p',
       secrets: ['GEMINI_API_KEY'],
@@ -119,5 +116,15 @@ describe('command provider', () => {
     expect(await commandProvider('x', cfg({ command: 'no-such-agent-cli' })).detect()).toEqual({
       installed: false,
     })
+  })
+
+  it('skips leading env assignments when looking for the binary', async () => {
+    expect(await commandProvider('x', cfg({ command: 'FOO=1 sh -c true' })).detect()).toEqual({
+      installed: true,
+    })
+  })
+
+  it('rejects a model', () => {
+    expect(() => parseConfig(config('gemini: { command: gemini -p, model: pro }'))).toThrow()
   })
 })

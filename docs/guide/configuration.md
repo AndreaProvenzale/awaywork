@@ -119,7 +119,7 @@ limits:
   unit_minutes: 45
 ```
 
-The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets` are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) and `instructions_file` (default `AGENTS.md`) say where it looks for skills and instructions.
+The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets` are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) and `instructions_file` (default `AGENTS.md`) say where it looks for skills and instructions. There's no `model` key: put it in the command. A `probe` gets your whole environment, secrets included, since it's your own command.
 
 There's no turn cap, so `limits.unit_minutes` is required and bounds each unit. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder before each unit:
 

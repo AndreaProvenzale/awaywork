@@ -68,7 +68,11 @@ export function commandProvider(id: string, cfg: CommandProviderConfig): Provide
     secrets: cfg.secrets,
 
     async detect() {
-      const [bin = ''] = cfg.command.trim().split(/\s+/)
+      const bin =
+        cfg.command
+          .trim()
+          .split(/\s+/)
+          .find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? ''
       const out = await execa(`command -v '${bin.replaceAll("'", "'\\''")}'`, {
         shell: true,
         reject: false,

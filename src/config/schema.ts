@@ -76,9 +76,7 @@ const providerOverride = z
       ]),
     ),
   )
-  .catchall(
-    commandProviderConfig.extend({ model: model.optional(), budget: budgetOverride.optional() }),
-  )
+  .catchall(commandProviderConfig.extend({ budget: budgetOverride.optional() }))
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
