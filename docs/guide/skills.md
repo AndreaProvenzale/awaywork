@@ -67,8 +67,6 @@ Skills the model reaches for by itself port fine: a TDD loop, a migration checkl
 
 ## Try an edit on a past unit
 
-::: warning Experimental `replay` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
-
 ```sh
 awaywork replay 20261006-020000 acme-api-1
 ```
@@ -109,8 +107,6 @@ queue:
 
 - `metadata.deliver: report` makes the skill report instead of commit; without it, it commits. Where its commits go is the rule's [`deliver`](./chains.md#then): a draft PR, or a `push` only a rule can opt in to.
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
-
-  ::: warning Experimental `with` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.
 - Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be.
