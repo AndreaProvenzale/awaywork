@@ -140,7 +140,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   ])
   expect(models).toEqual(['opus', 'sonnet'])
   expect(report.results.map((u) => u.baseline?.used)).toEqual([0.36, undefined, 0.45])
-  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR']
+  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR', 'GH_TOKEN']
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1', '1-fix')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
@@ -611,15 +611,19 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR'] }
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR', 'GH_TOKEN'] }
   expect(jobs).toEqual([
-    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR', 'GH_TOKEN'] },
     { unit: 'acme-api-1-plan', ...sentry },
-    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    {
+      unit: 'acme-api-1-implement',
+      mcp: ['db'],
+      env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR', 'GH_TOKEN'],
+    },
+    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', 'GH_CONFIG_DIR', 'GH_TOKEN'] },
     { unit: 'acme-api-2', ...sentry },
-    { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR', 'GH_TOKEN'] },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR', 'GH_TOKEN'] },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')

@@ -93,13 +93,13 @@ describe('claude provider', () => {
     expect(events.at(-1)).toEqual({ type: 'done', ok: false, turns: 0 })
   })
 
-  it('gives the model no forge token, no withheld secret and no gh login', () => {
+  it('gives the model no forge token, no withheld secret and no gh login, only a placeholder token', () => {
     const env = workerEnv(
       { PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y', ASANA_TOKEN: 'z' },
       '/work',
       ['ASANA_TOKEN'],
     )
-    expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.away/gh' })
+    expect(env).toEqual({ PATH: '/bin', GH_CONFIG_DIR: '/work/.away/gh', GH_TOKEN: 'none' })
   })
 
   it('gives the model no askpass helper or git config from the env, but the ssh agent; setup keeps them', () => {
@@ -117,8 +117,13 @@ describe('claude provider', () => {
       GIT_CONFIG_GLOBAL: '/g',
       SSH_AUTH_SOCK: '/agent.sock',
       GH_CONFIG_DIR: '/work/.away/gh',
+      GH_TOKEN: 'none',
     })
-    expect(commandEnv(env, '/work', [])).toEqual({ ...env, GH_CONFIG_DIR: '/work/.away/gh' })
+    expect(commandEnv(env, '/work', [])).toEqual({
+      ...env,
+      GH_CONFIG_DIR: '/work/.away/gh',
+      GH_TOKEN: 'none',
+    })
   })
 
   it("commits as the identity the action puts in the job's env, with no git config at all", async () => {
