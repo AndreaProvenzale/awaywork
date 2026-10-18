@@ -297,6 +297,11 @@
               },
               "description": "Repos to read, owner/name; * globs, e.g. acme/*"
             },
+            "host": {
+              "description": "GitHub Enterprise host, e.g. github.acme.com; github.com by default",
+              "type": "string",
+              "pattern": "^[^/\\s]+$"
+            },
             "search": {
               "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",
               "type": "array",

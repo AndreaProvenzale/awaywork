@@ -2,9 +2,13 @@ import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 
 /** Runs a command and returns its stdout; injected so tests replay recorded output. */
-export type Exec = (cmd: string, args: string[]) => Promise<string>
+export type Exec = (cmd: string, args: string[], env?: Record<string, string>) => Promise<string>
 
-export const exec: Exec = async (cmd, args) => (await execa(bin(cmd), args)).stdout
+export const exec: Exec = async (cmd, args, env) => (await execa(bin(cmd), args, { env })).stdout
+
+/** `run` with `gh` pointed at a GitHub Enterprise host; unchanged without one. */
+export const onHost = (run: Exec, host?: string): Exec =>
+  host ? (cmd, args) => run(cmd, args, cmd === 'gh' ? { GH_HOST: host } : undefined) : run
 
 export async function graphql<T>(
   run: Exec,

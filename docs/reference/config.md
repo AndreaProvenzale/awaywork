@@ -147,6 +147,7 @@ My PRs, PRs awaiting my review and issues assigned to me, plus any extra searche
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
+| `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
 | `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 
 ## `sources.asana`
