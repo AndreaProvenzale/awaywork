@@ -56,9 +56,9 @@ const model = z
   .describe("Model passed to the provider's binary; default the binary's")
 
 const models = z
-  .union([model, z.array(model).min(1)])
+  .union([model, z.array(model).min(1).max(2)])
   .describe(
-    'A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone',
+    'A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone',
   )
 
 type ProviderConfig = {

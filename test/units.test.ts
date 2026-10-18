@@ -3271,7 +3271,7 @@ it("doesn't write a failed verify through a link it left for the PR body", async
   expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
 })
 
-it('retries a failed unit once on the next model in a fresh clone, publishing only the retry', async () => {
+async function retried(fails: (model?: string) => boolean, models = '[sonnet, opus]') {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-retry-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -3288,7 +3288,7 @@ it('retries a failed unit once on the next model in a fresh clone, publishing on
     ...worker,
     async *run(job) {
       tried.push(job.model)
-      if (job.model === 'sonnet') {
+      if (fails(job.model)) {
         yield { type: 'done', ok: false, turns: 3 }
         return
       }
@@ -3299,7 +3299,7 @@ it('retries a failed unit once on the next model in a fresh clone, publishing on
 providers: [claude]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - { skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }
+  - { skill: fix, where: { checks: failing }, model: { claude: ${models} } }
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
   const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
@@ -3323,6 +3323,11 @@ queue:
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
+  return { tried, report }
+}
+
+it('retries a failed unit once on the next model in a fresh clone, publishing only the retry', async () => {
+  const { tried, report } = await retried((model) => model === 'sonnet')
   expect(tried).toEqual(['sonnet', 'opus'])
   expect(report.results.map((u) => [u.step, u.status, u.outcome?.kind])).toEqual([
     ['1-fix', 'failed', undefined],
@@ -3330,4 +3335,18 @@ queue:
   ])
   expect(formatReport(report)).toContain('failed, 3 turns (retried on the next model)')
   expect(recordAttempts({}, report)).toEqual({})
+  expect(unitStats(report.results).map((s) => s.status)).toEqual(['failed', 'done'])
+})
+
+it('retries only once when the second attempt fails too, and publishes the failed retry', async () => {
+  const { tried, report } = await retried(() => true)
+  expect(tried).toEqual(['sonnet', 'opus'])
+  expect(report.results.map((u) => u.status)).toEqual(['failed', 'failed'])
+  expect(report.results.map((u) => u.retried)).toEqual([true, undefined])
+})
+
+it('does not retry with a single-entry model list', async () => {
+  const { tried, report } = await retried(() => true, '[sonnet]')
+  expect(tried).toEqual(['sonnet'])
+  expect(report.results.map((u) => u.status)).toEqual(['failed'])
 })
