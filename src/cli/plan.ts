@@ -6,7 +6,7 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
-import { limitPlan, planRun, type RunPlan } from '../core/foreman.js'
+import { planRun, type RunPlan } from '../core/foreman.js'
 import { defaultRules } from '../core/queue.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -103,7 +103,7 @@ export async function probeAndPlan(
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providers, sources)
   return {
-    plan: limitPlan(planRun({ config, items, allowances, skills, attempts, skips }), opts),
+    plan: planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
     ctx,
     sources,

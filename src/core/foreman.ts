@@ -78,8 +78,11 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
+  /** Plans only the units of a repo glob and a 1-based rule, under the full run's caps. */
+  only?: { repo?: string; rule?: number }
 }): RunPlan {
-  const { config, allowances, skips = {}, now = Date.now() } = input
+  const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
+  const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
   const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
@@ -97,6 +100,7 @@ export function planRun(input: {
     const items = group.map((e) => e.item)
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
+    if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
     const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
     const skippedByUser = items
       .map((item) => `${item.source}:${item.key}`)
@@ -139,6 +143,7 @@ export function planRun(input: {
       skip('no repo: no linked PR or repo field')
       continue
     }
+    if (onlyRepo && !onlyRepo.test(repo)) continue
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
     const branch = renderBranch(template, items[0] as Item)
     if (!isValidRef(branch)) {
@@ -258,16 +263,6 @@ export function planRun(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
-}
-
-/** The plan's units for a repo glob (`*` matches within a segment, any case) and a 1-based rule; caps and routing stay as planned. */
-export function limitPlan(plan: RunPlan, only: { repo?: string; rule?: number }): RunPlan {
-  const repo = only.repo === undefined ? undefined : globToRegExp(only.repo)
-  const units = plan.units.filter(
-    (p) =>
-      (!repo || repo.test(p.unit.repo)) && (only.rule === undefined || p.rule + 1 === only.rule),
-  )
-  return { ...plan, units }
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {

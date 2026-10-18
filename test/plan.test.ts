@@ -14,7 +14,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { limitPlan, planRun } from '../src/core/foreman.js'
+import { planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
@@ -115,16 +115,41 @@ describe('plan', () => {
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
   })
 
-  it('limits the plan to a repo glob or a rule, after the caps are applied', () => {
-    const items = [githubPr(1, { checks: 'failing' }), issue]
-    const full = plan(example, items, { claude: week(0.36), codex: null })
-    const ids = (p: typeof full) => p.units.map((u) => u.unit.id)
-    expect(ids(limitPlan(full, { rule: 2 }))).toEqual(['acme-api-5'])
-    expect(ids(limitPlan(full, { repo: 'ACME/*' }))).toEqual(ids(full))
-    expect(ids(limitPlan(full, { repo: 'acme/web' }))).toEqual([])
-    expect(ids(limitPlan(full, { repo: '' }))).toEqual([])
-    expect(ids(limitPlan(full, { repo: 'acme/api', rule: 1 }))).toEqual(['acme-api-1'])
-    expect(limitPlan(full, {}).units).toEqual(full.units)
+  it('plans only a repo glob or a rule, under the full run caps', () => {
+    const config = parseConfig(`
+limits: { units: 2, units_per_repo: 1 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: fix, where: { checks: failing } }
+  - { skill: implement, where: { type: issue } }
+`)
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { checks: 'failing' }),
+      inRepo('acme/web', 3),
+      inRepo('acme/ops', 4),
+      inRepo('acme/ops', 5),
+    ]
+    const allowances = Object.fromEntries(
+      config.providers.map((p) => [p.id, allowance(p.budget, week(0.1), now, config.windows)]),
+    )
+    const ids = (only: { repo?: string; rule?: number }) =>
+      planRun({
+        config,
+        items,
+        allowances,
+        skills: { builtin: builtinSkills },
+        now,
+        only,
+      }).units.map((u) => u.unit.id)
+    expect(ids({})).toEqual(['acme-api-1', 'acme-web-3'])
+    expect(ids({ repo: 'ACME/ops' })).toEqual(['acme-ops-4'])
+    expect(ids({ rule: 2 })).toEqual(['acme-web-3', 'acme-ops-4'])
+    expect(ids({ repo: 'acme/*', rule: 1 })).toEqual(['acme-api-1'])
+    expect(ids({ repo: '' })).toEqual([])
   })
 
   it('uses the default queue for configured sources only', () => {
