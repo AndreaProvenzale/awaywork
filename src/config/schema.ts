@@ -604,6 +604,12 @@ export const configSchema = z
               path: [...stepAt, 'model', p],
               message: `provider "${p}" is not configured`,
             })
+          else if (!(p in providers))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...stepAt, 'model', p],
+              message: `no model for the command provider "${p}": put it in its command`,
+            })
       })
       const scope = r.source ? [r.source] : sourceIds
       checkWhere(r.where, [...at, 'where'])

@@ -127,4 +127,12 @@ describe('command provider', () => {
   it('rejects a model', () => {
     expect(() => parseConfig(config('gemini: { command: gemini -p, model: pro }'))).toThrow()
   })
+
+  it('rejects a rule model for it', () => {
+    const text = config(
+      'gemini: { command: gemini -p }',
+      `${base}\nqueue:\n  - skill: review\n    model: { gemini: pro }\n`,
+    )
+    expect(problems(text).join('\n')).toContain('put it in its command')
+  })
 })
