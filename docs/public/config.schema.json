@@ -413,7 +413,7 @@
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[\\w.-]+(\\/[\\w.-]+)+$"
               }
             },
             "token_env": {
@@ -483,11 +483,11 @@
     },
     "repos": {
       "default": {},
-      "description": "Per-repo settings, keyed by owner/name",
+      "description": "Per-repo settings, keyed by owner/name (a forge may nest groups)",
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "pattern": "^[^/\\s]+\\/[^/\\s]+$"
+        "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
       },
       "additionalProperties": {
         "type": "object",

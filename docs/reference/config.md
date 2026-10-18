@@ -29,7 +29,7 @@ with:
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
-| `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
+| `repos` | map | `{}` | Per-repo settings, keyed by owner/name (a forge may nest groups) |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
