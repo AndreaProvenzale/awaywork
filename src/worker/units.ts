@@ -193,6 +193,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 reports,
                 loops,
                 stack,
+                last && at === slices - 1,
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })

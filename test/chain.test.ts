@@ -244,6 +244,9 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
         '',
         '</details>',
         '',
+        '',
+        'Closes acme/api#1',
+        '',
       ].join('\n'),
     },
   ])
@@ -445,7 +448,7 @@ queue:
     {
       head: 'away/acme-api-1-2',
       base: 'away/acme-api-1',
-      body: `Add rate limits\n\nDone.\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
+      body: `Add rate limits\n\nDone.\n\nCloses acme/api#1\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
     },
   ])
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])

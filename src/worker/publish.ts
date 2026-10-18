@@ -39,6 +39,7 @@ export async function publish(
   runId: string,
   start: string,
   stack?: Stack,
+  last = true,
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -51,7 +52,7 @@ export async function publish(
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
     await git(repo, 'fetch', '-q', '--no-tags', dir, '+HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text, stack?.onto)
+    return await deliver(unit, repo, forge, runId, start, file, text, stack?.onto, last)
   } finally {
     if (!stack) await rm(repo, { recursive: true, force: true })
   }
@@ -66,6 +67,7 @@ async function deliver(
   file: string,
   text: string,
   onto?: string,
+  last = true,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   // The harness forbids rebasing: a branch that dropped `start` holds work that isn't the unit's alone.
@@ -135,6 +137,10 @@ async function deliver(
   await forge.push(repo, unit.branch, { repo: unit.repo })
   // The items' link lines let their trackers link the PR, whatever its branch is called.
   const notes = [...new Set(unit.items.flatMap((i) => i.link ?? []))]
+  // GitHub closes an issue when the last slice merges into the default branch, after the retarget.
+  if (last)
+    for (const i of unit.items)
+      if (i.source === 'github' && i.type === 'issue') notes.push(`Closes ${i.key}`)
   if (unit.stackedOn) notes.push(`Stacked on ${unit.stackedOn}: merge that first.`)
   if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
   const url = await forge.draftPr(unit.repo, unit.branch, unit.base, file, runId, unit.items)

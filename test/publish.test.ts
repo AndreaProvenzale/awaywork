@@ -135,6 +135,25 @@ describe('publish', () => {
     expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'away/FAKE-1']])
   })
 
+  it('closes a GitHub issue on the last slice only', async () => {
+    await commit('first')
+    await body('Fix the thing')
+    const forge = fakeForge()
+    const bodies: string[] = []
+    forge.draftPr = async (_repo, head, _base, bodyFile) => {
+      bodies.push(await readFile(bodyFile, 'utf8'))
+      return head
+    }
+    const issue = fakeItem({ source: 'github', type: 'issue', key: 'acme/api#7' })
+    const task = fakeItem({ source: 'github', type: 'pr', key: 'acme/api#8' })
+    const slice = { ...unit(), items: [issue, task] }
+    await publish(slice, dir, forge, 'r1', start, undefined, false)
+    expect(bodies[0]).toBe('Fix the thing')
+    await body('Fix the thing')
+    await publish({ ...slice, branch: 'away/other' }, dir, forge, 'r2', start)
+    expect(bodies[1]).toBe('Fix the thing\n\nCloses acme/api#7\n')
+  })
+
   it('still opens the PR when the forge has no stacks for it', async () => {
     await commit('first')
     await body('Fix the thing')

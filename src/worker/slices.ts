@@ -85,6 +85,7 @@ export async function publishSlice(
   reports: StepReport[],
   loops: Record<number, OpenLoop>,
   stack?: Stack,
+  last = true,
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
@@ -100,7 +101,7 @@ export async function publishSlice(
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
   await verify(deps, unit, dir, from)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-  return publish(unit, dir, deps.forge, deps.runId, from, stack)
+  return publish(unit, dir, deps.forge, deps.runId, from, stack, last)
 }
 
 /** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. */
