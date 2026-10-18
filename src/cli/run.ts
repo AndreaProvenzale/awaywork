@@ -1,16 +1,17 @@
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, remoteDir, runsDir, skillsDirOf } from '../config/paths.js'
+import { attemptsPath, remoteDir, runLockPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
+import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { githubForge } from '../forge/github.js'
+import { githubForge, githubHost } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
@@ -18,9 +19,17 @@ import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
-import { probeAndPlan } from './plan.js'
+import { probeAndPlan, ruleNumber } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
+
+type RunOptions = {
+  dryRun?: boolean
+  unit?: string
+  repo?: string
+  rule?: number
+  scheduled?: boolean
+}
 
 export function runCommand(program: Command): void {
   program
@@ -28,9 +37,12 @@ export function runCommand(program: Command): void {
     .description('plan the units, start a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
+    .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
+    .option('--rule <n>', 'run only units of this queue rule, counted from 1', ruleNumber)
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
-    .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
+    .action(async (opts: RunOptions) => {
       console.log(`awaywork run at ${localTime(new Date())}`)
+      let release: (() => Promise<void>) | undefined
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
@@ -44,10 +56,22 @@ export function runCommand(program: Command): void {
           )
           return
         }
+        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+        if (!opts.dryRun) {
+          const lock = await takeRunLock(runLockPath, runId)
+          if (!('release' in lock)) {
+            console.error(
+              `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
+            )
+            process.exitCode = 1
+            return
+          }
+          release = lock.release
+        }
         const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
           config,
           skillsDirOf(path),
-          { retry: !!opts.unit },
+          { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
         )
         for (const warning of warnings) console.error(`warning: ${warning}`)
         if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
@@ -55,7 +79,11 @@ export function runCommand(program: Command): void {
           process.exitCode = 1
           return
         }
-        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+        if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)) {
+          console.error('no unit matches --repo/--rule; awaywork plan lists them')
+          process.exitCode = 1
+          return
+        }
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
         if (process.env.GITHUB_OUTPUT)
@@ -64,7 +92,9 @@ export function runCommand(program: Command): void {
         console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
         const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const report = await runUnits({
           config,
           configDir: dirname(path),
@@ -76,7 +106,7 @@ export function runCommand(program: Command): void {
           until,
           providers,
           sources,
-          forge: githubForge(),
+          forge: githubForge(undefined, githubHost(config)),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })
@@ -91,6 +121,8 @@ export function runCommand(program: Command): void {
         }
       } catch (e) {
         reportConfigError(e)
+      } finally {
+        await release?.()
       }
     })
 
@@ -149,7 +181,27 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
   if (text === undefined) {
     console.error(`no report for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`)
     process.exitCode = 1
+    const steps = picked ? await startedSteps(picked.dir) : []
+    const running = steps.pop()
+    if (running) {
+      console.log(`Done so far: ${steps.map((s) => s.name).join(', ') || 'nothing'}`)
+      console.log(`Running (or cut short): ${running.name}`)
+      console.log(`Its stream: ${running.log}`)
+    }
   } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
+}
+
+/** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */
+async function startedSteps(runDir: string): Promise<{ name: string; log: string }[]> {
+  const unitsDir = join(runDir, 'units')
+  const steps: { name: string; log: string; at: number }[] = []
+  for (const unit of await readdir(unitsDir).catch(() => []))
+    for (const step of await readdir(join(unitsDir, unit)).catch(() => [])) {
+      const log = join(unitsDir, unit, step, 'worker.log')
+      const info = await stat(log).catch(() => undefined)
+      if (info) steps.push({ name: `${unit}/${step}`, log, at: info.mtimeMs })
+    }
+  return steps.sort((a, b) => a.at - b.at)
 }
 
 /** The runs the control repo in this directory uploaded: none outside one, and none with a warning when GitHub fails. */

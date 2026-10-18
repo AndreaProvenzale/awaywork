@@ -253,6 +253,20 @@ describe('github source', () => {
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })
   })
 
+  it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
+    const mentioned = JSON.parse(fixture('search-assigned.json'))
+    mentioned.data.search.nodes = [{ ...mentioned.data.search.nodes[0], id: 'I_new', number: 9 }]
+    const run = recorded([
+      [/q=is:open archived:false mentions:@me/, JSON.stringify(mentioned)],
+      ...githubRoutes(),
+    ])
+    const found = await githubSource(run).items(
+      { repos: ['acme/*'], search: ['mentions:@me'] },
+      ctx,
+    )
+    expect(found.find((i) => i.id === 'I_new')?.fields.mine).toBe(false)
+  })
+
   it('warns when a search has more results than one page', async () => {
     const many = fixture('search-assigned.json').replace('"issueCount": 2', '"issueCount": 150')
     const run = recorded([[/assignee:@me/, many], ...githubRoutes()])
@@ -392,6 +406,44 @@ describe('github source', () => {
         'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
         "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
     )
+  })
+})
+
+describe('github enterprise host', () => {
+  const hosted = () => {
+    const seen: (string | undefined)[] = []
+    const run: Exec = async (cmd, _args, env) => {
+      seen.push(`${cmd}:${env?.GH_HOST}`)
+      return cmd === 'gh' ? '[]' : ''
+    }
+    return Object.assign(run, { seen })
+  }
+
+  it('points gh at the host and clones from it', async () => {
+    const calls: string[][] = []
+    const run: Exec = async (cmd, args, env) => {
+      calls.push([cmd, env?.GH_HOST ?? '', ...args])
+      return '[]'
+    }
+    const forge = githubForge(run, 'git.acme.com')
+    await forge.branchExists('acme/api', 'x')
+    await forge.clone('acme/api', '', '/work/u1')
+    expect(calls[0]?.slice(0, 2)).toEqual(['gh', 'git.acme.com'])
+    expect(calls[1]).toContain('https://git.acme.com/acme/api.git')
+    expect(calls[1]?.[1]).toBe('')
+  })
+
+  it('reads the source through the host, and leaves gh alone without one', async () => {
+    const run = hosted()
+    await githubSource(run)
+      .items({ repos: ['acme/*'], host: 'git.acme.com' }, ctx)
+      .catch(() => {})
+    expect(new Set(run.seen)).toEqual(new Set(['gh:git.acme.com']))
+    const plain = hosted()
+    await githubSource(plain)
+      .items({ repos: ['acme/*'] }, ctx)
+      .catch(() => {})
+    expect(new Set(plain.seen)).toEqual(new Set(['gh:undefined']))
   })
 })
 

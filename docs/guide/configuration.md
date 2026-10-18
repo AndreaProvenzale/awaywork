@@ -108,11 +108,13 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 
 | Source | Keys |
 | --- | --- |
-| `github` | `repos`: `owner/name` globs such as `acme/*` |
+| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false` (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to |
 | `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
+
+::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 Every source but `github` also takes a [`link`](#linking-prs).
 

@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
-import { githubForge } from '../forge/github.js'
+import { githubForge, githubHost } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { replayUnit } from '../worker/replay.js'
@@ -19,7 +19,9 @@ export function replayCommand(program: Command): void {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
         const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const result = await replayUnit({
           config,
           configDir: dirname(path),
@@ -32,7 +34,7 @@ export function replayCommand(program: Command): void {
               return source ? [[id, source]] : []
             }),
           ),
-          forge: githubForge(),
+          forge: githubForge(undefined, githubHost(config)),
           ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })
