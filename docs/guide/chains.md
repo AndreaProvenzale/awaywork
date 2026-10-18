@@ -170,7 +170,7 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
 - A stacked slice whose first step commits nothing ends the chain; the slices before it stay published. So does a stacked step whose [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end ends the chain too, and the open slice publishes what it has. Ctrl-C drops the open slice, and the ones that already ended stay published.
 - `when: { changed }` still diffs from where the chain started, so it sees the earlier slices' commits too.
 - Each slice counts once against the [caps](./configuration.md#windows-limits-and-budget), as soon as its first step has a provider. A chain keeps the slices that fit and leaves out the rest, naming the cap under it in `plan` and on its row in the report.
-- `plan` starts a slice with `stack` where the other steps say `then`, and names its branch when it renders one of its own, e.g. `stack docs (user) on claude, branch docs/acme-api-12`:
+- `plan` starts a slice with `stack` where the other steps say `then`, and names its branch on that line when no earlier slice renders the same name, which would only get its suffix at run time, e.g. `stack docs (user) on claude, branch docs/acme-api-12`:
 
   ```
   Units

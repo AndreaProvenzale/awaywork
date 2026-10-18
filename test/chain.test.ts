@@ -538,6 +538,25 @@ it('publishes a stacked slice on the branch its own type names', async () => {
   expect(formatPlan(plan)).toContain('     stack fix (built-in) on claude, branch fix/acme-api-1')
 })
 
+it('names a stacked slice in plan only when no earlier slice took its name', async () => {
+  const { opened, plan } = await run(
+    "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ loop: [fix, review], until: { verdict: approve }, max: 1, stack: true }, { skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    worker(),
+  )
+  expect(opened.map((o) => o.head)).toEqual([
+    'feat/acme-api-1',
+    'fix/acme-api-1',
+    'fix/acme-api-1-2',
+  ])
+  expect(formatPlan(plan).split('\n').slice(-4)).toEqual([
+    '     stack loop fix ⇄ review until verdict approve, at most 1 round, branch fix/acme-api-1',
+    '       fix (built-in) on claude',
+    '       review (built-in) on claude',
+    '     stack fix (built-in) on claude',
+  ])
+})
+
 it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
   const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
   const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
