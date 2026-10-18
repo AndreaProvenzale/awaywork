@@ -1072,7 +1072,7 @@ queue: [{ skill: fix, deliver: push, then: review }]
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
 })
 
-it('leaves a push the forge refuses unpublished, not an error, and keeps its summary', async () => {
+it('leaves a push the forge refuses unpublished, not an error', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-push-refused-'))
   const { origin, forge } = await originForge(root)
   await git(origin, 'branch', 'feature-1')

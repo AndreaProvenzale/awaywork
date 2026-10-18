@@ -676,7 +676,9 @@ describe('github forge', () => {
     expect(await push('main', 4)).toBe('main is the default branch')
     expect(await push('feature-1', 4)).toBe("#4's branch is main")
     expect(await push('feature-1', 5)).toBe('#5 has auto-merge on')
-    expect(await push('feature-1', 6)).toBe('it is at def5678, the clone started from abc1234')
+    expect(await push('feature-1', 6)).toBe(
+      'feature-1 is at def5678, the clone started from abc1234',
+    )
     expect(await push('feature-1', 7)).toBe("#7 isn't yours")
     expect(await push('feature-1', 8)).toBe(
       "feature-1 is also the branch of #12, which isn't yours",

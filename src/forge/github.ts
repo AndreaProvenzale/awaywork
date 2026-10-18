@@ -213,7 +213,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       })
       const p = r.pullRequest
       const shared = r.pullRequests.nodes.find((o) => !o.isCrossRepository && !o.viewerDidAuthor)
-      const moved = `it is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+      const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
       const checks: [boolean, string][] = [
         [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
         [!p.viewerDidAuthor, `#${pr} isn't yours`],
