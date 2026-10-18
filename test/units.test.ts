@@ -696,7 +696,7 @@ async function originForge(root: string) {
     },
     fastForward: async (dir: string, branch: string, from: string) => {
       const head = await git(origin, 'rev-parse', `refs/heads/${branch}`)
-      if (head.stdout !== from) throw new Error(`${branch} moved`)
+      if (head.stdout !== from) return `${branch} moved`
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
     draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
@@ -1070,6 +1070,57 @@ queue: [{ skill: fix, deliver: push, then: review }]
     unpublished: true,
   })
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
+})
+
+it('leaves a push the forge refuses unpublished, not an error, and keeps its summary', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-refused-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix, deliver: push }]
+`)
+  const plan = planRun({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const meanwhile: Provider = {
+    ...committer,
+    async *run(job, signal) {
+      yield* committer.run(job, signal)
+      const tree = (await git(origin, 'rev-parse', 'feature-1^{tree}')).stdout
+      const moved = await git(origin, 'commit-tree', tree, '-p', 'feature-1', '-m', 'moved')
+      await git(origin, 'update-ref', 'refs/heads/feature-1', moved.stdout)
+    },
+  }
+  const runDir = join(root, 'run')
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir,
+    dryRun: false,
+    providers: { claude: meanwhile },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results[0]).toMatchObject({
+    status: 'done',
+    outcome: { kind: 'none', reason: 'feature-1 moved, not pushed', unpublished: true },
+  })
+  expect(formatReport(report)).toContain('feature-1 moved, not pushed')
+  expect(await readFile(join(runDir, 'units/acme-api-1/out/pr.md'), 'utf8')).toContain(
+    'Work on acme-api-1',
+  )
+  expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('moved\ninit')
 })
 
 it('runs setup once per chain, on its clean base before any worker', async () => {

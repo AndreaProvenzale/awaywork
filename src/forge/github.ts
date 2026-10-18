@@ -230,7 +230,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
         (JSON.parse(await run('gh', ['api', path])).protected
           ? `${branch} is protected`
           : undefined)
-      if (refused) throw new Error(`refusing to push onto ${branch} on ${repo}: ${refused}`)
+      if (refused) return refused
       await pushHead(run, remote, dir, repo, branch, from)
     },
 

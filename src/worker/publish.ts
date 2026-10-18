@@ -125,7 +125,11 @@ async function deliver(
   )
   if (push && pr) {
     // The forge refuses unless the PR's head is still `start`.
-    await forge.fastForward(repo, unit.base, start, { repo: unit.repo, pr: pr.number })
+    const refused = await forge.fastForward(repo, unit.base, start, {
+      repo: unit.repo,
+      pr: pr.number,
+    })
+    if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
     return { kind: 'pushed', branch: unit.base, commits: commits.length, text, head }
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })

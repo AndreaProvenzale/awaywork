@@ -671,23 +671,19 @@ describe('github forge', () => {
     const forge = githubForge(run)
     const push = (branch: string, pr: number) =>
       forge.fastForward('/work/u1', branch, 'abc1234', { repo: 'acme/api', pr })
-    await expect(push('feature-1', 2)).rejects.toThrow(
-      'refusing to push onto feature-1 on acme/api: #2 is merged',
-    )
-    await expect(push('feature-1', 3)).rejects.toThrow("#3's branch is on a fork")
-    await expect(push('main', 4)).rejects.toThrow('main is the default branch')
-    await expect(push('feature-1', 4)).rejects.toThrow("#4's branch is main")
-    await expect(push('feature-1', 5)).rejects.toThrow('#5 has auto-merge on')
-    await expect(push('feature-1', 6)).rejects.toThrow(
-      'it is at def5678, the clone started from abc1234',
-    )
-    await expect(push('feature-1', 7)).rejects.toThrow("#7 isn't yours")
-    await expect(push('feature-1', 8)).rejects.toThrow(
+    expect(await push('feature-1', 2)).toBe('#2 is merged')
+    expect(await push('feature-1', 3)).toBe("#3's branch is on a fork")
+    expect(await push('main', 4)).toBe('main is the default branch')
+    expect(await push('feature-1', 4)).toBe("#4's branch is main")
+    expect(await push('feature-1', 5)).toBe('#5 has auto-merge on')
+    expect(await push('feature-1', 6)).toBe('it is at def5678, the clone started from abc1234')
+    expect(await push('feature-1', 7)).toBe("#7 isn't yours")
+    expect(await push('feature-1', 8)).toBe(
       "feature-1 is also the branch of #12, which isn't yours",
     )
-    await expect(push('release/9', 9)).rejects.toThrow('release/9 is protected')
+    expect(await push('release/9', 9)).toBe('release/9 is protected')
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
-    await push('feature-1', 1)
+    expect(await push('feature-1', 1)).toBeUndefined()
     expect(run.calls.at(-1)).toEqual([
       'git',
       '-C',
