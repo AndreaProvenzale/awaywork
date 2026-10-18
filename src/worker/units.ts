@@ -308,6 +308,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const prompt = await prepareWorkspace({
           ...input,
           unit,
+          secrets,
           dir,
           plugin,
           provider,

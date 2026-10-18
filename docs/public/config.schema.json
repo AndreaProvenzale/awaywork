@@ -309,6 +309,30 @@
                 "type": "string",
                 "minLength": 1
               }
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets the worker never sees"
             }
           },
           "required": [
@@ -347,6 +371,30 @@
               "description": "Env var holding the Asana token",
               "type": "string"
             },
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets the worker never sees"
+            },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
               "type": "string"
@@ -376,6 +424,30 @@
               "default": "LINEAR_API_KEY",
               "description": "Env var holding the Linear personal API key",
               "type": "string"
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets the worker never sees"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
@@ -420,6 +492,30 @@
               "default": "JIRA_API_TOKEN",
               "description": "Env var holding the Atlassian API token",
               "type": "string"
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets the worker never sees"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",

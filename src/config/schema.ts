@@ -4,7 +4,7 @@ import { headerSecret } from '../core/mcp.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, linkTemplate } from '../sources/command.js'
+import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -84,12 +84,15 @@ const providerEntry = z.union([providerName, providerOverride], {
     typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
 })
 
-/** A built-in source's config with its `link`, unless its items link their PRs themselves. */
+/** A built-in source's config with its `context` and its `link`, unless its items link their PRs themselves. */
 function builtinConfig(s: Source): z.ZodObject {
-  if (s.link === false) return s.configSchema
+  const withContext = s.configSchema
+    .extend({ context: contextCommand.optional() })
+    .describe(s.configSchema.description ?? '')
+  if (s.link === false) return withContext
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
-  return s.configSchema.extend({ link }).describe(s.configSchema.description ?? '')
+  return withContext.extend({ link }).describe(s.configSchema.description ?? '')
 }
 
 const sourcesConfig = z

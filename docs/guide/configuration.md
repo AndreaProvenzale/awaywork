@@ -118,6 +118,19 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 
 Every source but `github` also takes a [`link`](#linking-prs).
 
+Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in `.away/context/<item>/extra/` next to `item.md`, and the worker reads what it writes there. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
+
+```yaml
+sources:
+  github:
+    repos: [acme/*]
+    context:
+      command: ./fetch-sentry.sh   # reads $AWAYWORK_ITEM_URL, writes sentry.md
+      secrets: [SENTRY_TOKEN]      # only this command sees it
+```
+
+Its `secrets` are withheld from the worker like a repo's. It gets two minutes and 1 MB: a failure, a timeout, a symlink or too much output is logged and the unit runs without `extra/`. It doesn't run on an untrusted author's PR. A custom source does this inside its own `command`.
+
 Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
 Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only.
@@ -187,6 +200,7 @@ Every command in your config that touches a unit's clone, side by side. All of t
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
 | `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](./chains.md#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
+| `sources.<id>.context.command` | Per item, in a fresh clone before the first step's agent, in `extra/` of the item's context; not on an untrusted author's PR | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes, 1 MB or a symlink in the output counts as a failure |
 | `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
 | `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
@@ -362,6 +376,7 @@ The config holds env var **names** only. Values come from the environment or `~/
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |
 | A custom source's `secrets` | That source's command |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
+| A built-in source's `context.secrets` | That source's `context` command |
 | Your `notify.secrets` | The notify command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |
 | Your `mcp.<name>.secrets` | That MCP server, for the units whose rule names it |

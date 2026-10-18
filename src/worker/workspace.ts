@@ -19,6 +19,7 @@ import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
+import { type ContextSource, contextSecrets, runContext } from './context.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
 export const WORK_DIR = '.away'
@@ -49,8 +50,11 @@ interface WorkspaceInput {
   configDir: string
   forge: Forge
   sources: Record<string, Source>
+  /** Every secret the config names, from `configSecrets`. */
+  secrets?: string[]
   provider: Provider
   ctx: Ctx
+  signal?: AbortSignal
   skillDirs?: { user: string; builtin: string }
   /** Where the skills go as a plugin, outside the clone, for a provider without `skillsDir`. */
   plugin: string
@@ -126,6 +130,26 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     if (!w.reuse && source) {
       await mkdir(join(dir, context), { recursive: true })
       await source.prefetch(item, join(dir, context), w.ctx)
+      const fetch = (w.config.sources[item.source] as ContextSource | undefined)?.context
+      if (fetch && !unit.untrusted) {
+        const own = fetch.secrets.filter((name) => w.ctx.env[name] !== undefined)
+        const env = {
+          ...commandEnv(w.ctx.env, dir, w.secrets ?? []),
+          ...Object.fromEntries(own.map((name) => [name, w.ctx.env[name]])),
+        }
+        const failed = await runContext(
+          fetch.command,
+          item,
+          join(dir, context, 'extra'),
+          env,
+          w.ctx.log,
+          {
+            secrets: own,
+            signal: w.signal,
+          },
+        )
+        if (failed) w.ctx.log(failed)
+      }
     }
     items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
   }
@@ -256,6 +280,7 @@ export function configSecrets(
   return [
     ...Object.values(providers).flatMap((p) => p.secrets),
     ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+    ...contextSecrets(config),
     ...(config.notify?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),

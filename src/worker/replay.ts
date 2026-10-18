@@ -76,8 +76,10 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const plugin = join(root, 'plugin')
   await mkdir(root, { recursive: true })
   const log = (line: string) => r.ctx.log(line)
+  const secrets = configSecrets(r.config, r.providers, r.sources)
   const prompt = await prepareWorkspace({
     ...r,
+    secrets,
     unit,
     dir,
     provider,
@@ -88,7 +90,6 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   })
 
   const entry = r.config.providers.find((c) => c.id === state.provider)
-  const secrets = configSecrets(r.config, r.providers, r.sources)
   const withheld = secrets.filter((name) => !provider.secrets.includes(name))
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
   const setup = r.config.repos[unit.repo]?.setup
