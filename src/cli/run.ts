@@ -19,9 +19,17 @@ import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
-import { probeAndPlan } from './plan.js'
+import { probeAndPlan, ruleNumber } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
+
+type RunOptions = {
+  dryRun?: boolean
+  unit?: string
+  repo?: string
+  rule?: number
+  scheduled?: boolean
+}
 
 export function runCommand(program: Command): void {
   program
@@ -29,8 +37,10 @@ export function runCommand(program: Command): void {
     .description('plan the units, start a worker per unit and publish draft PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
+    .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
+    .option('--rule <n>', 'run only units of this queue rule, counted from 1', ruleNumber)
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
-    .action(async (opts: { dryRun?: boolean; unit?: string; scheduled?: boolean }) => {
+    .action(async (opts: RunOptions) => {
       console.log(`awaywork run at ${localTime(new Date())}`)
       let release: (() => Promise<void>) | undefined
       try {
@@ -61,11 +71,16 @@ export function runCommand(program: Command): void {
         const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
           config,
           skillsDirOf(path),
-          { retry: !!opts.unit },
+          { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
         )
         for (const warning of warnings) console.error(`warning: ${warning}`)
         if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
           console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
+          process.exitCode = 1
+          return
+        }
+        if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)) {
+          console.error('no unit matches --repo/--rule; awaywork plan lists them')
           process.exitCode = 1
           return
         }

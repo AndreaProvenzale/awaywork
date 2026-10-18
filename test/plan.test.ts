@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
-import { probeAndPlan } from '../src/cli/plan.js'
+import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -113,6 +113,43 @@ describe('plan', () => {
         asana T-8: no repo: no linked PR or repo field"
     `)
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
+  })
+
+  it('plans only a repo glob or a rule, under the full run caps', () => {
+    const config = parseConfig(`
+limits: { units: 2, units_per_repo: 1 }
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: fix, where: { checks: failing } }
+  - { skill: implement, where: { type: issue } }
+`)
+    const inRepo = (repo: string, n: number) =>
+      fakeItem({ source: 'github', key: `${repo}#${n}`, type: 'issue', fields: { repo } })
+    const items = [
+      githubPr(1, { checks: 'failing' }),
+      githubPr(2, { checks: 'failing' }),
+      inRepo('acme/web', 3),
+      inRepo('acme/ops', 4),
+      inRepo('acme/ops', 5),
+    ]
+    const allowances = Object.fromEntries(
+      config.providers.map((p) => [p.id, allowance(p.budget, week(0.1), now, config.windows)]),
+    )
+    const ids = (only: { repo?: string; rule?: number }) =>
+      planRun({
+        config,
+        items,
+        allowances,
+        skills: { builtin: builtinSkills },
+        now,
+        only,
+      }).units.map((u) => u.unit.id)
+    expect(ids({})).toEqual(['acme-api-1', 'acme-web-3'])
+    expect(ids({ repo: 'ACME/ops' })).toEqual(['acme-ops-4'])
+    expect(ids({ rule: 2 })).toEqual(['acme-web-3', 'acme-ops-4'])
+    expect(ids({ repo: 'acme/*', rule: 1 })).toEqual(['acme-api-1'])
+    expect(ids({ repo: '' })).toEqual([])
   })
 
   it('uses the default queue for configured sources only', () => {
@@ -1100,4 +1137,11 @@ describe('plan --json', () => {
     expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
     expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
   })
+})
+
+describe('ruleNumber', () => {
+  it('takes whole numbers from 1', () => expect(ruleNumber('3')).toBe(3))
+  it.each(['0', '-1', '1.5', 'abc'])('rejects %s', (text) =>
+    expect(() => ruleNumber(text)).toThrow('a rule number from 1'),
+  )
 })
