@@ -19,6 +19,8 @@ export interface UnitResult {
   verdict?: string
   /** Skipped because its `when` didn't hold, or after a step that left nothing: not a failure. */
   passedOver?: true
+  /** Failed, and the chain ran again on the next model: this step is the first attempt's. */
+  retried?: true
   /** The step's folder under its chain's `units/<id>/`, e.g. `2-review`, once it started. */
   step?: string
   /** What the step left for the chain, e.g. `2 commits and a report`. */
@@ -60,7 +62,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
       out.push(`| ${escaped.join(' | ').replaceAll('\n', ' ')} |`)
     }
     chains(r).forEach((chain, i) => {
-      const { head, steps, skills, slices } = chain
+      const { head, steps, retried, skills, slices } = chain
       row([i + 1, head.planned.unit.id, skills, providers(steps), ...chainCells(chain)])
       const stepRow = (s: UnitResult, indent: string) =>
         row([
@@ -71,6 +73,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
           stepStatus(s),
           stepResult(s),
         ])
+      for (const s of retried) stepRow(s, '')
       // A chain of one step is its own row; a longer one lists every step that was listed under it, by slice when it has several.
       if (slices.length > 1)
         slices.forEach((slice, k) => {
@@ -78,7 +81,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
           row(['', `└ slice ${k + 1}`, slice.skills, providers(slice.steps), status(u), result(u)])
           for (const s of slice.steps) stepRow(s, '  ')
         })
-      else if (steps.length > 1) for (const s of steps) stepRow(s, '')
+      else if (steps.length > 1 || retried.length > 0) for (const s of steps) stepRow(s, '')
     })
   }
   if (r.plan.skipped.length > 0) {
@@ -114,12 +117,13 @@ export function summarize(r: RunReport, reportPath: string): string {
     `${indent}${s.planned.unit.id}  ${stepStatus(s)}  ${stepResult(s)}`
   const rows = listed.flatMap((chain) => [
     `  ${chain.head.planned.unit.id}  ${chainCells(chain).join('  ')}`,
+    ...chain.retried.map((s) => line('    ', s)),
     ...(chain.slices.length > 1
       ? chain.slices.flatMap(({ steps }, k) => [
           `    slice ${k + 1}  ${status(chainOf(steps))}  ${result(chainOf(steps))}`,
           ...steps.map((s) => line('      ', s)),
         ])
-      : chain.steps.length > 1
+      : chain.steps.length > 1 || chain.retried.length > 0
         ? chain.steps.map((s) => line('    ', s))
         : []),
   ])
@@ -129,6 +133,8 @@ export function summarize(r: RunReport, reportPath: string): string {
 interface Chain {
   head: UnitResult
   steps: UnitResult[]
+  /** The steps of a first attempt that failed and ran again on the next model. */
+  retried: UnitResult[]
   skills: string
   slices: { steps: UnitResult[]; skills: string }[]
 }
@@ -136,17 +142,19 @@ interface Chain {
 /** The run's results grouped by chain and slice, with what the plan chained: e.g. `implement → loop(review ⇄ fix)`. */
 function chains(r: RunReport): Chain[] {
   return r.results
-    .filter((u) => !u.planned.chain)
+    .filter((u) => !u.planned.chain && !u.retried)
     .map((head) => {
       const { id } = head.planned.unit
-      const steps = r.results.filter((u) => u.planned.unit.id === id || u.planned.chain === id)
+      const ofChain = r.results.filter((u) => u.planned.unit.id === id || u.planned.chain === id)
+      const steps = ofChain.filter((u) => !u.retried)
+      const retried = ofChain.filter((u) => u.retried)
       const planned = r.plan.units.filter((p) => p.unit.id === id || p.chain === id)
       const plannedSlices = bySlice(planned, (p) => p.slice)
       const slices = bySlice(steps, (u) => u.planned.slice).map((steps, k) => ({
         steps,
         skills: describeChain(plannedSlices[k] ?? []),
       }))
-      return { head, steps, skills: describeChain(planned), slices }
+      return { head, steps, retried, skills: describeChain(planned), slices }
     })
 }
 
@@ -199,7 +207,11 @@ export function runLine(runId: string, report: string | undefined): string {
 
 function status(u: UnitResult): string {
   const turns = u.turns ? `, ${u.turns} turns` : ''
-  const why = [u.status !== 'skipped' && u.reason, u.loop && `loop: ${u.loop}`].filter(Boolean)
+  const why = [
+    u.status !== 'skipped' && u.reason,
+    u.retried && 'retried on the next model',
+    u.loop && `loop: ${u.loop}`,
+  ].filter(Boolean)
   return `${u.status}${turns}${why.length > 0 ? ` (${why.join('; ')})` : ''}`
 }
 

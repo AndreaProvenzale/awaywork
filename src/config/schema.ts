@@ -55,6 +55,12 @@ const model = z
   .min(1)
   .describe("Model passed to the provider's binary; default the binary's")
 
+const models = z
+  .union([model, z.array(model).min(1)])
+  .describe(
+    'A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone',
+  )
+
 type ProviderConfig = {
   model?: string
   budget?: z.output<typeof budgetOverride>
@@ -159,9 +165,11 @@ const stepSettings = {
     .default([])
     .describe('Providers for this rule, in order; default the providers order'),
   model: z
-    .record(z.string(), model)
+    .record(z.string(), models)
     .optional()
-    .describe("Model per provider for this rule, e.g. { claude: sonnet }; default the provider's"),
+    .describe(
+      "Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's",
+    ),
   skills: z
     .array(z.string())
     .default([])

@@ -5,6 +5,7 @@ import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { type Allowance, MAX_TURNS } from '../core/budget.js'
+import { modelFor } from '../core/foreman.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
@@ -105,7 +106,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     dir,
     prompt,
     maxTurns: MAX_TURNS,
-    model: unit.rule.model?.[state.provider] ?? entry?.model,
+    model: modelFor(unit.rule.model, state.provider) ?? entry?.model,
     env: workerEnv(r.ctx.env, dir, withheld),
     config: entry?.config,
     configDir: r.configDir,

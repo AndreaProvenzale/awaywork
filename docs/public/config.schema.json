@@ -652,15 +652,29 @@
             ]
           },
           "model": {
-            "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+            "description": "Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's",
             "type": "object",
             "propertyNames": {
               "type": "string"
             },
             "additionalProperties": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Model passed to the provider's binary; default the binary's"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Model passed to the provider's binary; default the binary's"
+                },
+                {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Model passed to the provider's binary; default the binary's"
+                  }
+                }
+              ],
+              "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
             }
           },
           "skills": {
@@ -792,9 +806,23 @@
                           "type": "string"
                         },
                         "additionalProperties": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Model passed to the provider's binary; default the binary's"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Model passed to the provider's binary; default the binary's"
+                            },
+                            {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Model passed to the provider's binary; default the binary's"
+                              }
+                            }
+                          ],
+                          "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                         }
                       },
                       "skills": {
@@ -967,9 +995,23 @@
                                   "type": "string"
                                 },
                                 "additionalProperties": {
-                                  "type": "string",
-                                  "minLength": 1,
-                                  "description": "Model passed to the provider's binary; default the binary's"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "description": "Model passed to the provider's binary; default the binary's"
+                                    },
+                                    {
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Model passed to the provider's binary; default the binary's"
+                                      }
+                                    }
+                                  ],
+                                  "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                                 }
                               },
                               "skills": {
@@ -1139,9 +1181,23 @@
                                     "type": "string"
                                   },
                                   "additionalProperties": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "description": "Model passed to the provider's binary; default the binary's"
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Model passed to the provider's binary; default the binary's"
+                                      },
+                                      {
+                                        "minItems": 1,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "description": "Model passed to the provider's binary; default the binary's"
+                                        }
+                                      }
+                                    ],
+                                    "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                                   }
                                 },
                                 "skills": {
@@ -1394,9 +1450,23 @@
                                 "type": "string"
                               },
                               "additionalProperties": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Model passed to the provider's binary; default the binary's"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Model passed to the provider's binary; default the binary's"
+                                  },
+                                  {
+                                    "minItems": 1,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "description": "Model passed to the provider's binary; default the binary's"
+                                    }
+                                  }
+                                ],
+                                "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                               }
                             },
                             "skills": {
@@ -1569,9 +1639,23 @@
                                         "type": "string"
                                       },
                                       "additionalProperties": {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "description": "Model passed to the provider's binary; default the binary's"
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "description": "Model passed to the provider's binary; default the binary's"
+                                          },
+                                          {
+                                            "minItems": 1,
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "description": "Model passed to the provider's binary; default the binary's"
+                                            }
+                                          }
+                                        ],
+                                        "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                                       }
                                     },
                                     "skills": {
@@ -1741,9 +1825,23 @@
                                           "type": "string"
                                         },
                                         "additionalProperties": {
-                                          "type": "string",
-                                          "minLength": 1,
-                                          "description": "Model passed to the provider's binary; default the binary's"
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "description": "Model passed to the provider's binary; default the binary's"
+                                            },
+                                            {
+                                              "minItems": 1,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "description": "Model passed to the provider's binary; default the binary's"
+                                              }
+                                            }
+                                          ],
+                                          "description": "A model, or a list: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
                                         }
                                       },
                                       "skills": {

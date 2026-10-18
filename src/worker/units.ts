@@ -4,7 +4,15 @@ import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
-import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
+import {
+  bySlice,
+  describeChain,
+  hasRetryModel,
+  modelFor,
+  type PlannedUnit,
+  type RunPlan,
+  slug,
+} from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -134,7 +142,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
   }
 
-  const runChain = async (chain: PlannedUnit[]): Promise<UnitResult[]> => {
+  /** Runs a chain on its `attempt`'s models; `retry` when a failed step has a next model, and nothing of the chain was published. */
+  const runChain = async (
+    chain: PlannedUnit[],
+    attempt: number,
+    stepsBefore: number,
+  ): Promise<{ done: UnitResult[]; retry: boolean }> => {
     const done: UnitResult[] = []
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
@@ -172,6 +185,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let verdict: string | undefined
     let ran = false
     let interrupted = false
+    let retry = false
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
 
@@ -281,10 +295,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       routed[id] = (routed[id] ?? 0) + 1
       const entry = input.config.providers.find((c) => c.id === id)
-      const model = unit.rule.model?.[id] ?? entry?.model
+      const model = modelFor(unit.rule.model, id, attempt) ?? entry?.model
       input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
-      const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
+      const step = `${stepsBefore + done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
       const plugin = join(input.runDir, 'plugins', unit.id)
       await mkdir(unitDir, { recursive: true })
@@ -435,8 +449,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
           interrupted = true
           ended = { reason: 'interrupted' }
-        } else if (worker.status !== 'done') ended = { reason: `${unit.id} ${worker.status}` }
-        else if (!left) {
+        } else if (worker.status !== 'done') {
+          ended = { reason: `${unit.id} ${worker.status}` }
+          retry =
+            worker.status === 'failed' &&
+            attempt === 0 &&
+            !input.dryRun &&
+            published.size === 0 &&
+            hasRetryModel(unit.rule.model, id)
+          if (retry) log(`retrying the chain on the next ${id} model, in a fresh clone`)
+        } else if (!left) {
           const reason = `${unit.id} ${unit.deliver === 'report' ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
           if (loop && !(at > 0 && p === opening)) loop.ended = reason
@@ -491,14 +513,23 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       input.ctx.log(`${unit.id}: ${result.status}`)
     }
 
-    await endSlice(true)
+    if (!retry) await endSlice(true)
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
-    return done
+    return { done, retry }
   }
 
   for (const chain of chains) {
-    const done = await runChain(chain)
+    let { done, retry } = await runChain(chain, 0, 0)
+    if (retry) {
+      // The failed attempt published nothing; its steps stay in the report, the steps it never reached do not.
+      const failed = done
+        .filter((r) => r.status !== 'skipped')
+        .map((r) => ({ ...r, retried: true as const }))
+      results.push(...failed)
+      input.ctx.log(`${chain[0]?.unit.id}: failed, retrying on the next model`)
+      done = (await runChain(chain, 1, failed.length)).done
+    }
     results.push(...done)
     await notifyUnits(done)
   }

@@ -3270,3 +3270,64 @@ it("doesn't write a failed verify through a link it left for the PR body", async
   expect(body).toBe('')
   expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
 })
+
+it('retries a failed unit once on the next model in a fresh clone, publishing only the retry', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-retry-'))
+  const origin = join(root, 'origin')
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+  await git(origin, 'branch', 'feature-1')
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, branch: string, dir: string) => {
+      await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
+    },
+  }
+  const tried: (string | undefined)[] = []
+  const flaky: Provider = {
+    ...worker,
+    async *run(job) {
+      tried.push(job.model)
+      if (job.model === 'sonnet') {
+        yield { type: 'done', ok: false, turns: 3 }
+        return
+      }
+      yield* worker.run(job, new AbortController().signal)
+    },
+  }
+  const config = parseConfig(`
+providers: [claude]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }
+`)
+  const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
+  const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
+  const plan = planRun({
+    config,
+    items: [githubPr(1, { checks: 'failing' })],
+    allowances,
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: '20260925-010000',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: flaky },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: '/bin' }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(tried).toEqual(['sonnet', 'opus'])
+  expect(report.results.map((u) => [u.step, u.status, u.outcome?.kind])).toEqual([
+    ['1-fix', 'failed', undefined],
+    ['2-fix', 'done', 'pr'],
+  ])
+  expect(formatReport(report)).toContain('failed, 3 turns (retried on the next model)')
+  expect(recordAttempts({}, report)).toEqual({})
+})

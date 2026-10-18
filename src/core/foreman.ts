@@ -283,6 +283,18 @@ function stepsOf(entry: ThenStep | Loop): ThenStep[] {
   return isLoop(entry) ? entry.loop : [entry]
 }
 
+/** The model a rule sets for a provider on this attempt: the list's entry for it, the last one when the list is shorter. */
+export function modelFor(models: Step['model'], provider: string, attempt = 0): string | undefined {
+  const set = models?.[provider]
+  return Array.isArray(set) ? set[Math.min(attempt, set.length - 1)] : set
+}
+
+/** Whether a rule has a second model for a provider to retry a failed unit on. */
+export function hasRetryModel(models: Step['model'], provider: string): boolean {
+  const set = models?.[provider]
+  return Array.isArray(set) && set.length > 1
+}
+
 /** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
 function inherit(rule: Rule, step: ThenStep): Step {
   return {

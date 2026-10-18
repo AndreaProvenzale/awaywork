@@ -192,7 +192,7 @@ export type Where = Record<string, WhereValue | Where[]>
 export interface Step {
   skill: string
   provider: string[]
-  model?: Record<string, string>
+  model?: Record<string, string | string[]>
   skills: string[]
   /** MCP servers the worker gets, by name under the config's `mcp`. */
   mcp?: string[]
