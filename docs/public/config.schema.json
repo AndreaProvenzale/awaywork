@@ -296,13 +296,21 @@
                 "type": "string"
               },
               "description": "Repos to read, owner/name; * globs, e.g. acme/*"
+            },
+            "search": {
+              "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           },
           "required": [
             "repos"
           ],
           "additionalProperties": false,
-          "description": "My PRs, PRs awaiting my review and issues assigned to me; also the forge"
+          "description": "My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge"
         },
         "asana": {
           "type": "object",
