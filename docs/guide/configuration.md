@@ -129,7 +129,7 @@ sources:
       secrets: [SENTRY_TOKEN]      # only this command sees it
 ```
 
-Its `secrets` are withheld from the worker like a repo's. It gets two minutes and 1 MB: a failure, a timeout, a symlink or too much output is logged and the unit runs without `extra/`. It doesn't run on an untrusted author's PR. A custom source does this inside its own `command`.
+Its `secrets` are withheld from the worker like a repo's. It gets two minutes and 1 MB: a failure, a timeout, a symlink or too much output is logged and the unit runs without `extra/`. It doesn't run on an untrusted author's PR. `extra/` belongs to this command: a failed run removes it. A custom source does this inside its own `command`.
 
 Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 

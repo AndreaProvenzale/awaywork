@@ -51,7 +51,7 @@ interface WorkspaceInput {
   forge: Forge
   sources: Record<string, Source>
   /** Every secret the config names, from `configSecrets`. */
-  secrets?: string[]
+  secrets: string[]
   provider: Provider
   ctx: Ctx
   signal?: AbortSignal
@@ -134,7 +134,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
       if (fetch && !unit.untrusted) {
         const own = fetch.secrets.filter((name) => w.ctx.env[name] !== undefined)
         const env = {
-          ...commandEnv(w.ctx.env, dir, w.secrets ?? []),
+          ...commandEnv(w.ctx.env, dir, w.secrets),
           ...Object.fromEntries(own.map((name) => [name, w.ctx.env[name]])),
         }
         const failed = await runContext(

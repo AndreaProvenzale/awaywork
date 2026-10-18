@@ -71,6 +71,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     const item = fakeItem({ description: 'CI is red' })
 
     const prompt = await prepareWorkspace({
+      secrets: [],
       unit: {
         id: 'acme-api-1',
         items: [item],
@@ -186,6 +187,7 @@ sources:
     await link(join(root, 'real.md'), join(root, 'skills/hard/SKILL.md'))
     for (const skill of ['linked', 'hard']) {
       const prompt = await prepareWorkspace({
+        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -234,6 +236,7 @@ sources:
       const dir = join(root, `clone-${provider.id}`)
       const plugin = join(root, `plugin-${provider.id}`)
       await prepareWorkspace({
+        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -291,6 +294,7 @@ sources:
       await writeFile(join(root, 'outside/SKILL.md'), 'OUTSIDE')
       const plugin = join(root, 'plugin')
       const prompt = await prepareWorkspace({
+        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -433,6 +437,7 @@ sources:
         fork: false,
       }
       const prompt = await prepareWorkspace({
+        secrets: [],
         unit: {
           id: 'acme-api-2',
           items: [fakeItem({ linkedPrs: [pr] })],
@@ -566,6 +571,7 @@ sources:
     }
     const round = (reuse: boolean) =>
       prepareWorkspace({
+        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],

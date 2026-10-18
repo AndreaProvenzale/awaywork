@@ -13,6 +13,7 @@ export const contextSecrets = (config: Config): string[] =>
 
 const TIMEOUT_MS = 2 * 60_000
 const MAX_BYTES = 1_000_000
+const MAX_LOG = 4_000
 
 interface ContextOptions {
   /** Names in `env` whose values are masked in the log. */
@@ -48,7 +49,7 @@ export async function runContext(
       },
       { ...opts, timeoutMs: TIMEOUT_MS },
     )
-    if (output) log(`context ${item.key}: ${output}`)
+    if (output) log(`context ${item.key}: ${output.slice(-MAX_LOG)}`)
     const why = failed ?? (await tooBig(extraDir))
     if (why) await rm(extraDir, { recursive: true, force: true })
     return why && `context for ${item.key} failed: ${why}`
