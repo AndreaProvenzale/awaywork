@@ -19,6 +19,7 @@ vi.mock('../src/config/paths.js', async (original) => {
     ...(await original<typeof import('../src/config/paths.js')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
+    runLockPath: `${state}/run.lock`,
     skipsPath: `${state}/skips.json`,
   }
 })
