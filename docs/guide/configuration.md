@@ -128,7 +128,7 @@ Jira custom fields that share a name are keyed by name and id, such as `fields.T
 
 ## Branch names
 
-`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the first skill that commits, per [slice](./chains.md#stack) of a chain (see [`metadata.type`](./skills.md)).
+`branch` is a template rendered per unit, set globally, per repo or per rule (the most specific wins). It needs `{key}`, `{title}` (the item's title as a slug of at most 40 characters) or both: `feat/work` would name every unit the same, so it's refused. `{type}` is optional; it fills in the conventional-commit type of the first skill that commits, per [slice](./chains.md#stack) of a chain (see [`metadata.type`](./skills.md#write-your-own)).
 
 | Item                               | `{key}`       |
 | ---------------------------------- | ------------- |
@@ -147,7 +147,7 @@ queue:
 
 The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders the same name, so it takes the next free one. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix.
+The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix.
 
 ## Linking PRs
 

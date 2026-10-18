@@ -522,7 +522,7 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
 })
 
 it('publishes a stacked slice on the branch its own type names', async () => {
-  const { rows, opened } = await run(
+  const { rows, opened, plan } = await run(
     "branch: '{type}/{key}'\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
     [issue(1)],
     worker(),
@@ -535,6 +535,7 @@ it('publishes a stacked slice on the branch its own type names', async () => {
     ['feat/acme-api-1', ''],
     ['fix/acme-api-1', 'feat/acme-api-1'],
   ])
+  expect(formatPlan(plan)).toContain('     stack fix (built-in) on claude, branch fix/acme-api-1')
 })
 
 it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {

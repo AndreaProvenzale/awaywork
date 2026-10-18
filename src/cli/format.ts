@@ -94,6 +94,9 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
         // A stacked slice starts with `stack` where the others say `then`.
         const then = (s.slice ?? 0) !== slice ? 'stack' : 'then'
         slice = s.slice ?? 0
+        // A slice named like the head's takes a suffix at run time, so only a name of its own is known.
+        const branch =
+          then === 'stack' && s.unit.branch !== p.unit.branch ? `, branch ${s.unit.branch}` : ''
         if (s.loop?.step === 0) {
           const { skills, until, max } = s.loop
           out.push(
@@ -103,7 +106,7 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
         const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}` : ''
         const passed = s.passed.length > 0 ? ` (${s.passed.join('; ')})` : ''
         const on = `on ${s.provider ?? 'no provider left'}${passed}`
-        out.push(`     ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${when}`)
+        out.push(`     ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${branch}${when}`)
       }
       if (p.capped) out.push(`     ${p.capped}`)
     })
