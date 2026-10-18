@@ -855,7 +855,13 @@ queue: [{ skill: fix, deliver: push, then: review }]`
     const key = 'github:acme/api#1'
 
     const fresh = recordAttempts({}, report)
-    expect(fresh[key]).toEqual({ runId: 'r2', skill: 'fix', updated: '', pushed: 'def5678' })
+    expect(fresh[key]).toEqual({
+      runId: 'r2',
+      skill: 'fix',
+      unit: 'acme-api-1',
+      updated: '',
+      pushed: 'def5678',
+    })
     expect(unchangedSince(item, 'fix', fresh)).toBeUndefined()
     const earlier = { runId: 'r1', skill: 'fix', updated: '2026-01-01T00:00:00Z', failed: 1 }
     expect(recordAttempts({ [key]: earlier }, report)[key]).toEqual({
@@ -960,8 +966,15 @@ describe('attempts', () => {
     } as RunReport
     const attempts = recordAttempts({}, report)
     expect(attempts).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at },
-      'github:acme/api#2': { runId: 'r1', skill: 'fix', updated: at, failed: 1, failedAt },
+      'github:acme/api#1': { runId: 'r1', skill: 'fix', unit: 'acme-api-1', updated: at },
+      'github:acme/api#2': {
+        runId: 'r1',
+        skill: 'fix',
+        unit: 'acme-api-2',
+        updated: at,
+        failed: 1,
+        failedAt,
+      },
     })
 
     const later = '2026-01-02T00:00:00Z'
@@ -1008,7 +1021,14 @@ describe('attempts', () => {
     expect(
       recordAttempts({}, { runId: 'r1', startedAt, plan: first, results } as RunReport),
     ).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at, failed: 1, failedAt },
+      'github:acme/api#1': {
+        runId: 'r1',
+        skill: 'fix',
+        unit: 'acme-api-1',
+        updated: at,
+        failed: 1,
+        failedAt,
+      },
     })
   })
 
@@ -1033,9 +1053,18 @@ describe('attempts', () => {
     const record = (...results: object[]) =>
       recordAttempts({}, { runId: 'r1', startedAt, plan: first, results } as RunReport)
     const published = { ...head, status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } }
-    const finished = { 'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at } }
+    const finished = {
+      'github:acme/api#1': { runId: 'r1', skill: 'plan', unit: 'acme-api-1', updated: at },
+    }
     const failure = {
-      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at, failed: 1, failedAt },
+      'github:acme/api#1': {
+        runId: 'r1',
+        skill: 'plan',
+        unit: 'acme-api-1',
+        updated: at,
+        failed: 1,
+        failedAt,
+      },
     }
 
     expect(
@@ -1084,6 +1113,7 @@ describe('attempts', () => {
     expect(attempts).toEqual({
       'github:acme/api#1': {
         runId: 'r3',
+        unit: 'acme-api-1',
         skill: 'plan',
         updated: '2026-01-03T00:00:00Z',
         failed: 3,
@@ -1123,7 +1153,7 @@ describe('attempts', () => {
       } as RunReport)
 
     expect(recorded({ status: 'done', outcome: { kind: 'pr', url: 'u', commits: 1 } })).toEqual({
-      'github:acme/api#1': { runId: 'r1', skill: 'fix', updated: at },
+      'github:acme/api#1': { runId: 'r1', skill: 'fix', unit: 'acme-api-1', updated: at },
     })
     expect(recorded({ status: 'error', reason: 'clone failed' })['github:acme/api#1']?.failed).toBe(
       3,

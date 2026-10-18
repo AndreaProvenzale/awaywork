@@ -66,7 +66,7 @@ describe('config', () => {
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description or .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved or .*github: repo, label/,
       ),
     ])
   })

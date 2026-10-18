@@ -17,6 +17,8 @@ export type Attempts = Record<
   string,
   {
     runId: string
+    /** The chain's first unit: its steps' output is in the run's `units/<unit>/`. */
+    unit?: string
     skill: string
     updated: string
     failed?: number
@@ -108,10 +110,18 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
       if (typeof item.fields.updated !== 'string') continue
       const key = attemptKey(item)
       // Aborted after a push: only the push's head is new, and an empty `updated` never reads as unchanged.
-      if (aborted) next[key] = { runId: report.runId, skill, updated: '', ...attempts[key], pushed }
+      if (aborted)
+        next[key] = {
+          runId: report.runId,
+          skill,
+          updated: '',
+          ...(attempts[key] ?? { unit: id }),
+          pushed,
+        }
       else
         next[key] = {
           runId: report.runId,
+          unit: id,
           skill,
           updated: item.fields.updated,
           ...(!finished && {

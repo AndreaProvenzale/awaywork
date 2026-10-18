@@ -1,5 +1,6 @@
 import {
   copyFile,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -9,7 +10,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { formatPlan } from '../src/cli/format.js'
@@ -161,9 +162,13 @@ async function run(
   yaml: string,
   items: Item[],
   provider: Provider,
-  opts: { signal?: AbortSignal; dryRun?: boolean } = {},
+  opts: { signal?: AbortSignal; dryRun?: boolean; earlier?: Record<string, string> } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
+  for (const [file, text] of Object.entries(opts.earlier ?? {})) {
+    await mkdir(dirname(join(root, 'r0', file)), { recursive: true })
+    await writeFile(join(root, 'r0', file), text)
+  }
   const env = await originForge(root)
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
@@ -182,6 +187,9 @@ async function run(
     runDir: join(root, 'run'),
     dryRun: !!opts.dryRun,
     signal: opts.signal,
+    attempts: opts.earlier
+      ? { 'github:acme/api#1': { runId: 'r0', unit: 'acme-api-1', skill: 'plan', updated: '' } }
+      : undefined,
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
@@ -262,6 +270,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
+    unit: 'acme-api-1',
     skill: 'implement',
     updated: '2026-10-01T00:00:00Z',
   })
@@ -786,4 +795,28 @@ it('stacks a chain on your own PR: slice 1 into its branch, slice 2 onto slice 1
     ['away/acme-api-1-2', 'away/acme-api-1', true],
   ])
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
+})
+
+it('hands a chain its first step the report an earlier run left, and later steps the step before', async () => {
+  const seen: Record<string, string[]> = {}
+  const prompts: Record<string, string> = {}
+  const { rows } = await run(
+    'queue:\n  - { skill: implement, then: [review] }\n',
+    [issue(1)],
+    worker({}, { seen, prompts }),
+    {
+      earlier: {
+        'units/acme-api-1/1-plan/out/report.md': 'old plan',
+        'units/acme-api-1/1-plan/out/verdict': 'ignored',
+        'units/acme-api-1/2-review/out/report.md': 'old review',
+      },
+    },
+  )
+  expect(rows.map(([id, status]) => [id, status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-review', 'done'],
+  ])
+  expect(seen['acme-api-1']).toEqual(['report.md'])
+  expect(prompts['acme-api-1']).toContain('in run r0, `review` left its report')
+  expect(seen['acme-api-1-review']).toEqual(['diff.patch', 'pr.md'])
 })

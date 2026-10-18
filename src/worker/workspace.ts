@@ -72,6 +72,8 @@ export interface Previous {
   out: string
   /** The slice before's draft PR, for a stacked slice's first step: its URL and the body as published. */
   published?: { url: string; body: string }
+  /** Set when the output is from an earlier run: only its report is handed over. */
+  earlierRun?: string
 }
 
 /**
@@ -131,7 +133,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   }
   const previous = join(work, 'context', 'previous')
   if (!w.replay) await rm(previous, { recursive: true, force: true })
-  if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
+  if (w.previous?.earlierRun && !w.replay)
+    await cp(join(w.previous.out, outputFile.report), join(previous, outputFile.report))
+  else if (w.previous && !w.replay) await cp(w.previous.out, previous, { recursive: true })
   if (w.previous?.published && !w.replay)
     await cp(w.previous.published.body, join(previous, outputFile.draft_pr))
 
@@ -408,7 +412,9 @@ function loopSection(loop: LoopRound): string {
   return `It is round ${loop.round} of at most ${loop.max} of a loop (${loop.skills.map((s) => `\`${s}\``).join(' ⇄ ')}) that ends once ${ends}.`
 }
 
-function followUp({ skill, out, published }: Previous): string {
+function followUp({ skill, out, published, earlierRun }: Previous): string {
+  if (earlierRun)
+    return `The last time awaywork worked on this item, in run ${earlierRun}, \`${skill}\` left its report in \`${WORK_DIR}/context/previous/${outputFile.report}\`. It is from an earlier run: the item and the repo may have changed since.`
   const check = existsSync(join(out, 'check.log'))
     ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''

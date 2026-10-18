@@ -3,7 +3,15 @@ import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/p
 import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, remoteDir, runLockPath, runsDir, skillsDirOf } from '../config/paths.js'
+import {
+  approvalsPath,
+  attemptsPath,
+  remoteDir,
+  runLockPath,
+  runsDir,
+  skillsDirOf,
+} from '../config/paths.js'
+import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
 import { takeRunLock } from '../core/run-lock.js'
@@ -109,11 +117,16 @@ export function runCommand(program: Command): void {
           forge: githubForge(undefined, githubHost(config)),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
+          attempts: await loadAttempts(attemptsPath),
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
+        await saveApprovals(
+          approvalsPath,
+          clearApprovals(await loadApprovals(approvalsPath), report),
+        )
         console.log(summarize(report, reportPath))
         if (config.notify) {
           const failure = await notifyRun(config.notify.command, { path: reportPath, runId })

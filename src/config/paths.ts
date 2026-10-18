@@ -30,6 +30,7 @@ export const remoteDir = join(stateDir, 'remote')
 export const attemptsPath = join(stateDir, 'attempts.json')
 export const runLockPath = join(stateDir, 'run.lock')
 export const skipsPath = join(stateDir, 'skips.json')
+export const approvalsPath = join(stateDir, 'approvals.json')
 
 const bins = new Map<string, string>()
 

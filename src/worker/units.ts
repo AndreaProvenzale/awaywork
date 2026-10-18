@@ -1,12 +1,13 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
+import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, McpServer, Provider, Quota, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { notifyUnit } from './notify.js'
 import type { Stack } from './publish.js'
@@ -53,6 +54,29 @@ export interface RunInput {
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   skillDirs?: { user: string; builtin: string }
+  /** Earlier attempts: a chain's first step on an item gets the report the run last recorded for it. */
+  attempts?: Attempts
+}
+
+/** The report the run that last attempted one of the items left: its last step's, from `runs/<run>/units/<unit>/`. */
+async function earlierReport(
+  items: Item[],
+  attempts: Attempts,
+  runsDir: string,
+  thisRun: string,
+): Promise<Previous | undefined> {
+  for (const item of items) {
+    const last = attempts[`${item.source}:${item.key}`]
+    if (!last?.unit || last.runId === thisRun) continue
+    const unitDir = join(runsDir, last.runId, 'units', last.unit)
+    const steps = (await readdir(unitDir).catch(() => [])).filter((s) => /^\d+-/.test(s))
+    steps.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))
+    for (const step of steps) {
+      const out = join(unitDir, step, 'out')
+      if (existsSync(join(out, outputFile.report)))
+        return { skill: step.replace(/^\d+-/, ''), out, earlierRun: last.runId }
+    }
+  }
 }
 
 /** The units `name` names, by unit id or item key in any case. */
@@ -312,7 +336,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           provider,
           ctx,
-          previous,
+          previous:
+            previous ??
+            (reuse
+              ? undefined
+              : await earlierReport(
+                  unit.items,
+                  input.attempts ?? {},
+                  dirname(input.runDir),
+                  input.runId,
+                )),
           reuse,
           chain: steps,
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
