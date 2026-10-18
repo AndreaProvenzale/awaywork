@@ -23,7 +23,7 @@ An agent working unattended on your repos is only acceptable if the worst run le
 All of the above keeps credentials out of the agent's way, not out of its reach. It runs as your user and can read what you can, and its tools aren't sandboxed: Claude Code gets Bash and file tools pre-approved, Codex runs with `--sandbox danger-full-access`, which it needs to commit. So what it reads can leave [I, from the code]:
 
 - `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
-- gh's own login: an empty `GH_CONFIG_DIR` hides it from `gh auth status` but not from a keyring (`gh auth token` prints the token, `gh auth git-credential get` the credentials), so the placeholder `GH_TOKEN` is all that masks it, and unsetting that reaches it. `glab` behaves the same. Git's global credential helper is reachable too.
+- gh's own login: an empty `GH_CONFIG_DIR` hides it from `gh auth status` but not from a keyring (`gh auth token` prints the token, `gh auth git-credential get` the credentials), so only the placeholder `GH_TOKEN` stands in the way, and a worker that unsets it reaches the login. `glab`'s keyring login isn't masked at all. Git's global credential helper is reachable too.
 - Your ssh keys, and your ssh agent: the worker keeps `SSH_AUTH_SOCK` to sign its commits.
 - A VS Code terminal's git askpass (`VSCODE_GIT_*`).
 - On Linux, awaywork's own environment under `/proc`, `GH_TOKEN` included. On a runner, that's your personal access token.
