@@ -3,14 +3,15 @@ import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/p
 import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, remoteDir, runsDir, skillsDirOf } from '../config/paths.js'
+import { attemptsPath, remoteDir, runLockPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
+import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { githubForge } from '../forge/github.js'
+import { githubForge, githubHost } from '../forge/github.js'
 import { providers } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
@@ -41,6 +42,7 @@ export function runCommand(program: Command): void {
     .option('--scheduled', 'run only inside a window and start no unit after it ends')
     .action(async (opts: RunOptions) => {
       console.log(`awaywork run at ${localTime(new Date())}`)
+      let release: (() => Promise<void>) | undefined
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
@@ -53,6 +55,18 @@ export function runCommand(program: Command): void {
             `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
           )
           return
+        }
+        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+        if (!opts.dryRun) {
+          const lock = await takeRunLock(runLockPath, runId)
+          if (!('release' in lock)) {
+            console.error(
+              `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
+            )
+            process.exitCode = 1
+            return
+          }
+          release = lock.release
         }
         const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
           config,
@@ -70,7 +84,6 @@ export function runCommand(program: Command): void {
           process.exitCode = 1
           return
         }
-        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
         const runDir = join(runsDir, runId)
         await mkdir(runDir, { recursive: true })
         if (process.env.GITHUB_OUTPUT)
@@ -93,7 +106,7 @@ export function runCommand(program: Command): void {
           until,
           providers,
           sources,
-          forge: githubForge(),
+          forge: githubForge(undefined, githubHost(config)),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })
@@ -108,6 +121,8 @@ export function runCommand(program: Command): void {
         }
       } catch (e) {
         reportConfigError(e)
+      } finally {
+        await release?.()
       }
     })
 
