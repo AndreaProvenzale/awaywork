@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -134,6 +134,26 @@ describe('report command', () => {
       report('20261015-220000', ['report below']),
     ])
     expect(process.exitCode).toBeUndefined()
+  })
+
+  it('points a run without a report at the step that is working', async () => {
+    const step = async (name: string, at: number) => {
+      const dir = join(runsDir, '20261016-220000', 'units', 'api-1', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(join(dir, 'worker.log'), 'x')
+      await utimes(join(dir, 'worker.log'), at, at)
+      return join(dir, 'worker.log')
+    }
+    await step('1-implement', 100)
+    const log = await step('2-review', 200)
+    const { out, err } = output()
+    await printReport('20261016-220000', false, async () => '')
+    expect(err).toEqual([expect.stringContaining('no report for run 20261016-220000')])
+    expect(out).toEqual([
+      'Done so far: api-1/1-implement',
+      'Running (or cut short): api-1/2-review',
+      `Its stream: ${log}`,
+    ])
   })
 
   it('falls back to the newest local run when the download fails', async () => {
