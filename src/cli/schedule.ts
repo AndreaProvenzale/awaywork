@@ -11,7 +11,7 @@ import { hasSkills } from '../config/skills.js'
 import type { Ask } from '../core/types.js'
 import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { providers } from '../providers/index.js'
+import { providerFor } from '../providers/index.js'
 import {
   isPlainSelfHosted,
   isSelfHosted,
@@ -267,7 +267,7 @@ function cancelled(e: unknown): void {
 const secretsOf = (config: Config) => [
   ...new Set([
     'GH_TOKEN',
-    ...config.providers.flatMap((p) => providers[p.id]?.secrets ?? []),
+    ...config.providers.flatMap((p) => providerFor(p.id, p.config)?.secrets ?? []),
     ...Object.entries(config.sources).flatMap(
       ([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? [],
     ),
@@ -297,7 +297,7 @@ export async function installWorkflow(
       : isSelfHosted(current)
     const runner = selfHosted ? 'self-hosted' : 'github-hosted'
     const used = loaded.providers.flatMap((p) => {
-      const provider = providers[p.id]
+      const provider = providerFor(p.id, p.config)
       const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: runner })
       if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
       return provider && !unavailable ? [provider] : []
@@ -307,7 +307,7 @@ export async function installWorkflow(
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       version: packageVersion,
       // A self-hosted runner keeps the machine's own CLIs and their logins.
-      packages: selfHosted ? [] : used.map((p) => p.package),
+      packages: selfHosted ? [] : used.flatMap((p) => p.package || []),
       setup: Object.values(loaded.sources).flatMap((cfg) =>
         isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
       ),

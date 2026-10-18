@@ -104,6 +104,31 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 - `claude: { settings: <file> }`: a Claude Code settings file, relative to the config file, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool that isn't pre-approved, by awaywork or by your `permissions.allow`, is denied.
 - `codex: { config: { <key>: <value> } }`: each key passed as `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
+### Bring your own CLI
+
+Gemini CLI, opencode, Amp and friends don't need code in awaywork. Name a provider yourself and give it a command; it's your CLI and your login:
+
+```yaml
+providers:
+  - claude
+  - gemini:
+      command: gemini --yolo --prompt "$(cat "$AWAYWORK_PROMPT")"
+      probe: ./gemini-quota.sh # optional
+      secrets: [GEMINI_API_KEY]
+limits:
+  unit_minutes: 45
+```
+
+The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets` are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) and `instructions_file` (default `AGENTS.md`) say where it looks for skills and instructions.
+
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder before each unit:
+
+```json
+{ "windows": [{ "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 }] }
+```
+
+`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+
 ## Sources
 
 | Source | Keys |

@@ -3,6 +3,7 @@ import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
+import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
 import { commandConfig, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
@@ -64,7 +65,7 @@ const providerName = z
   .enum(Object.keys(providers))
   .transform((id): Record<string, ProviderConfig> => ({ [id]: {} }))
 const providerOverride = z
-  .strictObject(
+  .object(
     Object.fromEntries(
       Object.values(providers).map((p) => [
         p.id,
@@ -75,13 +76,18 @@ const providerOverride = z
       ]),
     ),
   )
+  .catchall(
+    commandProviderConfig.extend({ model: model.optional(), budget: budgetOverride.optional() }),
+  )
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
   })
 const providerEntry = z.union([providerName, providerOverride], {
   error: (issue) =>
-    typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
+    typeof issue.input === 'string'
+      ? `unknown provider "${issue.input}"`
+      : issue.errors[1]?.[0]?.message,
 })
 
 /** A built-in source's config with its `link`, unless its items link their PRs themselves. */
@@ -518,6 +524,12 @@ export const configSchema = z
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)
+    if (providerIds.some((id) => !(id in providers)) && !cfg.limits.unit_minutes)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['limits', 'unit_minutes'],
+        message: 'required with a command provider: it has no turn cap, so this bounds its unit',
+      })
     for (const name of Object.keys(cfg.mcp))
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
         ctx.addIssue({

@@ -129,6 +129,26 @@ Same keys as `providers[].claude.budget`.
 
 Same keys as `providers[].claude.budget.fallback`.
 
+## `providers[].<key>`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
+| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder. Unset, the fallback caps apply |
+| `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
+| `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
+| `instructions_file` | string | `"AGENTS.md"` | The file the CLI reads instructions from |
+| `model` | string |  | Model passed to the provider's binary; default the binary's |
+| `budget` | object |  | Overrides the top-level budget for this provider |
+
+## `providers[].<key>.budget`
+
+Same keys as `providers[].claude.budget`.
+
+## `providers[].<key>.budget.fallback`
+
+Same keys as `providers[].claude.budget.fallback`.
+
 ## `sources`
 
 Where work comes from: built-in sources or your own commands; at least one.

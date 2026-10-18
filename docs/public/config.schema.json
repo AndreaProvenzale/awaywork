@@ -277,7 +277,96 @@
                 "additionalProperties": false
               }
             },
-            "additionalProperties": false
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log"
+                },
+                "probe": {
+                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder. Unset, the fallback caps apply",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command reads; withheld from other workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                },
+                "skills_dir": {
+                  "default": ".agents/skills",
+                  "description": "Where the CLI finds skills in the clone",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "instructions_file": {
+                  "default": "AGENTS.md",
+                  "description": "The file the CLI reads instructions from",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Model passed to the provider's binary; default the binary's"
+                },
+                "budget": {
+                  "type": "object",
+                  "properties": {
+                    "reserve": {
+                      "description": "Never go past 1 - reserve of any window",
+                      "type": "string",
+                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                    },
+                    "per_run": {
+                      "description": "At most this share of the long window per run",
+                      "type": "string",
+                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                    },
+                    "session_max": {
+                      "description": "Stop a worker past this share of the short window",
+                      "type": "string",
+                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                    },
+                    "fallback": {
+                      "type": "object",
+                      "properties": {
+                        "units": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "description": "Units per run"
+                        },
+                        "turns": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991,
+                          "description": "Turns per unit"
+                        }
+                      },
+                      "required": [
+                        "units",
+                        "turns"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Caps when the provider's quota can't be read"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Overrides the top-level budget for this provider"
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false
+            }
           }
         ]
       },
