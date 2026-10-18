@@ -8,7 +8,8 @@ import { fieldValue } from '../src/core/queue.js'
 import type { RunReport } from '../src/core/report.js'
 import type { Item } from '../src/core/types.js'
 
-const item = (source: string, key: string) => ({ source, key, fields: {} }) as unknown as Item
+const item = (source: string, key: string, approved = false) =>
+  ({ source, key, fields: { approved } }) as unknown as Item
 
 describe('approve', () => {
   it('records an approval by source:key and refuses a bad key', async () => {
@@ -33,12 +34,18 @@ describe('approve', () => {
 
   it('clears the approval of items a unit finished on', () => {
     const results = [
-      { status: 'done', planned: { unit: { items: [item('github', 'a#1')] } } },
-      { status: 'error', planned: { unit: { items: [item('github', 'a#2')] } } },
+      { status: 'done', planned: { unit: { items: [item('github', 'a#1', true)] } } },
+      { status: 'error', planned: { unit: { items: [item('github', 'a#2', true)] } } },
     ]
     const approvals = { 'github:a#1': { at: 'x' }, 'github:a#2': { at: 'x' } }
     expect(clearApprovals(approvals, { results } as unknown as RunReport)).toEqual({
       'github:a#2': { at: 'x' },
     })
+  })
+
+  it('keeps an approval given after the run was planned', () => {
+    const results = [{ status: 'done', planned: { unit: { items: [item('github', 'a#1')] } } }]
+    const approvals = { 'github:a#1': { at: 'x' } }
+    expect(clearApprovals(approvals, { results } as unknown as RunReport)).toEqual(approvals)
   })
 })

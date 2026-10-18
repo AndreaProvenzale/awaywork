@@ -28,11 +28,12 @@ export function withApprovals(items: Item[], approvals: Approvals): Item[] {
   }))
 }
 
-/** The approvals left once a unit on an item finished: a unit that did its work uses the approval up. */
+/** The approvals left once a unit on an item finished: a unit that did its work uses up the approval it was planned with, not one given during the run. */
 export function clearApprovals(approvals: Approvals, report: RunReport): Approvals {
   const next = { ...approvals }
   for (const r of report.results)
     if (r.status === 'done')
-      for (const item of r.planned.unit.items) delete next[`${item.source}:${item.key}`]
+      for (const item of r.planned.unit.items)
+        if (item.fields.approved) delete next[`${item.source}:${item.key}`]
   return next
 }
