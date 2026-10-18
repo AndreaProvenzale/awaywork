@@ -24,7 +24,7 @@ For autocompletion and hover docs in editors with the YAML language server (VS C
 
 ## Stability
 
-From 0.1.0-rc.1, the config schema holds across minor releases: a config that's valid on one stays valid on the next. Keys marked experimental are the exception: they have only run in tests, so they may change in a minor release, with a note in the release notes. Those are `verify`, `mcp`, `with`, `notify`'s `unit` event and, on the [Chains](./chains.md) page, `until`'s and `when`'s `command`, a rule's `when` (`runs_until_reset`, `headroom`), `stack` and `deliver: push`.
+From 0.1.0-rc.1, the config schema holds across minor releases: a config that's valid on one stays valid on the next. Keys marked experimental are the exception: they have only run in tests, so they may change in a minor release, with a note in the release notes. So far that's only `github.host`.
 
 ## A full example
 
@@ -120,9 +120,9 @@ Every source but `github` also takes a [`link`](#linking-prs).
 
 Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
-**Linear is beta:** its tests read a live workspace, but no real run has used it yet. It takes a personal API key (Settings > Account > Security & access). awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only.
+Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only.
 
-**Jira is beta:** its tests read a live site, but no real run has used it yet. Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it. Tokens expire after at most a year.
+Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it. Tokens expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
 
@@ -175,8 +175,6 @@ sources:
 `repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
 
 `secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
-
-::: warning Experimental `verify` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 `verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
@@ -266,8 +264,6 @@ A rule can run more steps after its skill, such as a review and a fix until the 
 
 The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.
 
-::: warning Experimental The `unit` event has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
-
 There are no built-in integrations. A command that fails or takes over a minute is logged and the run goes on, and still succeeds:
 
 ```
@@ -327,8 +323,6 @@ That's your command with your token, not a worker: workers never comment or ping
 
 ## MCP servers
 
-::: warning Experimental MCP servers have only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
-
 Declare servers once under `mcp`, then give them to the rules or steps that need them with `mcp: [names]`. No step gets a server its rule or step doesn't name: a `then` step gets its rule's unless it names its own, and `mcp: []` gives it none.
 
 ```yaml
@@ -354,7 +348,7 @@ queue:
 
 The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
 
-Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers, such as claude.ai connectors, need a login a runner doesn't have. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
+Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers need a login a runner doesn't have, and workers never get your claude.ai connectors. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
 
 ## Secrets
 

@@ -11,6 +11,8 @@ const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day:
 const stream = ['--output-format', 'stream-json', '--verbose']
 /** Auto-memory lives under ~/.claude whatever the setting sources. */
 const noMemory = { autoMemoryEnabled: false }
+/** The account's claude.ai connectors load with any login, whatever the setting sources. */
+const noConnectors = { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }
 /** The repo's settings, hooks, MCP servers, CLAUDE.md and skills; nothing from ~/.claude. */
 const repoOnly = ['--setting-sources', 'project,local']
 /** Neither ~/.claude nor the clone's own config: on someone else's PR it is the author's. */
@@ -45,7 +47,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       const args = ['-p', 'reply ok', '--model', PROBE_MODEL, '--max-turns', '1', ...stream]
       const settings = ['--settings', JSON.stringify(noMemory)]
       const { stdout } = await execa(bin, [...args, ...isolated, ...settings], {
-        env: ctx.env,
+        env: { ...ctx.env, ...noConnectors },
         extendEnv: false,
         reject: false,
       })
@@ -65,7 +67,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       args.push('--permission-mode', 'dontAsk', '--allowedTools', tools.join(' '))
       const child = execa(bin, args, {
         cwd: job.dir,
-        env: job.env,
+        env: { ...job.env, ...noConnectors },
         extendEnv: false,
         cancelSignal: signal,
         killDescendants: true,

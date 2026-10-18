@@ -6,7 +6,7 @@ description: Chains in awaywork, steps that run after a rule's skill in the same
 
 One skill per item is plenty for a red check. For an issue you'd rather see implemented, reviewed by the other agent and fixed before you look, a rule chains more steps after its skill, in the same clone and on the same branch.
 
-No new chain features until real runs ask for them: only fixes and simplifications. The parts marked experimental have only run in tests, so they may change in a minor release; see [Stability](./configuration.md#stability).
+No new chain features until real runs ask for them: only fixes and simplifications.
 
 ## `then`
 
@@ -95,8 +95,6 @@ queue:
         max: 3
 ```
 
-::: warning Experimental `until`'s `command` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
-
 - Rounds are steps like any other: they work in the chain's clone, and their commits publish with the rest of the chain. The PR body says how the loop went.
 - `until` is checked after every step and ends the loop as soon as it holds; with both keys, both must. `verdict` is the latest word a step wrote to `.away/out/verdict` (built-in `review` writes `approve`, `comments` or `changes`); it takes a word, a list for any of, or `{ not: … }`. It waits for a step in the loop to write a verdict, so `{ not: changes }` doesn't hold after a step that wrote none. `command` is a shell command awaywork runs in the clone after the step, outside the model; it holds when it exits 0. `max` is at most 5.
 - A command runs like `setup` on a branch a worker wrote: without the repo's `secrets`, for at most 15 minutes, and not past the window's end. `setup` doesn't run again before it, so a command that needs dependencies a step added installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. It runs again only once a step committed. In `until` it doesn't hold while the clone has uncommitted changes beyond what `setup` and earlier checks left, since the branch wouldn't publish them; a `when` command sees them, as the step will.
@@ -105,8 +103,6 @@ queue:
 - Loops can follow loops, and a step with a `when` can come right before one.
 
 ## `when`
-
-::: warning Experimental The `command` check and the quota checks (`runs_until_reset`, `headroom`) have only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 A step, in a chain or a loop, runs only when its `when` holds. Otherwise it is passed over and the chain goes on as if the step weren't there, unless the step [starts a slice](#stack):
 
@@ -144,8 +140,6 @@ queue:
 - They're rule keys only: on a step they're a config error, and a rule takes no `verdict`, `command` or `changed`. `plan` notes when the quota doesn't hold on the probe or has no reading.
 
 ## `stack`
-
-::: warning Experimental `stack` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 A chain is one PR by default: an `implement` and its review rounds are one change. When it does two separable things, `stack: true` on a step starts a new **slice**, with a branch and a draft PR of its own, stacked on the slice before:
 
@@ -202,8 +196,6 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
 ::: warning Squash-merging the base Once the first PR is squash-merged and its branch deleted (as GitHub's "Automatically delete head branches" does), GitHub retargets the stacked one to the default branch; with the branch kept, it still targets the merged branch. Either way it still carries the first one's commits. Merging the default branch into it usually resolves cleanly, since the content is the same. Workers never rebase, and nobody does that merge for you. :::
 
 ## `push`
-
-::: warning Experimental `deliver: push` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 By default awaywork only pushes branches that don't exist yet. `deliver: push` is the opt-in to add commits onto your own open PR instead of stacking a draft PR on it, e.g. to have review threads addressed in place:
 

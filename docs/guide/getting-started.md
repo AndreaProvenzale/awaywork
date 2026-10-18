@@ -11,7 +11,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.
-- Optionally an Asana personal access token, a Linear personal API key or an Atlassian API token for Jira Cloud, if your tasks live there. Linear and Jira are beta: no real run has used them yet.
+- Optionally an Asana personal access token, a Linear personal API key or an Atlassian API token for Jira Cloud, if your tasks live there.
 
 ## Install
 
