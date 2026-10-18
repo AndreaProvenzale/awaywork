@@ -20,7 +20,7 @@ const config = z
     repo_map: z
       .record(z.string(), z.string().regex(/^[\w.-]+(\/[\w.-]+)+$/))
       .optional()
-      .describe("Project key -> owner/repo where its issues' code lives"),
+      .describe("Project key -> owner/repo (groups may nest) where its issues' code lives"),
     token_env: z
       .string()
       .default('JIRA_API_TOKEN')

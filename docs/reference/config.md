@@ -182,7 +182,7 @@ My unresolved Jira Cloud issues.
 | `email` (required) | string |  | Atlassian account email the API token belongs to |
 | `cloud_id` | string |  | Site cloud id: set for a scoped token, which calls api.atlassian.com |
 | `jql` | string |  | JQL condition ANDed with my unresolved issues |
-| `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
+| `repo_map` | map |  | Project key -> owner/repo (groups may nest) where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 

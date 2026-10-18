@@ -406,7 +406,7 @@
               "type": "string"
             },
             "repo_map": {
-              "description": "Project key -> owner/repo where its issues' code lives",
+              "description": "Project key -> owner/repo (groups may nest) where its issues' code lives",
               "type": "object",
               "propertyNames": {
                 "type": "string"
