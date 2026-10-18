@@ -108,8 +108,6 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 - **Weekdays** are the script's call: print nothing on the days a chore shouldn't run.
 - **`when`** is checked again when the unit starts: `plan` lists the chore with its gate and notes when the probe has no headroom for it, and the run skips it without the headroom.
 
-  ::: warning Experimental `headroom` has only run in tests so far, never in a real run. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
-
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry no link line.
 
 ## Recipe: Sentry errors
