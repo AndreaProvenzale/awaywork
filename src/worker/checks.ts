@@ -129,8 +129,8 @@ async function changes(dir: string, globs: string[], start = ''): Promise<boolea
   return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
 }
 
-/** The command and the tail of its output, for the step after it. */
-function checkLog({ command, output, failed }: RanCheck): string {
+/** The command and the tail of its output. */
+export function checkLog({ command, output, failed }: RanCheck): string {
   const tail = output.slice(-CHECK_LOG_CHARS)
   return `$ ${command}\n${tail}\n${failed ? `failed: ${failed}` : 'passed'}\n`
 }

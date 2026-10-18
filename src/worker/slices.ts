@@ -1,8 +1,8 @@
-import { rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import { type Check, checkDetails, commitsSince, git, type RanCheck } from './checks.js'
+import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
@@ -67,7 +67,6 @@ export interface Publisher {
   forge: Forge
   runId: string
   signal?: AbortSignal
-  log: (line: string) => void
   check: (
     command: string,
     unit: Unit,
@@ -104,10 +103,14 @@ export async function publishSlice(
   return publish(unit, dir, deps.forge, deps.runId, from, stack)
 }
 
-/** Runs the unit's `verify` before it is published; a failure goes in the PR body, and the unit is still published. */
+/** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. */
 async function verify(deps: Publisher, unit: Unit, dir: string, start: string) {
   if (!unit.verify || (await commitsSince(dir, start)) === 0) return
-  const result = await deps.check(unit.verify, unit, dir, deps.log, false)
+  const result = await deps.check(unit.verify, unit, dir, () => {}, false)
+  const out = join(dir, WORK_DIR, 'out')
+  await refuseSymlinks(dir, [`${WORK_DIR}/out/verify.log`])
+  await mkdir(out, { recursive: true })
+  await writeOutput(join(out, 'verify.log'), checkLog({ command: unit.verify, ...result }))
   if (!result.failed) return
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[unit.deliver]}`])
   await appendVerifyFailure(join(dir, WORK_DIR, 'out', outputFile[unit.deliver]), {
