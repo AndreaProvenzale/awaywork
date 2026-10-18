@@ -28,6 +28,7 @@ export const runsDir = join(stateDir, 'runs')
 /** Runs downloaded from a control repo's artifacts, as `<owner>/<repo>/<run id>`. */
 export const remoteDir = join(stateDir, 'remote')
 export const attemptsPath = join(stateDir, 'attempts.json')
+export const runLockPath = join(stateDir, 'run.lock')
 export const skipsPath = join(stateDir, 'skips.json')
 
 const bins = new Map<string, string>()

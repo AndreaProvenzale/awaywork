@@ -36,6 +36,7 @@ awaywork schedule remove
 
 - The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
+- One `awaywork run` at a time: a manual run during the scheduled one exits 1 with `already running (pid 4242, run 20261012-203418)` and the lock path. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
 - systemd user timers run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the timer and report no schedule.
 - Output goes to `~/.local/state/awaywork/schedule.log`, each run starting with a line dated in local time; the morning report is `awaywork report`. Both list what went wrong before any unit started, like a source command that failed:
 
