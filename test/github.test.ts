@@ -253,6 +253,20 @@ describe('github source', () => {
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })
   })
 
+  it('runs each extra search ANDed with open and unarchived, without marking its items', async () => {
+    const mentioned = JSON.parse(fixture('search-assigned.json'))
+    mentioned.data.search.nodes = [{ ...mentioned.data.search.nodes[0], id: 'I_new', number: 9 }]
+    const run = recorded([
+      [/q=is:open archived:false mentions:@me/, JSON.stringify(mentioned)],
+      ...githubRoutes(),
+    ])
+    const found = await githubSource(run).items(
+      { repos: ['acme/*'], search: ['mentions:@me'] },
+      ctx,
+    )
+    expect(found.find((i) => i.id === 'I_new')?.fields.mine).toBe(false)
+  })
+
   it('warns when a search has more results than one page', async () => {
     const many = fixture('search-assigned.json').replace('"issueCount": 2', '"issueCount": 150')
     const run = recorded([[/assignee:@me/, many], ...githubRoutes()])

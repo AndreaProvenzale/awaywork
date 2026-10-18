@@ -135,19 +135,20 @@ Where work comes from: built-in sources or your own commands; at least one.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me; also the forge |
+| `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge |
 | `asana` | object |  | My incomplete Asana tasks |
 | `linear` | object |  | My open Linear issues |
 | `jira` | object |  | My unresolved Jira Cloud issues |
 
 ## `sources.github`
 
-My PRs, PRs awaiting my review and issues assigned to me; also the forge.
+My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
 | `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
+| `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 
 ## `sources.asana`
 

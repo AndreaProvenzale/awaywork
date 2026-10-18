@@ -13,8 +13,16 @@ const config = z
       .regex(/^[^/\s]+$/, 'host only, no scheme or path')
       .optional()
       .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
+    search: z
+      .array(z.string().min(1))
+      .optional()
+      .describe(
+        'Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested',
+      ),
   })
-  .describe('My PRs, PRs awaiting my review and issues assigned to me; also the forge')
+  .describe(
+    'My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge',
+  )
 type Config = z.infer<typeof config>
 
 const PAGE = 100
@@ -192,7 +200,11 @@ export function githubSource(base: Exec = exec): Source<Config> {
       const run = onHost(base, cfg.host)
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
       const byId = new Map<string, Item>()
-      for (const { q, fields } of searches) {
+      const extra = (cfg.search ?? []).map((q) => ({
+        q: `is:open archived:false ${q}`,
+        fields: {},
+      }))
+      for (const { q, fields } of [...searches, ...extra]) {
         const { search } = await graphql<{ search: { issueCount: number; nodes: Node[] } }>(
           run,
           searchQuery,

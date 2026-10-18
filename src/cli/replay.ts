@@ -19,7 +19,9 @@ export function replayCommand(program: Command): void {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
         const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const result = await replayUnit({
           config,
           configDir: dirname(path),

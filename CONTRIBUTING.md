@@ -62,9 +62,17 @@ A new provider or source claim tagged [C] or [I] needs a burn test before code d
 
 Versions follow SemVer; while on 0.x a minor version may change the config. A tag `vX.Y.Z` publishes to npm as `latest`, `vX.Y.Z-rc.N` as `next`, and both create a GitHub release with generated notes (`.github/workflows/release.yml`). Generated workflows call the action (`action.yml`) at the tag of the version they install, so a fix to it reaches people when they run `schedule install` again: say so in the release notes.
 
+`main` takes changes only through PRs, so a release starts as one that bumps the version:
+
 ```sh
-npm version 0.1.0-rc.1    # bumps package.json, commits, tags
-git push --follow-tags
+npm version 0.1.0-rc.2 --no-git-tag-version
 ```
 
-npm publishes through trusted publishing, without a token. It can only be configured for a package that exists, so the very first version goes out by hand: `npm version` as above, `pnpm build && npm publish --tag next`, then still `git push --follow-tags`, since workflows find the action by that tag (`release.yml` failing to republish it is fine). Then on npmjs.com add the trusted publisher (this repo, workflow `release.yml`).
+After it merges, tag the merge commit and push the tag:
+
+```sh
+git tag v0.1.0-rc.2 <merge-commit>
+git push origin v0.1.0-rc.2
+```
+
+`release.yml` then tests, publishes to npm with provenance through trusted publishing (no token) and creates the GitHub release.

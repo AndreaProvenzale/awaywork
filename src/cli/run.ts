@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
@@ -64,7 +64,9 @@ export function runCommand(program: Command): void {
         console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
         const abort = new AbortController()
-        process.once('SIGINT', () => abort.abort())
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const report = await runUnits({
           config,
           configDir: dirname(path),
@@ -149,7 +151,27 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
   if (text === undefined) {
     console.error(`no report for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`)
     process.exitCode = 1
+    const steps = picked ? await startedSteps(picked.dir) : []
+    const running = steps.pop()
+    if (running) {
+      console.log(`Done so far: ${steps.map((s) => s.name).join(', ') || 'nothing'}`)
+      console.log(`Running (or cut short): ${running.name}`)
+      console.log(`Its stream: ${running.log}`)
+    }
   } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
+}
+
+/** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */
+async function startedSteps(runDir: string): Promise<{ name: string; log: string }[]> {
+  const unitsDir = join(runDir, 'units')
+  const steps: { name: string; log: string; at: number }[] = []
+  for (const unit of await readdir(unitsDir).catch(() => []))
+    for (const step of await readdir(join(unitsDir, unit)).catch(() => [])) {
+      const log = join(unitsDir, unit, step, 'worker.log')
+      const info = await stat(log).catch(() => undefined)
+      if (info) steps.push({ name: `${unit}/${step}`, log, at: info.mtimeMs })
+    }
+  return steps.sort((a, b) => a.at - b.at)
 }
 
 /** The runs the control repo in this directory uploaded: none outside one, and none with a warning when GitHub fails. */
