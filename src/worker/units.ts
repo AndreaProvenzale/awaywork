@@ -537,6 +537,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             await handOff(dir, start, unitDir)
             if (!retrying) previous = { skill: unit.skill, out: join(unitDir, 'out') }
           } catch (e) {
+            retrying?.keep()
             retrying = undefined
             ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }
             if (loop) loop.ended ??= ended.reason
