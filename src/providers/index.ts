@@ -8,7 +8,8 @@ export const providers: Record<string, Provider> = { claude, codex }
 
 /** The built-in provider with this id, else the command provider its config describes. */
 export function providerFor(id: string, cfg: unknown): Provider | undefined {
-  return providers[id] ?? (isCommandProvider(cfg) ? commandProvider(id, cfg) : undefined)
+  if (Object.hasOwn(providers, id)) return providers[id]
+  return isCommandProvider(cfg) ? commandProvider(id, cfg) : undefined
 }
 
 /** The built-in providers and the command providers a config defines. */

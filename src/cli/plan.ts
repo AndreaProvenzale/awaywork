@@ -80,18 +80,17 @@ export async function probeAndPlan(
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
-    const unavailable = providerFor(p.id, p.config)?.unavailable?.(ctx.env)
+    const provider = providerFor(p.id, p.config)
+    const unavailable = provider?.unavailable?.(ctx.env)
     if (unavailable) {
       warnings.push(`${p.id} unavailable: ${unavailable}`)
       continue
     }
     let reason: string | undefined
-    const quota = await providerFor(p.id, p.config)
-      ?.probe(ctx)
-      .catch((e: Error) => {
-        reason = `probe failed: ${e.message}`
-        return null
-      })
+    const quota = await provider?.probe(ctx).catch((e: Error) => {
+      reason = `probe failed: ${e.message}`
+      return null
+    })
     allowances[p.id] = allowance(p.budget, quota ?? null, Date.now(), config.windows, reason)
   }
 

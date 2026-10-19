@@ -5,6 +5,8 @@ import { killGroupWhenDone } from '../core/group.js'
 import type { Provider, Quota } from '../core/types.js'
 
 const TIMEOUT_MS = 60_000
+const HOSTED_RUNNER =
+  "a GitHub-hosted runner doesn't have your CLI or its login; run it locally or on a self-hosted runner"
 
 export const commandProviderConfig = z
   .strictObject({
@@ -19,7 +21,7 @@ export const commandProviderConfig = z
       .min(1)
       .optional()
       .describe(
-        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder. Unset, the fallback caps apply",
+        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
       ),
     secrets: z
       .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
@@ -30,11 +32,6 @@ export const commandProviderConfig = z
       .min(1)
       .default('.agents/skills')
       .describe('Where the CLI finds skills in the clone'),
-    instructions_file: z
-      .string()
-      .min(1)
-      .default('AGENTS.md')
-      .describe('The file the CLI reads instructions from'),
   })
   .describe('A custom provider: any agent CLI, run by a command')
 
@@ -57,7 +54,11 @@ export function isCommandProvider(cfg: unknown): cfg is CommandProviderConfig {
 }
 
 /** A provider that runs the user's own command: their CLI and login, no live rate-limit events. */
-export function commandProvider(id: string, cfg: CommandProviderConfig): Provider {
+export function commandProvider(
+  id: string,
+  cfg: CommandProviderConfig,
+  probeTimeout = TIMEOUT_MS,
+): Provider {
   return {
     id,
     configSchema: commandProviderConfig,
@@ -66,6 +67,8 @@ export function commandProvider(id: string, cfg: CommandProviderConfig): Provide
     unattended: 'grey',
     package: '',
     secrets: cfg.secrets,
+
+    unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
       const bin =
@@ -82,13 +85,17 @@ export function commandProvider(id: string, cfg: CommandProviderConfig): Provide
 
     async probe(ctx) {
       if (!cfg.probe) return null
-      const { stdout } = await execa(cfg.probe, {
+      const subprocess = execa(cfg.probe, {
         shell: true,
         cwd: cfg.dir,
         env: ctx.env,
         extendEnv: false,
-        timeout: TIMEOUT_MS,
+        timeout: probeTimeout,
+        detached: true,
       })
+      // A timeout kills only the shell; kill its process group so no child keeps stdout open.
+      killGroupWhenDone(subprocess)
+      const { stdout } = await subprocess
       let json: unknown
       try {
         json = JSON.parse(stdout)
@@ -120,6 +127,6 @@ export function commandProvider(id: string, cfg: CommandProviderConfig): Provide
     },
 
     skillsDir: cfg.skills_dir,
-    instructionsFile: cfg.instructions_file,
+    instructionsFile: 'AGENTS.md',
   }
 }

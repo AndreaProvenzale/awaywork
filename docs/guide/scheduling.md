@@ -158,6 +158,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
+| [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
 

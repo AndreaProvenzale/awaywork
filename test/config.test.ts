@@ -137,7 +137,7 @@ describe('config', () => {
 
   it('rejects unknown and unconfigured providers and sources', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
-      'providers[0]: not a built-in provider; a custom provider needs a `command`',
+      'providers[0]: gemini.command: not a built-in provider; a custom provider needs a `command`',
     ])
     expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
       'providers[0]: unknown provider "gemini"',

@@ -307,7 +307,7 @@ export async function installWorkflow(
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       version: packageVersion,
       // A self-hosted runner keeps the machine's own CLIs and their logins.
-      packages: selfHosted ? [] : used.flatMap((p) => p.package || []),
+      packages: selfHosted ? [] : used.map((p) => p.package),
       setup: Object.values(loaded.sources).flatMap((cfg) =>
         isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
       ),

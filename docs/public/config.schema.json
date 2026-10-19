@@ -286,7 +286,7 @@
                   "description": "Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log"
                 },
                 "probe": {
-                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder. Unset, the fallback caps apply",
+                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
                   "type": "string",
                   "minLength": 1
                 },
@@ -302,12 +302,6 @@
                 "skills_dir": {
                   "default": ".agents/skills",
                   "description": "Where the CLI finds skills in the clone",
-                  "type": "string",
-                  "minLength": 1
-                },
-                "instructions_file": {
-                  "default": "AGENTS.md",
-                  "description": "The file the CLI reads instructions from",
                   "type": "string",
                   "minLength": 1
                 },
@@ -346,8 +340,7 @@
                         }
                       },
                       "required": [
-                        "units",
-                        "turns"
+                        "units"
                       ],
                       "additionalProperties": false,
                       "description": "Caps when the provider's quota can't be read"

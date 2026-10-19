@@ -4,7 +4,6 @@ import { dirname, join, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 import type { z } from 'zod'
 import { isCommandProvider } from '../providers/command.js'
-import { providers } from '../providers/index.js'
 import { isCommand } from '../sources/command.js'
 import { defaultConfigPath } from './paths.js'
 import { type Config, configSchema } from './schema.js'
@@ -30,8 +29,7 @@ export async function loadConfig(path: string): Promise<Config> {
   const config = parseConfig(text, path)
   const dir = dirname(resolve(path))
   for (const cfg of Object.values(config.sources)) if (isCommand(cfg)) cfg.dir = dir
-  for (const { id, config: cfg } of config.providers)
-    if (!(id in providers) && isCommandProvider(cfg)) cfg.dir = dir
+  for (const { config: cfg } of config.providers) if (isCommandProvider(cfg)) cfg.dir = dir
   return config
 }
 
