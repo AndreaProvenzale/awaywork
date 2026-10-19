@@ -125,10 +125,15 @@ The command runs in the clone like any worker, with the prompt in the file `$AWA
 There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and a `budget.fallback` needs no `turns`. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, and by `doctor`; it gets 60 s:
 
 ```json
-{ "windows": [{ "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 }] }
+{
+  "windows": [
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+  ]
+}
 ```
 
-`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
 
 ## Sources
 

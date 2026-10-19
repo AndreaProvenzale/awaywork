@@ -21,7 +21,7 @@ export const commandProviderConfig = z
       .min(1)
       .optional()
       .describe(
-        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
+        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
       ),
     secrets: z
       .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))

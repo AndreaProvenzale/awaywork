@@ -286,7 +286,7 @@
                   "description": "Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log"
                 },
                 "probe": {
-                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
+                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
                   "type": "string",
                   "minLength": 1
                 },

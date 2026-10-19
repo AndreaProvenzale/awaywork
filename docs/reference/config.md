@@ -134,7 +134,7 @@ Same keys as `providers[].claude.budget.fallback`.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
-| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply |
+| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply |
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
 | `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
 | `budget` | object |  | Overrides the top-level budget for this provider |
