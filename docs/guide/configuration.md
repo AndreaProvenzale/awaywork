@@ -259,7 +259,7 @@ A rule can run more steps after its skill, such as a review and a fix until the 
 
 `notify.command` runs in a shell, as you and with your environment, on two events. `AWAYWORK_EVENT` says which:
 
-- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`.
+- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`; the same results as JSON sit next to it, in `$(dirname "$AWAYWORK_REPORT")/report.json`.
 - `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a [slice](./chains.md#stack), that opened a draft PR (not on a [`push`](./chains.md#push), so a command that readies or labels `$AWAYWORK_PR_URL` never touches your own PR), and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it.
 
 The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.

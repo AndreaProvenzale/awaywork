@@ -96,6 +96,17 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('prints only the error with --json for a run with steps but no report.json', async () => {
+    const step = join(runsDir, '20261015-220000', 'units', 'u0', 'fix')
+    await mkdir(step, { recursive: true })
+    await writeFile(join(step, 'worker.log'), '')
+    const { out, err } = output()
+    await printReport('20261015-220000', false, await controlRepo([], ''), true)
+    expect(err).toEqual([`no JSON report for run 20261015-220000 in ${runsDir}`])
+    expect(out).toEqual([])
+    expect(process.exitCode).toBe(1)
+  })
+
   it('lists with the markdown counts even with --json', async () => {
     await writeFile(join(runsDir, '20261015-220000', 'report.json'), '{"runId":"20261015-220000"}')
     const run = await controlRepo([], '')

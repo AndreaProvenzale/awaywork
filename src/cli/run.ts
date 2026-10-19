@@ -197,6 +197,7 @@ export async function printReport(
       `no ${json ? 'JSON report' : 'report'} for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`,
     )
     process.exitCode = 1
+    if (json) return
     const steps = picked ? await startedSteps(picked.dir) : []
     const running = steps.pop()
     if (running) {

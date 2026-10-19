@@ -97,7 +97,7 @@ queue:
 
 describe('reportJson', () => {
   it("keeps the run header and drops every item's raw payload", () => {
-    const item = { ...githubPr(), raw: { secret: 'payload' } }
+    const item = { ...githubPr(1), raw: { secret: 'payload' } }
     const report = {
       runId: '20261015-220000',
       dryRun: false,
