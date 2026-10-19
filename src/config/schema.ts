@@ -548,13 +548,21 @@ export const configSchema = z
         message: 'required with a command provider: it has no turn cap, so this bounds its unit',
       })
     cfg.providers.forEach((entry, i) => {
-      for (const id of Object.keys(entry))
-        if (commandIds.includes(id) && !/^[a-z][a-z0-9-]*$/.test(id))
+      for (const id of Object.keys(entry)) {
+        if (!commandIds.includes(id)) continue
+        if (!/^[a-z][a-z0-9-]*$/.test(id))
           ctx.addIssue({
             code: 'custom',
             path: ['providers', i, id],
             message: 'expected a lowercase name like opencode',
           })
+        else if (id in Object.prototype)
+          ctx.addIssue({
+            code: 'custom',
+            path: ['providers', i, id],
+            message: `"${id}" is reserved; pick another name`,
+          })
+      }
     })
     for (const name of Object.keys(cfg.mcp))
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name))

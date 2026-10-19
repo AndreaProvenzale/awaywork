@@ -98,6 +98,12 @@ describe('command provider config', () => {
     expect(providerFor('toString', undefined)).toBeUndefined()
   })
 
+  it('refuses a name Object.prototype already has', () => {
+    expect(problems(config('constructor: { command: x }'))).toEqual([
+      'providers[1].constructor: "constructor" is reserved; pick another name',
+    ])
+  })
+
   it('requires limits.unit_minutes, since there is no turn cap', () => {
     expect(
       problems(
