@@ -9,7 +9,7 @@ import {
 } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
-import { planRun } from '../src/core/foreman.js'
+import { type PlannedUnit, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
@@ -96,18 +96,33 @@ queue:
 })
 
 describe('reportJson', () => {
-  it("keeps the run header and drops every item's raw payload", () => {
-    const item = { ...githubPr(1), raw: { secret: 'payload' } }
-    const report = {
+  it('keeps the run header and only references to its items', () => {
+    const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix, where: { checks: failing } }]
+`)
+    const secret = { description: 'PRIVATE', comments: [{ author: 'a', body: 'PRIVATE', at: '' }] }
+    const plan = planRun({
+      config,
+      items: [
+        { ...githubPr(1, { checks: 'failing' }), ...secret },
+        { ...githubPr(2), ...secret },
+      ],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+    })
+    const report: RunReport = {
       runId: '20261015-220000',
       dryRun: false,
       startedAt: new Date('2026-10-15T22:00:00Z'),
       finishedAt: new Date('2026-10-15T23:00:00Z'),
-      plan: { units: [{ item }] },
-      results: [],
+      plan,
+      results: [{ planned: plan.units[0] as PlannedUnit, status: 'prepared' }],
       quotas: {},
-    } as unknown as RunReport
-    const parsed = JSON.parse(reportJson(report))
+    }
+    const json = reportJson(report)
+    const parsed = JSON.parse(json)
     expect(Object.keys(parsed)).toEqual([
       'runId',
       'dryRun',
@@ -118,6 +133,15 @@ describe('reportJson', () => {
       'quotas',
     ])
     expect(parsed.startedAt).toBe('2026-10-15T22:00:00.000Z')
-    expect(parsed.plan.units[0].item.raw).toBeUndefined()
+    const ref = (n: number) => ({
+      source: 'github',
+      key: `acme/api#${n}`,
+      title: `PR ${n}`,
+      url: `https://github.com/acme/api/pull/${n}`,
+    })
+    expect(parsed.plan.units[0].unit.items).toEqual([ref(1)])
+    expect(parsed.results[0].planned.unit.items).toEqual([ref(1)])
+    expect(parsed.plan.skipped[0].item).toEqual(ref(2))
+    expect(json).not.toContain('PRIVATE')
   })
 })

@@ -13,9 +13,28 @@ export function planJson(plan: RunPlan, warnings: string[] = []): string {
   return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
 }
 
-/** The run's results as JSON; items drop their raw source payload. */
+const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+const withItemRefs = (p: PlannedUnit) => ({
+  ...p,
+  unit: { ...p.unit, items: p.unit.items.map(itemRef) },
+})
+
+/** The run's results as JSON; items keep only what `formatReport` shows of them. */
 export function reportJson(report: RunReport): string {
-  return JSON.stringify(report, withoutRaw, 2)
+  const { plan, results } = report
+  return JSON.stringify(
+    {
+      ...report,
+      plan: {
+        ...plan,
+        units: plan.units.map(withItemRefs),
+        skipped: plan.skipped.map((s) => ({ ...s, item: itemRef(s.item) })),
+      },
+      results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
+    },
+    null,
+    2,
+  )
 }
 
 /** One per chain: its first step stands for it. */
