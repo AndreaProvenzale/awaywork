@@ -18,9 +18,9 @@ const config = z
       .describe('Site cloud id: set for a scoped token, which calls api.atlassian.com'),
     jql: z.string().optional().describe('JQL condition ANDed with my unresolved issues'),
     repo_map: z
-      .record(z.string(), z.string().regex(/^[\w.-]+(\/[\w.-]+)+$/))
+      .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
       .optional()
-      .describe("Project key -> owner/repo (groups may nest) where its issues' code lives"),
+      .describe("Project key -> owner/repo where its issues' code lives"),
     token_env: z
       .string()
       .default('JIRA_API_TOKEN')

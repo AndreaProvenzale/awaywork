@@ -10,13 +10,13 @@ describe('repos keys', () => {
       repos: { [key]: {} },
     }).success
 
-  it('accepts owner/name and nested groups', () => {
+  it('accepts owner/name', () => {
     expect(parse('acme/app')).toBe(true)
-    expect(parse('group/sub/project')).toBe(true)
   })
 
-  it('rejects a bare name', () => {
+  it('rejects a bare name and nested groups', () => {
     expect(parse('app')).toBe(false)
+    expect(parse('group/sub/project')).toBe(false)
   })
 })
 
@@ -24,9 +24,10 @@ describe('command source repo field', () => {
   const repo = commandSource('t', { ...commandConfig.parse({ command: 'x' }), dir: '.' }).fields
     .repo
 
-  it('accepts nested groups and rejects a bare name', () => {
-    expect(repo?.safeParse('group/sub/project').success).toBe(true)
+  it('accepts owner/name and rejects a bare name and nested groups', () => {
+    expect(repo?.safeParse('acme/app').success).toBe(true)
     expect(repo?.safeParse('app').success).toBe(false)
+    expect(repo?.safeParse('group/sub/project').success).toBe(false)
   })
 })
 
@@ -37,8 +38,9 @@ describe('jira repo_map', () => {
       sources: { jira: { site: 'x.atlassian.net', email: 'a@b.c', repo_map: { ENG: repo } } },
     }).success
 
-  it('accepts nested groups and rejects a bare name', () => {
-    expect(parse('group/sub/project')).toBe(true)
+  it('accepts owner/name and rejects a bare name and nested groups', () => {
+    expect(parse('acme/app')).toBe(true)
     expect(parse('app')).toBe(false)
+    expect(parse('group/sub/project')).toBe(false)
   })
 })

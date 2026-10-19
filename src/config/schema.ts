@@ -480,12 +480,9 @@ export const configSchema = z
         'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
       ),
     repos: z
-      .record(
-        z.string().regex(/^[^/\s]+(\/[^/\s]+)+$/, 'expected owner/name (groups may nest)'),
-        repo,
-      )
+      .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
       .default({})
-      .describe('Per-repo settings, keyed by owner/name (a forge may nest groups)'),
+      .describe('Per-repo settings, keyed by owner/name'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
     skills: z
       .array(z.string())

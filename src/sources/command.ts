@@ -70,7 +70,7 @@ export function isCommand(cfg: unknown): cfg is CommandConfig {
 /** A source whose items come from the user's own command; its fields come from the config. */
 export function commandSource(id: string, cfg: CommandConfig): Source<CommandConfig> {
   const fields: Record<string, z.ZodType> = {
-    repo: z.string().regex(/^[^/\s]+(\/[^/\s]+)+$/),
+    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
     created: z.iso.datetime({ offset: true }),
     updated: z.iso.datetime({ offset: true }),
     ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),

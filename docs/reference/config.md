@@ -29,7 +29,7 @@ with:
 | `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
-| `repos` | map | `{}` | Per-repo settings, keyed by owner/name (a forge may nest groups) |
+| `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
@@ -182,7 +182,7 @@ My unresolved Jira Cloud issues.
 | `email` (required) | string |  | Atlassian account email the API token belongs to |
 | `cloud_id` | string |  | Site cloud id: set for a scoped token, which calls api.atlassian.com |
 | `jql` | string |  | JQL condition ANDed with my unresolved issues |
-| `repo_map` | map |  | Project key -> owner/repo (groups may nest) where its issues' code lives |
+| `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 
