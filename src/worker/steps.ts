@@ -1,14 +1,11 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import { git } from './checks.js'
-import {
-  commandEnv,
-  outputFile,
-  readOutput,
-  refuseSymlinks,
-  WORK_DIR,
-  writeOutput,
-} from './workspace.js'
+import { commandEnv, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+
+const off = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
 
 export function isLast(loop: {
   round: number
@@ -52,14 +49,30 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   )
 }
 
-/** Puts the clone back as a failed step found it: its commits, edits and new files go, and `out/` keeps only the PR body as it was. */
-export async function discard(dir: string, start: string, body: string): Promise<void> {
-  await git(dir, 'reset', '-q', '--hard', start)
-  await git(dir, 'clean', '-q', '-fd')
-  const out = join(dir, WORK_DIR, 'out')
-  await rm(out, { recursive: true, force: true })
-  await mkdir(out)
-  if (body) await writeOutput(join(out, outputFile.draft_pr), body)
+/** The clone's working tree and `out/` as a git tree, for `discard` to put back. */
+export async function snapshot(dir: string): Promise<string> {
+  const index = join(dir, '.git', 'away-snapshot')
+  const run = async (...args: string[]) =>
+    (await execa(bin('git'), ['-C', dir, ...off, ...args], { env: { GIT_INDEX_FILE: index } }))
+      .stdout
+  try {
+    // Starting from the clone's index spares hashing every unchanged file again.
+    await cp(join(dir, '.git', 'index'), index)
+    await run('add', '-A')
+    await run('add', '-f', '--', `${WORK_DIR}/out`)
+    return await run('write-tree')
+  } finally {
+    await rm(index, { force: true })
+  }
+}
+
+/** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s tree. */
+export async function discard(dir: string, start: string, tree: string): Promise<void> {
+  await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
+  await git(dir, ...off, 'reset', '-q', '--hard', start)
+  await git(dir, ...off, 'clean', '-q', '-fd')
+  await git(dir, ...off, 'read-tree', '-u', '--reset', tree)
+  await git(dir, ...off, 'reset', '-q')
 }
 
 /** With every secret withheld except the repo's own. */

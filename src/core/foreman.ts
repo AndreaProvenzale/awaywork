@@ -283,10 +283,10 @@ function stepsOf(entry: ThenStep | Loop): ThenStep[] {
   return isLoop(entry) ? entry.loop : [entry]
 }
 
-/** The model a rule sets for a provider on this attempt: the list's entry for it, the last one when the list is shorter. */
+/** The model a rule sets for a provider on this attempt: the list's entry for it. */
 export function modelFor(models: Step['model'], provider: string, attempt = 0): string | undefined {
   const set = models?.[provider]
-  return Array.isArray(set) ? set[Math.min(attempt, set.length - 1)] : set
+  return Array.isArray(set) ? set[attempt] : set
 }
 
 /** Whether a rule has a second model for a provider to retry a failed unit on. */

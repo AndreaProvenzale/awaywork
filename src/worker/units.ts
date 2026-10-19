@@ -30,7 +30,16 @@ import {
   publishSlice,
   type StepReport,
 } from './slices.js'
-import { discard, handOff, isLast, made, maxReached, readVerdict, setupEnv } from './steps.js'
+import {
+  discard,
+  handOff,
+  isLast,
+  made,
+  maxReached,
+  readVerdict,
+  setupEnv,
+  snapshot,
+} from './steps.js'
 import {
   configSecrets,
   notSymlink,
@@ -61,6 +70,14 @@ export interface RunInput {
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   skillDirs?: { user: string; builtin: string }
+}
+
+/** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
+interface Retry {
+  result: UnitResult
+  start: string
+  tree: string
+  keep: () => void
 }
 
 /** The units `name` names, by unit id or item key in any case. */
@@ -181,7 +198,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let ran = false
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
-    let retrying: UnitResult | undefined
+    let retrying: Retry | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
 
@@ -257,9 +274,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const skip = (reason: string, passedOver?: true) =>
         done.push({ planned: p, status: 'skipped', reason, ...(passedOver && { passedOver }) })
       const end = (reason: string) => {
-        // A retry that can't start leaves the failed step as the step's outcome.
-        if (retryOf) reason = `${p.unit.id} failed, not retried: ${reason}`
-        else skip(reason)
+        // A retry that can't start leaves the failed attempt standing, as without a model list.
+        if (retryOf) {
+          retryOf.result.reason ??= `not retried: ${reason}`
+          retryOf.keep()
+          reason = `${p.unit.id} failed, not retried: ${reason}`
+        } else skip(reason)
         ended = { reason }
         if (loop) loop.ended ??= reason
       }
@@ -277,7 +297,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       const unit = { ...p.unit, ...shape }
-      const candidates = retryOf ? [retryOf.provider as string] : unit.providers
+      const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
       const { provider: id, passed } = route(candidates, allowances, routed)
       const provider = id && input.providers[id]
       if (!id || !provider) {
@@ -298,7 +318,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
-      if (retryOf) retryOf.retried = true
+      if (retryOf) retryOf.result.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
       input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
@@ -317,8 +337,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       done.push(result)
       let start: string | undefined
-      let body = ''
       try {
+        if (retryOf) await discard(dir, retryOf.start, retryOf.tree)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
         if (cut) {
@@ -368,7 +388,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         if (!reuse) await baseline(dir)
         const { when } = unit.rule
-        if (when && !retryOf) {
+        if (when) {
           const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
           const met = await factsFor(when, unit, dir, since, verdict, log, logFile)
           Object.assign(met.facts, quotaFacts(a))
@@ -429,7 +449,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
-        body = await readOutput(join(dir, WORK_DIR, 'out', outputFile.draft_pr))
+        const retryable = !retryOf && published.size === 0 && hasRetryModel(unit.rule.model, id)
+        const tree = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {
           log,
@@ -449,14 +470,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
         result.made = made(commits, report)
-        if (
-          worker.status === 'failed' &&
-          !retryOf &&
-          !input.signal?.aborted &&
-          published.size === 0 &&
-          hasRetryModel(unit.rule.model, id)
-        ) {
-          retrying = result
+        if (worker.status === 'failed' && tree && !input.signal?.aborted) {
+          const out = join(unitDir, 'out')
+          const keep = () => {
+            verdict = result.verdict ?? verdict
+            if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
+            previous = { skill: unit.skill, out }
+          }
+          retrying = { result, start, tree, keep }
           input.ctx.log(`${unit.id}: failed, retrying on the next ${id} model`)
           continue
         }
@@ -513,8 +534,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           try {
             await restoreGit(dir)
             await handOff(dir, start, unitDir)
-            if (retrying) await discard(dir, start, body)
-            else previous = { skill: unit.skill, out: join(unitDir, 'out') }
+            if (!retrying) previous = { skill: unit.skill, out: join(unitDir, 'out') }
           } catch (e) {
             retrying = undefined
             ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }
