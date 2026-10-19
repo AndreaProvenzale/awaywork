@@ -32,20 +32,40 @@ describe('approve', () => {
     expect(items.map((i) => fieldValue(i, 'approved'))).toEqual([true, false])
   })
 
-  it('clears the approval of items a unit finished on', () => {
-    const results = [
-      { status: 'done', planned: { unit: { items: [item('github', 'a#1', true)] } } },
-      { status: 'error', planned: { unit: { items: [item('github', 'a#2', true)] } } },
-    ]
-    const approvals = { 'github:a#1': { at: 'x' }, 'github:a#2': { at: 'x' } }
-    expect(clearApprovals(approvals, { results } as unknown as RunReport)).toEqual({
-      'github:a#2': { at: 'x' },
-    })
+  // A run with one chain per item, from its steps' results.
+  const run = (...chains: [key: string, approved: boolean, ...steps: object[]][]) => {
+    const units: object[] = []
+    const results: object[] = []
+    for (const [key, approved, ...steps] of chains) {
+      const items = [item('github', key, approved)]
+      steps.forEach((step, n) => {
+        const planned = { unit: { id: `${key}-${n}`, items }, ...(n > 0 && { chain: `${key}-0` }) }
+        units.push(planned)
+        results.push({ planned, ...step })
+      })
+    }
+    return { plan: { units }, results } as unknown as RunReport
+  }
+  const approvals = { 'github:a#1': { at: 'x' }, 'github:a#2': { at: 'x' } }
+  const done = { status: 'done' }
+
+  it('clears the approval of items a chain finished on', () => {
+    const report = run(['a#1', true, done, done], ['a#2', true, { status: 'error' }])
+    expect(clearApprovals(approvals, report)).toEqual({ 'github:a#2': { at: 'x' } })
+  })
+
+  it('keeps the approval when a step is done but its work went unpublished', () => {
+    const outcome = { kind: 'none', reason: 'push failed', unpublished: true }
+    const report = run(['a#1', true, { ...done, outcome }, done])
+    expect(clearApprovals(approvals, report)).toEqual(approvals)
+  })
+
+  it('keeps the approval when a later step of the chain failed', () => {
+    const report = run(['a#1', true, done, { status: 'failed' }])
+    expect(clearApprovals(approvals, report)).toEqual(approvals)
   })
 
   it('keeps an approval given after the run was planned', () => {
-    const results = [{ status: 'done', planned: { unit: { items: [item('github', 'a#1')] } } }]
-    const approvals = { 'github:a#1': { at: 'x' } }
-    expect(clearApprovals(approvals, { results } as unknown as RunReport)).toEqual(approvals)
+    expect(clearApprovals(approvals, run(['a#1', false, done, done]))).toEqual(approvals)
   })
 })

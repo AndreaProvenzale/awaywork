@@ -76,7 +76,7 @@ export function runCommand(program: Command): void {
           }
           release = lock.release
         }
-        const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
+        const { plan, warnings, ctx, sources, secrets, attempts } = await probeAndPlan(
           config,
           skillsDirOf(path),
           { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
@@ -117,7 +117,7 @@ export function runCommand(program: Command): void {
           forge: githubForge(undefined, githubHost(config)),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
-          attempts: await loadAttempts(attemptsPath),
+          attempts,
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))

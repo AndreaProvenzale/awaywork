@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { chainResults, finished } from './attempts.js'
 import type { RunReport } from './report.js'
 import type { Item } from './types.js'
 
@@ -17,7 +18,8 @@ export async function loadApprovals(path: string): Promise<Approvals> {
 
 export async function saveApprovals(path: string, approvals: Approvals): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, `${JSON.stringify(approvals, null, 2)}\n`)
+  await writeFile(`${path}.tmp`, `${JSON.stringify(approvals, null, 2)}\n`)
+  await rename(`${path}.tmp`, path)
 }
 
 /** The items with their `approved` field set, which a rule's `where` reads like any other. */
@@ -28,12 +30,12 @@ export function withApprovals(items: Item[], approvals: Approvals): Item[] {
   }))
 }
 
-/** The approvals left once a unit on an item finished: a unit that did its work uses up the approval it was planned with, not one given during the run. */
+/** The approvals left once a chain on an item finished: it uses up the approval it was planned with, not one given during the run. */
 export function clearApprovals(approvals: Approvals, report: RunReport): Approvals {
   const next = { ...approvals }
-  for (const r of report.results)
-    if (r.status === 'done')
-      for (const item of r.planned.unit.items)
+  for (const head of report.plan.units.filter((p) => !p.chain))
+    if (finished(chainResults(report, head.unit.id)))
+      for (const item of head.unit.items)
         if (item.fields.approved) delete next[`${item.source}:${item.key}`]
   return next
 }
