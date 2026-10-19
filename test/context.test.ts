@@ -58,6 +58,14 @@ it("doesn't copy output holding a symlink or a FIFO", async () => {
   }
 })
 
+it("doesn't copy through an AWAYWORK_CONTEXT_DIR replaced by a symlink", async () => {
+  const { extra, failed } = await run(
+    'mkdir target; echo hi > target/ok.md; rmdir "$AWAYWORK_CONTEXT_DIR"; ln -s "$PWD/target" "$AWAYWORK_CONTEXT_DIR"',
+  )
+  expect(failed).toMatch(/AWAYWORK_CONTEXT_DIR is not a folder/)
+  await expect(stat(extra)).rejects.toThrow()
+})
+
 it("runs each item's command from the config's folder, not the clone, with its own secrets only", async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-context-'))
   const [configDir, clone] = [join(root, 'config'), join(root, 'clone')]

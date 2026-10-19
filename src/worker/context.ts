@@ -100,6 +100,7 @@ export async function runContext(
 
 /** Why `dir` can't go to the worker: something in it that isn't a regular file or folder, or more than the size limit. */
 async function unfit(dir: string): Promise<string | undefined> {
+  if (!(await lstat(dir)).isDirectory()) return 'AWAYWORK_CONTEXT_DIR is not a folder'
   let bytes = 0
   const walk = async (folder: string): Promise<string | undefined> => {
     for (const entry of await readdir(folder)) {
