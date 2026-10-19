@@ -49,8 +49,16 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   )
 }
 
-/** The clone's working tree and `out/` as a git tree, for `discard` to put back. */
-export async function snapshot(dir: string): Promise<string> {
+/** A clone as a step found it, as git trees: what it staged, and its working tree with `out/`. */
+export interface Snapshot {
+  staged: string
+  tree: string
+}
+
+/** The clone for `discard` to put back; none while a conflicted merge leaves its index no tree. */
+export async function snapshot(dir: string): Promise<Snapshot | undefined> {
+  const staged = await git(dir, ...off, 'write-tree').catch(() => undefined)
+  if (!staged) return undefined
   const index = join(dir, '.git', 'away-snapshot')
   const run = async (...args: string[]) =>
     (await execa(bin('git'), ['-C', dir, ...off, ...args], { env: { GIT_INDEX_FILE: index } }))
@@ -60,19 +68,19 @@ export async function snapshot(dir: string): Promise<string> {
     await cp(join(dir, '.git', 'index'), index)
     await run('add', '-A')
     await run('add', '-f', '--', `${WORK_DIR}/out`)
-    return await run('write-tree')
+    return { staged, tree: await run('write-tree') }
   } finally {
     await rm(index, { force: true })
   }
 }
 
-/** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s tree. */
-export async function discard(dir: string, start: string, tree: string): Promise<void> {
+/** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s trees. */
+export async function discard(dir: string, start: string, saved: Snapshot): Promise<void> {
   await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
   await git(dir, ...off, 'reset', '-q', '--hard', start)
   await git(dir, ...off, 'clean', '-q', '-fd')
-  await git(dir, ...off, 'read-tree', '-u', '--reset', tree)
-  await git(dir, ...off, 'reset', '-q')
+  await git(dir, ...off, 'read-tree', '-u', '--reset', saved.tree)
+  await git(dir, ...off, 'read-tree', saved.staged)
 }
 
 /** With every secret withheld except the repo's own. */

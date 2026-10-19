@@ -3472,7 +3472,10 @@ it('keeps the failed attempt as without a list, and claims no retry, when the re
   expect(formatReport(report)).toContain(`| failed, 3 turns (not retried: ${why}) |`)
   expect(formatReport(report)).not.toContain('retried on the next model')
   expect(failed).toBe(1)
-  expect(report.results[0]?.outcome).toEqual(plain.report.results[0]?.outcome)
+  expect(report.results[0]?.outcome).toEqual({
+    ...plain.report.results[0]?.outcome,
+    head: expect.any(String),
+  })
   expect(await readFile(join(units, 'out', 'pr.md'), 'utf8')).toBe('Half a fix')
   expect(await readFile(join(plain.units, 'out', 'pr.md'), 'utf8')).toBe('Half a fix')
 })
@@ -3490,6 +3493,17 @@ it('retries from the clone exactly as the step found it, keeping what setup and 
     'review: fix.txt gen.txt leftover.txt .away/out/notes.md | Fix the build\n\nRan the failing test.'
   expect(found.slice(1)).toEqual([before, before])
   expect(tracked).toEqual(['setup\n', 'setup\n', 'setup\n'])
+})
+
+it('retries with what setup staged still staged', async () => {
+  const { tried, report } = await retried(
+    (skill, model) => (skill === 'fix' && model === 'sonnet' ? 'fail' : 'ok'),
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: { loop: [review], until: { command: "true" }, max: 1 } }',
+    undefined,
+    "repos: { acme/api: { setup: 'echo setup > tracked.txt; /usr/bin/git add tracked.txt' } }",
+  )
+  expect(tried).toEqual(['fix sonnet', 'fix opus', 'review sonnet'])
+  expect(report.results[1]?.loop).toBe('1 round of review; until held: `true` passes')
 })
 
 it("checks a retried step's when again, leaving its when.log", async () => {

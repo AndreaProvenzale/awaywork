@@ -37,6 +37,7 @@ import {
   made,
   maxReached,
   readVerdict,
+  type Snapshot,
   setupEnv,
   snapshot,
 } from './steps.js'
@@ -76,7 +77,7 @@ export interface RunInput {
 interface Retry {
   result: UnitResult
   start: string
-  tree: string
+  saved: Snapshot
   keep: () => void
 }
 
@@ -338,7 +339,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       done.push(result)
       let start: string | undefined
       try {
-        if (retryOf) await discard(dir, retryOf.start, retryOf.tree)
+        if (retryOf) await discard(dir, retryOf.start, retryOf.saved)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
         if (cut) {
@@ -450,7 +451,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
         const retryable = !retryOf && published.size === 0 && hasRetryModel(unit.rule.model, id)
-        const tree = retryable ? await snapshot(dir) : undefined
+        const saved = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {
           log,
@@ -470,14 +471,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
         result.made = made(commits, report)
-        if (worker.status === 'failed' && tree && !input.signal?.aborted) {
+        if (worker.status === 'failed' && saved && !input.signal?.aborted) {
           const out = join(unitDir, 'out')
           const keep = () => {
             verdict = result.verdict ?? verdict
             if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
             previous = { skill: unit.skill, out }
           }
-          retrying = { result, start, tree, keep }
+          retrying = { result, start, saved, keep }
           input.ctx.log(`${unit.id}: failed, retrying on the next ${id} model`)
           continue
         }
