@@ -193,7 +193,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 reports,
                 loops,
                 stack,
-                last && at === slices - 1,
+                // Only the whole chain, cut from the default branch, closes its issues.
+                last && at === slices - 1 && !first.capped && base === '',
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })

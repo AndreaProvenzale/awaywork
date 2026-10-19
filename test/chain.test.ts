@@ -760,6 +760,8 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
     ['away/acme-api-1-2', 'away/acme-api-1'],
     ['away/acme-api-2', ''],
   ])
+  // A capped chain left slices out, so none of its PRs closes the issue.
+  expect(opened.map((o) => o.body.includes('Closes'))).toEqual([false, true, false])
   expect(formatReport(report)).toContain(
     '| 2 | acme-api-2 | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
   )
@@ -780,13 +782,19 @@ it('refuses a stack on a step that reports, or after steps that all report', asy
 
 it('stacks a chain on your own PR: slice 1 into its branch, slice 2 onto slice 1', async () => {
   const { opened, forge } = await run(
-    'queue: [{ skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }]\n',
-    [githubPr(1)],
+    `queue:
+  - { skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }
+  - { skill: implement, where: { type: issue } }
+`,
+    [githubPr(1), { ...issue(2), linkedPrs: githubPr(1).linkedPrs }],
     worker(),
   )
-  expect(opened.map((o) => [o.head, o.base, o.body.includes('Stacked on')])).toEqual([
-    ['away/acme-api-1', 'feature-1', false],
-    ['away/acme-api-1-2', 'away/acme-api-1', true],
+  // Your PR closes its issue, not the stack on it.
+  expect(
+    opened.map((o) => [o.head, o.base, o.body.includes('Stacked on'), o.body.includes('Closes')]),
+  ).toEqual([
+    ['away/acme-api-1', 'feature-1', false, false],
+    ['away/acme-api-1-2', 'away/acme-api-1', true, false],
   ])
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
 })
