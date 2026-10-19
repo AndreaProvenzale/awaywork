@@ -73,7 +73,7 @@ async function earlierReport(
     steps.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))
     for (const step of steps) {
       const out = join(unitDir, step, 'out')
-      if (existsSync(join(out, outputFile.report)))
+      if ((await readOutput(join(out, outputFile.report))).trim())
         return { skill: step.replace(/^\d+-/, ''), out, earlierRun: last.runId }
     }
   }

@@ -867,3 +867,24 @@ it('hands a retry the plan report when the failed implement before it left none'
   expect(seen['acme-api-1']).toEqual(['report.md'])
   expect(prompts['acme-api-1']).toContain('in run plan-run, `plan` left its report')
 })
+
+it('skips an empty report a later step left for the one before it', async () => {
+  const seen: Record<string, string[]> = {}
+  const prompts: Record<string, string> = {}
+  await run('queue:\n  - skill: implement\n', [issue(1)], worker({}, { seen, prompts }), {
+    attempts: {
+      'github:acme/api#1': {
+        runId: 'r0',
+        skill: 'plan',
+        updated: '',
+        report: { runId: 'r0', unit: 'acme-api-1' },
+      },
+    },
+    earlier: {
+      'r0/units/acme-api-1/1-plan/out/report.md': 'the plan',
+      'r0/units/acme-api-1/2-review/out/report.md': '  \n',
+    },
+  })
+  expect(seen['acme-api-1']).toEqual(['report.md'])
+  expect(prompts['acme-api-1']).toContain('in run r0, `plan` left its report')
+})
