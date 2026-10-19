@@ -111,7 +111,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     await provider.probe(ctx).then(
       (quota) => {
         const a = allowance(budget, quota, Date.now(), config.windows)
-        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(a))
+        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(id, a))
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),
     )

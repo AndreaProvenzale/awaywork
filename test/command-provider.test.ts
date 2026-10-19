@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { describeAllowance } from '../src/cli/format.js'
 import { ConfigError, parseConfig } from '../src/config/load.js'
 import type { Job, WorkerEvent } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
@@ -88,6 +89,14 @@ describe('command provider config', () => {
       config('opencode: { command: x, budget: { fallback: { units: 2 } } }'),
     )
     expect(parsed.providers[1]?.budget.fallback).toEqual({ units: 2, turns: 60 })
+  })
+
+  it('describes its fallback without turns', () => {
+    const a = { kind: 'fallback', units: 4, turns: 60, reason: 'no quota reading' } as const
+    expect(describeAllowance('opencode', a)).toBe('fallback: 4 units (no quota reading)')
+    expect(describeAllowance('codex', a)).toBe(
+      'fallback: 4 units, 60 turns each (no quota reading)',
+    )
   })
 
   it('refuses a name that is not a plain lowercase word', () => {
