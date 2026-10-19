@@ -90,9 +90,9 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
   const next = { ...attempts }
   for (const head of report.plan.units.filter((p) => !p.chain)) {
     const id = head.unit.id
-    const chain = report.results.filter(
-      (r) => !r.retried && (r.planned.unit.id === id || r.planned.chain === id),
-    )
+    const rows = report.results.filter((r) => r.planned.unit.id === id || r.planned.chain === id)
+    // A failed step counts through its retry, the next row, unless the retry stopped short of counting.
+    const chain = rows.filter((r, i) => !r.retried || !counts(rows[i + 1]))
     // A rule's own `when` that didn't hold: the item is still waiting for it, not handled.
     if (chain[0]?.passedOver) continue
     // Each slice's outcome is on its first step.

@@ -206,7 +206,7 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 | `source` | Only items from this source |
 | `where` | Conditions on `type` and the source's fields |
 | `provider` | One or a list; overrides the global order for this rule |
-| `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule |
+| `model` | A model per provider, e.g. `{ claude: sonnet, codex: gpt-5-codex }`; overrides the provider's `model` for this rule. A list of two, `{ claude: [sonnet, opus] }`, retries a failed step on the second; see [Retry on the next model](#retry-on-the-next-model) |
 | `skills` | Extra skills the agent may use |
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
@@ -252,6 +252,31 @@ The unit's draft PR stacks on the awaywork PR, on a branch named after it (`away
 ### `order`
 
 Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last.
+
+### Retry on the next model
+
+```yaml
+- skill: fix
+  where: { type: pr, mine: true, checks: failing }
+  model: { claude: [sonnet, opus] }
+```
+
+Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain, where a step's own `model` can bring its own list. A list takes at most two entries; a provider set to a plain name never retries.
+
+The retry starts from the clone as the step before left it: the failed attempt's commits, edits and new files are dropped (gitignored ones like `node_modules` stay), and so are its report, verdict and edits to `pr.md`. Steps that already ran keep their work and don't run again, and the chain goes on after the retry as usual. Inside a [loop](./chains.md#loops) a failed round retries the same way, and the next round starts on the first model again.
+
+Only a failure retries: a quota or session stop, the time limit, the window's end, Ctrl-C or an awaywork error don't, and nothing retries once a [stacked slice](./chains.md#stack) of the chain was published. The retry stays on the failed step's provider and is routed like any step: if that provider has no budget left, or the window ended, the step stays failed and the steps after it are skipped as `<unit> failed, not retried: <why>`.
+
+Both attempts show in the report, each with its own step folder, and both count against the budget and in `awaywork stats`:
+
+```markdown
+| 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
+|  | └ acme-api-1 | fix | claude | failed, 3 turns (retried on the next model) | 1 commit |
+|  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
+|  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
+```
+
+Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step: a retry that finishes leaves no failure, one that fails counts once, and one stopped by quota, the session limit or the window's end lets the first failure count. `notify` hears only about the attempt that stands.
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 

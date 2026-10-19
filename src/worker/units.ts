@@ -30,7 +30,7 @@ import {
   publishSlice,
   type StepReport,
 } from './slices.js'
-import { handOff, isLast, made, maxReached, readVerdict, setupEnv } from './steps.js'
+import { discard, handOff, isLast, made, maxReached, readVerdict, setupEnv } from './steps.js'
 import {
   configSecrets,
   notSymlink,
@@ -142,12 +142,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
   }
 
-  /** Runs a chain on its `attempt`'s models; `retry` when a failed step has a next model, and nothing of the chain was published. */
-  const runChain = async (
-    chain: PlannedUnit[],
-    attempt: number,
-    stepsBefore: number,
-  ): Promise<{ done: UnitResult[]; retry: boolean }> => {
+  const runChain = async (chain: PlannedUnit[]): Promise<UnitResult[]> => {
     const done: UnitResult[] = []
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
@@ -185,13 +180,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let verdict: string | undefined
     let ran = false
     let interrupted = false
-    let retry = false
+    // A step that failed, to run again on its provider's next model.
+    let retrying: UnitResult | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
 
     /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
-      const lead = done.find((r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped')
+      const lead = done.find(
+        (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
+      )
       const out = join(chainDir, at > 0 ? `out-${at + 1}` : 'out')
       if (from !== undefined && lead && ran && !input.dryRun) {
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
@@ -240,7 +238,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     }
 
-    for (const p of chain) {
+    for (let i = 0; i < chain.length; i += retrying ? 0 : 1) {
+      const p = chain[i] as PlannedUnit
+      const retryOf = retrying
+      retrying = undefined
       if ((p.slice ?? 0) !== at) {
         await endSlice(false)
         at = p.slice ?? 0
@@ -256,7 +257,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const skip = (reason: string, passedOver?: true) =>
         done.push({ planned: p, status: 'skipped', reason, ...(passedOver && { passedOver }) })
       const end = (reason: string) => {
-        skip(reason)
+        // A retry that can't start leaves the failed step as the step's outcome.
+        if (retryOf) reason = `${p.unit.id} failed, not retried: ${reason}`
+        else skip(reason)
         ended = { reason }
         if (loop) loop.ended ??= reason
       }
@@ -274,7 +277,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       const unit = { ...p.unit, ...shape }
-      const { provider: id, passed } = route(unit.providers, allowances, routed)
+      const candidates = retryOf ? [retryOf.provider as string] : unit.providers
+      const { provider: id, passed } = route(candidates, allowances, routed)
       const provider = id && input.providers[id]
       if (!id || !provider) {
         end(`no provider left: ${passed.join('; ') || 'none configured'}`)
@@ -294,11 +298,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
+      if (retryOf) retryOf.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
-      const model = modelFor(unit.rule.model, id, attempt) ?? entry?.model
+      const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
       input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
-      const step = `${stepsBefore + done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
+      const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
       const plugin = join(input.runDir, 'plugins', unit.id)
       await mkdir(unitDir, { recursive: true })
@@ -312,6 +317,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       done.push(result)
       let start: string | undefined
+      let body = ''
       try {
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
@@ -362,7 +368,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         if (!reuse) await baseline(dir)
         const { when } = unit.rule
-        if (when) {
+        if (when && !retryOf) {
           const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
           const met = await factsFor(when, unit, dir, since, verdict, log, logFile)
           Object.assign(met.facts, quotaFacts(a))
@@ -423,6 +429,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
+        body = await readOutput(join(dir, WORK_DIR, 'out', outputFile.draft_pr))
         ran = true
         const worker = await runWorker(provider, job, a, {
           log,
@@ -439,26 +446,29 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           allowances[id] = withQuota(a, worker.quota)
         }
         result.verdict = await readVerdict(dir)
-        verdict = result.verdict ?? verdict
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
-        if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
         result.made = made(commits, report)
+        if (
+          worker.status === 'failed' &&
+          !retryOf &&
+          !input.signal?.aborted &&
+          published.size === 0 &&
+          hasRetryModel(unit.rule.model, id)
+        ) {
+          retrying = result
+          input.ctx.log(`${unit.id}: failed, retrying on the next ${id} model`)
+          continue
+        }
+        verdict = result.verdict ?? verdict
+        if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
         // What the next step works from: a committing step's commits, a report step's report.
         const left = unit.deliver === 'report' ? report !== '' : commits > 0
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
           interrupted = true
           ended = { reason: 'interrupted' }
-        } else if (worker.status !== 'done') {
-          ended = { reason: `${unit.id} ${worker.status}` }
-          retry =
-            worker.status === 'failed' &&
-            attempt === 0 &&
-            !input.dryRun &&
-            published.size === 0 &&
-            hasRetryModel(unit.rule.model, id)
-          if (retry) log(`retrying the chain on the next ${id} model, in a fresh clone`)
-        } else if (!left) {
+        } else if (worker.status !== 'done') ended = { reason: `${unit.id} ${worker.status}` }
+        else if (!left) {
           const reason = `${unit.id} ${unit.deliver === 'report' ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
           if (loop && !(at > 0 && p === opening)) loop.ended = reason
@@ -503,8 +513,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           try {
             await restoreGit(dir)
             await handOff(dir, start, unitDir)
-            previous = { skill: unit.skill, out: join(unitDir, 'out') }
+            if (retrying) await discard(dir, start, body)
+            else previous = { skill: unit.skill, out: join(unitDir, 'out') }
           } catch (e) {
+            retrying = undefined
             ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }
             if (loop) loop.ended ??= ended.reason
           }
@@ -513,25 +525,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       input.ctx.log(`${unit.id}: ${result.status}`)
     }
 
-    if (!retry) await endSlice(true)
+    await endSlice(true)
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
-    return { done, retry }
+    return done
   }
 
   for (const chain of chains) {
-    let { done, retry } = await runChain(chain, 0, 0)
-    if (retry) {
-      // The failed attempt published nothing; its steps stay in the report, the steps it never reached do not.
-      const failed = done
-        .filter((r) => r.status !== 'skipped')
-        .map((r) => ({ ...r, retried: true as const }))
-      results.push(...failed)
-      input.ctx.log(`${chain[0]?.unit.id}: failed, retrying on the next model`)
-      done = (await runChain(chain, 1, failed.length)).done
-    }
+    const done = await runChain(chain)
     results.push(...done)
-    await notifyUnits(done)
+    await notifyUnits(done.filter((r) => !r.retried))
   }
 
   const { runId, dryRun, plan } = input

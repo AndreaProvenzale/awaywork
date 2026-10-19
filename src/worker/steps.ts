@@ -1,7 +1,14 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { git } from './checks.js'
-import { commandEnv, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+import {
+  commandEnv,
+  outputFile,
+  readOutput,
+  refuseSymlinks,
+  WORK_DIR,
+  writeOutput,
+} from './workspace.js'
 
 export function isLast(loop: {
   round: number
@@ -43,6 +50,16 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   await Promise.all(
     ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
   )
+}
+
+/** Puts the clone back as a failed step found it: its commits, edits and new files go, and `out/` keeps only the PR body as it was. */
+export async function discard(dir: string, start: string, body: string): Promise<void> {
+  await git(dir, 'reset', '-q', '--hard', start)
+  await git(dir, 'clean', '-q', '-fd')
+  const out = join(dir, WORK_DIR, 'out')
+  await rm(out, { recursive: true, force: true })
+  await mkdir(out)
+  if (body) await writeOutput(join(out, outputFile.draft_pr), body)
 }
 
 /** With every secret withheld except the repo's own. */

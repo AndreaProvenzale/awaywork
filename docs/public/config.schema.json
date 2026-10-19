@@ -675,7 +675,7 @@
                   }
                 }
               ],
-              "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+              "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
             }
           },
           "skills": {
@@ -824,7 +824,7 @@
                               }
                             }
                           ],
-                          "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                          "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                         }
                       },
                       "skills": {
@@ -1014,7 +1014,7 @@
                                       }
                                     }
                                   ],
-                                  "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                                  "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                                 }
                               },
                               "skills": {
@@ -1201,7 +1201,7 @@
                                         }
                                       }
                                     ],
-                                    "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                                    "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                                   }
                                 },
                                 "skills": {
@@ -1471,7 +1471,7 @@
                                     }
                                   }
                                 ],
-                                "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                                "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                               }
                             },
                             "skills": {
@@ -1661,7 +1661,7 @@
                                             }
                                           }
                                         ],
-                                        "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                                        "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                                       }
                                     },
                                     "skills": {
@@ -1848,7 +1848,7 @@
                                               }
                                             }
                                           ],
-                                          "description": "A model, or a list of up to two: when a unit fails, its chain retries once the same night on the second, in a fresh clone"
+                                          "description": "A model, or a list of up to two: a step that fails on the first runs once more on the second"
                                         }
                                       },
                                       "skills": {

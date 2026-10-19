@@ -8,7 +8,7 @@ import { formatPlan, formatReportForTerminal } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
-import { allowance } from '../src/core/budget.js'
+import { type Allowance, allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
@@ -3271,7 +3271,14 @@ it("doesn't write a failed verify through a link it left for the PR body", async
   expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
 })
 
-async function retried(fails: (model?: string) => boolean, models = '[sonnet, opus]') {
+const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }'
+
+/** Runs one PR's rule with a provider that does `act(skill, model)`: a failing run first leaves partial work behind. */
+async function retried(
+  act: (skill: string, model?: string) => 'ok' | 'fail' | 'quota',
+  rule = retryRule,
+  claude?: Allowance,
+) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-retry-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -3283,13 +3290,31 @@ async function retried(fails: (model?: string) => boolean, models = '[sonnet, op
       await execa(bin('git'), ['clone', '-q', '--branch', branch, origin, dir])
     },
   }
-  const tried: (string | undefined)[] = []
+  const tried: string[] = []
+  // What each run found in the clone: the files a failing run leaves, and the PR body.
+  const found: string[] = []
   const flaky: Provider = {
     ...worker,
     async *run(job) {
-      tried.push(job.model)
-      if (fails(job.model)) {
+      const { skill } = job.unit
+      tried.push(`${skill} ${job.model}`)
+      const files = ['fix.txt', 'partial.txt', 'junk.txt'].filter((f) =>
+        existsSync(join(job.dir, f)),
+      )
+      const body = await readFile(join(job.dir, '.away/out/pr.md'), 'utf8').catch(() => '')
+      found.push(`${skill}: ${files.join(' ')} | ${body}`)
+      const does = act(skill, job.model)
+      if (does === 'fail') {
+        await writeFile(join(job.dir, 'partial.txt'), 'half')
+        await git(job.dir, 'add', 'partial.txt')
+        await git(job.dir, 'commit', '-qm', 'Half a fix')
+        await writeFile(join(job.dir, 'junk.txt'), 'junk')
+        await writeFile(join(job.dir, '.away/out/pr.md'), 'Half a fix')
         yield { type: 'done', ok: false, turns: 3 }
+        return
+      }
+      if (does === 'quota') {
+        yield { type: 'quota', quota: quota(0.99) }
         return
       }
       yield* worker.run(job, new AbortController().signal)
@@ -3299,22 +3324,25 @@ async function retried(fails: (model?: string) => boolean, models = '[sonnet, op
 providers: [claude]
 sources: { github: { repos: [acme/*] } }
 queue:
-  - { skill: fix, where: { checks: failing }, model: { claude: ${models} } }
+  - ${rule}
 `)
   const now = reset * 1000 - 3 * 24 * 60 * 60 * 1000
-  const allowances = { claude: allowance(config.budget, quota(0.36), now, config.windows) }
+  const allowances = {
+    claude: claude ?? allowance(config.budget, quota(0.36), now, config.windows),
+  }
   const plan = planRun({
     config,
-    items: [githubPr(1, { checks: 'failing' })],
+    items: [githubPr(1, { checks: 'failing', updated: '2026-09-01T00:00:00Z' })],
     allowances,
     skills: { builtin: builtinSkills },
   })
+  const runDir = join(root, 'run')
   const report = await runUnits({
     config,
     configDir: root,
     plan,
     runId: '20260925-010000',
-    runDir: join(root, 'run'),
+    runDir,
     dryRun: false,
     providers: { claude: flaky },
     sources: { github: fakeSource() as Source },
@@ -3323,30 +3351,110 @@ queue:
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
-  return { tried, report }
+  const failed = recordAttempts({}, report)['github:acme/api#1']?.failed
+  return { tried, found, report, failed, units: join(runDir, 'units', 'acme-api-1') }
 }
 
-it('retries a failed unit once on the next model in a fresh clone, publishing only the retry', async () => {
-  const { tried, report } = await retried((model) => model === 'sonnet')
-  expect(tried).toEqual(['sonnet', 'opus'])
-  expect(report.results.map((u) => [u.step, u.status, u.outcome?.kind])).toEqual([
-    ['1-fix', 'failed', undefined],
-    ['2-fix', 'done', 'pr'],
+it('retries a failed step once on the next model, from the clone as it was before the step', async () => {
+  const { tried, found, report, failed } = await retried((_, model) =>
+    model === 'sonnet' ? 'fail' : 'ok',
+  )
+  expect(tried).toEqual(['fix sonnet', 'fix opus'])
+  expect(found[1]).toBe('fix:  | ')
+  expect(report.results.map((u) => [u.step, u.status, u.retried, u.outcome?.kind])).toEqual([
+    ['1-fix', 'failed', true, undefined],
+    ['2-fix', 'done', undefined, 'pr'],
   ])
-  expect(formatReport(report)).toContain('failed, 3 turns (retried on the next model)')
-  expect(recordAttempts({}, report)).toEqual({})
+  expect(report.results[1]?.outcome).toMatchObject({ commits: 1 })
+  expect(formatReport(report)).toContain('| failed, 3 turns (retried on the next model) |')
+  expect(failed).toBeUndefined()
   expect(unitStats(report.results).map((s) => s.status)).toEqual(['failed', 'done'])
 })
 
-it('retries only once when the second attempt fails too, and publishes the failed retry', async () => {
-  const { tried, report } = await retried(() => true)
-  expect(tried).toEqual(['sonnet', 'opus'])
-  expect(report.results.map((u) => u.status)).toEqual(['failed', 'failed'])
-  expect(report.results.map((u) => u.retried)).toEqual([true, undefined])
+it("retries only a chain's failed step, keeping the steps before it", async () => {
+  const { tried, found, report, failed } = await retried(
+    (skill, model) => (skill === 'review' && model === 'sonnet' ? 'fail' : 'ok'),
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: review }',
+  )
+  expect(tried).toEqual(['fix sonnet', 'review sonnet', 'review opus'])
+  expect(found[2]).toBe('review: fix.txt | Fix the build\n\nRan the failing test.')
+  expect(report.results.map((u) => [u.step, u.status, u.retried])).toEqual([
+    ['1-fix', 'done', undefined],
+    ['2-review', 'failed', true],
+    ['3-review', 'done', undefined],
+  ])
+  expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', commits: 1 })
+  expect(failed).toBeUndefined()
+})
+
+it('numbers a retry inside a loop after every step folder', async () => {
+  let reviews = 0
+  const { report, units } = await retried(
+    (skill) => (skill === 'review' && ++reviews === 2 ? 'fail' : 'ok'),
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: { loop: [review], until: { verdict: nope }, max: 2 } }',
+  )
+  expect(report.results.map((u) => [u.step, u.status, u.retried])).toEqual([
+    ['1-fix', 'done', undefined],
+    ['2-review', 'done', undefined],
+    ['3-review', 'failed', true],
+    ['4-review', 'done', undefined],
+  ])
+  expect(report.results[0]?.loop).toBe('2 rounds of review; max 2 rounds reached')
+  expect((await readdir(units)).sort()).toEqual([
+    '1-fix',
+    '2-review',
+    '3-review',
+    '4-review',
+    'out',
+  ])
+})
+
+it('retries only once when the retry fails too, and counts one failure', async () => {
+  const { tried, report, failed } = await retried(() => 'fail')
+  expect(tried).toEqual(['fix sonnet', 'fix opus'])
+  expect(report.results.map((u) => [u.status, u.retried])).toEqual([
+    ['failed', true],
+    ['failed', undefined],
+  ])
+  expect(failed).toBe(1)
 })
 
 it('does not retry with a single-entry model list', async () => {
-  const { tried, report } = await retried(() => true, '[sonnet]')
-  expect(tried).toEqual(['sonnet'])
+  const { tried, report } = await retried(
+    () => 'fail',
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet] } }',
+  )
+  expect(tried).toEqual(['fix sonnet'])
   expect(report.results.map((u) => u.status)).toEqual(['failed'])
+})
+
+it('counts the failure, and claims no retry, when the retry finds no provider left', async () => {
+  const { tried, report, failed } = await retried(
+    () => 'fail',
+    '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] }, then: review }',
+    { kind: 'fallback', units: 1, turns: 60, reason: 'no quota reading' },
+  )
+  expect(tried).toEqual(['fix sonnet'])
+  expect(report.results.map((u) => [u.status, u.retried, u.reason])).toEqual([
+    ['failed', undefined, undefined],
+    [
+      'skipped',
+      undefined,
+      'acme-api-1 failed, not retried: no provider left: claude used its 1 fallback units',
+    ],
+  ])
+  expect(formatReport(report)).not.toContain('retried on the next model')
+  expect(failed).toBe(1)
+})
+
+it('counts the failure when the retry stops on quota', async () => {
+  const { tried, report, failed } = await retried((_, model) =>
+    model === 'sonnet' ? 'fail' : 'quota',
+  )
+  expect(tried).toEqual(['fix sonnet', 'fix opus'])
+  expect(report.results.map((u) => [u.status, u.retried])).toEqual([
+    ['failed', true],
+    ['stopped: quota', undefined],
+  ])
+  expect(failed).toBe(1)
 })
