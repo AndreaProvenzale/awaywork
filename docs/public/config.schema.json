@@ -316,7 +316,7 @@
                 "command": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
                 },
                 "secrets": {
                   "default": [],
@@ -332,7 +332,7 @@
                 "command"
               ],
               "additionalProperties": false,
-              "description": "Fetches more context for an item, with secrets the worker never sees"
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             }
           },
           "required": [
@@ -377,7 +377,7 @@
                 "command": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
                 },
                 "secrets": {
                   "default": [],
@@ -393,7 +393,7 @@
                 "command"
               ],
               "additionalProperties": false,
-              "description": "Fetches more context for an item, with secrets the worker never sees"
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
@@ -431,7 +431,7 @@
                 "command": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
                 },
                 "secrets": {
                   "default": [],
@@ -447,7 +447,7 @@
                 "command"
               ],
               "additionalProperties": false,
-              "description": "Fetches more context for an item, with secrets the worker never sees"
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
@@ -499,7 +499,7 @@
                 "command": {
                   "type": "string",
                   "minLength": 1,
-                  "description": "Shell command run per item before the worker, in the item's `extra/` folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes there are read by the worker"
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
                 },
                 "secrets": {
                   "default": [],
@@ -515,7 +515,7 @@
                 "command"
               ],
               "additionalProperties": false,
-              "description": "Fetches more context for an item, with secrets the worker never sees"
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",

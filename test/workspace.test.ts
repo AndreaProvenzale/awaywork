@@ -71,7 +71,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     const item = fakeItem({ description: 'CI is red' })
 
     const prompt = await prepareWorkspace({
-      secrets: [],
       unit: {
         id: 'acme-api-1',
         items: [item],
@@ -129,55 +128,6 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(await readFile(join(dir, '.away/prompt.md'), 'utf8')).toBe(prompt)
   })
 
-  it("runs the source's context command into the item's extra/ folder with its own secrets, which the clone's other commands lack", async () => {
-    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
-    const dir = join(root, 'clone')
-    await prepareWorkspace({
-      unit: {
-        id: 'acme-api-1',
-        items: [fakeItem({ source: 'github' })],
-        repo: 'acme/api',
-        base: '',
-        foreign: false,
-        untrusted: false,
-        branch: 'away/acme-api-1',
-        rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
-        skill: 'fix',
-        skills: [],
-        providers: ['claude'],
-        instructions: [],
-        deliver: 'draft_pr',
-      },
-      dir,
-      plugin: join(root, 'plugin'),
-      config: parseConfig(`
-providers: [claude: {}]
-sources:
-  github:
-    repos: [acme/*]
-    context: { command: 'echo "$AWAYWORK_ITEM_KEY $SENTRY_TOKEN $OTHER" > sentry.md', secrets: [SENTRY_TOKEN] }
-`),
-      configDir: root,
-      forge: {
-        ...fakeForge(),
-        async clone(_repo: string, _branch: string, into: string) {
-          await mkdir(into)
-          await execa(bin('git'), ['init', '-q', '-b', 'main', into])
-          await writeFile(join(into, 'README.md'), 'hi')
-          await git(into, 'add', '.')
-          await git(into, 'commit', '-qm', 'init')
-        },
-      },
-      sources: { github: fakeSource() as Source },
-      secrets: ['SENTRY_TOKEN', 'OTHER'],
-      provider: claude,
-      ctx: { env: { PATH: process.env.PATH, SENTRY_TOKEN: 'tok', OTHER: 'nope' }, log: () => {} },
-    })
-    expect(await readFile(join(dir, '.away/context/fake-1/extra/sentry.md'), 'utf8')).toBe(
-      'FAKE-1 tok \n',
-    )
-  })
-
   it('still reads a symlinked or hard-linked SKILL.md from the user skills dir', async () => {
     const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
     await mkdir(join(root, 'skills/linked'), { recursive: true })
@@ -187,7 +137,6 @@ sources:
     await link(join(root, 'real.md'), join(root, 'skills/hard/SKILL.md'))
     for (const skill of ['linked', 'hard']) {
       const prompt = await prepareWorkspace({
-        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -236,7 +185,6 @@ sources:
       const dir = join(root, `clone-${provider.id}`)
       const plugin = join(root, `plugin-${provider.id}`)
       await prepareWorkspace({
-        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -294,7 +242,6 @@ sources:
       await writeFile(join(root, 'outside/SKILL.md'), 'OUTSIDE')
       const plugin = join(root, 'plugin')
       const prompt = await prepareWorkspace({
-        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],
@@ -437,7 +384,6 @@ sources:
         fork: false,
       }
       const prompt = await prepareWorkspace({
-        secrets: [],
         unit: {
           id: 'acme-api-2',
           items: [fakeItem({ linkedPrs: [pr] })],
@@ -571,7 +517,6 @@ sources:
     }
     const round = (reuse: boolean) =>
       prepareWorkspace({
-        secrets: [],
         unit: {
           id: 'acme-api-1',
           items: [fakeItem()],

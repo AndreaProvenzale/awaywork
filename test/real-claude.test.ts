@@ -54,7 +54,6 @@ it.skipIf(!process.env.AWAYWORK_REAL)(
     const ctx = { env: process.env, log: console.log }
     const sources = { fake: fakeSource() as Source }
     const prompt = await prepareWorkspace({
-      secrets: [],
       unit,
       dir,
       plugin,
