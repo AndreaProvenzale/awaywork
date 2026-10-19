@@ -1782,15 +1782,15 @@ queue:
   const attempts = recordAttempts({}, report)
   expect(attempts['github:acme/api#1']).toEqual({
     runId: 'r1',
-    unit: 'acme-api-1',
     skill: 'implement',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1' },
   })
   expect(attempts['github:acme/api#4']).toEqual({
     runId: 'r1',
-    unit: 'acme-api-4',
     skill: 'review',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-4' },
   })
   expect(formatPlan(plan)).toContain('     then fix (built-in) on claude, when verdict changes\n')
 })
@@ -2830,9 +2830,9 @@ it("doesn't run a loop whose first step after a report has a refused when, and f
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)['github:acme/api#1']).toEqual({
     runId: 'r1',
-    unit: 'acme-api-1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1' },
   })
 })
 
@@ -2859,9 +2859,9 @@ it('reports a loop that a refused when ended, and counts the chain finished', as
   expect(report.results[0]?.outcome).toMatchObject({ kind: 'report' })
   expect(recordAttempts({}, report)['github:acme/api#1']).toEqual({
     runId: 'r1',
-    unit: 'acme-api-1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1' },
   })
 })
 

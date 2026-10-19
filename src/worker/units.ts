@@ -54,11 +54,11 @@ export interface RunInput {
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   skillDirs?: { user: string; builtin: string }
-  /** Earlier attempts: a chain's first step on an item gets the report the run last recorded for it. */
+  /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
   attempts?: Attempts
 }
 
-/** The report the run that last attempted one of the items left: its last step's, from `runs/<run>/units/<unit>/`. */
+/** The latest report an earlier run left on one of the items: its chain's last, from `runs/<run>/units/<unit>/`. */
 async function earlierReport(
   items: Item[],
   attempts: Attempts,
@@ -66,8 +66,8 @@ async function earlierReport(
   thisRun: string,
 ): Promise<Previous | undefined> {
   for (const item of items) {
-    const last = attempts[`${item.source}:${item.key}`]
-    if (!last?.unit || last.runId === thisRun) continue
+    const last = attempts[`${item.source}:${item.key}`]?.report
+    if (!last || last.runId === thisRun) continue
     const unitDir = join(runsDir, last.runId, 'units', last.unit)
     const steps = (await readdir(unitDir).catch(() => [])).filter((s) => /^\d+-/.test(s))
     steps.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))
@@ -461,7 +461,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         verdict = result.verdict ?? verdict
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
-        if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
+        if (report) {
+          reports.push({ id: unit.id, skill: unit.skill, text: report })
+          result.reported = true
+        }
         result.made = made(commits, report)
         // What the next step works from: a committing step's commits, a report step's report.
         const left = unit.deliver === 'report' ? report !== '' : commits > 0

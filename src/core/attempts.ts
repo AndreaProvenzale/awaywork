@@ -11,19 +11,19 @@ const GAVE_UP_MS = (7 * 24 - 3) * 3600_000
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
  * then; `failed` counts the attempts in a row with this skill that didn't finish, however the item
  * changed, absent once one did, and `failedAt` is when the last of them started; `pushed` is the
- * head a `push` left on a PR branch.
+ * head a `push` left on a PR branch; `report` is where the item's latest report is.
  */
 export type Attempts = Record<
   string,
   {
     runId: string
-    /** The chain's first unit: its steps' output is in the run's `units/<unit>/`. */
-    unit?: string
     skill: string
     updated: string
     failed?: number
     failedAt?: string
     pushed?: string
+    /** The last run whose chain on the item left a report, in its `units/<unit>/`. */
+    report?: { runId: string; unit: string }
   }
 >
 
@@ -103,22 +103,25 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     // A push stays recorded even when a step after it didn't run.
     if (aborted && !pushed) continue
     const { skill } = head.unit
+    const reported = chain.some((r) => r.reported)
     for (const item of head.unit.items) {
       if (typeof item.fields.updated !== 'string') continue
       const key = attemptKey(item)
+      // A chain that left no report keeps the item's earlier one.
+      const latest = reported ? { runId: report.runId, unit: id } : attempts[key]?.report
       // Aborted after a push: only the push's head is new, and an empty `updated` never reads as unchanged.
       if (aborted)
         next[key] = {
           runId: report.runId,
           skill,
           updated: '',
-          ...(attempts[key] ?? { unit: id }),
+          ...attempts[key],
+          ...(latest && { report: latest }),
           pushed,
         }
       else
         next[key] = {
           runId: report.runId,
-          unit: id,
           skill,
           updated: item.fields.updated,
           ...(!done && {
@@ -126,6 +129,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
             failedAt: report.startedAt.toISOString(),
           }),
           ...(pushed && { pushed }),
+          ...(latest && { report: latest }),
         }
     }
   }

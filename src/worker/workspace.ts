@@ -414,7 +414,7 @@ function loopSection(loop: LoopRound): string {
 
 function followUp({ skill, out, published, earlierRun }: Previous): string {
   if (earlierRun)
-    return `The last time awaywork worked on this item, in run ${earlierRun}, \`${skill}\` left its report in \`${WORK_DIR}/context/previous/${outputFile.report}\`. It is from an earlier run: the item and the repo may have changed since.`
+    return `The latest report on this item is from an earlier awaywork run: in run ${earlierRun}, \`${skill}\` left its report in \`${WORK_DIR}/context/previous/${outputFile.report}\`. The item and the repo may have changed since.`
   const check = existsSync(join(out, 'check.log'))
     ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''
