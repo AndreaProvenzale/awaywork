@@ -4,11 +4,13 @@ import {
   describeRule,
   formatPlan,
   listedUnits,
+  reportJson,
   statusMarker,
 } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
-import { planRun } from '../src/core/foreman.js'
+import { type PlannedUnit, planRun } from '../src/core/foreman.js'
+import type { RunReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { githubPr } from './fakes/items.js'
@@ -90,5 +92,48 @@ queue:
     expect(formatPlan(plan)).toContain(
       "     when the window resets within 1 run (doesn't hold on the probe)\n",
     )
+  })
+})
+
+describe('reportJson', () => {
+  it('keeps the run header and only references to its items', () => {
+    const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix, where: { checks: failing } }]
+`)
+    const secret = { description: 'PRIVATE', comments: [{ author: 'a', body: 'PRIVATE', at: '' }] }
+    const plan = planRun({
+      config,
+      items: [
+        { ...githubPr(1, { checks: 'failing' }), ...secret },
+        { ...githubPr(2), ...secret },
+      ],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+    })
+    const report: RunReport = {
+      runId: '20261015-220000',
+      dryRun: false,
+      startedAt: new Date('2026-10-15T22:00:00Z'),
+      finishedAt: new Date('2026-10-15T23:00:00Z'),
+      plan,
+      results: [{ planned: plan.units[0] as PlannedUnit, status: 'prepared' }],
+      quotas: {},
+    }
+    const json = reportJson(report, ['a warning'])
+    const parsed = JSON.parse(json)
+    expect(parsed.warnings).toEqual(['a warning'])
+    expect(parsed.startedAt).toBe('2026-10-15T22:00:00.000Z')
+    const ref = (n: number) => ({
+      source: 'github',
+      key: `acme/api#${n}`,
+      title: `PR ${n}`,
+      url: `https://github.com/acme/api/pull/${n}`,
+    })
+    expect(parsed.plan.units[0].unit.items).toEqual([ref(1)])
+    expect(parsed.results[0].planned.unit.items).toEqual([ref(1)])
+    expect(parsed.plan.skipped[0].item).toEqual(ref(2))
+    expect(json).not.toContain('PRIVATE')
   })
 })
