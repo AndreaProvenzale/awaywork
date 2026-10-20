@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { emitKeypressEvents, type Key } from 'node:readline'
 import { approveItem } from './approve.js'
+import { terminalBrand } from './ask.js'
 import { skipItem } from './skip.js'
 import { type Effect, resize, type State, settle, update, view } from './triage.js'
 
@@ -29,7 +30,7 @@ const leaveScreen = '\u001b[?25h\u001b[?1049l'
 /** Runs the triage view on the alternate screen until q, Esc or Ctrl-C, restoring the terminal on every way out. */
 export function browse(start: State, commands: ItemCommands): Promise<void> {
   const { stdin, stdout } = process
-  let state = resize(start, stdout.rows)
+  let state = resize({ ...start, brand: terminalBrand() }, stdout.rows)
   let shown = false
   let pager: ChildProcess | undefined
   let busy = false

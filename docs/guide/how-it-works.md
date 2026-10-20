@@ -131,6 +131,8 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 `awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items folded by kind, under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), the skipped kinds are unfolded one level, and `d` just said why it did nothing:
 
 ```
+☾ >_ awaywork  You're away, your agents work
+
 Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%

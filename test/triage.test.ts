@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { pagerCommand } from '../src/cli/browse.js'
+import { brandHeader } from '../src/cli/format.js'
 import {
   clipLine,
   planTriage,
@@ -110,6 +111,25 @@ describe('triage view', () => {
     expect(clipLine('abc', 4)).toBe('abc')
     for (const line of view(run(), 30, 30))
       expect([...stripVTControlCharacters(line)].length).toBeLessThanOrEqual(30)
+  })
+
+  it('shows the brand first, and drops it first on a short terminal, never the footer', () => {
+    const brand = brandHeader(false)
+    const state = { ...run(24), brand }
+    expect(screen(state).slice(0, 4)).toEqual([
+      brand,
+      '',
+      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      '2026-10-19 22:00:00 to 2026-10-19 22:41:07',
+    ])
+    expect(screen(state)).toHaveLength(24)
+    expect(screen(state).at(-2)).toMatch(/^⏎ read/)
+    // 3 header lines, a blank, a body line, the footer and the status: no room for the brand.
+    expect(screen(resize(state, 8), 100, 8)[0]).toBe(
+      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+    )
+    expect(screen(resize(state, 8), 100, 8).at(-2)).toMatch(/^⏎ read/)
+    expect(screen(resize(state, 9), 100, 9)[0]).toBe(brand)
   })
 
   it('dims the keys a row has nothing behind', () => {

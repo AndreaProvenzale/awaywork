@@ -53,6 +53,8 @@ awaywork plan
 `plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal you get a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
 
 ```
+☾ >_ awaywork  You're away, your agents work
+
 Providers
   provider  window     used  ceiling  set by       resets in  session / stop at
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%

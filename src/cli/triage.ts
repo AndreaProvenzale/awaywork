@@ -32,6 +32,8 @@ export interface Row {
 }
 
 export interface State {
+  /** The brand line, shown above the header when there's room. */
+  brand?: string
   header: string[]
   sections: Row[]
   open: ReadonlySet<string>
@@ -265,13 +267,17 @@ function layout(s: State): Line[] {
   return lines
 }
 
-const bodyHeight = (header: string[], rows: number) => Math.max(1, rows - header.length - 3)
+/** The lines above the body: the brand when it leaves a body line, then the header. */
+const headerLines = (s: State, rows: number) =>
+  s.brand && rows >= s.header.length + 6 ? [s.brand, '', ...s.header] : s.header
+
+const bodyHeight = (s: State, rows = s.rows) => Math.max(1, rows - headerLines(s, rows).length - 3)
 
 /** Scrolls so the selected row is on screen, and no further than the last line. */
 function follow(s: State): State {
   const lines = layout(s)
   const at = visible(s).findIndex((v) => v.row.id === s.selected)
-  const height = bodyHeight(s.header, s.rows)
+  const height = bodyHeight(s)
   let top = s.top
   const last = lines.findLastIndex((l) => l.at === at)
   if (last >= top + height) top = last - height + 1
@@ -346,10 +352,10 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
       return select(list.length - 1)
     case 'pagedown':
     case 'ctrl-d':
-      return page(bodyHeight(s.header, s.rows))
+      return page(bodyHeight(s))
     case 'pageup':
     case 'ctrl-u':
-      return page(-bodyHeight(s.header, s.rows))
+      return page(-bodyHeight(s))
     case 'right':
       if (!row.children) return { state }
       return s.open.has(row.id) ? select(i + 1) : fold(true)
@@ -395,7 +401,7 @@ export function settle(s: State, effect: Effect, outcome: { ok: boolean; message
 
 /** The screen: header, the rows that fit with the selected one in reverse video, the keys this row has, and the status line. */
 export function view(s: State, cols: number, rows: number): string[] {
-  const height = bodyHeight(s.header, rows)
+  const height = bodyHeight(s, rows)
   const list = visible(s)
   const body = s.help
     ? keyLines()
@@ -407,7 +413,7 @@ export function view(s: State, cols: number, rows: number): string[] {
         })
   const filler = Array<string>(Math.max(0, height - body.length)).fill('')
   const status = s.help ? style('dim', 'any key closes the help') : (s.status ?? '')
-  return [...s.header, '', ...body.slice(0, height), ...filler, footer(s), status]
+  return [...headerLines(s, rows), '', ...body.slice(0, height), ...filler, footer(s), status]
     .slice(-rows)
     .map((line) => clipLine(line, cols))
 }
