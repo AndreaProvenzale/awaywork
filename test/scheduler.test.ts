@@ -740,6 +740,7 @@ it("starts the workflow's cron in UTC at the zone's standard time, shifting days
     ]),
   ).toEqual(['0 23 * * 0,6', '0 1 * * *'])
   expect(crons('Asia/Kolkata', [{ hour: 1, minute: 0 }])).toEqual(['30 19 * * *'])
+  expect(crons('Africa/Casablanca', [{ hour: 1, minute: 0 }])).toEqual(['0 1 * * *'])
 })
 
 describe('wake', () => {

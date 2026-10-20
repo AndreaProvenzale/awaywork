@@ -97,7 +97,7 @@ This writes `.github/workflows/awaywork.yml`: a cron at each window's start, plu
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
 
-GitHub runs the cron in UTC, so `schedule install` converts each start from your current timezone at its standard time, and the job's `TZ` keeps window ends and `days` in that timezone. The run never starts before the window opens, but in summer time it starts up to an hour into it: a `18:00` window in Rome fires at `17:00` UTC, which is 19:00 there from March to October. Changed timezone? Run `schedule install` again.
+GitHub runs the cron in UTC, so `schedule install` converts each start from your current timezone at its standard time, and the job's `TZ` keeps window ends and `days` in that timezone. The run never starts before the window opens, but in summer time it starts up to an hour into it: a `18:00` window in Rome fires at `17:00` UTC, which is 19:00 there from March to October, so keep windows on Actions longer than an hour or summer runs land past their end. Changed timezone? Run `schedule install` again.
 
 `doctor`, run inside the repo, checks that every secret the workflow names exists in the repo or its org, and fails naming the missing ones. A workflow that doesn't parse fails, since it won't run either. When gh can't list the repo's or the org's secrets (no access, no remote, not logged in), it warns why instead of guessing what's missing. The action fails before anything else when `GH_TOKEN` is empty, which is how a job whose secrets didn't reach it shows.
 

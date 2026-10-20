@@ -94,8 +94,9 @@ function offsetAt(zone: string, date: Date): number {
 function utcStarts(starts: Start[], zone: string): Start[] {
   const year = new Date().getUTCFullYear()
   const offset = Math.min(
-    offsetAt(zone, new Date(Date.UTC(year, 0, 1))),
-    offsetAt(zone, new Date(Date.UTC(year, 6, 1))),
+    ...Array.from({ length: 366 }, (_, day) =>
+      offsetAt(zone, new Date(Date.UTC(year, 0, 1 + day))),
+    ),
   )
   return starts.map((s) => {
     const minutes = s.hour * 60 + s.minute - offset
