@@ -3,13 +3,38 @@ import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import type { PlannedUnit, RunPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import type { RunReport } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
+import { providers } from '../providers/index.js'
+
+const withoutRaw = (key: string, value: unknown) => (key === 'raw' ? undefined : value)
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
+  return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
+}
+
+const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+const withItemRefs = (p: PlannedUnit) => ({
+  ...p,
+  unit: { ...p.unit, items: p.unit.items.map(itemRef) },
+})
+
+/** The run's results and warnings as JSON; items keep only what `formatReport` shows of them. */
+export function reportJson(report: RunReport, warnings: string[] = []): string {
+  const { plan, results } = report
   return JSON.stringify(
-    { ...plan, warnings },
-    (key, value) => (key === 'raw' ? undefined : value),
+    {
+      ...report,
+      plan: {
+        ...plan,
+        units: plan.units.map(withItemRefs),
+        skipped: plan.skipped.map((s) => ({ ...s, item: itemRef(s.item) })),
+      },
+      results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
+      warnings,
+    },
+    null,
     2,
   )
 }
@@ -48,9 +73,9 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   ]
   const providerLines = table([providerHeader, ...allowances.map(([id, a]) => allowanceRow(id, a))])
   out.push(`  ${style('bold', providerLines[0] ?? '')}`)
-  allowances.forEach(([, a], i) => {
+  allowances.forEach(([id, a], i) => {
     out.push(`  ${providerLines[i + 1]}`)
-    out.push(style('dim', `    ${allowanceNote(a)}`))
+    out.push(style('dim', `    ${allowanceNote(id, a)}`))
   })
 
   out.push('', style('bold', 'Units'))
@@ -189,8 +214,8 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-export function describeAllowance(a: Allowance): string {
-  if (a.kind === 'fallback') return `fallback: ${describeFallback(a)}`
+export function describeAllowance(id: string, a: Allowance): string {
+  if (a.kind === 'fallback') return `fallback: ${describeFallback(id, a)}`
   const session = a.session
     ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
     : ''
@@ -206,12 +231,14 @@ function allowanceRow(id: string, a: Allowance): string[] {
   return [id, a.window, pct(a.used), pct(a.ceiling), bindingLimit(a), runs(a.runs), session]
 }
 
-function allowanceNote(a: Allowance): string {
-  return a.kind === 'fallback' ? describeFallback(a) : `other limits: ${otherLimits(a)}`
+function allowanceNote(id: string, a: Allowance): string {
+  return a.kind === 'fallback' ? describeFallback(id, a) : `other limits: ${otherLimits(a)}`
 }
 
-function describeFallback(a: FallbackAllowance): string {
-  return `${a.units} units, ${a.turns} turns each (${a.reason})`
+function describeFallback(id: string, a: FallbackAllowance): string {
+  // A command provider has no turn cap, so its fallback turns mean nothing.
+  const turns = Object.hasOwn(providers, id) ? `, ${a.turns} turns each` : ''
+  return `${a.units} units${turns} (${a.reason})`
 }
 
 // `reserve` is the share kept back; its limit is the cap that leaves it.

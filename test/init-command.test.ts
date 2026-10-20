@@ -8,7 +8,12 @@ import { initCommand } from '../src/cli/init.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
-  return { providers: { claude: fakeProvider('claude') } }
+  const providers = { claude: fakeProvider('claude') }
+  return {
+    providers,
+    providerFor: (id: string) => providers[id as 'claude'],
+    providersOf: () => providers,
+  }
 })
 vi.mock('../src/forge/gh.js', async (original) => ({
   ...(await original<typeof import('../src/forge/gh.js')>()),

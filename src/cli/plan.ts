@@ -1,8 +1,9 @@
 import { type Command, InvalidArgumentError, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
+import { approvalsPath, attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
+import { loadApprovals, withApprovals } from '../core/approvals.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
@@ -12,8 +13,8 @@ import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
-import { githubForge, githubHost } from '../forge/github.js'
-import { providers } from '../providers/index.js'
+import { forgeFor } from '../forge/index.js'
+import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
@@ -76,17 +77,18 @@ export async function probeAndPlan(
       `GitHub-hosted runners end a job at 6 hours, so a run stops ${Math.floor(HOSTED_RUN_MINUTES / 60)}h${String(HOSTED_RUN_MINUTES % 60).padStart(2, '0')} after it starts, before ${long.map(describeWindow).join(', ')} ends`,
     )
 
-  const items = await collectItems(config, ctx)
+  const items = withApprovals(await collectItems(config, ctx), await loadApprovals(approvalsPath))
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
-    const unavailable = providers[p.id]?.unavailable?.(ctx.env)
+    const provider = providerFor(p.id, p.config)
+    const unavailable = provider?.unavailable?.(ctx.env)
     if (unavailable) {
       warnings.push(`${p.id} unavailable: ${unavailable}`)
       continue
     }
     let reason: string | undefined
-    const quota = await providers[p.id]?.probe(ctx).catch((e: Error) => {
+    const quota = await provider?.probe(ctx).catch((e: Error) => {
       reason = `probe failed: ${e.message}`
       return null
     })
@@ -98,7 +100,7 @@ export async function probeAndPlan(
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   const sources = configuredSources(config)
   // A failed source's warning carries its stderr, and coding agents read `plan`.
-  const secrets = configSecrets(config, providers, sources)
+  const secrets = configSecrets(config, providersOf(config), sources)
   return {
     plan: planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
@@ -112,8 +114,8 @@ export async function probeAndPlan(
 async function describeRules(config: Config): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
-  const items = await collectItems(config, ctx)
-  const secrets = configSecrets(config, providers, configuredSources(config))
+  const items = withApprovals(await collectItems(config, ctx), await loadApprovals(approvalsPath))
+  const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   return [
     ...warningLines(warnings.map((w) => maskSecrets(w, secrets, ctx.env))),
     config.queue ? 'Queue' : 'Queue (default: no queue in config)',
@@ -144,7 +146,7 @@ export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
       (e: Error) => ctx.log(`source ${id}: ${e.message}`),
     )
   }
-  await linkTasks(items, githubForge(undefined, githubHost(config)), ctx)
+  await linkTasks(items, forgeFor(config), ctx)
   return items
 }
 

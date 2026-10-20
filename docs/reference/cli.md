@@ -31,6 +31,9 @@ Commands:
                          alone in the coming runs; with no key, list skipped
                          items
   unskip <key>           let awaywork pick up a skipped item (source:key) again
+  approve <key>          mark an item (source:key, e.g. github:acme/api#5)
+                         approved, for rules with `where: { approved: true }`; a
+                         unit that finishes on it clears the approval
   skills                 list skills and eject built-ins to tweak
   run [options]          plan the units, start a worker per unit and publish
                          draft PRs and reports
@@ -145,6 +148,18 @@ Options:
   -h, --help  display help for command
 ```
 
+## awaywork approve
+
+```text
+Usage: awaywork approve [options] <key>
+
+mark an item (source:key, e.g. github:acme/api#5) approved, for rules with
+`where: { approved: true }`; a unit that finishes on it clears the approval
+
+Options:
+  -h, --help  display help for command
+```
+
 ## awaywork skills
 
 ```text
@@ -212,6 +227,7 @@ print a run's morning report; the latest by default
 
 Options:
   --list      list the last 20 runs: units, draft PRs and reports
+  --json      print the run's results as JSON instead of the markdown
   -h, --help  display help for command
 ```
 

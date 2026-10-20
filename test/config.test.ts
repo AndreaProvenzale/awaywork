@@ -66,7 +66,7 @@ describe('config', () => {
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description or .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved or .*github: repo, label/,
       ),
     ])
   })
@@ -137,7 +137,7 @@ describe('config', () => {
 
   it('rejects unknown and unconfigured providers and sources', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
-      expect.stringContaining('providers[0]: Unrecognized key: "gemini"'),
+      'providers[0]: gemini.command: not a built-in provider; a custom provider needs a `command`',
     ])
     expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
       'providers[0]: unknown provider "gemini"',

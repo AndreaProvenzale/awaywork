@@ -10,7 +10,7 @@ import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { providers } from '../providers/index.js'
+import { providerFor } from '../providers/index.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
@@ -89,8 +89,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   if (workflow) report('warn', 'schedule', workflow)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
 
-  for (const { id, budget } of config.providers) {
-    const provider = providers[id]
+  for (const { id, config: providerConfig, budget } of config.providers) {
+    const provider = providerFor(id, providerConfig)
     if (!provider) continue
     const unavailable = provider.unavailable?.(process.env)
     if (unavailable) {
@@ -111,7 +111,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     await provider.probe(ctx).then(
       (quota) => {
         const a = allowance(budget, quota, Date.now(), config.windows)
-        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(a))
+        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(id, a))
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),
     )

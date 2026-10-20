@@ -1,5 +1,6 @@
 import {
   copyFile,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -9,17 +10,17 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { formatPlan } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { recordAttempts } from '../src/core/attempts.js'
+import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { formatReport, runLine, summarize } from '../src/core/report.js'
+import { formatReport, type RunReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Item, Provider, Source } from '../src/core/types.js'
@@ -161,9 +162,19 @@ async function run(
   yaml: string,
   items: Item[],
   provider: Provider,
-  opts: { signal?: AbortSignal; dryRun?: boolean } = {},
+  opts: {
+    signal?: AbortSignal
+    dryRun?: boolean
+    attempts?: Attempts
+    /** Files earlier runs left, by path in the runs dir. */
+    earlier?: Record<string, string>
+  } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
+  for (const [file, text] of Object.entries(opts.earlier ?? {})) {
+    await mkdir(dirname(join(root, file)), { recursive: true })
+    await writeFile(join(root, file), text)
+  }
   const env = await originForge(root)
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
@@ -182,6 +193,7 @@ async function run(
     runDir: join(root, 'run'),
     dryRun: !!opts.dryRun,
     signal: opts.signal,
+    attempts: opts.attempts,
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
@@ -244,6 +256,9 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
         '',
         '</details>',
         '',
+        '',
+        'Closes acme/api#1',
+        '',
       ].join('\n'),
     },
   ])
@@ -264,6 +279,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
     runId: 'r1',
     skill: 'implement',
     updated: '2026-10-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '5-plan', skill: 'plan' },
   })
 })
 
@@ -445,7 +461,7 @@ queue:
     {
       head: 'away/acme-api-1-2',
       base: 'away/acme-api-1',
-      body: `Add rate limits\n\nDone.\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
+      body: `Add rate limits\n\nDone.\n\nCloses acme/api#1\n\nStacked on ${pull('away/acme-api-1')}: merge that first.\n`,
     },
   ])
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
@@ -757,6 +773,8 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
     ['away/acme-api-1-2', 'away/acme-api-1'],
     ['away/acme-api-2', ''],
   ])
+  // A capped chain left slices out, so none of its PRs closes the issue.
+  expect(opened.map((o) => o.body.includes('Closes'))).toEqual([false, true, false])
   expect(formatReport(report)).toContain(
     '| 2 | acme-api-2 | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
   )
@@ -777,13 +795,86 @@ it('refuses a stack on a step that reports, or after steps that all report', asy
 
 it('stacks a chain on your own PR: slice 1 into its branch, slice 2 onto slice 1', async () => {
   const { opened, forge } = await run(
-    'queue: [{ skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }]\n',
-    [githubPr(1)],
+    `queue:
+  - { skill: implement, where: { type: pr }, then: [{ skill: fix, stack: true }] }
+  - { skill: implement, where: { type: issue } }
+`,
+    [githubPr(1), { ...issue(2), linkedPrs: githubPr(1).linkedPrs }],
     worker(),
   )
-  expect(opened.map((o) => [o.head, o.base, o.body.includes('Stacked on')])).toEqual([
-    ['away/acme-api-1', 'feature-1', false],
-    ['away/acme-api-1-2', 'away/acme-api-1', true],
+  // Your PR closes its issue, not the stack on it.
+  expect(
+    opened.map((o) => [o.head, o.base, o.body.includes('Stacked on'), o.body.includes('Closes')]),
+  ).toEqual([
+    ['away/acme-api-1', 'feature-1', false, false],
+    ['away/acme-api-1-2', 'away/acme-api-1', true, false],
   ])
   expect(forge.stacked).toEqual([[pull('away/acme-api-1'), pull('away/acme-api-1-2')]])
+})
+
+it('hands a chain its first step the report an earlier run left, and later steps the step before', async () => {
+  const seen: Record<string, string[]> = {}
+  const prompts: Record<string, string> = {}
+  const { rows } = await run(
+    'queue:\n  - { skill: implement, then: [review] }\n',
+    [issue(1)],
+    worker({}, { seen, prompts }),
+    {
+      attempts: {
+        'github:acme/api#1': {
+          runId: 'r0',
+          skill: 'plan',
+          updated: '',
+          report: { runId: 'r0', unit: 'acme-api-1', step: '2-review', skill: 'review' },
+        },
+      },
+      earlier: {
+        'r0/units/acme-api-1/1-plan/out/report.md': 'old plan',
+        'r0/units/acme-api-1/2-review/out/report.md': 'old review',
+        'r0/units/acme-api-1/2-review/out/verdict': 'ignored',
+      },
+    },
+  )
+  expect(rows.map(([id, status]) => [id, status])).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-review', 'done'],
+  ])
+  expect(seen['acme-api-1']).toEqual(['report.md'])
+  expect(prompts['acme-api-1']).toContain('in run r0, `review` left its report')
+  expect(seen['acme-api-1-review']).toEqual(['diff.patch', 'pr.md'])
+})
+
+it('hands a retry the plan report when the failed implement before it left none', async () => {
+  const attempt = (runId: string, skill: string, result: object) => {
+    const planned = { unit: { id: 'acme-api-1', skill, items: [issue(1)] } }
+    const results = [{ planned, ...result }]
+    return {
+      runId,
+      startedAt: new Date(),
+      plan: { units: [planned] },
+      results,
+    } as unknown as RunReport
+  }
+  const planned = recordAttempts(
+    {},
+    attempt('plan-run', 'plan', { status: 'done', reported: true, step: '1-plan' }),
+  )
+  const attempts = recordAttempts(planned, attempt('failed-run', 'implement', { status: 'failed' }))
+  expect(attempts['github:acme/api#1']).toMatchObject({
+    runId: 'failed-run',
+    failed: 1,
+    report: { runId: 'plan-run', unit: 'acme-api-1', step: '1-plan', skill: 'plan' },
+  })
+
+  const seen: Record<string, string[]> = {}
+  const prompts: Record<string, string> = {}
+  await run('queue:\n  - skill: implement\n', [issue(1)], worker({}, { seen, prompts }), {
+    attempts,
+    earlier: {
+      'plan-run/units/acme-api-1/1-plan/out/report.md': 'the plan',
+      'failed-run/units/acme-api-1/1-implement/out/worker.log': 'max turns',
+    },
+  })
+  expect(seen['acme-api-1']).toEqual(['report.md'])
+  expect(prompts['acme-api-1']).toContain('in run plan-run, `plan` left its report')
 })

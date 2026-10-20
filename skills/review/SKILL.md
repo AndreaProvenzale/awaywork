@@ -9,7 +9,7 @@ metadata:
 
 The unit is someone else's pull request that the developer was asked to review, or this run's work in a chain. Nothing you write is posted: the developer reads your draft in the morning and decides what to say.
 
-- Read the PR description, diff, threads and checks in the context folder, or `previous/` for this run's work. The clone is at the PR's branch; read the code around the diff.
+- Read the PR description, diff, threads and checks in the context folder, or `previous/` for what the step before left (or an earlier run's report, when the prompt says so). The clone is at the PR's branch; read the code around the diff.
 - In a chain, the branch holds this run's work so far: review everything it adds over its base, not only the last step's `diff.patch`.
 - Judge the change against what it claims to do: does it do that, and only that?
 - Look for correctness bugs, missing edge cases, broken contracts, security issues, and deviations from the repo's own instructions. Skip nits a linter would catch.

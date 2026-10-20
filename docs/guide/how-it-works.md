@@ -16,7 +16,7 @@ Only the workers call a model. Everything else is plain code you can inspect wit
 
 ## Items
 
-A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, and source fields.
+A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, `approved` (whether you ran [`awaywork approve`](#units) on it), and source fields.
 
 | Source | Items | Fields a rule can match |
 | --- | --- | --- |
@@ -66,14 +66,29 @@ The section, state and status names are guesses; `awaywork init` replaces them w
 Items that share a key or a linked PR (repo and branch) are one unit, one piece of work on one feature, ranked at its best item's rule. An Asana task linked to your PR becomes one unit with that PR. An awaywork PR is linked to the items its footer names; one you wrote, by the key in its branch or title, or the source's [`link`](./configuration.md#linking-prs) line in its body.
 
 - The unit works in its linked PR's repo, else the item's `repo` field; with neither it is skipped.
-- A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR.
+- A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
 - A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, a watchdog stop for low memory or disk, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end): it tries again next run. `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan` lists it under Skipped with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
+- `awaywork approve <source:key>` marks an item approved, for items with no tracker section, state or label to say so (those already work through `where`). Rules read it as the key `approved`, like `title`: `skill: implement, where: { approved: true }` waits for it, so you can approve a `plan` report today and have `implement` take the item tonight. An item takes the first rule it matches, so that rule goes above the one that plans the item (or give the `plan` rule `approved: false`), as in the example below. The approval clears once the unit planned with it finishes, as an attempt counts it: a failed step or work left unpublished keeps it for the retry. An approval you give during a run stays. Approvals live in `~/.local/state/awaywork/approvals.json`.
+- A chain's first step on an item gets the item's latest report in `.away/context/previous/report.md` (the last one of the latest chain on it that left a report), and the prompt says it is from an earlier run. That is how an approved `implement` finds the plan, on a retry too: a failed `implement` that wrote no report doesn't replace the plan. Later steps get the step before, as always.
 - Units run one at a time, in queue order. A unit is a chain: the rule's skill, then its [`then`](./chains.md#then) steps, one after the other in one clone, publishing once when the chain ends, or once per slice when a step says [`stack`](./chains.md#stack). A [loop](./chains.md#loops) repeats steps, and a step with a [`when`](./chains.md#when) runs only when its condition holds.
 - A draft PR stacks only on the awaywork PR a rule took up, or on the slice before it in its own chain. Its body names the PR to merge first, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks) awaywork links the two into a stack. Every other draft PR starts from the default branch or your PR's branch, so you can merge, park or close each one on its own.
 - Optional [caps](./configuration.md#windows-limits-and-budget) limit the units per run, per repo and per rule; each slice of a chain counts once.
+
+A queue that plans the sprint's tasks and implements the ones you approve:
+
+```yaml
+queue:
+  - skill: implement
+    where: { approved: true }
+  - skill: plan
+    source: asana
+    where: { section: Current sprint }
+```
+
+While `implement`'s draft PR is open the task waits for review; once you merge it, move the task out of the section, or `plan` takes it again.
 
 ## Budget
 
@@ -96,7 +111,7 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 - `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and failed-check logs, or the issue or task with its comments.
 - The skills go where the agent looks for them (`.claude/skills/`, `.agents/skills/`).
 - The prompt is, in order: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule).
-- The agent has no forge token, no source's or other provider's secret, and a `gh` config without a login.
+- The agent has no forge token, no source's or other provider's secret, a `gh` config without a login and placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN`.
 - A turn cap bounds the run (200, or `fallback.turns` without a quota reading), `limits.unit_minutes` caps its wall-clock time when set (status `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of disk, then kills every process it left behind.
 
 ## Delivery
@@ -125,7 +140,7 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
    └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commit
 ```
 
-On a terminal its tables are aligned and statuses coloured; piped, it is the markdown as saved, so in GitHub Actions it lands in the job summary. `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner). A [`notify` command](./configuration.md#notify) can send it elsewhere.
+On a terminal its tables are aligned and statuses coloured; piped, it is the markdown as saved, so in GitHub Actions it lands in the job summary. `awaywork report --json` prints the run's results as [JSON](./agents.md) instead, from the `report.json` written when the run ends. `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner). A [`notify` command](./configuration.md#notify) can send it elsewhere.
 
 While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
 

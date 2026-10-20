@@ -54,5 +54,6 @@ jobs:
           name: ${{ github.workflow }}-${{ steps.run.outputs.run-id }}
           path: |
             ${{ steps.run.outputs.run-dir }}/report.md
+            ${{ steps.run.outputs.run-dir }}/report.json
             ${{ steps.run.outputs.run-dir }}/units.json
           if-no-files-found: ignore

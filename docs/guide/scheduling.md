@@ -109,7 +109,7 @@ A workflow generated before the action existed runs its steps inline and misses 
 
 A stdio [MCP server](./configuration.md#mcp-servers) runs on the runner, so its `command` must be there: `npx` and `node` are, other binaries need a setup step. An HTTP server must be reachable from GitHub's runners.
 
-A GitHub-hosted runner starts with an empty state dir, so it keeps no attempts or skips: an item unchanged since the last run runs again, none is given up on, and `awaywork skip` on your machine doesn't reach it. Nor does it keep the head a [`deliver: push`](./chains.md#push) left, so the PR doesn't wait for your review: the rule pushes again every run its `where` holds. A self-hosted runner keeps `~/.local/state/awaywork` of the user it runs as, so all of that carries over between runs as on your machine.
+A GitHub-hosted runner starts with an empty state dir, so it keeps no attempts, skips, approvals or earlier reports: an item unchanged since the last run runs again, none is given up on, `awaywork skip` and `awaywork approve` on your machine don't reach it (`where: { approved: true }` never holds there), and a chain's first step starts without the last run's report. Nor does it keep the head a [`deliver: push`](./chains.md#push) left, so the PR doesn't wait for your review: the rule pushes again every run its `where` holds. A self-hosted runner keeps `~/.local/state/awaywork` of the user it runs as, so all of that carries over between runs as on your machine.
 
 GitHub also ends a job on its hosted runners at 6 hours, whatever your window says. So there a run stops 5h40 after `awaywork run` starts, or at the window's end when that comes first, and the 20 minutes left go to publishing and the report; the workflow sets `timeout-minutes: 360` to match. A longer window, like `18:00-07:00`, effectively lasts about 6 hours there, and `plan` on the runner says so:
 
@@ -140,7 +140,7 @@ Worth knowing:
 
 ### Reports from the runner
 
-The runner's runs dir doesn't come back to your machine, so each run also uploads its `report.md` and `units.json` as an artifact named after the workflow and the run, like `awaywork-20261014-223527`. Inside the control repo, `awaywork report` and `report --list` fetch those through `gh` and mix them with your local runs, newest first. They find a workflow's runs by its file name, so keep its `name:` as `schedule install` wrote it:
+The runner's runs dir doesn't come back to your machine, so each run also uploads its `report.md`, `report.json` and `units.json` as an artifact named after the workflow and the run, like `awaywork-20261014-223527`. Inside the control repo, `awaywork report` and `report --list` fetch those through `gh` and mix them with your local runs, newest first. They find a workflow's runs by its file name, so keep its `name:` as `schedule install` wrote it:
 
 ```
 $ cd my-awaywork-repo
@@ -158,6 +158,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
+| [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
 

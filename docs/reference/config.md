@@ -129,6 +129,36 @@ Same keys as `providers[].claude.budget`.
 
 Same keys as `providers[].claude.budget.fallback`.
 
+## `providers[].<key>`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
+| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
+| `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
+| `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
+| `budget` | object |  | Overrides the top-level budget for this provider |
+
+## `providers[].<key>.budget`
+
+Overrides the top-level budget for this provider.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `reserve` | percent |  | Never go past 1 - reserve of any window |
+| `per_run` | percent |  | At most this share of the long window per run |
+| `session_max` | percent |  | Stop a worker past this share of the short window |
+| `fallback` | object |  | Caps when the provider's quota can't be read |
+
+## `providers[].<key>.budget.fallback`
+
+Caps when the provider's quota can't be read.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `units` (required) | integer |  | Units per run |
+| `turns` | integer |  | Turns per unit |
+
 ## `sources`
 
 Where work comes from: built-in sources or your own commands; at least one.
@@ -149,6 +179,16 @@ My PRs, PRs awaiting my review and issues assigned to me, plus any extra searche
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
 | `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
 | `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+
+## `sources.github.context`
+
+Fetches more context for an item, with secrets kept out of the agent's environment.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `command` (required) | string |  | Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder |
+| `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
 
 ## `sources.asana`
 
@@ -160,7 +200,12 @@ My incomplete Asana tasks.
 | `projects` | string[] |  | Only tasks in these project gids |
 | `repo_map` | map |  | Project gid -> owner/repo where its tasks' code lives |
 | `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
+
+## `sources.asana.context`
+
+Same keys as `sources.github.context`.
 
 ## `sources.linear`
 
@@ -170,7 +215,12 @@ My open Linear issues.
 |---|---|---|---|
 | `repo_map` | map |  | Team key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
+
+## `sources.linear.context`
+
+Same keys as `sources.github.context`.
 
 ## `sources.jira`
 
@@ -184,7 +234,12 @@ My unresolved Jira Cloud issues.
 | `jql` | string |  | JQL condition ANDed with my unresolved issues |
 | `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
+
+## `sources.jira.context`
+
+Same keys as `sources.github.context`.
 
 ## `sources.<key>`
 

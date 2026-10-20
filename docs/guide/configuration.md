@@ -104,6 +104,37 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 - `claude: { settings: <file> }`: a Claude Code settings file, relative to the config file, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool that isn't pre-approved, by awaywork or by your `permissions.allow`, is denied.
 - `codex: { config: { <key>: <value> } }`: each key passed as `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
+### Bring your own CLI
+
+opencode, Amp and friends don't need code in awaywork. Name a provider yourself and give it a command; it's your CLI and your login:
+
+```yaml
+providers:
+  - claude
+  - opencode:
+      command: opencode run --auto "$(cat "$AWAYWORK_PROMPT")"
+      probe: ./opencode-quota.sh # optional
+limits:
+  unit_minutes: 45
+```
+
+(`--auto` approves every permission your opencode config doesn't deny; check `opencode run --help` on your version.)
+
+The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
+
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and a `budget.fallback` needs no `turns`. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+
+```json
+{
+  "windows": [
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+  ]
+}
+```
+
+`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+
 ## Sources
 
 | Source | Keys |
@@ -117,6 +148,19 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 Every source but `github` also takes a [`link`](#linking-prs).
+
+Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
+
+```yaml
+sources:
+  github:
+    repos: [acme/*]
+    context:
+      command: ./fetch-sentry.sh   # reads $AWAYWORK_ITEM_URL, writes $AWAYWORK_CONTEXT_DIR/sentry.md
+      secrets: [SENTRY_TOKEN]      # kept out of the agent's env
+```
+
+Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). `extra/` belongs to this command. A custom source does this inside its own `command`.
 
 Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
@@ -174,7 +218,7 @@ sources:
 
 `repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
 
-`secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
+`secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. Setup gets the placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` (`none`) too, so a `gh` call in it fails with a 401 even against a public repo, and so does git over https through gh's credential helper (a private dependency in `pnpm install`); list `GH_TOKEN` in `secrets` to give it yours (gh reads `GH_TOKEN` first). On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
 
 `verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output. Pass or fail, that tail lands in `verify.log` next to what the slice published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/` (`out-2/` on for a [stacked slice](./chains.md#stack)), not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
@@ -182,11 +226,12 @@ sources:
 
 ### What runs in the clone
 
-Every command in your config that touches a unit's clone, side by side. All of them run in a shell in the clone, outside the model; none gets `GH_TOKEN` or any other forge token.
+Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone, except `context`, which runs in the config file's folder and whose output awaywork copies into the clone; none gets `GH_TOKEN` or any other forge token.
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
 | `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](./chains.md#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
+| `sources.<id>.context.command` | Per item, before setup and the first step's agent, in the config file's folder; its files go to `extra/` of the item's context; not on a dry run | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes or the window's end, over 1 MB, or a symlink or other non-file in the output counts as a failure |
 | `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
 | `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
@@ -238,7 +283,7 @@ where:
 
 Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
 
-`title` and `description` are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
+`title`, `description` and `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
 
 A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
 
@@ -280,7 +325,7 @@ A rule can run more steps after its skill, such as a review and a fix until the 
 
 `notify.command` runs in a shell, as you and with your environment, on two events. `AWAYWORK_EVENT` says which:
 
-- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`.
+- `run`, once when a run ends, dry runs included: the morning report's path is in `AWAYWORK_REPORT` and the run id in `AWAYWORK_RUN_ID`; the same results as JSON sit next to it, in `$(dirname "$AWAYWORK_REPORT")/report.json`.
 - `unit`, once for every step of a unit, as soon as the unit published, before the next unit starts. A dry run fires none, and Ctrl-C stops the running one and fires no more. Its env has `AWAYWORK_RUN_ID`, `AWAYWORK_UNIT` (the step's, e.g. `acme-api-12-review-1`), `AWAYWORK_SKILL` and `AWAYWORK_STATUS` (`done`, `failed`, `skipped`...), plus `AWAYWORK_PR_URL` on every step of a unit, or of a [slice](./chains.md#stack), that opened a draft PR (not on a [`push`](./chains.md#push), so a command that readies or labels `$AWAYWORK_PR_URL` never touches your own PR), and `AWAYWORK_REPORT`, the path of what the step wrote: its report, or for a step that commits, the PR body as it left it.
 
 The command gets both events. One that's only for the morning report starts with `[ "$AWAYWORK_EVENT" = run ] || exit 0`, or it also fires on every step.
@@ -383,6 +428,7 @@ The config holds env var **names** only. Values come from the environment or `~/
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |
 | A custom source's `secrets` | That source's command |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
+| A built-in source's `context.secrets` | That source's `context` command |
 | Your `notify.secrets` | The notify command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |
 | Your `mcp.<name>.secrets` | That MCP server, for the units whose rule names it |

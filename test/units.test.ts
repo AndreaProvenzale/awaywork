@@ -10,7 +10,7 @@ import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
-import { planRun } from '../src/core/foreman.js'
+import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
@@ -140,7 +140,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   ])
   expect(models).toEqual(['opus', 'sonnet'])
   expect(report.results.map((u) => u.baseline?.used)).toEqual([0.36, undefined, 0.45])
-  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR']
+  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1', '1-fix')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
@@ -213,7 +213,7 @@ it('reports a run with no provider and a multi-line warning', () => {
   )
 })
 
-it('prepares workspaces without running a worker on a dry run, for one unit', async () => {
+it('prepares workspaces without running a worker or context command on a dry run, for one unit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {
     ...fakeForge(),
@@ -222,8 +222,9 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
+  const fetched = join(root, 'fetched')
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: { command: 'echo > ${fetched}' } } }\nqueue: [{ skill: fix }]`,
   )
   const plan = planRun({
     config,
@@ -249,6 +250,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     ['acme-api-2', 'prepared'],
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
+  expect(existsSync(fetched)).toBe(false)
   for (const only of ['acme/api#2', 'ACME-API-2']) {
     const byKey = await runUnits({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
@@ -466,7 +468,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   )
 })
 
-it('runs setup before the worker with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
+it('runs context and setup before the worker, setup with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
   const forge = {
     ...fakeForge(),
@@ -478,7 +480,8 @@ it('runs setup before the worker with only its own secrets, none on a foreign PR
   }
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources:
+  github: { repos: [acme/*], context: { command: 'echo "$AWAYWORK_ITEM_KEY" > "$AWAYWORK_CONTEXT_DIR/ctx.md"' } }
 queue: [{ skill: review }]
 repos:
   acme/api:
@@ -497,6 +500,7 @@ repos:
     skills: { builtin: builtinSkills },
   })
   const setups: string[] = []
+  const contexts: string[] = []
   const workerEnvs: NodeJS.ProcessEnv[] = []
   const report = await runUnits({
     config,
@@ -510,6 +514,8 @@ repos:
         ...worker,
         async *run(job) {
           setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run'))
+          const extra = join(job.dir, '.away/context', slug(job.unit.items[0]?.key ?? ''), 'extra')
+          contexts.push(await readFile(join(extra, 'ctx.md'), 'utf8').catch(() => 'not run'))
           workerEnvs.push(job.env)
           await writeFile(join(job.dir, '.away/out/report.md'), 'Approve.')
           yield { type: 'done', ok: true, turns: 1 }
@@ -532,6 +538,7 @@ repos:
   })
 
   expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
+  expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'acme/api#4\n'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
   expect(workerEnvs[0]).toHaveProperty('SSH_AUTH_SOCK', '/agent.sock')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([
@@ -611,15 +618,16 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR'] }
+  const gh = ['GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...gh] }
   expect(jobs).toEqual([
-    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
     { unit: 'acme-api-1-plan', ...sentry },
-    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
+    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...gh] },
     { unit: 'acme-api-2', ...sentry },
-    { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...gh] },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
@@ -788,7 +796,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     ['away/acme-api-4', 'feature-4'],
     ['away/acme-api-3', ''],
   ])
-  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
+  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.\n\nCloses acme/api#3\n')
   expect([prompts[0], prompts[1], prompts[3]]).toEqual([
     expect.stringContaining('cut from the default branch.'),
     expect.stringContaining('cut from the default branch.'),
@@ -845,6 +853,9 @@ queue: [{ skill: implement, then: review }]
       'Approve.',
       '',
       '</details>',
+      '',
+      '',
+      'Closes acme/api#2',
       '',
     ].join('\n'),
   )
@@ -1635,7 +1646,9 @@ queue:
       '3 tests failed',
     ].join('\n'),
   )
-  expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
+  expect(body).toMatch(
+    /\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n\n\nCloses acme\/api#1\n$/,
+  )
 })
 
 it("skips a rule whose quota when doesn't hold, and runs one whose does", async () => {
@@ -1784,11 +1797,13 @@ queue:
     runId: 'r1',
     skill: 'implement',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '3-plan', skill: 'plan' },
   })
   expect(attempts['github:acme/api#4']).toEqual({
     runId: 'r1',
     skill: 'review',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-4', step: '1-review', skill: 'review' },
   })
   expect(formatPlan(plan)).toContain('     then fix (built-in) on claude, when verdict changes\n')
 })
@@ -2830,6 +2845,7 @@ it("doesn't run a loop whose first step after a report has a refused when, and f
     runId: 'r1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '1-plan', skill: 'plan' },
   })
 })
 
@@ -2858,6 +2874,7 @@ it('reports a loop that a refused when ended, and counts the chain finished', as
     runId: 'r1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '2-review', skill: 'review' },
   })
 })
 

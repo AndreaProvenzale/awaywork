@@ -2,6 +2,7 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
+import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import {
@@ -13,8 +14,9 @@ import {
   slug,
 } from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, McpServer, Provider, Quota, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
+import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
 import type { Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
@@ -71,6 +73,24 @@ export interface RunInput {
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   skillDirs?: { user: string; builtin: string }
+  /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
+  attempts?: Attempts
+}
+
+/** The latest report an earlier run left on one of the items. */
+async function earlierReport(
+  items: Item[],
+  attempts: Attempts,
+  runsDir: string,
+  thisRun: string,
+): Promise<Previous | undefined> {
+  for (const item of items) {
+    const last = attempts[`${item.source}:${item.key}`]?.report
+    if (!last || last.runId === thisRun) continue
+    const out = join(runsDir, last.runId, 'units', last.unit, last.step, 'out')
+    if ((await readOutput(join(out, outputFile.report))).trim())
+      return { skill: last.skill, out, earlierRun: last.runId }
+  }
 }
 
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
@@ -223,6 +243,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 reports,
                 loops,
                 stack,
+                // Only the whole chain, cut from the default branch, closes its issues.
+                last && !first.capped && base === '',
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
@@ -356,7 +378,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           provider,
           ctx,
-          previous,
+          previous:
+            previous ??
+            (reuse
+              ? undefined
+              : await earlierReport(
+                  unit.items,
+                  input.attempts ?? {},
+                  dirname(input.runDir),
+                  input.runId,
+                )),
           reuse,
           chain: steps,
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
@@ -376,6 +407,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (input.dryRun) continue
         const a = allowances[id]
         if (!a) continue
+        if (!reuse)
+          await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
         const settings = input.config.repos[unit.repo]
         if (!reuse && settings?.setup && !unit.untrusted) {
           // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.
@@ -482,7 +515,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           const out = join(unitDir, 'out')
           const keep = () => {
             verdict = result.verdict ?? verdict
-            if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
+            if (report) {
+              reports.push({ id: unit.id, skill: unit.skill, text: report })
+              result.reported = true
+            }
             previous = { skill: unit.skill, out }
           }
           retrying = { result, start, saved, keep }
@@ -490,7 +526,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           continue
         }
         verdict = result.verdict ?? verdict
-        if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
+        if (report) {
+          reports.push({ id: unit.id, skill: unit.skill, text: report })
+          result.reported = true
+        }
         // What the next step works from: a committing step's commits, a report step's report.
         const left = unit.deliver === 'report' ? report !== '' : commits > 0
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
