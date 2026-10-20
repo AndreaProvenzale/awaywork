@@ -510,7 +510,10 @@ export const configSchema = z
       .describe(
         'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
       ),
-    repos: z.record(repoPath, repo).default({}).describe('Per-repo settings, keyed by owner/name'),
+    repos: z
+      .record(repoPath, repo)
+      .default({})
+      .describe('Per-repo settings, keyed by owner/name, or group/sub/project on forges that nest'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
     skills: z
       .array(z.string())

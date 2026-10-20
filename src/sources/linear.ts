@@ -10,7 +10,9 @@ const config = z
     repo_map: z
       .record(z.string(), repoPath)
       .optional()
-      .describe("Team key -> owner/repo where its issues' code lives"),
+      .describe(
+        "Team key -> owner/repo (group/sub/project on forges that nest) where its issues' code lives",
+      ),
     token_env: z
       .string()
       .default('LINEAR_API_KEY')

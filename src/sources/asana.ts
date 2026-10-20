@@ -12,7 +12,9 @@ const config = z
     repo_map: z
       .record(z.string(), repoPath)
       .optional()
-      .describe("Project gid -> owner/repo where its tasks' code lives"),
+      .describe(
+        "Project gid -> owner/repo (group/sub/project on forges that nest) where its tasks' code lives",
+      ),
     token_env: z.string().default('ASANA_TOKEN').describe('Env var holding the Asana token'),
   })
   .describe('My incomplete Asana tasks')
