@@ -56,7 +56,7 @@ const style = (format: Format, text: string) => styleText(format, text, { valida
 export const keys: [string, string][] = [
   ['↑ ↓  j k', 'move'],
   ['g G  Home End', 'first, last row'],
-  ['→ ← Space', 'unfold, fold; ← on a row goes to its section'],
+  ['→ ← Space', 'unfold, fold, as ⏎ on a heading; ← on a row goes to its section'],
   ['⏎', 'read it in $PAGER: the unit in full, or why the item is planned or skipped'],
   ['o', "open the unit's PR, else the item"],
   ['l', "page the step's worker.log"],

@@ -50,9 +50,36 @@ awaywork doctor   # the config, binaries, credentials, quota, sources
 awaywork plan
 ```
 
-`plan` reads your sources and each provider's quota and prints what a run would do, without running an agent:
+`plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal you get a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
 
 ```
+Providers
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
+    other limits: pacing 90%
+
+▾ Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+
+▾ Units
+     item   rule  skill              provider  deliver   title
+  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+     + api#5: same feature, matched #3
+  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
+
+▾ Skipped 2: 1 no_rule, 1 over_cap
+  ▾ no_rule 1
+    tracker T-7: matched no rule; closest #3 implement: type is task, wants issue
+  ▸ over_cap 1
+
+⏎ unfold  o open  l log  d diff  s skip  a approve  ? help  q quit
+```
+
+`⏎` on an item pages why it's planned or skipped, `o` opens it, `s` skips it in the coming runs; `?` lists the rest, and [the morning report](./how-it-works.md#the-morning-report) has the table. Piped or in CI it prints plain text:
+
+```
+$ awaywork plan | cat
 Providers
   provider  window     used  ceiling  set by       resets in  session / stop at
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
@@ -116,7 +143,7 @@ awaywork run --dry-run         # clone, context and prompt, no agent
 awaywork run --unit api#1      # one real unit
 awaywork run --repo 'acme/*'   # only units in matching repos
 awaywork run --rule 4          # only units of queue rule #4
-awaywork report                # the morning report of the last run
+awaywork report                # browse the last run; piped, its morning report
 awaywork report --list         # recent runs, to pick an id for report <id>
 awaywork report --unit 2       # one unit in full: its files, PR body or report
 ```

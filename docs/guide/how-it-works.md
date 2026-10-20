@@ -128,9 +128,53 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 
 ## The morning report
 
-`awaywork report` prints the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, the skipped items counted by kind, and each provider's long window before and after against the ceiling:
+`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items folded by kind, under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), the skipped kinds are unfolded one level, and `d` just said why it did nothing:
 
 ```
+Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
+claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+
+▾ Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+
+▾ Units
+     item   skill   status          result
+  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
+     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
+  2  web#3  fix     done, 9 turns   no commits
+     No code changes: the red check is the visual diff job, which fails on main too since #212.
+  3  api#2  review  done, 6 turns   report, verdict approve
+     Approve: the session cache keys on the user id and expires with the token.
+
+▾ Skipped 2: 1 no_rule, 1 over_cap
+  ▸ no_rule 1
+  ▸ over_cap 1
+
+⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
+diff: this unit left no diff
+```
+
+The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run.
+
+| Key | Does |
+| --- | --- |
+| `↑` `↓`, `j` `k` | move |
+| `g` `G`, Home End | first, last row |
+| `→` `←` Space | unfold, fold, as `⏎` on a heading; `←` on a row goes to its section |
+| `⏎` | page the unit in full, as `report --unit` prints it, or why an item is planned or skipped, as `plan --why`; `$PAGER`, else `less -R` |
+| `o` | open the unit's PR, else its item; a skip waiting for review opens the PR it waits on |
+| `l` | page the `worker.log` of the chain's last step |
+| `d` | page the diff: the commits the unit published, else the step's own |
+| `s` | `awaywork skip` the item, after a `y` |
+| `a` | `awaywork approve` the item, after a `y`; there's no undo |
+| `?` | the keys |
+| `q`, Esc, Ctrl-C | quit |
+
+Piped, in CI (`CI` set), or with `--json`, `--list`, `--unit` or `--skipped`, you get plain text instead, so `awaywork report | cat` is the way to print it:
+
+```
+$ awaywork report | cat
 Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 
@@ -155,7 +199,7 @@ awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-`report --unit <n>` takes the number from that table, the unit id or an item, and prints the unit in full: its links, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
+`report --unit <n>` takes the number from that table, the unit id or an item, and prints the unit in full, what `⏎` pages: its links, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
 
 ```
 $ awaywork report --unit 2

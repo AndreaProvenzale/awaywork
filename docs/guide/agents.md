@@ -34,7 +34,7 @@ Setting up:
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. Override with `--provider claude codex` (first takes units first), `--source github asana` and `--window 23:00-06:00`. Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear is likewise skipped unless `LINEAR_API_KEY` is set. Jira is skipped: it needs a site and an email. It refuses to replace an existing config without `--force`. To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). Asana gids come from `https://app.asana.com/api/1.0/workspaces` and `/projects` with the user's token.
 3. Put secrets in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. Ask the user for them; don't read them from other tools' files.
 4. `awaywork doctor` until the config's line isn't `FAIL`.
-5. `awaywork plan`, and show the user the result.
+5. `awaywork plan`, and show the user the result. When stdin and stdout are both a terminal, `plan` and `report` open an interactive view; piped (`| cat`) or with `CI` set, they print text.
 
 What each command does:
 
