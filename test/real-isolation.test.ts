@@ -38,11 +38,13 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " < $f 2>/dev/null); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
       'cat /proc/$AWAYWORK_PARENT/environ >/dev/null 2>&1 && echo "environ readable"',
       'echo out > out.txt',
+      'ln -s /etc/hostname link',
     ]
     const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
     expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY}`)
     expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
     expect(await owner(dir)).toBe(process.getuid?.())
+    expect(await owner('/etc/hostname')).toBe(0)
   })
 
   it('stops a check that hangs and detaches, and leaves no process behind', async () => {
@@ -82,5 +84,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(Date.now() - started).toBeLessThan(15_000)
     expect(await leftover()).toBe('')
     expect(await owner(join(dir, 'agent.sh'))).toBe(process.getuid?.())
+    // chown never followed the link the first test planted, either way.
+    expect(await owner('/etc/hostname')).toBe(0)
   })
 })

@@ -82,6 +82,7 @@ describe('the launcher', () => {
     const env = {
       PATH: '/opt/node/bin:/usr/bin',
       HOME: '/home/runner',
+      XDG_CONFIG_HOME: '/home/runner/.config',
       CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-canary',
       GH_TOKEN: 'none',
       'BASH_FUNC_x%%': '() { echo canary; }',

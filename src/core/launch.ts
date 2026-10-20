@@ -4,8 +4,11 @@ import { bin } from '../config/paths.js'
 
 /** The user `action.yml` creates on a GitHub-hosted runner for repo code to run as. */
 export const WORKER = 'awaywork'
-/** Set by sudo for the target user, so never taken from the developer's env. */
-const sudoSets = ['HOME', 'USER', 'LOGNAME', 'SHELL', 'MAIL']
+/** Never taken from the developer's env: sudo sets the first ones for the worker, the rest name the developer's own folders. */
+const notPassed = [
+  ...['HOME', 'USER', 'LOGNAME', 'SHELL', 'MAIL'],
+  ...['XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR'],
+]
 
 let worker: string | undefined
 let killing: Promise<unknown> = Promise.resolve()
@@ -31,7 +34,7 @@ export type Launch = typeof launch
 export function sudoArgs(user: string, file: string, args: readonly string[], options: Options) {
   const env = options.extendEnv === false ? options.env : { ...process.env, ...options.env }
   const names = Object.keys(env ?? {}).filter(
-    (name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !sudoSets.includes(name),
+    (name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !notPassed.includes(name),
   )
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell
