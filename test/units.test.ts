@@ -1782,6 +1782,7 @@ queue:
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
+  const logged: string[] = []
   const report = await runUnits({
     config,
     configDir: root,
@@ -1792,7 +1793,7 @@ queue:
     providers: { claude: committer },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    ctx: { env: { PATH: process.env.PATH }, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -1800,6 +1801,11 @@ queue:
   expect(review?.status).toBe('skipped')
   expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
   expect(implemented?.status).toBe('done')
+  expect(logged).toEqual([
+    "acme-api-1: skipped, when the window resets within 1 run didn't hold",
+    'acme-api-2: implement on claude',
+    'acme-api-2: done',
+  ])
 })
 
 it('records no attempt for a rule whose quota when does not hold', async () => {

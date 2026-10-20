@@ -176,6 +176,7 @@ async function run(
     await writeFile(join(root, file), text)
   }
   const env = await originForge(root)
+  const logged: string[] = []
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
   )
@@ -197,7 +198,7 @@ async function run(
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
-    ctx: { env: {}, log: () => {} },
+    ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -206,7 +207,7 @@ async function run(
     r.status,
     r.outcome ?? r.made ?? r.reason,
   ])
-  return { ...env, plan, report, rows }
+  return { ...env, plan, report, rows, logged }
 }
 
 it('runs a chain with a loop in one clone and opens one draft PR with every step in it', async () => {
@@ -427,7 +428,7 @@ it('opens a draft PR per slice: a stacked one on -2, on the slice before as push
   const prompts: Record<string, string> = {}
   const bodies: Record<string, string> = {}
   const hooked = join(await mkdtemp(join(tmpdir(), 'awaywork-hook-')), 'log')
-  const { rows, opened, origin, report, plan, forge } = await run(
+  const { rows, opened, origin, report, plan, forge, logged } = await run(
     `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
 queue:
   - skill: implement
@@ -441,6 +442,14 @@ queue:
     ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
     ['acme-api-1-review', 'done', 'a report'],
     ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  expect(logged).toEqual([
+    'acme-api-1: implement on claude',
+    'acme-api-1: done',
+    'acme-api-1-review: review on claude',
+    'acme-api-1-review: done',
+    'acme-api-1-fix: fix on claude',
+    'acme-api-1-fix: done',
   ])
   const published = [
     'Add rate limits',
@@ -534,7 +543,7 @@ queue:
 })
 
 it('prepares a stacked slice on its own branch in a dry run', async () => {
-  const { report } = await run(
+  const { report, logged } = await run(
     'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
     [issue(1)],
     worker(),
@@ -544,6 +553,7 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
     ['acme-api-1', 'prepared', 'away/acme-api-1'],
     ['acme-api-1-fix', 'prepared', 'away/acme-api-1-2'],
   ])
+  expect(logged).toEqual(['acme-api-1: implement on claude', 'acme-api-1-fix: fix on claude'])
 })
 
 it('publishes a stacked slice on the branch its own type names', async () => {
