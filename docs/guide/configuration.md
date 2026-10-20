@@ -205,7 +205,7 @@ Trackers don't tell awaywork which PR is a task's, so it looks through your open
 | Source | Default `link` | Why |
 | --- | --- | --- |
 | `linear` | `Part of {key}` | A non-closing magic word: merging leaves the issue to your workflow |
-| `asana` | `{url}` | Asana links a PR whose description holds the task URL |
+| `asana` | `{url}` | Asana links a PR whose description holds the task URL, in any of its forms; so does awaywork |
 | `jira` | none | Jira links on the branch or title only |
 | custom | none | Whatever your tracker reads, e.g. `Refs {key}` or `{url}` |
 

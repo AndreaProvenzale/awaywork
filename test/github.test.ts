@@ -549,7 +549,7 @@ describe('github forge', () => {
     const linear = (key: string) => ({ source: 'linear', key, link: `Part of ${key}` })
     expect(await linked(linear('ENG-13'))).toEqual([1])
     expect(await linked(linear('ENG-12'))).toEqual([2, 3, 9, 10])
-    const url = 'https://app.asana.com/0/1/1205/f'
+    const url = 'https://app.asana.com/1/100/project/1/task/1205'
     expect(await linked({ source: 'asana', id: '1205', key: '1205', url, link: url })).toEqual([6])
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
