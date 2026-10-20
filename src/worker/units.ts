@@ -5,7 +5,14 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
-import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
+import {
+  bySlice,
+  describeChain,
+  modelFor,
+  type PlannedUnit,
+  type RunPlan,
+  slug,
+} from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -24,7 +31,17 @@ import {
   publishSlice,
   type StepReport,
 } from './slices.js'
-import { handOff, isLast, made, maxReached, readVerdict, setupEnv } from './steps.js'
+import {
+  discard,
+  handOff,
+  isLast,
+  made,
+  maxReached,
+  readVerdict,
+  type Snapshot,
+  setupEnv,
+  snapshot,
+} from './steps.js'
 import {
   configSecrets,
   notSymlink,
@@ -35,6 +52,7 @@ import {
   refuseSymlinks,
   WORK_DIR,
   workerEnv,
+  writeOutput,
 } from './workspace.js'
 
 export interface RunInput {
@@ -73,6 +91,14 @@ async function earlierReport(
     if ((await readOutput(join(out, outputFile.report))).trim())
       return { skill: last.skill, out, earlierRun: last.runId }
   }
+}
+
+/** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
+interface Retry {
+  result: UnitResult
+  start: string
+  saved: Snapshot
+  keep: () => void
 }
 
 /** The units `name` names, by unit id or item key in any case. */
@@ -192,12 +218,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let verdict: string | undefined
     let ran = false
     let interrupted = false
+    // A step that failed, to run again on its provider's next model.
+    let retrying: Retry | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
 
     /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
-      const lead = done.find((r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped')
+      const lead = done.find(
+        (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
+      )
       const out = join(chainDir, at > 0 ? `out-${at + 1}` : 'out')
       if (from !== undefined && lead && ran && !input.dryRun) {
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
@@ -248,7 +278,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     }
 
-    for (const p of chain) {
+    for (let i = 0; i < chain.length; i += retrying ? 0 : 1) {
+      const p = chain[i] as PlannedUnit
+      const retryOf = retrying
+      retrying = undefined
       if ((p.slice ?? 0) !== at) {
         await endSlice(false)
         at = p.slice ?? 0
@@ -264,7 +297,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const skip = (reason: string, passedOver?: true) =>
         done.push({ planned: p, status: 'skipped', reason, ...(passedOver && { passedOver }) })
       const end = (reason: string) => {
-        skip(reason)
+        // A retry that can't start leaves the failed attempt standing, as without a model list.
+        if (retryOf) {
+          retryOf.result.reason ??= `not retried: ${reason}`
+          retryOf.keep()
+          reason = `${p.unit.id} failed, not retried: ${reason}`
+        } else skip(reason)
         ended = { reason }
         if (loop) loop.ended ??= reason
       }
@@ -282,7 +320,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       const unit = { ...p.unit, ...shape }
-      const { provider: id, passed } = route(unit.providers, allowances, routed)
+      const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
+      const { provider: id, passed } = route(candidates, allowances, routed)
       const provider = id && input.providers[id]
       if (!id || !provider) {
         end(`no provider left: ${passed.join('; ') || 'none configured'}`)
@@ -302,8 +341,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
+      if (retryOf) retryOf.result.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
-      const model = unit.rule.model?.[id] ?? entry?.model
+      const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
       input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
@@ -321,6 +361,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       done.push(result)
       let start: string | undefined
       try {
+        const whenLog = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
+        // A retry skips its `when`, which held on this same clone, and keeps the check's output.
+        const checked = retryOf && (await readOutput(whenLog))
+        if (retryOf) await discard(dir, retryOf.start, retryOf.saved)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
         if (cut) {
@@ -334,9 +378,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           provider,
           ctx,
+          // A retried first step gets the earlier report again: setting up the clone wiped it.
           previous:
             previous ??
-            (reuse
+            (reuse && !retryOf
               ? undefined
               : await earlierReport(
                   unit.items,
@@ -349,6 +394,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
           loop: p.loop,
         })
+        if (checked) {
+          await mkdir(dirname(whenLog), { recursive: true })
+          await writeOutput(whenLog, checked)
+        }
         if (!reuse) {
           // Before setup or any worker touched the clone: the chain's commits are the ones after it.
           cloned = from = await head(dir)
@@ -381,9 +430,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         if (!reuse) await baseline(dir)
         const { when } = unit.rule
-        if (when) {
-          const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
-          const met = await factsFor(when, unit, dir, since, verdict, log, logFile)
+        if (when && !retryOf) {
+          const met = await factsFor(when, unit, dir, since, verdict, log, whenLog)
           Object.assign(met.facts, quotaFacts(a))
           // A check stopped or timed out before it exited says nothing: the chain ends without passing over it.
           if (met.check?.stopped || met.check?.timedOut) {
@@ -442,6 +490,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
+        const retryable =
+          !retryOf && published.size === 0 && modelFor(unit.rule.model, id, 1) !== undefined
+        const saved = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {
           log,
@@ -458,14 +509,28 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           allowances[id] = withQuota(a, worker.quota)
         }
         result.verdict = await readVerdict(dir)
-        verdict = result.verdict ?? verdict
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
+        result.made = made(commits, report)
+        if (worker.status === 'failed' && saved && !input.signal?.aborted) {
+          const out = join(unitDir, 'out')
+          const keep = () => {
+            verdict = result.verdict ?? verdict
+            if (report) {
+              reports.push({ id: unit.id, skill: unit.skill, text: report })
+              result.reported = true
+            }
+            previous = { skill: unit.skill, out }
+          }
+          retrying = { result, start, saved, keep }
+          input.ctx.log(`${unit.id}: failed, retrying on the next ${id} model`)
+          continue
+        }
+        verdict = result.verdict ?? verdict
         if (report) {
           reports.push({ id: unit.id, skill: unit.skill, text: report })
           result.reported = true
         }
-        result.made = made(commits, report)
         // What the next step works from: a committing step's commits, a report step's report.
         const left = unit.deliver === 'report' ? report !== '' : commits > 0
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
@@ -517,8 +582,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           try {
             await restoreGit(dir)
             await handOff(dir, start, unitDir)
-            previous = { skill: unit.skill, out: join(unitDir, 'out') }
+            if (!retrying) previous = { skill: unit.skill, out: join(unitDir, 'out') }
           } catch (e) {
+            retrying?.keep()
+            retrying = undefined
             ended ??= { reason: `${unit.id} error: ${(e as Error).message}` }
             if (loop) loop.ended ??= ended.reason
           }
@@ -536,7 +603,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   for (const chain of chains) {
     const done = await runChain(chain)
     results.push(...done)
-    await notifyUnits(done)
+    await notifyUnits(done.filter((r) => !r.retried))
   }
 
   const { runId, dryRun, plan } = input

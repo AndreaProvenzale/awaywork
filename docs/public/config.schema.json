@@ -825,15 +825,30 @@
             ]
           },
           "model": {
-            "description": "Model per provider for this rule, e.g. { claude: sonnet }; default the provider's",
+            "description": "Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's",
             "type": "object",
             "propertyNames": {
               "type": "string"
             },
             "additionalProperties": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Model passed to the provider's binary; default the binary's"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Model passed to the provider's binary; default the binary's"
+                },
+                {
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Model passed to the provider's binary; default the binary's"
+                  }
+                }
+              ],
+              "description": "A model, or two: a step that fails on the first runs once more on the second"
             }
           },
           "skills": {
@@ -965,9 +980,24 @@
                           "type": "string"
                         },
                         "additionalProperties": {
-                          "type": "string",
-                          "minLength": 1,
-                          "description": "Model passed to the provider's binary; default the binary's"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1,
+                              "description": "Model passed to the provider's binary; default the binary's"
+                            },
+                            {
+                              "minItems": 2,
+                              "maxItems": 2,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Model passed to the provider's binary; default the binary's"
+                              }
+                            }
+                          ],
+                          "description": "A model, or two: a step that fails on the first runs once more on the second"
                         }
                       },
                       "skills": {
@@ -1140,9 +1170,24 @@
                                   "type": "string"
                                 },
                                 "additionalProperties": {
-                                  "type": "string",
-                                  "minLength": 1,
-                                  "description": "Model passed to the provider's binary; default the binary's"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "description": "Model passed to the provider's binary; default the binary's"
+                                    },
+                                    {
+                                      "minItems": 2,
+                                      "maxItems": 2,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Model passed to the provider's binary; default the binary's"
+                                      }
+                                    }
+                                  ],
+                                  "description": "A model, or two: a step that fails on the first runs once more on the second"
                                 }
                               },
                               "skills": {
@@ -1312,9 +1357,24 @@
                                     "type": "string"
                                   },
                                   "additionalProperties": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "description": "Model passed to the provider's binary; default the binary's"
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "description": "Model passed to the provider's binary; default the binary's"
+                                      },
+                                      {
+                                        "minItems": 2,
+                                        "maxItems": 2,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "description": "Model passed to the provider's binary; default the binary's"
+                                        }
+                                      }
+                                    ],
+                                    "description": "A model, or two: a step that fails on the first runs once more on the second"
                                   }
                                 },
                                 "skills": {
@@ -1567,9 +1627,24 @@
                                 "type": "string"
                               },
                               "additionalProperties": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Model passed to the provider's binary; default the binary's"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "Model passed to the provider's binary; default the binary's"
+                                  },
+                                  {
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "description": "Model passed to the provider's binary; default the binary's"
+                                    }
+                                  }
+                                ],
+                                "description": "A model, or two: a step that fails on the first runs once more on the second"
                               }
                             },
                             "skills": {
@@ -1742,9 +1817,24 @@
                                         "type": "string"
                                       },
                                       "additionalProperties": {
-                                        "type": "string",
-                                        "minLength": 1,
-                                        "description": "Model passed to the provider's binary; default the binary's"
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "description": "Model passed to the provider's binary; default the binary's"
+                                          },
+                                          {
+                                            "minItems": 2,
+                                            "maxItems": 2,
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "description": "Model passed to the provider's binary; default the binary's"
+                                            }
+                                          }
+                                        ],
+                                        "description": "A model, or two: a step that fails on the first runs once more on the second"
                                       }
                                     },
                                     "skills": {
@@ -1914,9 +2004,24 @@
                                           "type": "string"
                                         },
                                         "additionalProperties": {
-                                          "type": "string",
-                                          "minLength": 1,
-                                          "description": "Model passed to the provider's binary; default the binary's"
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "description": "Model passed to the provider's binary; default the binary's"
+                                            },
+                                            {
+                                              "minItems": 2,
+                                              "maxItems": 2,
+                                              "type": "array",
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "description": "Model passed to the provider's binary; default the binary's"
+                                              }
+                                            }
+                                          ],
+                                          "description": "A model, or two: a step that fails on the first runs once more on the second"
                                         }
                                       },
                                       "skills": {

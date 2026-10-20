@@ -844,6 +844,40 @@ it('hands a chain its first step the report an earlier run left, and later steps
   expect(seen['acme-api-1-review']).toEqual(['diff.patch', 'pr.md'])
 })
 
+it('hands a retried first step the report an earlier run left', async () => {
+  const seen: string[][] = []
+  const base = worker()
+  const flaky: Provider = {
+    ...base,
+    async *run(job, signal) {
+      seen.push((await readdir(join(job.dir, '.away/context/previous')).catch(() => [])).sort())
+      if (seen.length === 1) return yield { type: 'done', ok: false, turns: 60, error: 'max turns' }
+      yield* base.run(job, signal)
+    },
+  }
+  const { rows } = await run(
+    'queue:\n  - { skill: implement, model: { claude: [sonnet, opus] } }\n',
+    [issue(1)],
+    flaky,
+    {
+      attempts: {
+        'github:acme/api#1': {
+          runId: 'r0',
+          skill: 'plan',
+          updated: '',
+          report: { runId: 'r0', unit: 'acme-api-1', step: '1-plan', skill: 'plan' },
+        },
+      },
+      earlier: { 'r0/units/acme-api-1/1-plan/out/report.md': 'the plan' },
+    },
+  )
+  expect(rows.map(([id, status]) => [id, status])).toEqual([
+    ['acme-api-1', 'failed'],
+    ['acme-api-1', 'done'],
+  ])
+  expect(seen).toEqual([['report.md'], ['report.md']])
+})
+
 it('hands a retry the plan report when the failed implement before it left none', async () => {
   const attempt = (runId: string, skill: string, result: object) => {
     const planned = { unit: { id: 'acme-api-1', skill, items: [issue(1)] } }

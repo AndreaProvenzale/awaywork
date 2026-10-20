@@ -177,7 +177,7 @@ export function describeRule(r: Rule): string {
     r.provider.length > 0 && `provider=${r.provider.join('|')}`,
     r.model &&
       `model=${Object.entries(r.model)
-        .map(([p, m]) => `${p}:${m}`)
+        .map(([p, m]) => `${p}:${[m].flat().join('>')}`)
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,

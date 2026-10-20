@@ -51,6 +51,11 @@ describe('approve', () => {
     expect(clearApprovals(approvals, report)).toEqual({ 'github:a#2': true })
   })
 
+  it('clears it when a failed step finished on its retry', () => {
+    const report = run(['a#1', true, done, { status: 'failed', retried: true }, done])
+    expect(clearApprovals(approvals, report)).toEqual({ 'github:a#2': true })
+  })
+
   it('keeps an approval given after the run was planned', () => {
     expect(clearApprovals(approvals, run(['a#1', false, done, done]))).toEqual(approvals)
   })

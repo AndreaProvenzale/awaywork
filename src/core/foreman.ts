@@ -283,6 +283,12 @@ function stepsOf(entry: ThenStep | Loop): ThenStep[] {
   return isLoop(entry) ? entry.loop : [entry]
 }
 
+/** The model a rule sets for a provider on this attempt: the list's entry for it. */
+export function modelFor(models: Step['model'], provider: string, attempt = 0): string | undefined {
+  const set = models?.[provider]
+  return Array.isArray(set) ? set[attempt] : set
+}
+
 /** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
 function inherit(rule: Rule, step: ThenStep): Step {
   return {

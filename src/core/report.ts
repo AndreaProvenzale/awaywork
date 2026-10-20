@@ -19,6 +19,8 @@ export interface UnitResult {
   verdict?: string
   /** Skipped because its `when` didn't hold, or after a step that left nothing: not a failure. */
   passedOver?: true
+  /** Failed, and ran again on its provider's next model: the retry is the next result. */
+  retried?: true
   /** The step's folder under its chain's `units/<id>/`, e.g. `2-review`, once it started. */
   step?: string
   /** What the step left for the chain, e.g. `2 commits and a report`. */
@@ -138,7 +140,7 @@ interface Chain {
 /** The run's results grouped by chain and slice, with what the plan chained: e.g. `implement → loop(review ⇄ fix)`. */
 function chains(r: RunReport): Chain[] {
   return r.results
-    .filter((u) => !u.planned.chain)
+    .filter((u) => !u.planned.chain && !u.retried)
     .map((head) => {
       const { id } = head.planned.unit
       const steps = r.results.filter((u) => u.planned.unit.id === id || u.planned.chain === id)
@@ -162,9 +164,9 @@ function chainCells({ steps, slices }: Chain): [string, string] {
   return [`${status({ ...chain, loop: undefined })}${capped}`, each.join('; ')]
 }
 
-/** A chain as one result: its first step's, with every step's turns and the latest verdict. */
+/** A chain as one result: its first step's last attempt, with every step's turns and the latest verdict. */
 function chainOf(steps: UnitResult[]): UnitResult {
-  const head = steps[0] as UnitResult
+  const head = steps.find((s) => !s.retried) as UnitResult
   if (steps.length === 1) return head
   const turns = steps.reduce((sum, s) => sum + (s.turns ?? 0), 0)
   return { ...head, turns, verdict: steps.findLast((s) => s.verdict)?.verdict }
@@ -201,7 +203,11 @@ export function runLine(runId: string, report: string | undefined): string {
 
 function status(u: UnitResult): string {
   const turns = u.turns ? `, ${u.turns} turns` : ''
-  const why = [u.status !== 'skipped' && u.reason, u.loop && `loop: ${u.loop}`].filter(Boolean)
+  const why = [
+    u.status !== 'skipped' && u.reason,
+    u.retried && 'retried on the next model',
+    u.loop && `loop: ${u.loop}`,
+  ].filter(Boolean)
   return `${u.status}${turns}${why.length > 0 ? ` (${why.join('; ')})` : ''}`
 }
 

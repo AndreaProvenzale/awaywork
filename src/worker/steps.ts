@@ -1,6 +1,8 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { git } from './checks.js'
+import { execa } from 'execa'
+import { bin } from '../config/paths.js'
+import { git, noHooks } from './checks.js'
 import { commandEnv, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
 
 export function isLast(loop: {
@@ -43,6 +45,40 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   await Promise.all(
     ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
   )
+}
+
+/** A clone as a step found it, as git trees: what it staged, and its working tree with `out/`. */
+export interface Snapshot {
+  staged: string
+  tree: string
+}
+
+/** The clone for `discard` to put back; none while a conflicted merge leaves its index no tree. */
+export async function snapshot(dir: string): Promise<Snapshot | undefined> {
+  const staged = await git(dir, ...noHooks, 'write-tree').catch(() => undefined)
+  if (!staged) return undefined
+  const index = join(dir, '.git', 'away-snapshot')
+  const run = async (...args: string[]) =>
+    (await execa(bin('git'), ['-C', dir, ...noHooks, ...args], { env: { GIT_INDEX_FILE: index } }))
+      .stdout
+  try {
+    // Starting from the clone's index spares hashing every unchanged file again.
+    await cp(join(dir, '.git', 'index'), index)
+    await run('add', '-A')
+    await run('add', '-f', '--', `${WORK_DIR}/out`)
+    return { staged, tree: await run('write-tree') }
+  } finally {
+    await rm(index, { force: true })
+  }
+}
+
+/** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s trees. */
+export async function discard(dir: string, start: string, saved: Snapshot): Promise<void> {
+  await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
+  await git(dir, ...noHooks, 'reset', '-q', '--hard', start)
+  await git(dir, ...noHooks, 'clean', '-q', '-fd')
+  await git(dir, ...noHooks, 'read-tree', '-u', '--reset', saved.tree)
+  await git(dir, ...noHooks, 'read-tree', saved.staged)
 }
 
 /** With every secret withheld except the repo's own. */

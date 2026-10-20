@@ -140,7 +140,9 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
 
 /** The results of the chain whose first unit is `id`, that one first. */
 export function chainResults(report: RunReport, id: string): UnitResult[] {
-  return report.results.filter((r) => r.planned.unit.id === id || r.planned.chain === id)
+  const rows = report.results.filter((r) => r.planned.unit.id === id || r.planned.chain === id)
+  // A failed step counts through its retry, the next row, unless the retry stopped short of counting.
+  return rows.filter((r, i) => !r.retried || !counts(rows[i + 1]))
 }
 
 /** A chain finished when it ran, each of its steps that ran was done and no slice's publish left anything behind. */

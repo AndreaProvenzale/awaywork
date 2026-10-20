@@ -217,6 +217,14 @@ describe('config', () => {
     vi.unstubAllEnvs()
   })
 
+  it('takes a list of models per provider on a rule', () => {
+    const cfg = parseConfig(`${minimal}queue: [{ skill: fix, model: { claude: [sonnet, opus] } }]`)
+    expect(cfg.queue?.[0]?.model).toEqual({ claude: ['sonnet', 'opus'] })
+    expect(problems(`${minimal}queue: [{ skill: fix, model: { claude: [sonnet] } }]`)).not.toEqual(
+      [],
+    )
+  })
+
   it('takes a model per provider and per rule', () => {
     const cfg = parseConfig(
       `${minimal.replace('[claude: {}]', '[claude: { model: opus }, codex]')}queue: [{ skill: fix, model: { codex: gpt-5-codex } }]`,

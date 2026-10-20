@@ -108,6 +108,9 @@ export function createChecks(input: ChecksInput) {
 export const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, ...args])).stdout
 
+/** Flags that run no hook or fsmonitor command from a clone's config. */
+export const noHooks = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
+
 export const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
 export async function commitsSince(dir: string, start: string): Promise<number> {

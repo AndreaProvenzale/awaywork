@@ -2,7 +2,15 @@ import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
+import {
+  type Check,
+  checkDetails,
+  checkLog,
+  commitsSince,
+  git,
+  noHooks,
+  type RanCheck,
+} from './checks.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
@@ -59,8 +67,7 @@ export async function freeBranch(
 export async function cutBranch(dir: string, branch: string): Promise<void> {
   await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
   await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
-  const off = ['core.hooksPath=/dev/null', 'core.fsmonitor=false', 'core.logAllRefUpdates=false']
-  await git(dir, ...off.flatMap((c) => ['-c', c]), 'checkout', '-q', '-b', branch)
+  await git(dir, ...noHooks, '-c', 'core.logAllRefUpdates=false', 'checkout', '-q', '-b', branch)
 }
 
 export interface Publisher {
