@@ -1,13 +1,12 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import {
   bySlice,
   describeChain,
-  hasRetryModel,
   modelFor,
   type PlannedUnit,
   type RunPlan,
@@ -51,6 +50,7 @@ import {
   refuseSymlinks,
   WORK_DIR,
   workerEnv,
+  writeOutput,
 } from './workspace.js'
 
 export interface RunInput {
@@ -339,6 +339,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       done.push(result)
       let start: string | undefined
       try {
+        const whenLog = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
+        // A retry skips its `when`, which held on this same clone, and keeps the check's output.
+        const checked = retryOf && (await readOutput(whenLog))
         if (retryOf) await discard(dir, retryOf.start, retryOf.saved)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
@@ -359,6 +362,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
           loop: p.loop,
         })
+        if (checked) {
+          await mkdir(dirname(whenLog), { recursive: true })
+          await writeOutput(whenLog, checked)
+        }
         if (!reuse) {
           // Before setup or any worker touched the clone: the chain's commits are the ones after it.
           cloned = from = await head(dir)
@@ -389,9 +396,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         if (!reuse) await baseline(dir)
         const { when } = unit.rule
-        if (when) {
-          const logFile = join(dir, WORK_DIR, 'context', 'previous', 'when.log')
-          const met = await factsFor(when, unit, dir, since, verdict, log, logFile)
+        if (when && !retryOf) {
+          const met = await factsFor(when, unit, dir, since, verdict, log, whenLog)
           Object.assign(met.facts, quotaFacts(a))
           // A check stopped or timed out before it exited says nothing: the chain ends without passing over it.
           if (met.check?.stopped || met.check?.timedOut) {
@@ -450,7 +456,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
-        const retryable = !retryOf && published.size === 0 && hasRetryModel(unit.rule.model, id)
+        const retryable =
+          !retryOf && published.size === 0 && modelFor(unit.rule.model, id, 1) !== undefined
         const saved = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {

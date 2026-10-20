@@ -56,10 +56,8 @@ const model = z
   .describe("Model passed to the provider's binary; default the binary's")
 
 const models = z
-  .union([model, z.array(model).min(1).max(2)])
-  .describe(
-    'A model, or a list of up to two: a step that fails on the first runs once more on the second',
-  )
+  .union([model, z.array(model).length(2)])
+  .describe('A model, or two: a step that fails on the first runs once more on the second')
 
 type ProviderConfig = {
   model?: string

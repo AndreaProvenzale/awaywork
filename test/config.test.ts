@@ -220,7 +220,9 @@ describe('config', () => {
   it('takes a list of models per provider on a rule', () => {
     const cfg = parseConfig(`${minimal}queue: [{ skill: fix, model: { claude: [sonnet, opus] } }]`)
     expect(cfg.queue?.[0]?.model).toEqual({ claude: ['sonnet', 'opus'] })
-    expect(problems(`${minimal}queue: [{ skill: fix, model: { claude: [] } }]`)).not.toEqual([])
+    expect(problems(`${minimal}queue: [{ skill: fix, model: { claude: [sonnet] } }]`)).not.toEqual(
+      [],
+    )
   })
 
   it('takes a model per provider and per rule', () => {

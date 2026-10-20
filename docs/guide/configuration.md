@@ -261,13 +261,11 @@ Within a rule, units run in the order the source returns items; for GitHub that 
   model: { claude: [sonnet, opus] }
 ```
 
-Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain, where a step's own `model` can bring its own list. A list takes at most two entries; a provider set to a plain name never retries.
+Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain or loop, where a step's own `model` can bring its own pair. A provider set to a plain name never retries.
 
-The retry starts from the clone exactly as the failed step found it: only that attempt's commits, edits, new files and changes to `.away/out/` (its report, verdict, `pr.md` edits) are dropped; gitignored files, like `dist/` or `node_modules`, and `.away/context/` stay as it left them. Whatever setup and the steps before left, committed, staged or not, stays, and those steps don't run again. The step's [`when`](./chains.md#when) is checked again, so a `! pnpm test` fixer still finds its `when.log`, and if it no longer holds the retry is passed over, on the restored clone: the failed work is gone once the retry is routed. The chain goes on after the retry as usual. Inside a [loop](./chains.md#loops) a failed round retries the same way, and the next round starts on the first model again.
+The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped, and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit, Ctrl-C, or a chain that already published a [stacked slice](./chains.md#stack). If the provider has no budget left for the retry, the failed attempt stands, as without a list.
 
-Only a failure retries: a quota or session stop, the time limit, the window's end, Ctrl-C or an awaywork error don't, and nothing retries once a [stacked slice](./chains.md#stack) of the chain was published. The retry stays on the failed step's provider and is routed like any step. Nothing is dropped until the retry is routed: if that provider has no budget left, the window ended or you hit Ctrl-C first, the failed attempt stands with its work, exactly as without a list, and the steps after it are skipped as `<unit> failed, not retried: <why>`.
-
-Both attempts show in the report, each with its own step folder, and both count against the budget and in `awaywork stats`:
+Both attempts show in the report and count against the budget, while [giving up](./how-it-works.md#units) on an item and `notify` go by the one that stands:
 
 ```markdown
 | 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
@@ -275,8 +273,6 @@ Both attempts show in the report, each with its own step folder, and both count 
 |  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
 |  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
 ```
-
-Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step: a retry that finishes leaves no failure, one that fails counts once, and one stopped by quota, the session limit or the window's end lets the first failure count. `notify` hears only about the attempt that stands.
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 

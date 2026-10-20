@@ -289,12 +289,6 @@ export function modelFor(models: Step['model'], provider: string, attempt = 0): 
   return Array.isArray(set) ? set[attempt] : set
 }
 
-/** Whether a rule has a second model for a provider to retry a failed unit on. */
-export function hasRetryModel(models: Step['model'], provider: string): boolean {
-  const set = models?.[provider]
-  return Array.isArray(set) && set.length > 1
-}
-
 /** A step with the rule's provider, model, skills, MCP servers and instructions where it sets none. */
 function inherit(rule: Rule, step: ThenStep): Step {
   return {
