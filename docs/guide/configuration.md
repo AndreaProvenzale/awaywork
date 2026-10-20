@@ -263,9 +263,9 @@ Within a rule, units run in the order the source returns items; for GitHub that 
 
 Every step runs on `sonnet`. One that fails there (a failed turn or the turn cap) runs once more, right away, on `opus`. That holds for a one-step rule like this one and for each step of a [`then`](./chains.md#then) chain or loop, where a step's own `model` can bring its own pair. A provider set to a plain name never retries.
 
-The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped, and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit, Ctrl-C, or a chain that already published a [stacked slice](./chains.md#stack). If the provider has no budget left for the retry, the failed attempt stands, as without a list.
+The retry starts from the clone as the failed step found it: that attempt's commits, edits and `.away/out/` changes are dropped (gitignored files like `node_modules` and `.away/context/` stay as it left them), and only that step runs again, on the same provider, without checking its [`when`](./chains.md#when) again. Only a failure retries: not a quota stop, the time limit, Ctrl-C, or a chain that already published a [stacked slice](./chains.md#stack). If the provider has no budget left for the retry, the failed attempt stands, as without a list.
 
-Both attempts show in the report and count against the budget, while [giving up](./how-it-works.md#units) on an item and `notify` go by the one that stands:
+Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
 
 ```markdown
 | 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
