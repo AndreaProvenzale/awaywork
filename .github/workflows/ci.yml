@@ -21,3 +21,19 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm docs:gen && git diff --exit-code docs/
+
+  # The live test of the worker user, made as the action makes it.
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/worker-user.sh
+      - run: pnpm vitest run test/real-isolation.test.ts test/launch.test.ts
+        env:
+          AWAYWORK_WORKER_TEST: "1"
