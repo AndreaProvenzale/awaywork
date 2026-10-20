@@ -4,8 +4,8 @@ import { chainResults, finished } from './attempts.js'
 import type { RunReport } from './report.js'
 import type { Item } from './types.js'
 
-/** Per item, by `source:key`, with the time it was approved. */
-export type Approvals = Record<string, { at: string }>
+/** The approved items, by `source:key`. */
+export type Approvals = Record<string, true>
 
 export async function loadApprovals(path: string): Promise<Approvals> {
   const text = await readFile(path, 'utf8').catch(() => '{}')

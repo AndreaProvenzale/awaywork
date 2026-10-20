@@ -22,8 +22,8 @@ export type Attempts = Record<
     failed?: number
     failedAt?: string
     pushed?: string
-    /** The last run whose chain on the item left a report, in its `units/<unit>/`. */
-    report?: { runId: string; unit: string }
+    /** The last report a chain on the item left, in `runs/<runId>/units/<unit>/<step>/out/`. */
+    report?: { runId: string; unit: string; step: string; skill: string }
   }
 >
 
@@ -103,12 +103,14 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     // A push stays recorded even when a step after it didn't run.
     if (aborted && !pushed) continue
     const { skill } = head.unit
-    const reported = chain.some((r) => r.reported)
+    const reported = chain.findLast((r) => r.reported)
     for (const item of head.unit.items) {
       if (typeof item.fields.updated !== 'string') continue
       const key = attemptKey(item)
       // A chain that left no report keeps the item's earlier one.
-      const latest = reported ? { runId: report.runId, unit: id } : attempts[key]?.report
+      const latest = reported?.step
+        ? { runId: report.runId, unit: id, step: reported.step, skill: reported.planned.unit.skill }
+        : attempts[key]?.report
       // Aborted after a push: only the push's head is new, and an empty `updated` never reads as unchanged.
       if (aborted)
         next[key] = {

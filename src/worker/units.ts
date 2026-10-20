@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
@@ -58,7 +58,7 @@ export interface RunInput {
   attempts?: Attempts
 }
 
-/** The latest report an earlier run left on one of the items: its chain's last, from `runs/<run>/units/<unit>/`. */
+/** The latest report an earlier run left on one of the items. */
 async function earlierReport(
   items: Item[],
   attempts: Attempts,
@@ -68,14 +68,9 @@ async function earlierReport(
   for (const item of items) {
     const last = attempts[`${item.source}:${item.key}`]?.report
     if (!last || last.runId === thisRun) continue
-    const unitDir = join(runsDir, last.runId, 'units', last.unit)
-    const steps = (await readdir(unitDir).catch(() => [])).filter((s) => /^\d+-/.test(s))
-    steps.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10))
-    for (const step of steps) {
-      const out = join(unitDir, step, 'out')
-      if ((await readOutput(join(out, outputFile.report))).trim())
-        return { skill: step.replace(/^\d+-/, ''), out, earlierRun: last.runId }
-    }
+    const out = join(runsDir, last.runId, 'units', last.unit, last.step, 'out')
+    if ((await readOutput(join(out, outputFile.report))).trim())
+      return { skill: last.skill, out, earlierRun: last.runId }
   }
 }
 

@@ -18,11 +18,10 @@ export async function approveItem(
   key: string,
   sources: string[],
   path = approvalsPath,
-  now = new Date(),
 ): Promise<string> {
   checkKey(key, sources)
   const approvals = await loadApprovals(path)
-  approvals[key] = { at: now.toISOString() }
+  approvals[key] = true
   await saveApprovals(path, approvals)
   return `${key} is approved until a unit on it finishes`
 }

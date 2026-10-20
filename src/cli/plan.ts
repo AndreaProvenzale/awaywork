@@ -4,7 +4,7 @@ import { approvalsPath, attemptsPath, skillsDirOf, skipsPath } from '../config/p
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { loadApprovals, withApprovals } from '../core/approvals.js'
-import { type Attempts, loadAttempts } from '../core/attempts.js'
+import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
 import { planRun, type RunPlan } from '../core/foreman.js'
@@ -66,8 +66,6 @@ export async function probeAndPlan(
   ctx: Ctx
   sources: Record<string, Source>
   secrets: string[]
-  /** As recorded, also on a retry, which plans with none. */
-  attempts: Attempts
 }> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
@@ -97,8 +95,7 @@ export async function probeAndPlan(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  const recorded = await loadAttempts(attemptsPath)
-  const attempts = opts.retry ? {} : recorded
+  const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   const sources = configuredSources(config)
   // A failed source's warning carries its stderr, and coding agents read `plan`.
@@ -109,7 +106,6 @@ export async function probeAndPlan(
     ctx,
     sources,
     secrets,
-    attempts: recorded,
   }
 }
 

@@ -276,7 +276,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
     runId: 'r1',
     skill: 'implement',
     updated: '2026-10-01T00:00:00Z',
-    report: { runId: 'r1', unit: 'acme-api-1' },
+    report: { runId: 'r1', unit: 'acme-api-1', step: '5-plan', skill: 'plan' },
   })
 })
 
@@ -814,13 +814,13 @@ it('hands a chain its first step the report an earlier run left, and later steps
           runId: 'r0',
           skill: 'plan',
           updated: '',
-          report: { runId: 'r0', unit: 'acme-api-1' },
+          report: { runId: 'r0', unit: 'acme-api-1', step: '2-review', skill: 'review' },
         },
       },
       earlier: {
         'r0/units/acme-api-1/1-plan/out/report.md': 'old plan',
-        'r0/units/acme-api-1/1-plan/out/verdict': 'ignored',
         'r0/units/acme-api-1/2-review/out/report.md': 'old review',
+        'r0/units/acme-api-1/2-review/out/verdict': 'ignored',
       },
     },
   )
@@ -846,13 +846,13 @@ it('hands a retry the plan report when the failed implement before it left none'
   }
   const planned = recordAttempts(
     {},
-    attempt('plan-run', 'plan', { status: 'done', reported: true }),
+    attempt('plan-run', 'plan', { status: 'done', reported: true, step: '1-plan' }),
   )
   const attempts = recordAttempts(planned, attempt('failed-run', 'implement', { status: 'failed' }))
   expect(attempts['github:acme/api#1']).toMatchObject({
     runId: 'failed-run',
     failed: 1,
-    report: { runId: 'plan-run', unit: 'acme-api-1' },
+    report: { runId: 'plan-run', unit: 'acme-api-1', step: '1-plan', skill: 'plan' },
   })
 
   const seen: Record<string, string[]> = {}
@@ -866,25 +866,4 @@ it('hands a retry the plan report when the failed implement before it left none'
   })
   expect(seen['acme-api-1']).toEqual(['report.md'])
   expect(prompts['acme-api-1']).toContain('in run plan-run, `plan` left its report')
-})
-
-it('skips an empty report a later step left for the one before it', async () => {
-  const seen: Record<string, string[]> = {}
-  const prompts: Record<string, string> = {}
-  await run('queue:\n  - skill: implement\n', [issue(1)], worker({}, { seen, prompts }), {
-    attempts: {
-      'github:acme/api#1': {
-        runId: 'r0',
-        skill: 'plan',
-        updated: '',
-        report: { runId: 'r0', unit: 'acme-api-1' },
-      },
-    },
-    earlier: {
-      'r0/units/acme-api-1/1-plan/out/report.md': 'the plan',
-      'r0/units/acme-api-1/2-review/out/report.md': '  \n',
-    },
-  })
-  expect(seen['acme-api-1']).toEqual(['report.md'])
-  expect(prompts['acme-api-1']).toContain('in run r0, `plan` left its report')
 })
