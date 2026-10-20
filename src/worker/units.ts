@@ -13,8 +13,17 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { type RunReport, summaryOf, type UnitResult } from '../core/report.js'
-import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
+import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
+import type {
+  Ctx,
+  Deliver,
+  Forge,
+  Item,
+  McpServer,
+  Provider,
+  Quota,
+  Source,
+} from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
@@ -96,25 +105,35 @@ async function earlierReport(
 /** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
 const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
 
-/** A step's files, and what it concluded: its slice's PR body when it published the slice, else its report. */
+/** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
 async function leftBy(
   runDir: string,
   chainId: string,
   r: UnitResult,
+  deliver: Deliver,
+  lead: boolean,
 ): Promise<Pick<UnitResult, 'files' | 'summary'>> {
   if (!r.step) return {}
   // Relative and with `/`: report.json is read on other machines, from an uploaded artifact.
   const step = posix.join('units', chainId, r.step)
   const slice = posix.join('units', chainId, sliceOut(r.planned.slice ?? 0))
-  const pr = posix.join(slice, outputFile.draft_pr)
-  const report = posix.join(step, 'out', outputFile.report)
-  const published = r.outcome ? [pr, posix.join(slice, 'diff.patch')] : []
-  const files = [posix.join(step, 'worker.log'), report, posix.join(step, 'out', 'diff.patch')]
-    .concat(published)
-    .filter((f) => existsSync(join(runDir, f)))
+  const all: StepFiles = {
+    log: posix.join(step, 'worker.log'),
+    report: posix.join(step, 'out', outputFile.report),
+    diff: posix.join(step, 'out', 'diff.patch'),
+    ...(lead && {
+      sliceBody: posix.join(slice, outputFile[deliver]),
+      sliceDiff: posix.join(slice, 'diff.patch'),
+    }),
+  }
+  const files: StepFiles = Object.fromEntries(
+    Object.entries(all).filter(([, f]) => existsSync(join(runDir, f))),
+  )
+  const read = async (f?: string) => (f ? readOutput(join(runDir, f)) : '')
+  // Only a draft PR's body opens with its title.
   const summary =
-    (r.outcome && summaryOf(await readOutput(join(runDir, pr)), true)) ||
-    summaryOf(await readOutput(join(runDir, report)))
+    summaryOf(await read(files.sliceBody), deliver === 'draft_pr') ||
+    summaryOf(await read(files.report))
   return { files, ...(summary && { summary }) }
 }
 
@@ -247,6 +266,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let retrying: Retry | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
+    // Each slice's first step, which publishes it.
+    const leads = new Set<UnitResult>()
 
     /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
@@ -255,6 +276,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       )
       const out = join(chainDir, sliceOut(at))
       if (from !== undefined && lead && ran && !input.dryRun) {
+        leads.add(lead)
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
@@ -620,7 +642,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    for (const r of done) Object.assign(r, await leftBy(input.runDir, first.unit.id, r))
+    for (const r of done)
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, deliver, leads.has(r)))
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done

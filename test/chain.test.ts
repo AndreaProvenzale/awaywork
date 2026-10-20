@@ -476,6 +476,15 @@ queue:
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
 
+  expect(report.results[2]).toMatchObject({
+    summary: 'Done.',
+    files: {
+      log: 'units/acme-api-1/3-fix/worker.log',
+      sliceBody: 'units/acme-api-1/out-2/pr.md',
+      sliceDiff: 'units/acme-api-1/out-2/diff.patch',
+    },
+  })
+
   expect(seen['acme-api-1-fix']).toEqual(['pr.md', 'report.md'])
   expect(bodies['acme-api-1-fix']).toBe(published)
   expect(prompts['acme-api-1-fix']).toContain(

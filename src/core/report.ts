@@ -29,10 +29,21 @@ export interface UnitResult {
   reported?: true
   /** How the chain's loops went, on its first step, e.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
   loop?: string
-  /** What the step concluded, in a line: its slice's PR body when it published the slice, else its report. */
+  /** What the step concluded, in a line: its slice's PR body when it leads the slice, else its report. */
   summary?: string
-  /** What the step left, relative to the run dir: its log, report and diff, then the PR body and diff of the slice it published. */
-  files?: string[]
+  /** What the step left, relative to the run dir, whichever exist. */
+  files?: StepFiles
+}
+
+export interface StepFiles {
+  log?: string
+  report?: string
+  /** The step's own commits. */
+  diff?: string
+  /** On the slice's first step: the PR body or push summary (a report chain's joined report) as published. */
+  sliceBody?: string
+  /** On the slice's first step: the commits it published. */
+  sliceDiff?: string
 }
 
 export interface RunReport {
@@ -51,6 +62,7 @@ const SUMMARY_LENGTH = 200
 /** A PR body's or report's first paragraph on one line, past the body's title line and any heading. */
 export function summaryOf(text: string, titled = false): string | undefined {
   const body = text
+    .replace(/<!--[\s\S]*?-->/g, '')
     .trim()
     .split('\n')
     .slice(titled ? 1 : 0)

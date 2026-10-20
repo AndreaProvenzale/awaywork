@@ -832,6 +832,10 @@ queue:
         'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
       ],
     ])
+    expect(result.skipped.map((s) => [s.item.key, s.url])).toEqual([
+      ['acme/api#9', 'https://github.com/acme/api/pull/9'],
+      ['T-4', 'https://github.com/acme/api/pull/9'],
+    ])
   })
 
   it('holds a PR awaywork pushed onto while its head is still the one the push left', () => {
@@ -858,6 +862,7 @@ queue: [{ skill: fix, deliver: push }]`
         'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
       ],
     ])
+    expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')
     const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
     expect(movedOn.units).toHaveLength(1)
   })
@@ -943,6 +948,7 @@ queue:
         'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #3 fix: my_unresolved_threads is 0, wants not 0',
       ],
     ])
+    expect(result.skipped[0]?.url).toBe('https://github.com/acme/api/pull/2')
   })
 
   it('skips every item of a feature when one of them is skipped, and says why', () => {

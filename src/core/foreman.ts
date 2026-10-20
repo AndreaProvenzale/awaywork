@@ -90,6 +90,8 @@ export interface Skipped {
   item: Item
   kind: SkipKind
   reason: string
+  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself. */
+  url?: string
 }
 
 export interface RunPlan {
@@ -134,8 +136,8 @@ export function planRun(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
-    const skip = (kind: SkipKind, reason: string) =>
-      skipped.push(...items.map((item) => ({ item, kind, reason })))
+    const skip = (kind: SkipKind, reason: string, url?: string) =>
+      skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
     const skippedByUser = items
       .map((item) => `${item.source}:${item.key}`)
       .find((key) => skips[key])
@@ -145,12 +147,12 @@ export function planRun(input: {
     }
     const prs = items.flatMap((i) => i.linkedPrs)
     if (ours && !pickup) {
-      skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`)
+      skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
     const held = pushedOnto(items, input.attempts ?? {})
     if (held) {
-      skip('waiting_for_review', `waiting for review: awaywork pushed onto ${held.url}`)
+      skip('waiting_for_review', `waiting for review: awaywork pushed onto ${held.url}`, held.url)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
@@ -370,12 +372,14 @@ function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
   const why = ours ? `waiting for review: awaywork PR ${item.url} is open` : 'matched no rule'
-  if (!closest) return { kind, reason: why }
+  const url = ours ? { url: item.url } : {}
+  if (!closest) return { kind, reason: why, ...url }
   const rule = queue[closest.rule] as Rule
   const failed = describeFailed(rule.where, item, closest.failed)
   return {
     kind,
     reason: `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`,
+    ...url,
   }
 }
 

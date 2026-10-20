@@ -124,7 +124,10 @@ queue: [{ skill: fix, where: { checks: failing } }]
           status: 'done',
           outcome: { kind: 'pr', url: 'https://github.com/acme/api/pull/9', commits: 1, head: 'a' },
           summary: 'Ran the tests.',
-          files: ['units/acme-api-1/1-fix/worker.log', 'units/acme-api-1/out/pr.md'],
+          files: {
+            log: 'units/acme-api-1/1-fix/worker.log',
+            sliceBody: 'units/acme-api-1/out/pr.md',
+          },
         },
       ],
       quotas: {},
@@ -146,7 +149,7 @@ queue: [{ skill: fix, where: { checks: failing } }]
     expect(parsed.results[0]).toMatchObject({
       outcome: { url: 'https://github.com/acme/api/pull/9' },
       summary: 'Ran the tests.',
-      files: ['units/acme-api-1/1-fix/worker.log', 'units/acme-api-1/out/pr.md'],
+      files: { log: 'units/acme-api-1/1-fix/worker.log', sliceBody: 'units/acme-api-1/out/pr.md' },
     })
     expect(json).not.toContain('PRIVATE')
   })
@@ -157,6 +160,11 @@ describe('summaryOf', () => {
     const body = '# Fix the flaky test\n\nNo code changes: both red\nchecks are unrelated.\n\nMore.'
     expect(summaryOf(body, true)).toBe('No code changes: both red checks are unrelated.')
     expect(summaryOf('Fix it\n\n## Why\nThe retry hid it.', true)).toBe('The retry hid it.')
+  })
+
+  it('leaves out HTML comments, as a PR template leaves them', () => {
+    const body = 'Fix it\n\n<!-- Describe the change -->\n## Summary\nDid it.<!--\nwhy\n-->'
+    expect(summaryOf(body, true)).toBe('Did it.')
   })
 
   it("takes a report's first paragraph, cut to 200 characters", () => {
