@@ -50,7 +50,21 @@ awaywork doctor   # the config, binaries, credentials, quota, sources
 awaywork plan
 ```
 
-`plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal you get a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
+`plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal it opens at once and shows each step as it loads:
+
+```
+☾ >_ awaywork  You're away, your agents work
+
+⠸ Planning the next run
+  ✔ github        5 items
+  ✔ tracker       2 items
+  ✔ linking PRs   2/2
+  ⠸ claude quota
+
+q quit
+```
+
+Then the same screen is a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
 
 ```
 ☾ >_ awaywork  You're away, your agents work

@@ -158,7 +158,7 @@ claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 diff: this unit left no diff
 ```
 
-The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run.
+The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
 
 | Key | Does |
 | --- | --- |
@@ -173,7 +173,7 @@ The footer dims the keys the selected row has nothing behind, like `d` on a unit
 | `s` | `awaywork skip` the item, after a `y` |
 | `a` | `awaywork approve` the item, after a `y`; there's no undo |
 | `?` | the keys |
-| `q`, Esc, Ctrl-C | quit |
+| `q`, Esc, Ctrl-C | quit, also while it loads |
 
 Piped, in CI (`CI` set), or with `--json`, `--list`, `--unit` or `--skipped`, you get plain text instead, so `awaywork report | cat` is the way to print it:
 

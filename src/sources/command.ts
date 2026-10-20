@@ -106,7 +106,13 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
         detached: true,
       })
       // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-      subprocess.nodeChildProcess.on('exit', () => killGroup(subprocess.pid))
+      const kill = () => killGroup(subprocess.pid)
+      // Detached, it would outlive awaywork quitting mid-load.
+      process.once('exit', kill)
+      subprocess.nodeChildProcess.on('exit', () => {
+        process.off('exit', kill)
+        kill()
+      })
       const { stdout } = await subprocess
       let json: unknown
       try {

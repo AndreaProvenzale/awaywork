@@ -418,6 +418,59 @@ export function view(s: State, cols: number, rows: number): string[] {
     .map((line) => clipLine(line, cols))
 }
 
+/** A loading step as it happens: running with how far it got, done with its result, or failed with why. */
+export interface Step {
+  name: string
+  state: 'running' | 'done' | 'failed'
+  detail?: string
+}
+
+export type OnProgress = (step: Step) => void
+
+/** The screen before the view: the brand, what is loading and each step so far. */
+export interface Loading {
+  brand: string
+  title: string
+  steps: Step[]
+  frame: number
+}
+
+export const loading = (brand: string, title: string): Loading => ({
+  brand,
+  title,
+  steps: [],
+  frame: 0,
+})
+
+/** A step's news, in place of its earlier line, else after the others. */
+export function progress(l: Loading, step: Step): Loading {
+  const at = l.steps.findIndex((s) => s.name === step.name)
+  return { ...l, steps: at < 0 ? [...l.steps, step] : l.steps.with(at, step) }
+}
+
+export const tick = (l: Loading): Loading => ({ ...l, frame: l.frame + 1 })
+
+const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+/** The loader: the brand, a spinner on the title, a line per step, and q to quit. */
+export function loadingView(l: Loading, cols: number, rows: number): string[] {
+  const frame = spinner[l.frame % spinner.length] ?? ''
+  const marks = { running: frame, done: style('green', '✔'), failed: style('red', '✖') }
+  const width = Math.max(0, ...l.steps.map((s) => s.name.length))
+  const steps = l.steps.map(
+    (s) => `  ${marks[s.state]} ${s.detail ? `${s.name.padEnd(width)}  ${s.detail}` : s.name}`,
+  )
+  const body = [`${frame} ${l.title}`, ...steps]
+  const brand = rows >= body.length + 4 ? [l.brand, ''] : []
+  const filler = Array<string>(Math.max(0, rows - brand.length - body.length - 2)).fill('')
+  return [...brand, ...body, ...filler, style('dim', 'q quit'), '']
+    .slice(-rows)
+    .map((line) => clipLine(line, cols))
+}
+
+/** The view, on the loader's screen under the same brand. */
+export const ready = (l: Loading, s: State): State => follow({ ...s, brand: l.brand })
+
 function keyLines(): string[] {
   const width = Math.max(...keys.map(([k]) => k.length))
   return [style('bold', 'Keys'), ...keys.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]

@@ -33,7 +33,7 @@ import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedChains, runUnits } from '../worker/units.js'
-import { browse, type ItemCommands, interactive, itemCommands } from './browse.js'
+import { type ItemCommands, interactive, itemCommands, openScreen, type Screen } from './browse.js'
 import { reportConfigError } from './config.js'
 import {
   ambiguous,
@@ -50,7 +50,7 @@ import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { configuredSources } from './skip.js'
 import { unitsFile } from './stats.js'
-import { runTriage, type UnitFiles } from './triage.js'
+import { type OnProgress, runTriage, type UnitFiles } from './triage.js'
 
 type RunOptions = {
   dryRun?: boolean
@@ -190,12 +190,18 @@ export function runCommand(program: Command): void {
         .choices(skipKinds)
         .conflicts(['list', 'json', 'unit']),
     )
-    .action((id: string | undefined, opts: ReportOptions) =>
-      printReport(id, !!opts.list, exec, !!opts.json, {
-        ...opts,
-        browse: interactive() ? itemCommands(() => configuredSources(program)) : undefined,
-      }),
-    )
+    .action(async (id: string | undefined, opts: ReportOptions) => {
+      const browsing = interactive() && !opts.list && !opts.json && !opts.unit && !opts.skipped
+      const screen = browsing ? openScreen('Loading the report') : undefined
+      try {
+        await printReport(id, !!opts.list, exec, !!opts.json, {
+          ...opts,
+          browse: screen && { screen, commands: itemCommands(() => configuredSources(program)) },
+        })
+      } finally {
+        screen?.close()
+      }
+    })
 }
 
 type ReportOptions = {
@@ -203,8 +209,8 @@ type ReportOptions = {
   json?: boolean
   unit?: string
   skipped?: string | true
-  /** Browse the run instead of printing it. */
-  browse?: ItemCommands
+  /** Browse the run on this screen, already open, instead of printing it. */
+  browse?: { screen: Screen; commands: ItemCommands }
 }
 
 const reportJsonFile = 'report.json'
@@ -223,8 +229,12 @@ export async function printReport(
   json = false,
   view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'> = {},
 ) {
+  const screen = view.browse?.screen
+  // Kept off the screen: they go in the view's warnings, or out once it's closed.
+  const held: string[] = []
+  const warn = (e: unknown) => (screen ? held.push(remoteWarning(e)) : warnRemote(e))
   const local = (await readdir(runsDir).catch(() => [])).sort()
-  const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
+  const uploaded = id && local.includes(id) ? [] : await remoteRuns(run, warn, screen?.progress)
   const runs: Run[] = [
     ...local.map((id) => ({ id, dir: join(runsDir, id) })),
     ...uploaded
@@ -247,13 +257,18 @@ export async function printReport(
     return
   }
   let picked = id ? runs.find((r) => r.id === id) : runs.at(-1)
-  if (picked?.uploaded)
+  if (picked?.uploaded) {
+    const name = `run ${picked.id}`
+    screen?.progress({ name, state: 'running', detail: 'fetching from GitHub' })
     try {
       await fetchRun(picked.uploaded, picked.dir, run)
+      screen?.progress({ name, state: 'done', detail: 'fetched from GitHub' })
     } catch (e) {
-      warnRemote(e)
+      warn(e)
+      screen?.progress({ name, state: 'failed', detail: remoteReason(e) })
       picked = id ? undefined : runs.findLast((r) => !r.uploaded)
     }
+  }
   const which = id ?? picked?.id
   if (!which) {
     console.error(`no runs in ${runsDir}`)
@@ -262,7 +277,9 @@ export async function printReport(
   }
   const results = !json && picked ? await read(picked, reportJsonFile) : undefined
   if (results !== undefined && picked)
-    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded)
+    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded, held)
+  screen?.close()
+  for (const warning of held) console.error(`warning: ${warning}`)
   if (view.unit || view.skipped) {
     console.error(`run ${which} has no ${reportJsonFile}, which --unit and --skipped read`)
     process.exitCode = 1
@@ -291,6 +308,7 @@ async function printRun(
   report: RunReport & { warnings?: string[] },
   view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'>,
   remote: boolean,
+  held: string[] = [],
 ) {
   if (view.skipped)
     return console.log(
@@ -300,8 +318,9 @@ async function printRun(
     const units = await Promise.all(
       chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 })),
     )
-    const state = runTriage(report, report.warnings ?? [], units, process.stdout.rows, remote)
-    return browse(state, view.browse)
+    const warnings = [...held, ...(report.warnings ?? [])]
+    const state = runTriage(report, warnings, units, process.stdout.rows, remote)
+    return view.browse.screen.browse(state, view.browse.commands)
   }
   if (!view.unit) return console.log(formatRun(report, report.warnings, true))
   const named = findChains(report, view.unit)
@@ -350,19 +369,37 @@ async function startedSteps(runDir: string): Promise<{ name: string; log: string
 }
 
 /** The runs the control repo in this directory uploaded: none outside one, and none with a warning when GitHub fails. */
-async function remoteRuns(run: Exec): Promise<UploadedRun[]> {
+async function remoteRuns(
+  run: Exec,
+  warn = warnRemote,
+  onProgress?: OnProgress,
+): Promise<UploadedRun[]> {
   // A runner's own report is of the run it just made, never of an earlier upload.
   if (process.env.GITHUB_ACTIONS) return []
   const root = await gitRoot(run)
   if (!root || !existsSync(join(root, WORKFLOW))) return []
-  return uploadedRuns(basename(WORKFLOW, '.yml'), run).catch((e: unknown) => {
-    warnRemote(e)
-    return []
-  })
+  const name = 'runs on GitHub'
+  onProgress?.({ name, state: 'running' })
+  return uploadedRuns(basename(WORKFLOW, '.yml'), run).then(
+    (runs) => {
+      onProgress?.({ name, state: 'done', detail: `${runs.length} runs` })
+      return runs
+    },
+    (e: unknown) => {
+      warn(e)
+      onProgress?.({ name, state: 'failed', detail: remoteReason(e) })
+      return []
+    },
+  )
 }
 
-function warnRemote(e: unknown) {
+function remoteReason(e: unknown): string {
   const { stderr, message } = e as { stderr?: string; message?: string }
-  const reason = (stderr || message || String(e)).trim().split('\n')[0]
-  console.error(`warning: runs on GitHub left out: ${reason}`)
+  return (stderr || message || String(e)).trim().split('\n')[0] ?? ''
+}
+
+const remoteWarning = (e: unknown) => `runs on GitHub left out: ${remoteReason(e)}`
+
+function warnRemote(e: unknown) {
+  console.error(`warning: ${remoteWarning(e)}`)
 }

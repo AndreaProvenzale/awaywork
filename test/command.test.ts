@@ -27,6 +27,14 @@ sourceContract(
 describe('command source', () => {
   const source = commandSource('tracker', cfg())
 
+  it('kills its process group if awaywork exits first, and stops watching once done', async () => {
+    const before = process.listenerCount('exit')
+    const pending = source.items(cfg(), ctx())
+    expect(process.listenerCount('exit')).toBe(before + 1)
+    await pending
+    expect(process.listenerCount('exit')).toBe(before)
+  })
+
   it('turns the printed JSON into items with defaults', async () => {
     const [item] = await source.items(cfg(), ctx())
     expect(item).toMatchObject({

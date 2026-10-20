@@ -4,11 +4,17 @@ import { pagerCommand } from '../src/cli/browse.js'
 import { brandHeader } from '../src/cli/format.js'
 import {
   clipLine,
+  type Loading,
+  loading,
+  loadingView,
   planTriage,
+  progress,
+  ready,
   resize,
   runTriage,
   type State,
   settle,
+  tick,
   update,
   view,
 } from '../src/cli/triage.js'
@@ -280,6 +286,64 @@ describe('triage update', () => {
     for (const key of ['q', 'escape', 'ctrl-c'])
       expect(update(run(), key).effect).toEqual({ action: 'quit' })
     expect(update(help, 'ctrl-c').effect).toEqual({ action: 'quit' })
+  })
+})
+
+describe('loader', () => {
+  const brand = brandHeader(false)
+  const loaded = (...steps: Parameters<typeof progress>[1][]) =>
+    steps.reduce(progress, loading(brand, 'Planning the next run'))
+  const shown = (l: Loading, cols = 60, rows = 10) =>
+    loadingView(l, cols, rows).map((line) => stripVTControlCharacters(line).trimEnd())
+
+  it('shows the brand, a spinner on the title, each step as it goes, and q', () => {
+    const l = loaded(
+      { name: 'github', state: 'done', detail: '142 items' },
+      { name: 'tracker', state: 'failed', detail: 'Command failed with exit code 1' },
+      { name: 'linking PRs', state: 'running', detail: '57/142' },
+    )
+    expect(shown(l)).toMatchInlineSnapshot(`
+      [
+        "☾ >_ awaywork  You're away, your agents work",
+        "",
+        "⠋ Planning the next run",
+        "  ✔ github       142 items",
+        "  ✖ tracker      Command failed with exit code 1",
+        "  ⠋ linking PRs  57/142",
+        "",
+        "",
+        "q quit",
+        "",
+      ]
+    `)
+    expect(shown(tick(l))[2]).toBe('⠙ Planning the next run')
+  })
+
+  it('updates a step in place, and adds a new one after the others', () => {
+    const l = loaded(
+      { name: 'github', state: 'running' },
+      { name: 'claude quota', state: 'running' },
+      { name: 'github', state: 'done', detail: '3 items' },
+    )
+    expect(l.steps.map((s) => [s.name, s.state])).toEqual([
+      ['github', 'done'],
+      ['claude quota', 'running'],
+    ])
+  })
+
+  it('drops the brand on a short terminal, then the oldest steps, never q', () => {
+    const steps = ['a', 'b', 'c', 'd'].map((name) => ({ name, state: 'done' as const }))
+    expect(shown(loaded(...steps), 20, 7)[0]).toBe('⠋ Planning the next…')
+    expect(shown(loaded(...steps), 20, 5)).toEqual(['  ✔ b', '  ✔ c', '  ✔ d', 'q quit', ''])
+  })
+
+  it('becomes the view under its brand', () => {
+    const l = loaded({ name: 'github', state: 'done', detail: '3 items' })
+    expect(screen(ready(l, run(24))).slice(0, 3)).toEqual([
+      brand,
+      '',
+      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+    ])
   })
 })
 

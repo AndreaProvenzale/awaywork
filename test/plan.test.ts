@@ -12,6 +12,7 @@ import {
   queueLines,
 } from '../src/cli/format.js'
 import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
+import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -699,6 +700,32 @@ queue:
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('reports each source and provider as it loads, for the loader', async () => {
+    const yaml =
+      'providers: [codex]\nsources: { tracker: { command: "echo []" }, chores: { command: "exit 3" } }\n'
+    const steps: Step[] = []
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    try {
+      await probeAndPlan(parseConfig(yaml), await mkdtemp(join(tmpdir(), 'awaywork-skills-')), {
+        retry: true,
+        onProgress: (step) => steps.push(step),
+      })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(steps).toEqual([
+      { name: 'tracker', state: 'running' },
+      { name: 'tracker', state: 'done', detail: '0 items' },
+      { name: 'chores', state: 'running' },
+      { name: 'chores', state: 'failed', detail: "Command failed with exit code 3: 'exit 3'" },
+      {
+        name: 'codex quota',
+        state: 'failed',
+        detail: expect.stringMatching(/^unavailable: a GitHub-hosted runner/),
+      },
+    ])
   })
 
   it("masks a failing source's secret in the warnings plan prints", async () => {
