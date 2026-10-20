@@ -12,7 +12,7 @@ import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { forgeFor } from '../forge/index.js'
-import { providers } from '../providers/index.js'
+import { providersOf } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
@@ -104,7 +104,7 @@ export function runCommand(program: Command): void {
           dryRun: !!opts.dryRun,
           only: opts.unit,
           until,
-          providers,
+          providers: providersOf(config),
           sources,
           forge: forgeFor(config),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },

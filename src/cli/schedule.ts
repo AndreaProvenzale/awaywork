@@ -8,10 +8,10 @@ import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills } from '../config/skills.js'
-import type { Ask } from '../core/types.js'
+import type { Ask, Provider } from '../core/types.js'
 import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { providers } from '../providers/index.js'
+import { providerFor } from '../providers/index.js'
 import {
   isPlainSelfHosted,
   isSelfHosted,
@@ -265,10 +265,10 @@ function cancelled(e: unknown): void {
 }
 
 /** The secrets a config needs on a runner. */
-const secretsOf = (config: Config) => [
+const secretsOf = (config: Config, providers: Provider[]) => [
   ...new Set([
     'GH_TOKEN',
-    ...config.providers.flatMap((p) => providers[p.id]?.secrets ?? []),
+    ...providers.flatMap((p) => p.secrets),
     ...Object.entries(config.sources).flatMap(
       ([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? [],
     ),
@@ -299,7 +299,7 @@ export async function installWorkflow(
       : isSelfHosted(current)
     const runner = selfHosted ? 'self-hosted' : 'github-hosted'
     const used = loaded.providers.flatMap((p) => {
-      const provider = providers[p.id]
+      const provider = providerFor(p.id, p.config)
       const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: runner })
       if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
       return provider && !unavailable ? [provider] : []
@@ -322,7 +322,7 @@ export async function installWorkflow(
       console.log(
         "`runs-on: self-hosted` matches any self-hosted runner the repo can use, an organization's too; give yours a label of its own and add it, as in `runs-on: [self-hosted, alice-mac]`",
       )
-    const secrets = secretsOf(loaded)
+    const secrets = secretsOf(loaded, used)
     const text = workflow({ ...base, config: REPO_CONFIG, secrets })
     const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, confirmer(io))
     const unset = io.interactive

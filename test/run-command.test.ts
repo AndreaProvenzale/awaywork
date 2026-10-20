@@ -9,7 +9,12 @@ import { runsDir } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
-  return { providers: { claude: fakeProvider('claude') } }
+  const providers = { claude: fakeProvider('claude') }
+  return {
+    providers,
+    providerFor: (id: string) => providers[id as 'claude'],
+    providersOf: () => providers,
+  }
 })
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')

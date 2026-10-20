@@ -13,7 +13,7 @@ import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
-import { providers } from '../providers/index.js'
+import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
@@ -80,13 +80,14 @@ export async function probeAndPlan(
 
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
-    const unavailable = providers[p.id]?.unavailable?.(ctx.env)
+    const provider = providerFor(p.id, p.config)
+    const unavailable = provider?.unavailable?.(ctx.env)
     if (unavailable) {
       warnings.push(`${p.id} unavailable: ${unavailable}`)
       continue
     }
     let reason: string | undefined
-    const quota = await providers[p.id]?.probe(ctx).catch((e: Error) => {
+    const quota = await provider?.probe(ctx).catch((e: Error) => {
       reason = `probe failed: ${e.message}`
       return null
     })
@@ -98,7 +99,7 @@ export async function probeAndPlan(
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   const sources = configuredSources(config)
   // A failed source's warning carries its stderr, and coding agents read `plan`.
-  const secrets = configSecrets(config, providers, sources)
+  const secrets = configSecrets(config, providersOf(config), sources)
   return {
     plan: planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
@@ -113,7 +114,7 @@ async function describeRules(config: Config): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
   const items = await collectItems(config, ctx)
-  const secrets = configSecrets(config, providers, configuredSources(config))
+  const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   return [
     ...warningLines(warnings.map((w) => maskSecrets(w, secrets, ctx.env))),
     config.queue ? 'Queue' : 'Queue (default: no queue in config)',
