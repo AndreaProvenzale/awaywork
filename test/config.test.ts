@@ -63,7 +63,7 @@ describe('config', () => {
     })
   })
 
-  it('defaults fallback turns, keeping the top-level ones in an override', () => {
+  it('defaults fallback turns, inheriting top-level caps an override leaves out', () => {
     const fallbacks = (budget: string, override: string) =>
       parseConfig(
         `providers: [claude: { budget: { fallback: ${override} } }, codex]\nsources: { github: { repos: [acme/api] } }\nbudget: { fallback: ${budget} }\n`,
@@ -78,6 +78,10 @@ describe('config', () => {
     ])
     expect(fallbacks('{ units: 2, turns: 30 }', '{ units: 1, turns: 10 }')).toEqual([
       { units: 1, turns: 10 },
+      { units: 2, turns: 30 },
+    ])
+    expect(fallbacks('{ units: 2, turns: 30 }', '{ turns: 10 }')).toEqual([
+      { units: 2, turns: 10 },
       { units: 2, turns: 30 },
     ])
   })

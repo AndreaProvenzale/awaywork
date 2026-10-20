@@ -191,9 +191,6 @@
                             "description": "Turns per unit"
                           }
                         },
-                        "required": [
-                          "units"
-                        ],
                         "additionalProperties": false,
                         "description": "Caps when the provider's quota can't be read"
                       }
@@ -261,9 +258,6 @@
                             "description": "Turns per unit"
                           }
                         },
-                        "required": [
-                          "units"
-                        ],
                         "additionalProperties": false,
                         "description": "Caps when the provider's quota can't be read"
                       }
@@ -337,9 +331,6 @@
                           "description": "Turns per unit"
                         }
                       },
-                      "required": [
-                        "units"
-                      ],
                       "additionalProperties": false,
                       "description": "Caps when the provider's quota can't be read"
                     }

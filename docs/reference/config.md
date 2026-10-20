@@ -108,7 +108,7 @@ Caps when the provider's quota can't be read.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `units` (required) | integer |  | Units per run |
+| `units` | integer |  | Units per run |
 | `turns` | integer |  | Turns per unit |
 
 ## `providers[].codex`

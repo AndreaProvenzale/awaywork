@@ -24,10 +24,11 @@ const branch = z.string().superRefine((template, ctx) => {
   if (problem) ctx.addIssue({ code: 'custom', message: problem })
 })
 
+const fallbackUnits = z.int().positive().describe('Units per run')
 const turns = z.int().positive().describe('Turns per unit')
 const caps = "Caps when the provider's quota can't be read"
 const fallback = z
-  .strictObject({ units: z.int().positive().describe('Units per run'), turns: turns.optional() })
+  .strictObject({ units: fallbackUnits.optional(), turns: turns.optional() })
   .describe(caps)
 const reserve = 'Never go past 1 - reserve of any window'
 const perRun = 'At most this share of the long window per run'
@@ -38,7 +39,7 @@ const budget = z
     per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
     fallback: fallback
-      .extend({ turns: turns.default(60) })
+      .extend({ units: fallbackUnits, turns: turns.default(60) })
       .describe(caps)
       .default({ units: 4, turns: 60 }),
   })
