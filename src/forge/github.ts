@@ -140,7 +140,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
 
     /**
      * My open PRs for the item: those whose footer names items by those items, whatever their names;
-     * the others by the key in their branch or title, or the item's link line in their body.
+     * the others by the key in their branch or title, or the item's link line in their body,
+     * or for Asana any URL to the task: its app writes `/0/0/<gid>`, not the permalink.
      */
     async prsFor(item: Item): Promise<PrRef[]> {
       myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then((d) =>
@@ -148,11 +149,18 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       )
       const key = bounded(item.key)
       const link = item.link ? bounded(item.link) : undefined
+      const asanaUrl =
+        item.source === 'asana'
+          ? new RegExp(`app\\.asana\\.com/\\S*/${escapeRegExp(item.id)}(?!\\d)`)
+          : undefined
       return (await myPrs)
         .filter((pr) =>
           pr.items.length
             ? pr.items.includes(`${item.source}:${item.key}`)
-            : key.test(pr.headRefName) || key.test(pr.title) || !!link?.test(pr.body),
+            : key.test(pr.headRefName) ||
+              key.test(pr.title) ||
+              !!link?.test(pr.body) ||
+              !!asanaUrl?.test(pr.body),
         )
         .map((pr) => ({
           repo: pr.repository.nameWithOwner,
