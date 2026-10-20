@@ -33,6 +33,7 @@ import {
 import { keepAwake, wakeFor, wakeUndo } from '../scheduler/wake.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
+import { contextSecrets } from '../worker/context.js'
 import { Cancelled, printBrand, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
 
@@ -271,6 +272,7 @@ const secretsOf = (config: Config, providers: Provider[]) => [
     ...Object.entries(config.sources).flatMap(
       ([id, cfg]) => sourceFor(id, cfg)?.secrets(cfg) ?? [],
     ),
+    ...contextSecrets(config),
     ...(config.notify?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),

@@ -5,7 +5,7 @@ import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, linkTemplate } from '../sources/command.js'
+import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -106,12 +106,13 @@ function nested(issues: z.core.$ZodIssue[] | undefined): string | undefined {
   return issue.path.length > 0 ? `${issue.path.join('.')}: ${issue.message}` : issue.message
 }
 
-/** A built-in source's config with its `link`, unless its items link their PRs themselves. */
+/** A built-in source's config with its `context` and its `link`, unless its items link their PRs themselves. */
 function builtinConfig(s: Source): z.ZodObject {
-  if (s.link === false) return s.configSchema
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
-  return s.configSchema.extend({ link }).describe(s.configSchema.description ?? '')
+  return s.configSchema
+    .extend({ context: contextCommand.optional(), ...(s.link === false ? {} : { link }) })
+    .describe(s.configSchema.description ?? '')
 }
 
 const sourcesConfig = z

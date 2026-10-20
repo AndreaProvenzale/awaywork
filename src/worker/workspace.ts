@@ -19,6 +19,7 @@ import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
+import { contextSecrets } from './context.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
 export const WORK_DIR = '.away'
@@ -261,6 +262,7 @@ export function configSecrets(
   return [
     ...Object.values(providers).flatMap((p) => p.secrets),
     ...Object.entries(config.sources).flatMap(([id, cfg]) => sources[id]?.secrets(cfg) ?? []),
+    ...contextSecrets(config),
     ...(config.notify?.secrets ?? []),
     ...Object.values(config.repos).flatMap((r) => r.secrets),
     ...Object.values(config.mcp).flatMap((s) => s.secrets),

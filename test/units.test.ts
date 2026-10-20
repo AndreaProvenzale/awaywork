@@ -10,7 +10,7 @@ import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
-import { planRun } from '../src/core/foreman.js'
+import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
@@ -213,7 +213,7 @@ it('reports a run with no provider and a multi-line warning', () => {
   )
 })
 
-it('prepares workspaces without running a worker on a dry run, for one unit', async () => {
+it('prepares workspaces without running a worker or context command on a dry run, for one unit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {
     ...fakeForge(),
@@ -222,8 +222,9 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
       await git(dir, 'commit', '-q', '--allow-empty', '-m', 'init')
     },
   }
+  const fetched = join(root, 'fetched')
   const config = parseConfig(
-    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+    `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: { command: 'echo > ${fetched}' } } }\nqueue: [{ skill: fix }]`,
   )
   const plan = planRun({
     config,
@@ -249,6 +250,7 @@ it('prepares workspaces without running a worker on a dry run, for one unit', as
     ['acme-api-2', 'prepared'],
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
+  expect(existsSync(fetched)).toBe(false)
   for (const only of ['acme/api#2', 'ACME-API-2']) {
     const byKey = await runUnits({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
@@ -466,7 +468,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   )
 })
 
-it('runs setup before the worker with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
+it('runs context and setup before the worker, setup with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
   const forge = {
     ...fakeForge(),
@@ -478,7 +480,8 @@ it('runs setup before the worker with only its own secrets, none on a foreign PR
   }
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources:
+  github: { repos: [acme/*], context: { command: 'echo "$AWAYWORK_ITEM_KEY" > "$AWAYWORK_CONTEXT_DIR/ctx.md"' } }
 queue: [{ skill: review }]
 repos:
   acme/api:
@@ -497,6 +500,7 @@ repos:
     skills: { builtin: builtinSkills },
   })
   const setups: string[] = []
+  const contexts: string[] = []
   const workerEnvs: NodeJS.ProcessEnv[] = []
   const report = await runUnits({
     config,
@@ -510,6 +514,8 @@ repos:
         ...worker,
         async *run(job) {
           setups.push(await readFile(join(job.dir, 'setup.txt'), 'utf8').catch(() => 'not run'))
+          const extra = join(job.dir, '.away/context', slug(job.unit.items[0]?.key ?? ''), 'extra')
+          contexts.push(await readFile(join(extra, 'ctx.md'), 'utf8').catch(() => 'not run'))
           workerEnvs.push(job.env)
           await writeFile(join(job.dir, '.away/out/report.md'), 'Approve.')
           yield { type: 'done', ok: true, turns: 1 }
@@ -532,6 +538,7 @@ repos:
   })
 
   expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
+  expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'acme/api#4\n'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
   expect(workerEnvs[0]).toHaveProperty('SSH_AUTH_SOCK', '/agent.sock')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([

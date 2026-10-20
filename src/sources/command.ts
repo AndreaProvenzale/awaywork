@@ -15,6 +15,21 @@ export const linkTemplate = z
     "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's",
   )
 
+export const contextCommand = z
+  .strictObject({
+    command: z
+      .string()
+      .min(1)
+      .describe(
+        "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder",
+      ),
+    secrets: z
+      .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
+      .default([])
+      .describe('Env vars the command needs; withheld from workers, listed in Actions'),
+  })
+  .describe("Fetches more context for an item, with secrets kept out of the agent's environment")
+
 export const commandConfig = z
   .strictObject({
     command: z
