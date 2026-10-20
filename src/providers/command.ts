@@ -125,7 +125,7 @@ export function commandProvider(
       killGroupWhenDone(child)
       for await (const line of child.iterable({ from: 'all' })) yield { type: 'log', line }
       const { exitCode } = await child
-      if (!signal.aborted && cfg.probe) {
+      if (!signal.aborted) {
         const quota = await probe(process.env).catch(() => null)
         if (quota) yield { type: 'quota', quota }
       }
