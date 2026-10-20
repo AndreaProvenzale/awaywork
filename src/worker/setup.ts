@@ -1,5 +1,5 @@
 import { killGroupWhenDone } from '../core/group.js'
-import { type Launch, launch } from '../core/launch.js'
+import { asWorker, type Launch, launch } from '../core/launch.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -46,19 +46,22 @@ export async function runCommand(
     Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
-  const subprocess = start(command, [], {
-    shell: true,
-    cwd: dir,
-    env,
-    extendEnv: false,
-    stdin: 'ignore',
-    killDescendants: true,
-    reject: false,
-    all: true,
+  const result = await asWorker(dir, async () => {
+    const subprocess = start(command, [], {
+      shell: true,
+      cwd: dir,
+      env,
+      extendEnv: false,
+      stdin: 'ignore',
+      killDescendants: true,
+      reject: false,
+      all: true,
+    })
+    const release = killGroupWhenDone(subprocess, stop)
+    const result = await subprocess
+    release()
+    return result
   })
-  const release = killGroupWhenDone(subprocess, stop)
-  const result = await subprocess
-  release()
 
   const output = maskSecrets(result.all.trim(), secrets, env)
   if (!result.failed) return { output }

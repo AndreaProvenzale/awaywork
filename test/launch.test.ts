@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { launch } from '../src/core/launch.js'
+import { hostedWorker, launch, sudoArgs } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -17,7 +17,7 @@ import { fakeItem } from './fakes/items.js'
 
 vi.mock('../src/core/launch.js', async (original) => {
   const real = await original<typeof import('../src/core/launch.js')>()
-  return { launch: vi.fn(real.launch) }
+  return { ...real, launch: vi.fn(real.launch) }
 })
 
 const dir = await mkdtemp(join(tmpdir(), 'awaywork-launch-'))
@@ -77,4 +77,47 @@ describe('the launcher', () => {
     expect(await readFile(join(dir, '.away/context/acme-1/extra/out.md'), 'utf8')).toBe('hi\n')
     expect(launched()).toEqual([])
   })
+
+  it('runs as the worker with the env’s names on sudo’s argv, never its values', () => {
+    const env = {
+      PATH: '/opt/node/bin:/usr/bin',
+      HOME: '/home/runner',
+      CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-canary',
+      GH_TOKEN: 'none',
+      'BASH_FUNC_x%%': '() { echo canary; }',
+    }
+    const argv = sudoArgs('awaywork', '/opt/node/bin/claude', ['-p', 'fix it'], {
+      env,
+      extendEnv: false,
+    })
+    expect(argv).toEqual([
+      '-n',
+      '-u',
+      'awaywork',
+      '--preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,GH_TOKEN',
+      '--',
+      '/opt/node/bin/claude',
+      '-p',
+      'fix it',
+    ])
+    for (const value of Object.values(env)) for (const arg of argv) expect(arg).not.toContain(value)
+    const shell = sudoArgs('awaywork', 'npm ci && npm test', [], {
+      env,
+      extendEnv: false,
+      shell: true,
+    })
+    expect(shell.slice(-3)).toEqual(['/bin/sh', '-c', 'npm ci && npm test'])
+  })
+
+  // Where the worker user exists, real-isolation.test.ts takes the hosted runner's side.
+  it.skipIf(process.env.AWAYWORK_WORKER_TEST)(
+    'isolates on a GitHub-hosted runner only, and refuses one without the worker user',
+    async () => {
+      expect(await hostedWorker({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
+      expect(await hostedWorker({})).toBeUndefined()
+      await expect(hostedWorker({ RUNNER_ENVIRONMENT: 'github-hosted' })).rejects.toThrow(
+        "can't run as the awaywork user",
+      )
+    },
+  )
 })

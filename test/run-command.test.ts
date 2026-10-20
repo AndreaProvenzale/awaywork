@@ -52,6 +52,8 @@ async function latestRun() {
 describe('run command', () => {
   beforeEach(() => {
     vi.stubEnv('GITHUB_OUTPUT', '')
+    // CI's own hosted runner has no worker user.
+    vi.stubEnv('RUNNER_ENVIRONMENT', '')
   })
 
   afterEach(() => {

@@ -13,6 +13,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
+import { isolated, workerRoot } from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -135,6 +136,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
+  // The worker user can't reach the run dir: its clones and plugins go where it can.
+  const root = isolated() ? await workerRoot() : input.runDir
 
   const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
     env: input.ctx.env,
@@ -197,7 +200,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
-    const dir = join(input.runDir, 'work', first.unit.id)
+    const dir = join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length
@@ -348,7 +351,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
-      const plugin = join(input.runDir, 'plugins', unit.id)
+      const plugin = join(root, 'plugins', unit.id)
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -600,10 +603,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return done
   }
 
-  for (const chain of chains) {
-    const done = await runChain(chain)
-    results.push(...done)
-    await notifyUnits(done.filter((r) => !r.retried))
+  try {
+    for (const chain of chains) {
+      const done = await runChain(chain)
+      results.push(...done)
+      await notifyUnits(done.filter((r) => !r.retried))
+    }
+  } finally {
+    if (root !== input.runDir) await rm(root, { recursive: true, force: true })
   }
 
   const { runId, dryRun, plan } = input
