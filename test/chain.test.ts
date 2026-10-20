@@ -558,10 +558,7 @@ it('publishes a stacked slice on the branch its own type names', async () => {
   ])
 })
 
-it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
-  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
-  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
-  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+it('cuts slice 2 in the clone with nothing over its base', async () => {
   const over: string[] = []
   const base = worker()
   const provider: Provider = {
@@ -569,6 +566,29 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     async *run(job, signal) {
       if (job.unit.id === 'acme-api-1-fix')
         over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
+      yield* base.run(job, signal)
+    },
+  }
+  const { rows } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    provider,
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  expect(over).toEqual([''])
+})
+
+it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
+  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
+  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
       const events = []
       for await (const event of base.run(job, signal)) events.push(event)
       if (job.unit.id === 'acme-api-1')
@@ -585,12 +605,17 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     provider,
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+    ['acme-api-1', 'error', refused],
+    [
+      'acme-api-1-fix',
+      'skipped',
+      expect.stringMatching(
+        /^acme-api-1 error: \.git\/(FETCH_HEAD|logs\/HEAD) in the clone is a symlink$/,
+      ),
+    ],
   ])
   for (const victim of Object.values(planted))
     expect(await readFile(victim, 'utf8')).toBe('untouched\n')
-  expect(over).toEqual([''])
 })
 
 it('ends the chain on a .git/index a worker symlinked, writing nothing through it', async () => {
