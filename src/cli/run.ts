@@ -24,10 +24,11 @@ import { providersOf } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
-import { namedUnits, runUnits } from '../worker/units.js'
+import { namedChains, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
 import {
-  findChain,
+  ambiguous,
+  findChains,
   formatPlan,
   formatRun,
   formatSkipped,
@@ -92,8 +93,16 @@ export function runCommand(program: Command): void {
         )
         for (const warning of warnings)
           console.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
-        if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
-          console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
+        const named = opts.unit ? namedChains(plan, opts.unit) : []
+        if (opts.unit && named.length !== 1) {
+          console.error(
+            named.length
+              ? ambiguous(
+                  opts.unit,
+                  named.flatMap((p) => p.unit.items.slice(0, 1)),
+                )
+              : `no unit "${opts.unit}" in this run's plan; awaywork plan lists them`,
+          )
           process.exitCode = 1
           return
         }
@@ -264,9 +273,15 @@ async function printRun(
       formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
     )
   if (!view.unit) return console.log(formatRun(report, report.warnings, true))
-  const found = findChain(report, view.unit)
-  if (!found) {
-    console.error(`no unit "${view.unit}" in run ${report.runId}; awaywork report lists them`)
+  const named = findChains(report, view.unit)
+  const [found] = named
+  if (!found || named.length > 1) {
+    const tops = named.flatMap(({ chain }) => chain.head.planned.unit.items.slice(0, 1))
+    console.error(
+      found
+        ? ambiguous(view.unit, tops)
+        : `no unit "${view.unit}" in run ${report.runId}; awaywork report lists them`,
+    )
     process.exitCode = 1
     return
   }

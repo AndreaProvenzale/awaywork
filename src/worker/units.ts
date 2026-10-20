@@ -146,14 +146,12 @@ interface Retry {
   keep: () => void
 }
 
-/** The units `name` names, by unit id or item key in any case. */
-export function namedUnits(plan: RunPlan, name: string): Set<string> {
-  const only = slug(name)
-  return new Set(
-    plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => isNamed(i, name)))
-      .map((p) => p.unit.id),
-  )
+/** The chains `name` names by a unit id or an item, in any case: each chain's first step. */
+export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
+  const heads = plan.units
+    .filter((p) => p.unit.id === name.toLowerCase() || p.unit.items.some((i) => isNamed(i, name)))
+    .map((p) => p.chain ?? p.unit.id)
+  return plan.units.filter((p) => !p.chain && heads.includes(p.unit.id))
 }
 
 /**
@@ -170,14 +168,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
-  if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
+  const named = input.only ? namedChains(input.plan, input.only) : []
+  if (input.only && named.length !== 1)
+    throw new Error(`"${input.only}" names ${named.length} units in this run's plan, not one`)
   // A step needs its whole chain.
-  const heads = new Set(
-    [...wanted].map((id) => input.plan.units.find((p) => p.unit.id === id)?.chain ?? id),
-  )
   const chains = input.plan.units
-    .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
+    .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
 

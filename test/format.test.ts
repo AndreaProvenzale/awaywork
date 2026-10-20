@@ -1,22 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ambiguous,
   brandHeader,
   describeRule,
-  findChain,
+  findChains,
   formatPlan,
   formatRun,
   formatSkipped,
   formatUnit,
   formatWhy,
   listedUnits,
+  namedItems,
   reportJson,
   statusMarker,
   warningLines,
 } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
-import { type PlannedUnit, planRun } from '../src/core/foreman.js'
-import { formatReport, type RunReport, summaryOf } from '../src/core/report.js'
+import { type PlannedUnit, planRun, type RunPlan } from '../src/core/foreman.js'
+import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { asanaTask, githubPr } from './fakes/items.js'
@@ -211,6 +213,34 @@ queue:
   })
 }
 
+const why = (plan: RunPlan, name: string) => {
+  const [item] = namedItems(plan, name)
+  return item && formatWhy(plan, item)
+}
+
+/** The acme run with its unit a chain that looped: a review asking for changes, then a fix. */
+function loopRun(loop: string): RunReport {
+  const run = acmeRun()
+  const head = run.results[0] as UnitResult
+  const step = (skill: string, provider: string, made: string) => ({
+    planned: {
+      ...head.planned,
+      chain: 'acme-api-1',
+      unit: { ...head.planned.unit, id: `acme-api-1-${skill}-1`, skill },
+    },
+    provider,
+    status: 'done' as const,
+    turns: 5,
+    made,
+  })
+  run.results = [
+    { ...head, loop },
+    { ...step('review', 'codex', 'a report'), reported: true, verdict: 'changes' },
+    step('fix', 'claude', '1 commit'),
+  ]
+  return run
+}
+
 /** A run of the acme plan: a draft PR, with its summary and files. */
 function acmeRun(): RunReport {
   const plan = acmePlan()
@@ -252,6 +282,7 @@ describe('plan views', () => {
 
       Needs you
         T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
+             Task 4
 
       Skipped 2: 1 no_rule, 1 over_cap
 
@@ -263,20 +294,21 @@ describe('plan views', () => {
   it('lists every skipped item, or those of one kind', () => {
     const { skipped } = acmePlan()
     expect(formatSkipped(skipped)).toMatchInlineSnapshot(`
-      "Skipped (3)
-        github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
-        github acme/api#2: over the cap: limits.units is 1
-        asana T-4: no repo: no linked PR or repo field"
+      "Needs you 1
+        T-4: no repo: no linked PR or repo field
+      Skipped 2: 1 no_rule, 1 over_cap
+        api#3: matched no rule; closest #1 fix: checks is passing, wants failing
+        api#2: over the cap: limits.units is 1"
     `)
     expect(formatSkipped(skipped, 'over_cap')).toMatchInlineSnapshot(`
       "Skipped over_cap (1)
-        github acme/api#2: over the cap: limits.units is 1"
+        api#2: over the cap: limits.units is 1"
     `)
   })
 
   it('says why an item is planned, by ref, key or source:key', () => {
     const plan = acmePlan()
-    expect(formatWhy(plan, 'api#1')).toMatchInlineSnapshot(`
+    expect(why(plan, 'api#1')).toMatchInlineSnapshot(`
       "github acme/api#1  PR 1
         https://github.com/acme/api/pull/1
         planned
@@ -287,19 +319,19 @@ describe('plan views', () => {
           deliver   draft_pr
           branch    away/acme-api-1"
     `)
-    expect(formatWhy(plan, 'github:acme/api#1')).toBe(formatWhy(plan, 'api#1'))
-    expect(formatWhy(plan, 'ACME/API#1')).toBe(formatWhy(plan, 'api#1'))
+    expect(why(plan, 'github:acme/api#1')).toBe(why(plan, 'api#1'))
+    expect(why(plan, 'ACME/API#1')).toBe(why(plan, 'api#1'))
   })
 
   it('says why an item is skipped, with the queue for one that matched no rule', () => {
     const plan = acmePlan()
-    expect(formatWhy(plan, 'asana:T-4')).toMatchInlineSnapshot(`
+    expect(why(plan, 'asana:T-4')).toMatchInlineSnapshot(`
       "asana T-4  Task 4
         https://app.asana.com/0/1/4
         skipped: no_repo
           no repo: no linked PR or repo field"
     `)
-    expect(formatWhy(plan, 'acme/api#3')).toMatchInlineSnapshot(`
+    expect(why(plan, 'acme/api#3')).toMatchInlineSnapshot(`
       "github acme/api#3  PR 3
         https://github.com/acme/api/pull/3
         skipped: no_rule
@@ -312,7 +344,38 @@ describe('plan views', () => {
   })
 
   it('knows no item the plan never saw', () => {
-    expect(formatWhy(acmePlan(), 'acme/api#99')).toBeUndefined()
+    expect(why(acmePlan(), 'acme/api#99')).toBeUndefined()
+  })
+
+  it("names an item by its exact key, source:key or ref, never a tracker key's look-alike", () => {
+    const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix }]
+`)
+    const labs = {
+      ...githubPr(1),
+      key: 'acme-labs/api#1',
+      url: 'https://github.com/acme-labs/api/pull/1',
+      linkedPrs: [],
+    }
+    const task = { ...asanaTask(7, { repo: 'acme/api' }), key: 'API-1' }
+    const plan = planRun({
+      config,
+      items: [githubPr(1), labs, task],
+      allowances: {},
+      skills: { builtin: builtinSkills },
+    })
+    const keys = (name: string) => namedItems(plan, name).map((i) => i.key)
+    expect(keys('API-1')).toEqual(['API-1'])
+    expect(keys('asana:api-1')).toEqual(['API-1'])
+    expect(keys('acme/api#1')).toEqual(['acme/api#1'])
+    expect(keys('api#1')).toEqual(['acme/api#1', 'acme-labs/api#1'])
+    expect(ambiguous('api#1', namedItems(plan, 'api#1'))).toMatchInlineSnapshot(`
+      ""api#1" names 2 items; pick one:
+        github:acme/api#1       PR 1
+        github:acme-labs/api#1  PR 1"
+    `)
   })
 
   it('indents each line of a warning under its first', () => {
@@ -342,6 +405,7 @@ describe('report views', () => {
 
       Needs you
         T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
+             Task 4
 
       Skipped 2: 1 no_rule, 1 over_cap
 
@@ -363,13 +427,13 @@ describe('report views', () => {
     expect(formatSkipped(report.plan.skipped, 'unknown')).toMatch(/^Skipped unknown \(3\)\n/)
   })
 
-  it('shows one unit by number, unit id or item, with its files and body', () => {
+  it('shows one unit by number, unit id or item, with its steps, files and body', () => {
     const run = acmeRun()
-    const found = findChain(run, '1')
-    expect(findChain(run, 'acme-api-1')).toEqual(found)
-    expect(findChain(run, 'api#1')).toEqual(found)
-    expect(findChain(run, '2')).toBeUndefined()
-    expect(findChain(run, 'api#3')).toBeUndefined()
+    const [found] = findChains(run, '1')
+    expect(findChains(run, 'acme-api-1')).toEqual([found])
+    expect(findChains(run, 'api#1')).toEqual([found])
+    expect(findChains(run, '2')).toEqual([])
+    expect(findChains(run, 'api#3')).toEqual([])
     if (!found) return
     const files = ['/runs/20261019-220000/units/acme-api-1/1-fix/worker.log']
     const body = '# Fix the flaky upload test\n\nRetries it.\n'
@@ -379,6 +443,7 @@ describe('report views', () => {
         status  done, 12 turns
         result  https://github.com/acme/api/pull/9
         item    https://github.com/acme/api/pull/1
+        steps   acme-api-1  fix  claude  done, 12 turns  -
         files   /runs/20261019-220000/units/acme-api-1/1-fix/worker.log
 
       # Fix the flaky upload test
@@ -390,14 +455,117 @@ describe('report views', () => {
     )
   })
 
-  it('writes report.md with what needs you, skips by kind and reports folded, headings demoted', () => {
+  it("leaves a loop's note to --unit and report.md, and lists a chain's steps in --unit", () => {
+    const run = loopRun('2 rounds of review ⇄ fix; until held: sh scripts/approved.sh --strict')
+    expect(formatRun(run)).toContain(
+      '  1  api#1  fix    done, 22 turns  https://github.com/acme/api/pull/9, verdict changes\n',
+    )
+    expect(formatReport(run)).toContain(
+      '| done, 22 turns (loop: 2 rounds of review ⇄ fix; until held: sh scripts/approved.sh --strict) |',
+    )
+    const [found] = findChains(run, '1')
+    expect(findChains(run, 'acme-api-1-review-1')).toEqual([found])
+    expect(found && formatUnit(found, [], undefined)).toMatchInlineSnapshot(`
+      "1  api#1  PR 1
+        skill   fix
+        status  done, 22 turns
+        loop    2 rounds of review ⇄ fix; until held: sh scripts/approved.sh --strict
+        result  https://github.com/acme/api/pull/9, verdict changes
+        item    https://github.com/acme/api/pull/1
+        steps   acme-api-1           fix     claude  done, 12 turns  -
+                acme-api-1-review-1  review  codex   done, 5 turns   a report, verdict changes
+                acme-api-1-fix-1     fix     claude  done, 5 turns   1 commit
+
+      Retries the flaky upload test instead of sleeping."
+    `)
+  })
+
+  it("clips a long status in the row, and falls back to the item's title with no summary", () => {
+    const run = acmeRun()
+    const [result] = run.results
+    if (!result) return
+    Object.assign(result, { status: 'failed', reason: `git clone: ${'x'.repeat(100)}` })
+    delete result.summary
+    const units = formatRun(run).split('\n\n')[1] ?? ''
+    expect(units).toMatchInlineSnapshot(`
+      "Units
+           item   skill  status                                                        result
+        1  api#1  fix    failed, 12 turns (git clone: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  https://github.com/acme/api/pull/9
+           PR 1"
+    `)
+  })
+
+  it("keeps a multi-line reason to its first line in the row, and in full under --unit's result", () => {
+    const run = acmeRun()
+    const [result] = run.results
+    if (!result) return
+    const reason = [
+      'setup failed: Command failed with exit code 1: pnpm install --frozen-lockfile',
+      ' ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile',
+      '',
+      '  Failure reason:',
+    ].join('\n')
+    Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
+    const units = formatRun(run).split('\n\n')[1] ?? ''
+    expect(units).toMatchInlineSnapshot(`
+      "Units
+           item   skill  status   result
+        1  api#1  fix    skipped  setup failed: Command failed with exit code 1: pnpm install…
+           Retries the flaky upload test instead of sleeping."
+    `)
+    const [found] = findChains(run, '1')
+    expect(found && formatUnit(found, [], undefined)).toMatchInlineSnapshot(`
+      "1  api#1  PR 1
+        skill   fix
+        status  skipped
+        result  setup failed: Command failed with exit code 1: pnpm install --frozen-lockfile
+                   ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile
+                    Failure reason:
+        item    https://github.com/acme/api/pull/1
+        steps   acme-api-1  fix  claude  skipped  setup failed: Command failed with exit code 1: pnpm install…
+
+      Retries the flaky upload test instead of sleeping."
+    `)
+  })
+
+  it('takes a numeric key over a row number, and leaves the row its ref', () => {
+    const run = acmeRun()
+    const [head] = run.results
+    if (!head) return
+    const gid = { ...asanaTask(1), key: '1' }
+    const unit = { ...head.planned.unit, id: '1', items: [gid] }
+    run.results.push({ ...head, planned: { ...head.planned, unit } })
+    expect(findChains(run, '1').map((f) => f.n)).toEqual([2])
+    expect(findChains(run, '2').map((f) => f.n)).toEqual([2])
+    expect(findChains(run, 'api#1').map((f) => f.n)).toEqual([1])
+  })
+
+  it('refuses a name for two units, naming each by source:key', () => {
+    const run = acmeRun()
+    const [head] = run.results
+    if (!head) return
+    const labs = { ...githubPr(1), key: 'acme-labs/api#1', title: 'Labs PR 1' }
+    const unit = { ...head.planned.unit, id: 'acme-labs-api-1', items: [labs] }
+    run.results.push({ ...head, planned: { ...head.planned, unit } })
+    const found = findChains(run, 'api#1')
+    expect(found.map((f) => f.n)).toEqual([1, 2])
+    expect(findChains(run, 'acme-labs/api#1').map((f) => f.n)).toEqual([2])
+    const tops = found.flatMap((f) => f.chain.head.planned.unit.items.slice(0, 1))
+    expect(ambiguous('api#1', tops)).toMatchInlineSnapshot(`
+      ""api#1" names 2 items; pick one:
+        github:acme/api#1       PR 1
+        github:acme-labs/api#1  Labs PR 1"
+    `)
+  })
+
+  it('writes report.md with a summary per unit, what needs you, skips by kind and reports folded, headings demoted', () => {
     const run = acmeRun()
     const review = '# Review\n\nApprove.\n\n## Nits\n\n```md\n# not a heading\n```'
     const result = run.results[0]
     if (result) result.outcome = { kind: 'report', text: review }
     const text = formatReport(run)
     expect(text).toContain(
-      '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 12 turns | report below |',
+      '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 12 turns | report below |\n\n- **api#1**: Retries the flaky upload test instead of sleeping.\n',
     )
     expect(text).toContain(
       '## Needs you\n\n- [T-4 Task 4](https://app.asana.com/0/1/4): no repo: no linked PR or repo field\n',
@@ -408,11 +576,11 @@ describe('report views', () => {
         '',
         '### no_rule (1)',
         '',
-        '- github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
+        '- api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
         '',
         '### over_cap (1)',
         '',
-        '- github acme/api#2: over the cap: limits.units is 1',
+        '- api#2: over the cap: limits.units is 1',
         '',
         '</details>',
       ].join('\n'),

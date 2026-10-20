@@ -7,6 +7,7 @@ import {
   formatPlan,
   formatWhy,
   listedUnits,
+  namedItems,
   planJson,
   queueLines,
 } from '../src/cli/format.js'
@@ -59,6 +60,10 @@ function plan(
 }
 const rows = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.rule + 1, u.unit.skill, u.provider ?? '-', u.unit.deliver])
+const why = (p: ReturnType<typeof plan>, name: string) => {
+  const [item] = namedItems(p, name)
+  return item && formatWhy(p, item)
+}
 
 const issue = fakeItem({
   source: 'github',
@@ -108,6 +113,7 @@ describe('plan', () => {
 
       Needs you
         T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
+             Task 8
 
       Skipped 1: 1 no_rule
 
@@ -529,7 +535,7 @@ queue:
       ['acme-api-5', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
       ['acme-api-5-implement', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
     ])
-    expect(formatWhy(result, 'acme/api#5')).toMatch(/deliver +report\n +branch +away\/acme-api-5$/)
+    expect(why(result, 'acme/api#5')).toMatch(/deliver +report\n +branch +away\/acme-api-5$/)
     const mine = plan(yaml, [githubPr(1)], {})
     expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
       'acme-api-1-implement-1',
@@ -558,7 +564,7 @@ queue:
       ['acme/api#2', 'refused_delivery', "deliver push: feature-2 is someone else's PR"],
       ['acme/api#5', 'refused_delivery', 'deliver push: no PR of yours to push onto'],
     ])
-    expect(formatWhy(result, 'api#1')).toMatch(/deliver +push\n +branch +feature-1$/)
+    expect(why(result, 'api#1')).toMatch(/deliver +push\n +branch +feature-1$/)
     // A chain that starts with a report still pushes what a later step commits.
     const relayed = plan(yaml.replace('skill: fix,', 'skill: plan,'), [mine], {})
     expect(formatPlan(relayed)).toMatch(/api#1 +#1 +plan \(built-in\) +claude +push +PR 1\n/)

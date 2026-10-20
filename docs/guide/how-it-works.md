@@ -145,6 +145,7 @@ Units
 
 Needs you
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
 
@@ -155,7 +156,7 @@ awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-`report --unit <n>` takes the number from that table, the unit id or an item, and prints the unit in full: its links, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
+`report --unit <n>` takes the number from that table, the unit id (a step's gives its chain) or an item, and prints the unit in full: its links, each step with its provider and what it left, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
 
 ```
 $ awaywork report --unit 2
@@ -164,6 +165,7 @@ $ awaywork report --unit 2
   status  done, 9 turns
   result  no commits
   item    https://github.com/acme/web/pull/3
+  steps   acme-web-3  fix  claude  done, 9 turns  nothing
   files   ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/1-fix/worker.log
           ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/out/pr.md
 
@@ -177,9 +179,9 @@ No code changes: the red check is the visual diff job, which fails on main too s
 - The failing job is `visual`, unrelated to this diff.
 ```
 
-`report --skipped [kind]` lists the skipped items with the reason, as `plan --skipped` does. A unit with `then` steps is one row, its chain in the skill column and each [stacked slice](./chains.md#stack)'s result in turn.
+An item key that is all digits, like an Asana gid, wins over a row number. A name that fits two units, `api#1` under two owners say, is refused with each one's `source:key`, here and in `run --unit` and `plan --why`. `report --skipped [kind]` lists the skipped items with the reason, as `plan --skipped` does. A long reason, like a failed setup's output, gets its first line in the row and all of it under `--unit`. A unit with `then` steps is one row, its chain in the skill column and each [stacked slice](./chains.md#stack)'s result in turn.
 
-The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
+The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain and a line per unit that wrote a summary, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
 
 While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
 

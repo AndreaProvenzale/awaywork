@@ -8,7 +8,6 @@ import {
   type RunPlan,
   type Skipped,
   shortRef,
-  slug,
 } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
 import {
@@ -20,6 +19,7 @@ import {
   quotaLines,
   type RunReport,
   runHeadline,
+  stepCells,
   type UnitResult,
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
@@ -187,44 +187,84 @@ export function planUnitLines(plan: RunPlan, style: Style = (_, text) => text): 
   return out
 }
 
-/** The skipped items you can act on: each one's ref, why, and the item or the PR it waits on. */
+/** The skipped items you can act on: each one's ref, why, and the item or the PR it waits on, then its title. */
 export function needsYouLines(skipped: Skipped[], style: Style = (_, text) => text): string[] {
-  const rows = skipped
-    .filter((s) => needsYou[s.kind])
-    .map((s) => {
+  const waiting = skipped.filter((s) => needsYou[s.kind])
+  if (waiting.length === 0) return []
+  const lines = table(
+    waiting.map((s) => {
       const url = s.url ?? s.item.url
       return [shortRef(s.item), s.reason, s.reason.includes(url) ? '' : url]
-    })
-  if (rows.length === 0) return []
-  return ['', style('bold', 'Needs you'), ...indent(table(rows))]
+    }),
+  )
+  const under = ' '.repeat(Math.max(...waiting.map((s) => shortRef(s.item).length)) + 4)
+  return [
+    '',
+    style('bold', 'Needs you'),
+    ...waiting.flatMap((s, i) => [
+      `  ${lines[i]}`,
+      style('dim', `${under}${clip(s.item.title, TITLE)}`),
+    ]),
+  ]
 }
 
 /** The other skipped items, counted by kind on one line. */
 export function skippedLines(skipped: Skipped[], style: Style = (_, text) => text): string[] {
   const rest = skipped.filter((s) => !needsYou[s.kind])
   if (rest.length === 0) return []
+  return ['', skippedCount(rest, style)]
+}
+
+const skippedCount = (rest: Skipped[], style: Style) => {
   const counts = byKind(rest).map(([kind, list]) => `${list.length} ${kind}`)
-  return ['', `${style('bold', `Skipped ${rest.length}`)}: ${counts.join(', ')}`]
+  return `${style('bold', `Skipped ${rest.length}`)}: ${counts.join(', ')}`
 }
 
 function hintLines(style: Style, hints: [string, string][]): string[] {
   return table(hints).map((line) => style('dim', line))
 }
 
-/** Every skipped item and why, or those of one kind. */
+/** Every skipped item and why, under the counts `plan` shows, or those of one kind. */
 export function formatSkipped(skipped: Skipped[], kind?: string): string {
-  const list = kind ? skipped.filter((s) => (s.kind ?? 'unknown') === kind) : skipped
-  const lines = list.map((s) => `  ${s.item.source} ${s.item.key}: ${s.reason}`)
-  return [`Skipped${kind ? ` ${kind}` : ''} (${list.length})`, ...lines].join('\n')
+  const line = (s: Skipped) => `  ${shortRef(s.item)}: ${s.reason}`
+  if (kind) {
+    const list = skipped.filter((s) => (s.kind ?? 'unknown') === kind)
+    return [`Skipped ${kind} (${list.length})`, ...list.map(line)].join('\n')
+  }
+  const waiting = skipped.filter((s) => needsYou[s.kind])
+  const rest = skipped.filter((s) => !needsYou[s.kind])
+  const out = waiting.length > 0 ? [`Needs you ${waiting.length}`, ...waiting.map(line)] : []
+  if (rest.length > 0)
+    out.push(
+      skippedCount(rest, (_, text) => text),
+      ...rest.map(line),
+    )
+  return out.length > 0 ? out.join('\n') : 'Skipped 0'
 }
 
-/** Why an item is or isn't planned, by key, `source:key` or ref; undefined when the plan doesn't know it. */
-export function formatWhy(plan: RunPlan, name: string): string | undefined {
+const itemId = (item: Item) => `${item.source}:${item.key}`
+
+/** The plan's items `name` names by key, `source:key` or ref, each once. */
+export function namedItems(plan: RunPlan, name: string): Item[] {
+  const all = [...plan.units.flatMap((p) => p.unit.items), ...plan.skipped.map((s) => s.item)]
+  const named = all.filter((i) => isNamed(i, name))
+  return named.filter((i, k) => named.findIndex((j) => itemId(j) === itemId(i)) === k)
+}
+
+/** The refusal of a name that names several: each one by `source:key`, which names one. */
+export function ambiguous(name: string, items: Item[]): string {
+  const rows = items.map((i) => [itemId(i), clip(i.title, TITLE)])
+  return [`"${name}" names ${items.length} items; pick one:`, ...indent(table(rows))].join('\n')
+}
+
+/** Why an item is or isn't planned: its unit, or why it was skipped. */
+export function formatWhy(plan: RunPlan, named: Item): string {
   const units = listedUnits(plan)
   const out: string[] = []
   const heading = (item: Item) => [`${item.source} ${item.key}  ${item.title}`, `  ${item.url}`]
+  const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
-    const item = p.unit.items.find((it) => isNamed(it, name))
+    const item = p.unit.items.find(isIt)
     if (!item) return
     const passed = p.passed.length > 0 ? ` (${p.passed.join('; ')})` : ''
     const rule = plan.queue[p.rule]
@@ -243,13 +283,13 @@ export function formatWhy(plan: RunPlan, name: string): string | undefined {
       ...indent(indent(table(rows))),
     )
   })
-  for (const s of plan.skipped.filter((s) => isNamed(s.item, name))) {
+  for (const s of plan.skipped.filter((s) => isIt(s.item))) {
     out.push(...(out.length ? [''] : []), ...heading(s.item), `  skipped: ${s.kind ?? 'unknown'}`)
     out.push(`    ${s.reason}`, ...(s.url ? [`    waits on ${s.url}`] : []))
     // The closest rule is named by its number.
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
-  return out.length ? out.join('\n') : undefined
+  return out.join('\n')
 }
 
 /** The queue as numbered rules. */
@@ -381,9 +421,9 @@ function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-/** A unit's result in a line: its PR, `no commits`, or a report, and its verdict. */
-function unitResult(u: UnitResult): string {
-  if (u.status === 'skipped') return u.reason ?? ''
+/** A unit's result: its PR, `no commits`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
+function unitResult(u: UnitResult, why = (reason: string) => reason): string {
+  if (u.status === 'skipped') return why(u.reason ?? '')
   const o = u.outcome
   const what =
     o?.kind === 'pr'
@@ -392,22 +432,32 @@ function unitResult(u: UnitResult): string {
         ? `pushed onto ${o.url || o.branch}`
         : o?.kind === 'report'
           ? 'report'
-          : (o?.reason ?? '-')
+          : why(o?.reason ?? '-')
   return u.verdict ? `${what}, verdict ${u.verdict}` : what
 }
 
-/** One row per chain, numbered as `report --unit` takes them: item, skills, status and result, then its summary. */
+const CELL = 60
+
+/** A cell's first line, clipped: `--unit` has the rest. */
+function brief(text: string): string {
+  const [first = '', ...rest] = text.split('\n')
+  return clip(rest.length > 0 ? `${first.trimEnd()}…` : first, CELL)
+}
+
+/** One row per chain, numbered as `report --unit` takes them: item, skills, status and result, then its summary or title. */
 export function reportUnitRows(r: RunReport): { cells: string[]; summary?: string }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
+    const [status, result] = chainCells(chain, (u) => unitResult(u, brief), false)
     return {
       cells: [
         String(i + 1),
         top ? shortRef(top) : chain.head.planned.unit.id,
         chain.skills,
-        ...chainCells(chain, unitResult),
+        brief(status),
+        result,
       ],
-      summary: chain.head.summary,
+      summary: chain.head.summary ?? (top && clip(top.title, TITLE)),
     }
   })
 }
@@ -446,20 +496,18 @@ export function formatRun(r: RunReport, warnings: string[] = [], styled = false)
   return out.join('\n')
 }
 
-/** The run's chain named by its number in the units table, its unit id or an item. */
-export function findChain(r: RunReport, name: string): { chain: Chain; n: number } | undefined {
-  const listed = chains(r)
-  const n = /^\d+$/.test(name)
-    ? Number(name)
-    : listed.findIndex(({ head }) => {
-        const { id, items } = head.planned.unit
-        return slug(id) === slug(name) || items.some((i) => isNamed(i, name))
-      }) + 1
-  const chain = listed[n - 1]
-  return chain && { chain, n }
+/** The run's chains `name` names by a step's unit id or item, else the one it numbers in the units table: a numeric key wins. */
+export function findChains(r: RunReport, name: string): { chain: Chain; n: number }[] {
+  const listed = chains(r).map((chain, i) => ({ chain, n: i + 1 }))
+  const named = listed.filter(({ chain }) => {
+    const isStep = chain.steps.some((s) => s.planned.unit.id === name.toLowerCase())
+    return isStep || chain.head.planned.unit.items.some((i) => isNamed(i, name))
+  })
+  if (named.length > 0 || !/^\d+$/.test(name)) return named
+  return listed.filter(({ n }) => n === Number(name))
 }
 
-/** One unit in full: its links, the files it left that are still there, then its PR body or report. */
+/** One unit in full: its links, its steps, the files it left that are still there, then its PR body or report. */
 export function formatUnit(
   { chain, n }: { chain: Chain; n: number },
   files: string[],
@@ -468,20 +516,32 @@ export function formatUnit(
 ): string {
   const { head } = chain
   const top = head.planned.unit.items[0]
-  const [status, result] = chainCells(chain, unitResult)
+  const [status, result] = chainCells(chain, unitResult, false)
   const rows = [
     ['skill', chain.skills],
     ['status', status],
+    ...(head.loop ? [['loop', head.loop]] : []),
     ['result', result],
     ['item', top?.url ?? '-'],
+    ...table(chain.steps.map((s) => stepCells(s).map(brief))).map((line, i) => [
+      i ? '' : 'steps',
+      line,
+    ]),
     ...files.map((file, i) => [i ? '' : 'files', file]),
-  ]
+  ].flatMap(([label = '', value = '']) => block(value).map((line, i) => [i ? '' : label, line]))
   const ref = top ? shortRef(top) : head.planned.unit.id
   const out = [styler(styled)('bold', `${n}  ${ref}  ${top?.title ?? ''}`), ...indent(table(rows))]
   const text = body?.trim() || head.summary
   if (text) out.push('', text)
   return out.join('\n')
 }
+
+/** A value's lines, the ones after the first indented under it. */
+const block = (value: string) =>
+  value
+    .split('\n')
+    .filter((line, i) => i === 0 || line.trim())
+    .map((line, i) => (i ? `  ${line.trimEnd()}` : line))
 
 /** The end of `run`: the units as `report` lists them, and where the report is. */
 export function summarize(r: RunReport, reportPath: string): string {
