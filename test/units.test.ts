@@ -140,7 +140,15 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   ])
   expect(models).toEqual(['opus', 'sonnet'])
   expect(report.results.map((u) => u.baseline?.used)).toEqual([0.36, undefined, 0.45])
-  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
+  const seen = [
+    'PATH',
+    'FAKE_AGENT_TOKEN',
+    'GH_CONFIG_DIR',
+    'GH_TOKEN',
+    'GH_ENTERPRISE_TOKEN',
+    'GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM',
+  ]
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1', '1-fix')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
@@ -540,7 +548,7 @@ repos:
   expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
   expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'acme/api#4\n'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
-  expect(workerEnvs[0]).toHaveProperty('SSH_AUTH_SOCK', '/agent.sock')
+  expect(workerEnvs[0]).not.toHaveProperty('SSH_AUTH_SOCK')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([
     ['done', undefined],
     ['skipped', expect.stringMatching(/^setup failed: .*code 3.*\nresolving\n404 from registry$/s)],
@@ -618,16 +626,22 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const gh = ['GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
-  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...gh] }
+  const fixed = [
+    'GH_CONFIG_DIR',
+    'GH_TOKEN',
+    'GH_ENTERPRISE_TOKEN',
+    'GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM',
+  ]
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...fixed] }
   expect(jobs).toEqual([
-    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...fixed] },
     { unit: 'acme-api-1-plan', ...sentry },
-    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
-    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...fixed] },
+    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...fixed] },
     { unit: 'acme-api-2', ...sentry },
-    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...gh] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...fixed] },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...fixed] },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
