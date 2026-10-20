@@ -789,7 +789,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     ['away/acme-api-4', 'feature-4'],
     ['away/acme-api-3', ''],
   ])
-  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
+  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.\n\nCloses acme/api#3\n')
   expect([prompts[0], prompts[1], prompts[3]]).toEqual([
     expect.stringContaining('cut from the default branch.'),
     expect.stringContaining('cut from the default branch.'),
@@ -846,6 +846,9 @@ queue: [{ skill: implement, then: review }]
       'Approve.',
       '',
       '</details>',
+      '',
+      '',
+      'Closes acme/api#2',
       '',
     ].join('\n'),
   )
@@ -1636,7 +1639,9 @@ queue:
       '3 tests failed',
     ].join('\n'),
   )
-  expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
+  expect(body).toMatch(
+    /\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n\n\nCloses acme\/api#1\n$/,
+  )
 })
 
 it("skips a rule whose quota when doesn't hold, and runs one whose does", async () => {
