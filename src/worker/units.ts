@@ -378,9 +378,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           provider,
           ctx,
+          // A retried first step gets the earlier report again: setting up the clone wiped it.
           previous:
             previous ??
-            (reuse
+            (reuse && !retryOf
               ? undefined
               : await earlierReport(
                   unit.items,
