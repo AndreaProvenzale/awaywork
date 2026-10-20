@@ -276,6 +276,16 @@ describe('publish', () => {
     })
   })
 
+  it("fetches from the clone's own .git, never a repo at the clone's root", async () => {
+    await commit('first')
+    await body('Title')
+    await execa('sh', ['-c', 'cp -R .git/* .'], { cwd: dir })
+    await rm(join(dir, '.git/HEAD'))
+    await expect(publish(unit(), dir, fakeForge(), 'r1', start)).rejects.toThrow(
+      'does not appear to be a git repository',
+    )
+  })
+
   it("runs nothing the clone's config names, and diffs only the new commits", async () => {
     const ran = join(dir, '..', 'ran')
     const hook = join(dir, '..', 'hook.sh')

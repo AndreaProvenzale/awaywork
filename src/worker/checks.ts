@@ -5,7 +5,7 @@ import { bin } from '../config/paths.js'
 import { type Facts, holds } from '../core/condition.js'
 import type { Condition, Unit } from '../core/types.js'
 import { runCommand } from './setup.js'
-import { refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
+import { inClone, refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
 
 const CHECK_LOG_CHARS = 8000
 
@@ -106,7 +106,7 @@ export function createChecks(input: ChecksInput) {
 }
 
 export const git = async (dir: string, ...args: string[]) =>
-  (await execa(bin('git'), ['-C', dir, ...args])).stdout
+  (await execa(bin('git'), [...inClone(dir), ...args])).stdout
 
 /** Flags that run no hook or fsmonitor command from a clone's config. */
 export const noHooks = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']

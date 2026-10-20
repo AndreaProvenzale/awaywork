@@ -12,6 +12,7 @@ import { runSetup } from './setup.js'
 import {
   commandEnv,
   configSecrets,
+  inClone,
   notSymlink,
   prepareWorkspace,
   restoreGitConfig,
@@ -123,7 +124,8 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink })
   await rm(plugin, { recursive: true, force: true })
   const commits = Number(
-    (await execa(bin('git'), ['-C', dir, 'rev-list', '--count', `${state.commit}..HEAD`])).stdout,
+    (await execa(bin('git'), [...inClone(dir), 'rev-list', '--count', `${state.commit}..HEAD`]))
+      .stdout,
   )
   return { ...worker, dir, out, commits }
 }

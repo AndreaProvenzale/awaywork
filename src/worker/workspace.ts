@@ -42,6 +42,9 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
+/** Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant. */
+export const inClone = (dir: string) => ['-C', dir, '--git-dir=.git']
+
 interface WorkspaceInput {
   unit: Unit
   /** The clone; it must not exist yet. */
@@ -99,7 +102,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     const fork = w.replay && unit.fork ? { number: unit.fork.number } : unit.fork
     await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
-    await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    await execa(bin('git'), [...inClone(dir), 'checkout', '-q', '-b', unit.branch, ...from])
     // Linked or not, a branch's own `.away` could lead awaywork's writes and deletes anywhere.
     if (await lstat(join(dir, WORK_DIR)).catch(() => undefined))
       throw new Error(`${WORK_DIR} in the clone comes from the branch, not awaywork`)
@@ -188,7 +191,7 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
  */
 async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void> {
   const read = (...args: string[]) =>
-    execa(bin('git'), ['-C', dir, 'config', '--null', ...args], {
+    execa(bin('git'), [...inClone(dir), 'config', '--null', ...args], {
       env,
       extendEnv: false,
       reject: false,
@@ -383,7 +386,7 @@ async function copySkill(dir: string, source: string, target: string) {
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
   // In a chain's clone, the config is a worker's: run no fsmonitor command from it.
-  const git = ['-C', dir, '-c', 'core.fsmonitor=false']
+  const git = [...inClone(dir), '-c', 'core.fsmonitor=false']
   const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
   await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,

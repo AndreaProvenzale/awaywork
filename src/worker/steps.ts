@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import { git, noHooks } from './checks.js'
-import { commandEnv, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+import { commandEnv, inClone, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
 
 export function isLast(loop: {
   round: number
@@ -59,8 +59,11 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
   if (!staged) return undefined
   const index = join(dir, '.git', 'away-snapshot')
   const run = async (...args: string[]) =>
-    (await execa(bin('git'), ['-C', dir, ...noHooks, ...args], { env: { GIT_INDEX_FILE: index } }))
-      .stdout
+    (
+      await execa(bin('git'), [...inClone(dir), ...noHooks, ...args], {
+        env: { GIT_INDEX_FILE: index },
+      })
+    ).stdout
   try {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
