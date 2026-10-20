@@ -1,5 +1,5 @@
-import { execa } from 'execa'
 import { killGroupWhenDone } from '../core/group.js'
+import { type Launch, launch } from './launch.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -12,6 +12,8 @@ interface SetupOptions {
   until?: Date
   /** Stop the command after this long; default 15 minutes. */
   timeoutMs?: number
+  /** How the command starts: through the launcher, unless it is awaywork's own and not the repo's. */
+  start?: Launch
 }
 
 /**
@@ -37,14 +39,14 @@ export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
-  { secrets, signal, until, timeoutMs = TIMEOUT_MS }: SetupOptions,
+  { secrets, signal, until, timeoutMs = TIMEOUT_MS, start = launch }: SetupOptions,
 ): Promise<{ output: string; failed?: string; stopped?: true; timedOut?: true }> {
   const windowEnds = until !== undefined && until.getTime() < Date.now() + timeoutMs
   const deadline = AbortSignal.timeout(
     Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
-  const subprocess = execa(command, {
+  const subprocess = start(command, [], {
     shell: true,
     cwd: dir,
     env,

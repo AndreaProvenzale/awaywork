@@ -3,6 +3,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { killGroupWhenDone } from '../core/group.js'
 import type { Provider, Quota } from '../core/types.js'
+import { launch } from '../worker/launch.js'
 
 const TIMEOUT_MS = 60_000
 const HOSTED_RUNNER =
@@ -112,7 +113,7 @@ export function commandProvider(
 
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
-      const child = execa(cfg.command, {
+      const child = launch(cfg.command, [], {
         shell: true,
         cwd: job.dir,
         env: { ...job.env, AWAYWORK_PROMPT: join(job.dir, '.away', 'prompt.md') },

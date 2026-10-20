@@ -41,7 +41,7 @@ interface Provider {
 }
 ```
 
-- `run` spawns the binary in `job.dir` with `job.prompt`, under `job.maxTurns`, with `job.env` as its whole environment (`extendEnv: false`): awaywork has already removed the forge tokens and the other providers' and sources' secrets. It yields `log` lines, `quota` whenever the stream reports one, and exactly one `done`. It stops when `signal` aborts. `job.config` is the provider's entry in the config, its paths relative to `job.configDir`; without a `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
+- `run` spawns the binary with `launch` (`src/worker/launch.ts`), which every process running repo code goes through, in `job.dir` with `job.prompt`, under `job.maxTurns`, with `job.env` as its whole environment (`extendEnv: false`): awaywork has already removed the forge tokens and the other providers' and sources' secrets. It yields `log` lines, `quota` whenever the stream reports one, and exactly one `done`. It stops when `signal` aborts. `job.config` is the provider's entry in the config, its paths relative to `job.configDir`; without a `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h session and `long` for the week or month. Return `null` when the quota can't be read; awaywork then applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and aborting, as `codex.ts` does.
 - `unavailable` returns a one-line reason where the provider can't run, as Codex on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
