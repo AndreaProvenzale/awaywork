@@ -15,7 +15,7 @@ sudo useradd --create-home --user-group --shell /bin/bash awaywork
 echo awaywork | sudo tee -a /etc/cron.deny > /dev/null
 sudo chmod 700 "$HOME"
 
-# Every disk filesystem, whole. Reading its inodes in parallel first cuts the pass from minutes to about one.
+# Every disk filesystem, whole. Reading its inodes in parallel first makes the find that follows take seconds.
 for fs in / $(findmnt -rn -t ext2,ext3,ext4,xfs,btrfs -o TARGET | grep -vx /); do
   sudo find "$fs" -xdev -mindepth 2 -maxdepth 2 -type d -print0 |
     sudo xargs -0 -r -P 16 -I{} find {} -xdev -perm -o+w -printf '' 2> /dev/null || true

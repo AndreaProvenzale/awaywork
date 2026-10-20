@@ -26,7 +26,7 @@ pnpm docs:gen    # after a CLI or config schema change; CI fails on stale output
 pnpm docs:dev    # the site at http://localhost:5173/awaywork/
 ```
 
-Tests run against fakes and recorded fixtures. Tests against real accounts (`test/real-*.test.ts`) are skipped by default: provider tests unless `AWAYWORK_REAL=1`, source tests unless their env (token, test workspace or sandbox) is set; see below.
+Tests run against fakes and recorded fixtures. Tests against real accounts (`test/real-*.test.ts`) are skipped by default: provider tests unless `AWAYWORK_REAL=1`, source tests unless their env (token, test workspace or sandbox) is set; see below. `real-isolation.test.ts` needs `AWAYWORK_WORKER_TEST=1` and a Linux box with passwordless sudo where `scripts/worker-user.sh` made the worker user, as CI's `isolation` job does on a hosted runner. The script changes permissions all over the disk, so run it in a throwaway container or VM, not on your machine.
 
 ## Live source tests
 
