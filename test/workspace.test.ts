@@ -22,7 +22,13 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace, readOutput, workerEnv, writeOutput } from '../src/worker/workspace.js'
+import {
+  prepareWorkspace,
+  readOutput,
+  restoreGitConfig,
+  workerEnv,
+  writeOutput,
+} from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -705,4 +711,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect(await readOutput(join(dir, 'sym'))).toBe('')
     expect(await readOutput(join(dir, 'hard'))).toBe('')
   })
+
+  it.each(['objects', 'refs', 'info'])(
+    'refuses a clone whose .git/%s a worker linked elsewhere',
+    async (path) => {
+      const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+      await git(dir, 'init', '-q')
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+      const elsewhere = join(await mkdtemp(join(tmpdir(), 'ns-elsewhere-')), path)
+      await rename(join(dir, '.git', path), elsewhere)
+      await symlink(elsewhere, join(dir, '.git', path))
+      await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+        `.git/${path} in the clone is a symlink`,
+      )
+    },
+  )
 })

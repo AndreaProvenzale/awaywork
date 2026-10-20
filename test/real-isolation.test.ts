@@ -7,7 +7,7 @@ import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
 import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
-import { commitsSince, head } from '../src/worker/checks.js'
+import { commitsSince, createChecks, head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
 import { runCommand } from '../src/worker/setup.js'
 import { restoreGitConfig } from '../src/worker/workspace.js'
@@ -148,6 +148,35 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     } finally {
       delete process.env.GH_TOKEN
       await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
+    }
+  })
+
+  it('runs no hook the worker left in .git/hooks when its git status writes the index', async () => {
+    const clone = join(dirname(dir), 'hooked')
+    await execa('git', ['init', '-q', clone])
+    await writeFile(join(clone, 'README'), 'hi\n')
+    await execa('git', ['-C', clone, 'add', 'README'])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    const config = await readFile(join(clone, '.git', 'config'), 'utf8')
+    const phase = [
+      'r=/tmp/awaywork-hooked && rm -rf $r && mkdir -m 777 $r',
+      `printf '#!/bin/sh\\necho "$(id -un) GH_TOKEN=$GH_TOKEN" >> '$r'/log\\n' > .git/hooks/post-index-change`,
+      'chmod 755 .git/hooks/post-index-change',
+      // Stat-dirty, so `git status` refreshes the index and writes it.
+      'touch -d @1000000000 README',
+    ].join(' && ')
+    process.env.GH_TOKEN = CANARY
+    try {
+      expect((await runCommand(phase, clone, env, { secrets: [] })).failed).toBeUndefined()
+      await restoreGitConfig(clone, config)
+      await createChecks({ env, secrets: [] }).baseline(clone)
+      expect(await readFile('/tmp/awaywork-hooked/log', 'utf8').catch(() => 'not run')).toBe(
+        'not run',
+      )
+    } finally {
+      delete process.env.GH_TOKEN
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-hooked'])
     }
   })
 })

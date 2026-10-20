@@ -43,13 +43,16 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
+/** Flags that run no hook a worker left in `.git/hooks`, nor any fsmonitor command. */
+const noHooks = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
+
 /**
  * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
  * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
  */
 export function inClone(dir: string): string[] {
   if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
-  return ['-C', dir, '--git-dir=.git']
+  return ['-C', dir, '--git-dir=.git', ...noHooks]
 }
 
 interface WorkspaceInput {
@@ -179,12 +182,13 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
  * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * whose index, which git writes through a symlink, is one: awaywork then runs no more git in the clone.
+ * whose index, objects, refs or info, which git reads and writes through a symlink, is one: awaywork
+ * then runs no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
   if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
-  await refuseSymlinks(dir, ['.git/index'])
+  await refuseSymlinks(dir, ['.git/index', '.git/objects', '.git/refs', '.git/info'])
   for (const path of ['commondir', 'objects/info/alternates'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
@@ -393,10 +397,8 @@ async function copySkill(dir: string, source: string, target: string) {
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
-  // In a chain's clone, the config is a worker's: run no fsmonitor command from it.
-  const git = [...inClone(dir), '-c', 'core.fsmonitor=false']
-  const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
-  await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  const { stdout } = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--', ...paths])
+  await execa(bin('git'), [...inClone(dir), 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

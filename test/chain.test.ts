@@ -628,6 +628,36 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   ])
 })
 
+it('runs no hook a worker left in .git/hooks when its own git writes the index', async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      const hook = join(job.dir, '.git', 'hooks', 'post-index-change')
+      await writeFile(hook, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\n`, { mode: 0o755 })
+      // Stat-dirty, so `git status` refreshes the index and writes it.
+      const later = new Date(Date.now() + 60_000)
+      await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { opened } = await run(
+      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
 it("runs no check in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
   const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
   const base = worker()

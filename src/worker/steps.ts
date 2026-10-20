@@ -2,7 +2,7 @@ import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
-import { git, noHooks } from './checks.js'
+import { git } from './checks.js'
 import { commandEnv, inClone, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
 
 export function isLast(loop: {
@@ -55,12 +55,12 @@ export interface Snapshot {
 
 /** The clone for `discard` to put back; none while a conflicted merge leaves its index no tree. */
 export async function snapshot(dir: string): Promise<Snapshot | undefined> {
-  const staged = await git(dir, ...noHooks, 'write-tree').catch(() => undefined)
+  const staged = await git(dir, 'write-tree').catch(() => undefined)
   if (!staged) return undefined
   const index = join(dir, '.git', 'away-snapshot')
   const run = async (...args: string[]) =>
     (
-      await execa(bin('git'), [...inClone(dir), ...noHooks, ...args], {
+      await execa(bin('git'), [...inClone(dir), ...args], {
         env: { GIT_INDEX_FILE: index },
       })
     ).stdout
@@ -78,10 +78,10 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
 /** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s trees. */
 export async function discard(dir: string, start: string, saved: Snapshot): Promise<void> {
   await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
-  await git(dir, ...noHooks, 'reset', '-q', '--hard', start)
-  await git(dir, ...noHooks, 'clean', '-q', '-fd')
-  await git(dir, ...noHooks, 'read-tree', '-u', '--reset', saved.tree)
-  await git(dir, ...noHooks, 'read-tree', saved.staged)
+  await git(dir, 'reset', '-q', '--hard', start)
+  await git(dir, 'clean', '-q', '-fd')
+  await git(dir, 'read-tree', '-u', '--reset', saved.tree)
+  await git(dir, 'read-tree', saved.staged)
 }
 
 /** With every secret withheld except the repo's own. */
