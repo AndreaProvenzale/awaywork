@@ -288,6 +288,7 @@ describe('jira source', () => {
       `providers: [claude]\nsources: { jira: { site: ${site}, email: a@b.c, repo_map: { ENG: ${repo} } } }`
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/api'))).not.toThrow()
     expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('repo_map')
+    expect(() => parseConfig(configured('acme.atlassian.net', 'acme/sub/api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('https://acme.atlassian.net', 'acme/api'))).toThrow('site')
   })
 })

@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import type { Command } from 'commander'
+import { type Command, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, remoteDir, runLockPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
@@ -11,14 +11,14 @@ import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
 import { type Exec, exec } from '../forge/gh.js'
-import { githubForge, githubHost } from '../forge/github.js'
+import { forgeFor } from '../forge/index.js'
 import { providers } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatReportForTerminal, listedUnits } from './format.js'
+import { formatPlan, formatReportForTerminal, listedUnits, reportJson } from './format.js'
 import { probeAndPlan, ruleNumber } from './plan.js'
 import { gitRoot } from './schedule.js'
 import { unitsFile } from './stats.js'
@@ -106,12 +106,13 @@ export function runCommand(program: Command): void {
           until,
           providers,
           sources,
-          forge: githubForge(undefined, githubHost(config)),
+          forge: forgeFor(config),
           ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))
+        await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
@@ -130,8 +131,17 @@ export function runCommand(program: Command): void {
     .command('report [id]')
     .description("print a run's morning report; the latest by default")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
-    .action((id: string | undefined, opts: { list?: boolean }) => printReport(id, !!opts.list))
+    .addOption(
+      new Option('--json', "print the run's results as JSON instead of the markdown").conflicts(
+        'list',
+      ),
+    )
+    .action((id: string | undefined, opts: { list?: boolean; json?: boolean }) =>
+      printReport(id, !!opts.list, exec, !!opts.json),
+    )
 }
+
+const reportJsonFile = 'report.json'
 
 interface Run {
   id: string
@@ -140,7 +150,12 @@ interface Run {
 }
 
 /** Prints a run's report, or lists the last 20; inside a control repo, with the runs its workflows uploaded. */
-export async function printReport(id: string | undefined, list: boolean, run: Exec = exec) {
+export async function printReport(
+  id: string | undefined,
+  list: boolean,
+  run: Exec = exec,
+  json = false,
+) {
   const local = (await readdir(runsDir).catch(() => [])).sort()
   const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
   const runs: Run[] = [
@@ -149,7 +164,8 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
       .filter((r) => !local.includes(r.id))
       .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
-  const read = (r: Run) => readFile(join(r.dir, 'report.md'), 'utf8').catch(() => undefined)
+  const read = (r: Run) =>
+    readFile(join(r.dir, json ? reportJsonFile : 'report.md'), 'utf8').catch(() => undefined)
 
   if (list) {
     if (runs.length === 0) console.log(`no runs in ${runsDir}`)
@@ -179,8 +195,11 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
   }
   const text = picked && (await read(picked))
   if (text === undefined) {
-    console.error(`no report for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`)
+    console.error(
+      `no ${json ? 'JSON report' : 'report'} for run ${which} in ${picked ? dirname(picked.dir) : runsDir}`,
+    )
     process.exitCode = 1
+    if (json) return
     const steps = picked ? await startedSteps(picked.dir) : []
     const running = steps.pop()
     if (running) {
@@ -188,7 +207,7 @@ export async function printReport(id: string | undefined, list: boolean, run: Ex
       console.log(`Running (or cut short): ${running.name}`)
       console.log(`Its stream: ${running.log}`)
     }
-  } else console.log(process.stdout.isTTY ? formatReportForTerminal(text) : text)
+  } else console.log(json || !process.stdout.isTTY ? text : formatReportForTerminal(text))
 }
 
 /** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */

@@ -140,7 +140,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   ])
   expect(models).toEqual(['opus', 'sonnet'])
   expect(report.results.map((u) => u.baseline?.used)).toEqual([0.36, undefined, 0.45])
-  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR']
+  const seen = ['PATH', 'FAKE_AGENT_TOKEN', 'GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1', '1-fix')
   expect(await readFile(join(unitDir, 'out/pr.md'), 'utf8')).toMatch(/^Fix the build/)
@@ -618,15 +618,16 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', 'GH_CONFIG_DIR'] }
+  const gh = ['GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN']
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...gh] }
   expect(jobs).toEqual([
-    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
     { unit: 'acme-api-1-plan', ...sentry },
-    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
+    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...gh] },
     { unit: 'acme-api-2', ...sentry },
-    { unit: 'acme-api-3', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', 'GH_CONFIG_DIR'] },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...gh] },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')
@@ -795,7 +796,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     ['away/acme-api-4', 'feature-4'],
     ['away/acme-api-3', ''],
   ])
-  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.')
+  expect(opened[2]?.body).toBe('Implement acme-api-3\n\nDone.\n\nCloses acme/api#3\n')
   expect([prompts[0], prompts[1], prompts[3]]).toEqual([
     expect.stringContaining('cut from the default branch.'),
     expect.stringContaining('cut from the default branch.'),
@@ -852,6 +853,9 @@ queue: [{ skill: implement, then: review }]
       'Approve.',
       '',
       '</details>',
+      '',
+      '',
+      'Closes acme/api#2',
       '',
     ].join('\n'),
   )
@@ -1642,7 +1646,9 @@ queue:
       '3 tests failed',
     ].join('\n'),
   )
-  expect(body).toMatch(/\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n$/)
+  expect(body).toMatch(
+    /\nfailed: Command failed with exit code 1: .*\n```\n\n<\/details>\n\n\nCloses acme\/api#1\n$/,
+  )
 })
 
 it("skips a rule whose quota when doesn't hold, and runs one whose does", async () => {

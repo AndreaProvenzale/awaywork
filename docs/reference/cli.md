@@ -212,6 +212,7 @@ print a run's morning report; the latest by default
 
 Options:
   --list      list the last 20 runs: units, draft PRs and reports
+  --json      print the run's results as JSON instead of the markdown
   -h, --help  display help for command
 ```
 

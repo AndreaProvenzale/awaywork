@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
-import { githubForge, githubHost } from '../forge/github.js'
+import { forgeFor } from '../forge/index.js'
 import { providers } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { replayUnit } from '../worker/replay.js'
@@ -34,7 +34,7 @@ export function replayCommand(program: Command): void {
               return source ? [[id, source]] : []
             }),
           ),
-          forge: githubForge(undefined, githubHost(config)),
+          forge: forgeFor(config),
           ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })

@@ -64,6 +64,13 @@ describe('run command', () => {
     expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
   })
 
+  it('writes the results as report.json next to report.md', async () => {
+    await run([])
+    const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+    const json = JSON.parse(await readFile(join(runsDir, id, 'report.json'), 'utf8'))
+    expect(json.runId).toBe(id)
+  })
+
   it("hands the run's id and dir to the next steps of an Actions job", async () => {
     const outputs = join(await mkdtemp(join(tmpdir(), 'awaywork-out-')), 'output')
     vi.stubEnv('GITHUB_OUTPUT', outputs)
