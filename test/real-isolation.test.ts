@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { stat, writeFile } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -140,8 +140,11 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       await expect(restoreGitConfig(clone, '')).rejects.toThrow(
         '.git in the clone is not a directory',
       )
-      await expect(commitsSince(clone, start)).rejects.toThrow('no git in the clone')
-      expect(existsSync('/tmp/awaywork-linked/log')).toBe(false)
+      const refused = await commitsSince(clone, start).catch((e: Error) => e.message)
+      expect(await readFile('/tmp/awaywork-linked/log', 'utf8').catch(() => 'not run')).toBe(
+        'not run',
+      )
+      expect(refused).toContain('no git in the clone')
     } finally {
       delete process.env.GH_TOKEN
       await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
