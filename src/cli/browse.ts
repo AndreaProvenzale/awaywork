@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { emitKeypressEvents, type Key } from 'node:readline'
 import { approveItem } from './approve.js'
@@ -19,6 +19,10 @@ export const itemCommands = (sources: () => Promise<string[]>): ItemCommands => 
   approve: async (key) => approveItem(key, await sources()),
 })
 
+/** `$PAGER` unless it's unset or `cat`, as git does; the default `less` stays open on short texts whatever `$LESS` says. */
+export const pagerCommand = (pager = process.env.PAGER) =>
+  pager && pager !== 'cat' ? pager : 'less -R -+F -+X'
+
 const enterScreen = '\u001b[?1049h\u001b[?25l'
 const leaveScreen = '\u001b[?25h\u001b[?1049l'
 
@@ -27,7 +31,7 @@ export function browse(start: State, commands: ItemCommands): Promise<void> {
   const { stdin, stdout } = process
   let state = resize(start, stdout.rows)
   let shown = false
-  let paging = false
+  let pager: ChildProcess | undefined
   let busy = false
 
   const draw = () => {
@@ -50,20 +54,17 @@ export function browse(start: State, commands: ItemCommands): Promise<void> {
   }
 
   const page = async (text: string): Promise<State> => {
-    paging = true
     hide()
     const code = await new Promise<number | null>((done) => {
-      const child = spawn(process.env.PAGER || 'less -R', {
-        shell: true,
-        stdio: ['pipe', 'inherit', 'inherit'],
-      })
+      const child = spawn(pagerCommand(), { shell: true, stdio: ['pipe', 'inherit', 'inherit'] })
+      pager = child
       // The pager may quit before it reads all of it.
       child.stdin.on('error', () => {})
       child.stdin.end(text)
       child.on('error', () => done(null))
       child.on('close', done)
     })
-    paging = false
+    pager = undefined
     show()
     return code ? { ...state, status: `the pager exited with ${code}` } : state
   }
@@ -116,13 +117,14 @@ export function browse(start: State, commands: ItemCommands): Promise<void> {
     }
     const onResize = () => {
       state = resize(state, stdout.rows)
-      if (!paging) draw()
+      if (!pager) draw()
     }
     // Outside raw mode, as while paging, Ctrl-C is a signal: it's the pager's to handle.
     const onInt = () => {
-      if (!paging) finish()
+      if (!pager) finish()
     }
     const onTerm = () => {
+      pager?.kill()
       hide()
       process.exit(143)
     }
@@ -140,7 +142,7 @@ export function browse(start: State, commands: ItemCommands): Promise<void> {
 }
 
 function keyName(text: string | undefined, key: Key | undefined): string {
-  if (key?.ctrl && key.name === 'c') return 'ctrl-c'
+  if (key?.ctrl && key.name?.length === 1) return `ctrl-${key.name}`
   if (key?.name === 'enter') return 'return'
   if (key?.name && key.name.length > 1) return key.name
   return text ?? ''

@@ -1,5 +1,6 @@
 import { stripVTControlCharacters } from 'node:util'
 import { describe, expect, it } from 'vitest'
+import { pagerCommand } from '../src/cli/browse.js'
 import {
   clipLine,
   planTriage,
@@ -145,6 +146,31 @@ describe('triage update', () => {
     expect(top.top).toBe(0)
   })
 
+  it('moves a screen with PageDown, PageUp, Ctrl-D and Ctrl-U', () => {
+    const small = run(10)
+    expect(selectedLine(press(small, 'pagedown'))).toMatch(/^T-4/)
+    expect(selectedLine(press(small, 'pagedown', 'ctrl-d'))).toBe('▾ Units')
+    const bottom = press(small, 'pagedown', 'pagedown', 'pagedown', 'pagedown')
+    expect(selectedLine(bottom)).toMatch(/^▸ Skipped 2/)
+    expect(screen(bottom)).toContain('▸ Skipped 2: 1 no_rule, 1 over_cap')
+    expect(selectedLine(press(bottom, 'pageup'))).toBe('▾ Units')
+    expect(selectedLine(press(bottom, 'ctrl-u', 'pageup', 'pageup', 'pageup'))).toBe('▾ Warnings')
+  })
+
+  it('keeps the footer and the prompt on a short terminal, dropping the header first', () => {
+    const asked = update(press(run(6), 'down', 'down'), 's').state
+    expect(screen(asked, 40)).toMatchInlineSnapshot(`
+      [
+        "2026-10-19 22:00:00 to 2026-10-19 22:41…",
+        "claude: fallback, 1 of 4 units (no quot…",
+        "",
+        "  T-4  no repo: no linked PR or repo fi…",
+        "⏎ read  o open  l log  d diff  s skip  …",
+        "y/n: skip asana:T-4 in the coming runs?…",
+      ]
+    `)
+  })
+
   it('scrolls on resize', () => {
     const bottom = press(run(), 'G')
     expect(bottom.top).toBe(0)
@@ -186,7 +212,7 @@ describe('triage update', () => {
   it('asks before it skips or approves, then marks the row', () => {
     const needs = press(run(), 'down', 'down')
     const asked = update(needs, 's').state
-    expect(asked.status).toBe('skip asana:T-4 in the coming runs? awaywork unskip undoes it  y/n')
+    expect(asked.status).toBe('y/n: skip asana:T-4 in the coming runs? awaywork unskip undoes it')
     expect(update(asked, 'n').state.status).toBe('not skipped')
     expect(update(asked, 'n').effect).toBeUndefined()
     const { state, effect } = update(asked, 'y')
@@ -200,7 +226,15 @@ describe('triage update', () => {
       'T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4  skipped',
     )
     expect(update(done, 's').state.status).toBe('already skipped')
-    expect(update(needs, 'a').state.status).toBe('approve asana:T-4? there is no undo  y/n')
+    expect(update(needs, 'a').state.status).toBe('y/n: approve asana:T-4? there is no undo')
+    const approved = settle(
+      state,
+      { action: 'approve', target: 'asana:T-4', row: 'needs/0' },
+      { ok: true, message: '' },
+    )
+    const both = settle(approved, effect, { ok: true, message: '' })
+    expect(selectedLine(both)).toMatch(/ {2}approved, skipped$/)
+    expect(update(both, 'a').state.status).toBe('already approved')
     const failed = settle(state, effect, { ok: false, message: 'source "asana" is not configured' })
     expect(failed.marks).toEqual({})
     expect(failed.status).toBe('source "asana" is not configured')
@@ -214,5 +248,12 @@ describe('triage update', () => {
     for (const key of ['q', 'escape', 'ctrl-c'])
       expect(update(run(), key).effect).toEqual({ action: 'quit' })
     expect(update(help, 'ctrl-c').effect).toEqual({ action: 'quit' })
+  })
+})
+
+describe('pager', () => {
+  it('is $PAGER, else less kept open on short texts, as it is for cat', () => {
+    expect(pagerCommand('most')).toBe('most')
+    for (const pager of ['', 'cat']) expect(pagerCommand(pager)).toBe('less -R -+F -+X')
   })
 })

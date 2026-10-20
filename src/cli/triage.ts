@@ -39,7 +39,7 @@ export interface State {
   top: number
   /** The terminal's height. */
   rows: number
-  marks: Readonly<Record<string, string>>
+  marks: Readonly<Record<string, readonly string[]>>
   confirm?: { action: 'skip' | 'approve'; row: string; key: string }
   status?: string
   help?: boolean
@@ -56,6 +56,7 @@ const style = (format: Format, text: string) => styleText(format, text, { valida
 export const keys: [string, string][] = [
   ['↑ ↓  j k', 'move'],
   ['g G  Home End', 'first, last row'],
+  ['PgDn PgUp  ^D ^U', 'a screen down, up'],
   ['→ ← Space', 'unfold, fold, as ⏎ on a heading; ← on a row goes to its section'],
   ['⏎', 'read it in $PAGER: the unit in full, or why the item is planned or skipped'],
   ['o', "open the unit's PR, else the item"],
@@ -248,7 +249,8 @@ function layout(s: State): Line[] {
     if (depth === 0 && at > 0) lines.push({ text: '', at })
     const indent = '  '.repeat(depth)
     const fold = row.children ? (isOpen(s, row) ? '▾ ' : '▸ ') : ''
-    const mark = s.marks[row.id] ? `  ${style('yellow', s.marks[row.id] ?? '')}` : ''
+    const marks = s.marks[row.id] ?? []
+    const mark = marks.length ? `  ${style('yellow', marks.join(', '))}` : ''
     lines.push({ text: `${indent}${fold}${row.text}${mark}`, at, lead: true })
     if (!isOpen(s, row)) return
     const under = '  '.repeat(depth + (row.children ? 1 : 0))
@@ -257,13 +259,13 @@ function layout(s: State): Line[] {
   return lines
 }
 
-const bodyHeight = (s: State) => Math.max(1, s.rows - s.header.length - 3)
+const bodyHeight = (header: string[], rows: number) => Math.max(1, rows - header.length - 3)
 
 /** Scrolls so the selected row is on screen, and no further than the last line. */
 function follow(s: State): State {
   const lines = layout(s)
   const at = visible(s).findIndex((v) => v.row.id === s.selected)
-  const height = bodyHeight(s)
+  const height = bodyHeight(s.header, s.rows)
   let top = s.top
   const last = lines.findLastIndex((l) => l.at === at)
   if (last >= top + height) top = last - height + 1
@@ -318,6 +320,11 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
     else set.delete(row.id)
     return { state: follow({ ...state, open: set }) }
   }
+  const page = (by: number) => {
+    const lines = layout(s)
+    const first = lines.findIndex((l) => l.at === i)
+    return select(lines[Math.max(0, Math.min(first + by, lines.length - 1))]?.at ?? i)
+  }
   switch (key) {
     case 'up':
     case 'k':
@@ -331,6 +338,12 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
     case 'end':
     case 'G':
       return select(list.length - 1)
+    case 'pagedown':
+    case 'ctrl-d':
+      return page(bodyHeight(s.header, s.rows))
+    case 'pageup':
+    case 'ctrl-u':
+      return page(-bodyHeight(s.header, s.rows))
     case 'right':
       if (!row.children) return { state }
       return s.open.has(row.id) ? select(i + 1) : fold(true)
@@ -353,11 +366,11 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
   if (!target) return { state: { ...state, status: `${labelOf(action)}: ${whyNot(row, action)}` } }
   if (action === 'skip' || action === 'approve') {
     const done = action === 'skip' ? 'skipped' : 'approved'
-    if (s.marks[row.id] === done) return { state: { ...state, status: `already ${done}` } }
+    if (s.marks[row.id]?.includes(done)) return { state: { ...state, status: `already ${done}` } }
     const prompt =
       action === 'skip'
-        ? `skip ${target} in the coming runs? awaywork unskip undoes it  y/n`
-        : `approve ${target}? there is no undo  y/n`
+        ? `y/n: skip ${target} in the coming runs? awaywork unskip undoes it`
+        : `y/n: approve ${target}? there is no undo`
     return { state: { ...state, confirm: { action, row: row.id, key: target }, status: prompt } }
   }
   return { state, effect: { action, target, row: row.id } }
@@ -367,15 +380,16 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
 export function settle(s: State, effect: Effect, outcome: { ok: boolean; message: string }): State {
   if (effect.action !== 'skip' && effect.action !== 'approve')
     return { ...s, status: outcome.message }
+  const mark = effect.action === 'skip' ? 'skipped' : 'approved'
   const marks = outcome.ok
-    ? { ...s.marks, [effect.row]: effect.action === 'skip' ? 'skipped' : 'approved' }
+    ? { ...s.marks, [effect.row]: [...(s.marks[effect.row] ?? []), mark] }
     : s.marks
   return { ...s, marks, status: outcome.message }
 }
 
 /** The screen: header, the rows that fit with the selected one in reverse video, the keys this row has, and the status line. */
 export function view(s: State, cols: number, rows: number): string[] {
-  const height = Math.max(1, rows - s.header.length - 3)
+  const height = bodyHeight(s.header, rows)
   const list = visible(s)
   const body = s.help
     ? keyLines()
@@ -388,7 +402,7 @@ export function view(s: State, cols: number, rows: number): string[] {
   const filler = Array<string>(Math.max(0, height - body.length)).fill('')
   const status = s.help ? style('dim', 'any key closes the help') : (s.status ?? '')
   return [...s.header, '', ...body.slice(0, height), ...filler, footer(s), status]
-    .slice(0, rows)
+    .slice(-rows)
     .map((line) => clipLine(line, cols))
 }
 

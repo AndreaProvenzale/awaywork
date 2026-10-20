@@ -162,8 +162,9 @@ The footer dims the keys the selected row has nothing behind, like `d` on a unit
 | --- | --- |
 | `↑` `↓`, `j` `k` | move |
 | `g` `G`, Home End | first, last row |
+| PgDn PgUp, Ctrl-D Ctrl-U | a screen down, up |
 | `→` `←` Space | unfold, fold, as `⏎` on a heading; `←` on a row goes to its section |
-| `⏎` | page the unit in full, as `report --unit` prints it, or why an item is planned or skipped, as `plan --why`; `$PAGER`, else `less -R` |
+| `⏎` | page the unit in full, as `report --unit` prints it, or why an item is planned or skipped, as `plan --why`; `$PAGER`, else (or if it's `cat`) `less -R -+F -+X`, which stays open on a short text |
 | `o` | open the unit's PR, else its item; a skip waiting for review opens the PR it waits on |
 | `l` | page the `worker.log` of the chain's last step |
 | `d` | page the diff: the commits the unit published, else the step's own |
