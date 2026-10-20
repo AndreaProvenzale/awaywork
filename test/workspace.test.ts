@@ -22,7 +22,13 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace, readOutput, workerEnv, writeOutput } from '../src/worker/workspace.js'
+import {
+  prepareWorkspace,
+  readOutput,
+  restoreGitConfig,
+  workerEnv,
+  writeOutput,
+} from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -704,5 +710,17 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await link(outside, join(dir, 'hard'))
     expect(await readOutput(join(dir, 'sym'))).toBe('')
     expect(await readOutput(join(dir, 'hard'))).toBe('')
+  })
+})
+
+describe('restoreGitConfig', () => {
+  it('refuses a clone whose .git git no longer takes for a repo, so it would walk up to another', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'aw-restore-'))
+    const dir = join(parent, 'clone')
+    await execa(bin('git'), ['init', '-q', parent])
+    await execa(bin('git'), ['init', '-q', dir])
+    await restoreGitConfig(dir, '[core]\n')
+    await rm(join(dir, '.git', 'HEAD'))
+    await expect(restoreGitConfig(dir, '[core]\n')).rejects.toThrow('not a repository of its own')
   })
 })

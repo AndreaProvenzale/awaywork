@@ -21,3 +21,16 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: pnpm docs:gen && git diff --exit-code docs/
+
+  worker-user:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: sudo useradd --create-home --user-group awaywork
+      - run: AWAYWORK_WORKER_TEST=1 pnpm vitest run test/real-isolation.test.ts

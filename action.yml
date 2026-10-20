@@ -70,6 +70,7 @@ runs:
       if: runner.environment == 'github-hosted'
       shell: bash
       run: |
+        test "$(sysctl -n fs.protected_hardlinks)" = 1
         sudo useradd --create-home --user-group --shell /bin/bash awaywork
         echo awaywork | sudo tee -a /etc/cron.deny > /dev/null
         sudo chmod 700 "$HOME"
