@@ -1,13 +1,14 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { repoPath } from '../core/repo-path.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 import { taskMarkdown } from './asana.js'
 
 const config = z
   .strictObject({
     repo_map: z
-      .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
+      .record(z.string(), repoPath)
       .optional()
       .describe("Team key -> owner/repo where its issues' code lives"),
     token_env: z

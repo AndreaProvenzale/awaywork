@@ -440,7 +440,7 @@
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -494,7 +494,7 @@
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -562,7 +562,7 @@
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -660,7 +660,7 @@
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "pattern": "^[^/\\s]+\\/[^/\\s]+$"
+        "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
       },
       "additionalProperties": {
         "type": "object",

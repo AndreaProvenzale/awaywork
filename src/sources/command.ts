@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { linkProblem } from '../core/footer.js'
+import { repoPath } from '../core/repo-path.js'
 import type { Item, Source } from '../core/types.js'
 
 export const linkTemplate = z
@@ -85,7 +86,7 @@ export function isCommand(cfg: unknown): cfg is CommandConfig {
 /** A source whose items come from the user's own command; its fields come from the config. */
 export function commandSource(id: string, cfg: CommandConfig): Source<CommandConfig> {
   const fields: Record<string, z.ZodType> = {
-    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
+    repo: repoPath,
     created: z.iso.datetime({ offset: true }),
     updated: z.iso.datetime({ offset: true }),
     ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),
