@@ -104,14 +104,14 @@ describe('plan', () => {
         codex     fallback
           4 units, 60 turns each (no quota reading)
 
-      Units
+      Units 3
            item   rule  skill                 provider  deliver   title
         1  api#1  #1    fix (built-in)        claude    draft_pr  PR 1
            + T-7: same feature, matched #4
         2  api#5  #2    implement (built-in)  claude    draft_pr  Add rate limits
         3  api#2  #3    review (built-in)     claude    report    PR 2
 
-      Needs you
+      Needs you 1
         T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
              Task 8
 

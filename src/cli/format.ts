@@ -65,8 +65,11 @@ export function listedUnits(plan: RunPlan) {
 /** A `Warnings` heading over warnings indented as blocks and a blank line, or nothing. */
 export function warningLines(warnings: string[], styled = false): string[] {
   if (warnings.length === 0) return []
-  const heading = styled ? styleText('bold', 'Warnings') : 'Warnings'
-  return [heading, ...warnings.flatMap((w) => indent(warningBlock(w))), '']
+  return [
+    heading('Warnings', warnings.length, styler(styled)),
+    ...warnings.flatMap((w) => indent(warningBlock(w))),
+    '',
+  ]
 }
 
 /** A warning's lines, the later ones indented under the first. */
@@ -78,6 +81,10 @@ export function warningBlock(warning: string): string[] {
 }
 
 export type Style = (format: 'bold' | 'dim', text: string) => string
+
+/** `Units 3`: a section's title and how many it holds. */
+export const heading = (title: string, n: number, style: Style = (_, text) => text) =>
+  style('bold', `${title} ${n}`)
 
 const styler =
   (styled: boolean): Style =>
@@ -93,7 +100,7 @@ export const clip = (text: string, length: number) =>
 export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
   const style = styler(styled)
   const out = [...warningLines(warnings, styled), ...providerLines(plan, style)]
-  out.push('', style('bold', 'Units'), ...planUnitLines(plan, style))
+  out.push('', heading('Units', listedUnits(plan).length, style), ...planUnitLines(plan, style))
   out.push(...needsYouLines(plan.skipped, style), ...skippedLines(plan.skipped, style))
   if (plan.skipped.length > 0)
     out.push(
@@ -201,7 +208,7 @@ export function planUnitTable(
 export function needsYouLines(skipped: Skipped[], style: Style = (_, text) => text): string[] {
   const rows = needsYouRows(skipped, style)
   if (rows.length === 0) return []
-  return ['', style('bold', 'Needs you'), ...indent(rows.flatMap((row) => row.lines))]
+  return ['', heading('Needs you', rows.length, style), ...indent(rows.flatMap((row) => row.lines))]
 }
 
 /** Each skipped item you can act on, with its row of the Needs you table and its title, unindented. */
@@ -214,7 +221,7 @@ export function needsYouRows(
   const lines = table(
     waiting.map((s) => {
       const url = s.url ?? s.item.url
-      return [shortRef(s.item), s.reason, s.reason.includes(url) ? '' : url]
+      return [shortRef(s.item), brief(s.reason.replace(` ${url}`, '')), url]
     }),
   )
   const under = ' '.repeat(Math.max(...waiting.map((s) => shortRef(s.item).length)) + 2)
@@ -234,7 +241,7 @@ export function skippedLines(skipped: Skipped[], style: Style = (_, text) => tex
 /** `Skipped 2: 1 no_rule, 1 over_cap`. */
 export function skippedHeading(skipped: Skipped[], style: Style = (_, text) => text): string {
   const counts = byKind(skipped).map(([kind, list]) => `${list.length} ${kind}`)
-  return `${style('bold', `Skipped ${skipped.length}`)}: ${counts.join(', ')}`
+  return `${heading('Skipped', skipped.length, style)}: ${counts.join(', ')}`
 }
 
 export const skippedLine = (s: Skipped) => `${shortRef(s.item)}: ${s.reason}`
@@ -512,7 +519,7 @@ export function runHeader(r: RunReport, style: Style = (_, text) => text): strin
 export function formatRun(r: RunReport, warnings: string[] = [], styled = false): string {
   const style = styler(styled)
   const out = [...runHeader(r, style), '', ...warningLines(warnings, styled)]
-  out.push(style('bold', 'Units'), ...reportUnitLines(r, styled))
+  out.push(heading('Units', chains(r).length, style), ...reportUnitLines(r, styled))
   out.push(...needsYouLines(r.plan.skipped, style), ...skippedLines(r.plan.skipped, style))
   const quota = quotaLines(r)
   if (quota.length > 0) out.push('', style('bold', 'Quota'), ...indent(quota))

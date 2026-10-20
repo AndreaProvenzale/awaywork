@@ -171,7 +171,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   )
   expect(formatRun(report)).toContain(
     [
-      'Units',
+      'Units 3',
       '     item   skill   status         result',
       '  1  api#1  fix     done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1',
       '     Ran the failing test.',
@@ -203,13 +203,13 @@ it('reports a run with no provider and a multi-line warning', () => {
       '',
       '2026-10-12 22:34:18 to 2026-10-12 22:34:18, local time',
       '',
-      '## Warnings',
+      '## Warnings (1)',
       '',
       '- source chores: failed',
       '',
       '  not set',
       '',
-      '## Units',
+      '## Units (0)',
       '',
       'None.',
       '',

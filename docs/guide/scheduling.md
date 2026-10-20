@@ -113,7 +113,7 @@ A GitHub-hosted runner starts with an empty state dir, so it keeps no attempts, 
 GitHub also ends a job on its hosted runners at 6 hours, whatever your window says. So there a run stops 5h40 after `awaywork run` starts, or at the window's end when that comes first, and the 20 minutes left go to publishing and the report; the workflow sets `timeout-minutes: 360` to match. A longer window, like `18:00-07:00`, effectively lasts about 6 hours there, and `plan` on the runner says so:
 
 ```
-Warnings
+Warnings 1
   GitHub-hosted runners end a job at 6 hours, so a run stops 5h40 after it starts, before 18:00-07:00 ends
 ```
 

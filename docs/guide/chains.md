@@ -53,7 +53,7 @@ queue:
 - A chain is one row in `plan`, with its steps under it. Every step is routed (`plan` routes every round of a loop up to its `max`), and budgeted live:
 
   ```
-  Units
+  Units 1
        item    rule  skill                 provider  deliver   title
     1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
        then loop review ⇄ fix until verdict approve, at most 3 rounds
@@ -168,7 +168,7 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
 - `plan` starts a slice with `stack` where the other steps say `then`:
 
   ```
-  Units
+  Units 1
        item    rule  skill                 provider  deliver   title
     1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
        then loop review ⇄ fix until verdict approve, at most 3 rounds
@@ -180,7 +180,7 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
   `awaywork report` has the chain's row, with each slice's PR in turn:
 
   ```
-  Units
+  Units 1
        item    skill                                        status          result
     1  api#12  implement → loop(review ⇄ fix) → stack docs  done, 70 turns  https://github.com/acme/api/pull/42, verdict approve; https://github.com/acme/api/pull/43
        Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.

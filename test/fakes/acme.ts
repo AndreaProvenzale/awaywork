@@ -1,6 +1,6 @@
 import { parseConfig } from '../../src/config/load.js'
 import { allowance } from '../../src/core/budget.js'
-import { type PlannedUnit, planRun } from '../../src/core/foreman.js'
+import { type PlannedUnit, planRun, type Skipped } from '../../src/core/foreman.js'
 import type { RunReport } from '../../src/core/report.js'
 import { builtinSkills } from '../../src/core/skills.js'
 import { asanaTask, githubPr } from './items.js'
@@ -27,6 +27,15 @@ queue:
     skills: { builtin: builtinSkills },
   })
 }
+
+/** An awaywork PR no rule takes, its reason longer than a row. */
+export const waitingSkip = (): Skipped => ({
+  item: githubPr(31, { ours: true }),
+  kind: 'waiting_for_review',
+  reason:
+    'waiting for review: awaywork PR https://github.com/acme/api/pull/31 is open; closest #3 fix: checks is passing, wants failing',
+  url: 'https://github.com/acme/api/pull/31',
+})
 
 /** A run of the acme plan: a draft PR, with its summary and files. */
 export function acmeRun(): RunReport {

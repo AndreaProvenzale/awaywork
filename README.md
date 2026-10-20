@@ -26,14 +26,14 @@ Providers
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
     other limits: pacing 90%
 
-Units
+Units 3
      item   rule  skill              provider  deliver   title
   1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
      + api#5: same feature, matched #3
   2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
-Needs you
+Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 
@@ -64,11 +64,11 @@ Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 
-▾ Needs you
+▾ Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 
-▾ Units
+▾ Units 3
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…

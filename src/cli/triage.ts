@@ -4,6 +4,7 @@ import { byKind, chains, quotaLines, type RunReport } from '../core/report.js'
 import type { Item } from '../core/types.js'
 import {
   formatWhy,
+  heading,
   listedUnits,
   needsYouRows,
   planUnitTable,
@@ -81,7 +82,7 @@ const itemKey = (item: Item) => `${item.source}:${item.key}`
 
 const section = (id: string, title: string, children: Row[], more?: string[]): Row => ({
   id,
-  text: style('bold', title),
+  text: heading(title, children.length, style),
   children,
   more,
 })
@@ -142,7 +143,12 @@ const unitSection = (header: string, rows: Row[]) =>
 function triage(header: string[], sections: Row[], rows: number): State {
   const open = new Set(sections.filter((s) => s.id !== 'skipped').map((s) => s.id))
   const state = { header, sections, open, selected: '', top: 0, rows, marks: {} }
-  const first = visible(state).find((v) => !v.row.children) ?? visible(state)[0]
+  const list = visible(state)
+  const first =
+    list.find((v) => v.parent === 'needs') ??
+    list.find((v) => v.parent === 'units') ??
+    list.find((v) => !v.row.children) ??
+    list[0]
   return follow({ ...state, selected: first?.row.id ?? '' })
 }
 

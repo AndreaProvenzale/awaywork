@@ -135,11 +135,11 @@ Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 
-▾ Needs you
+▾ Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 
-▾ Units
+▾ Units 3
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
@@ -180,7 +180,7 @@ $ awaywork report | cat
 Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 
-Units
+Units 3
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
@@ -189,7 +189,7 @@ Units
   3  api#2  review  done, 6 turns   report, verdict approve
      Approve: the session cache keys on the user id and expires with the token.
 
-Needs you
+Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 

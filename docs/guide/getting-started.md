@@ -58,11 +58,11 @@ Providers
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
     other limits: pacing 90%
 
-▾ Needs you
+▾ Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 
-▾ Units
+▾ Units 3
      item   rule  skill              provider  deliver   title
   1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
      + api#5: same feature, matched #3
@@ -86,14 +86,14 @@ Providers
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
     other limits: pacing 90%
 
-Units
+Units 3
      item   rule  skill              provider  deliver   title
   1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
      + api#5: same feature, matched #3
   2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
-Needs you
+Needs you 1
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
        Export invoices as CSV
 

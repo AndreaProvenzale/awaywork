@@ -102,8 +102,13 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     '',
   ]
   if (warnings.length > 0)
-    out.push('## Warnings', '', ...warnings.map((w) => `- ${w.replace(/\n(?=.)/g, '\n  ')}`), '')
-  out.push('## Units', '')
+    out.push(
+      `## Warnings (${warnings.length})`,
+      '',
+      ...warnings.map((w) => `- ${w.replace(/\n(?=.)/g, '\n  ')}`),
+      '',
+    )
+  out.push(`## Units (${chains(r).length})`, '')
   if (r.results.length === 0) out.push('None.')
   else {
     out.push('| # | Unit | Skill | Provider | Status | Result |', '|---|---|---|---|---|---|')
@@ -133,7 +138,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   }
   const waiting = r.plan.skipped.filter((s) => needsYou[s.kind])
   if (waiting.length > 0) {
-    out.push('', '## Needs you', '')
+    out.push('', `## Needs you (${waiting.length})`, '')
     for (const s of waiting) out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}`)
   }
   const rest = r.plan.skipped.filter((s) => !needsYou[s.kind])

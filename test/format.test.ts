@@ -11,6 +11,7 @@ import {
   formatWhy,
   listedUnits,
   namedItems,
+  needsYouRows,
   reportJson,
   statusMarker,
   warningLines,
@@ -21,7 +22,7 @@ import { type PlannedUnit, planRun, type RunPlan } from '../src/core/foreman.js'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
-import { acmePlan, acmeRun } from './fakes/acme.js'
+import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
 describe('statusMarker', () => {
@@ -227,11 +228,11 @@ describe('plan views', () => {
         claude    fallback
           4 units, 60 turns each (no quota reading)
 
-      Units
+      Units 1
            item   rule  skill           provider  deliver   title
         1  api#1  #1    fix (built-in)  claude    draft_pr  PR 1
 
-      Needs you
+      Needs you 1
         T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
              Task 4
 
@@ -240,6 +241,17 @@ describe('plan views', () => {
       awaywork plan --skipped [kind]  lists them
       awaywork plan --why <key>       says why an item is planned or not"
     `)
+  })
+
+  it('clips a long reason in its Needs you row, its URL in the URL column, and keeps it whole under --why', () => {
+    const plan = acmePlan()
+    plan.skipped.push(waitingSkip())
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
+      'api#31  waiting for review: awaywork PR is open; closest #3 fix: ch…  https://github.com/acme/api/pull/31',
+    )
+    expect(formatWhy(plan, githubPr(31))).toContain(
+      '    waiting for review: awaywork PR https://github.com/acme/api/pull/31 is open; closest #3 fix: checks is passing, wants failing',
+    )
   })
 
   it('lists every skipped item, or those of one kind', () => {
@@ -331,7 +343,7 @@ queue: [{ skill: fix }]
 
   it('indents each line of a warning under its first', () => {
     expect(warningLines(['source tracker: Command failed\n\nError: boom', 'one line'])).toEqual([
-      'Warnings',
+      'Warnings 2',
       '  source tracker: Command failed',
       '    Error: boom',
       '  one line',
@@ -346,15 +358,15 @@ describe('report views', () => {
       "Run 20261019-220000: 1 draft PRs, 0 reports, 1 units
       2026-10-19 22:00:00 to 2026-10-19 22:41:07
 
-      Warnings
+      Warnings 1
         source tracker: Command failed
 
-      Units
+      Units 1
            item   skill  status          result
         1  api#1  fix    done, 12 turns  https://github.com/acme/api/pull/9
            Retries the flaky upload test instead of sleeping.
 
-      Needs you
+      Needs you 1
         T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
              Task 4
 
@@ -439,7 +451,7 @@ describe('report views', () => {
     delete result.summary
     const units = formatRun(run).split('\n\n')[1] ?? ''
     expect(units).toMatchInlineSnapshot(`
-      "Units
+      "Units 1
            item   skill  status                                                        result
         1  api#1  fix    failed, 12 turns (git clone: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  https://github.com/acme/api/pull/9
            PR 1"
@@ -459,7 +471,7 @@ describe('report views', () => {
     Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
     const units = formatRun(run).split('\n\n')[1] ?? ''
     expect(units).toMatchInlineSnapshot(`
-      "Units
+      "Units 1
            item   skill  status   result
         1  api#1  fix    skipped  setup failed: Command failed with exit code 1: pnpm install…
            Retries the flaky upload test instead of sleeping."
@@ -519,7 +531,7 @@ describe('report views', () => {
       '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 12 turns | report below |\n\n- **api#1**: Retries the flaky upload test instead of sleeping.\n',
     )
     expect(text).toContain(
-      '## Needs you\n\n- [T-4 Task 4](https://app.asana.com/0/1/4): no repo: no linked PR or repo field\n',
+      '## Needs you (1)\n\n- [T-4 Task 4](https://app.asana.com/0/1/4): no repo: no linked PR or repo field\n',
     )
     expect(text).toContain(
       [
