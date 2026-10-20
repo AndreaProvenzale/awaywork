@@ -20,7 +20,7 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   return { ...(await importOriginal<object>()), configDir }
 })
 
-const { runChecks, workflowSecretChecks } = await import('../src/cli/doctor.js')
+const { isolationChecks, runChecks, workflowSecretChecks } = await import('../src/cli/doctor.js')
 const { configDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
@@ -74,6 +74,38 @@ describe('doctor', () => {
     })
     expect(checks.at(-1)?.what).toBe('github')
   })
+})
+
+describe('doctor on isolation', () => {
+  it('warns on none, pointing at the guide', async () => {
+    expect(await isolationChecks('none', {})).toEqual([
+      {
+        status: 'warn',
+        what: 'isolation',
+        detail:
+          'none: setup, the agent and the checks run as you, your logins in reach; see https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox',
+      },
+    ])
+  })
+
+  // Where the worker user exists, real-isolation.test.ts runs.
+  it.skipIf(process.env.AWAYWORK_WORKER_TEST)(
+    'fails user it can’t run as, with the setup to paste on Linux',
+    async () => {
+      const [check] = await isolationChecks('user', {})
+      expect(check?.status).toBe('FAIL')
+      if (process.platform !== 'linux')
+        expect(check?.detail).toBe(
+          `user, but isolation: user runs on Linux only, not ${process.platform}`,
+        )
+      else {
+        expect(check?.detail).toMatch(
+          /^user, but can't run as the awaywork user \(.*\); make the worker user once:\n/,
+        )
+        expect(check?.detail).toContain('ALL=(awaywork) NOPASSWD:SETENV: ALL')
+      }
+    },
+  )
 })
 
 describe('doctor in a control repo', () => {

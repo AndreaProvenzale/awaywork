@@ -13,7 +13,7 @@ import {
 } from '../config/paths.js'
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
-import { hostedWorker, isolate } from '../core/launch.js'
+import { isolate, workerFor } from '../core/launch.js'
 import { formatReport, localTime, runLine, summarize } from '../core/report.js'
 import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
@@ -55,7 +55,7 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        isolate(await hostedWorker(process.env))
+        isolate(await workerFor(config.isolation, process.env))
         const now = new Date()
         const until = opts.scheduled
           ? runEnd(config.windows, now, process.env)

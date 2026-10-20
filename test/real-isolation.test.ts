@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
-import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
+import { isolate, WORKER, workerFor, workerRoot } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { commitsSince, createChecks, head } from '../src/worker/checks.js'
@@ -24,12 +24,12 @@ const leftover = async () => (await execa('pgrep', ['-u', WORKER], { reject: fal
 const owner = async (path: string) => (await stat(path)).uid
 const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'test' }
 
-/** Linux with passwordless sudo and the worker user, as on a hosted runner after `action.yml`; run with AWAYWORK_WORKER_TEST=1. */
+/** Linux with the worker user and the sudo `awaywork doctor` asks for (or a hosted runner after `action.yml`); run with AWAYWORK_WORKER_TEST=1. */
 describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () => {
   let dir: string
   beforeAll(async () => {
-    expect(await hostedWorker({ RUNNER_ENVIRONMENT: 'github-hosted' })).toBe(WORKER)
-    dir = join(await workerRoot(), 'clone')
+    expect(await workerFor('user', process.env)).toBe(WORKER)
+    dir = await workerRoot()
     await execa('git', ['init', '-q', dir])
     isolate(WORKER)
   })
@@ -94,7 +94,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
 
   it('never takes a repo the worker planted in /tmp for the clone’s', async () => {
     expect(existsSync('/tmp/.git')).toBe(false)
-    const clone = join(dirname(dir), 'planted')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', clone, ...commit, '-m', 'start'])
@@ -120,7 +120,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
   })
 
   it('runs no git in a clone whose .git the worker linked to a repo of its own', async () => {
-    const clone = join(dirname(dir), 'linked')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', clone, ...commit, '-m', 'start'])
@@ -152,7 +152,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
   })
 
   it('runs no hook the worker left in .git/hooks when its git status writes the index', async () => {
-    const clone = join(dirname(dir), 'hooked')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     await writeFile(join(clone, 'README'), 'hi\n')
     await execa('git', ['-C', clone, 'add', 'README'])

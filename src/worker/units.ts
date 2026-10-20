@@ -136,7 +136,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
-  // The worker user can't reach the run dir: its clones and plugins go where it can.
+  // The worker user can't reach the run dir: its plugins go where it can, and each clone is a folder of its own there.
   const root = isolated() ? await workerRoot() : input.runDir
 
   const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
@@ -200,7 +200,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
-    const dir = join(root, 'work', first.unit.id)
+    const dir = isolated() ? await workerRoot() : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length

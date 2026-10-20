@@ -1,13 +1,16 @@
 import { existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
+import { execa } from 'execa'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
-import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
+import { bin, configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
+import { sudoersLines, WORKER, workerFor } from '../core/launch.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providerFor } from '../providers/index.js'
@@ -88,6 +91,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
+  for (const c of await isolationChecks(config.isolation, process.env))
+    report(c.status, c.what, c.detail)
 
   for (const { id, config: providerConfig, budget } of config.providers) {
     const provider = providerFor(id, providerConfig)
@@ -133,6 +138,74 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
   }
+  return checks
+}
+
+const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
+
+/** Who repo code runs as, and on local Linux what `isolation: user` still needs from you. */
+export async function isolationChecks(
+  isolation: Config['isolation'],
+  env: NodeJS.ProcessEnv,
+): Promise<Check[]> {
+  const worker = await workerFor(isolation, env).catch((e: Error) => e)
+  if (worker === undefined)
+    return [
+      {
+        status: 'warn',
+        what: 'isolation',
+        detail: `none: setup, the agent and the checks run as you, your logins in reach; see ${SAFETY}`,
+      },
+    ]
+  if (worker instanceof Error) {
+    const local = env.RUNNER_ENVIRONMENT !== 'github-hosted' && process.platform === 'linux'
+    const setup = [
+      'make the worker user once:',
+      `sudo useradd --create-home --user-group --shell /bin/bash ${WORKER}`,
+      `echo ${WORKER} | sudo tee -a /etc/cron.deny /etc/at.deny`,
+      `sudo visudo -f /etc/sudoers.d/${WORKER}   # with these two lines:`,
+      ...sudoersLines(),
+    ]
+    const detail = `user, but ${worker.message}${local ? `; ${setup.join('\n    ')}` : ''}`
+    return [{ status: 'FAIL', what: 'isolation', detail }]
+  }
+  const checks: Check[] = [
+    {
+      status: 'ok',
+      what: 'isolation',
+      detail: `user: setup, the agent and the checks run as ${worker}`,
+    },
+  ]
+  const home = homedir()
+  const mode = statSync(home).mode & 0o777
+  if (mode & 0o007)
+    checks.push({
+      status: 'warn',
+      what: 'isolation',
+      detail: `${home} is mode ${mode.toString(8)}, so the worker reads what's world-readable in it: chmod o-rwx ~`,
+    })
+  const path = (env.PATH ?? '').split(':').filter(Boolean)
+  const { stdout } = await execa(
+    bin('sudo'),
+    [
+      '-n',
+      '-u',
+      worker,
+      '/bin/sh',
+      '-c',
+      'for d; do [ -x "$d" ] || echo "$d"; done',
+      'sh',
+      ...path,
+    ],
+    { reject: false },
+  )
+  const unreachable = stdout.split('\n').filter(Boolean)
+  if (unreachable.length)
+    checks.push({
+      status: 'warn',
+      what: 'isolation',
+      detail: `${worker} can't enter ${unreachable.join(', ').replaceAll(home, '~')} on your PATH: tools there won't run as it`,
+    })
   return checks
 }
 

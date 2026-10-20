@@ -813,7 +813,7 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
   } finally {
     isolate(undefined)
     process.env.PATH = path
-    await rm(dirname(dirname(clone)), { recursive: true, force: true })
+    if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
   }
 })
 
