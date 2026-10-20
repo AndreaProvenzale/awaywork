@@ -6,6 +6,7 @@ import {
   lstat,
   mkdir,
   open,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -182,13 +183,18 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
  * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * whose index, objects, refs or info, which git reads and writes through a symlink, is one: awaywork
- * then runs no more git in the clone.
+ * holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
   if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
-  await refuseSymlinks(dir, ['.git/index', '.git/objects', '.git/refs', '.git/info'])
+  for (const entry of await readdir(git, { recursive: true, withFileTypes: true })) {
+    const path = relative(git, join(entry.parentPath, entry.name))
+    // awaywork's git runs no hook and writes none, so a setup that links its hooks is fine.
+    if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
+      throw new Error(`.git/${path} in the clone is a symlink`)
+  }
   for (const path of ['commondir', 'objects/info/alternates'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
