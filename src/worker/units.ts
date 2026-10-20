@@ -380,15 +380,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           end(free.skip)
           continue
         }
-        if (free.branch !== named)
-          input.ctx.log(`${unit.id}: ${named} is taken on ${unit.repo}, using ${free.branch}`)
+        if (free.taken)
+          input.ctx.log(`${unit.id}: ${free.taken} is taken on ${unit.repo}, using ${free.branch}`)
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
       if (retryOf) retryOf.result.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
-      input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
+      const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
+      // A unit its `when` may pass over says it starts only once that held.
+      const gated = !!unit.rule.when && !retryOf && !input.dryRun
+      if (!gated) input.ctx.log(starts)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
@@ -467,6 +470,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           )
           if (failed) {
             Object.assign(result, { status: 'skipped', reason: failed })
+            input.ctx.log(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
             ended = { reason: `${unit.id} setup failed` }
             continue
           }
@@ -481,6 +485,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (met.check?.stopped || met.check?.timedOut) {
             const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
             Object.assign(result, { status: 'skipped', reason })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             ended = { reason }
             interrupted ||= !!input.signal?.aborted
@@ -490,6 +495,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             const failed = met.check?.failed ? ` (${met.check.failed})` : ''
             const reason = `when ${describeCondition(when)} didn't hold${failed}`
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
             if (p === opening) ended = { reason, passedOver: true }
@@ -504,6 +510,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             continue
           }
         }
+        if (gated) input.ctx.log(starts)
         const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
         const named = unit.rule.mcp ?? []
         if (named.length > 0 && unit.foreign)
