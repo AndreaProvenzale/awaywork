@@ -21,7 +21,7 @@ export const commandProviderConfig = z
       .min(1)
       .optional()
       .describe(
-        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, and in doctor. Unset, the fallback caps apply",
+        "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply",
       ),
     secrets: z
       .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
@@ -59,6 +59,31 @@ export function commandProvider(
   cfg: CommandProviderConfig,
   probeTimeout = TIMEOUT_MS,
 ): Provider {
+  async function probe(env: NodeJS.ProcessEnv): Promise<Quota | null> {
+    if (!cfg.probe) return null
+    const subprocess = execa(cfg.probe, {
+      shell: true,
+      cwd: cfg.dir,
+      env,
+      extendEnv: false,
+      timeout: probeTimeout,
+      detached: true,
+    })
+    // A timeout kills only the shell; kill its process group so no child keeps stdout open.
+    killGroupWhenDone(subprocess)
+    const { stdout } = await subprocess
+    let json: unknown
+    try {
+      json = JSON.parse(stdout)
+    } catch {
+      throw new Error(`\`${cfg.probe}\` did not print JSON`)
+    }
+    const parsed = quotaSchema.safeParse(json)
+    if (!parsed.success) throw new Error(`probe: ${parsed.error.issues[0]?.message}`)
+    const quota: Quota = parsed.data
+    return quota.windows.length > 0 ? quota : null
+  }
+
   return {
     id,
     configSchema: commandProviderConfig,
@@ -83,30 +108,7 @@ export function commandProvider(
       return { installed: out.exitCode === 0 }
     },
 
-    async probe(ctx) {
-      if (!cfg.probe) return null
-      const subprocess = execa(cfg.probe, {
-        shell: true,
-        cwd: cfg.dir,
-        env: ctx.env,
-        extendEnv: false,
-        timeout: probeTimeout,
-        detached: true,
-      })
-      // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-      killGroupWhenDone(subprocess)
-      const { stdout } = await subprocess
-      let json: unknown
-      try {
-        json = JSON.parse(stdout)
-      } catch {
-        throw new Error(`\`${cfg.probe}\` did not print JSON`)
-      }
-      const parsed = quotaSchema.safeParse(json)
-      if (!parsed.success) throw new Error(`probe: ${parsed.error.issues[0]?.message}`)
-      const quota: Quota = parsed.data
-      return quota.windows.length > 0 ? quota : null
-    },
+    probe: (ctx) => probe(ctx.env),
 
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
@@ -123,6 +125,10 @@ export function commandProvider(
       killGroupWhenDone(child)
       for await (const line of child.iterable({ from: 'all' })) yield { type: 'log', line }
       const { exitCode } = await child
+      if (!signal.aborted && cfg.probe) {
+        const quota = await probe(process.env).catch(() => null)
+        if (quota) yield { type: 'quota', quota }
+      }
       yield { type: 'done', ok: exitCode === 0 && !signal.aborted, turns: 0 }
     },
 

@@ -408,13 +408,18 @@ describe('schedule install --with github-actions', () => {
     expect(out.join('\n')).not.toMatch(/commit/)
   })
 
-  it("says codex won't run on the hosted runner and leaves it out of the installs", async () => {
+  it("says codex and a command provider won't run on the hosted runner and leaves them out", async () => {
     const { root, config, install } = await setup()
-    await writeFile(config, CONFIG.replace('[claude]', '[claude, codex]'))
+    const opencode = '{ opencode: { command: opencode, secrets: [OPENCODE_API_KEY] } }'
+    await writeFile(
+      config,
+      `${CONFIG.replace('[claude]', `[claude, codex, ${opencode}]`)}limits: { unit_minutes: 30 }\n`,
+    )
     await install()
     expect(out[0]).toMatch(
       /^codex won't run in this workflow: a GitHub-hosted runner has no Codex login/,
     )
+    expect(out[1]).toMatch(/^opencode won't run in this workflow/)
     const steps = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps
     expect(steps.at(-1).with.packages).toBe('@anthropic-ai/claude-code')
     expect(Object.keys(steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])

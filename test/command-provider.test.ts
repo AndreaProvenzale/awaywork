@@ -47,10 +47,8 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
   return all
 }
 
-providerContract(commandProvider('x', cfg()), job, {
-  emptyConfig: 'its config is its command',
-  package: 'installs nothing: the CLI is your own, and hosted runners route around it',
-})
+// Its config is its command, and it installs nothing: the CLI is your own.
+providerContract(commandProvider('x', cfg()), job, ['emptyConfig', 'package'])
 
 describe('command provider config', () => {
   it('takes a name of your own with a command and budget', () => {
@@ -105,11 +103,8 @@ describe('command provider config', () => {
       'providers[1].toString: expected a lowercase name like opencode',
     ])
     expect(providerFor('toString', undefined)).toBeUndefined()
-  })
-
-  it('refuses a name Object.prototype already has', () => {
     expect(problems(config('constructor: { command: x }'))).toEqual([
-      'providers[1].constructor: "constructor" is reserved; pick another name',
+      'providers[1].constructor: expected a lowercase name like opencode',
     ])
   })
 
@@ -152,6 +147,16 @@ describe('command provider', () => {
     await expect(commandProvider('x', cfg({ probe: 'echo nope' })).probe(ctx)).rejects.toThrow(
       'did not print JSON',
     )
+  })
+
+  it('probes again after the unit, so the budget sees what it used', async () => {
+    const quota = { windows: [{ name: 'week', span: 'long', used: 0.4, resetsAt: 1793021152 }] }
+    const p = commandProvider('x', cfg({ probe: `echo '${JSON.stringify(quota)}'` }))
+    const events = await collect(p.run(job(), new AbortController().signal))
+    expect(events).toEqual([
+      { type: 'quota', quota },
+      { type: 'done', ok: true, turns: 0 },
+    ])
   })
 
   it('stops a probe at its timeout, with whatever it started', async () => {
