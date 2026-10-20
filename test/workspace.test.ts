@@ -726,4 +726,16 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       )
     },
   )
+
+  it('accepts a hook a setup linked, still refusing a link elsewhere in .git', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    await symlink('../../scripts/pre-commit', join(dir, '.git/hooks/pre-commit'))
+    await restoreGitConfig(dir, '')
+    await symlink(tmpdir(), join(dir, '.git/objects/pack/elsewhere'))
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/objects/pack/elsewhere in the clone is a symlink',
+    )
+  })
 })
