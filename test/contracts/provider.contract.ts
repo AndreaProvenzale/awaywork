@@ -12,20 +12,21 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 
 /**
  * Every provider adapter must pass this suite; `job` builds a small job it can run. `exempt` names
- * the checks that don't apply to it, each with the reason.
+ * the checks that don't apply to it.
  */
 export function providerContract(
   provider: Provider,
   job: () => Job,
-  exempt: { emptyConfig?: string; package?: string } = {},
+  exempt: ('emptyConfig' | 'package')[] = [],
 ): void {
   describe(`provider contract: ${provider.id}`, () => {
     it('declares a usable id, config and file locations', () => {
       expect(provider.id).toMatch(/^[a-z][a-z0-9-]*$/)
-      if (!exempt.emptyConfig) expect(provider.configSchema.safeParse({}).success).toBe(true)
+      if (!exempt.includes('emptyConfig'))
+        expect(provider.configSchema.safeParse({}).success).toBe(true)
       if (provider.skillsDir) expect(isAbsolute(provider.skillsDir)).toBe(false)
       expect(provider.instructionsFile).not.toBe('')
-      if (!exempt.package) expect(provider.package).not.toBe('')
+      if (!exempt.includes('package')) expect(provider.package).not.toBe('')
       for (const name of provider.secrets) expect(name).toMatch(/^[A-Z][A-Z0-9_]*$/)
     })
 

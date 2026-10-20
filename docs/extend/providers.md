@@ -59,7 +59,7 @@ The config schema, `init`, `doctor`, `plan` and `schedule install --with github-
 
 ## Test it
 
-- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`. A check that can't apply goes in its third argument, `exempt`, with the reason (the command provider has no npm `package`, for one).
+- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`. A check that can't apply goes in its third argument, `exempt` (the command provider has no npm `package`, for one).
 - Unit tests for the event parser against the recorded streams.
 - A `test/real-<id>.test.ts` that spends a few turns of a real subscription, skipped unless `AWAYWORK_REAL=1`.
 

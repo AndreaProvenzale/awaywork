@@ -550,17 +550,12 @@ export const configSchema = z
     cfg.providers.forEach((entry, i) => {
       for (const id of Object.keys(entry)) {
         if (!commandIds.includes(id)) continue
-        if (!/^[a-z][a-z0-9-]*$/.test(id))
+        // `constructor` is the one such name Object.prototype already has.
+        if (!/^(?!constructor$)[a-z][a-z0-9-]*$/.test(id))
           ctx.addIssue({
             code: 'custom',
             path: ['providers', i, id],
             message: 'expected a lowercase name like opencode',
-          })
-        else if (id in Object.prototype)
-          ctx.addIssue({
-            code: 'custom',
-            path: ['providers', i, id],
-            message: `"${id}" is reserved; pick another name`,
           })
       }
     })
