@@ -269,17 +269,17 @@ export async function printReport(
       picked = id ? undefined : runs.findLast((r) => !r.uploaded)
     }
   }
+  const results = !json && picked ? await read(picked, reportJsonFile) : undefined
+  if (results !== undefined && picked)
+    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded, held)
+  screen?.close()
+  for (const warning of held) console.error(`warning: ${warning}`)
   const which = id ?? picked?.id
   if (!which) {
     console.error(`no runs in ${runsDir}`)
     process.exitCode = 1
     return
   }
-  const results = !json && picked ? await read(picked, reportJsonFile) : undefined
-  if (results !== undefined && picked)
-    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded, held)
-  screen?.close()
-  for (const warning of held) console.error(`warning: ${warning}`)
   if (view.unit || view.skipped) {
     console.error(`run ${which} has no ${reportJsonFile}, which --unit and --skipped read`)
     process.exitCode = 1

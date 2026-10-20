@@ -217,6 +217,12 @@ describe('triage update', () => {
     expect(screen(resize(bottom, 10))).toContain('▸ Skipped 2: 1 no_rule, 1 over_cap')
   })
 
+  it('shows a selected heading, not the blank above it, in a one-line body', () => {
+    expect(selectedLine(press(run(7), 'down'))).toBe('▾ Units 1')
+    const branded = ready(loading(brandHeader(false), 'Loading the report'), run(9))
+    expect(selectedLine(press(branded, 'down'))).toBe('▾ Units 1')
+  })
+
   it('pages, opens and pages files through effects', () => {
     const unit = press(run(), 'down', 'down')
     expect(update(unit, 'return').effect).toEqual({
@@ -334,7 +340,13 @@ describe('loader', () => {
   it('drops the brand on a short terminal, then the oldest steps, never q', () => {
     const steps = ['a', 'b', 'c', 'd'].map((name) => ({ name, state: 'done' as const }))
     expect(shown(loaded(...steps), 20, 7)[0]).toBe('⠋ Planning the next…')
-    expect(shown(loaded(...steps), 20, 5)).toEqual(['  ✔ b', '  ✔ c', '  ✔ d', 'q quit', ''])
+    expect(shown(loaded(...steps), 20, 5)).toEqual([
+      '⠋ Planning the next…',
+      '  ✔ c',
+      '  ✔ d',
+      'q quit',
+      '',
+    ])
   })
 
   it('becomes the view under its brand', () => {

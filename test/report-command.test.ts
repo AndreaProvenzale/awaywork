@@ -262,6 +262,25 @@ describe('report command', () => {
     expect(process.exitCode).toBeUndefined()
   })
 
+  it('leaves the screen before saying there are no runs, with the warnings it held', async () => {
+    await rm(runsDir, { recursive: true, force: true })
+    const run = await controlRepo(['awaywork.yml'], '', /^gh api/)
+    const { err } = output()
+    const screen = {
+      progress: () => {},
+      browse: async () => {},
+      close: () => void err.push('closed'),
+    }
+    const commands = { skip: async () => '', approve: async () => '' }
+    await printReport(undefined, false, run, false, { browse: { screen, commands } })
+    expect(err).toEqual([
+      'closed',
+      'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)',
+      `no runs in ${runsDir}`,
+    ])
+    expect(process.exitCode).toBe(1)
+  })
+
   it('points a run without a report at the step that is working', async () => {
     const step = async (name: string, at: number) => {
       const dir = join(runsDir, '20261016-220000', 'units', 'api-1', name)

@@ -281,7 +281,7 @@ function follow(s: State): State {
   let top = s.top
   const last = lines.findLastIndex((l) => l.at === at)
   if (last >= top + height) top = last - height + 1
-  const first = lines.findIndex((l) => l.at === at)
+  const first = lines.findIndex((l) => l.at === at && l.lead)
   if (first < top) top = first
   return { ...s, top: Math.max(0, Math.min(top, lines.length - height)) }
 }
@@ -460,8 +460,9 @@ export function loadingView(l: Loading, cols: number, rows: number): string[] {
   const steps = l.steps.map(
     (s) => `  ${marks[s.state]} ${s.detail ? `${s.name.padEnd(width)}  ${s.detail}` : s.name}`,
   )
-  const body = [`${frame} ${l.title}`, ...steps]
-  const brand = rows >= body.length + 4 ? [l.brand, ''] : []
+  const brand = rows >= steps.length + 5 ? [l.brand, ''] : []
+  const room = rows - brand.length - 3
+  const body = [`${frame} ${l.title}`, ...(room > 0 ? steps.slice(-room) : [])]
   const filler = Array<string>(Math.max(0, rows - brand.length - body.length - 2)).fill('')
   return [...brand, ...body, ...filler, style('dim', 'q quit'), '']
     .slice(-rows)

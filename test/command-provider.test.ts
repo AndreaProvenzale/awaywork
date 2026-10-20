@@ -159,6 +159,15 @@ describe('command provider', () => {
     ])
   })
 
+  it('kills its probe group if awaywork exits first, and stops watching once done', async () => {
+    const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+    const before = process.listenerCount('exit')
+    const pending = commandProvider('x', cfg({ probe: 'echo nope' })).probe(ctx)
+    expect(process.listenerCount('exit')).toBe(before + 1)
+    await expect(pending).rejects.toThrow('did not print JSON')
+    expect(process.listenerCount('exit')).toBe(before)
+  })
+
   it('stops a probe at its timeout, with whatever it started', async () => {
     const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
     const p = commandProvider('x', cfg({ probe: 'sleep 20 & sleep 30' }), 200)

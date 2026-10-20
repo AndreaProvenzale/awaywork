@@ -27,11 +27,13 @@ sourceContract(
 describe('command source', () => {
   const source = commandSource('tracker', cfg())
 
-  it('kills its process group if awaywork exits first, and stops watching once done', async () => {
+  it('kills its process group if awaywork exits first, and stops watching once done or failed', async () => {
     const before = process.listenerCount('exit')
     const pending = source.items(cfg(), ctx())
     expect(process.listenerCount('exit')).toBe(before + 1)
     await pending
+    expect(process.listenerCount('exit')).toBe(before)
+    await expect(source.items(cfg({ dir: join(dir, 'nope') }), ctx())).rejects.toThrow(/ENOENT/)
     expect(process.listenerCount('exit')).toBe(before)
   })
 
