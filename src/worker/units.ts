@@ -329,7 +329,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (input.dryRun) continue
         const a = allowances[id]
         if (!a) continue
-        if (!reuse && !unit.untrusted)
+        if (!reuse)
           await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
         const settings = input.config.repos[unit.repo]
         if (!reuse && settings?.setup && !unit.untrusted) {

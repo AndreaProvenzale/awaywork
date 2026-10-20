@@ -86,13 +86,11 @@ const providerEntry = z.union([providerName, providerOverride], {
 
 /** A built-in source's config with its `context` and its `link`, unless its items link their PRs themselves. */
 function builtinConfig(s: Source): z.ZodObject {
-  const withContext = s.configSchema
-    .extend({ context: contextCommand.optional() })
-    .describe(s.configSchema.description ?? '')
-  if (s.link === false) return withContext
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
-  return withContext.extend({ link }).describe(s.configSchema.description ?? '')
+  return s.configSchema
+    .extend({ context: contextCommand.optional(), ...(s.link === false ? {} : { link }) })
+    .describe(s.configSchema.description ?? '')
 }
 
 const sourcesConfig = z

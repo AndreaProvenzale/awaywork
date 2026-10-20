@@ -468,7 +468,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
   )
 })
 
-it('runs context and setup before the worker, setup with only its own secrets, none on a foreign PR, neither on an untrusted one, and skips a unit whose setup fails', async () => {
+it('runs context and setup before the worker, setup with only its own secrets, none on a foreign PR, not at all on an untrusted one, and skips a unit whose setup fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-setup-'))
   const forge = {
     ...fakeForge(),
@@ -538,7 +538,7 @@ repos:
   })
 
   expect(setups).toEqual(['npm,,/agent.sock\n', ',,/agent.sock\n', 'not run'])
-  expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'not run'])
+  expect(contexts).toEqual(['acme/api#1\n', 'acme/api#3\n', 'acme/api#4\n'])
   expect(workerEnvs[0]).not.toHaveProperty('NPM_TOKEN')
   expect(workerEnvs[0]).toHaveProperty('SSH_AUTH_SOCK', '/agent.sock')
   expect(report.results.map((u) => [u.status, u.reason])).toEqual([

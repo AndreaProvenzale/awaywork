@@ -129,7 +129,7 @@ sources:
       secrets: [SENTRY_TOKEN]      # kept out of the agent's env
 ```
 
-Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). It gets two minutes, never past the window's end, and 1 MB of regular files: a failure, a timeout, a symlink or anything else that isn't a file or a folder, or too much output is logged and the unit runs without `extra/`. It doesn't run on a dry run, nor on an untrusted author's PR. `extra/` belongs to this command. A custom source does this inside its own `command`.
+Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). `extra/` belongs to this command. A custom source does this inside its own `command`.
 
 Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
@@ -195,12 +195,12 @@ sources:
 
 ### What runs in the clone
 
-Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone but for `context`, which runs in the config file's folder; none gets `GH_TOKEN` or any other forge token.
+Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone, except `context`, which runs in the config file's folder and only writes into the clone; none gets `GH_TOKEN` or any other forge token.
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
 | `repos.<repo>.setup` | Once per unit, in the fresh clone before the first step's agent; not again for later steps or [stacked slices](./chains.md#stack), and not at all on an untrusted author's PR | That repo's `secrets` only, and none on someone else's PR or an awaywork PR's branch a rule took up | Exit non-zero, over 15 minutes or the window's end skips the unit, with the tail of its output in the report |
-| `sources.<id>.context.command` | Per item, before setup and the first step's agent, in the config file's folder; its files go to `extra/` of the item's context; not on a dry run or an untrusted author's PR | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes or the window's end, over 1 MB, or a symlink or other non-file in the output counts as a failure |
+| `sources.<id>.context.command` | Per item, before setup and the first step's agent, in the config file's folder; its files go to `extra/` of the item's context; not on a dry run | Its own `secrets` only | Logged; the unit runs without `extra/`. Over two minutes or the window's end, over 1 MB, or a symlink or other non-file in the output counts as a failure |
 | `repos.<repo>.test` | Never by awaywork: it's a line in the agent's prompt, and the agent runs it if it wants | The agent's: its provider's secret and those of the MCP servers its rule names | Up to the agent |
 | `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |

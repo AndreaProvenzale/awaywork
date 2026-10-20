@@ -16,14 +16,6 @@ export const contextSecrets = (config: Config): string[] =>
 
 const TIMEOUT_MS = 2 * 60_000
 const MAX_BYTES = 1_000_000
-const MAX_LOG = 4_000
-
-interface ContextOptions {
-  /** Names in `env` whose values are masked in the log. */
-  secrets: string[]
-  signal?: AbortSignal
-  until?: Date
-}
 
 interface FetchInput {
   config: Config
@@ -36,65 +28,45 @@ interface FetchInput {
   until?: Date
 }
 
-/** Runs each item's source's context command, if it has one, into the item's `extra/` in the clone; logs a failure. */
+/**
+ * Runs each item's source's context command, if it has one, in the config's folder with a fresh output folder in
+ * `AWAYWORK_CONTEXT_DIR`; copies what it wrote into the item's `extra/` in the clone only if it succeeded within
+ * the limits, and logs why not otherwise.
+ */
 export async function fetchContexts(items: Item[], dir: string, f: FetchInput): Promise<void> {
   for (const item of items) {
     const fetch = (f.config.sources[item.source] as ContextSource | undefined)?.context
     if (!fetch) continue
-    const failed = await runContext(
-      fetch.command,
-      item,
-      f.configDir,
-      join(dir, WORK_DIR, 'context', slug(item.key), 'extra'),
-      setupEnv(f.env, dir, f.secrets, fetch.secrets),
-      f.log,
-      { secrets: fetch.secrets, signal: f.signal, until: f.until },
-    )
-    if (failed) f.log(failed)
-  }
-}
-
-/**
- * Runs a source's context command for `item` in `cwd`, outside the clone, with a fresh output folder in
- * `AWAYWORK_CONTEXT_DIR`; copies what it wrote there into `extraDir` only if it succeeded within the limits.
- * Returns why not, never throws.
- */
-export async function runContext(
-  command: string,
-  item: Item,
-  cwd: string,
-  extraDir: string,
-  env: NodeJS.ProcessEnv,
-  log: (line: string) => void,
-  opts: ContextOptions,
-): Promise<string | undefined> {
-  const tmp = await mkdtemp(join(tmpdir(), 'awaywork-context-'))
-  try {
-    const itemFile = join(tmp, 'item.json')
-    const out = join(tmp, 'out')
-    await mkdir(out)
-    await writeFile(itemFile, JSON.stringify(item, null, 2))
-    const { output, failed } = await runCommand(
-      command,
-      cwd,
-      {
-        ...env,
+    const extra = join(dir, WORK_DIR, 'context', slug(item.key), 'extra')
+    const tmp = await mkdtemp(join(tmpdir(), 'awaywork-context-'))
+    try {
+      const itemFile = join(tmp, 'item.json')
+      const out = join(tmp, 'out')
+      await mkdir(out)
+      await writeFile(itemFile, JSON.stringify(item, null, 2))
+      const env = {
+        ...setupEnv(f.env, dir, f.secrets, fetch.secrets),
         AWAYWORK_ITEM_KEY: item.key,
         AWAYWORK_ITEM_URL: item.url,
         AWAYWORK_ITEM_FILE: itemFile,
         AWAYWORK_CONTEXT_DIR: out,
-      },
-      { ...opts, timeoutMs: TIMEOUT_MS },
-    )
-    if (output) log(`context ${item.key}: ${output.slice(-MAX_LOG)}`)
-    const why = failed ?? (await unfit(out))
-    if (!why) await cp(out, extraDir, { recursive: true })
-    return why && `context for ${item.key} failed: ${why}`
-  } catch (e) {
-    await rm(extraDir, { recursive: true, force: true })
-    return `context for ${item.key} failed: ${(e as Error).message}`
-  } finally {
-    await rm(tmp, { recursive: true, force: true })
+      }
+      const { output, failed } = await runCommand(fetch.command, f.configDir, env, {
+        secrets: fetch.secrets,
+        signal: f.signal,
+        until: f.until,
+        timeoutMs: TIMEOUT_MS,
+      })
+      if (output) f.log(`context ${item.key}: ${output}`)
+      const why = failed ?? (await unfit(out))
+      if (why) f.log(`context for ${item.key} failed: ${why}`)
+      else await cp(out, extra, { recursive: true })
+    } catch (e) {
+      await rm(extra, { recursive: true, force: true })
+      f.log(`context for ${item.key} failed: ${(e as Error).message}`)
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
   }
 }
 

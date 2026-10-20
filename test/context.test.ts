@@ -3,26 +3,27 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import type { Item } from '../src/core/types.js'
-import { fetchContexts, runContext } from '../src/worker/context.js'
+import { fetchContexts } from '../src/worker/context.js'
 import { fakeItem } from './fakes/items.js'
 
-const item = { key: 'ACME-1', url: 'https://x/1', title: 'Crash' } as Item
+const item = fakeItem({ source: 'github', key: 'ACME-1', url: 'https://x/1', title: 'Crash' })
+const config = (context: string) =>
+  parseConfig(
+    `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${context} } }`,
+  )
 
 async function run(command: string, env: NodeJS.ProcessEnv = {}) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-context-'))
-  const extra = join(root, 'extra')
+  const extra = join(root, '.away/context/acme-1/extra')
   const logged: string[] = []
-  const failed = await runContext(
-    command,
-    item,
-    root,
-    extra,
-    { PATH: process.env.PATH, ...env },
-    (l) => logged.push(l),
-    { secrets: ['TOKEN'] },
-  )
-  return { extra, failed, logged }
+  await fetchContexts([item], root, {
+    config: config(JSON.stringify({ command, secrets: ['TOKEN'] })),
+    configDir: root,
+    env: { PATH: process.env.PATH, ...env },
+    secrets: [],
+    log: (l) => logged.push(l),
+  })
+  return { extra, failed: logged.find((l) => l.startsWith('context for ')), logged }
 }
 
 it("copies what it wrote to AWAYWORK_CONTEXT_DIR into extra/, with the item's key, url and JSON file in its env", async () => {
@@ -82,13 +83,7 @@ it("runs each item's command from the config's folder, not the clone, with its o
     await chmod(script, 0o755)
   }
   await fetchContexts([fakeItem({ source: 'github' }), fakeItem({ key: 'NONE-1' })], clone, {
-    config: parseConfig(`
-providers: [claude: {}]
-sources:
-  github:
-    repos: [acme/*]
-    context: { command: ./fetch.sh, secrets: [SENTRY_TOKEN] }
-`),
+    config: config('{ command: ./fetch.sh, secrets: [SENTRY_TOKEN] }'),
     configDir,
     env: { PATH: process.env.PATH, SENTRY_TOKEN: 'tok', OTHER: 'nope' },
     secrets: ['SENTRY_TOKEN', 'OTHER'],
