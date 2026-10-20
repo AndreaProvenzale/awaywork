@@ -168,6 +168,8 @@ async function run(
     attempts?: Attempts
     /** Files earlier runs left, by path in the runs dir. */
     earlier?: Record<string, string>
+    /** Branches something else already holds on the remote. */
+    taken?: string[]
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -176,6 +178,7 @@ async function run(
     await writeFile(join(root, file), text)
   }
   const env = await originForge(root)
+  for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
   const logged: string[] = []
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
@@ -540,6 +543,26 @@ queue:
     ['acme-api-1-fix', true],
   ])
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
+})
+
+it("logs a slice passing over a branch that isn't its chain's", async () => {
+  const { rows, logged } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+    { taken: ['away/acme-api-1-2'] },
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-3', 1)],
+  ])
+  expect(logged).toEqual([
+    'acme-api-1: implement on claude',
+    'acme-api-1: done',
+    'acme-api-1-fix: away/acme-api-1-2 is taken on acme/api, using away/acme-api-1-3',
+    'acme-api-1-fix: fix on claude',
+    'acme-api-1-fix: done',
+  ])
 })
 
 it('prepares a stacked slice on its own branch in a dry run', async () => {
