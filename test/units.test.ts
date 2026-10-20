@@ -2158,6 +2158,29 @@ it('publishes nothing when interrupted, and retries the chain without counting a
   expect(recordAttempts({}, report)).toEqual({})
 })
 
+it('lists and sums up the joined report a committing chain published when it committed nothing', async () => {
+  const provider = looper({})
+  const { report } = await loopRun('queue: [{ skill: plan, then: [implement] }]', [issue(1)], {
+    ...provider,
+    async *run(job, signal) {
+      if (job.unit.deliver === 'report') yield* provider.run(job, signal)
+      else {
+        await writeFile(
+          join(job.dir, '.away/out/pr.md'),
+          'No change\n\nThe plan was already done upstream.',
+        )
+        yield { type: 'done', ok: true, turns: 1 }
+      }
+    },
+  })
+
+  expect(report.results[0]).toMatchObject({
+    outcome: { kind: 'report', text: 'acme-api-1 says nothing.' },
+    summary: 'acme-api-1 says nothing.',
+  })
+  expect(report.results[0]?.files?.sliceBody).toBe('units/acme-api-1/out/report.md')
+})
+
 it('ends a chain at a step that failed, still reports what it has, and counts a failure', async () => {
   const provider = looper({ 'acme-api-1-review-1': 'changes' })
   const item = fakeItem({

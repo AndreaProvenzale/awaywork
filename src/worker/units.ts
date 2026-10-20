@@ -642,8 +642,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    for (const r of done)
-      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, deliver, leads.has(r)))
+    for (const r of done) {
+      // A committing slice that committed nothing published its reports.
+      const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
+    }
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
