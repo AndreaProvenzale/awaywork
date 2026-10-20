@@ -18,6 +18,7 @@ import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
+import { browse, interactive, itemCommands } from './browse.js'
 import { reportConfigError } from './config.js'
 import {
   clip,
@@ -28,11 +29,14 @@ import {
   planJson,
   warningLines,
 } from './format.js'
+import { planTriage } from './triage.js'
 
 export function planCommand(program: Command): void {
   program
     .command('plan')
-    .description("show the next run's units in order, with each provider's ceiling; runs no worker")
+    .description(
+      "show the next run's units in order, with each provider's ceiling; runs no worker; browsable in a terminal",
+    )
     .option('--json', 'print the plan and warnings as JSON')
     .option('--repo <glob>', 'only units in repos matching owner/name, * globs')
     .option('--rule <n>', 'only units of this queue rule, counted from 1', ruleNumber)
@@ -71,6 +75,14 @@ export function planCommand(program: Command): void {
           console.error(`no item "${opts.why}" in this plan; awaywork plan --skipped lists them`)
           process.exitCode = 1
           return
+        }
+        if (!opts.json && interactive()) {
+          const sources = Object.keys(config.sources)
+          const state = planTriage(plan, warnings, process.stdout.rows)
+          return await browse(
+            state,
+            itemCommands(async () => sources),
+          )
         }
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {

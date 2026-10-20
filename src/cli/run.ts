@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import {
@@ -13,7 +14,14 @@ import {
 } from '../config/paths.js'
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
-import { formatReport, localTime, type RunReport, runLine } from '../core/report.js'
+import {
+  type Chain,
+  chains,
+  formatReport,
+  localTime,
+  type RunReport,
+  runLine,
+} from '../core/report.js'
 import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
@@ -25,6 +33,7 @@ import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
 import { namedUnits, runUnits } from '../worker/units.js'
+import { browse, type ItemCommands, interactive, itemCommands } from './browse.js'
 import { reportConfigError } from './config.js'
 import {
   findChain,
@@ -38,7 +47,9 @@ import {
 } from './format.js'
 import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
 import { gitRoot } from './schedule.js'
+import { configuredSources } from './skip.js'
 import { unitsFile } from './stats.js'
+import { runTriage, type UnitFiles } from './triage.js'
 
 type RunOptions = {
   dryRun?: boolean
@@ -140,6 +151,7 @@ export function runCommand(program: Command): void {
           clearApprovals(await loadApprovals(approvalsPath), report),
         )
         console.log(summarize(report, reportPath))
+        if (interactive()) console.log(styleText('dim', 'awaywork report browses this run'))
         if (config.notify) {
           const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
           if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
@@ -153,7 +165,7 @@ export function runCommand(program: Command): void {
 
   program
     .command('report [id]')
-    .description("print a run's morning report; the latest by default")
+    .description("print a run's morning report, the latest by default; browsable in a terminal")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
     .addOption(
       new Option('--json', "print the run's results as JSON instead of the text").conflicts('list'),
@@ -170,11 +182,21 @@ export function runCommand(program: Command): void {
         .conflicts(['list', 'json', 'unit']),
     )
     .action((id: string | undefined, opts: ReportOptions) =>
-      printReport(id, !!opts.list, exec, !!opts.json, opts),
+      printReport(id, !!opts.list, exec, !!opts.json, {
+        ...opts,
+        browse: interactive() ? itemCommands(() => configuredSources(program)) : undefined,
+      }),
     )
 }
 
-type ReportOptions = { list?: boolean; json?: boolean; unit?: string; skipped?: string | true }
+type ReportOptions = {
+  list?: boolean
+  json?: boolean
+  unit?: string
+  skipped?: string | true
+  /** Browse the run instead of printing it. */
+  browse?: ItemCommands
+}
 
 const reportJsonFile = 'report.json'
 
@@ -190,7 +212,7 @@ export async function printReport(
   list: boolean,
   run: Exec = exec,
   json = false,
-  view: Pick<ReportOptions, 'unit' | 'skipped'> = {},
+  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'> = {},
 ) {
   const local = (await readdir(runsDir).catch(() => [])).sort()
   const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
@@ -230,7 +252,8 @@ export async function printReport(
     return
   }
   const results = !json && picked ? await read(picked, reportJsonFile) : undefined
-  if (results !== undefined && picked) return printRun(picked.dir, JSON.parse(results), view)
+  if (results !== undefined && picked)
+    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded)
   if (view.unit || view.skipped) {
     console.error(`run ${which} has no ${reportJsonFile}, which --unit and --skipped read`)
     process.exitCode = 1
@@ -253,16 +276,24 @@ export async function printReport(
   } else console.log(text)
 }
 
-/** A run from its report.json: the whole run, one unit with the files it left, or its skipped items. */
+/** A run from its report.json: the whole run, browsed or printed, one unit with the files it left, or its skipped items. */
 async function printRun(
   dir: string,
   report: RunReport & { warnings?: string[] },
-  view: Pick<ReportOptions, 'unit' | 'skipped'>,
+  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'>,
+  remote: boolean,
 ) {
   if (view.skipped)
     return console.log(
       formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
     )
+  if (!view.unit && view.browse) {
+    const units = await Promise.all(
+      chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 })),
+    )
+    const state = runTriage(report, report.warnings ?? [], units, process.stdout.rows, remote)
+    return browse(state, view.browse)
+  }
   if (!view.unit) return console.log(formatRun(report, report.warnings, true))
   const found = findChain(report, view.unit)
   if (!found) {
@@ -270,17 +301,24 @@ async function printRun(
     process.exitCode = 1
     return
   }
-  const files = found.chain.steps
-    .flatMap((s) => Object.values(s.files ?? {}))
-    .map((f) => join(dir, f))
-    .filter((f) => existsSync(f))
-  const { head } = found.chain
-  const bodyFile = [head.files?.sliceBody, head.files?.report]
-    .map((f) => f && join(dir, f))
-    .find((f) => f && existsSync(f))
+  console.log((await unitFiles(dir, found)).text)
+}
+
+/** A unit's `--unit` text, and the worker.log and diff it left that are still there. */
+async function unitFiles(dir: string, found: { chain: Chain; n: number }): Promise<UnitFiles> {
+  const there = (file: string | undefined) =>
+    file && existsSync(join(dir, file)) ? join(dir, file) : undefined
+  const { head, steps } = found.chain
+  const files = steps.flatMap((s) => Object.values(s.files ?? {}).flatMap((f) => there(f) ?? []))
+  const bodyFile = there(head.files?.sliceBody) ?? there(head.files?.report)
   const outcomeText = head.outcome && 'text' in head.outcome ? head.outcome.text : undefined
   const body = bodyFile ? await readFile(bodyFile, 'utf8') : outcomeText
-  console.log(formatUnit(found, [...new Set(files)], body, true))
+  return {
+    text: formatUnit(found, [...new Set(files)], body, true),
+    // The last step that ran is the one that ended the chain.
+    log: steps.map((s) => there(s.files?.log)).findLast(Boolean),
+    diff: [head.files?.sliceDiff, ...steps.map((s) => s.files?.diff)].map(there).find(Boolean),
+  }
 }
 
 /** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */
