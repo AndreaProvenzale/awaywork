@@ -12,7 +12,7 @@ import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
-import { githubForge, githubHost } from '../forge/github.js'
+import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
@@ -145,7 +145,7 @@ export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
       (e: Error) => ctx.log(`source ${id}: ${e.message}`),
     )
   }
-  await linkTasks(items, githubForge(undefined, githubHost(config)), ctx)
+  await linkTasks(items, forgeFor(config), ctx)
   return items
 }
 

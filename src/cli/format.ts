@@ -3,14 +3,38 @@ import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import type { PlannedUnit, RunPlan } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import type { RunReport } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 
+const withoutRaw = (key: string, value: unknown) => (key === 'raw' ? undefined : value)
+
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
+  return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
+}
+
+const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+const withItemRefs = (p: PlannedUnit) => ({
+  ...p,
+  unit: { ...p.unit, items: p.unit.items.map(itemRef) },
+})
+
+/** The run's results and warnings as JSON; items keep only what `formatReport` shows of them. */
+export function reportJson(report: RunReport, warnings: string[] = []): string {
+  const { plan, results } = report
   return JSON.stringify(
-    { ...plan, warnings },
-    (key, value) => (key === 'raw' ? undefined : value),
+    {
+      ...report,
+      plan: {
+        ...plan,
+        units: plan.units.map(withItemRefs),
+        skipped: plan.skipped.map((s) => ({ ...s, item: itemRef(s.item) })),
+      },
+      results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
+      warnings,
+    },
+    null,
     2,
   )
 }

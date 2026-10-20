@@ -84,6 +84,29 @@ describe('report command', () => {
     process.exitCode = undefined
   })
 
+  it("prints the latest run's report.json with --json, and says so when a run has none", async () => {
+    await writeFile(join(runsDir, '20261015-220000', 'report.json'), '{"runId":"20261015-220000"}')
+    const run = await controlRepo([], '')
+    const { out, err } = output()
+    await printReport(undefined, false, run, true)
+    expect(out).toEqual(['{"runId":"20261015-220000"}'])
+
+    await printReport('20261013-220000', false, run, true)
+    expect(err).toEqual([`no JSON report for run 20261013-220000 in ${runsDir}`])
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('prints only the error with --json for a run with steps but no report.json', async () => {
+    const step = join(runsDir, '20261015-220000', 'units', 'u0', 'fix')
+    await mkdir(step, { recursive: true })
+    await writeFile(join(step, 'worker.log'), '')
+    const { out, err } = output()
+    await printReport('20261015-220000', false, await controlRepo([], ''), true)
+    expect(err).toEqual([`no JSON report for run 20261015-220000 in ${runsDir}`])
+    expect(out).toEqual([])
+    expect(process.exitCode).toBe(1)
+  })
+
   it("lists local runs and the control repo's uploaded ones in one list, newest first", async () => {
     const run = await controlRepo(
       ['awaywork.yml'],

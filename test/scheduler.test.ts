@@ -311,7 +311,7 @@ it("uploads only this run's report and units as an artifact named after the work
     uses: 'actions/upload-artifact@v4',
     with: {
       name: '${{ github.workflow }}-${{ steps.run.outputs.run-id }}',
-      path: '${{ steps.run.outputs.run-dir }}/report.md\n${{ steps.run.outputs.run-dir }}/units.json\n',
+      path: '${{ steps.run.outputs.run-dir }}/report.md\n${{ steps.run.outputs.run-dir }}/report.json\n${{ steps.run.outputs.run-dir }}/units.json\n',
       'if-no-files-found': 'ignore',
     },
   })
