@@ -83,7 +83,7 @@ export async function workerFor(
     throw new Error(
       hosted
         ? `can't run as the ${WORKER} user on this GitHub-hosted runner: run awaywork through its action, which creates it`
-        : `can't run as the ${WORKER} user (${ran.stderr || ran.shortMessage})`,
+        : `can't run as the ${WORKER} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
     )
   if (!(await as('sudo', '-n', 'true')).failed)
     throw new Error(

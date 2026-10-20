@@ -136,7 +136,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
-  // The worker user can't reach the run dir: its plugins go where it can, and each clone is a folder of its own there.
+  // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
   const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({

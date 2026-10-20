@@ -115,7 +115,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       await expect(head(clone)).rejects.toThrow("not a git repository: '.git'")
     } finally {
       for (const name of Object.keys(trustAll)) delete process.env[name]
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/.git'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/.git'])
     }
   })
 
@@ -147,7 +147,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       expect(refused).toContain('no git in the clone')
     } finally {
       delete process.env.GH_TOKEN
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-linked'])
     }
   })
 
@@ -176,7 +176,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       )
     } finally {
       delete process.env.GH_TOKEN
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-hooked'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-hooked'])
     }
   })
 })
