@@ -313,7 +313,7 @@ The retry starts from the clone as the failed step found it: that attempt's comm
 Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
 
 ```markdown
-| 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
+| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
 |  | └ acme-api-1 | fix | claude | failed, 3 turns (retried on the next model) | 1 commit |
 |  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
 |  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |

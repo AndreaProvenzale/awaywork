@@ -21,29 +21,31 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 
 ```
 $ awaywork plan
-Queue
-  #1  fix     source=github type=pr mine=true checks=failing
-  #2  fix     source=github type=pr mine=true unresolved_threads!=0
-  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
-  #4  review  source=github type=pr review_requested=true trusted=true
-
 Providers
-  provider  window     used  ceiling  set by  resets in  session / stop at
-  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
-    other limits: reserve cap 90%
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
+    other limits: pacing 90%
 
 Units
-     unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
-     github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
-     github acme/api#2: Cache invalidation
+     item   rule  skill              provider  deliver   title
+  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+     + api#5: same feature, matched #3
+  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
+
+Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+
+Skipped 2: 1 no_rule, 1 over_cap
+
+awaywork plan --skipped [kind]  lists them
+awaywork plan --why <key>       says why an item is planned or not
 ```
 
 Looks sane? Run one unit for real:
 
 ```sh
-awaywork run --unit acme-api-1
+awaywork run --unit api#1
 ```
 
 Then schedule it for when you're away:
@@ -58,12 +60,28 @@ Next morning:
 
 ```
 $ awaywork report
-| # | Unit       | Skill  | Provider | Status        | Result                                  |
-|---|------------|--------|----------|---------------|-----------------------------------------|
-| 1 | acme-api-1 | fix    | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
-| 2 | acme-api-2 | review | claude   | done          | report below                            |
+Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
 
-- claude: seven_day 36% to 45%, ceiling 54%; session 2% to 10%, stop at 90%
+Units
+     item   skill   status          result
+  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
+     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
+  2  web#3  fix     done, 9 turns   no commits
+     No code changes: the red check is the visual diff job, which fails on main too since #212.
+  3  api#2  review  done, 6 turns   report, verdict approve
+     Approve: the session cache keys on the user id and expires with the token.
+
+Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+
+Skipped 2: 1 no_rule, 1 over_cap
+
+Quota
+  claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+
+awaywork report 20261019-220012 --unit <n|key>    shows one
+awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
 **Docs:** https://andreaprovenzale.github.io/awaywork/ · **Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).

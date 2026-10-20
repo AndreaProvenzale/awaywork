@@ -8,6 +8,7 @@ import { describeCondition, holds } from '../core/condition.js'
 import {
   bySlice,
   describeChain,
+  isNamed,
   modelFor,
   type PlannedUnit,
   type RunPlan,
@@ -150,7 +151,7 @@ export function namedUnits(plan: RunPlan, name: string): Set<string> {
   const only = slug(name)
   return new Set(
     plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
+      .filter((p) => p.unit.id === only || p.unit.items.some((i) => isNamed(i, name)))
       .map((p) => p.unit.id),
   )
 }

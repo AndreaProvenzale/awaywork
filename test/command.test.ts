@@ -55,6 +55,18 @@ describe('command source', () => {
     expect(collected?.link).toBe('Refs AI 7 (https://t.example/7, #7)')
   })
 
+  it('warns about a crashing command in two capped lines: its first and its last error', async () => {
+    const noise = `console.error('at frame\\n'.repeat(2000) + 'Error: ' + 'x'.repeat(500) + '\\n\\nNode.js v24.0.0\\n')`
+    const tracker = { command: `node -e "${noise}; process.exit(1)"` }
+    const config = parseConfig(JSON.stringify({ providers: ['claude'], sources: { tracker } }))
+    const warnings: string[] = []
+    await collectItems(config, { env: process.env, log: (line) => warnings.push(line) })
+    const [first, last, ...rest] = (warnings[0] ?? '').split('\n')
+    expect(first).toMatch(/^source tracker: Command failed with exit code 1: 'node -e/)
+    expect(last).toBe(`Error: ${'x'.repeat(292)}…`)
+    expect(rest).toEqual([])
+  })
+
   it("runs in the config file's folder once the config loads", async () => {
     const folder = await mkdtemp(join(tmpdir(), 'awaywork-'))
     await copyFile(join(dir, 'items.mjs'), join(folder, 'items.mjs'))

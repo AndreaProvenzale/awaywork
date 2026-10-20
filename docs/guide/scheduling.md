@@ -43,12 +43,11 @@ awaywork schedule remove
   ```
   awaywork run at 2026-10-12 22:34:18
   warning: source chores: Command failed with exit code 1: ./chores.sh
-
-  CHORES_TOKEN is not set
+    Error: CHORES_TOKEN is not set
   Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/20261012-203418
   ```
 
-  A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
+  A failed command gets two lines, its error and the last error line of its stderr, however much it printed. A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
 
 - The job bakes in the window starts, one trigger each. When you change them, `config edit` and `doctor` warn until `schedule install` runs again.
 

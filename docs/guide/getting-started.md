@@ -53,27 +53,44 @@ awaywork plan
 `plan` reads your sources and each provider's quota and prints what a run would do, without running an agent:
 
 ```
-Queue (default: no queue in config)
-  #1  fix     source=github type=pr mine=true checks=failing
-  #2  fix     source=github type=pr mine=true unresolved_threads!=0
-  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
-  #4  review  source=github type=pr review_requested=true trusted=true
-
 Providers
-  provider  window     used  ceiling  set by  resets in  session / stop at
-  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
-    other limits: reserve cap 90%
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
+    other limits: pacing 90%
 
 Units
-     unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
-     github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
-     github acme/api#2: Cache invalidation
+     item   rule  skill              provider  deliver   title
+  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+     + api#5: same feature, matched #3
+  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
-Skipped
-  github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
+Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+
+Skipped 2: 1 no_rule, 1 over_cap
+
+awaywork plan --skipped [kind]  lists them
+awaywork plan --why <key>       says why an item is planned or not
 ```
+
+Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, here a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
+
+```
+$ awaywork plan --why T-7
+tracker T-7  Onboarding emails
+  https://tracker.acme.dev/T-7
+  skipped: no_rule
+    matched no rule; closest #3 implement: type is task, wants issue
+
+Queue
+  #1  fix        type=pr mine=true
+  #2  review     type=pr review_requested=true
+  #3  implement  type=issue
+  #4  fix        column=QA
+```
+
+For a planned item it shows the unit, rule, skill, provider and branch instead. With no `queue` in your config, `plan` opens with a line saying it runs the default one.
 
 `awaywork plan --rules` shows the same rules with what each takes now, and skips the quota probe:
 
@@ -96,14 +113,15 @@ An item goes to the first rule it matches, so a later rule that matches it too g
 
 ```sh
 awaywork run --dry-run         # clone, context and prompt, no agent
-awaywork run --unit acme-api-1 # one real unit
+awaywork run --unit api#1      # one real unit
 awaywork run --repo 'acme/*'   # only units in matching repos
 awaywork run --rule 4          # only units of queue rule #4
 awaywork report                # the morning report of the last run
 awaywork report --list         # recent runs, to pick an id for report <id>
+awaywork report --unit 2       # one unit in full: its files, PR body or report
 ```
 
-`--unit` takes the unit id from `plan` or an item key such as `acme/api#1`, in any case. A step of a rule's `then` runs its whole chain, from the first step.
+`--unit` takes an item as `plan` shows it (`api#1`), its key (`acme/api#1`, or `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. A step of a rule's `then` runs its whole chain, from the first step.
 
 `--repo <glob>` and `--rule <n>` (rules count from 1, as `plan` shows them) work on `plan` and `run`, and together they both have to hold. The caps and ceilings stay the full run's, but only matching units count against them: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
 

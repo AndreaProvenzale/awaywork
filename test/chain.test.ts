@@ -13,14 +13,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
-import { formatPlan } from '../src/cli/format.js'
+import { formatPlan, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { formatReport, type RunReport, runLine, summarize } from '../src/core/report.js'
+import { formatReport, type RunReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Item, Provider, Source } from '../src/core/types.js'
@@ -507,7 +507,7 @@ queue:
   const text = formatReport(report)
   expect(text).toContain(
     [
-      `| 1 | acme-api-1 | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
+      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
       `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commits) |`,
       '|  |   └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
       '|  |   └ acme-api-1-review | review | claude | done, 1 turns | a report |',
@@ -785,7 +785,7 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
   // A capped chain left slices out, so none of its PRs closes the issue.
   expect(opened.map((o) => o.body.includes('Closes'))).toEqual([false, true, false])
   expect(formatReport(report)).toContain(
-    '| 2 | acme-api-2 | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
+    '| 2 | [api#2 Fix the thing](https://example.com/1) | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
   )
 })
 

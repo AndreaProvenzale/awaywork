@@ -54,9 +54,8 @@ queue:
 
   ```
   Units
-       unit         repo      rule  skill                 provider  deliver   branch
-    1  acme-api-12  acme/api  #1    implement (built-in)  claude    draft_pr  away/acme-api-12
-       github acme/api#12: Rate-limit the export endpoint
+       item    rule  skill                 provider  deliver   title
+    1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
        then loop review ⇄ fix until verdict approve, at most 3 rounds
          review (built-in) on codex
          fix (built-in) on claude
@@ -170,27 +169,36 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
 
   ```
   Units
-       unit         repo      rule  skill                 provider  deliver   branch
-    1  acme-api-12  acme/api  #1    implement (built-in)  claude    draft_pr  away/acme-api-12
-       github acme/api#12: Rate-limit the export endpoint
+       item    rule  skill                 provider  deliver   title
+    1  api#12  #1    implement (built-in)  claude    draft_pr  Rate-limit the export endpoint
        then loop review ⇄ fix until verdict approve, at most 3 rounds
          review (built-in) on codex
          fix (built-in) on claude
        stack docs (user) on claude
   ```
 
-  The morning report has the chain's row, then each slice with its steps:
+  `awaywork report` has the chain's row, with each slice's PR in turn:
 
   ```
-  #  Unit                      Skill                                        Provider       Status                                                                        Result
-  1  acme-api-12               implement → loop(review ⇄ fix) → stack docs  claude, codex  done, 70 turns                                                                https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commits)
-     └ slice 1                 implement → loop(review ⇄ fix)               claude, codex  done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (2 commits), verdict approve
-       └ acme-api-12           implement                                    claude         done, 14 turns                                                                1 commit
-       └ acme-api-12-review-1  review                                       codex          done, 14 turns                                                                a report, verdict changes
-       └ acme-api-12-fix-1     fix                                          claude         done, 14 turns                                                                1 commit
-       └ acme-api-12-review-2  review                                       codex          done, 14 turns                                                                a report, verdict approve
-     └ slice 2                 docs                                         claude         done, 14 turns                                                                https://github.com/acme/api/pull/43 (1 commits)
-       └ acme-api-12-docs      docs                                         claude         done, 14 turns                                                                1 commit
+  Units
+       item    skill                                        status          result
+    1  api#12  implement → loop(review ⇄ fix) → stack docs  done, 70 turns  https://github.com/acme/api/pull/42, verdict approve; https://github.com/acme/api/pull/43
+       Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.
+  ```
+
+  `report.md` lists each slice with its steps under it:
+
+  ```markdown
+  | # | Unit | Skill | Provider | Status | Result |
+  |---|---|---|---|---|---|
+  | 1 | [api#12 Rate-limit the export endpoint](https://github.com/acme/api/issues/12) | implement → loop(review ⇄ fix) → stack docs | claude, codex | done, 70 turns | https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commits) |
+  |  | └ slice 1 | implement → loop(review ⇄ fix) | claude, codex | done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | https://github.com/acme/api/pull/42 (2 commits), verdict approve |
+  |  |   └ acme-api-12 | implement | claude | done, 14 turns | 1 commit |
+  |  |   └ acme-api-12-review-1 | review | codex | done, 14 turns | a report, verdict changes |
+  |  |   └ acme-api-12-fix-1 | fix | claude | done, 14 turns | 1 commit |
+  |  |   └ acme-api-12-review-2 | review | codex | done, 14 turns | a report, verdict approve |
+  |  | └ slice 2 | docs | claude | done, 14 turns | https://github.com/acme/api/pull/43 (1 commits) |
+  |  |   └ acme-api-12-docs | docs | claude | done, 14 turns | 1 commit |
   ```
 
 - [`notify`](./configuration.md#notify)'s unit event gives every step its own slice's PR in `AWAYWORK_PR_URL`, and `stats` counts each slice's draft PR.

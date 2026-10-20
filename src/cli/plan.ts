@@ -7,7 +7,7 @@ import { loadApprovals, withApprovals } from '../core/approvals.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
-import { planRun, type RunPlan } from '../core/foreman.js'
+import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { defaultRules } from '../core/queue.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -19,7 +19,15 @@ import { sourceFor } from '../sources/index.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatRules, planJson, warningLines } from './format.js'
+import {
+  clip,
+  formatPlan,
+  formatRules,
+  formatSkipped,
+  formatWhy,
+  planJson,
+  warningLines,
+} from './format.js'
 
 export function planCommand(program: Command): void {
   program
@@ -34,7 +42,18 @@ export function planCommand(program: Command): void {
         'show what each rule takes now and what earlier rules take from it, instead of the units; probes no provider',
       ).conflicts('json'),
     )
-    .action(async (opts: { json?: boolean; rules?: boolean; repo?: string; rule?: number }) => {
+    .addOption(
+      new Option('--skipped [kind]', 'list the skipped items and why, or those of one kind')
+        .choices(skipKinds)
+        .conflicts(['json', 'rules']),
+    )
+    .addOption(
+      new Option(
+        '--why <key>',
+        'say why an item is planned or skipped, by key, source:key or the ref plan shows',
+      ).conflicts(['json', 'rules', 'skipped']),
+    )
+    .action(async (opts: PlanOptions) => {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
@@ -42,12 +61,35 @@ export function planCommand(program: Command): void {
         const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path), opts)
         if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined))
           console.error('no unit matches --repo/--rule')
+        if (opts.skipped)
+          return console.log(
+            formatSkipped(plan.skipped, opts.skipped === true ? undefined : opts.skipped),
+          )
+        if (opts.why) {
+          const why = formatWhy(plan, opts.why)
+          if (why) return console.log(why)
+          console.error(`no item "${opts.why}" in this plan; awaywork plan --skipped lists them`)
+          process.exitCode = 1
+          return
+        }
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))
       } catch (e) {
         reportConfigError(e)
       }
     })
 }
+
+type PlanOptions = {
+  json?: boolean
+  rules?: boolean
+  repo?: string
+  rule?: number
+  skipped?: string | true
+  why?: string
+}
+
+/** What `--skipped` filters on; `unknown` is a skip from a report.json older than kinds. */
+export const skipKinds = [...Object.keys(needsYou), 'unknown']
 
 export function ruleNumber(text: string): number {
   const n = Number(text)
@@ -143,11 +185,24 @@ export async function collectItems(config: Config, ctx: Ctx): Promise<Item[]> {
     const link = (cfg as { link?: string }).link ?? source.link
     await source.items(cfg, ctx).then(
       (found) => items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i))),
-      (e: Error) => ctx.log(`source ${id}: ${e.message}`),
+      (e: Error) => ctx.log(`source ${id}: ${sourceFailure(e)}`),
     )
   }
   await linkTasks(items, forgeFor(config), ctx)
   return items
+}
+
+const FAILURE_LINE = 300
+
+/** An error's first line and its stderr's last error line, else its last: a crashing script's whole stderr would bury the warning. */
+export function sourceFailure(e: Error & { stderr?: unknown }): string {
+  const [first = ''] = e.message.split('\n')
+  const lines = (typeof e.stderr === 'string' ? e.stderr : '').split('\n').map((l) => l.trim())
+  // Node ends a crash with its version, after the `Error: ...` line.
+  const last =
+    lines.findLast((line) => /^(\w*(error|exception)\b|fatal:)/i.test(line)) ??
+    lines.findLast(Boolean)
+  return (last ? [first, last] : [first]).map((line) => clip(line, FAILURE_LINE)).join('\n')
 }
 
 /** Tracker tasks link no PR natively, so the forge finds my PRs that name the task. */
