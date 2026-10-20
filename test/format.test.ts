@@ -121,17 +121,9 @@ queue: [{ skill: fix, where: { checks: failing } }]
       results: [{ planned: plan.units[0] as PlannedUnit, status: 'prepared' }],
       quotas: {},
     }
-    const json = reportJson(report)
+    const json = reportJson(report, ['a warning'])
     const parsed = JSON.parse(json)
-    expect(Object.keys(parsed)).toEqual([
-      'runId',
-      'dryRun',
-      'startedAt',
-      'finishedAt',
-      'plan',
-      'results',
-      'quotas',
-    ])
+    expect(parsed.warnings).toEqual(['a warning'])
     expect(parsed.startedAt).toBe('2026-10-15T22:00:00.000Z')
     const ref = (n: number) => ({
       source: 'github',

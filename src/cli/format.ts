@@ -19,8 +19,8 @@ const withItemRefs = (p: PlannedUnit) => ({
   unit: { ...p.unit, items: p.unit.items.map(itemRef) },
 })
 
-/** The run's results as JSON; items keep only what `formatReport` shows of them. */
-export function reportJson(report: RunReport): string {
+/** The run's results and warnings as JSON; items keep only what `formatReport` shows of them. */
+export function reportJson(report: RunReport, warnings: string[] = []): string {
   const { plan, results } = report
   return JSON.stringify(
     {
@@ -31,6 +31,7 @@ export function reportJson(report: RunReport): string {
         skipped: plan.skipped.map((s) => ({ ...s, item: itemRef(s.item) })),
       },
       results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
+      warnings,
     },
     null,
     2,

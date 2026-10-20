@@ -54,6 +54,6 @@ Machine-readable output:
 
 - `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload.
 - `awaywork doctor --json` prints the checks as an array of `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`. It exits 1 when any check is `FAIL`, as without `--json`.
-- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`.
+- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`, `warnings`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`.
 
 `awaywork <command> --help` and the [CLI reference](../reference/cli.md) list every option.

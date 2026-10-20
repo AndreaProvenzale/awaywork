@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import type { Command } from 'commander'
+import { type Command, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { attemptsPath, remoteDir, runLockPath, runsDir, skillsDirOf } from '../config/paths.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
@@ -112,7 +112,7 @@ export function runCommand(program: Command): void {
         })
         const reportPath = join(runDir, 'report.md')
         await writeFile(reportPath, formatReport(report, warnings))
-        await writeFile(join(runDir, reportJsonFile), reportJson(report))
+        await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
         await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
         await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
         console.log(summarize(report, reportPath))
@@ -131,7 +131,11 @@ export function runCommand(program: Command): void {
     .command('report [id]')
     .description("print a run's morning report; the latest by default")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
-    .option('--json', "print the run's results as JSON instead of the markdown")
+    .addOption(
+      new Option('--json', "print the run's results as JSON instead of the markdown").conflicts(
+        'list',
+      ),
+    )
     .action((id: string | undefined, opts: { list?: boolean; json?: boolean }) =>
       printReport(id, !!opts.list, exec, !!opts.json),
     )
@@ -161,9 +165,7 @@ export async function printReport(
       .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
   const read = (r: Run) =>
-    readFile(join(r.dir, json && !list ? reportJsonFile : 'report.md'), 'utf8').catch(
-      () => undefined,
-    )
+    readFile(join(r.dir, json ? reportJsonFile : 'report.md'), 'utf8').catch(() => undefined)
 
   if (list) {
     if (runs.length === 0) console.log(`no runs in ${runsDir}`)
