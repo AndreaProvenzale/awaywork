@@ -135,7 +135,7 @@ describe('publish', () => {
     expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'away/FAKE-1']])
   })
 
-  it('closes a GitHub issue only when asked to', async () => {
+  it('closes the GitHub issues, not the PRs', async () => {
     await commit('first')
     await body('Fix the thing')
     const forge = fakeForge()
@@ -147,11 +147,8 @@ describe('publish', () => {
     const issue = fakeItem({ source: 'github', type: 'issue', key: 'acme/api#7' })
     const task = fakeItem({ source: 'github', type: 'pr', key: 'acme/api#8' })
     const slice = { ...unit(), items: [issue, task] }
-    await publish(slice, dir, forge, 'r1', start, undefined, false)
-    expect(bodies[0]).toBe('Fix the thing')
-    await body('Fix the thing')
-    await publish({ ...slice, branch: 'away/other' }, dir, forge, 'r2', start, undefined, true)
-    expect(bodies[1]).toBe('Fix the thing\n\nCloses acme/api#7\n')
+    await publish(slice, dir, forge, 'r1', start, undefined, true)
+    expect(bodies).toEqual(['Fix the thing\n\nCloses acme/api#7\n'])
   })
 
   it('still opens the PR when the forge has no stacks for it', async () => {
