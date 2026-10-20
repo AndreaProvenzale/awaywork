@@ -175,7 +175,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
       '     item   skill   status         result',
       '  1  api#1  fix     done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1',
       '     Ran the failing test.',
-      `  2  api#3  fix     skipped        ${tried}`,
+      '  2  api#3  fix     skipped        awaywork tried this in https://github.com/acme/api/pull/7;…',
       '     PR 3',
       '  3  api#2  review  done, 5 turns  report, verdict approve',
       '     Approve.',
