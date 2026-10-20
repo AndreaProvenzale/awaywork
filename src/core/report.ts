@@ -29,6 +29,10 @@ export interface UnitResult {
   reported?: true
   /** How the chain's loops went, on its first step, e.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
   loop?: string
+  /** What the step concluded, in a line: its slice's PR body when it published the slice, else its report. */
+  summary?: string
+  /** What the step left, relative to the run dir: its log, report and diff, then the PR body and diff of the slice it published. */
+  files?: string[]
 }
 
 export interface RunReport {
@@ -40,6 +44,30 @@ export interface RunReport {
   results: UnitResult[]
   /** The last quota a worker saw, per provider. */
   quotas: Record<string, Quota>
+}
+
+const SUMMARY_LENGTH = 200
+
+/** A PR body's or report's first paragraph on one line, past the body's title line and any heading. */
+export function summaryOf(text: string, titled = false): string | undefined {
+  const body = text
+    .trim()
+    .split('\n')
+    .slice(titled ? 1 : 0)
+    .join('\n')
+  const paragraph = body
+    .split(/\n\s*\n/)
+    .map((p) =>
+      p
+        .split('\n')
+        .filter((line) => !/^#{1,6}(\s|$)/.test(line.trim()))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .find(Boolean)
+  if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
+  return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }
 
 /** `2026-10-09 20:11:02` in local time; sv-SE is the locale that formats so. */

@@ -419,7 +419,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
         await git(job.dir, 'add', 'fix.txt')
         await git(job.dir, 'commit', '-qm', 'Add rate limits')
         await writeFile(join(out, 'pr.md'), 'Add rate limits\n\nRan the tests.')
-      }
+      } else await writeFile(join(out, 'pr.md'), 'No change\n\n## Triage\nThe red check is flaky.')
       yield { type: 'done', ok: true, turns: 2 }
     },
   }
@@ -460,6 +460,21 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     ['acme-api-6-review', 'skipped', 'acme-api-6 committed nothing'],
   ])
   expect(report.results.map((u) => u.passedOver)).toEqual([undefined, undefined, undefined, true])
+  const [five, six] = ['units/acme-api-5', 'units/acme-api-6']
+  expect(report.results.map((u) => [u.summary, u.files])).toEqual([
+    [
+      'Ran the tests.',
+      [
+        `${five}/1-implement/worker.log`,
+        `${five}/1-implement/out/diff.patch`,
+        `${five}/out/pr.md`,
+        `${five}/out/diff.patch`,
+      ],
+    ],
+    ['Approve.', [`${five}/2-review/worker.log`, `${five}/2-review/out/report.md`]],
+    ['The red check is flaky.', [`${six}/1-implement/worker.log`, `${six}/out/pr.md`]],
+    [undefined, undefined],
+  ])
   const review = seen[1]
   expect(review?.files).toContain('fix.txt')
   expect(review?.diff).toMatch(/^\+\+\+ b\/fix\.txt$/m)
@@ -951,6 +966,7 @@ repos:
     {
       kind: 'pushed',
       branch: 'feature-1',
+      url: 'https://github.com/acme/api/pull/1',
       commits: 2,
       text: 'Work on acme-api-1-implement\n\nDone.',
       head: (await git(origin, 'rev-parse', 'feature-1')).stdout,

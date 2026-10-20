@@ -783,8 +783,13 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
 it('refuses a stack on a step that reports, or after steps that all report', async () => {
   const reasons = async (rule: string) =>
     (await run(`queue: [${rule}]\n`, [issue(1)], worker())).plan.skipped.map((s) => s.reason)
-  expect(await reasons('{ skill: implement, then: [{ skill: review, stack: true }] }')).toEqual([
-    'stack on review: it reports, so its draft PR would have nothing in it',
+  const refused = await run(
+    'queue: [{ skill: implement, then: [{ skill: review, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+  )
+  expect(refused.plan.skipped.map((s) => [s.kind, s.reason])).toEqual([
+    ['unstackable', 'stack on review: it reports, so its draft PR would have nothing in it'],
   ])
   expect(
     await reasons(

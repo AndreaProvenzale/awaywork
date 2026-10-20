@@ -52,8 +52,17 @@ What each command does:
 
 Machine-readable output:
 
-- `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload.
+- `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload. Each skipped entry is `{ item, kind, reason }`. Its `kind` is `waiting_for_review`, `gave_up`, `no_repo`, `invalid_branch`, `refused_delivery` or `unstackable` when the user can act to make it run (review the awaywork PR, read the failed logs, give the item a repo, fix the rule), and `no_rule`, `over_cap`, `unchanged` or `skipped_by_you` when it's the config doing its job.
 - `awaywork doctor --json` prints the checks as an array of `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`. It exits 1 when any check is `FAIL`, as without `--json`.
-- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`, `warnings`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`.
+- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`, `warnings`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`. Skipped entries have a `kind`, as in `plan --json`. Each step that started has `files`, relative to the run dir: its `worker.log`, `out/report.md` and `out/diff.patch`, plus the slice's `out/pr.md` and `out/diff.patch` on the step that published it. `summary` is the first paragraph of that PR body, else of the step's report. The PR it opened or pushed onto is `outcome.url`. A `fix` that found nothing to commit, trimmed:
+
+  ```json
+  {
+    "status": "done",
+    "outcome": { "kind": "none", "reason": "no commits" },
+    "summary": "No code changes: both red checks are unrelated to this diff.",
+    "files": ["units/acme-api-5/1-fix/worker.log", "units/acme-api-5/out/pr.md"]
+  }
+  ```
 
 `awaywork <command> --help` and the [CLI reference](../reference/cli.md) list every option.
