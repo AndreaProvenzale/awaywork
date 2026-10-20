@@ -147,6 +147,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     'GH_TOKEN',
     'GH_ENTERPRISE_TOKEN',
     'GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM',
   ]
   expect(envs.map((env) => Object.keys(env))).toEqual([seen, seen])
   const unitDir = join(runDir, 'units', 'acme-api-1', '1-fix')
@@ -625,16 +626,22 @@ queue:
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
-  const gh = ['GH_CONFIG_DIR', 'GH_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GIT_CONFIG_GLOBAL']
-  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...gh] }
+  const fixed = [
+    'GH_CONFIG_DIR',
+    'GH_TOKEN',
+    'GH_ENTERPRISE_TOKEN',
+    'GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM',
+  ]
+  const sentry = { mcp: ['sentry'], env: ['PATH', 'SENTRY_TOKEN', ...fixed] }
   expect(jobs).toEqual([
-    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
+    { unit: 'acme-api-1', mcp: ['db'], env: ['PATH', 'DB_URL', ...fixed] },
     { unit: 'acme-api-1-plan', ...sentry },
-    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...gh] },
-    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-1-implement', mcp: ['db'], env: ['PATH', 'DB_URL', ...fixed] },
+    { unit: 'acme-api-1-review', mcp: [], env: ['PATH', ...fixed] },
     { unit: 'acme-api-2', ...sentry },
-    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...gh] },
-    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...gh] },
+    { unit: 'acme-api-3', mcp: [], env: ['PATH', ...fixed] },
+    { unit: 'acme-api-4', mcp: [], env: ['PATH', ...fixed] },
   ])
   const log = (unit: string) =>
     readFile(join(root, `run/units/${unit}/1-review/worker.log`), 'utf8')

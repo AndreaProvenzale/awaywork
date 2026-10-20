@@ -198,7 +198,7 @@ async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void
     const { stdout } = await read('--get', key)
     if (stdout) entries.push([key, stdout.slice(0, -1)])
   }
-  const lfs = await read('--global', '--includes', '--get-regexp', '^filter\\.lfs\\.')
+  const lfs = await read('--get-regexp', '^filter\\.lfs\\.')
   for (const entry of lfs.stdout.split('\0').filter(Boolean)) entries.push(entry.split(/\n(.*)/s))
   const file = gitConfigFile(dir)
   await writeFile(file, '', { flag: 'wx' })
@@ -273,7 +273,7 @@ export function commandEnv(
   }
 }
 
-/** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config. */
+/** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config and no system one. */
 export function workerEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
@@ -282,7 +282,11 @@ export function workerEnv(
   const kept = Object.entries(commandEnv(env, dir, withheld)).filter(
     ([name]) => !credentialPlumbing.includes(name) && !gitConfigEntry.test(name),
   )
-  return { ...Object.fromEntries(kept), GIT_CONFIG_GLOBAL: gitConfigFile(dir) }
+  return {
+    ...Object.fromEntries(kept),
+    GIT_CONFIG_GLOBAL: gitConfigFile(dir),
+    GIT_CONFIG_NOSYSTEM: '1',
+  }
 }
 
 /** Every secret the config names, for `workerEnv` to withhold. */

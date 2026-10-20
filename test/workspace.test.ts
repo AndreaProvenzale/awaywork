@@ -246,39 +246,49 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
         `[include]\n\tpath = ${join(root, 'included')}\n`,
       ].join('\n'),
     )
-    const env = { PATH: process.env.PATH, HOME: root, GIT_CONFIG_NOSYSTEM: '1' }
-    await prepareWorkspace({
-      unit: {
-        id: 'acme-api-1',
-        items: [fakeItem()],
-        repo: 'acme/api',
-        base: '',
-        foreign: false,
-        untrusted: false,
-        branch: 'away/acme-api-1',
-        rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
-        skill: 'fix',
-        skills: [],
-        providers: ['claude'],
-        instructions: [],
-        deliver: 'draft_pr',
-      },
-      dir,
-      plugin: join(root, 'plugin'),
-      config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
-      configDir: root,
-      forge: {
-        ...fakeForge(),
-        async clone(_repo: string, _branch: string, into: string) {
-          await mkdir(into)
-          await execa(bin('git'), ['init', '-q', '-b', 'main', into])
-          await git(into, 'commit', '-q', '--allow-empty', '-m', 'init')
+    await writeFile(
+      join(root, 'system'),
+      [
+        '[filter "lfs"]\n\tsmudge = git-lfs smudge -- %f',
+        '[tag]\n\tgpgsign = true\n[credential]\n\thelper = store\n',
+      ].join('\n'),
+    )
+    const env = { PATH: process.env.PATH, HOME: root, GIT_CONFIG_SYSTEM: join(root, 'system') }
+    const prepare = (reuse: boolean) =>
+      prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign: false,
+          untrusted: false,
+          branch: 'away/acme-api-1',
+          rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
+          skill: 'fix',
+          skills: [],
+          providers: ['claude'],
+          instructions: [],
+          deliver: 'draft_pr',
         },
-      },
-      sources: { fake: fakeSource() as Source },
-      provider: claude,
-      ctx: { env, log: () => {} },
-    })
+        dir,
+        plugin: join(root, 'plugin'),
+        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        configDir: root,
+        forge: {
+          ...fakeForge(),
+          async clone(_repo: string, _branch: string, into: string) {
+            await mkdir(into)
+            await execa(bin('git'), ['init', '-q', '-b', 'main', into])
+            await git(into, 'commit', '-q', '--allow-empty', '-m', 'init')
+          },
+        },
+        sources: { fake: fakeSource() as Source },
+        provider: claude,
+        ctx: { env, log: () => {} },
+        reuse,
+      })
+    await prepare(false)
 
     const worker = (...args: string[]) =>
       execa(bin('git'), ['-C', dir, ...args], {
@@ -290,6 +300,7 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       [
         'user.name=Dev Eloper',
         'user.email=dev@example.com',
+        'filter.lfs.smudge=git-lfs smudge -- %f',
         'filter.lfs.clean=git-lfs clean -- %f',
         'filter.lfs.required=true',
         'filter.lfs.process=git-lfs filter-process',
@@ -300,7 +311,12 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     expect((await worker('log', '-1', '--format=%an <%ae> %G?')).stdout).toBe(
       'Dev Eloper <dev@example.com> N',
     )
+    expect((await worker('tag', '-a', 'v1', '-m', 'v1')).exitCode).toBe(0)
     expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+
+    await worker('config', '--global', 'worker.wrote', 'this')
+    await prepare(true)
+    expect((await worker('config', '--global', 'worker.wrote')).stdout).toBe('this')
   })
 
   describe("with skills in the repo's .claude/skills and .agents/skills", () => {

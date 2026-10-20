@@ -105,6 +105,7 @@ describe('claude provider', () => {
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
       GIT_CONFIG_GLOBAL: '/work/.away/gitconfig',
+      GIT_CONFIG_NOSYSTEM: '1',
     })
   })
 
@@ -121,6 +122,7 @@ describe('claude provider', () => {
     expect(workerEnv(env, '/work', [])).toEqual({
       PATH: '/bin',
       GIT_CONFIG_GLOBAL: '/work/.away/gitconfig',
+      GIT_CONFIG_NOSYSTEM: '1',
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
