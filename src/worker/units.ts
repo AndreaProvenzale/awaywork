@@ -13,7 +13,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { isolated, workerRoot } from '../core/launch.js'
+import { isolated, lostToWorker, workerRoot } from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -238,23 +238,27 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         try {
           lead.outcome = interrupted
             ? { kind: 'none', reason: 'interrupted', unpublished: true }
-            : await publishSlice(
-                publisher,
-                { ...first.unit, ...shape, deliver },
-                dir,
-                from,
-                reports,
-                loops,
-                stack,
-                // Only the whole chain, cut from the default branch, closes its issues.
-                last && !first.capped && base === '',
-              )
+            : lostToWorker(dir)
+              ? { kind: 'none', reason: 'the clone is lost to the worker user', unpublished: true }
+              : await publishSlice(
+                  publisher,
+                  { ...first.unit, ...shape, deliver },
+                  dir,
+                  from,
+                  reports,
+                  loops,
+                  stack,
+                  // Only the whole chain, cut from the default branch, closes its issues.
+                  last && !first.capped && base === '',
+                )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {
-          await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink }).catch(
-            () => {},
-          )
+          if (!lostToWorker(dir))
+            await cp(join(dir, WORK_DIR, 'out'), out, {
+              recursive: true,
+              filter: notSymlink,
+            }).catch(() => {})
         }
       }
       if (last || ended) return
@@ -573,15 +577,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (loop) loop.ended ??= ended.reason
       } finally {
         await new Promise((done) => logFile.end(done))
+        const lost = lostToWorker(dir)
         // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
-        if (cloned !== undefined)
+        if (cloned !== undefined && !lost)
           await cp(join(dir, WORK_DIR), unitDir, {
             recursive: true,
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
             filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
           }).catch(() => {})
-        if (start)
+        if (start && !lost)
           try {
             await restoreGit(dir)
             await handOff(dir, start, unitDir)
@@ -598,7 +603,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    if (!input.dryRun) await rm(dir, { recursive: true, force: true })
+    if (!input.dryRun && !lostToWorker(dir)) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }
@@ -610,7 +615,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       await notifyUnits(done.filter((r) => !r.retried))
     }
   } finally {
-    if (root !== input.runDir && !input.dryRun) await rm(root, { recursive: true, force: true })
+    if (root !== input.runDir && !input.dryRun && !lostToWorker(root))
+      await rm(root, { recursive: true, force: true })
   }
 
   const { runId, dryRun, plan } = input

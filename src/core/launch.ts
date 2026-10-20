@@ -92,6 +92,12 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>): Promise<T
   }
 }
 
+/** Clones a chown failed on: parts of them may still be the worker's, so awaywork touches them no more. */
+const lost = new Set<string>()
+/** Whether `path` is, or holds, a clone lost to the worker user. */
+export const lostToWorker = (path: string) =>
+  [...lost].some((dir) => dir === path || dir.startsWith(`${path}/`))
+
 /** A new folder the worker user can pass through but not list, for clones and skills plugins outside the developer's home. */
 export async function workerRoot(): Promise<string> {
   const root = await mkdtemp('/tmp/awaywork-')
@@ -109,6 +115,17 @@ function killWorker(): Promise<unknown> {
   return killing
 }
 
-/** Never follows a symlink a worker planted, at the top or below. */
-const chown = (dir: string, owner: string) =>
-  execa(bin('sudo'), ['-n', 'chown', '-R', '-h', '-P', owner, dir])
+/**
+ * Never follows a symlink a worker planted, at the top or below; a hardlink it made is to a file it can
+ * write anyway, with the `fs.protected_hardlinks` the action checks. A clone it fails on is lost.
+ */
+async function chown(dir: string, owner: string): Promise<void> {
+  const result = await execa(bin('sudo'), ['-n', 'chown', '-R', '-h', '-P', owner, dir], {
+    reject: false,
+  })
+  if (!result.failed) return
+  lost.add(dir)
+  throw new Error(
+    `couldn't chown the clone, left as it is: ${result.stderr || result.shortMessage}`,
+  )
+}

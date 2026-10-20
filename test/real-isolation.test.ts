@@ -1,11 +1,13 @@
+import { existsSync } from 'node:fs'
 import { stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
 import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
+import { head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
 import { runCommand } from '../src/worker/setup.js'
 
@@ -87,5 +89,31 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(await owner(join(dir, 'agent.sh'))).toBe(process.getuid?.())
     // chown never followed the link the first test planted, either way.
     expect(await owner('/etc/hostname')).toBe(0)
+  })
+
+  it('never takes a repo the worker planted in /tmp for the clone’s', async () => {
+    expect(existsSync('/tmp/.git')).toBe(false)
+    const clone = join(dirname(dir), 'planted')
+    await execa('git', ['init', '-q', clone])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    // As on the hosted image, whose /etc/gitconfig trusts every repo.
+    const trustAll = {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'safe.directory',
+      GIT_CONFIG_VALUE_0: '*',
+    }
+    Object.assign(process.env, trustAll)
+    try {
+      const planted = await runCommand('cp -R .git /tmp/.git && rm .git/HEAD', clone, env, {
+        secrets: [],
+      })
+      expect(planted.failed).toBeUndefined()
+      expect(existsSync('/tmp/.git/HEAD')).toBe(true)
+      await expect(head(clone)).rejects.toThrow("not a git repository: '.git'")
+    } finally {
+      for (const name of Object.keys(trustAll)) delete process.env[name]
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/.git'])
+    }
   })
 })
