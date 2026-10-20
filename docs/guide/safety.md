@@ -47,7 +47,7 @@ With [`isolation: user`](./configuration.md#isolation), setup, the agent and the
 - **Your logins in other processes.** `/proc/<pid>/environ` of awaywork, and of anything else you run, is owner-only. Your ssh agent's socket sits in a folder only you can enter. gh's keyring login answers over your session bus in `/run/user/<uid>`, which another user can't open [C, not exercised: the test container has no keyring].
 - **sudo, cron and `at`.** The worker has no sudo, and `doctor`'s lines deny it cron and `at`, so nothing it schedules runs after its phase.
 
-The same leak script as the agent, on Debian 12 with a home of 755, then with `chmod o-rwx ~`. With `none`:
+A real run in a Debian 12 container, a command provider running a leak script as the agent, with the developer's home at 755 and then after `chmod o-rwx ~`. With `none`:
 
 ```
 agent: as runner (runner), HOME=/home/runner, cwd=/home/runner/.local/state/awaywork/runs/20261020-235218/work/leak-1
