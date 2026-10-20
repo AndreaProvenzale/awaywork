@@ -610,7 +610,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       await notifyUnits(done.filter((r) => !r.retried))
     }
   } finally {
-    if (root !== input.runDir) await rm(root, { recursive: true, force: true })
+    if (root !== input.runDir && !input.dryRun) await rm(root, { recursive: true, force: true })
   }
 
   const { runId, dryRun, plan } = input
