@@ -13,6 +13,7 @@ const CANARY = 'canary-4f2a9c'
 const env = {
   PATH: process.env.PATH,
   HOME: process.env.HOME,
+  XDG_CONFIG_HOME: `${process.env.HOME}/.config`,
   CANARY,
   AWAYWORK_PARENT: `${process.pid}`,
 }
@@ -33,7 +34,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
 
   it('runs a command as the worker, with the env but none of its values on argv', async () => {
     const leaks = [
-      'id -un; echo "$HOME $CANARY"',
+      'id -un; echo "$HOME $CANARY ${XDG_CONFIG_HOME-unset}"',
       // Builtins only: an exec'd command would carry the value on its own argv.
       'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " < $f 2>/dev/null); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
       'cat /proc/$AWAYWORK_PARENT/environ >/dev/null 2>&1 && echo "environ readable"',
@@ -41,7 +42,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       'ln -s /etc/hostname link',
     ]
     const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
-    expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY}`)
+    expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY} unset`)
     expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
     expect(await owner(dir)).toBe(process.getuid?.())
     expect(await owner('/etc/hostname')).toBe(0)
