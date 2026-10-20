@@ -37,8 +37,8 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
   it('runs a command as the worker, with the env but none of its values on argv', async () => {
     const leaks = [
       'id -un; echo "$HOME $CANARY ${XDG_CONFIG_HOME-unset}"',
-      // Builtins only: an exec'd command would carry the value on its own argv.
-      'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " < $f 2>/dev/null); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
+      // Builtins only: an exec'd command would carry the value on its own argv. A process can exit before its read.
+      'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " 2>/dev/null < $f); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
       'cat /proc/$AWAYWORK_PARENT/environ >/dev/null 2>&1 && echo "environ readable"',
       'echo out > out.txt',
       'ln -s /etc/hostname link',
