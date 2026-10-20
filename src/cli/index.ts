@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { Command } from 'commander'
 import { envFile, packageVersion } from '../config/paths.js'
+import { approveCommand } from './approve.js'
 import { configCommand } from './config.js'
 import { doctorCommand } from './doctor.js'
 import { initCommand } from './init.js'
@@ -27,6 +28,7 @@ initCommand(program)
 configCommand(program)
 planCommand(program)
 skipCommand(program)
+approveCommand(program)
 skillsCommand(program)
 runCommand(program)
 statsCommand(program)

@@ -1797,11 +1797,13 @@ queue:
     runId: 'r1',
     skill: 'implement',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '3-plan', skill: 'plan' },
   })
   expect(attempts['github:acme/api#4']).toEqual({
     runId: 'r1',
     skill: 'review',
     updated: '2026-01-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-4', step: '1-review', skill: 'review' },
   })
   expect(formatPlan(plan)).toContain('     then fix (built-in) on claude, when verdict changes\n')
 })
@@ -2843,6 +2845,7 @@ it("doesn't run a loop whose first step after a report has a refused when, and f
     runId: 'r1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '1-plan', skill: 'plan' },
   })
 })
 
@@ -2871,6 +2874,7 @@ it('reports a loop that a refused when ended, and counts the chain finished', as
     runId: 'r1',
     skill: 'plan',
     updated: '2026-09-01T00:00:00Z',
+    report: { runId: 'r1', unit: 'acme-api-1', step: '2-review', skill: 'review' },
   })
 })
 

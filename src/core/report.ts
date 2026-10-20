@@ -23,6 +23,8 @@ export interface UnitResult {
   step?: string
   /** What the step left for the chain, e.g. `2 commits and a report`. */
   made?: string
+  /** The step left a report. */
+  reported?: true
   /** How the chain's loops went, on its first step, e.g. `2 rounds of review ⇄ fix; until held: verdict approve`. */
   loop?: string
 }

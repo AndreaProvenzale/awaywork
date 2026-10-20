@@ -458,6 +458,7 @@ const itemFields: Record<string, z.ZodType> = {
   type: itemType,
   title: z.string(),
   description: z.string(),
+  approved: z.boolean(),
 }
 
 export const configSchema = z

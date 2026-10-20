@@ -1,12 +1,13 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
+import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '../core/foreman.js'
 import type { RunReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, McpServer, Provider, Quota, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
@@ -54,6 +55,24 @@ export interface RunInput {
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   skillDirs?: { user: string; builtin: string }
+  /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
+  attempts?: Attempts
+}
+
+/** The latest report an earlier run left on one of the items. */
+async function earlierReport(
+  items: Item[],
+  attempts: Attempts,
+  runsDir: string,
+  thisRun: string,
+): Promise<Previous | undefined> {
+  for (const item of items) {
+    const last = attempts[`${item.source}:${item.key}`]?.report
+    if (!last || last.runId === thisRun) continue
+    const out = join(runsDir, last.runId, 'units', last.unit, last.step, 'out')
+    if ((await readOutput(join(out, outputFile.report))).trim())
+      return { skill: last.skill, out, earlierRun: last.runId }
+  }
 }
 
 /** The units `name` names, by unit id or item key in any case. */
@@ -315,7 +334,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           plugin,
           provider,
           ctx,
-          previous,
+          previous:
+            previous ??
+            (reuse
+              ? undefined
+              : await earlierReport(
+                  unit.items,
+                  input.attempts ?? {},
+                  dirname(input.runDir),
+                  input.runId,
+                )),
           reuse,
           chain: steps,
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
@@ -433,7 +461,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         verdict = result.verdict ?? verdict
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
-        if (report) reports.push({ id: unit.id, skill: unit.skill, text: report })
+        if (report) {
+          reports.push({ id: unit.id, skill: unit.skill, text: report })
+          result.reported = true
+        }
         result.made = made(commits, report)
         // What the next step works from: a committing step's commits, a report step's report.
         const left = unit.deliver === 'report' ? report !== '' : commits > 0

@@ -38,11 +38,11 @@ export function skipCommand(program: Command): void {
     )
 }
 
-async function configuredSources(program: Command): Promise<string[]> {
+export async function configuredSources(program: Command): Promise<string[]> {
   return Object.keys((await loadConfig(configPath(program.opts().config))).sources)
 }
 
-async function printOutcome(command: () => Promise<string>): Promise<void> {
+export async function printOutcome(command: () => Promise<string>): Promise<void> {
   try {
     console.log(await command())
   } catch (e) {
@@ -52,7 +52,7 @@ async function printOutcome(command: () => Promise<string>): Promise<void> {
 }
 
 /** Items are named `source:key`: two trackers can both have an `ENG-12`. */
-function checkKey(key: string, sources: string[]): void {
+export function checkKey(key: string, sources: string[]): void {
   const [source = '', ...rest] = key.split(':')
   if (!source || !rest.join(':'))
     throw new Error(`name the item as source:key, e.g. github:acme/api#5 (got ${key})`)
