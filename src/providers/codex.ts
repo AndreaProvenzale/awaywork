@@ -5,9 +5,9 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
+import { launch } from '../core/launch.js'
 import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
-import { launch } from '../worker/launch.js'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']

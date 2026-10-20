@@ -4,16 +4,19 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { parseConfig } from '../src/config/load.js'
+import { launch } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
 import { createChecks } from '../src/worker/checks.js'
-import { launch } from '../src/worker/launch.js'
+import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
+import { fakeItem } from './fakes/items.js'
 
-vi.mock('../src/worker/launch.js', async (original) => {
-  const real = await original<typeof import('../src/worker/launch.js')>()
+vi.mock('../src/core/launch.js', async (original) => {
+  const real = await original<typeof import('../src/core/launch.js')>()
   return { launch: vi.fn(real.launch) }
 })
 
@@ -58,5 +61,20 @@ describe('the launcher', () => {
       ['true', dir],
       ['exit 0', dir],
     ])
+  })
+
+  it('doesn’t start context commands, the config’s and not the repo’s', async () => {
+    const context = { command: 'echo hi > "$AWAYWORK_CONTEXT_DIR/out.md"', secrets: [] }
+    await fetchContexts([fakeItem({ source: 'github', key: 'ACME-1' })], dir, {
+      config: parseConfig(
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${JSON.stringify(context)} } }`,
+      ),
+      configDir: dir,
+      env,
+      secrets: [],
+      log: () => {},
+    })
+    expect(await readFile(join(dir, '.away/context/acme-1/extra/out.md'), 'utf8')).toBe('hi\n')
+    expect(launched()).toEqual([])
   })
 })

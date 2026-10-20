@@ -1,5 +1,5 @@
 import { killGroupWhenDone } from '../core/group.js'
-import { type Launch, launch } from './launch.js'
+import { type Launch, launch } from '../core/launch.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5

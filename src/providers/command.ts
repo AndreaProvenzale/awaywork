@@ -2,8 +2,8 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { killGroupWhenDone } from '../core/group.js'
+import { launch } from '../core/launch.js'
 import type { Provider, Quota } from '../core/types.js'
-import { launch } from '../worker/launch.js'
 
 const TIMEOUT_MS = 60_000
 const HOSTED_RUNNER =
