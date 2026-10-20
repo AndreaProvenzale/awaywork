@@ -436,9 +436,9 @@ function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-/** A unit's result in a line: its PR, `no commits`, or a report, and its verdict. */
-function unitResult(u: UnitResult): string {
-  if (u.status === 'skipped') return u.reason ?? ''
+/** A unit's result: its PR, `no commits`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
+function unitResult(u: UnitResult, why = (reason: string) => reason): string {
+  if (u.status === 'skipped') return why(u.reason ?? '')
   const o = u.outcome
   const what =
     o?.kind === 'pr'
@@ -447,23 +447,29 @@ function unitResult(u: UnitResult): string {
         ? `pushed onto ${o.url || o.branch}`
         : o?.kind === 'report'
           ? 'report'
-          : (o?.reason ?? '-')
+          : why(o?.reason ?? '-')
   return u.verdict ? `${what}, verdict ${u.verdict}` : what
 }
 
-const STATUS = 60
+const CELL = 60
+
+/** A cell's first line, clipped: `--unit` has the rest. */
+function brief(text: string): string {
+  const [first = '', ...rest] = text.split('\n')
+  return clip(rest.length > 0 ? `${first.trimEnd()}…` : first, CELL)
+}
 
 /** One row per chain, numbered as `report --unit` takes them: item, skills, status and result, then its summary or title. */
 export function reportUnitRows(r: RunReport): { cells: string[]; summary?: string }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
-    const [status, result] = chainCells(chain, unitResult, false)
+    const [status, result] = chainCells(chain, (u) => unitResult(u, brief), false)
     return {
       cells: [
         String(i + 1),
         top ? shortRef(top) : chain.head.planned.unit.id,
         chain.skills,
-        clip(status, STATUS),
+        brief(status),
         result,
       ],
       summary: chain.head.summary ?? (top && clip(top.title, TITLE)),
@@ -518,12 +524,12 @@ export function formatRun(r: RunReport, warnings: string[] = [], styled = false)
   return out.join('\n')
 }
 
-/** The run's chains `name` names by unit id or item, else the one it numbers in the units table: a numeric key wins. */
+/** The run's chains `name` names by a step's unit id or item, else the one it numbers in the units table: a numeric key wins. */
 export function findChains(r: RunReport, name: string): { chain: Chain; n: number }[] {
   const listed = chains(r).map((chain, i) => ({ chain, n: i + 1 }))
   const named = listed.filter(({ chain }) => {
-    const { id, items } = chain.head.planned.unit
-    return id === name.toLowerCase() || items.some((i) => isNamed(i, name))
+    const isStep = chain.steps.some((s) => s.planned.unit.id === name.toLowerCase())
+    return isStep || chain.head.planned.unit.items.some((i) => isNamed(i, name))
   })
   if (named.length > 0 || !/^\d+$/.test(name)) return named
   return listed.filter(({ n }) => n === Number(name))
@@ -545,15 +551,25 @@ export function formatUnit(
     ...(head.loop ? [['loop', head.loop]] : []),
     ['result', result],
     ['item', top?.url ?? '-'],
-    ...table(chain.steps.map(stepCells)).map((line, i) => [i ? '' : 'steps', line]),
+    ...table(chain.steps.map((s) => stepCells(s).map(brief))).map((line, i) => [
+      i ? '' : 'steps',
+      line,
+    ]),
     ...files.map((file, i) => [i ? '' : 'files', file]),
-  ]
+  ].flatMap(([label = '', value = '']) => block(value).map((line, i) => [i ? '' : label, line]))
   const ref = top ? shortRef(top) : head.planned.unit.id
   const out = [styler(styled)('bold', `${n}  ${ref}  ${top?.title ?? ''}`), ...indent(table(rows))]
   const text = body?.trim() || head.summary
   if (text) out.push('', text)
   return out.join('\n')
 }
+
+/** A value's lines, the ones after the first indented under it. */
+const block = (value: string) =>
+  value
+    .split('\n')
+    .filter((line, i) => i === 0 || line.trim())
+    .map((line, i) => (i ? `  ${line.trimEnd()}` : line))
 
 /** The end of `run`: the units as `report` lists them, and where the report is. */
 export function summarize(r: RunReport, reportPath: string): string {

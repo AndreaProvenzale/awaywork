@@ -415,6 +415,7 @@ describe('report views', () => {
       '| done, 22 turns (loop: 2 rounds of review ⇄ fix; until held: sh scripts/approved.sh --strict) |',
     )
     const [found] = findChains(run, '1')
+    expect(findChains(run, 'acme-api-1-review-1')).toEqual([found])
     expect(found && formatUnit(found, [], undefined)).toMatchInlineSnapshot(`
       "1  api#1  PR 1
         skill   fix
@@ -442,6 +443,39 @@ describe('report views', () => {
            item   skill  status                                                        result
         1  api#1  fix    failed, 12 turns (git clone: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  https://github.com/acme/api/pull/9
            PR 1"
+    `)
+  })
+
+  it("keeps a multi-line reason to its first line in the row, and in full under --unit's result", () => {
+    const run = acmeRun()
+    const [result] = run.results
+    if (!result) return
+    const reason = [
+      'setup failed: Command failed with exit code 1: pnpm install --frozen-lockfile',
+      ' ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile',
+      '',
+      '  Failure reason:',
+    ].join('\n')
+    Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
+    const units = formatRun(run).split('\n\n')[1] ?? ''
+    expect(units).toMatchInlineSnapshot(`
+      "Units
+           item   skill  status   result
+        1  api#1  fix    skipped  setup failed: Command failed with exit code 1: pnpm install…
+           Retries the flaky upload test instead of sleeping."
+    `)
+    const [found] = findChains(run, '1')
+    expect(found && formatUnit(found, [], undefined)).toMatchInlineSnapshot(`
+      "1  api#1  PR 1
+        skill   fix
+        status  skipped
+        result  setup failed: Command failed with exit code 1: pnpm install --frozen-lockfile
+                   ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile
+                    Failure reason:
+        item    https://github.com/acme/api/pull/1
+        steps   acme-api-1  fix  claude  skipped  setup failed: Command failed with exit code 1: pnpm install…
+
+      Retries the flaky upload test instead of sleeping."
     `)
   })
 

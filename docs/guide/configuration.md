@@ -336,7 +336,7 @@ There are no built-in integrations. A command that fails or takes over a minute 
   notify failed for acme-api-1: Command failed with exit code 3: ...
 ```
 
-Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead:
+Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead. They call the first `awaywork` on your PATH, which after an `npx` install is none or another version, so write its full path there:
 
 ```yaml
 notify:                         # ntfy, the morning report only
