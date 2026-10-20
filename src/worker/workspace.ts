@@ -224,7 +224,7 @@ export async function writeOutput(path: string, text: string, append = false): P
 /** A `cp` filter that leaves symlinks behind, so nothing later writes through one. */
 export const notSymlink = async (src: string) => !(await lstat(src)).isSymbolicLink()
 
-/** The env of setup: no forge token, none of `withheld`, and a gh config dir without the local login. */
+/** The env of setup: no forge token, none of `withheld`, and gh without its config or keyring login. */
 export function commandEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
@@ -232,7 +232,12 @@ export function commandEnv(
 ): NodeJS.ProcessEnv {
   const hidden = new Set([...forgeTokens, ...withheld])
   const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
-  return { ...Object.fromEntries(kept), GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh') }
+  return {
+    ...Object.fromEntries(kept),
+    GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh'),
+    GH_TOKEN: 'none',
+    GH_ENTERPRISE_TOKEN: 'none',
+  }
 }
 
 /** The env of the model and the checks: `commandEnv`'s without the credential plumbing. */
