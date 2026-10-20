@@ -35,6 +35,7 @@ Units
 
 Needs you
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
 
@@ -74,6 +75,7 @@ Units
 
 Needs you
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
 

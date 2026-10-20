@@ -111,18 +111,14 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
       const escaped = cells.map((c) => String(c).replaceAll('|', '\\|'))
       out.push(`| ${escaped.join(' | ').replaceAll('\n', ' ')} |`)
     }
-    chains(r).forEach((chain, i) => {
+    const listed = chains(r)
+    listed.forEach((chain, i) => {
       const { head, steps, skills, slices } = chain
       row([i + 1, linkedItem(head), skills, providers(steps), ...chainCells(chain)])
-      const stepRow = (s: UnitResult, indent: string) =>
-        row([
-          '',
-          `${indent}└ ${s.planned.unit.id}`,
-          s.planned.unit.skill,
-          s.provider ?? '-',
-          stepStatus(s),
-          stepResult(s),
-        ])
+      const stepRow = (s: UnitResult, indent: string) => {
+        const [id, ...cells] = stepCells(s)
+        row(['', `${indent}└ ${id}`, ...cells])
+      }
       // A chain of one step is its own row; a longer one lists every step that was listed under it, by slice when it has several.
       if (slices.length > 1)
         slices.forEach((slice, k) => {
@@ -132,6 +128,8 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
         })
       else if (steps.length > 1) for (const s of steps) stepRow(s, '')
     })
+    const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
+    if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
   }
   const waiting = r.plan.skipped.filter((s) => needsYou[s.kind])
   if (waiting.length > 0) {
@@ -143,7 +141,7 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     out.push('', `<details><summary>Skipped (${rest.length})</summary>`)
     for (const [kind, list] of byKind(rest)) {
       out.push('', `### ${kind} (${list.length})`, '')
-      for (const s of list) out.push(`- ${s.item.source} ${s.item.key}: ${s.reason}`)
+      for (const s of list) out.push(`- ${shortRef(s.item)}: ${s.reason}`)
     }
     out.push('', '</details>')
   }
@@ -157,8 +155,13 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     for (const u of reports) {
       const top = u.planned.unit.items[0]
       const text = u.outcome && 'text' in u.outcome ? u.outcome.text : ''
-      const ref = top ? shortRef(top) : u.planned.unit.id
-      out.push('', `### ${ref}: ${top?.title} (${u.planned.unit.skill})`, '', top?.url ?? '', '')
+      out.push(
+        '',
+        `### ${refOf(u)}: ${top?.title} (${u.planned.unit.skill})`,
+        '',
+        top?.url ?? '',
+        '',
+      )
       if (u.summary) out.push(u.summary, '')
       // Under this `###`, the report's own headings start at `####`.
       out.push('<details><summary>Full report</summary>', '', demote(text.trim(), 4))
@@ -173,6 +176,11 @@ export function runHeadline(r: RunReport): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
   const dry = r.dryRun ? ' (dry run)' : ''
   return `Run ${r.runId}${dry}: ${count('pr')} draft PRs, ${count('report')} reports, ${chains(r).length} units`
+}
+
+function refOf(u: UnitResult): string {
+  const top = u.planned.unit.items[0]
+  return top ? shortRef(top) : u.planned.unit.id
 }
 
 const refAndTitle = (item: Item) => `${shortRef(item)} ${item.title}`.replace(/[[\]]/g, '\\$&')
@@ -231,14 +239,18 @@ export function chains(r: RunReport): Chain[] {
     })
 }
 
-/** A chain's status and result; with several slices, each slice's result in turn, its loops on its own row. */
-export function chainCells({ steps, slices }: Chain, show = result): [string, string] {
+/** A chain's status and result; with several slices, each slice's result in turn, its loops on its own row. `loops: false` keeps them out of the status. */
+export function chainCells(
+  { steps, slices }: Chain,
+  show = result,
+  loops = true,
+): [string, string] {
   const chain = chainOf(steps)
   const capped = chain.planned.capped ? ` (${chain.planned.capped})` : ''
-  if (slices.length === 1 || chain.status === 'skipped')
-    return [`${status(chain)}${capped}`, show(chain)]
-  const each = slices.map((slice) => show(chainOf(slice.steps)))
-  return [`${status({ ...chain, loop: undefined })}${capped}`, each.join('; ')]
+  const loop = loops && slices.length === 1 ? chain.loop : undefined
+  const cell = `${status({ ...chain, loop })}${capped}`
+  if (slices.length === 1 || chain.status === 'skipped') return [cell, show(chain)]
+  return [cell, slices.map((slice) => show(chainOf(slice.steps))).join('; ')]
 }
 
 /** A chain as one result: its first step's last attempt, with every step's turns and the latest verdict. */
@@ -251,6 +263,11 @@ function chainOf(steps: UnitResult[]): UnitResult {
 
 function providers(steps: UnitResult[]): string {
   return [...new Set(steps.flatMap((s) => s.provider ?? []))].join(', ') || '-'
+}
+
+/** A step's id, skill, provider, status and what it left. */
+export function stepCells(s: UnitResult): string[] {
+  return [s.planned.unit.id, s.planned.unit.skill, s.provider ?? '-', stepStatus(s), stepResult(s)]
 }
 
 /** A step's own status: how the chain's loops went is on the chain's row. */

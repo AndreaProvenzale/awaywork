@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reportJson } from '../src/cli/format.js'
 import { printReport } from '../src/cli/run.js'
 import { remoteDir, runsDir } from '../src/config/paths.js'
-import type { RunReport } from '../src/core/report.js'
+import type { RunReport, StepFiles } from '../src/core/report.js'
 import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
@@ -107,7 +107,10 @@ describe('report command', () => {
       status: 'done',
       outcome: { kind: 'none', reason: 'no commits' },
       summary: 'No code changes: the red check is flaky.',
-      files: ['units/acme-api-1/1-fix/worker.log', 'units/acme-api-1/out/pr.md'],
+      files: {
+        log: 'units/acme-api-1/1-fix/worker.log',
+        sliceBody: 'units/acme-api-1/out/pr.md',
+      } satisfies StepFiles,
     }
     const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
     const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
@@ -171,6 +174,7 @@ describe('report command', () => {
         '  status  done',
         '  result  no commits',
         '  item    https://github.com/acme/api/pull/1',
+        '  steps   acme-api-1  fix  -  done  -',
         `  files   ${join(runsDir, id, files.sliceBody)}`,
         '',
         body.trim(),
@@ -179,9 +183,7 @@ describe('report command', () => {
 
     out.length = 0
     await printReport(id, false, gh, false, { skipped: 'over_cap' })
-    expect(out).toEqual([
-      'Skipped over_cap (1)\n  github acme/api#2: over the cap: limits.units is 1',
-    ])
+    expect(out).toEqual(['Skipped over_cap (1)\n  api#2: over the cap: limits.units is 1'])
 
     await printReport(id, false, gh, false, { unit: '2' })
     expect(err).toEqual([`no unit "2" in run ${id}; awaywork report lists them`])

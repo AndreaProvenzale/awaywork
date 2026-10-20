@@ -186,6 +186,24 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
        Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.
   ```
 
+  `report --unit 1` adds how the loop went and a row per step, which is where a chain that failed at `review-2` says so:
+
+  ```
+  1  api#12  Rate-limit the export endpoint
+    skill   implement → loop(review ⇄ fix) → stack docs
+    status  done, 70 turns
+    loop    2 rounds of review ⇄ fix; until held: verdict approve
+    result  https://github.com/acme/api/pull/42, verdict approve; https://github.com/acme/api/pull/43
+    item    https://github.com/acme/api/issues/12
+    steps   acme-api-12           implement  claude  done, 14 turns  1 commit
+            acme-api-12-review-1  review     codex   done, 14 turns  a report, verdict changes
+            acme-api-12-fix-1     fix        claude  done, 14 turns  1 commit
+            acme-api-12-review-2  review     codex   done, 14 turns  a report, verdict approve
+            acme-api-12-docs      docs       claude  done, 14 turns  1 commit
+
+  Adds a per-client token bucket to the export endpoint; bursts get a 429 with Retry-After.
+  ```
+
   `report.md` lists each slice with its steps under it:
 
   ```markdown
