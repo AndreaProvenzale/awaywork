@@ -297,7 +297,7 @@ it("touches a self-hosted machine's disk, global installs and git config not at 
   )
   expect(step('Morning report')).toMatchObject({
     if: "always() && steps.run.outputs.run-dir != ''",
-    run: 'cat "$RUN_DIR/report.md" >> "$GITHUB_STEP_SUMMARY" || true',
+    run: 'cat "$RUN_DIR/report.md" >> "$GITHUB_STEP_SUMMARY" ||\n  echo "No report.md: the run was cut short." >> "$GITHUB_STEP_SUMMARY"\n',
   })
 })
 

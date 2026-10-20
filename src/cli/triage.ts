@@ -85,13 +85,14 @@ const section = (id: string, title: string, children: Row[], more?: string[]): R
   more,
 })
 
-function skipRow(plan: RunPlan, s: Skipped, text: string, id: string): Row {
+function skipRow(plan: RunPlan, s: Skipped, [text = '', ...more]: string[], id: string): Row {
   const key = itemKey(s.item)
   return {
     id,
     text,
+    more,
     act: {
-      read: formatWhy(plan, key),
+      read: formatWhy(plan, s.item),
       open: s.url ?? s.item.url,
       skip: s.kind === 'skipped_by_you' ? undefined : key,
       approve: key,
@@ -115,14 +116,14 @@ function warningSection(warnings: string[]): Row[] {
 
 /** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded. */
 function sectionsOf(plan: RunPlan, warnings: string[], units: Row): Row[] {
-  const needs = needsYouRows(plan.skipped).map(({ skipped, line }, i) =>
-    skipRow(plan, skipped, line, `needs/${i}`),
+  const needs = needsYouRows(plan.skipped, style).map(({ skipped, lines }, i) =>
+    skipRow(plan, skipped, lines, `needs/${i}`),
   )
   const rest = plan.skipped.filter((s) => !needsYou[s.kind])
   const groups = byKind(rest).map(([kind, list]) => ({
     id: `skipped/${kind}`,
     text: `${kind} ${list.length}`,
-    children: list.map((s, i) => skipRow(plan, s, skippedLine(s), `skipped/${kind}/${i}`)),
+    children: list.map((s, i) => skipRow(plan, s, [skippedLine(s)], `skipped/${kind}/${i}`)),
   }))
   return [
     ...warningSection(warnings),
@@ -155,7 +156,7 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number): Sta
       id: `units/${i}`,
       text,
       more,
-      act: { read: key && formatWhy(plan, key), open: top?.url, skip: key, approve: key },
+      act: { read: top && formatWhy(plan, top), open: top?.url, skip: key, approve: key },
       why: {
         log: 'not run yet: a plan has no worker.log',
         diff: 'not run yet: a plan has no diff',

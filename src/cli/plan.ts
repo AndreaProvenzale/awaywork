@@ -21,11 +21,13 @@ import { configSecrets } from '../worker/workspace.js'
 import { browse, interactive, itemCommands } from './browse.js'
 import { reportConfigError } from './config.js'
 import {
+  ambiguous,
   clip,
   formatPlan,
   formatRules,
   formatSkipped,
   formatWhy,
+  namedItems,
   planJson,
   warningLines,
 } from './format.js'
@@ -70,9 +72,13 @@ export function planCommand(program: Command): void {
             formatSkipped(plan.skipped, opts.skipped === true ? undefined : opts.skipped),
           )
         if (opts.why) {
-          const why = formatWhy(plan, opts.why)
-          if (why) return console.log(why)
-          console.error(`no item "${opts.why}" in this plan; awaywork plan --skipped lists them`)
+          const [item, ...more] = namedItems(plan, opts.why)
+          if (item && more.length === 0) return console.log(formatWhy(plan, item))
+          console.error(
+            item
+              ? ambiguous(opts.why, [item, ...more])
+              : `no item "${opts.why}" in this plan; awaywork plan --skipped lists them`,
+          )
           process.exitCode = 1
           return
         }

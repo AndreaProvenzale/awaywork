@@ -15,7 +15,7 @@ import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
-import { type RunInput, runUnits } from '../src/worker/units.js'
+import { namedChains, type RunInput, runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -176,6 +176,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
       '  1  api#1  fix     done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1',
       '     Ran the failing test.',
       `  2  api#3  fix     skipped        ${tried}`,
+      '     PR 3',
       '  3  api#2  review  done, 5 turns  report, verdict approve',
       '     Approve.',
       '',
@@ -262,10 +263,43 @@ it('prepares workspaces without running a worker or context command on a dry run
     const byKey = await runUnits({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
   }
-  await expect(runUnits({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
+  await expect(runUnits({ ...input, only: 'nope' })).rejects.toThrow('"nope" names 0 units')
 
   const ended = await runUnits({ ...input, until: new Date(0) })
   expect(ended.results.map((u) => u.reason)).toEqual(['the window ended', 'the window ended'])
+})
+
+it('names a unit by its exact id, key, source:key or ref only, and refuses a name for two', async () => {
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+  )
+  const labs = {
+    ...githubPr(1),
+    id: 'labs-1',
+    key: 'acme-labs/api#1',
+    url: 'https://github.com/acme-labs/api/pull/1',
+    linkedPrs: [],
+  }
+  const task = fakeItem({
+    source: 'tracker',
+    key: 'API-1',
+    type: 'task',
+    fields: { repo: 'acme/api' },
+  })
+  const plan = planRun({
+    config,
+    items: [githubPr(1), labs, task],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const named = (name: string) => namedChains(plan, name).map((p) => p.unit.id)
+  expect(named('API-1')).toEqual(['api-1'])
+  expect(named('acme/api#1')).toEqual(['acme-api-1'])
+  expect(named('api#1')).toEqual(['acme-api-1', 'acme-labs-api-1'])
+  expect(named('api-1#')).toEqual([])
+  await expect(runUnits({ plan, only: 'api#1' } as RunInput)).rejects.toThrow(
+    `"api#1" names 2 units in this run's plan, not one`,
+  )
 })
 
 it('prepares every step of a chain named by one of its steps, in one clone, on a dry run', async () => {
@@ -1396,7 +1430,7 @@ queue:
   )
   expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
   expect(summarize(report, 'report.md').split('\n').slice(2)).toEqual([
-    `  1  api#1  implement → loop(review ⇄ fix) → plan  done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  ${url}, verdict approve`,
+    `  1  api#1  implement → loop(review ⇄ fix) → plan  done, 5 turns  ${url}, verdict approve`,
     '     Done.',
     'Report: report.md',
   ])

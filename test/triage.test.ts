@@ -40,6 +40,7 @@ describe('triage view', () => {
         "",
         "▾ Needs you",
         "  T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4",
+        "       Task 4",
         "",
         "▾ Units",
         "     item   skill  status          result",
@@ -47,7 +48,6 @@ describe('triage view', () => {
         "     Retries the flaky upload test instead of sleeping.",
         "",
         "▸ Skipped 2: 1 no_rule, 1 over_cap",
-        "",
         "",
         "",
         "",
@@ -83,7 +83,7 @@ describe('triage view', () => {
     expect(screen(skipped)).toContain('  ▸ over_cap 1')
     const open = press(skipped, 'down', 'space')
     expect(screen(open)).toContain(
-      '    github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
+      '    api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
     )
     expect(selectedLine(open)).toBe('▾ no_rule 1')
   })

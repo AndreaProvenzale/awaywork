@@ -336,14 +336,14 @@ There are no built-in integrations. A command that fails or takes over a minute 
   notify failed for acme-api-1: Command failed with exit code 3: ...
 ```
 
-Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other:
+Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead:
 
 ```yaml
 notify:                         # ntfy, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes"
-    --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+    awaywork report "$AWAYWORK_RUN_ID" |
+    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" --data-binary @- "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
@@ -351,7 +351,7 @@ notify:                         # ntfy, the morning report only
 notify:                         # a Slack incoming webhook, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    jq -Rs '{text:.}' "$AWAYWORK_REPORT" |
+    awaywork report "$AWAYWORK_RUN_ID" | jq -Rs '{text:.}' |
     curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```

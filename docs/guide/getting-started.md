@@ -60,6 +60,7 @@ Providers
 
 ▾ Needs you
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
 
 ▾ Units
      item   rule  skill              provider  deliver   title
@@ -70,7 +71,7 @@ Providers
 
 ▾ Skipped 2: 1 no_rule, 1 over_cap
   ▾ no_rule 1
-    tracker T-7: matched no rule; closest #3 implement: type is task, wants issue
+    T-7: matched no rule; closest #3 implement: type is task, wants issue
   ▸ over_cap 1
 
 ⏎ unfold  o open  l log  d diff  s skip  a approve  ? help  q quit
@@ -94,6 +95,7 @@ Units
 
 Needs you
   T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
 
@@ -101,7 +103,7 @@ awaywork plan --skipped [kind]  lists them
 awaywork plan --why <key>       says why an item is planned or not
 ```
 
-Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, here a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
+Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, here a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, after the Needs you ones, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
 
 ```
 $ awaywork plan --why T-7

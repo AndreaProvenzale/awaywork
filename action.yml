@@ -76,7 +76,9 @@ runs:
     - name: Morning report
       if: always() && steps.run.outputs.run-dir != ''
       shell: bash
-      run: cat "$RUN_DIR/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+      run: |
+        cat "$RUN_DIR/report.md" >> "$GITHUB_STEP_SUMMARY" ||
+          echo "No report.md: the run was cut short." >> "$GITHUB_STEP_SUMMARY"
       env:
         RUN_DIR: ${{ steps.run.outputs.run-dir }}
     # `awaywork report` in the control repo reads runs from these; only this run's files, never the whole runs dir.
