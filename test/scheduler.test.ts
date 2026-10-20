@@ -219,7 +219,7 @@ it('reads back a job whose paths need escaping', () => {
   expect(parseCronLines(cronLines(awkward))).toEqual(awkward)
 })
 
-it('writes a workflow with a local-time cron that calls the action with a pinned version', () => {
+it('writes a workflow with a UTC cron that calls the action with a pinned version', () => {
   const text = workflow({
     starts: [{ hour: 1, minute: 30 }],
     timezone: 'Europe/Rome',
@@ -230,7 +230,7 @@ it('writes a workflow with a local-time cron that calls the action with a pinned
     setup: [],
   })
   const parsed = parse(text)
-  expect(parsed.on.schedule).toEqual([{ cron: '30 1 * * *', timezone: 'Europe/Rome' }])
+  expect(parsed.on.schedule).toEqual([{ cron: '30 0 * * *' }])
   expect(parsed.name).toBe('awaywork')
   expect(Object.keys(parsed.on.workflow_dispatch.inputs)).toEqual(['unit'])
   expect(parsed.concurrency).toBe('awaywork')
@@ -705,10 +705,41 @@ it('writes a workflow cron per window', () => {
     secrets: [],
     setup: [],
   })
-  expect(parse(text).on.schedule).toEqual([
-    { cron: '5 1 * * *', timezone: 'UTC' },
-    { cron: '0 10 * * 0,6', timezone: 'UTC' },
-  ])
+  expect(parse(text).on.schedule).toEqual([{ cron: '5 1 * * *' }, { cron: '0 10 * * 0,6' }])
+})
+
+it("starts the workflow's cron in UTC at the zone's standard time, shifting days across midnight", () => {
+  const crons = (timezone: string, starts: Start[]) =>
+    parse(
+      workflow({
+        starts,
+        timezone,
+        config: 'c.yml',
+        version: '0.3.1',
+        packages: [],
+        secrets: [],
+        setup: [],
+      }),
+    ).on.schedule.map((s: { cron: string }) => s.cron)
+  expect(
+    crons('Europe/Rome', [
+      { hour: 18, minute: 0 },
+      { hour: 0, minute: 30, days: [0, 6] },
+    ]),
+  ).toEqual(['0 17 * * *', '30 23 * * 5,6'])
+  expect(
+    crons('America/New_York', [
+      { hour: 1, minute: 0 },
+      { hour: 22, minute: 15, days: [5, 6] },
+    ]),
+  ).toEqual(['0 6 * * *', '15 3 * * 0,6'])
+  expect(
+    crons('Asia/Tokyo', [
+      { hour: 8, minute: 0, days: [0, 1] },
+      { hour: 10, minute: 0 },
+    ]),
+  ).toEqual(['0 23 * * 0,6', '0 1 * * *'])
+  expect(crons('Asia/Kolkata', [{ hour: 1, minute: 0 }])).toEqual(['30 19 * * *'])
 })
 
 describe('wake', () => {

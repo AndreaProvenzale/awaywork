@@ -13,8 +13,9 @@ export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 const ACTION_REPO = 'AndreaProvenzale/awaywork'
 
 export interface Workflow {
+  /** Local to `timezone`; the cron gets them in UTC. */
   starts: Start[]
-  /** IANA name; the schedule and the run's windows both use it. */
+  /** IANA name the starts are in and the run's windows use. */
   timezone: string
   /** Repo path of the config the run reads. */
   config: string
@@ -44,11 +45,8 @@ export function workflow(w: Workflow): string {
 
 on:
   schedule:
-${w.starts
-  .map(
-    (s) =>
-      `    - cron: "${s.minute} ${s.hour} * * ${s.days?.join(',') ?? '*'}"\n      timezone: ${w.timezone}`,
-  )
+${utcStarts(w.starts, w.timezone)
+  .map((s) => `    - cron: "${s.minute} ${s.hour} * * ${s.days?.join(',') ?? '*'}"`)
   .join('\n')}
   workflow_dispatch:
     inputs:
@@ -78,6 +76,34 @@ ${secrets.length ? `        env:${secrets.join('')}\n` : ''}        with:
           packages: ${JSON.stringify(w.packages.join(' '))}
           unit: \${{ inputs.unit }}
 `
+}
+
+/** Minutes east of UTC that `zone` is at `date`. */
+function offsetAt(zone: string, date: Date): number {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
+    .formatToParts(date)
+    .find((p) => p.type === 'timeZoneName')?.value
+  const [, sign, hours, minutes] = /GMT([+-])(\d\d):(\d\d)/.exec(name ?? '') ?? []
+  return sign ? (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes)) : 0
+}
+
+/**
+ * Starts in UTC, as GitHub ran our crons whatever their `timezone:` said.
+ * The zone's smallest offset over the year gives the latest UTC time: never before the window opens, up to an hour late in summer time.
+ */
+function utcStarts(starts: Start[], zone: string): Start[] {
+  const year = new Date().getUTCFullYear()
+  const offset = Math.min(
+    offsetAt(zone, new Date(Date.UTC(year, 0, 1))),
+    offsetAt(zone, new Date(Date.UTC(year, 6, 1))),
+  )
+  return starts.map((s) => {
+    const minutes = s.hour * 60 + s.minute - offset
+    const shift = Math.floor(minutes / 1440)
+    const utc = minutes - shift * 1440
+    const days = s.days?.map((d) => (d + shift + 7) % 7).sort((a, b) => a - b)
+    return { hour: Math.floor(utc / 60), minute: utc % 60, ...(days && { days }) }
+  })
 }
 
 function indent(text: string, spaces: number): string {
