@@ -104,6 +104,37 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 - `claude: { settings: <file> }`: a Claude Code settings file, relative to the config file, passed as `--settings`. Auto-memory stays off, and workers run in `dontAsk` mode: a tool that isn't pre-approved, by awaywork or by your `permissions.allow`, is denied.
 - `codex: { config: { <key>: <value> } }`: each key passed as `codex exec -c key=value`, e.g. `model_reasoning_effort: high`.
 
+### Bring your own CLI
+
+opencode, Amp and friends don't need code in awaywork. Name a provider yourself and give it a command; it's your CLI and your login:
+
+```yaml
+providers:
+  - claude
+  - opencode:
+      command: opencode run --auto "$(cat "$AWAYWORK_PROMPT")"
+      probe: ./opencode-quota.sh # optional
+limits:
+  unit_minutes: 45
+```
+
+(`--auto` approves every permission your opencode config doesn't deny; check `opencode run --help` on your version.)
+
+The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
+
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and a `budget.fallback` needs no `turns`. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+
+```json
+{
+  "windows": [
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+  ]
+}
+```
+
+`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+
 ## Sources
 
 | Source | Keys |

@@ -6,6 +6,8 @@ description: How to add a coding-agent provider to awaywork, with the research i
 
 A provider wraps one vendor's agent CLI. Adding one is a file in `src/providers/`, a line in the registry and a passing contract suite.
 
+Just want your own CLI in the rotation? A [command provider](../guide/configuration.md#bring-your-own-cli) needs no code, only a few lines of config. The rest of this page is for shipping a built-in.
+
 ## Research first
 
 Before code, add the provider to [Providers](../providers.md) with each claim tagged **[V]** (vendor docs), **[C]** (community) or **[I]** (inference), and settle these with a real run:
@@ -57,7 +59,7 @@ The config schema, `init`, `doctor`, `plan` and `schedule install --with github-
 
 ## Test it
 
-- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`.
+- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`. A check that can't apply goes in its third argument, `exempt` (the command provider has no npm `package`, for one).
 - Unit tests for the event parser against the recorded streams.
 - A `test/real-<id>.test.ts` that spends a few turns of a real subscription, skipped unless `AWAYWORK_REAL=1`.
 
