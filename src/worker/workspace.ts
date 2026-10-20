@@ -17,6 +17,7 @@ import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
+import { gitUnrestored, markGitRestored } from '../core/launch.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
@@ -42,8 +43,14 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
-/** Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant. */
-export const inClone = (dir: string) => ['-C', dir, '--git-dir=.git']
+/**
+ * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
+ * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
+ */
+export function inClone(dir: string): string[] {
+  if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
+  return ['-C', dir, '--git-dir=.git']
+}
 
 interface WorkspaceInput {
   unit: Unit
@@ -172,7 +179,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
  * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * whose index, which git writes through a symlink, is one.
+ * whose index, which git writes through a symlink, is one: awaywork then runs no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
@@ -183,6 +190,7 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
       throw new Error(`.git/${path} in the clone points elsewhere`)
   await rm(join(git, 'config'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
+  markGitRestored(dir)
 }
 
 /**

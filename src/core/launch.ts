@@ -81,6 +81,7 @@ export async function hostedWorker(env: NodeJS.ProcessEnv): Promise<string | und
  * while it runs, and once it ends none of the worker's processes is left and the clone is the developer's again.
  */
 export async function asWorker<T>(dir: string, run: () => Promise<T>): Promise<T> {
+  unrestored.add(dir)
   const user = worker
   if (!user) return run()
   await chown(dir, `${user}:`)
@@ -91,6 +92,12 @@ export async function asWorker<T>(dir: string, run: () => Promise<T>): Promise<T
     await chown(dir, `${process.getuid?.()}:${process.getgid?.()}`)
   }
 }
+
+/** Clones repo code ran in since awaywork last put their git config back: their `.git` may be the worker's. */
+const unrestored = new Set<string>()
+/** Whether repo code ran in the clone `dir` after its git config was last put back. */
+export const gitUnrestored = (dir: string) => unrestored.has(dir)
+export const markGitRestored = (dir: string) => void unrestored.delete(dir)
 
 /** Clones a chown failed on: parts of them may still be the worker's, so awaywork touches them no more. */
 const lost = new Set<string>()

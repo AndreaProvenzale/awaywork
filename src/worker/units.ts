@@ -13,7 +13,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { isolated, lostToWorker, workerRoot } from '../core/launch.js'
+import { gitUnrestored, isolated, lostToWorker, workerRoot } from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -236,21 +236,26 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
-          lead.outcome = interrupted
-            ? { kind: 'none', reason: 'interrupted', unpublished: true }
+          const kept = interrupted
+            ? 'interrupted'
             : lostToWorker(dir)
-              ? { kind: 'none', reason: 'the clone is lost to the worker user', unpublished: true }
-              : await publishSlice(
-                  publisher,
-                  { ...first.unit, ...shape, deliver },
-                  dir,
-                  from,
-                  reports,
-                  loops,
-                  stack,
-                  // Only the whole chain, cut from the default branch, closes its issues.
-                  last && !first.capped && base === '',
-                )
+              ? 'the clone is lost to the worker user'
+              : gitUnrestored(dir)
+                ? "the clone's .git was refused"
+                : undefined
+          lead.outcome = kept
+            ? { kind: 'none', reason: kept, unpublished: true }
+            : await publishSlice(
+                publisher,
+                { ...first.unit, ...shape, deliver },
+                dir,
+                from,
+                reports,
+                loops,
+                stack,
+                // Only the whole chain, cut from the default branch, closes its issues.
+                last && !first.capped && base === '',
+              )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {

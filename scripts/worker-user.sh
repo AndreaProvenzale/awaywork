@@ -11,8 +11,8 @@ for key in fs.protected_hardlinks fs.protected_symlinks; do
   fi
 done
 
-sudo useradd --create-home --user-group --shell /bin/bash awaywork
-echo awaywork | sudo tee -a /etc/cron.deny > /dev/null
+id awaywork > /dev/null 2>&1 || sudo useradd --create-home --user-group --shell /bin/bash awaywork
+sudo grep -qsx awaywork /etc/cron.deny || echo awaywork | sudo tee -a /etc/cron.deny > /dev/null
 sudo chmod 700 "$HOME"
 
 # Every disk filesystem, whole. Reading its inodes in parallel first makes the find that follows take seconds.

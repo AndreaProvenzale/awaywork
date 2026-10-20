@@ -47,6 +47,9 @@ const quota = {
 }
 const week = reset * 1000 - 3 * 24 * 60 * 60 * 1000
 
+/** What a slice publishes from a clone whose `.git` the restore refused. */
+const refused = { kind: 'none', reason: "the clone's .git was refused", unpublished: true }
+
 const issue = (n: number, fields: Item['fields'] = {}) =>
   fakeItem({
     source: 'github',
@@ -620,7 +623,7 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   )
   expect(await readFile(victim)).toEqual(planted)
   expect(rows).toEqual([
-    ['acme-api-1', 'error', '.git/index in the clone is a symlink'],
+    ['acme-api-1', 'error', refused],
     ['acme-api-1-fix', 'skipped', 'acme-api-1 error: .git/index in the clone is a symlink'],
   ])
 })
@@ -654,13 +657,59 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
     )
     expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
     expect(rows).toEqual([
-      ['acme-api-1', 'error', '.git/objects/info/alternates in the clone points elsewhere'],
+      ['acme-api-1', 'error', refused],
       [
         'acme-api-1-fix',
         'skipped',
         'acme-api-1 error: .git/objects/info/alternates in the clone points elsewhere',
       ],
     ])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
+it.each([
+  ['links .git to a repo of its own', 'link'],
+  ['plants an empty alternates', 'alternates'],
+])('publishes nothing and runs no git in a refused clone whose worker %s', async (_, how) => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      // A partial clone whose promisor "fetch" is the worker's command, run by any git missing an object.
+      const repo = how === 'link' ? await mkdtemp(join(tmpdir(), 'awaywork-planted-')) : job.dir
+      const cmd = join(dirname(job.dir), 'cmd')
+      await writeFile(cmd, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\nexit 1\n`, {
+        mode: 0o755,
+      })
+      if (how === 'link') {
+        await git(repo, 'init', '-q')
+        await git(repo, 'commit', '-q', '--allow-empty', '-m', 'planted')
+      } else await writeFile(join(repo, '.git', 'objects', 'info', 'alternates'), '')
+      for (const [key, value] of [
+        ['core.repositoryformatversion', '1'],
+        ['extensions.partialClone', 'origin'],
+        ['remote.origin.promisor', 'true'],
+        ['remote.origin.uploadpack', cmd],
+      ])
+        await git(repo, 'config', key as string, value as string)
+      if (how === 'link') {
+        await rm(join(job.dir, '.git'), { recursive: true, force: true })
+        await symlink(join(repo, '.git'), join(job.dir, '.git'))
+      } else await writeFile(join(repo, '.git', 'HEAD'), `${'1'.repeat(40)}\n`)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { rows, opened } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened).toEqual([])
+    expect(rows).toEqual([['acme-api-1', 'error', refused]])
   } finally {
     delete process.env.ZZ_SECRET
   }

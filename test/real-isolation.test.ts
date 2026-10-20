@@ -7,9 +7,10 @@ import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
 import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
-import { head } from '../src/worker/checks.js'
+import { commitsSince, head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
 import { runCommand } from '../src/worker/setup.js'
+import { restoreGitConfig } from '../src/worker/workspace.js'
 
 const CANARY = 'canary-4f2a9c'
 const env = {
@@ -110,10 +111,40 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       })
       expect(planted.failed).toBeUndefined()
       expect(existsSync('/tmp/.git/HEAD')).toBe(true)
+      await restoreGitConfig(clone, '')
       await expect(head(clone)).rejects.toThrow("not a git repository: '.git'")
     } finally {
       for (const name of Object.keys(trustAll)) delete process.env[name]
       await execa('sudo', ['-n', 'rm', '-rf', '/tmp/.git'])
+    }
+  })
+
+  it('runs no git in a clone whose .git the worker linked to a repo of its own', async () => {
+    const clone = join(dirname(dir), 'linked')
+    await execa('git', ['init', '-q', clone])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    const start = await head(clone)
+    // A partial clone whose promisor "fetch" logs who ran it, with which token.
+    const phase = [
+      'r=/tmp/awaywork-linked && rm -rf $r && mkdir -m 777 $r',
+      `printf '#!/bin/sh\\necho "$(id -un) GH_TOKEN=$GH_TOKEN" >> '$r'/log\\nexit 1\\n' > $r/cmd && chmod 755 $r/cmd`,
+      `git init -q $r/repo && git -C $r/repo ${commit.join(' ')} -m w`,
+      'git -C $r/repo config core.repositoryformatversion 1 && git -C $r/repo config extensions.partialClone origin',
+      'git -C $r/repo config remote.origin.promisor true && git -C $r/repo config remote.origin.uploadpack $r/cmd',
+      'chmod -R a+rwX $r/repo/.git && rm -rf .git && ln -s $r/repo/.git .git',
+    ].join(' && ')
+    process.env.GH_TOKEN = CANARY
+    try {
+      expect((await runCommand(phase, clone, env, { secrets: [] })).failed).toBeUndefined()
+      await expect(restoreGitConfig(clone, '')).rejects.toThrow(
+        '.git in the clone is not a directory',
+      )
+      await expect(commitsSince(clone, start)).rejects.toThrow('no git in the clone')
+      expect(existsSync('/tmp/awaywork-linked/log')).toBe(false)
+    } finally {
+      delete process.env.GH_TOKEN
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
     }
   })
 })

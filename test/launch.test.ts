@@ -1,11 +1,11 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { hostedWorker, launch, sudoArgs } from '../src/core/launch.js'
+import { hostedWorker, isolate, launch, sudoArgs, WORKER } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -63,19 +63,32 @@ describe('the launcher', () => {
     ])
   })
 
-  it('doesn’t start context commands, the config’s and not the repo’s', async () => {
+  it('doesn’t start context commands, the config’s and not the repo’s, nor hand the worker their folder', async () => {
+    // A sudo that only logs, so a chown of the config's folder shows.
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-sudo-'))
+    const calls = join(fakes, 'calls')
+    await writeFile(join(fakes, 'sudo'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
+    const path = process.env.PATH
+    process.env.PATH = `${fakes}:${path}`
+    isolate(WORKER)
     const context = { command: 'echo hi > "$AWAYWORK_CONTEXT_DIR/out.md"', secrets: [] }
-    await fetchContexts([fakeItem({ source: 'github', key: 'ACME-1' })], dir, {
-      config: parseConfig(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${JSON.stringify(context)} } }`,
-      ),
-      configDir: dir,
-      env,
-      secrets: [],
-      log: () => {},
-    })
+    try {
+      await fetchContexts([fakeItem({ source: 'github', key: 'ACME-1' })], dir, {
+        config: parseConfig(
+          `providers: [claude: {}]\nsources: { github: { repos: [acme/*], context: ${JSON.stringify(context)} } }`,
+        ),
+        configDir: dir,
+        env,
+        secrets: [],
+        log: () => {},
+      })
+    } finally {
+      isolate(undefined)
+      process.env.PATH = path
+    }
     expect(await readFile(join(dir, '.away/context/acme-1/extra/out.md'), 'utf8')).toBe('hi\n')
     expect(launched()).toEqual([])
+    expect(await readFile(calls, 'utf8').catch(() => '')).toBe('')
   })
 
   it('runs as the worker with the env’s names on sudo’s argv, never its values', () => {

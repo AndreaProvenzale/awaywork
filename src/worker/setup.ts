@@ -17,7 +17,7 @@ interface SetupOptions {
 }
 
 /**
- * Runs the repo's setup command in the clone; returns why it failed with its output's tail, never throws.
+ * Runs the repo's setup command in the clone; returns why it failed with its output's tail, and throws only on a clone lost to the worker user.
  * It runs in its own process group, killed when the command exits or is stopped, so nothing it started outlives it.
  */
 export async function runSetup(
@@ -46,7 +46,7 @@ export async function runCommand(
     Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
-  const result = await asWorker(dir, async () => {
+  const run = async () => {
     const subprocess = start(command, [], {
       shell: true,
       cwd: dir,
@@ -61,7 +61,9 @@ export async function runCommand(
     const result = await subprocess
     release()
     return result
-  })
+  }
+  // Only repo code runs as the worker, in a clone it owns while it runs.
+  const result = await (start === launch ? asWorker(dir, run) : run())
 
   const output = maskSecrets(result.all.trim(), secrets, env)
   if (!result.failed) return { output }
