@@ -9,7 +9,12 @@ import { runsDir } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
-  return { providers: { claude: fakeProvider('claude') } }
+  const providers = { claude: fakeProvider('claude') }
+  return {
+    providers,
+    providerFor: (id: string) => providers[id as 'claude'],
+    providersOf: () => providers,
+  }
 })
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -62,6 +67,13 @@ describe('run command', () => {
     const { report } = await latestRun()
     expect(report).toMatch(/\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d to \S+ \S+, local time\n/)
     expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
+  })
+
+  it('writes the results as report.json next to report.md', async () => {
+    await run([])
+    const id = (await readdir(runsDir)).sort().at(-1) ?? ''
+    const json = JSON.parse(await readFile(join(runsDir, id, 'report.json'), 'utf8'))
+    expect(json.runId).toBe(id)
   })
 
   it("hands the run's id and dir to the next steps of an Actions job", async () => {

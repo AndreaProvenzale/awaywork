@@ -10,6 +10,8 @@ interface SetupOptions {
   signal?: AbortSignal
   /** Stop setup at this time. */
   until?: Date
+  /** Stop the command after this long; default 15 minutes. */
+  timeoutMs?: number
 }
 
 /**
@@ -35,11 +37,11 @@ export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
-  { secrets, signal, until }: SetupOptions,
+  { secrets, signal, until, timeoutMs = TIMEOUT_MS }: SetupOptions,
 ): Promise<{ output: string; failed?: string; stopped?: true; timedOut?: true }> {
-  const windowEnds = until !== undefined && until.getTime() < Date.now() + TIMEOUT_MS
+  const windowEnds = until !== undefined && until.getTime() < Date.now() + timeoutMs
   const deadline = AbortSignal.timeout(
-    Math.max(0, windowEnds ? until.getTime() - Date.now() : TIMEOUT_MS),
+    Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
   const subprocess = execa(command, {
@@ -61,7 +63,7 @@ export async function runCommand(
   if (!stop.aborted) return { output, failed: result.shortMessage }
   // A hang fails like a non-zero exit for `until`; a `when` treats `timedOut` as unchecked.
   if (!signal?.aborted && !windowEnds)
-    return { output, failed: `timed out after ${TIMEOUT_MS / 60_000} min`, timedOut: true }
+    return { output, failed: `timed out after ${timeoutMs / 60_000} min`, timedOut: true }
   return {
     output,
     failed: signal?.aborted ? 'interrupted' : 'the window ended',

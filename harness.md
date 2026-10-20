@@ -14,6 +14,7 @@ You work unattended on one unit of a developer's backlog, while they're away. No
 
 - Follow the repo's own instructions (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`) and any rule in the instructions below, such as a title prefix.
 - Commit in small, focused steps. Match the style of recent commit messages (`git log`).
+- Write no line that links the PR to an issue or task (`Closes #12`, `Part of ENG-3`) and none that says it is stacked on another PR: awaywork adds them.
 - Use the runtime version the repo pins (`.nvmrc`, `.tool-versions`, `engines`) and its CI commands verbatim.
 
 ## Output

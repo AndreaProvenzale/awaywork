@@ -3,8 +3,9 @@ import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
+import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, linkTemplate } from '../sources/command.js'
+import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
 import { sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -64,7 +65,7 @@ const providerName = z
   .enum(Object.keys(providers))
   .transform((id): Record<string, ProviderConfig> => ({ [id]: {} }))
 const providerOverride = z
-  .strictObject(
+  .object(
     Object.fromEntries(
       Object.values(providers).map((p) => [
         p.id,
@@ -75,21 +76,43 @@ const providerOverride = z
       ]),
     ),
   )
+  .catchall(
+    commandProviderConfig.extend({
+      // It has no turns to cap.
+      budget: budgetOverride
+        .extend({
+          fallback: fallback
+            .partial({ turns: true })
+            .describe(fallback.description ?? '')
+            .optional(),
+        })
+        .describe(budgetOverride.description ?? '')
+        .optional(),
+    }),
+  )
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
   })
 const providerEntry = z.union([providerName, providerOverride], {
   error: (issue) =>
-    typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : undefined,
+    typeof issue.input === 'string' ? `unknown provider "${issue.input}"` : nested(issue.errors[1]),
 })
 
-/** A built-in source's config with its `link`, unless its items link their PRs themselves. */
+/** The override branch's first issue, its path inside the entry in the message. */
+function nested(issues: z.core.$ZodIssue[] | undefined): string | undefined {
+  const [issue] = issues ?? []
+  if (!issue) return undefined
+  return issue.path.length > 0 ? `${issue.path.join('.')}: ${issue.message}` : issue.message
+}
+
+/** A built-in source's config with its `context` and its `link`, unless its items link their PRs themselves. */
 function builtinConfig(s: Source): z.ZodObject {
-  if (s.link === false) return s.configSchema
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
-  return s.configSchema.extend({ link }).describe(s.configSchema.description ?? '')
+  return s.configSchema
+    .extend({ context: contextCommand.optional(), ...(s.link === false ? {} : { link }) })
+    .describe(s.configSchema.description ?? '')
 }
 
 const sourcesConfig = z
@@ -519,6 +542,25 @@ export const configSchema = z
   })
   .superRefine((cfg, ctx) => {
     const providerIds = cfg.providers.flatMap(Object.keys)
+    const commandIds = providerIds.filter((id) => !Object.hasOwn(providers, id))
+    if (commandIds.length > 0 && !cfg.limits.unit_minutes)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['limits', 'unit_minutes'],
+        message: 'required with a command provider: it has no turn cap, so this bounds its unit',
+      })
+    cfg.providers.forEach((entry, i) => {
+      for (const id of Object.keys(entry)) {
+        if (!commandIds.includes(id)) continue
+        // `constructor` is the one such name Object.prototype already has.
+        if (!/^(?!constructor$)[a-z][a-z0-9-]*$/.test(id))
+          ctx.addIssue({
+            code: 'custom',
+            path: ['providers', i, id],
+            message: 'expected a lowercase name like opencode',
+          })
+      }
+    })
     for (const name of Object.keys(cfg.mcp))
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
         ctx.addIssue({
@@ -595,6 +637,24 @@ export const configSchema = z
               path: [...stepAt, 'model', p],
               message: `provider "${p}" is not configured`,
             })
+          else if (commandIds.includes(p))
+            ctx.addIssue({
+              code: 'custom',
+              path: [...stepAt, 'model', p],
+              message: `no model for the command provider "${p}": put it in its command`,
+            })
+        // A step that sets neither runs as the rule, already checked.
+        if (s !== r && s.mcp === undefined && s.provider === undefined) return
+        const mcp = s.mcp ?? r.mcp ?? []
+        const provider = s.provider ?? r.provider
+        const routed = provider.length > 0 ? provider : providerIds
+        const command = routed.find((p) => commandIds.includes(p))
+        if (mcp.length > 0 && command)
+          ctx.addIssue({
+            code: 'custom',
+            path: [...stepAt, s.mcp ? 'mcp' : 'provider'],
+            message: `the command provider "${command}" gets no MCP servers: route this step to another provider with \`provider\``,
+          })
       })
       const scope = r.source ? [r.source] : sourceIds
       checkWhere(r.where, [...at, 'where'])
@@ -666,7 +726,11 @@ export const configSchema = z
           id,
           config,
           model,
-          budget: { ...cfg.budget, ...override },
+          budget: {
+            ...cfg.budget,
+            ...override,
+            fallback: { ...cfg.budget.fallback, ...override?.fallback },
+          },
         }),
       ),
     ),

@@ -14,4 +14,4 @@ The unit is an issue or task, with or without the developer's pull request. When
 - When an item without a PR is ambiguous, implement the most likely reading and say so. When it is too ambiguous to implement, write the questions instead of guessing.
 - Add or update tests for what you change.
 
-In the PR body: the item linked, what you implemented, the reading you chose where it was ambiguous, and what you ran to verify. On the developer's PR, also what you left for them and why.
+In the PR body: the item named, what you implemented, the reading you chose where it was ambiguous, and what you ran to verify. On the developer's PR, also what you left for them and why.

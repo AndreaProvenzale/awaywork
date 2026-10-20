@@ -2,8 +2,8 @@ import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
-import { githubForge, githubHost } from '../forge/github.js'
-import { providers } from '../providers/index.js'
+import { forgeFor } from '../forge/index.js'
+import { providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { replayUnit } from '../worker/replay.js'
 import { reportConfigError } from './config.js'
@@ -27,14 +27,14 @@ export function replayCommand(program: Command): void {
           configDir: dirname(path),
           runDir: join(runsDir, run),
           unitId: unit,
-          providers,
+          providers: providersOf(config),
           sources: Object.fromEntries(
             Object.entries(config.sources).flatMap(([id, cfg]) => {
               const source = sourceFor(id, cfg)
               return source ? [[id, source]] : []
             }),
           ),
-          forge: githubForge(undefined, githubHost(config)),
+          forge: forgeFor(config),
           ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
           signal: abort.signal,
         })

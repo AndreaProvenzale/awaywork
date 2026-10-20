@@ -9,6 +9,7 @@ import { bySlice, describeChain, type PlannedUnit, type RunPlan, slug } from '..
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
+import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
 import type { Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
@@ -212,6 +213,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 reports,
                 loops,
                 stack,
+                // Only the whole chain, cut from the default branch, closes its issues.
+                last && !first.capped && base === '',
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
@@ -356,6 +359,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (input.dryRun) continue
         const a = allowances[id]
         if (!a) continue
+        if (!reuse)
+          await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
         const settings = input.config.repos[unit.repo]
         if (!reuse && settings?.setup && !unit.untrusted) {
           // A PR someone else opened, or an awaywork PR's branch a worker wrote, runs install scripts you didn't write: they get none of the repo's secrets.

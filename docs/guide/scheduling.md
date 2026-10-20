@@ -140,7 +140,7 @@ Worth knowing:
 
 ### Reports from the runner
 
-The runner's runs dir doesn't come back to your machine, so each run also uploads its `report.md` and `units.json` as an artifact named after the workflow and the run, like `awaywork-20261014-223527`. Inside the control repo, `awaywork report` and `report --list` fetch those through `gh` and mix them with your local runs, newest first. They find a workflow's runs by its file name, so keep its `name:` as `schedule install` wrote it:
+The runner's runs dir doesn't come back to your machine, so each run also uploads its `report.md`, `report.json` and `units.json` as an artifact named after the workflow and the run, like `awaywork-20261014-223527`. Inside the control repo, `awaywork report` and `report --list` fetch those through `gh` and mix them with your local runs, newest first. They find a workflow's runs by its file name, so keep its `name:` as `schedule install` wrote it:
 
 ```
 $ cd my-awaywork-repo
@@ -158,6 +158,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
+| [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
 
