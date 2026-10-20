@@ -195,7 +195,7 @@ sources:
 
 ### What runs in the clone
 
-Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone, except `context`, which runs in the config file's folder and only writes into the clone; none gets `GH_TOKEN` or any other forge token.
+Every command in your config that touches a unit's clone, side by side. All of them run in a shell outside the model, in the clone, except `context`, which runs in the config file's folder and whose output awaywork copies into the clone; none gets `GH_TOKEN` or any other forge token.
 
 | Command | When | Secrets | A failure |
 | --- | --- | --- | --- |
