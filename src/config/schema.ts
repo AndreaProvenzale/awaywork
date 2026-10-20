@@ -24,12 +24,11 @@ const branch = z.string().superRefine((template, ctx) => {
   if (problem) ctx.addIssue({ code: 'custom', message: problem })
 })
 
+const turns = z.int().positive().describe('Turns per unit')
+const caps = "Caps when the provider's quota can't be read"
 const fallback = z
-  .strictObject({
-    units: z.int().positive().describe('Units per run'),
-    turns: z.int().positive().describe('Turns per unit'),
-  })
-  .describe("Caps when the provider's quota can't be read")
+  .strictObject({ units: z.int().positive().describe('Units per run'), turns: turns.optional() })
+  .describe(caps)
 const reserve = 'Never go past 1 - reserve of any window'
 const perRun = 'At most this share of the long window per run'
 const sessionMax = 'Stop a worker past this share of the short window'
@@ -38,7 +37,10 @@ const budget = z
     reserve: percent.prefault('10%').describe(reserve),
     per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
-    fallback: fallback.default({ units: 4, turns: 60 }),
+    fallback: fallback
+      .extend({ turns: turns.default(60) })
+      .describe(caps)
+      .default({ units: 4, turns: 60 }),
   })
   .describe('Quota shares; any provider can override them')
 const budgetOverride = z
@@ -80,20 +82,7 @@ const providerOverride = z
       ]),
     ),
   )
-  .catchall(
-    commandProviderConfig.extend({
-      // It has no turns to cap.
-      budget: budgetOverride
-        .extend({
-          fallback: fallback
-            .partial({ turns: true })
-            .describe(fallback.description ?? '')
-            .optional(),
-        })
-        .describe(budgetOverride.description ?? '')
-        .optional(),
-    }),
-  )
+  .catchall(commandProviderConfig.extend({ budget: budgetOverride.optional() }))
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
