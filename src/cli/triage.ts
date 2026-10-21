@@ -36,6 +36,8 @@ export interface State {
   brand?: string
   header: string[]
   sections: Row[]
+  /** What this view's keys can do: a plan has no logs or diffs. */
+  actions: readonly Action[]
   open: ReadonlySet<string>
   selected: string
   /** The first body line on screen. */
@@ -55,16 +57,16 @@ type Format = Parameters<typeof styleText>[0]
 // Only a terminal ever sees this view.
 const style = (format: Format, text: string) => styleText(format, text, { validateStream: false })
 
-/** Every key, as `?` and the docs list them. */
-export const keys: [string, string][] = [
+/** Every key, as `?` and the docs list them, with the action it needs. */
+const keys: [string, string, Action?][] = [
   ['↑ ↓  j k', 'move'],
   ['g G  Home End', 'first, last row'],
   ['PgDn PgUp  ^D ^U', 'a screen down, up'],
   ['→ ← Space', 'unfold, fold, as ⏎ on a heading; ← on a row goes to its section'],
   ['⏎', 'read it in $PAGER: the unit in full, or why the item is planned or skipped'],
   ['o', "open the unit's PR, else the item"],
-  ['l', "page the step's worker.log"],
-  ['d', 'page the diff'],
+  ['l', "page the step's worker.log", 'log'],
+  ['d', 'page the diff', 'diff'],
   ['s', 'skip the item in the coming runs, after y'],
   ['a', 'approve the item, after y; there is no undo'],
   ['?', 'this help'],
@@ -142,9 +144,14 @@ function sectionsOf(plan: RunPlan, warnings: string[], units: Row): Row[] {
 const unitSection = (header: string, rows: Row[]) =>
   section('units', 'Units', rows, [rows.length ? header : style('dim', 'none')])
 
-function triage(header: string[], sections: Row[], rows: number): State {
+function triage(
+  header: string[],
+  sections: Row[],
+  rows: number,
+  actions: readonly Action[],
+): State {
   const open = new Set(sections.filter((s) => s.id !== 'skipped').map((s) => s.id))
-  const state = { header, sections, open, selected: '', top: 0, rows, marks: {} }
+  const state = { header, sections, actions, open, selected: '', top: 0, rows, marks: {} }
   const list = visible(state)
   const first =
     list.find((v) => v.parent === 'needs') ??
@@ -166,16 +173,13 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number): Sta
       text,
       more,
       act: { read: top && formatWhy(plan, top), open: top?.url, skip: key, approve: key },
-      why: {
-        log: 'not run yet: a plan has no worker.log',
-        diff: 'not run yet: a plan has no diff',
-      },
     }
   })
   return triage(
     providerLines(plan, style),
     sectionsOf(plan, warnings, unitSection(header, unitRows)),
     rows,
+    ['read', 'open', 'skip', 'approve'],
   )
 }
 
@@ -221,6 +225,7 @@ export function runTriage(
     [...runHeader(r, style), ...quotaLines(r)],
     sectionsOf(r.plan, warnings, unitSection(header, unitRows)),
     rows,
+    footerKeys.map(([, action]) => action),
   )
 }
 
@@ -372,7 +377,7 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
       return { state, effect: { action: 'quit' } }
   }
   const action = actionKeys[key]
-  if (!action) return { state }
+  if (!action || !s.actions.includes(action)) return { state }
   if (action === 'read' && row.children) return fold(!s.open.has(row.id))
   const target = row.act?.[action]
   if (!target) return { state: { ...state, status: `${labelOf(action)}: ${whyNot(row, action)}` } }
@@ -404,7 +409,7 @@ export function view(s: State, cols: number, rows: number): string[] {
   const height = bodyHeight(s, rows)
   const list = visible(s)
   const body = s.help
-    ? keyLines()
+    ? keyLines(s)
     : layout(s)
         .slice(s.top, s.top + height)
         .map((line) => {
@@ -472,14 +477,16 @@ export function loadingView(l: Loading, cols: number, rows: number): string[] {
 /** The view, on the loader's screen under the same brand. */
 export const ready = (l: Loading, s: State): State => follow({ ...s, brand: l.brand })
 
-function keyLines(): string[] {
-  const width = Math.max(...keys.map(([k]) => k.length))
-  return [style('bold', 'Keys'), ...keys.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]
+function keyLines(s: State): string[] {
+  const shown = keys.filter(([, , action]) => !action || s.actions.includes(action))
+  const width = Math.max(...shown.map(([k]) => k.length))
+  return [style('bold', 'Keys'), ...shown.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]
 }
 
 function footer(s: State): string {
   const row = visible(s).find((v) => v.row.id === s.selected)?.row
-  const shown = footerKeys.map(([key, action, label]) => {
+  const listed = footerKeys.filter(([, action]) => s.actions.includes(action))
+  const shown = listed.map(([key, action, label]) => {
     if (action === 'read' && row?.children) return `${key} ${isOpen(s, row) ? 'fold' : 'unfold'}`
     return row?.act?.[action] ? `${key} ${label}` : style('dim', `${key} ${label}`)
   })

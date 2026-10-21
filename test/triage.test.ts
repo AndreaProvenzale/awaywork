@@ -138,6 +138,20 @@ describe('triage view', () => {
     expect(screen(resize(state, 9), 100, 9)[0]).toBe(brand)
   })
 
+  it("leaves log and diff out of a plan's footer and help, as a plan has neither", () => {
+    const plan = planTriage(acmePlan(), [], 30)
+    const footer = stripVTControlCharacters(view(plan, 120, 30).at(-2) ?? '')
+    expect(footer).toBe('⏎ read  o open  s skip  a approve  ? help  q quit')
+    const help = screen(update(plan, '?').state)
+    expect(help).toContain("  o                 open the unit's PR, else the item")
+    expect(help.join('\n')).not.toMatch(/^ {2}[ld] /m)
+    const unit = press(plan, 'down', 'down')
+    expect(update(unit, 'l')).toEqual({ state: unit })
+    expect(screen(update(run(), '?').state)).toContain(
+      "  l                 page the step's worker.log",
+    )
+  })
+
   it('dims the keys a row has nothing behind', () => {
     const footer = (state: State) => view(state, 120, state.rows).at(-2) ?? ''
     const dim = (label: string) => `\u001b[2m${label}\u001b[22m`
