@@ -181,9 +181,10 @@ export function dockerArgs(
   ]
 }
 
-/** docker's argv running `command` in a container of `image` with nothing mounted, as doctor checks it. */
-export const inImage = (image: string, command: string[]) => [
+/** docker's argv running `command` in a container of `image` with nothing but `mounts` read-only, as doctor checks it. */
+export const inImage = (image: string, command: string[], mounts: string[] = []) => [
   ...runFlags(),
+  ...mounts.flatMap((path) => ['--mount', `type=bind,source=${path},target=${path},readonly`]),
   '-e',
   'HOME=/tmp',
   image,

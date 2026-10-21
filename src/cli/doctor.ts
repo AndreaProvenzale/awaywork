@@ -1,12 +1,12 @@
 import { existsSync, statSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
-import { bin, configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
+import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
@@ -247,6 +247,7 @@ export async function containerChecks(
       ? { id, command: ['/bin/sh', '-c', 'command -v "$0"', commandBinary(cfg.command)] }
       : { id, command: [id, '--version'] },
   )
+  let mounted = false
   for (const [repo, { image }] of Object.entries(config.repos)) {
     if (!image) continue
     if ((await docker('image', 'inspect', image)).failed) {
@@ -258,6 +259,20 @@ export async function containerChecks(
         const why = pulled.stderr.trim().split('\n').at(-1) || pulled.shortMessage
         checks.push(check('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`))
         continue
+      }
+    }
+    if (!mounted) {
+      mounted = true
+      await mkdir(runsDir, { recursive: true })
+      const ran = await docker(...inImage(image, ['true'], [runsDir]))
+      if (ran.failed) {
+        const why = ran.stderr.trim().split('\n')[0] || ran.shortMessage
+        checks.push(
+          check(
+            'FAIL',
+            `the engine can't mount ${runsDir}, where the clones go (${why}): share it with the engine's VM`,
+          ),
+        )
       }
     }
     const found: string[] = []

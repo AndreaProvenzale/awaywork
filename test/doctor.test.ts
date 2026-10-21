@@ -21,13 +21,14 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/config/paths.js')>()
   // bin looks a name up once per process, so a test's fake docker comes in through the env.
   const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
-  return { ...original, configDir, bin }
+  const runsDir = mkdtempSync(join(tmpdir(), 'awaywork-runs-'))
+  return { ...original, configDir, runsDir, bin }
 })
 
 const { containerChecks, isolationChecks, runChecks, workflowSecretChecks } = await import(
   '../src/cli/doctor.js'
 )
-const { configDir } = await import('../src/config/paths.js')
+const { configDir, runsDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
   it('reports each check as { status, what, detail } and stops at a missing config', async () => {
@@ -119,6 +120,29 @@ describe('doctor on isolation', () => {
     expect(Date.now() - started).toBeLessThan(5000)
     expect(checks).toHaveLength(1)
     expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.*timed out/)
+  })
+
+  it('fails container where the engine can’t mount the run dir', async () => {
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    const docker = [
+      '#!/bin/sh',
+      'case "$*" in',
+      "  *--mount*) echo 'docker: Error response from daemon: bind source path does not exist' >&2; exit 125;;",
+      '  version*) echo 27.4.0;;',
+      'esac',
+    ]
+    await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const checks = await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'isolation',
+      detail: `the engine can't mount ${runsDir}, where the clones go (docker: Error response from daemon: bind source path does not exist): share it with the engine's VM`,
+    })
   })
 
   // Where the worker user exists, real-isolation.test.ts runs.
