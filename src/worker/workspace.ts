@@ -44,8 +44,13 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
-/** Flags that run no hook a worker left in `.git/hooks`, nor any fsmonitor command. */
-const noHooks = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
+/** Flags that run no hook a worker left in `.git/hooks`, nor any fsmonitor command, nor git in a submodule. */
+const noHooks = [
+  'core.hooksPath=/dev/null',
+  'core.fsmonitor=false',
+  'submodule.recurse=false',
+  'diff.submodule=short',
+].flatMap((entry) => ['-c', entry])
 
 /**
  * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
