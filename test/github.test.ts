@@ -459,6 +459,7 @@ describe('github forge', () => {
         '-c',
         'credential.helper=!gh auth git-credential',
         'clone',
+        '--no-local',
         '--branch',
         'rate-limits',
         'https://github.com/acme/api.git',
@@ -493,6 +494,9 @@ describe('github forge', () => {
     await forge.clone('acme/api', 'main', dir, { number: 7, head })
     expect((await git(dir, 'rev-parse', 'HEAD')).stdout).toBe(head)
     expect((await git(dir, 'config', 'credential.helper')).stdout).toBe('')
+    // A chown of the clone would hand the worker a local origin's objects through their hardlinks.
+    const objects = join(dir, '.git', 'objects')
+    expect((await execa('find', [objects, '-type', 'f', '-links', '+1'])).stdout).toBe('')
     const moved = forge.clone('acme/api', 'main', join(root, 'moved'), {
       number: 7,
       head: 'abc1234',
