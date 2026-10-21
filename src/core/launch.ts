@@ -169,10 +169,10 @@ const lost = new Set<string>()
 export const lostToWorker = (path: string) =>
   [...lost].some((dir) => dir === path || dir.startsWith(`${path}/`))
 
-/** A new folder the worker user can pass through but not list, outside the developer's home: a clone, or the skills plugins. */
-export async function workerRoot(): Promise<string> {
+/** A new folder the worker user can pass through but not list, outside the developer's home: a clone (`0o700` until handed over), or the skills plugins. */
+export async function workerRoot(mode = 0o711): Promise<string> {
   const root = await mkdtemp(ROOT)
-  await chmod(root, 0o711)
+  await chmod(root, mode)
   return root
 }
 
@@ -200,7 +200,7 @@ async function handOver(dirs: string[], owner: string): Promise<Handed[]> {
     }),
   )
   for (const dir of dirs) {
-    // A fresh clone is as open as git made it until then.
+    // A fresh clone opens to the worker only here.
     await closeOrLose(dirs, dir)
     await chownOrLose(dirs, owner, dir)
   }

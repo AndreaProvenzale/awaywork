@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -292,6 +292,33 @@ describe('codex provider', () => {
       }),
     ).toContain('yours changed since it was lent')
     expect(await readFile(authFile, 'utf8')).toBe(auth('mine'))
+  })
+
+  it('lends and saves back the login of a CODEX_HOME set in awaywork’s env file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-codex-home-'))
+    const [fromEnvFile, fallback] = [join(dir, 'codex-from-env-file'), join(dir, '.codex')]
+    await mkdir(fromEnvFile)
+    await mkdir(fallback)
+    const auth = (refresh: string) =>
+      JSON.stringify({ tokens: { refresh_token: refresh, account_id: 'acct-1' } })
+    await writeFile(join(fromEnvFile, 'auth.json'), auth('r0'))
+    await writeFile(join(fallback, 'auth.json'), auth('home'))
+    vi.stubEnv('HOME', dir)
+    vi.stubEnv('CODEX_HOME', undefined)
+    try {
+      const lending = codexProvider(bin, join(dir, 'codex.lock'))
+      await writeFile(join(dir, 'env'), `CODEX_HOME=${fromEnvFile}\n`)
+      process.loadEnvFile(join(dir, 'env'))
+      const home = await mkdtemp(join(dir, 'home-'))
+      const save = await lending.login?.(home, () => {})
+      expect(await readFile(join(home, '.codex', 'auth.json'), 'utf8')).toBe(auth('r0'))
+      await writeFile(join(home, '.codex', 'auth.json'), auth('r1'))
+      await save?.(true)
+      expect(await readFile(join(fromEnvFile, 'auth.json'), 'utf8')).toBe(auth('r1'))
+      expect(await readFile(join(fallback, 'auth.json'), 'utf8')).toBe(auth('home'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('saves back only the tokens of a refresh, never a key, mode or account the worker swapped in', async () => {
