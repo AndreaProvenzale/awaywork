@@ -151,6 +151,17 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(modes).toEqual([0o711, 0o600, 0o700])
   })
 
+  it('keeps a fresh clone from another user until its first phase, which still runs in it', async () => {
+    const clone = await workerRoot(0o700)
+    await execa('git', ['init', '-q', clone])
+    const other = await execa('sudo', ['-n', '-u', WORKER, 'cat', `${clone}/.git/HEAD`], {
+      reject: false,
+    })
+    expect(other.stderr).toContain('Permission denied')
+    const phase = await runCommand('git status --short && id -un', clone, env, { secrets: [] })
+    expect(phase.output).toBe(WORKER)
+  })
+
   it('gives each clone a HOME of its own', async () => {
     const [a, b] = [await workerRoot(), await workerRoot()]
     const plant = 'echo "$HOME" && echo registry=https://evil.example > ~/.npmrc'

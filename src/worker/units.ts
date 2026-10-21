@@ -210,7 +210,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
-    const dir = isolated() ? await workerRoot() : join(root, 'work', first.unit.id)
+    const dir = isolated() ? await workerRoot(0o700) : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length

@@ -40,7 +40,7 @@ export const codexLogin = (env: NodeJS.ProcessEnv) =>
 export function codexProvider(
   bin = 'codex',
   lockFile = join(stateDir, 'codex.lock'),
-  authFile = codexLogin(process.env),
+  authPath?: string,
 ): Provider {
   // Held from a login lent to the worker until it's saved back, the run in between.
   let lent = false
@@ -109,6 +109,8 @@ export function codexProvider(
      * again: a refresh rotates it, and the copy you kept would die a day later. Only its tokens, and not if yours changed meanwhile.
      */
     async login(home, log) {
+      // Read now, not at import: a CODEX_HOME may come from awaywork's env file.
+      const authFile = authPath ?? codexLogin(process.env)
       const release = await lock(lockFile, () => {})
       lent = true
       const done = async () => {

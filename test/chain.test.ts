@@ -6,6 +6,7 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
   symlink,
   utimes,
   writeFile,
@@ -66,6 +67,7 @@ async function originForge(root: string) {
   await git(origin, 'branch', 'feature-1')
   const opened: { head: string; base: string; body: string }[] = []
   const pushedOnto: string[] = []
+  const cloneModes: number[] = []
   const fake = fakeForge()
   // The PRs on each branch as the forge lists them, with the footer it adds.
   const footers: Record<string, string> = {}
@@ -83,6 +85,7 @@ async function originForge(root: string) {
         : [],
     clone: async (_repo: string, branch: string, dir: string) => {
       await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      cloneModes.push((await stat(dir)).mode & 0o777)
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await fake.push(dir, branch, opts)
@@ -107,7 +110,7 @@ async function originForge(root: string) {
       return `https://example.com/${repo}/pull/${head}`
     },
   }
-  return { origin, opened, pushedOnto, forge }
+  return { origin, opened, pushedOnto, cloneModes, forge }
 }
 
 /**
@@ -823,11 +826,13 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
     },
   }
   try {
-    const { report, opened } = await run(
+    const { report, opened, cloneModes } = await run(
       'queue: [{ skill: implement, then: [fix] }]\n',
       [issue(1)],
       provider,
     )
+    // Yours alone until its first hand-over.
+    expect(cloneModes).toEqual([0o700])
     expect(report.results.map((r) => [r.status, r.reason])).toEqual([
       ['error', "couldn't chown the clone, left as it is: refused"],
       ['skipped', "acme-api-1 error: couldn't chown the clone, left as it is: refused"],
