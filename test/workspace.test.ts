@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import {
+  chmod,
   link,
   lstat,
   mkdir,
@@ -23,6 +24,7 @@ import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
 import {
+  copyOut,
   prepareWorkspace,
   readOutput,
   restoreGitConfig,
@@ -737,5 +739,25 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await expect(restoreGitConfig(dir, '')).rejects.toThrow(
       '.git/objects/pack/elsewhere in the clone is a symlink',
     )
+  })
+
+  it('copies out of the clone without its symlinks or a setuid or setgid bit', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-copy-out-'))
+    await mkdir(join(dir, 'out', 'sub'), { recursive: true })
+    for (const [name, mode] of [
+      ['suid', 0o4755],
+      ['sub/sgid', 0o2750],
+      ['plain', 0o640],
+    ] as const) {
+      await writeFile(join(dir, 'out', name), 'x')
+      await chmod(join(dir, 'out', name), mode)
+    }
+    await symlink('/etc/hosts', join(dir, 'out', 'link'))
+    await copyOut(join(dir, 'out'), join(dir, 'copy'))
+    const mode = async (name: string) => (await lstat(join(dir, 'copy', name))).mode & 0o7777
+    expect([await mode('suid'), await mode('sub/sgid'), await mode('plain')]).toEqual([
+      0o755, 0o750, 0o640,
+    ])
+    expect(existsSync(join(dir, 'copy', 'link'))).toBe(false)
   })
 })

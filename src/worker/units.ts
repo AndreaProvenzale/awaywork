@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
@@ -54,6 +54,7 @@ import {
 } from './steps.js'
 import {
   configSecrets,
+  copyOut,
   notSymlink,
   outputFile,
   type Previous,
@@ -268,11 +269,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {
-          if (!lostToWorker(dir))
-            await cp(join(dir, WORK_DIR, 'out'), out, {
-              recursive: true,
-              filter: notSymlink,
-            }).catch(() => {})
+          if (!lostToWorker(dir)) await copyOut(join(dir, WORK_DIR, 'out'), out).catch(() => {})
         }
       }
       if (last || ended) return
@@ -600,8 +597,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const lost = lostToWorker(dir)
         // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
         if (cloned !== undefined && !lost)
-          await cp(join(dir, WORK_DIR), unitDir, {
-            recursive: true,
+          await copyOut(join(dir, WORK_DIR), unitDir, {
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
             filter: async (src) =>

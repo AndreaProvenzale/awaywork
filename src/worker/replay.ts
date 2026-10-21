@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { cp, mkdir, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
@@ -12,8 +12,8 @@ import { runSetup } from './setup.js'
 import {
   commandEnv,
   configSecrets,
+  copyOut,
   inClone,
-  notSymlink,
   prepareWorkspace,
   restoreGitConfig,
   WORK_DIR,
@@ -121,7 +121,7 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   })
   await restoreGitConfig(dir, gitConfig)
   const out = join(root, 'out')
-  await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink })
+  await copyOut(join(dir, WORK_DIR, 'out'), out)
   await rm(plugin, { recursive: true, force: true })
   const commits = Number(
     (await execa(bin('git'), [...inClone(dir), 'rev-list', '--count', `${state.commit}..HEAD`]))

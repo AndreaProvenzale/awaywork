@@ -11,6 +11,7 @@ import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker } from '../src/worker/run.js'
 import { runCommand } from '../src/worker/setup.js'
+import { copyOut } from '../src/worker/workspace.js'
 
 const image = process.env.AWAYWORK_CONTAINER_TEST ?? ''
 const CANARY = 'canary-7d1e3b'
@@ -62,6 +63,14 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     expect(rest[2]).toMatch(/^processes: [1-9], pid 1 \/sbin\/docker-init -- \/bin\/sh -c /)
     expect((await stat(join(dir, 'out.txt'))).uid).toBe(process.getuid?.())
     expect(await leftover()).toBe('')
+  })
+
+  it('copies a setuid file the container made out of the clone without the bit', async () => {
+    const made = 'mkdir -p .away/out && echo x > .away/out/suid && chmod 4755 .away/out/suid'
+    await runCommand(made, dir, {}, { secrets: [] })
+    expect((await stat(join(dir, '.away/out/suid'))).mode & 0o7777).toBe(0o4755)
+    await copyOut(join(dir, '.away/out'), join(outside, 'copied'))
+    expect((await stat(join(outside, 'copied', 'suid'))).mode & 0o7777).toBe(0o755)
   })
 
   it('stops a check that hangs and detaches, and leaves no container behind', async () => {

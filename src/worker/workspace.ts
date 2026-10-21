@@ -1,6 +1,7 @@
-import { constants, existsSync } from 'node:fs'
+import { type CopyOptions, constants, existsSync } from 'node:fs'
 import {
   appendFile,
+  chmod,
   cp,
   type FileHandle,
   lstat,
@@ -277,6 +278,22 @@ export async function writeOutput(path: string, text: string, append = false): P
 
 /** A `cp` filter that leaves symlinks behind, so nothing later writes through one. */
 export const notSymlink = async (src: string) => !(await lstat(src)).isSymbolicLink()
+
+/**
+ * Copies what repo code left in the clone out of it, without a symlink, nor the setuid or setgid bit
+ * a container can set on a file it writes as you, which would otherwise sit in your run dir.
+ */
+export async function copyOut(src: string, dest: string, options: CopyOptions = {}): Promise<void> {
+  try {
+    await cp(src, dest, { recursive: true, filter: notSymlink, ...options })
+  } finally {
+    for (const path of await readdir(dest, { recursive: true }).catch(() => [])) {
+      const stats = await lstat(join(dest, path))
+      if (!stats.isSymbolicLink() && stats.mode & 0o6000)
+        await chmod(join(dest, path), stats.mode & 0o1777)
+    }
+  }
+}
 
 /** The env of setup: no forge token, none of `withheld`, and gh without its config or keyring login. */
 export function commandEnv(

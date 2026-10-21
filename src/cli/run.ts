@@ -95,7 +95,7 @@ export function runCommand(program: Command): void {
           return
         }
         const runDir = join(runsDir, runId)
-        await mkdir(runDir, { recursive: true })
+        await mkdir(runDir, { recursive: true, mode: 0o700 })
         if (process.env.GITHUB_OUTPUT)
           await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
         await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
