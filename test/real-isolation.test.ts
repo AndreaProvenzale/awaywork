@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -140,6 +140,17 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     }
   })
 
+  it('closes a fresh clone to others before its first phase', async () => {
+    const clone = await workerRoot()
+    await writeFile(join(clone, 'README'), 'hi\n', { mode: 0o644 })
+    await mkdir(join(clone, 'src'), { mode: 0o755 })
+    const paths = [clone, join(clone, 'README'), join(clone, 'src')]
+    const modes = await asWorker(clone, () =>
+      Promise.all(paths.map(async (path) => (await stat(path)).mode & 0o777)),
+    )
+    expect(modes).toEqual([0o711, 0o600, 0o700])
+  })
+
   it('gives each clone a HOME of its own', async () => {
     const [a, b] = [await workerRoot(), await workerRoot()]
     const plant = 'echo "$HOME" && echo registry=https://evil.example > ~/.npmrc'
@@ -166,6 +177,17 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     const ran = await asWorker(clone, phase, codex.login)
     expect(ran.stdout).toBe(`${WORKER}\n${auth('r0')}`)
     expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    expect(existsSync(join(workerHome(clone) as string, '.codex'))).toBe(false)
+
+    const fifo = () =>
+      launch('/bin/sh', ['-c', 'rm ~/.codex/auth.json && mkfifo ~/.codex/auth.json'], {
+        cwd: clone,
+        env,
+        extendEnv: false,
+      })
+    await asWorker(clone, fifo, codex.login)
+    expect(existsSync(join(yours, 'codex.lock'))).toBe(false)
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
     await rm(yours, { recursive: true })
   })
 
@@ -183,9 +205,8 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     }
     Object.assign(process.env, trustAll)
     try {
-      const planted = await runCommand('cp -R .git /tmp/.git && rm .git/HEAD', clone, env, {
-        secrets: [],
-      })
+      const plant = 'cp -R .git /tmp/.git && chmod -R a+rX /tmp/.git && rm .git/HEAD'
+      const planted = await runCommand(plant, clone, env, { secrets: [] })
       expect(planted.failed).toBeUndefined()
       expect(existsSync('/tmp/.git/HEAD')).toBe(true)
       await restoreGitConfig(clone, '')

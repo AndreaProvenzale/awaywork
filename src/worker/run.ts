@@ -64,6 +64,7 @@ export async function runWorker(
     )
 
   const result: WorkerResult = { status: 'failed', turns: 0 }
+  const { login } = provider
   try {
     await asWorker(
       job.dir,
@@ -81,7 +82,7 @@ export async function runWorker(
           }
         }
       },
-      provider.login,
+      login && ((home) => login(home, log)),
     )
   } finally {
     signal?.removeEventListener('abort', onAbort)

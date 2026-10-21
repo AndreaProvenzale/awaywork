@@ -1,7 +1,10 @@
 import type { z } from 'zod'
 
-/** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again. */
-export type Login = (home: string) => Promise<(back: boolean) => Promise<void>>
+/** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
+export type Login = (
+  home: string,
+  log?: (line: string) => void,
+) => Promise<(back: boolean) => Promise<void>>
 
 export interface PrRef {
   repo: string
