@@ -113,7 +113,7 @@ describe('plan', () => {
         3  api#2  #3    review (built-in)     claude    report    PR 2
 
       Needs you 1
-        T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
+        T-8  no repo: no linked PR or repo field
              Task 8
 
       Skipped 1: 1 no_rule

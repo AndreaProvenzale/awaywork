@@ -128,7 +128,7 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 
 ## The morning report
 
-`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items folded by kind, under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), the skipped kinds are unfolded one level, and `d` just said why it did nothing:
+`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items folded by kind (right under Skipped when there's one kind, or none in a run from before skips had kinds), under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), the skipped kinds are unfolded one level, and `d` just said why it did nothing:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -138,7 +138,7 @@ Run 20261019-220012: 1 draft PR, 1 report, 3 units
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 ▾ Units 3
@@ -158,7 +158,7 @@ claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 diff: this unit left no diff
 ```
 
-The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
+The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run, without `l` and `d`: a plan has no logs or diffs yet. Rows run to the terminal's width; Needs you keeps a reason to its first clause, and `⏎` has the rest. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
 
 | Key | Does |
 | --- | --- |
@@ -192,7 +192,7 @@ Units 3
      Approve: the session cache keys on the user id and expires with the token.
 
 Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap

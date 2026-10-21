@@ -34,7 +34,7 @@ Units 3
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
 Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
@@ -67,7 +67,7 @@ Run 20261019-220012: 1 draft PR, 1 report, 3 units
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 ▾ Units 3

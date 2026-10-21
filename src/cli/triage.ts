@@ -1,6 +1,13 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { needsYou, type RunPlan, type Skipped } from '../core/foreman.js'
-import { byKind, chains, quotaLines, type RunReport } from '../core/report.js'
+import type { RunPlan } from '../core/foreman.js'
+import {
+  byKind,
+  chains,
+  needsYouOn,
+  quotaLines,
+  type ReportedSkip,
+  type RunReport,
+} from '../core/report.js'
 import type { Item } from '../core/types.js'
 import {
   formatWhy,
@@ -12,7 +19,7 @@ import {
   reportUnitTable,
   runHeader,
   skippedHeading,
-  skippedLine,
+  skippedRows,
   warningBlock,
 } from './format.js'
 
@@ -91,7 +98,12 @@ const section = (id: string, title: string, children: Row[], more?: string[]): R
   more,
 })
 
-function skipRow(plan: RunPlan, s: Skipped, [text = '', ...more]: string[], id: string): Row {
+function skipRow(
+  plan: RunReport['plan'],
+  s: ReportedSkip,
+  [text = '', ...more]: string[],
+  id: string,
+): Row {
   const key = itemKey(s.item)
   return {
     id,
@@ -120,24 +132,33 @@ function warningSection(warnings: string[]): Row[] {
   return [section('warnings', 'Warnings', rows)]
 }
 
-/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded. */
-function sectionsOf(plan: RunPlan, warnings: string[], units: Row): Row[] {
-  const needs = needsYouRows(plan.skipped, style).map(({ skipped, lines }, i) =>
+// The view clips each line to the terminal, not each cell.
+const whole = Infinity
+
+/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several. */
+function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Row[] {
+  const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
     skipRow(plan, skipped, lines, `needs/${i}`),
   )
-  const rest = plan.skipped.filter((s) => !needsYou[s.kind])
-  const groups = byKind(rest).map(([kind, list]) => ({
-    id: `skipped/${kind}`,
-    text: `${kind} ${list.length}`,
-    children: list.map((s, i) => skipRow(plan, s, [skippedLine(s)], `skipped/${kind}/${i}`)),
-  }))
+  const rest = plan.skipped.filter((s) => !needsYouOn(s))
+  const rows = (list: ReportedSkip[], id: string) =>
+    skippedRows(list, style, whole).map(({ skipped, lines }, i) =>
+      skipRow(plan, skipped, lines, `${id}/${i}`),
+    )
+  const kinds = byKind(rest) ?? []
+  const children =
+    kinds.length > 1
+      ? kinds.map(([kind, list]) => ({
+          id: `skipped/${kind}`,
+          text: `${kind} ${list.length}`,
+          children: rows(list, `skipped/${kind}`),
+        }))
+      : rows(rest, 'skipped')
   return [
     ...warningSection(warnings),
     ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
     units,
-    ...(rest.length
-      ? [{ id: 'skipped', text: skippedHeading(rest, style), children: groups }]
-      : []),
+    ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
   ]
 }
 
@@ -163,7 +184,7 @@ function triage(
 
 /** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
 export function planTriage(plan: RunPlan, warnings: string[], rows: number): State {
-  const { header, units } = planUnitTable(plan, style)
+  const { header, units } = planUnitTable(plan, style, whole)
   const listed = listedUnits(plan)
   const unitRows = units.map(([text = '', ...more], i): Row => {
     const top = listed[i]?.unit.items[0]
@@ -198,7 +219,7 @@ export function runTriage(
   rows: number,
   remote = false,
 ): State {
-  const { header, units } = reportUnitTable(r, true)
+  const { header, units } = reportUnitTable(r, true, whole)
   const missing = (file: string) =>
     remote ? 'a run fetched from GitHub keeps only its report' : `this unit left no ${file}`
   const unitRows = chains(r).map(({ head }, i): Row => {

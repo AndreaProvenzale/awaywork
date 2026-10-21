@@ -7,6 +7,7 @@ import {
   needsYou,
   type PlannedUnit,
   type RunPlan,
+  type SkipKind,
   type Skipped,
   shortRef,
 } from './foreman.js'
@@ -54,12 +55,18 @@ export interface StepFiles {
   sliceDiff?: string
 }
 
+/** A skip as report.json holds it: one written before skips had kinds has none. */
+export type ReportedSkip = Omit<Skipped, 'kind'> & Partial<Pick<Skipped, 'kind'>>
+
+/** Whether you can act to make the skipped item run; a skip without a kind doesn't say. */
+export const needsYouOn = (s: ReportedSkip): s is Skipped => !!s.kind && needsYou[s.kind]
+
 export interface RunReport {
   runId: string
   dryRun: boolean
   startedAt: Date
   finishedAt: Date
-  plan: RunPlan
+  plan: Omit<RunPlan, 'skipped'> & { skipped: ReportedSkip[] }
   results: UnitResult[]
   /** The last quota a worker saw, per provider. */
   quotas: Record<string, Quota>
@@ -136,17 +143,17 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
   }
-  const waiting = r.plan.skipped.filter((s) => needsYou[s.kind])
+  const waiting = r.plan.skipped.filter(needsYouOn)
   if (waiting.length > 0) {
     out.push('', `## Needs you (${waiting.length})`, '')
     for (const s of waiting) out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}`)
   }
-  const rest = r.plan.skipped.filter((s) => !needsYou[s.kind])
+  const rest = r.plan.skipped.filter((s) => !needsYouOn(s))
   if (rest.length > 0) {
     out.push('', `<details><summary>Skipped (${rest.length})</summary>`)
-    for (const [kind, list] of byKind(rest)) {
-      out.push('', `### ${kind} (${list.length})`, '')
-      for (const s of list) out.push(`- ${shortRef(s.item)}: ${s.reason}`)
+    for (const [kind, list] of byKind(rest) ?? [['', rest] as const]) {
+      if (kind) out.push('', `### ${kind} (${list.length})`)
+      out.push('', ...list.map((s) => `- ${shortRef(s.item)}: ${s.reason}`))
     }
     out.push('', '</details>')
   }
@@ -198,13 +205,11 @@ function linkedItem(u: UnitResult): string {
   return top ? `[${refAndTitle(top)}](${top.url})` : u.planned.unit.id
 }
 
-/** Skipped items by kind, the largest group first; a report from before kinds has them as `unknown`. */
-export function byKind(skipped: Skipped[]): [string, Skipped[]][] {
-  const groups = new Map<string, Skipped[]>()
-  for (const s of skipped) {
-    const kind = s.kind ?? 'unknown'
-    groups.set(kind, [...(groups.get(kind) ?? []), s])
-  }
+/** Skipped items by kind, the largest group first; none when a skip has no kind, as in a report.json from before kinds. */
+export function byKind(skipped: ReportedSkip[]): [SkipKind, Skipped[]][] | undefined {
+  if (!skipped.every((s): s is Skipped => !!s.kind)) return undefined
+  const groups = new Map<SkipKind, Skipped[]>()
+  for (const s of skipped) groups.set(s.kind, [...(groups.get(s.kind) ?? []), s])
   return [...groups].sort((a, b) => b[1].length - a[1].length)
 }
 

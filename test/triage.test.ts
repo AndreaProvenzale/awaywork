@@ -19,10 +19,11 @@ import {
   view,
 } from '../src/cli/triage.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
+import { githubPr } from './fakes/items.js'
 
 const files = [{ text: '1  api#1  PR 1', log: '/runs/1/worker.log' }]
 
-const needsRow = 'T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4'
+const needsRow = 'T-4  no repo: no linked PR or repo field'
 
 const run = (rows = 30) => runTriage(acmeRun(), ['source tracker: Command failed'], files, rows)
 
@@ -49,7 +50,7 @@ describe('triage view', () => {
         "  source tracker: Command failed",
         "",
         "▾ Needs you 1",
-        "  T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4",
+        "  T-4  no repo: no linked PR or repo field",
         "       Task 4",
         "",
         "▾ Units 1",
@@ -93,23 +94,62 @@ describe('triage view', () => {
     expect(selectedLine(runTriage(r, warnings, files, 30))).toBe(warnings[0])
   })
 
-  it('clips a long Needs you reason as the plain rows do', () => {
+  it('keeps a Needs you reason to its first clause, and opens the PR it waits on', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
-    expect(screen(planTriage(plan, [], 30), 130)).toContain(
-      '  api#31  waiting for review: awaywork PR is open; closest #3 fix: ch…  https://github.com/acme/api/pull/31',
-    )
+    const state = planTriage(plan, [], 30)
+    expect(screen(state)).toContain('  api#31  waiting for review: awaywork PR is open')
+    expect(update(press(state, 'down'), 'o').effect).toMatchObject({
+      target: 'https://github.com/acme/api/pull/31',
+    })
   })
 
-  it('unfolds Skipped into kinds, each folded, and a kind into its items', () => {
+  it('clips results and titles to the terminal, not to a fixed width', () => {
+    const r = acmeRun()
+    const [result] = r.results
+    if (!result) return
+    const url = `https://github.com/acme/api/pull/${'9'.repeat(70)}`
+    const reason = `awaywork tried this in ${url}`
+    Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
+    delete result.summary
+    result.planned.unit.items[0] = { ...githubPr(1), title: `PR ${'1'.repeat(80)}` }
+    const lines = screen(runTriage(r, [], files, 30), 200)
+    expect(lines).toContain(`  1  api#1  fix    skipped  awaywork tried this in ${url}`)
+    expect(lines).toContain(`     PR ${'1'.repeat(80)}`)
+    expect(screen(runTriage(r, [], files, 30), 60)).toContain(`     PR ${'1'.repeat(51)}…`)
+  })
+
+  it('unfolds Skipped into kinds, each folded, and a kind into its items without what the kind says', () => {
     const skipped = press(run(), 'G', 'right')
     expect(screen(skipped)).toContain('  ▸ no_rule 1')
     expect(screen(skipped)).toContain('  ▸ over_cap 1')
     const open = press(skipped, 'down', 'space')
-    expect(screen(open)).toContain(
-      '    api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
-    )
+    expect(screen(open)).toContain('    api#3  closest #1 fix: checks is passing, wants failing')
+    expect(screen(open)).toContain('           PR 3')
     expect(selectedLine(open)).toBe('▾ no_rule 1')
+    expect(screen(press(open, 'down', 'down', 'right'))).toContain('    api#2  limits.units is 1')
+  })
+
+  it('lists the items of a single kind right under Skipped', () => {
+    const r = acmeRun()
+    r.plan.skipped = r.plan.skipped.filter((s) => s.kind !== 'over_cap')
+    const open = press(runTriage(r, [], files, 30), 'G', 'right')
+    expect(screen(open)).toContain('▾ Skipped 1: 1 no_rule')
+    expect(selectedLine(press(open, 'down'))).toBe(
+      'api#3  closest #1 fix: checks is passing, wants failing',
+    )
+  })
+
+  it('lists skips from a report.json older than kinds right under Skipped, uncounted', () => {
+    const r = acmeRun()
+    r.plan.skipped = r.plan.skipped.map(({ item, reason }) => ({ item, reason }))
+    const open = press(runTriage(r, [], files, 30), 'G', 'right')
+    expect(screen(open)).toContain('▾ Skipped 3')
+    expect(screen(open)).toContain(
+      '  api#3  matched no rule; closest #1 fix: checks is passing, wants failing',
+    )
+    expect(screen(open)).toContain('  T-4    no repo: no linked PR or repo field')
+    expect(screen(open)).not.toContain('Needs you')
   })
 
   it('clips lines to the width, keeping their styles closed', () => {
