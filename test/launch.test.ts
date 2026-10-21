@@ -5,7 +5,15 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { dockerArgs, isolate, launch, sudoArgs, WORKER, workerFor } from '../src/core/launch.js'
+import {
+  AWAYWORK_ENV,
+  dockerArgs,
+  isolate,
+  launch,
+  sudoArgs,
+  WORKER,
+  workerFor,
+} from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -13,6 +21,7 @@ import { commandProvider } from '../src/providers/command.js'
 import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
+import { commandEnv, workerEnv } from '../src/worker/workspace.js'
 import { fakeItem } from './fakes/items.js'
 
 vi.mock('../src/core/launch.js', async (original) => {
@@ -129,6 +138,9 @@ describe('the launcher', () => {
 
   it('runs in a container with the clone and the plugin only, and the env’s names on docker’s argv, never its values', () => {
     process.env.AWAYWORK_UNCHANGED = 'yours'
+    // Set the same in your own env, awaywork's still go in.
+    vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1')
+    vi.stubEnv('ENABLE_CLAUDEAI_MCP_SERVERS', 'false')
     const env = {
       PATH: process.env.PATH,
       HOME: '/Users/dev',
@@ -136,12 +148,16 @@ describe('the launcher', () => {
       CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-canary',
       GH_TOKEN: 'none',
       GIT_CONFIG_GLOBAL: `${dir}/.away/gitconfig`,
+      GIT_CONFIG_NOSYSTEM: '1',
+      ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+      JAVA_HOME: '/Library/Java/yours',
       'BASH_FUNC_x%%': '() { echo canary; }',
     }
     const box = { image: 'acme/api:dev', plugin: dir, secrets: ['CLAUDE_CODE_OAUTH_TOKEN'] }
     const options = { cwd: dir, env, extendEnv: false }
     const argv = dockerArgs('awaywork-1', box, 'claude', ['-p', 'fix it'], options)
     delete process.env.AWAYWORK_UNCHANGED
+    vi.unstubAllEnvs()
     const id = `${process.getuid?.()}:${process.getgid?.()}`
     expect(argv).toEqual([
       ...['run', '--rm', '--init', '--entrypoint=', '--user', id],
@@ -150,6 +166,7 @@ describe('the launcher', () => {
       ...['--mount', `type=bind,source=${dir},target=${dir},readonly`],
       ...['-e', `HOME=${dir}/.away/home`],
       ...['-e', 'CLAUDE_CODE_OAUTH_TOKEN', '-e', 'GH_TOKEN', '-e', 'GIT_CONFIG_GLOBAL'],
+      ...['-e', 'GIT_CONFIG_NOSYSTEM', '-e', 'ENABLE_CLAUDEAI_MCP_SERVERS'],
       ...['acme/api:dev', 'claude', '-p', 'fix it'],
     ])
     for (const value of ['sk-ant-canary', 'none', 'yours', '/Users/dev'])
@@ -160,6 +177,20 @@ describe('the launcher', () => {
     })
     expect(shell.filter((arg) => arg === '--mount')).toHaveLength(1)
     expect(shell.slice(-4)).toEqual(['acme/api:dev', '/bin/sh', '-c', 'npm ci'])
+  })
+
+  it('names every variable awaywork sets in a phase’s env in AWAYWORK_ENV', async () => {
+    const base = { PATH: '/usr/bin' }
+    const phase = { ...job, env: workerEnv(base, dir, []) }
+    await drain(claudeProvider(fake('claude')).run(phase, new AbortController().signal))
+    const command = { command: 'true', secrets: [], skills_dir: '.agents/skills' }
+    await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
+    const envs = [
+      commandEnv(base, dir, []),
+      ...vi.mocked(launch).mock.calls.map(([, , o]) => o.env),
+    ]
+    const set = envs.flatMap((env) => Object.keys(env ?? {})).filter((name) => !(name in base))
+    expect(new Set(set)).toEqual(new Set(AWAYWORK_ENV))
   })
 
   // Where the worker user exists, real-isolation.test.ts takes the other side.

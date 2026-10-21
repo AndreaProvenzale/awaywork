@@ -26,6 +26,17 @@ const developerFolders = [
   'XDG_RUNTIME_DIR',
 ]
 
+/** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the providers), which a container always gets. */
+export const AWAYWORK_ENV = [
+  'GH_CONFIG_DIR',
+  'GH_TOKEN',
+  'GH_ENTERPRISE_TOKEN',
+  'GIT_CONFIG_GLOBAL',
+  'GIT_CONFIG_NOSYSTEM',
+  'ENABLE_CLAUDEAI_MCP_SERVERS',
+  'AWAYWORK_PROMPT',
+]
+
 /** The container's `HOME`, in the clone and gone with it: what setup installs there reaches the chain's agents and checks, never another chain. */
 export const CONTAINER_HOME = '.away/home'
 
@@ -129,7 +140,7 @@ const runFlags = () => [
 
 /**
  * docker's argv running `file` in a fresh container: the clone at its own path and the plugin read-only, nothing else,
- * and the env's names, whose values the client reads from its own env. Only what awaywork set and the phase's secrets go in.
+ * and the env's names, whose values the client reads from its own env. Only the names awaywork sets and the phase's secrets go in.
  */
 export function dockerArgs(
   name: string,
@@ -145,7 +156,7 @@ export function dockerArgs(
       /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) &&
       name !== 'HOME' &&
       env[name] !== undefined &&
-      (box.secrets.includes(name) || env[name] !== process.env[name]),
+      (box.secrets.includes(name) || AWAYWORK_ENV.includes(name)),
   )
   const mount = (path: string, more = '') => [
     '--mount',

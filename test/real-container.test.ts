@@ -38,9 +38,15 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
 
   it('runs a command with the clone only, the phase’s env by name and a HOME in the clone', async () => {
     process.env.YOURS = CANARY
-    const env = { PATH: process.env.PATH, HOME: homedir(), YOURS: CANARY, GIVEN: CANARY, SET: 'x' }
+    const env = {
+      PATH: process.env.PATH,
+      HOME: homedir(),
+      YOURS: CANARY,
+      GIVEN: CANARY,
+      GIT_CONFIG_NOSYSTEM: '1',
+    }
     const leaks = [
-      'echo "$(id -u):$(id -g) $HOME ${GIVEN-unset} ${YOURS-unset} ${SET-unset}"',
+      'echo "$(id -u):$(id -g) $HOME ${GIVEN-unset} ${YOURS-unset} ${GIT_CONFIG_NOSYSTEM-unset}"',
       `cat ${join(outside, 'secret')} 2>/dev/null || echo "no secret"`,
       'ls /var/run/docker.sock /run/docker.sock 2>/dev/null || echo "no docker socket"',
       'echo "processes: $(ls -d /proc/[0-9]* | wc -l), pid 1 $(tr "\\0" " " < /proc/1/cmdline)"',
@@ -50,7 +56,7 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     delete process.env.YOURS
     const id = `${process.getuid?.()}:${process.getgid?.()}`
     const [who, ...rest] = result.output.split('\n')
-    expect(who).toBe(`${id} ${dir}/.away/home ${CANARY} unset x`)
+    expect(who).toBe(`${id} ${dir}/.away/home ${CANARY} unset 1`)
     expect(rest.slice(0, 2)).toEqual(['no secret', 'no docker socket'])
     // Its own: docker's init, the shell and the pipeline.
     expect(rest[2]).toMatch(/^processes: [1-9], pid 1 \/sbin\/docker-init -- \/bin\/sh -c /)
