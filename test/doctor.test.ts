@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -143,6 +144,29 @@ describe('doctor on isolation', () => {
       what: 'isolation',
       detail: `the engine can't mount ${runsDir}, where the clones go (docker: Error response from daemon: bind source path does not exist): share it with the engine's VM`,
     })
+  })
+
+  it('mounts an empty folder under the run dir for its check, never the past runs, and removes it', async () => {
+    await mkdir(join(runsDir, '20261020-000000'), { recursive: true })
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    const docker = [
+      '#!/bin/sh',
+      'case "$*" in',
+      '  *--mount*) src="$*"; src=${src#*source=}; src=${src%%,*}; echo "$src" > "$0.src"; ls -A "$src" > "$0.ls";;',
+      '  version*) echo 27.4.0;;',
+      'esac',
+    ]
+    await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    const mounted = (await readFile(join(fakes, 'docker.src'), 'utf8')).trim()
+    expect(mounted.startsWith(join(runsDir, '.mount-check-'))).toBe(true)
+    expect(await readFile(join(fakes, 'docker.ls'), 'utf8')).toBe('')
+    expect(existsSync(mounted)).toBe(false)
   })
 
   // Where the worker user exists, real-isolation.test.ts runs.

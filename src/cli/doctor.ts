@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
@@ -264,7 +264,10 @@ export async function containerChecks(
     if (!mounted) {
       mounted = true
       await mkdir(runsDir, { recursive: true })
-      const ran = await docker(...inImage(image, ['true'], [runsDir]))
+      // An empty folder shares the runs dir's mount path without showing the image any past run.
+      const probe = await mkdtemp(join(runsDir, '.mount-check-'))
+      const ran = await docker(...inImage(image, ['true'], [probe]))
+      await rm(probe, { recursive: true, force: true })
       if (ran.failed) {
         const why = ran.stderr.trim().split('\n')[0] || ran.shortMessage
         checks.push(
