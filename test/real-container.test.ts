@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { lstat, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
@@ -118,5 +119,45 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     const result = await runWorker(codex, job, allowance, { log: () => {} })
     expect(result.status).toBe('done')
     expect(await readFile(authFile, 'utf8')).toBe(`${login('new')}\n`)
+  })
+
+  it.each([
+    ['.away/home', 'rm -rf "$HOME" && ln -s "$VICTIM" "$HOME"'],
+    ['.away/home/.codex', 'rm -rf "$HOME/.codex" && ln -s "$VICTIM/.codex" "$HOME/.codex"'],
+  ])('never goes through a %s the agent swapped for a link', async (link, swap) => {
+    const clone = join(outside, `swap-${randomBytes(3).toString('hex')}`)
+    const victim = join(outside, 'victim')
+    // A login awaywork would save back, were it read through the link.
+    const precious = '{"tokens":{"refresh_token":"victim","account_id":"a1"}}'
+    await mkdir(join(victim, '.codex'), { recursive: true })
+    await writeFile(join(victim, '.codex', 'auth.json'), precious)
+    await mkdir(clone)
+    contain(clone, { image, secrets: ['VICTIM'] })
+    const authFile = join(outside, 'codex', 'auth.json')
+    await mkdir(dirname(authFile), { recursive: true })
+    await writeFile(authFile, '{"tokens":{"refresh_token":"r","account_id":"a1"}}')
+    const fake = [
+      '[ "$1" = app-server ] && exit 1',
+      'cat > /dev/null',
+      swap,
+      `echo '{"type":"turn.completed"}'`,
+    ]
+    await writeFile(join(clone, 'codex'), `#!/bin/sh\n${fake.join('\n')}\n`, { mode: 0o755 })
+    const job = {
+      dir: clone,
+      prompt: 'hi',
+      maxTurns: 5,
+      env: { VICTIM: victim },
+      unit: {},
+    } as unknown as Job
+    const codex = codexProvider(join(clone, 'codex'), join(outside, 'codex.lock'), authFile)
+    const run = () => runWorker(codex, job, allowance, { log: () => {} }).catch(() => {})
+    await run()
+    expect((await lstat(join(clone, link))).isSymbolicLink()).toBe(true)
+    await run()
+    expect(await readFile(join(victim, '.codex', 'auth.json'), 'utf8')).toBe(precious)
+    expect(await readFile(authFile, 'utf8')).toBe(
+      '{"tokens":{"refresh_token":"r","account_id":"a1"}}',
+    )
   })
 })
