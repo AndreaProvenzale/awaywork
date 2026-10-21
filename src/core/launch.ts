@@ -53,6 +53,8 @@ let removing: Promise<unknown> = Promise.resolve()
 /** How long awaywork waits on a docker command of its own: past it, a stopped daemon counts as gone. */
 export const DOCKER_TIMEOUT_MS = 60_000
 let dockerTimeout = DOCKER_TIMEOUT_MS
+/** Containers a removal of timed out on. */
+const unanswered = new Set<string>()
 
 export interface Box {
   /** The repo's image, with the agent CLIs and its toolchain. */
@@ -199,7 +201,7 @@ export async function dockerVersion(timeout = DOCKER_TIMEOUT_MS): Promise<string
   })
   if (docker.failed)
     throw new Error(
-      `docker isn't reachable (${docker.stderr.trim().split('\n')[0] || docker.shortMessage})`,
+      `docker isn't reachable (${(docker.stderr.trim() || String(docker.shortMessage)).split('\n')[0]})`,
     )
   return docker.stdout.trim()
 }
@@ -213,7 +215,12 @@ function removeContainers(names: string[]): Promise<boolean> {
     execa(bin('docker'), args, { reject: false, timeout: dockerTimeout })
   const removed = removing.then(async () => {
     if (!names.length) return true
-    if ((await docker('rm', '-f', ...names)).timedOut) return false
+    // A minute each is enough to know docker isn't answering about them.
+    if (names.some((name) => unanswered.has(name))) return false
+    if ((await docker('rm', '-f', ...names)).timedOut) {
+      for (const name of names) unanswered.add(name)
+      return false
+    }
     const left = await docker(
       'ps',
       '-q',
