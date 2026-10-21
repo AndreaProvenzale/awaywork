@@ -3535,6 +3535,27 @@ it('retries with what setup staged still staged', async () => {
   expect(report.results[1]?.loop).toBe('1 round of review; until held: `true` passes')
 })
 
+it("runs no filter a submodule's own config names while it snapshots the clone for a retry", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-sub-'))
+  const lib = join(root, 'lib')
+  await execa(bin('git'), ['init', '-q', lib])
+  await writeFile(join(lib, 'a.txt'), 'a')
+  await writeFile(join(lib, '.gitattributes'), '* filter=evil')
+  await git(lib, 'add', '-A')
+  await git(lib, 'commit', '-qm', 'lib')
+  const ran = join(root, 'filter-ran')
+  const g = bin('git')
+  const setup = `PATH=/usr/bin:/bin; ${g} -c protocol.file.allow=always submodule add -q ${lib} sub && ${g} -C sub config filter.evil.clean "touch ${ran}; cat" && sleep 1 && touch sub/a.txt`
+  const { tried } = await retried(
+    (_, model) => (model === 'sonnet' ? 'fail' : 'ok'),
+    retryRule,
+    undefined,
+    `repos: { acme/api: { setup: '${setup}' } }`,
+  )
+  expect(tried).toEqual(['fix sonnet', 'fix opus'])
+  expect(existsSync(ran)).toBe(false)
+})
+
 it("retries a step without checking its rule's when again", async () => {
   // The failed attempt leaves 4.5% under the ceiling: the when wouldn't hold again.
   const { tried, report } = await retried(
