@@ -514,11 +514,17 @@ function footer(s: State): string {
   return [...shown, '? help', 'q quit'].join('  ')
 }
 
-/** CJK, Hangul, fullwidth forms and emoji take two columns; marks and joiners none. */
+/** CJK, Hangul, fullwidth forms and emoji take two columns; VS16 widens the character before it; marks and joiners none. */
 const wide =
   /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Emoji_Presentation}/u
 const columns = (char: string) =>
-  /\p{Mark}|\p{Default_Ignorable_Code_Point}/u.test(char) ? 0 : wide.test(char) ? 2 : 1
+  char === '\ufe0f'
+    ? 1
+    : /\p{Mn}|\p{Me}|\p{Default_Ignorable_Code_Point}/u.test(char)
+      ? 0
+      : wide.test(char)
+        ? 2
+        : 1
 
 const width = (text: string) =>
   [...stripVTControlCharacters(text)].reduce((sum, char) => sum + columns(char), 0)

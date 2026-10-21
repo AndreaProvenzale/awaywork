@@ -175,12 +175,24 @@ describe('triage view', () => {
     expect(columns(lines.find((l) => l.includes('\u001b[7m')) ?? '')).toBe(60)
   })
 
+  it('counts an emoji that VS16 widens as two columns', () => {
+    const r = acmeRun()
+    for (const s of r.plan.skipped) s.reason = `${s.reason} ⚠️`
+    const lines = view(runTriage(r, [], files, 30), 60, 30)
+    const selected = lines.find((l) => l.includes('\u001b[7m')) ?? ''
+    expect(selected).toContain('⚠️')
+    expect([...stripVTControlCharacters(selected)].length).toBe(60)
+    expect(clipLine('⚠️⚠️⚠️', 4)).toBe('⚠️⚠…')
+    expect(clipLine('1️⃣ ok', 5)).toBe('1️⃣ ok')
+  })
+
   it('clips lines to the width, keeping their styles closed', () => {
     expect(clipLine('\u001b[1mabcdef\u001b[22m', 4)).toBe('\u001b[1mabc…\u001b[22m')
     expect(clipLine('abc', 4)).toBe('abc')
     expect(clipLine('中文标题', 6)).toBe('中文…')
     expect(clipLine('fix 🐛 now', 7)).toBe('fix 🐛…')
     expect(clipLine('cafe\u0301', 4)).toBe('cafe\u0301')
+    expect(clipLine('कार', 2)).toBe('क…')
     for (const line of view(run(), 30, 30))
       expect([...stripVTControlCharacters(line)].length).toBeLessThanOrEqual(30)
   })
