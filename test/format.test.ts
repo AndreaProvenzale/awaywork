@@ -243,7 +243,7 @@ describe('plan views', () => {
     `)
   })
 
-  it('keeps a Needs you reason to its first clause, and the rest, with the URL once, under --why', () => {
+  it('keeps a Needs you reason but the closest rule, and the rest, with the URL once, under --why', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
     expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
@@ -255,6 +255,13 @@ describe('plan views', () => {
         skipped: waiting_for_review
           waiting for review: awaywork PR is open; closest #3 fix: checks is passing, wants failing"
     `)
+  })
+
+  it('keeps the date a gave_up reason gives in Needs you', () => {
+    const plan = acmePlan()
+    const reason = 'gave up after 3 attempts; next try on 2026-01-15'
+    plan.skipped.push({ item: githubPr(31), kind: 'gave_up', reason })
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(`api#31  ${reason}`)
   })
 
   it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {

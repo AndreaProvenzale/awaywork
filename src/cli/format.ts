@@ -213,13 +213,13 @@ export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) 
   return ['', heading('Needs you', rows.length, style), ...indent(rows.flatMap((row) => row.lines))]
 }
 
-/** Each skipped item you can act on, with its row of the Needs you table, its reason to the first `; ` clipped at `clipAt`, and its title, unindented. */
+/** Each skipped item you can act on, with its row of the Needs you table, its reason without the closest rule clipped at `clipAt`, and its title, unindented. */
 export function needsYouRows(
   skipped: ReportedSkip[],
   style: Style = (_, text) => text,
   clipAt = CELL,
 ) {
-  const reason = (s: ReportedSkip) => brief(reasonOf(s).split('; ')[0] ?? '', clipAt)
+  const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(/; closest #.*$/, ''), clipAt)
   return itemRows(skipped.filter(needsYouOn), reason, style, clipAt)
 }
 

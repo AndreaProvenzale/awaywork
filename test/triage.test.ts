@@ -94,7 +94,7 @@ describe('triage view', () => {
     expect(selectedLine(runTriage(r, warnings, files, 30))).toBe(warnings[0])
   })
 
-  it('keeps a Needs you reason to its first clause, and opens the PR it waits on', () => {
+  it('keeps a Needs you reason but the closest rule, and opens the PR it waits on', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
     const state = planTriage(plan, [], 30)
