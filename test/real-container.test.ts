@@ -133,13 +133,15 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     const codex = codexProvider(join(dir, 'codex'), join(outside, 'codex.lock'), authFile)
     const result = await runWorker(codex, job, allowance, { log: () => {} })
     expect(result.status).toBe('done')
-    expect(await readFile(authFile, 'utf8')).toBe(`${login('new')}\n`)
+    expect(await readFile(authFile, 'utf8')).toBe(login('new'))
   })
 
   it.each([
-    ['.away/home', 'rm -rf "$HOME" && ln -s "$VICTIM" "$HOME"'],
-    ['.away/home/.codex', 'rm -rf "$HOME/.codex" && ln -s "$VICTIM/.codex" "$HOME/.codex"'],
-  ])('never goes through a %s the agent swapped for a link', async (link, swap) => {
+    // The clone is refused from then on.
+    ['.away/home', 'rm -rf "$HOME" && ln -s "$VICTIM" "$HOME"', true],
+    // The save-back unlinks it.
+    ['.away/home/.codex', 'rm -rf "$HOME/.codex" && ln -s "$VICTIM/.codex" "$HOME/.codex"', false],
+  ])('never goes through a %s the agent swapped for a link', async (link, swap, kept) => {
     const clone = join(outside, `swap-${randomBytes(3).toString('hex')}`)
     const victim = join(outside, 'victim')
     // A login awaywork would save back, were it read through the link.
@@ -168,7 +170,9 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
     const codex = codexProvider(join(clone, 'codex'), join(outside, 'codex.lock'), authFile)
     const run = () => runWorker(codex, job, allowance, { log: () => {} }).catch(() => {})
     await run()
-    expect((await lstat(join(clone, link))).isSymbolicLink()).toBe(true)
+    expect((await lstat(join(clone, link)).catch(() => undefined))?.isSymbolicLink() ?? false).toBe(
+      kept,
+    )
     await run()
     expect(await readFile(join(victim, '.codex', 'auth.json'), 'utf8')).toBe(precious)
     expect(await readFile(authFile, 'utf8')).toBe(

@@ -136,7 +136,7 @@ After the run no container was left and no `sleep` ran in the VM; an agent that 
 What it doesn't close:
 
 - **The network.** It's open: what the container reads, the clone included, it can send anywhere. A service on your Mac's `localhost` wasn't reached through Colima's gateway here, but one listening on your LAN is, and Docker Desktop's `host.docker.internal` leads to your Mac. Allowing only listed domains is the rest of [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
-- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN`, Codex's `auth.json`, and the secrets of the MCP servers the rule names are inside, as they have to be. The Codex login stays in the clone's `HOME` for its later phases, and the container writes the one saved back over yours, only for the same account.
+- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN`, Codex's `auth.json` for the length of its run, and the secrets of the MCP servers the rule names are inside, as they have to be. The container also writes the Codex login that comes back, with the same limits as [the worker user's](#a-worker-user-on-your-linux-machine).
 - **The clone.** What a phase leaves there is what the checks run and what awaywork publishes, as everywhere; awaywork still puts its git config back and refuses links after each phase.
 - **The image.** Whatever you baked into it, a token in a layer or an `.npmrc`, every unit gets.
 - **The kernel.** A container shares the VM's kernel, on Linux your machine's: it's a namespace, not a VM, and a kernel bug is a way out. On a Mac that lands in the VM, and Colima's mounts your whole home read-write (`colima ssh -- mount` shows `/Users/<you>` over sshfs, `rw`), so the VM is no second wall.
