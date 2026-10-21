@@ -105,9 +105,9 @@ With [`isolation: container`](./configuration.md#in-a-container), setup, every a
 
 - **Your files.** Your home isn't mounted, only the clone in it: the env file, gh's `hosts.yml`, `~/.ssh`, `~/.gitconfig` and the keychain's files aren't there, and a Linux container has no `security` to ask the keychain for a login either.
 - **Your logins in other processes.** It has its own process table: `/proc` shows its handful of processes, never awaywork's env. Your ssh agent's socket isn't mounted, and neither is the docker socket, so it can't start a container of its own with your disk in it.
-- **Root inside.** It runs as your uid and gid with every capability dropped and `no-new-privileges`, so a setuid `sudo` goes nowhere, even in an image that hands everyone `NOPASSWD: ALL`.
+- **Root inside.** It runs as your uid and gid with every capability dropped and `no-new-privileges`, so a setuid `sudo` goes nowhere, even in an image that hands everyone `NOPASSWD: ALL`. A setuid file it makes is yours, though, and Colima keeps the bit on your Mac: awaywork drops it when copying the clone's `.away` out, and the run dir is closed to other users (700).
 - **Your env.** It gets the image's env, awaywork's placeholders and git config, and that phase's secrets by name, nothing else of yours. Values go in by name (`-e NAME`), never on argv.
-- **Nothing outlives its phase.** A container goes when its command exits, detached processes with it, and awaywork removes it itself (`docker rm -f`) on a timeout, the window's end, Ctrl-C or the watchdog. After each phase it checks none is still running before its own git touches the clone; when it can't be sure, the clone is lost, as with the worker user: nothing's published from it and awaywork leaves it alone.
+- **Nothing outlives its phase.** A container goes when its command exits, detached processes with it, and awaywork removes it itself (`docker rm -f`) on a timeout, the window's end, Ctrl-C or the watchdog. After each phase it checks none is still running before its own git touches the clone; when it can't be sure, one still listed or docker not answering within a minute, the clone is lost, as with the worker user: nothing's published from it and awaywork leaves it alone, Codex's lent login included.
 
 A real run on a Mac (Colima 0.8.1, Docker 27.4.0) with a leak script as setup, as a `when` check and as a Claude stand-in agent, in a test image that gives everyone `NOPASSWD: ALL`:
 
@@ -136,10 +136,11 @@ After the run no container was left and no `sleep` ran in the VM; an agent that 
 What it doesn't close:
 
 - **The network.** It's open: what the container reads, the clone included, it can send anywhere. A service on your Mac's `localhost` wasn't reached through Colima's gateway here, but one listening on your LAN is, and Docker Desktop's `host.docker.internal` leads to your Mac. Allowing only listed domains is the rest of [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
-- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN`, Codex's `auth.json` for the length of its run, and the secrets of the MCP servers the rule names are inside, as they have to be.
+- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN`, Codex's `auth.json`, and the secrets of the MCP servers the rule names are inside, as they have to be. The Codex login stays in the clone's `HOME` for its later phases, and the container writes the one saved back over yours, only for the same account.
 - **The clone.** What a phase leaves there is what the checks run and what awaywork publishes, as everywhere; awaywork still puts its git config back and refuses links after each phase.
 - **The image.** Whatever you baked into it, a token in a layer or an `.npmrc`, every unit gets.
-- **The kernel.** A container shares the VM's kernel, on Linux your machine's: it's a namespace, not a VM, and a kernel bug is a way out.
+- **The kernel.** A container shares the VM's kernel, on Linux your machine's: it's a namespace, not a VM, and a kernel bug is a way out. On a Mac that lands in the VM, and Colima's mounts your whole home read-write (`colima ssh -- mount` shows `/Users/<you>` over sshfs, `rw`), so the VM is no second wall.
+- **Memory, on a Mac.** The watchdog's memory floor watches your Mac, not the VM: a container that eats the VM's memory meets the VM's OOM killer instead, which can take `dockerd` with it, and then the clone is lost. The disk floor holds, the clone being on your Mac's disk.
 
 ### A worker user on GitHub-hosted runners
 
