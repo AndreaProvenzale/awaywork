@@ -59,7 +59,7 @@ Machine-readable output:
   ```json
   {
     "status": "done",
-    "outcome": { "kind": "none", "reason": "no commits" },
+    "outcome": { "kind": "none", "reason": "nothing" },
     "summary": "No code changes: both red checks are unrelated to this diff.",
     "files": {
       "log": "units/acme-api-5/1-fix/worker.log",

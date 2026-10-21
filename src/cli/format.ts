@@ -443,7 +443,7 @@ function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-/** A unit's result: its PR, `no commits`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
+/** A unit's result: its PR, `nothing`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
 function unitResult(u: UnitResult, why = (reason: string) => reason): string {
   if (u.status === 'skipped') return why(u.reason ?? '')
   const o = u.outcome
@@ -558,10 +558,11 @@ export function formatUnit(
     ...(head.loop ? [['loop', head.loop]] : []),
     ['result', result],
     ['item', top?.url ?? '-'],
-    ...table(chain.steps.map((s) => stepCells(s).map(brief))).map((line, i) => [
-      i ? '' : 'steps',
-      line,
-    ]),
+    // One step's line would only repeat the status and result.
+    ...(chain.steps.length > 1
+      ? table(chain.steps.map((s) => stepCells(s).map((c) => brief(c))))
+      : []
+    ).map((line, i) => [i ? '' : 'steps', line]),
     ...files.map((file, i) => [i ? '' : 'files', file]),
   ].flatMap(([label = '', value = '']) => block(value).map((line, i) => [i ? '' : label, line]))
   const ref = top ? shortRef(top) : head.planned.unit.id

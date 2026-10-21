@@ -411,7 +411,7 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     worker({}, { idle: ['acme-api-1'] }),
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-implement', 'skipped', 'acme-api-1 wrote no report'],
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
@@ -761,7 +761,7 @@ it('ends the chain when a stacked slice starts with a step that commits nothing'
   )
   expect(rows).toEqual([
     ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
   ])
   expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])

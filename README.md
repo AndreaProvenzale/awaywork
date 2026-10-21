@@ -74,7 +74,7 @@ claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
-  2  web#3  fix     done, 9 turns   no commits
+  2  web#3  fix     done, 9 turns   nothing
      No code changes: the red check is the visual diff job, which fails on main too since #212.
   3  api#2  review  done, 6 turns   report, verdict approve
      Approve: the session cache keys on the user id and expires with the token.

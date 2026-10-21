@@ -145,7 +145,7 @@ claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
-  2  web#3  fix     done, 9 turns   no commits
+  2  web#3  fix     done, 9 turns   nothing
      No code changes: the red check is the visual diff job, which fails on main too since #212.
   3  api#2  review  done, 6 turns   report, verdict approve
      Approve: the session cache keys on the user id and expires with the token.
@@ -186,7 +186,7 @@ Units 3
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
      Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
-  2  web#3  fix     done, 9 turns   no commits
+  2  web#3  fix     done, 9 turns   nothing
      No code changes: the red check is the visual diff job, which fails on main too since #212.
   3  api#2  review  done, 6 turns   report, verdict approve
      Approve: the session cache keys on the user id and expires with the token.
@@ -204,16 +204,15 @@ awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-`report --unit <n>` takes the number from that table, the unit id (a step's gives its chain) or an item, and prints the unit in full, what `⏎` pages: its links, each step with its provider and what it left, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
+`report --unit <n>` takes the number from that table, the unit id (a step's gives its chain) or an item, and prints the unit in full, what `⏎` pages: its links, each step with its provider and what it left when there are several, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
 
 ```
 $ awaywork report --unit 2
 2  web#3  WIP: new billing page
   skill   fix
   status  done, 9 turns
-  result  no commits
+  result  nothing
   item    https://github.com/acme/web/pull/3
-  steps   acme-web-3  fix  claude  done, 9 turns  nothing
   files   ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/1-fix/worker.log
           ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/out/pr.md
 

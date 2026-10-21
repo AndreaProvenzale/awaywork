@@ -406,7 +406,6 @@ describe('report views', () => {
         status  done, 12 turns
         result  https://github.com/acme/api/pull/9
         item    https://github.com/acme/api/pull/1
-        steps   acme-api-1  fix  claude  done, 12 turns  -
         files   /runs/20261019-220000/units/acme-api-1/1-fix/worker.log
 
       # Fix the flaky upload test
@@ -485,7 +484,6 @@ describe('report views', () => {
                    ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile
                     Failure reason:
         item    https://github.com/acme/api/pull/1
-        steps   acme-api-1  fix  claude  skipped  setup failed: Command failed with exit code 1: pnpm install…
 
       Retries the flaky upload test instead of sleeping."
     `)

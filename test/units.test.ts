@@ -497,7 +497,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
       },
     ],
     ['acme-api-5-review', 'done', 'a report'],
-    ['acme-api-6', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-6', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-6-review', 'skipped', 'acme-api-6 committed nothing'],
   ])
   expect(report.results.map((u) => u.passedOver)).toEqual([undefined, undefined, undefined, true])

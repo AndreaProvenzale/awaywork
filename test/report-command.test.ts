@@ -174,7 +174,6 @@ describe('report command', () => {
         '  status  done',
         '  result  no commits',
         '  item    https://github.com/acme/api/pull/1',
-        '  steps   acme-api-1  fix  -  done  -',
         `  files   ${join(runsDir, id, files.sliceBody)}`,
         '',
         body.trim(),
