@@ -271,12 +271,6 @@ describe('codex provider', () => {
       writeFile(join(codex, 'auth.json'), auth('r2', account))
     await lend(false, (codex) => refreshed(codex))
     await lend(true, (codex) => refreshed(codex, 'acct-2'))
-    await lend(true, (codex) =>
-      writeFile(
-        join(codex, 'auth.json'),
-        JSON.stringify({ ...JSON.parse(auth('r2')), OPENAI_API_KEY: 'sk-theirs' }),
-      ),
-    )
     await lend(true, async (codex) => {
       await writeFile(join(dir, 'planted.json'), auth('r2'))
       await rm(join(codex, 'auth.json'))

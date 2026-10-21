@@ -311,12 +311,11 @@ async function loginIn(dir: string): Promise<string | undefined> {
   }
 }
 
-/** The ChatGPT account and API key an `auth.json` logs in with, when it has a refresh token. */
+/** The ChatGPT account an `auth.json` logs into, when it has a refresh token. */
 function account(auth: string | undefined): string | undefined {
-  const json = parseJson(auth ?? '')
-  const tokens = json?.tokens
+  const tokens = parseJson(auth ?? '')?.tokens
   return typeof tokens?.refresh_token === 'string' && typeof tokens.account_id === 'string'
-    ? JSON.stringify([tokens.account_id, json.OPENAI_API_KEY ?? null])
+    ? tokens.account_id
     : undefined
 }
 
