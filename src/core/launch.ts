@@ -211,16 +211,16 @@ export async function dockerVersion(timeout = DOCKER_TIMEOUT_MS): Promise<string
  * not when docker doesn't answer.
  */
 function removeContainers(names: string[]): Promise<boolean> {
-  const docker = (...args: string[]) =>
-    execa(bin('docker'), args, { reject: false, timeout: dockerTimeout })
+  // A minute each is enough to know docker isn't answering about them.
+  const docker = async (...args: string[]) => {
+    const ran = await execa(bin('docker'), args, { reject: false, timeout: dockerTimeout })
+    if (ran.timedOut) for (const name of names) unanswered.add(name)
+    return ran
+  }
   const removed = removing.then(async () => {
     if (!names.length) return true
-    // A minute each is enough to know docker isn't answering about them.
     if (names.some((name) => unanswered.has(name))) return false
-    if ((await docker('rm', '-f', ...names)).timedOut) {
-      for (const name of names) unanswered.add(name)
-      return false
-    }
+    if ((await docker('rm', '-f', ...names)).timedOut) return false
     const left = await docker(
       'ps',
       '-q',
@@ -376,6 +376,8 @@ async function inContainers<T>(dir: string, run: () => Promise<T>, login?: Login
   } finally {
     const gone = await stopContainers()
     started.clear()
+    // Lost before the save, so a save that throws can't leave it open.
+    if (!gone) lost.add(dir)
     await save?.(gone && !(await linked(dir)))
     if (!gone) lose([dir], "couldn't remove the phase's container, left the clone as it is")
   }

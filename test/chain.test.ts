@@ -22,11 +22,18 @@ import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { containerize, isolate } from '../src/core/launch.js'
+import {
+  asWorker,
+  contain,
+  containerize,
+  isolate,
+  launch,
+  lostToWorker,
+} from '../src/core/launch.js'
 import { formatReport, type RunReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
-import type { Item, Provider, Source } from '../src/core/types.js'
+import type { Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -899,6 +906,44 @@ it.each([
     containerize(false)
     process.env.PATH = path
   }
+})
+
+/** Runs one phase of a fresh clone that starts a container under `script`'s docker, and logs docker's subcommands. */
+async function containerPhase(script: string, login?: Login) {
+  const log = `${fakeDocker}.log`
+  await writeFile(fakeDocker, `#!/bin/sh\necho "$1" >> ${log}\n${script}\n`, { mode: 0o755 })
+  await rm(log, { force: true })
+  const path = process.env.PATH
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
+  const dir = await mkdtemp(join(tmpdir(), 'awaywork-clone-'))
+  contain(dir, { image: 'acme/api:dev', secrets: [] })
+  try {
+    const phase = asWorker(dir, () => launch('true', [], { cwd: dir, reject: false }), login)
+    const error = await phase.then(
+      () => undefined,
+      (e: Error) => e.message,
+    )
+    return { dir, error, calls: (await readFile(log, 'utf8')).split('\n').filter(Boolean) }
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
+}
+
+it('loses a clone whose container it couldn’t remove before saving its login back, so a save that throws can’t keep it', async () => {
+  const login: Login = async () => async () => {
+    throw new Error('the lock is stuck')
+  }
+  const { dir, error } = await containerPhase('case "$1" in ps) echo 0123abcd;; esac', login)
+  expect(error).toBe('the lock is stuck')
+  expect(lostToWorker(dir)).toBe(true)
+})
+
+it('asks docker about a container once when its ps never answers, not again for each removal', async () => {
+  const { error, calls } = await containerPhase('case "$1" in ps) exec sleep 600;; esac')
+  expect(error).toBe("couldn't remove the phase's container, left the clone as it is")
+  expect(calls.filter((c) => c === 'ps')).toHaveLength(1)
 })
 
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
