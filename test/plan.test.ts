@@ -891,7 +891,7 @@ queue: [{ skill: fix, deliver: push }]`
     expect(held.skipped.map((s) => [s.kind, s.reason])).toEqual([
       [
         'waiting_for_review',
-        'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
+        'waiting for review: awaywork pushed onto your PR https://github.com/acme/api/pull/1',
       ],
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')

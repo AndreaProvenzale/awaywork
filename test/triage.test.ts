@@ -104,6 +104,16 @@ describe('triage view', () => {
     })
   })
 
+  it('names the PR awaywork pushed onto in Needs you without its URL', () => {
+    const plan = acmePlan()
+    const url = 'https://github.com/acme/api/pull/31'
+    const reason = `waiting for review: awaywork pushed onto your PR ${url}`
+    plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
+    expect(screen(planTriage(plan, [], 30))).toContain(
+      '  api#31  waiting for review: awaywork pushed onto your PR',
+    )
+  })
+
   it('clips results and titles to the terminal, not to a fixed width', () => {
     const r = acmeRun()
     const [result] = r.results

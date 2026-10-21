@@ -257,6 +257,19 @@ describe('plan views', () => {
     `)
   })
 
+  it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {
+    const plan = acmePlan()
+    const url = 'https://github.com/acme/api/pull/31'
+    const reason = `waiting for review: awaywork pushed onto your PR ${url}`
+    plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
+      'api#31  waiting for review: awaywork pushed onto your PR',
+    )
+    expect(formatWhy(plan, githubPr(31))).toBe(
+      `github acme/api#31  PR 31\n  ${url}\n  skipped: waiting_for_review\n    waiting for review: awaywork pushed onto your PR`,
+    )
+  })
+
   it('says which PR an item waits on under --why when it is another', () => {
     const plan = acmePlan()
     const pr = 'https://github.com/acme/api/pull/31'
