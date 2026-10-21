@@ -231,11 +231,7 @@ const kindSays: Partial<Record<SkipKind, RegExp>> = {
 }
 
 /** A row per skipped item, unindented: its ref and why, less what its kind says, then its title. */
-export function skippedRows(
-  skipped: ReportedSkip[],
-  style: Style = (_, text) => text,
-  clipAt = CELL,
-) {
+export function skippedRows(skipped: ReportedSkip[], style: Style, clipAt: number) {
   const said = (s: ReportedSkip) => (s.kind && kindSays[s.kind]) || ''
   const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(said(s), ''), clipAt)
   return itemRows(skipped, reason, style, clipAt)

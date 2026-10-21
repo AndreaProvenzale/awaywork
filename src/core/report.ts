@@ -151,10 +151,11 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   const rest = r.plan.skipped.filter((s) => !needsYouOn(s))
   if (rest.length > 0) {
     out.push('', `<details><summary>Skipped (${rest.length})</summary>`)
-    for (const [kind, list] of byKind(rest) ?? [['', rest] as const]) {
-      if (kind) out.push('', `### ${kind} (${list.length})`)
-      out.push('', ...list.map((s) => `- ${shortRef(s.item)}: ${s.reason}`))
-    }
+    const lines = (list: ReportedSkip[]) => list.map((s) => `- ${shortRef(s.item)}: ${s.reason}`)
+    const groups = byKind(rest)
+    if (!groups) out.push('', ...lines(rest))
+    for (const [kind, list] of groups ?? [])
+      out.push('', `### ${kind} (${list.length})`, '', ...lines(list))
     out.push('', '</details>')
   }
   out.push('', '## Quota', '')
