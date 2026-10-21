@@ -1,8 +1,9 @@
-import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { chmod, lstat, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { execa, type Options } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import type { Login } from './types.js'
 
 /** The user repo code runs as under `isolation: user`, made by `action.yml` on a GitHub-hosted runner, by you elsewhere. */
 export const WORKER = 'awaywork'
@@ -13,6 +14,8 @@ const CHOWN = ['/usr/bin/chown', '-R', '-h', '-P']
 const sudoSets = ['HOME', 'USER', 'LOGNAME', 'SHELL', 'MAIL']
 /** The developer's own folders, which the worker can't enter; PAM sets them from `/etc/environment` on a hosted runner. */
 const developerFolders = [
+  'CODEX_HOME',
+  'CLAUDE_CONFIG_DIR',
   'XDG_CONFIG_HOME',
   'XDG_CACHE_HOME',
   'XDG_DATA_HOME',
@@ -21,6 +24,8 @@ const developerFolders = [
 ]
 
 let worker: string | undefined
+/** The worker's `HOME` in the phase that runs now. */
+let phaseHome: string | undefined
 let killing: Promise<unknown> = Promise.resolve()
 
 /**
@@ -49,7 +54,11 @@ export function sudoArgs(user: string, file: string, args: readonly string[], op
       !sudoSets.includes(name) &&
       !developerFolders.includes(name),
   )
-  const unset = ['/usr/bin/env', ...developerFolders.flatMap((name) => ['-u', name])]
+  const unset = [
+    '/usr/bin/env',
+    ...developerFolders.flatMap((name) => ['-u', name]),
+    ...(phaseHome ? [`HOME=${phaseHome}`] : []),
+  ]
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell
     ? ['/bin/sh', '-c', [file, ...args].join(' ')]
@@ -115,21 +124,38 @@ export function sudoersLines(user = userInfo().username): string[] {
 }
 
 /**
- * Runs a phase that launches repo code in the clone `dir`. Under `user`, the worker owns the clone
- * while it runs, and once it ends none of the worker's processes is left and the clone is the developer's again.
+ * Runs a phase that launches repo code in the clone `dir`. Under `user`, the worker owns the clone and
+ * a `HOME` of its own while it runs, and once it ends none of the worker's processes is left and both
+ * are the developer's again: the very folders handed over, closed to everyone else.
  */
-export async function asWorker<T>(dir: string, run: () => Promise<T>): Promise<T> {
+export async function asWorker<T>(dir: string, run: () => Promise<T>, login?: Login): Promise<T> {
   unrestored.add(dir)
   const user = worker
   if (!user) return run()
-  await handOver(dir, `${user}:`)
+  if (lostToWorker(dir)) throw new Error('the clone is lost to the worker user')
+  const home = homes.get(dir) ?? (await mkdtemp(ROOT))
+  homes.set(dir, home)
+  const save = await login?.(home)
+  let back = false
   try {
-    return await run()
+    const handed = await handOver([dir, home], `${user}:`)
+    phaseHome = home
+    try {
+      return await run()
+    } finally {
+      phaseHome = undefined
+      await killWorker()
+      await takeBack(handed)
+      back = true
+    }
   } finally {
-    await killWorker()
-    await handOver(dir, developer())
+    await save?.(back)
   }
 }
+
+/** Each clone's `HOME` for the worker, made at its first phase, so nothing a unit leaves in `~` reaches another clone. */
+const homes = new Map<string, string>()
+export const workerHome = (dir: string) => homes.get(dir)
 
 /** Clones repo code ran in since awaywork last put their git config back: their `.git` may be the worker's. */
 const unrestored = new Set<string>()
@@ -137,7 +163,7 @@ const unrestored = new Set<string>()
 export const gitUnrestored = (dir: string) => unrestored.has(dir)
 export const markGitRestored = (dir: string) => void unrestored.delete(dir)
 
-/** Clones a chown failed on: parts of them may still be the worker's, so awaywork touches them no more. */
+/** Clones and their homes a chown failed on or the worker swapped: they may still be the worker's, so awaywork touches them no more. */
 const lost = new Set<string>()
 /** Whether `path` is, or holds, a clone lost to the worker user. */
 export const lostToWorker = (path: string) =>
@@ -164,15 +190,57 @@ function killWorker(): Promise<unknown> {
 
 /**
  * Never follows a symlink a worker planted, at the top or below; a hardlink it made is to a file it can
- * write anyway, with the `fs.protected_hardlinks` workerFor checks. A clone it fails on is lost.
+ * write anyway, with the `fs.protected_hardlinks` workerFor checks. A clone or home it fails on loses both.
  */
-async function handOver(dir: string, owner: string): Promise<void> {
-  const result = await chown(owner, dir)
-  if (!result.failed) return
-  lost.add(dir)
-  throw new Error(
-    `couldn't chown the clone, left as it is: ${result.stderr || result.shortMessage}`,
+async function handOver(dirs: string[], owner: string): Promise<Handed[]> {
+  const handed = await Promise.all(
+    dirs.map(async (dir) => {
+      const { dev, ino } = await lstat(dir)
+      return { dir, dev, ino }
+    }),
   )
+  for (const dir of dirs) await chownOrLose(dirs, owner, dir)
+  return handed
+}
+
+interface Handed {
+  dir: string
+  dev: number
+  ino: number
+}
+
+/**
+ * Takes the folders back from the worker. In the sticky `/tmp` it can rename its own folder and leave a link
+ * or a folder of its own in its place, so each must be the very folder handed over, then is the developer's alone.
+ */
+async function takeBack(handed: Handed[]): Promise<void> {
+  const dirs = handed.map((h) => h.dir)
+  for (const { dir, dev, ino } of handed) {
+    await chownOrLose(dirs, developer(), dir)
+    const now = await lstat(dir).catch(() => undefined)
+    if (!now?.isDirectory() || now.dev !== dev || now.ino !== ino)
+      lose(dirs, `${dir} isn't the folder handed to the worker, left as it is`)
+    // Only after the lstat: chmod -R follows a link it's named.
+    const closed = await execa(bin('chmod'), ['-R', 'u+rwX,go-rwx', dir], { reject: false })
+    if (closed.failed)
+      lose(
+        dirs,
+        `couldn't close the clone to others, left as it is: ${closed.stderr || closed.shortMessage}`,
+      )
+    // The next phase's worker starts in it, through a chdir of the developer's.
+    await chmod(dir, 0o711)
+  }
+}
+
+async function chownOrLose(dirs: string[], owner: string, dir: string): Promise<void> {
+  const result = await chown(owner, dir)
+  if (result.failed)
+    lose(dirs, `couldn't chown the clone, left as it is: ${result.stderr || result.shortMessage}`)
+}
+
+function lose(dirs: string[], reason: string): never {
+  for (const dir of dirs) lost.add(dir)
+  throw new Error(reason)
 }
 
 /** The only command awaywork runs as root, shaped as the sudoers line names it. */

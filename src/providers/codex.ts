@@ -1,4 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
@@ -29,9 +31,15 @@ const configSchema = z.strictObject({
 
 /**
  * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;
- * runs and probes hold a per-machine lock.
+ * runs and probes hold a per-machine lock. A worker user gets a copy of it, saved back after its run.
  */
-export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lock')): Provider {
+export function codexProvider(
+  bin = 'codex',
+  lockFile = join(stateDir, 'codex.lock'),
+  authFile = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'auth.json'),
+): Provider {
+  // Held from a login lent to the worker until it's saved back, the run in between.
+  let lent = false
   async function probe(env: NodeJS.ProcessEnv): Promise<Quota | null> {
     const child = execa(bin, ['app-server'], {
       env,
@@ -92,9 +100,48 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       }
     },
 
+    /**
+     * Copies the login into the worker's `home/.codex`, and saves the worker's back once it's yours again:
+     * a refresh rotates it, and the copy you kept would die a day later. Not if yours changed meanwhile.
+     */
+    async login(home) {
+      const release = await lock(lockFile, () => {})
+      lent = true
+      const done = async () => {
+        lent = false
+        await release()
+      }
+      try {
+        const auth = await readFile(authFile, 'utf8').catch(() => undefined)
+        const dir = join(home, '.codex')
+        // An earlier phase's, a link included.
+        await rm(dir, { recursive: true, force: true })
+        await mkdir(dir, { mode: 0o700 })
+        if (auth !== undefined) await writeFile(join(dir, 'auth.json'), auth, { mode: 0o600 })
+        return async (back) => {
+          try {
+            const used = back && auth !== undefined ? await loginIn(dir) : undefined
+            const mine = await readFile(authFile, 'utf8').catch(() => undefined)
+            const same = account(auth) !== undefined && account(used) === account(auth)
+            if (used && used !== auth && mine === auth && same) {
+              await writeFile(`${authFile}.awaywork`, used, { mode: 0o600 })
+              await rename(`${authFile}.awaywork`, authFile)
+            }
+          } catch {
+            // Yours stays as it was.
+          } finally {
+            await done()
+          }
+        }
+      } catch (e) {
+        await done()
+        throw e
+      }
+    },
+
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
-      const release = await lock(lockFile, () => {})
+      const release = lent ? async () => {} : await lock(lockFile, () => {})
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
@@ -246,6 +293,26 @@ export function toQuota(
     return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt }]
   })
   return windows.length ? { windows } : null
+}
+
+/** The worker's `auth.json` in `dir`, read without following a link it left there. */
+async function loginIn(dir: string): Promise<string | undefined> {
+  if (!(await lstat(dir)).isDirectory()) return
+  const file = await open(join(dir, 'auth.json'), constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const stats = await file.stat()
+    return stats.isFile() && stats.size < 65_536 ? await file.readFile('utf8') : undefined
+  } finally {
+    await file.close()
+  }
+}
+
+/** The ChatGPT account an `auth.json` logs into, when it has a refresh token. */
+function account(auth: string | undefined): string | undefined {
+  const tokens = parseJson(auth ?? '')?.tokens
+  return typeof tokens?.refresh_token === 'string' && typeof tokens.account_id === 'string'
+    ? tokens.account_id
+    : undefined
 }
 
 /** Waits until no other live process holds the lock file, then takes it. */

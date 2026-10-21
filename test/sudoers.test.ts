@@ -2,10 +2,17 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { asWorker, isolate, sudoersLines, WORKER, workerRoot } from '../src/core/launch.js'
+import {
+  asWorker,
+  isolate,
+  sudoersLines,
+  WORKER,
+  workerHome,
+  workerRoot,
+} from '../src/core/launch.js'
 
 // A file of its own: bin() keeps the first sudo it finds, here the fake one.
-it('chowns a clone only as the sudoers lines allow, a folder straight under /tmp', async () => {
+it('chowns a clone and its home only as the sudoers lines allow, a folder straight under /tmp', async () => {
   const fakes = await mkdtemp(join(tmpdir(), 'awaywork-sudo-'))
   const calls = join(fakes, 'calls')
   await writeFile(join(fakes, 'sudo'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
@@ -18,7 +25,8 @@ it('chowns a clone only as the sudoers lines allow, a folder straight under /tmp
   } finally {
     isolate(undefined)
     process.env.PATH = path
-    await rm(clone, { recursive: true, force: true })
+    for (const dir of [clone, workerHome(clone)])
+      if (dir) await rm(dir, { recursive: true, force: true })
   }
   const c = '[A-Za-z0-9]'.repeat(6)
   const [worker, root] = sudoersLines('dev')
@@ -37,7 +45,8 @@ it('chowns a clone only as the sudoers lines allow, a folder straight under /tmp
   const chowns = (await readFile(calls, 'utf8'))
     .split('\n')
     .filter((call) => call.includes('chown'))
-  expect(chowns).toHaveLength(2)
+  // The clone and the worker's home, there and back.
+  expect(chowns).toHaveLength(4)
   for (const call of chowns)
     expect(allowed.some((rule) => rule.test(call.replace(/^-n /, '')))).toBe(true)
 })

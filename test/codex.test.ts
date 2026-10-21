@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -242,5 +242,45 @@ describe('codex provider', () => {
     expect(waits).toEqual([`codex: waiting for pid ${process.pid}, which holds ${file}`])
     await release()
     await (await next)()
+  })
+
+  it('lends its login to a worker’s home and saves the refreshed one back, under the lock', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-codex-login-'))
+    const [authFile, held] = [join(dir, 'auth.json'), join(dir, 'codex.lock')]
+    const auth = (refresh: string, account = 'acct-1') =>
+      JSON.stringify({ tokens: { access_token: 'a', refresh_token: refresh, account_id: account } })
+    const lending = codexProvider(bin, held, authFile)
+    const lend = async (back: boolean, phase: (codex: string) => Promise<unknown>) => {
+      const home = await mkdtemp(join(dir, 'home-'))
+      const save = await lending.login?.(home)
+      expect(await readFile(held, 'utf8')).toBe(String(process.pid))
+      await phase(join(home, '.codex'))
+      await save?.(back)
+      expect(existsSync(held)).toBe(false)
+    }
+    await writeFile(authFile, auth('r0'))
+    await lend(true, async (codex) => {
+      expect(await readFile(join(codex, 'auth.json'), 'utf8')).toBe(auth('r0'))
+      // The run takes no second lock.
+      await collect(lending.run(job(), new AbortController().signal))
+      await writeFile(join(codex, 'auth.json'), auth('r1'))
+    })
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+
+    const refreshed = (codex: string, account?: string) =>
+      writeFile(join(codex, 'auth.json'), auth('r2', account))
+    await lend(false, (codex) => refreshed(codex))
+    await lend(true, (codex) => refreshed(codex, 'acct-2'))
+    await lend(true, async (codex) => {
+      await writeFile(join(dir, 'planted.json'), auth('r2'))
+      await rm(join(codex, 'auth.json'))
+      await symlink(join(dir, 'planted.json'), join(codex, 'auth.json'))
+    })
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    await lend(true, async (codex) => {
+      await refreshed(codex)
+      await writeFile(authFile, auth('mine'))
+    })
+    expect(await readFile(authFile, 'utf8')).toBe(auth('mine'))
   })
 })

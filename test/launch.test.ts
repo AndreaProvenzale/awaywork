@@ -111,6 +111,7 @@ describe('the launcher', () => {
       '--preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,GH_TOKEN',
       '--',
       '/usr/bin/env',
+      ...['-u', 'CODEX_HOME', '-u', 'CLAUDE_CONFIG_DIR'],
       ...['-u', 'XDG_CONFIG_HOME', '-u', 'XDG_CACHE_HOME', '-u', 'XDG_DATA_HOME'],
       ...['-u', 'XDG_STATE_HOME', '-u', 'XDG_RUNTIME_DIR'],
       '/opt/node/bin/claude',

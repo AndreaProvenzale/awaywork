@@ -13,7 +13,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { gitUnrestored, isolated, lostToWorker, workerRoot } from '../core/launch.js'
+import { gitUnrestored, isolated, lostToWorker, workerHome, workerRoot } from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -608,7 +608,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    if (!input.dryRun && !lostToWorker(dir)) await rm(dir, { recursive: true, force: true })
+    for (const path of [dir, workerHome(dir)])
+      if (path && !input.dryRun && !lostToWorker(path))
+        await rm(path, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }

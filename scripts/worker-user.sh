@@ -11,7 +11,7 @@ for key in fs.protected_hardlinks fs.protected_symlinks; do
   fi
 done
 
-id awaywork > /dev/null 2>&1 || sudo useradd --create-home --user-group --shell /bin/bash awaywork
+id awaywork > /dev/null 2>&1 || sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork
 sudo grep -qsx awaywork /etc/cron.deny || echo awaywork | sudo tee -a /etc/cron.deny > /dev/null
 sudo chmod 700 "$HOME"
 
