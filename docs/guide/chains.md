@@ -209,13 +209,13 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
   ```markdown
   | # | Unit | Skill | Provider | Status | Result |
   |---|---|---|---|---|---|
-  | 1 | [api#12 Rate-limit the export endpoint](https://github.com/acme/api/issues/12) | implement → loop(review ⇄ fix) → stack docs | claude, codex | done, 70 turns | https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commits) |
+  | 1 | [api#12 Rate-limit the export endpoint](https://github.com/acme/api/issues/12) | implement → loop(review ⇄ fix) → stack docs | claude, codex | done, 70 turns | https://github.com/acme/api/pull/42 (2 commits), verdict approve; https://github.com/acme/api/pull/43 (1 commit) |
   |  | └ slice 1 | implement → loop(review ⇄ fix) | claude, codex | done, 56 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | https://github.com/acme/api/pull/42 (2 commits), verdict approve |
   |  |   └ acme-api-12 | implement | claude | done, 14 turns | 1 commit |
   |  |   └ acme-api-12-review-1 | review | codex | done, 14 turns | a report, verdict changes |
   |  |   └ acme-api-12-fix-1 | fix | claude | done, 14 turns | 1 commit |
   |  |   └ acme-api-12-review-2 | review | codex | done, 14 turns | a report, verdict approve |
-  |  | └ slice 2 | docs | claude | done, 14 turns | https://github.com/acme/api/pull/43 (1 commits) |
+  |  | └ slice 2 | docs | claude | done, 14 turns | https://github.com/acme/api/pull/43 (1 commit) |
   |  |   └ acme-api-12-docs | docs | claude | done, 14 turns | 1 commit |
   ```
 

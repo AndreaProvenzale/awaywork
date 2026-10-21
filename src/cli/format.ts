@@ -14,6 +14,7 @@ import {
   type Chain,
   chainCells,
   chains,
+  counted,
   localTime,
   needsYouOn,
   quotaLines,
@@ -449,8 +450,8 @@ function allowanceNote(id: string, a: Allowance): string {
 
 function describeFallback(id: string, a: FallbackAllowance): string {
   // A command provider has no turn cap, so its fallback turns mean nothing.
-  const turns = Object.hasOwn(providers, id) ? `, ${a.turns} turns each` : ''
-  return `${a.units} units${turns} (${a.reason})`
+  const turns = Object.hasOwn(providers, id) ? `, ${counted(a.turns, 'turn')} each` : ''
+  return `${counted(a.units, 'unit')}${turns} (${a.reason})`
 }
 
 // `reserve` is the share kept back; its limit is the cap that leaves it.

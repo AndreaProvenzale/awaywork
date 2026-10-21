@@ -95,6 +95,9 @@ describe('command provider config', () => {
     expect(describeAllowance('codex', a)).toBe(
       'fallback: 4 units, 60 turns each (no quota reading)',
     )
+    expect(describeAllowance('codex', { ...a, units: 1, turns: 1 })).toBe(
+      'fallback: 1 unit, 1 turn each (no quota reading)',
+    )
   })
 
   it('refuses a name that is not a plain lowercase word', () => {

@@ -303,7 +303,7 @@ export function runLine(runId: string, report: string | undefined): string {
     .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
   // A chain of several slices lists each one's result, separated by `; `.
   const parts = results.flatMap((r) => r.split('; '))
-  const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits\)(, verdict \S+)?$/.test(r)).length
+  const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits?\)(, verdict \S+)?$/.test(r)).length
   const reports = parts.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
   return `${runId}  ${counted(results.length, 'unit')}, ${counted(prs, 'draft PR')}, ${counted(reports, 'report')}${dry}`
@@ -322,10 +322,11 @@ function status(u: UnitResult): string {
 function result(u: UnitResult): string {
   if (u.status === 'skipped') return u.reason ?? ''
   const verdict = u.verdict ? `, verdict ${u.verdict}` : ''
-  if (u.outcome?.kind === 'pr') return `${u.outcome.url} (${u.outcome.commits} commits)${verdict}`
+  if (u.outcome?.kind === 'pr')
+    return `${u.outcome.url} (${counted(u.outcome.commits, 'commit')})${verdict}`
   if (u.outcome?.kind === 'report') return `report below${verdict}`
   if (u.outcome?.kind === 'pushed')
-    return `${u.outcome.commits} commits pushed onto ${u.outcome.branch}, report below${verdict}`
+    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}, report below${verdict}`
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 
@@ -338,7 +339,8 @@ export function quotaLines(r: RunReport): string[] {
 }
 
 function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): string {
-  if (a.kind === 'fallback') return `fallback, ${units.length} of ${a.units} units (${a.reason})`
+  if (a.kind === 'fallback')
+    return `fallback, ${units.length} of ${counted(a.units, 'unit')} (${a.reason})`
   const long = last?.windows.find((w) => w.name === a.window)?.used ?? a.used
   const short = last?.windows.find((w) => w.span === 'short')
   const session = a.session
