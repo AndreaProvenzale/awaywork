@@ -310,7 +310,7 @@ export function runLine(runId: string, report: string | undefined): string {
 }
 
 function status(u: UnitResult): string {
-  const turns = u.turns ? `, ${u.turns} turns` : ''
+  const turns = u.turns ? `, ${counted(u.turns, 'turn')}` : ''
   const why = [
     u.status !== 'skipped' && u.reason,
     u.retried && 'retried on the next model',

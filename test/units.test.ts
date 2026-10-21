@@ -1042,7 +1042,7 @@ repos:
     '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → implement | claude | done, 2 turns | 2 commits pushed onto feature-1, report below |',
   )
   expect(text).toContain(
-    '|  | └ acme-api-1-implement | implement | claude | done, 1 turns | 1 commit |',
+    '|  | └ acme-api-1-implement | implement | claude | done, 1 turn | 1 commit |',
   )
   expect(text).toContain('### api#1: PR 1 (fix)\n\nhttps://github.com/acme/api/pull/1\n\n')
 })
@@ -1421,11 +1421,11 @@ queue:
   expect(text).toContain(
     [
       `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → loop(review ⇄ fix) → plan | claude | done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
-      '|  | └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turns | a report, verdict changes |',
-      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turns | a report, verdict approve |',
-      '|  | └ acme-api-1-plan | plan | claude | done, 1 turns | a report |',
+      '|  | └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turn | a report, verdict changes |',
+      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turn | a report, verdict approve |',
+      '|  | └ acme-api-1-plan | plan | claude | done, 1 turn | a report |',
     ].join('\n'),
   )
   expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')

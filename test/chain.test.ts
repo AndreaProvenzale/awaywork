@@ -521,10 +521,10 @@ queue:
     [
       `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
       `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commits) |`,
-      '|  |   └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  |   └ acme-api-1-review | review | claude | done, 1 turns | a report |',
-      `|  | └ slice 2 | fix | claude | done, 1 turns | ${pull('away/acme-api-1-2')} (1 commits) |`,
-      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turns | 1 commit |',
+      '|  |   └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  |   └ acme-api-1-review | review | claude | done, 1 turn | a report |',
+      `|  | └ slice 2 | fix | claude | done, 1 turn | ${pull('away/acme-api-1-2')} (1 commits) |`,
+      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turn | 1 commit |',
     ].join('\n'),
   )
   expect(runLine('r1', text)).toBe('r1  1 unit, 2 draft PRs, 0 reports')
