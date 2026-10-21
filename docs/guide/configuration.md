@@ -441,7 +441,7 @@ ok    isolation: user: setup, the agent and the checks run as awaywork
 
 A few things change with it:
 
-- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves it back after, under the lock every Codex run takes, since a refresh rotates it.
+- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves its refreshed tokens back after, under the lock every Codex run takes, since a refresh rotates them. Those tokens are the worker's word, so read [what it doesn't close](./safety.md#a-worker-user-on-your-linux-machine) before you lend it yours.
 - **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter.
 - **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
 - **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
