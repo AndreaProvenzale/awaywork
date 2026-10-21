@@ -162,9 +162,25 @@ describe('triage view', () => {
     expect(screen(open)).not.toContain('Needs you')
   })
 
+  it('fits wide titles to the terminal and pads the selected row to it', () => {
+    const wide = '中文标题🐛'
+    const columns = (line: string) =>
+      [...stripVTControlCharacters(line)].reduce((n, c) => n + (wide.includes(c) ? 2 : 1), 0)
+    const r = acmeRun()
+    for (const s of r.plan.skipped) s.item = { ...s.item, title: wide.repeat(20) }
+    for (const s of r.plan.skipped.filter((s) => s.kind === 'no_repo'))
+      s.reason = `no repo: ${wide}`
+    const lines = view(runTriage(r, [], files, 30), 60, 30)
+    for (const line of lines) expect(columns(line)).toBeLessThanOrEqual(60)
+    expect(columns(lines.find((l) => l.includes('\u001b[7m')) ?? '')).toBe(60)
+  })
+
   it('clips lines to the width, keeping their styles closed', () => {
     expect(clipLine('\u001b[1mabcdef\u001b[22m', 4)).toBe('\u001b[1mabc…\u001b[22m')
     expect(clipLine('abc', 4)).toBe('abc')
+    expect(clipLine('中文标题', 6)).toBe('中文…')
+    expect(clipLine('fix 🐛 now', 7)).toBe('fix 🐛…')
+    expect(clipLine('cafe\u0301', 4)).toBe('cafe\u0301')
     for (const line of view(run(), 30, 30))
       expect([...stripVTControlCharacters(line)].length).toBeLessThanOrEqual(30)
   })
