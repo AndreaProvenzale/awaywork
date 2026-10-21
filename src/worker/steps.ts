@@ -68,12 +68,27 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
     // `add` runs git in each submodule, under its config, which repo code may have written.
-    const gitlinks = (await run('ls-files', '-z', '--stage'))
+    // Paths as bytes on stdin: a name needn't be UTF-8.
+    const listed = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--stage'], {
+      env: { GIT_INDEX_FILE: index },
+      encoding: 'buffer',
+    })
+    const gitlinks = Buffer.from(listed.stdout)
+      .toString('latin1')
       .split('\0')
       .filter((entry) => entry.startsWith('160000 '))
-      .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}`)
-    await run('add', '-A', '--', '.', ...gitlinks)
-    await run('add', '-f', '--', `${WORK_DIR}/out`)
+      .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}\0`)
+    const add = (flag: string, pathspec: string) =>
+      execa(
+        bin('git'),
+        [...inClone(dir), 'add', flag, '--pathspec-from-file=-', '--pathspec-file-nul'],
+        {
+          env: { GIT_INDEX_FILE: index },
+          input: Buffer.from([`${pathspec}\0`, ...gitlinks].join(''), 'latin1'),
+        },
+      )
+    await add('-A', '.')
+    await add('-f', `${WORK_DIR}/out`)
     return { staged, tree: await run('write-tree') }
   } finally {
     await rm(index, { force: true })
