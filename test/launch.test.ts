@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { isolate, launch, sudoArgs, WORKER, workerFor } from '../src/core/launch.js'
+import { dockerArgs, isolate, launch, sudoArgs, WORKER, workerFor } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -124,6 +124,41 @@ describe('the launcher', () => {
       shell: true,
     })
     expect(shell.slice(-3)).toEqual(['/bin/sh', '-c', 'npm ci && npm test'])
+  })
+
+  it('runs in a container with the clone and the plugin only, and the env’s names on docker’s argv, never its values', () => {
+    process.env.AWAYWORK_UNCHANGED = 'yours'
+    const env = {
+      PATH: process.env.PATH,
+      HOME: '/Users/dev',
+      AWAYWORK_UNCHANGED: 'yours',
+      CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-canary',
+      GH_TOKEN: 'none',
+      GIT_CONFIG_GLOBAL: `${dir}/.away/gitconfig`,
+      'BASH_FUNC_x%%': '() { echo canary; }',
+    }
+    const box = { image: 'acme/api:dev', plugin: dir, secrets: ['CLAUDE_CODE_OAUTH_TOKEN'] }
+    const options = { cwd: dir, env, extendEnv: false }
+    const argv = dockerArgs('awaywork-1', box, 'claude', ['-p', 'fix it'], options)
+    delete process.env.AWAYWORK_UNCHANGED
+    const id = `${process.getuid?.()}:${process.getgid?.()}`
+    expect(argv).toEqual([
+      ...['run', '--rm', '--init', '--entrypoint=', '--user', id],
+      ...['--cap-drop=ALL', '--security-opt=no-new-privileges', '-i', '--name', 'awaywork-1'],
+      ...['-w', dir, '--mount', `type=bind,source=${dir},target=${dir}`],
+      ...['--mount', `type=bind,source=${dir},target=${dir},readonly`],
+      ...['-e', `HOME=${dir}/.away/home`],
+      ...['-e', 'CLAUDE_CODE_OAUTH_TOKEN', '-e', 'GH_TOKEN', '-e', 'GIT_CONFIG_GLOBAL'],
+      ...['acme/api:dev', 'claude', '-p', 'fix it'],
+    ])
+    for (const value of ['sk-ant-canary', 'none', 'yours', '/Users/dev'])
+      for (const arg of argv) expect(arg).not.toContain(value)
+    const shell = dockerArgs('awaywork-2', { ...box, plugin: '/nonexistent' }, 'npm ci', [], {
+      ...options,
+      shell: true,
+    })
+    expect(shell.filter((arg) => arg === '--mount')).toHaveLength(1)
+    expect(shell.slice(-4)).toEqual(['acme/api:dev', '/bin/sh', '-c', 'npm ci'])
   })
 
   // Where the worker user exists, real-isolation.test.ts takes the other side.

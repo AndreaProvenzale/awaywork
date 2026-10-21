@@ -78,11 +78,12 @@
     },
     "isolation": {
       "default": "none",
-      "description": "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); always user on a GitHub-hosted runner",
+      "description": "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner",
       "type": "string",
       "enum": [
         "none",
-        "user"
+        "user",
+        "container"
       ]
     },
     "budget": {
@@ -702,6 +703,11 @@
           "instructions": {
             "description": "Instruction file for units in this repo",
             "type": "string"
+          },
+          "image": {
+            "description": "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
+            "type": "string",
+            "minLength": 1
           }
         },
         "additionalProperties": false

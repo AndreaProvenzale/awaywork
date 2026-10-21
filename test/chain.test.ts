@@ -21,7 +21,7 @@ import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { isolate } from '../src/core/launch.js'
+import { containerize, isolate } from '../src/core/launch.js'
 import { formatReport, type RunReport, runLine, summarize } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
@@ -839,6 +839,56 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
     isolate(undefined)
     process.env.PATH = path
     if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
+  }
+})
+
+it('runs no unit in a repo without an image under isolation: container', async () => {
+  containerize(true)
+  try {
+    const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], worker())
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['skipped', 'no image for acme/api: isolation: container needs one in its repos entry'],
+    ])
+  } finally {
+    containerize(false)
+  }
+})
+
+it('ends the chain on a clone whose container it couldn’t remove, and touches it no more', async () => {
+  // A docker that runs nothing and always lists the container as running.
+  const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+  const docker = '#!/bin/sh\ncase "$1" in ps) echo 0123abcd;; esac\n'
+  await writeFile(join(fakes, 'docker'), docker, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${fakes}:${path}`
+  containerize(true)
+  let clone = ''
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    run: (job, signal) => {
+      clone = job.dir
+      return base.run(job, signal)
+    },
+  }
+  try {
+    const { report, opened } = await run(
+      "repos: { acme/api: { image: acme/api:dev, setup: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', "couldn't remove the phase's container, left the clone as it is"],
+      [
+        'skipped',
+        "acme-api-1 error: couldn't remove the phase's container, left the clone as it is",
+      ],
+    ])
+    expect(opened).toEqual([])
+    expect(clone).toBe('')
+  } finally {
+    containerize(false)
+    process.env.PATH = path
   }
 })
 

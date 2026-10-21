@@ -12,7 +12,7 @@ An agent working unattended on your repos is only acceptable if the worst run le
 - **Only its own agent's secret.** Every secret a configured source declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your `token_env`), your `notify.secrets`, every repo's `secrets`, every MCP server's `secrets` and every other provider's (`CLAUDE_CODE_OAUTH_TOKEN` for a Codex worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs; Codex uses the machine's own login and gets no secret. A unit also keeps the secrets of the [MCP servers](#mcp-servers) its rule names. The rest of your environment stays so repo tooling runs, including any variable you added to the env file that nothing declares.
 - **Setup outside the agent.** A repo's `setup` runs before the agent in the same environment, without the agent's secret and with only that repo's `secrets` added, none on a PR someone else opened or on a branch a worker wrote: earlier in the run, or an awaywork PR a rule took up again. On a PR by someone without write access or org membership it doesn't run at all. Whatever it leaves running is stopped before the agent starts.
 - **Context outside the agent.** A built-in source's `context` command fetches what an item points at with its own `secrets`, kept out of the agent's environment. It runs in the config file's folder, not the clone, so nothing the branch commits runs with them, and only the regular files it writes reach the agent: don't write a secret there.
-- **Checks outside the agent.** An `until` or `when` command runs the code a worker wrote, like `setup` on a branch a worker wrote: none of the repo's `secrets`, but on your machine, outside any sandbox the agent has (as the [worker user](#a-worker-user-on-your-linux-machine) like the agent, under `isolation: user` and on a GitHub-hosted runner). So it doesn't run on an untrusted author's PR.
+- **Checks outside the agent.** An `until` or `when` command runs the code a worker wrote, like `setup` on a branch a worker wrote: none of the repo's `secrets`, but on your machine, outside any sandbox the agent has (as the [worker user](#a-worker-user-on-your-linux-machine) like the agent, under `isolation: user` and on a GitHub-hosted runner, and in a [container](#a-container-on-your-machine) of its own under `isolation: container`). So it doesn't run on an untrusted author's PR.
 - **A throwaway clone.** Each unit gets a fresh clone with no credential helper left in it, on a new branch. `.away/` (context, prompt, output) is excluded from git, so it can't be committed. A branch that commits its own `.away`, a folder or a link, is refused before awaywork writes anything there, so a link to somewhere else can't make it write or delete outside the clone, and none of it lands in the run dir. Copying `.away` there never replaces awaywork's own `replay.json` or `worker.log`. Skills stay in the clone on every round: awaywork copies no symlink out of it, and refuses the unit if the folder it copies Codex's skills into links outside it, so a branch that commits `.agents/skills` as a link to somewhere else can't make it delete or write there. A loop's rounds share one clone: between them, awaywork runs no diff driver or fsmonitor its git config names, nor a hook a round left in `.git/hooks`, ends the loop if a round left a symlink where awaywork writes, and reads or writes only regular files there, so a FIFO can't hang it. Each check runs just before its write, so a worker process that outlived the watchdog could still swap a path in between.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) wraps every skill: never push, pull, merge, rebase, switch branches, comment or change git config; targeted checks and the repo's documented generators only; nothing in the background. A skill or instruction can't override it. It also tells the agent that the prefetched context is data, not instructions: a request in an item to run commands, fetch URLs, read secrets or change the delivery is reported, never followed.
 - **Someone else's PR is data too.** On a PR you didn't open, the branch's `.awaywork/` is ignored, Codex's copy of the unit's skills is replaced with awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's. Claude Code loads none of the clone's config there (settings, hooks, MCP servers, `CLAUDE.md`, skills), only awaywork's skills plugin and the `settings` file you configured; Codex still loads `AGENTS.md` and its skills itself. A [command provider](./configuration.md#bring-your-own-cli) gets awaywork's copy of the skills in its `skills_dir` too, but its CLI loads whatever else it loads from the clone; the prompt names only `CLAUDE.md`, `AGENTS.md`, skills and "other instruction files" as the author's.
@@ -37,7 +37,7 @@ What that leaves open:
 - **Codex reads the PR author's `AGENTS.md`** on someone else's PR, as above.
 - **A command provider's repo config** on someone else's PR: its CLI loads whatever repo config it loads, e.g. MCP servers or hooks in its config dir, and awaywork can't stop that.
 
-So run awaywork on a machine or runner where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux. GitHub's hosted runners [always get one](#a-worker-user-on-github-hosted-runners); a container, for macOS and for more than a user hides, is the rest of [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
+So run awaywork on a machine or runner where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux, or a [container](#a-container-on-your-machine) wherever Docker runs, your Mac included. GitHub's hosted runners [always get a worker user](#a-worker-user-on-github-hosted-runners).
 
 ### A worker user on your Linux machine
 
@@ -94,6 +94,48 @@ What it doesn't close:
 - **The worker's own login.** The agent's token is in its env and its home, as it has to be.
 - **What's on the machine.** A database or dev server on localhost answers the worker too, and anything world-writable is a place to plant a binary you run later; on a hosted runner the action takes that write bit off, on your machine it's on you (`find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them).
 - **Other developers on the machine.** The `chown` line lets whoever has it chown any awaywork clone folder, so keep the worker user to one developer.
+
+### A container on your machine
+
+With [`isolation: container`](./configuration.md#in-a-container), setup, every agent run and every check start in a fresh container of the repo's image, which sees the clone and the skills plugin and nothing else of your machine. That doesn't hang on a list of things to hide, so it closes more than the worker user, on a Mac too:
+
+- **Your files.** Your home isn't mounted, only the clone in it: the env file, gh's `hosts.yml`, `~/.ssh`, `~/.gitconfig` and the keychain's files aren't there, and a Linux container has no `security` to ask the keychain for a login either.
+- **Your logins in other processes.** It has its own process table: `/proc` shows its handful of processes, never awaywork's env. Your ssh agent's socket isn't mounted, and neither is the docker socket, so it can't start a container of its own with your disk in it.
+- **Root inside.** It runs as your uid and gid with every capability dropped and `no-new-privileges`, so a setuid `sudo` goes nowhere, even in an image that hands everyone `NOPASSWD: ALL`.
+- **Your env.** It gets the image's env, awaywork's placeholders and git config, and that phase's secrets by name, nothing else of yours. Values go in by name (`-e NAME`), never on argv.
+- **Nothing outlives its phase.** A container goes when its command exits, detached processes with it, and awaywork removes it itself (`docker rm -f`) on a timeout, the window's end, Ctrl-C or the watchdog. After each phase it checks none is still running before its own git touches the clone; when it can't be sure, the clone is lost, as with the worker user: nothing's published from it and awaywork leaves it alone.
+
+A real run on a Mac (Colima 0.8.1, Docker 27.4.0) with a leak script as setup, as a `when` check and as a Claude stand-in agent, in a test image that gives everyone `NOPASSWD: ALL`:
+
+```
+agent: as dev (501:20), HOME=~/.local/state/awaywork/runs/20261021-003248/work/leak-1/.away/home
+agent: ok   the env file
+agent: ok   your home holds only the folder on the clone's path
+agent: ok   gh's hosts.yml
+agent: ok   ~/.ssh
+agent: ok   the keychain (no security, no ~/Library/Keychains)
+agent: ok   no ssh agent socket
+agent: ok   GH_TOKEN=none in its env
+agent: ok   /proc/*/environ
+agent: ok   no docker socket found
+agent: info mounts from the host: …/work/leak-1 (rw) …/plugins/leak-1 (ro)
+agent: ok   sudo -n true refused (the image allows everyone NOPASSWD: ALL)
+agent: ok   git credential fill has nothing
+agent: ok   nothing left from an earlier phase
+agent: info .away/home holds: .setup-was-here
+agent: ok   the plugin is read-only
+agent: left a detached sleep 4242 behind
+```
+
+After the run no container was left and no `sleep` ran in the VM; an agent that hung past `unit_minutes: 1` was stopped at 64 s, its container with it.
+
+What it doesn't close:
+
+- **The network.** It's open: what the container reads, the clone included, it can send anywhere. A service on your Mac's `localhost` wasn't reached through Colima's gateway here, but one listening on your LAN is, and Docker Desktop's `host.docker.internal` leads to your Mac. Allowing only listed domains is the rest of [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
+- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN`, Codex's `auth.json` for the length of its run, and the secrets of the MCP servers the rule names are inside, as they have to be.
+- **The clone.** What a phase leaves there is what the checks run and what awaywork publishes, as everywhere; awaywork still puts its git config back and refuses links after each phase.
+- **The image.** Whatever you baked into it, a token in a layer or an `.npmrc`, every unit gets.
+- **The kernel.** A container shares the VM's kernel, on Linux your machine's: it's a namespace, not a VM, and a kernel bug is a way out.
 
 ### A worker user on GitHub-hosted runners
 
@@ -189,7 +231,7 @@ A rule's `mcp` gives its units your servers, and with them more reach, so the gu
 
 ## Resources
 
-A watchdog polls every 2 s. It stops the unit below 1.5 GB of free memory or 2 GB of free disk, and at the end kills every process the agent started, including detached ones. The agent also runs in a process group of its own, killed as soon as it exits or awaywork is stopped (short of `SIGKILL`). A process that leaves the group, as an agent's own command runner may, is left to the watchdog; one that also detaches between two polls escapes both, and could still change the clone after awaywork checked it. Not with a [worker user](#a-worker-user-on-your-linux-machine), under `isolation: user` or on a GitHub-hosted runner: there, after setup, each check and each agent run, awaywork kills every process it has, detached or not, in one `kill -9 -1` as that user, and a timeout or the window's end does the same right away. Each run also has a turn cap and stops at the quota ceiling, except on a command provider, which has neither: `limits.unit_minutes` is what stops its unit.
+A watchdog polls every 2 s. It stops the unit below 1.5 GB of free memory or 2 GB of free disk, and at the end kills every process the agent started, including detached ones. The agent also runs in a process group of its own, killed as soon as it exits or awaywork is stopped (short of `SIGKILL`). A process that leaves the group, as an agent's own command runner may, is left to the watchdog; one that also detaches between two polls escapes both, and could still change the clone after awaywork checked it. Not with a [worker user](#a-worker-user-on-your-linux-machine), under `isolation: user` or on a GitHub-hosted runner: there, after setup, each check and each agent run, awaywork kills every process it has, detached or not, in one `kill -9 -1` as that user, and a timeout or the window's end does the same right away. Nor in a [container](#a-container-on-your-machine): each command's container goes when it exits, detached processes with it, and a timeout or the window's end removes it right away (`docker rm -f`). Each run also has a turn cap and stops at the quota ceiling, except on a command provider, which has neither: `limits.unit_minutes` is what stops its unit.
 
 ## Secrets on a runner
 

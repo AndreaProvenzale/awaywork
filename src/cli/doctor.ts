@@ -10,9 +10,11 @@ import { bin, configDir, envFile, skillsDirIn, skillsDirOf } from '../config/pat
 import type { Config } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
-import { sudoersLines, WORKER, workerFor } from '../core/launch.js'
+import { dockerVersion, inImage, sudoersLines, WORKER, workerFor } from '../core/launch.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
+import { codexLogin } from '../providers/codex.js'
+import { commandBinary, isCommandProvider } from '../providers/command.js'
 import { providerFor } from '../providers/index.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
@@ -91,7 +93,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
-  for (const c of await isolationChecks(config.isolation, process.env))
+  const boxed =
+    config.isolation === 'container' && process.env.RUNNER_ENVIRONMENT !== 'github-hosted'
+  for (const c of boxed
+    ? await containerChecks(config, process.env)
+    : await isolationChecks(config.isolation, process.env))
     report(c.status, c.what, c.detail)
 
   for (const { id, config: providerConfig, budget } of config.providers) {
@@ -206,6 +212,64 @@ export async function isolationChecks(
       what: 'isolation',
       detail: `${worker} can't enter ${unreachable.join(', ').replaceAll(home, '~')} on your PATH: tools there won't run as it`,
     })
+  return checks
+}
+
+/** Under `isolation: container`: docker answers, each repo's image is here with the agents' CLIs in it, and the logins a container can use. */
+export async function containerChecks(config: Config, env: NodeJS.ProcessEnv): Promise<Check[]> {
+  const check = (status: Status, detail: string): Check => ({ status, what: 'isolation', detail })
+  const version = await dockerVersion().catch((e: Error) => e)
+  if (version instanceof Error) return [check('FAIL', `container, but ${version.message}`)]
+  const checks = [
+    check(
+      'ok',
+      `container: setup, the agent and the checks run in a fresh container of the repo's image (Docker ${version})`,
+    ),
+  ]
+  const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false })
+  const clis = config.providers.map(({ id, config: cfg }) =>
+    isCommandProvider(cfg)
+      ? { id, command: ['/bin/sh', '-c', 'command -v "$0"', commandBinary(cfg.command)] }
+      : { id, command: [id, '--version'] },
+  )
+  for (const [repo, { image }] of Object.entries(config.repos)) {
+    if (!image) continue
+    if ((await docker('image', 'inspect', image)).failed) {
+      const pulled = await docker('pull', '--quiet', image)
+      if (pulled.failed) {
+        const why = pulled.stderr.trim().split('\n').at(-1) || pulled.shortMessage
+        checks.push(check('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`))
+        continue
+      }
+    }
+    const found: string[] = []
+    const missing: string[] = []
+    for (const { id, command } of clis) {
+      const ran = await docker(...inImage(image, command))
+      if (ran.failed) missing.push(id)
+      else found.push(`${id} ${ran.stdout.trim().split('\n')[0]}`)
+    }
+    if (found.length) checks.push(check('ok', `${repo}: ${image} has ${found.join(', ')}`))
+    if (missing.length)
+      checks.push(
+        check('warn', `${repo}: ${image} can't run ${missing.join(', ')}: its units fail there`),
+      )
+  }
+  const ids = config.providers.map((p) => p.id)
+  if (ids.includes('claude') && !env.CLAUDE_CODE_OAUTH_TOKEN)
+    checks.push(
+      check(
+        'warn',
+        "CLAUDE_CODE_OAUTH_TOKEN unset: a container can't see your keychain login; make one with claude setup-token and put it in the env file",
+      ),
+    )
+  if (ids.includes('codex') && !existsSync(codexLogin(env)))
+    checks.push(
+      check(
+        'warn',
+        `no ${codexLogin(env)} to lend the container: Codex needs its login in a file (codex login)`,
+      ),
+    )
   return checks
 }
 

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 
@@ -20,7 +21,9 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   return { ...(await importOriginal<object>()), configDir }
 })
 
-const { isolationChecks, runChecks, workflowSecretChecks } = await import('../src/cli/doctor.js')
+const { containerChecks, isolationChecks, runChecks, workflowSecretChecks } = await import(
+  '../src/cli/doctor.js'
+)
 const { configDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
@@ -86,6 +89,18 @@ describe('doctor on isolation', () => {
           'none: setup, the agent and the checks run as you, your logins in reach; see https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox',
       },
     ])
+  })
+
+  it('fails container where docker doesn’t answer', async () => {
+    vi.stubEnv('DOCKER_HOST', 'unix:///nonexistent/docker.sock')
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const checks = await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    expect(checks).toHaveLength(1)
+    expect(checks[0]?.status).toBe('FAIL')
+    expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.+\)$/)
   })
 
   // Where the worker user exists, real-isolation.test.ts runs.

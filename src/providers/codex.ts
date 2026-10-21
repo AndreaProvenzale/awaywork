@@ -1,13 +1,15 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
-import { launch } from '../core/launch.js'
+import { CONTAINER_HOME, contained, launch, stopContainers } from '../core/launch.js'
 import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
+import { readOutput, refuseSymlinks } from '../worker/workspace.js'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
@@ -98,7 +100,9 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
+      let giveBack: (() => Promise<void>) | undefined
       try {
+        if (contained()) giveBack = await lendLogin(job.dir)
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
         const overrides = Object.entries(config).flatMap(([k, v]) => [
@@ -132,6 +136,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           }
         }
         const { exitCode } = await child
+        await giveBack?.()
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
@@ -140,6 +145,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         const ok = done?.type === 'done' && done.ok && exitCode === 0
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
+        await giveBack?.()
         await release()
       }
     },
@@ -150,6 +156,47 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 }
 
 export const codex = codexProvider()
+
+/** Your Codex login, which `codex login` keeps in `auth.json`. */
+export const codexLogin = (env: NodeJS.ProcessEnv) =>
+  join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
+
+/**
+ * Copies your Codex login into the container's `HOME`; the function it returns takes it back once the container
+ * is gone and saves a refreshed one over yours, since a refresh rotates the refresh token and the old one dies (#190).
+ */
+async function lendLogin(dir: string): Promise<() => Promise<void>> {
+  const mine = codexLogin(process.env)
+  const lent = await readFile(mine, 'utf8').catch(() => {
+    throw new Error(`no Codex login at ${mine} to lend the container: run codex login`)
+  })
+  const home = join(CONTAINER_HOME, '.codex')
+  const file = join(dir, home, 'auth.json')
+  await refuseSymlinks(dir, [home])
+  await mkdir(join(dir, home), { recursive: true })
+  await rm(file, { force: true })
+  await writeFile(file, lent, { mode: 0o600, flag: 'wx' })
+  let given = false
+  return async () => {
+    if (given) return
+    given = true
+    await stopContainers()
+    try {
+      await refuseSymlinks(dir, [join(home, 'auth.json')])
+      const back = await readOutput(file)
+      if (back === lent || !isLogin(back)) return
+      await writeFile(`${mine}.awaywork`, back, { mode: 0o600 })
+      await rename(`${mine}.awaywork`, mine)
+    } finally {
+      await rm(join(dir, home), { recursive: true, force: true })
+    }
+  }
+}
+
+function isLogin(text: string): boolean {
+  const json = parseJson(text)
+  return typeof json === 'object' && json !== null && 'tokens' in json
+}
 
 /** `-c` overrides for the unit's MCP servers; their secrets reach them by name, kept out of the shell's env. */
 export function mcpOverrides(servers: Record<string, McpServer>): string[] {

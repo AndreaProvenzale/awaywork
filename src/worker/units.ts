@@ -13,7 +13,15 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { gitUnrestored, isolated, lostToWorker, workerRoot } from '../core/launch.js'
+import {
+  CONTAINER_HOME,
+  contain,
+  contained,
+  gitUnrestored,
+  isolated,
+  lostToWorker,
+  workerRoot,
+} from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
 import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
@@ -331,6 +339,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         end('the window ended')
         continue
       }
+      const image = input.config.repos[p.unit.repo]?.image
+      if (contained() && !image) {
+        end(`no image for ${p.unit.repo}: isolation: container needs one in its repos entry`)
+        continue
+      }
       const unit = { ...p.unit, ...shape }
       const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
       const { provider: id, passed } = route(candidates, allowances, routed)
@@ -361,6 +374,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
       const plugin = join(root, 'plugins', unit.id)
+      if (contained() && image) contain(dir, { image, plugin, secrets })
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -589,7 +603,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             recursive: true,
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
-            filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
+            filter: async (src) =>
+              ![join(dir, WORK_DIR, 'gh'), join(dir, CONTAINER_HOME)].includes(src) &&
+              (await notSymlink(src)),
           }).catch(() => {})
         if (start && !lost)
           try {
