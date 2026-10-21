@@ -18,7 +18,10 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const configDir = mkdtempSync(join(tmpdir(), 'awaywork-config-'))
-  return { ...(await importOriginal<object>()), configDir }
+  const original = await importOriginal<typeof import('../src/config/paths.js')>()
+  // bin looks a name up once per process, so a test's fake docker comes in through the env.
+  const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
+  return { ...original, configDir, bin }
 })
 
 const { containerChecks, isolationChecks, runChecks, workflowSecretChecks } = await import(
@@ -101,6 +104,21 @@ describe('doctor on isolation', () => {
     expect(checks).toHaveLength(1)
     expect(checks[0]?.status).toBe('FAIL')
     expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.+\)$/)
+  })
+
+  it('fails container where docker never answers, rather than wait on it', async () => {
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    await writeFile(join(fakes, 'docker'), '#!/bin/sh\nexec sleep 600\n', { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const started = Date.now()
+    const checks = await containerChecks(config, process.env, 500)
+    vi.unstubAllEnvs()
+    expect(Date.now() - started).toBeLessThan(5000)
+    expect(checks).toHaveLength(1)
+    expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.*timed out/)
   })
 
   // Where the worker user exists, real-isolation.test.ts runs.

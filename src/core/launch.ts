@@ -39,6 +39,9 @@ const boxes = new Map<string, Box>()
 /** The containers launched in the running phase, by name. */
 const started = new Set<string>()
 let removing: Promise<unknown> = Promise.resolve()
+/** How long awaywork waits on a docker command of its own: past it, a stopped daemon counts as gone. */
+export const DOCKER_TIMEOUT_MS = 60_000
+let dockerTimeout = DOCKER_TIMEOUT_MS
 
 export interface Box {
   /** The repo's image, with the agent CLIs and its toolchain. */
@@ -102,8 +105,9 @@ async function refuseLinks(dir: string): Promise<void> {
 }
 
 /** Runs every later launch in a container, or as before when `on` is false. */
-export function containerize(on: boolean): void {
+export function containerize(on: boolean, timeout = DOCKER_TIMEOUT_MS): void {
   boxed = on
+  dockerTimeout = timeout
 }
 
 export const contained = () => boxed
@@ -176,9 +180,10 @@ export const inImage = (image: string, command: string[]) => [
 ]
 
 /** The Docker engine's version; throws when docker can't reach it. */
-export async function dockerVersion(): Promise<string> {
+export async function dockerVersion(timeout = DOCKER_TIMEOUT_MS): Promise<string> {
   const docker = await execa(bin('docker'), ['version', '--format', '{{.Server.Version}}'], {
     reject: false,
+    timeout,
   })
   if (docker.failed)
     throw new Error(
@@ -187,13 +192,21 @@ export async function dockerVersion(): Promise<string> {
   return docker.stdout.trim()
 }
 
-/** Removes the containers, one removal at a time so none races another, and says whether none is left running. */
+/**
+ * Removes the containers, one removal at a time so none races another, and says whether none is left running:
+ * not when docker doesn't answer.
+ */
 function removeContainers(names: string[]): Promise<boolean> {
+  const docker = (...args: string[]) =>
+    execa(bin('docker'), args, { reject: false, timeout: dockerTimeout })
   const removed = removing.then(async () => {
     if (!names.length) return true
-    await execa(bin('docker'), ['rm', '-f', ...names], { reject: false })
-    const filters = names.flatMap((name) => ['--filter', `name=^${name}$`])
-    const left = await execa(bin('docker'), ['ps', '-q', ...filters], { reject: false })
+    if ((await docker('rm', '-f', ...names)).timedOut) return false
+    const left = await docker(
+      'ps',
+      '-q',
+      ...names.flatMap((name) => ['--filter', `name=^${name}$`]),
+    )
     return !left.failed && left.stdout.trim() === ''
   })
   removing = removed

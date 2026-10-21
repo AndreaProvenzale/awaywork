@@ -10,7 +10,14 @@ import { bin, configDir, envFile, skillsDirIn, skillsDirOf } from '../config/pat
 import type { Config } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
-import { dockerVersion, inImage, sudoersLines, WORKER, workerFor } from '../core/launch.js'
+import {
+  DOCKER_TIMEOUT_MS,
+  dockerVersion,
+  inImage,
+  sudoersLines,
+  WORKER,
+  workerFor,
+} from '../core/launch.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
@@ -220,9 +227,13 @@ export async function isolationChecks(
 }
 
 /** Under `isolation: container`: docker answers, each repo's image is here with the agents' CLIs in it, and the logins a container can use. */
-export async function containerChecks(config: Config, env: NodeJS.ProcessEnv): Promise<Check[]> {
+export async function containerChecks(
+  config: Config,
+  env: NodeJS.ProcessEnv,
+  timeout = DOCKER_TIMEOUT_MS,
+): Promise<Check[]> {
   const check = (status: Status, detail: string): Check => ({ status, what: 'isolation', detail })
-  const version = await dockerVersion().catch((e: Error) => e)
+  const version = await dockerVersion(timeout).catch((e: Error) => e)
   if (version instanceof Error) return [check('FAIL', `container, but ${version.message}`)]
   const checks = [
     check(
@@ -230,7 +241,7 @@ export async function containerChecks(config: Config, env: NodeJS.ProcessEnv): P
       `container: setup, the agent and the checks run in a fresh container of the repo's image (Docker ${version})`,
     ),
   ]
-  const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false })
+  const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false, timeout })
   const clis = config.providers.map(({ id, config: cfg }) =>
     isCommandProvider(cfg)
       ? { id, command: ['/bin/sh', '-c', 'command -v "$0"', commandBinary(cfg.command)] }
@@ -239,7 +250,10 @@ export async function containerChecks(config: Config, env: NodeJS.ProcessEnv): P
   for (const [repo, { image }] of Object.entries(config.repos)) {
     if (!image) continue
     if ((await docker('image', 'inspect', image)).failed) {
-      const pulled = await docker('pull', '--quiet', image)
+      const pulled = await execa(bin('docker'), ['pull', '--quiet', image], {
+        reject: false,
+        timeout: 10 * timeout,
+      })
       if (pulled.failed) {
         const why = pulled.stderr.trim().split('\n').at(-1) || pulled.shortMessage
         checks.push(check('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`))

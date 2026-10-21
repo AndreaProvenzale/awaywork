@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import {
   copyFile,
   mkdir,
@@ -854,14 +854,18 @@ it('runs no unit in a repo without an image under isolation: container', async (
   }
 })
 
-it('ends the chain on a clone whose container it couldn’t remove, and touches it no more', async () => {
-  // A docker that runs nothing and always lists the container as running.
-  const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
-  const docker = '#!/bin/sh\ncase "$1" in ps) echo 0123abcd;; esac\n'
-  await writeFile(join(fakes, 'docker'), docker, { mode: 0o755 })
+/** A docker on PATH that runs `script`, at one path for every test, since bin looks it up once. */
+const fakeDocker = join(mkdtempSync(join(tmpdir(), 'awaywork-docker-')), 'docker')
+
+it.each([
+  // Runs nothing and always lists the container as running.
+  ['lists it as still running', 'case "$1" in ps) echo 0123abcd;; esac'],
+  ['never answers', 'case "$1" in rm|ps) exec sleep 600;; esac'],
+])('ends the chain on a clone whose container it couldn’t remove: docker %s', async (_, script) => {
+  await writeFile(fakeDocker, `#!/bin/sh\n${script}\n`, { mode: 0o755 })
   const path = process.env.PATH
-  process.env.PATH = `${fakes}:${path}`
-  containerize(true)
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
   let clone = ''
   const base = worker()
   const provider: Provider = {
