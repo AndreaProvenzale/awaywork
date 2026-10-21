@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
@@ -124,6 +124,56 @@ it('keeps the clone in a folder only you can open, its hooks removed without fol
   expect((await stat(join(replay.runDir, 'replays'))).mode & 0o777).toBe(0o700)
   expect((await stat(dirname(result.out))).mode & 0o777).toBe(0o700)
 })
+
+it.each([
+  ['its setup fails', 'setup', /setup failed/],
+  ['its worker throws', 'worker', /^boom$/],
+  ['its worker throws after a link in .git', 'link', /^boom$/],
+] as const)(
+  'puts back the kept clone’s .git when %s, and says where the clone is',
+  async (_, how, error) => {
+    const { root, replay } = await pastRun()
+    const ran = join(root, 'ran')
+    const plant = (dir: string) =>
+      `git -C ${dir} config core.fsmonitor "touch ${ran}; true" && printf '#!/bin/sh\\ntouch ${ran}\\n' > ${dir}/.git/hooks/post-checkout && chmod +x ${dir}/.git/hooks/post-checkout`
+    const throwing: Provider = {
+      ...fakeProvider('claude'),
+      async *run(job) {
+        await execa('sh', ['-c', plant(job.dir)])
+        if (how === 'link') await symlink(root, join(job.dir, '.git', 'info', 'x'))
+        yield { type: 'log', line: 'planted' }
+        throw new Error('boom')
+      },
+    }
+    const setup = { 'acme/api': { setup: `${plant('.')} && exit 1` } }
+    const lines: string[] = []
+    const failing = {
+      ...replay,
+      config: how === 'setup' ? { ...replay.config, repos: setup } : replay.config,
+      providers: { claude: throwing },
+      ctx: { ...replay.ctx, log: (line: string) => void lines.push(line) },
+    }
+
+    await expect(replayUnit(failing as typeof replay)).rejects.toThrow(error)
+
+    const [kept = ''] = await readdir(join(replay.runDir, 'replays'))
+    const dir = join(replay.runDir, 'replays', kept, 'work')
+    expect(lines).toContain(
+      `the clone stays in ${dir}: run no git in it, not even git status; fetch its branch from your own checkout instead: git fetch ${dir} away/acme-api-1`,
+    )
+    if (how === 'link') {
+      expect(lines.at(-1)).toBe(
+        'its .git is as the worker left it: .git/info/x in the clone is a symlink',
+      )
+      return
+    }
+    expect(await readFile(join(dir, '.git', 'config'), 'utf8')).not.toContain('fsmonitor')
+    expect(existsSync(join(dir, '.git', 'hooks'))).toBe(false)
+    await git(dir, 'status')
+    await git(dir, 'checkout', '-q', '-b', 'mine')
+    expect(existsSync(ran)).toBe(false)
+  },
+)
 
 it('keeps a replay’s fresh clone yours alone under isolation: user until its first hand-over', async () => {
   const { root, forge, replay } = await pastRun("repos: { acme/api: { setup: 'true' } }")

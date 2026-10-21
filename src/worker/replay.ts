@@ -6,7 +6,14 @@ import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { type Allowance, MAX_TURNS } from '../core/budget.js'
 import { modelFor } from '../core/foreman.js'
-import { contain, contained, isolated, workerHome, workerRoot } from '../core/launch.js'
+import {
+  contain,
+  contained,
+  isolated,
+  lostToWorker,
+  workerHome,
+  workerRoot,
+} from '../core/launch.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
@@ -100,35 +107,42 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const entry = r.config.providers.find((c) => c.id === state.provider)
   const withheld = secrets.filter((name) => !provider.secrets.includes(name))
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
-  const setup = r.config.repos[unit.repo]?.setup
-  if (setup && !unit.untrusted) {
-    const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
-      secrets: [],
+  let worker: WorkerResult
+  try {
+    const setup = r.config.repos[unit.repo]?.setup
+    if (setup && !unit.untrusted) {
+      const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
+        secrets: [],
+        signal: r.signal,
+      })
+      if (failed) throw new Error(failed)
+    }
+    const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'replay' }
+    const job = {
+      unit,
+      dir,
+      prompt,
+      maxTurns: MAX_TURNS,
+      model: modelFor(unit.rule.model, state.provider) ?? entry?.model,
+      env: workerEnv(r.ctx.env, dir, withheld),
+      config: entry?.config,
+      configDir: r.configDir,
+      plugin,
+    }
+    worker = await runWorker(provider, job, allowance, {
+      log,
       signal: r.signal,
+      maxMinutes: r.config.limits.unit_minutes,
+      watch: r.watch,
     })
-    if (failed) throw new Error(failed)
+  } catch (e) {
+    // The failure is the error to report; a restore failing after it is logged.
+    await keep(dir, gitConfig, unit.branch, log).catch((restore: Error) =>
+      log(`its .git is as the worker left it: ${restore.message}`),
+    )
+    throw e
   }
-  const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'replay' }
-  const job = {
-    unit,
-    dir,
-    prompt,
-    maxTurns: MAX_TURNS,
-    model: modelFor(unit.rule.model, state.provider) ?? entry?.model,
-    env: workerEnv(r.ctx.env, dir, withheld),
-    config: entry?.config,
-    configDir: r.configDir,
-    plugin,
-  }
-  const worker = await runWorker(provider, job, allowance, {
-    log,
-    signal: r.signal,
-    maxMinutes: r.config.limits.unit_minutes,
-    watch: r.watch,
-  })
-  await restoreGitConfig(dir, gitConfig)
-  // Your git in the clone kept for you runs none of the worker's hooks; a link is removed, not followed.
-  await rm(join(dir, '.git', 'hooks'), { recursive: true, force: true })
+  await keep(dir, gitConfig, unit.branch, log)
   const out = join(root, 'out')
   await copyOut(join(dir, WORK_DIR, 'out'), out)
   await rm(plugin, { recursive: true, force: true })
@@ -139,4 +153,15 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
       .stdout,
   )
   return { ...worker, dir, out, commits }
+}
+
+/** Says where the clone stays, then puts back its git config and removes its hooks, unless it's lost to the worker. */
+async function keep(dir: string, gitConfig: string, branch: string, log: (line: string) => void) {
+  log(
+    `the clone stays in ${dir}: run no git in it, not even git status; fetch its branch from your own checkout instead: git fetch ${dir} ${branch}`,
+  )
+  if (lostToWorker(dir)) return
+  await restoreGitConfig(dir, gitConfig)
+  // Your git in the clone kept for you runs none of the worker's hooks; a link is removed, not followed.
+  await rm(join(dir, '.git', 'hooks'), { recursive: true, force: true })
 }
