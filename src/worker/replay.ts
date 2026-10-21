@@ -79,10 +79,10 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
   const root = join(r.runDir, 'replays', `${r.unitId}-${stamp}-${randomBytes(2).toString('hex')}`)
   // The worker user can't reach the run dir: the clone and the plugin get folders of their own under /tmp.
-  const dir = isolated() ? await workerRoot() : join(root, 'work')
+  const dir = isolated() ? await workerRoot(0o700) : join(root, 'work')
   const plugins = isolated() ? await workerRoot() : root
   const plugin = join(plugins, 'plugin')
-  await mkdir(root, { recursive: true })
+  await mkdir(root, { recursive: true, mode: 0o700 })
   const secrets = configSecrets(r.config, r.providers, r.sources)
   if (contained() && image) contain(dir, { image, plugin, secrets })
   const log = (line: string) => r.ctx.log(line)
@@ -127,6 +127,8 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
     watch: r.watch,
   })
   await restoreGitConfig(dir, gitConfig)
+  // Your git in the clone kept for you runs none of the worker's hooks; a link is removed, not followed.
+  await rm(join(dir, '.git', 'hooks'), { recursive: true, force: true })
   const out = join(root, 'out')
   await copyOut(join(dir, WORK_DIR, 'out'), out)
   await rm(plugin, { recursive: true, force: true })
