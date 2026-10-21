@@ -67,7 +67,12 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
   try {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
-    await run('add', '-A')
+    // `add` runs git in each submodule, under its config, which repo code may have written.
+    const gitlinks = (await run('ls-files', '-z', '--stage'))
+      .split('\0')
+      .filter((entry) => entry.startsWith('160000 '))
+      .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}`)
+    await run('add', '-A', '--', '.', ...gitlinks)
     await run('add', '-f', '--', `${WORK_DIR}/out`)
     return { staged, tree: await run('write-tree') }
   } finally {
