@@ -41,7 +41,7 @@ describe('triage view', () => {
   it('shows the run: header, warnings, needs you and units unfolded, skipped folded', () => {
     expect(screen(run(24))).toMatchInlineSnapshot(`
       [
-        "Run 20261019-220000: 1 draft PRs, 0 reports, 1 units",
+        "Run 20261019-220000: 1 draft PR, 0 reports, 1 unit",
         "2026-10-19 22:00:00 to 2026-10-19 22:41:07",
         "claude: fallback, 1 of 4 units (no quota reading)",
         "",
@@ -125,14 +125,14 @@ describe('triage view', () => {
     expect(screen(state).slice(0, 4)).toEqual([
       brand,
       '',
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
       '2026-10-19 22:00:00 to 2026-10-19 22:41:07',
     ])
     expect(screen(state)).toHaveLength(24)
     expect(screen(state).at(-2)).toMatch(/^⏎ read/)
     // 3 header lines, a blank, a body line, the footer and the status: no room for the brand.
     expect(screen(resize(state, 8), 100, 8)[0]).toBe(
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
     )
     expect(screen(resize(state, 8), 100, 8).at(-2)).toMatch(/^⏎ read/)
     expect(screen(resize(state, 9), 100, 9)[0]).toBe(brand)
@@ -354,7 +354,7 @@ describe('loader', () => {
     expect(screen(ready(l, run(24))).slice(0, 3)).toEqual([
       brand,
       '',
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
     ])
   })
 })

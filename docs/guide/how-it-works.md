@@ -133,7 +133,7 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 ```
 ☾ >_ awaywork  You're away, your agents work
 
-Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
+Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
 
@@ -179,7 +179,7 @@ Piped, in CI (`CI` set), or with `--json`, `--list`, `--unit` or `--skipped`, yo
 
 ```
 $ awaywork report | cat
-Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
+Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
 
 Units 3

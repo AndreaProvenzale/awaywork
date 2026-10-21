@@ -187,9 +187,9 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     ].join('\n'),
   )
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run 20260925-010000: 1 draft PRs, 1 reports, 3 units',
+    'Run 20260925-010000: 1 draft PR, 1 report, 3 units',
   )
-  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PRs, 1 reports')
+  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PR, 1 report')
   expect(runLine('20260925-020000', undefined)).toBe('20260925-020000  no report')
 })
 
@@ -1428,7 +1428,7 @@ queue:
       '|  | └ acme-api-1-plan | plan | claude | done, 1 turns | a report |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
   expect(summarize(report, 'report.md').split('\n').slice(2)).toEqual([
     `  1  api#1  implement → loop(review ⇄ fix) → plan  done, 5 turns  ${url}, verdict approve`,
     '     Done.',
@@ -3185,7 +3185,7 @@ it('escapes a pipe in a check command, so the report table keeps its cells', asy
   expect(row).toBe(
     "|  | └ acme-api-1-review | review | claude | skipped | when `git log \\| grep -q nothing-like-this` passes didn't hold (Command failed with exit code 1: 'git log \\| grep -q nothing-like-this') |",
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
 })
 
 it("doesn't write a check's log through a symlink a round left in the clone", async () => {

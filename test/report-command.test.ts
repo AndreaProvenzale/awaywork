@@ -222,10 +222,10 @@ describe('report command', () => {
     const { out, err } = output()
     await printReport(undefined, true, run)
     expect(out).toEqual([
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261014-223527  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261016-010203  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261014-223527  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
     ])
     expect(err).toEqual([])
     expect(run.calls).toContainEqual(
@@ -254,8 +254,8 @@ describe('report command', () => {
       'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)'
     expect(err).toEqual([warning, warning])
     expect(out).toEqual([
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
       report('20261015-220000', ['report below']),
     ])
     expect(process.exitCode).toBeUndefined()

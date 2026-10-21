@@ -527,9 +527,9 @@ queue:
       '|  |   └ acme-api-1-fix | fix | claude | done, 1 turns | 1 commit |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 2 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 2 draft PRs, 0 reports')
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run r1: 2 draft PRs, 0 reports, 1 units',
+    'Run r1: 2 draft PRs, 0 reports, 1 unit',
   )
   expect((await readFile(hooked, 'utf8')).split('\n')).toEqual([
     `acme-api-1 ${pull('away/acme-api-1')}`,

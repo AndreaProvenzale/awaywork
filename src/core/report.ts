@@ -176,11 +176,14 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   return `${out.join('\n')}\n`
 }
 
-/** `Run <id>: 1 draft PRs, 2 reports, 3 units`. */
+/** `3 units`, `1 unit`. */
+export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`
+
+/** `Run <id>: 1 draft PR, 2 reports, 3 units`. */
 export function runHeadline(r: RunReport): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
   const dry = r.dryRun ? ' (dry run)' : ''
-  return `Run ${r.runId}${dry}: ${count('pr')} draft PRs, ${count('report')} reports, ${chains(r).length} units`
+  return `Run ${r.runId}${dry}: ${counted(count('pr'), 'draft PR')}, ${counted(count('report'), 'report')}, ${counted(chains(r).length, 'unit')}`
 }
 
 function refOf(u: UnitResult): string {
@@ -297,7 +300,7 @@ export function runLine(runId: string, report: string | undefined): string {
   const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits\)(, verdict \S+)?$/.test(r)).length
   const reports = parts.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
-  return `${runId}  ${results.length} units, ${prs} draft PRs, ${reports} reports${dry}`
+  return `${runId}  ${counted(results.length, 'unit')}, ${counted(prs, 'draft PR')}, ${counted(reports, 'report')}${dry}`
 }
 
 function status(u: UnitResult): string {

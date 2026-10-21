@@ -355,7 +355,7 @@ queue: [{ skill: fix }]
 describe('report views', () => {
   it('prints a run from its report.json: units with summaries, needs you, counts, quota, hints', () => {
     expect(formatRun(acmeRun(), ['source tracker: Command failed'])).toMatchInlineSnapshot(`
-      "Run 20261019-220000: 1 draft PRs, 0 reports, 1 units
+      "Run 20261019-220000: 1 draft PR, 0 reports, 1 unit
       2026-10-19 22:00:00 to 2026-10-19 22:41:07
 
       Warnings 1
