@@ -95,10 +95,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
   const boxed =
     config.isolation === 'container' && process.env.RUNNER_ENVIRONMENT !== 'github-hosted'
-  for (const c of boxed
+  const isolation = boxed
     ? await containerChecks(config, process.env)
-    : await isolationChecks(config.isolation, process.env))
-    report(c.status, c.what, c.detail)
+    : await isolationChecks(config.isolation, process.env)
+  for (const c of isolation) report(c.status, c.what, c.detail)
+  const asWorker = !boxed && isolation[0]?.status === 'ok'
 
   for (const { id, config: providerConfig, budget } of config.providers) {
     const provider = providerFor(id, providerConfig)
@@ -119,6 +120,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       ...provider.secrets.map(secret),
     ]
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
+    const unset = provider.secrets.filter((name) => !process.env[name])
+    if (asWorker && !provider.login && unset.length > 0)
+      report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     await provider.probe(ctx).then(
       (quota) => {
         const a = allowance(budget, quota, Date.now(), config.windows)
@@ -167,7 +171,7 @@ export async function isolationChecks(
     const local = env.RUNNER_ENVIRONMENT !== 'github-hosted' && process.platform === 'linux'
     const setup = [
       'make the worker user once:',
-      `sudo useradd --create-home --user-group --shell /bin/bash ${WORKER}`,
+      `sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin ${WORKER}`,
       `echo ${WORKER} | sudo tee -a /etc/cron.deny /etc/at.deny`,
       `sudo visudo -f /etc/sudoers.d/${WORKER}   # with these two lines:`,
       ...sudoersLines(),

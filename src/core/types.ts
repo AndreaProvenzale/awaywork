@@ -1,5 +1,8 @@
 import type { z } from 'zod'
 
+/** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again. */
+export type Login = (home: string) => Promise<(back: boolean) => Promise<void>>
+
 export interface PrRef {
   repo: string
   number: number
@@ -138,6 +141,8 @@ export interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
+  /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
+  login?: Login
   /** Where the binary finds skills in the clone; unset, they come in `Job.plugin`. */
   skillsDir?: string
   instructionsFile: string

@@ -1,7 +1,6 @@
-import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
@@ -102,29 +101,22 @@ describe.skipIf(!image)('isolation container, live', { timeout: 30_000 }, () => 
   })
 
   it('lends Codex your login and saves back the one it refreshed', async () => {
-    const codexHome = join(outside, 'codex')
-    await mkdir(codexHome)
-    await writeFile(join(codexHome, 'auth.json'), '{"tokens":{"refresh_token":"old"}}')
+    const authFile = join(outside, 'codex', 'auth.json')
+    const login = (refresh: string) => `{"tokens":{"refresh_token":"${refresh}","account_id":"a1"}}`
+    await mkdir(dirname(authFile))
+    await writeFile(authFile, login('old'))
     // Refreshes the login it finds in its HOME, as a real one does when its access token expired.
     const fake = [
       '[ "$1" = app-server ] && exit 1',
       'cat > /dev/null',
-      `grep -q old "$HOME/.codex/auth.json" && echo '{"tokens":{"refresh_token":"new"}}' > "$HOME/.codex/auth.json"`,
+      `grep -q old "$HOME/.codex/auth.json" && echo '${login('new')}' > "$HOME/.codex/auth.json"`,
       `echo '{"type":"turn.completed"}'`,
     ]
     await writeFile(join(dir, 'codex'), `#!/bin/sh\n${fake.join('\n')}\n`, { mode: 0o755 })
     const job = { dir, prompt: 'hi', maxTurns: 5, env: {}, unit: {} } as unknown as Job
-    process.env.CODEX_HOME = codexHome
-    try {
-      const codex = codexProvider(join(dir, 'codex'), join(outside, 'codex.lock'))
-      const result = await runWorker(codex, job, allowance, { log: () => {} })
-      expect(result.status).toBe('done')
-    } finally {
-      delete process.env.CODEX_HOME
-    }
-    expect(await readFile(join(codexHome, 'auth.json'), 'utf8')).toBe(
-      '{"tokens":{"refresh_token":"new"}}\n',
-    )
-    expect(existsSync(join(dir, '.away/home/.codex'))).toBe(false)
+    const codex = codexProvider(join(dir, 'codex'), join(outside, 'codex.lock'), authFile)
+    const result = await runWorker(codex, job, allowance, { log: () => {} })
+    expect(result.status).toBe('done')
+    expect(await readFile(authFile, 'utf8')).toBe(`${login('new')}\n`)
   })
 })

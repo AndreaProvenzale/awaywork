@@ -45,7 +45,9 @@ With [`isolation: user`](./configuration.md#isolation), setup, the agent and the
 
 - **Your files.** `~/.config/awaywork/env`, gh's `hosts.yml`, `~/.ssh`, `~/.gitconfig` and the rest of a home closed to others. `doctor` warns until it is (`chmod o-rwx ~`).
 - **Your logins in other processes.** `/proc/<pid>/environ` of awaywork, and of anything else you run, is owner-only. Your ssh agent's socket sits in a folder only you can enter. gh's keyring login answers over your session bus in `/run/user/<uid>`, which another user can't open [C, not exercised: the test container has no keyring].
-- **sudo, cron and `at`.** The worker has no sudo, and `doctor`'s lines deny it cron and `at`, so nothing it schedules runs after its phase.
+- **A way back in.** The worker has no sudo, `doctor`'s lines deny it cron and `at`, and its shell is `nologin`, so no `ssh` or `su` as it either: once its phase is killed, nothing of its runs until the next one.
+- **What one unit leaves for the next.** The worker's `HOME` is a fresh `/tmp/awaywork-XXXXXX` for each clone, removed with it, and there's no `/home/awaywork`. So an `~/.npmrc`, a Claude hook in `~/.claude`, a shim in `~/.local/bin` or anything else a unit plants in `~` never reaches another repo's setup or agent.
+- **The clone swapped under you.** `/tmp` is sticky, so the worker can rename its own folder and leave a link to one of yours in its place. After each phase awaywork checks that the clone and the home are the very folders it handed over (`lstat`, same inode), and closes them to everyone else (`chmod -R u+rwX,go-rwx`, the top folder `711` so the next phase can start in it). Anything else and the clone is lost: no more phases, no git of awaywork's, nothing published, left where it is. Tried: a worker that moved its clone or its `HOME` and linked one of the developer's repos in its place lost the clone, and that repo's `.git/config` stayed as it was; a `chmod 777` on the clone, a `.git` in it and `~` left `711`, `700` and `711`, which another local user couldn't write into.
 
 A real run in a Debian 12 container, a command provider running a leak script as the agent, with the developer's home at 755 and then after `chmod o-rwx ~`. With `none`:
 
@@ -61,23 +63,24 @@ agent: left a detached sleep 4242 behind
 The sleep was still running after the run. With `user`, home 755, then 750:
 
 ```
-agent: as awaywork (awaywork), HOME=/home/awaywork, cwd=/tmp/awaywork-Ahlg2C
+agent: as awaywork (awaywork), HOME=/tmp/awaywork-5zbDJu, cwd=/tmp/awaywork-EgYoce
 agent: ok   the env file
 agent: LEAK lists the developer's home
 agent: LEAK gh's hosts.yml
 agent: ok   the ssh agent at /tmp/ssh-*/agent.*
 
-agent: as awaywork (awaywork), HOME=/home/awaywork, cwd=/tmp/awaywork-eeKiGX
+agent: as awaywork (awaywork), HOME=/tmp/awaywork-6etN3Q, cwd=/tmp/awaywork-lLAmqr
 agent: ok   the env file
 agent: ok   the developer's home refused
-agent: ok   awaywork's env /proc/9846/environ
+agent: ok   awaywork's env /proc/10571/environ
+agent: ok   any /proc/*/environ
 agent: ok   gh's hosts.yml
 agent: ok   the ssh agent at /tmp/ssh-*/agent.*
 agent: ok   sudo -n true refused
 agent: left a detached sleep 4242 behind
 ```
 
-And nothing of the worker's was left running.
+And nothing of the worker's was left running, nor any of its folders.
 
 The sudoers lines give your user no more than that. The first runs anything as the worker, which can do nothing you can't. The second is the only thing awaywork runs as root: `chown -R` of a clone to the worker and back to you. A loose rule there would be root for anything running as you, which could chown `/etc/shadow` to the worker and edit it as the worker. So:
 
@@ -91,7 +94,8 @@ Tried as a user with only those two lines (sudo 1.9.13p3), everything but the ex
 What it doesn't close:
 
 - **The network**, open as everywhere.
-- **The worker's own login.** The agent's token is in its env and its home, as it has to be.
+- **The worker's own login.** The agent's token is in its env, as it has to be: Claude's `CLAUDE_CODE_OAUTH_TOKEN`, or the copy of your Codex `auth.json` awaywork puts in its `HOME` for the run and saves back after, since a refresh rotates it. The worker can read that login, as it could without isolation. It can also write it: awaywork saves back only a regular file for the same ChatGPT account, and only while yours is still the one it lent.
+- **What one unit leaves in `/tmp`.** Every unit runs as the same user, so a file the worker leaves in `/tmp` or `/var/tmp` outside its folders is still there, and readable, for a later unit's worker. Nothing runs it unless something looks for it.
 - **What's on the machine.** A database or dev server on localhost answers the worker too, and anything world-writable is a place to plant a binary you run later; on a hosted runner the action takes that write bit off, on your machine it's on you (`find / -xdev -perm -o+w ! -type l ! -perm -1000` lists them).
 - **Other developers on the machine.** The `chown` line lets whoever has it chown any awaywork clone folder, so keep the worker user to one developer.
 
@@ -142,7 +146,7 @@ What it doesn't close:
 A GitHub-hosted runner is where your classic token runs unattended against issue text, with passwordless sudo on top, so there awaywork doesn't run repo code as you at all. Setup, the agent and the checks run as `awaywork`, a user the action makes before the run, and it's always on:
 
 - **A user with nothing.** No sudo, no `docker`, no group but its own, no crontab. The action locks the runner's home (`chmod 700`), where your checkout, the step scripts and `RUNNER_TEMP` live, with `GITHUB_ENV`, which sets the env of the steps after, and takes the write bit off everything world-writable on the disks: the image ships some 800,000 such paths, `/usr/local/bin` and the toolcache's `node` among them, where the worker could plant a `ps` or a `gh` that awaywork runs next with your token. It also takes it off the default ACLs of some 36,000 folders, the toolcache's among them, which would make what a later step installs there world-writable again. That step takes under two minutes of the job, most of it reading the disk. The step refuses a runner whose kernel lets a user hardlink a file it can't write, or follow someone else's symlink in `/tmp` (`fs.protected_hardlinks` and `fs.protected_symlinks`, both on in GitHub's image).
-- **The clone is the only thing it shares.** Clones and the skills plugin live under `/tmp`, not in the run dir. Each clone belongs to the worker while setup, a check or the agent runs in it, and to the runner again before awaywork's own git touches it. That git takes the clone's own `.git` and nothing else, never a repo it would otherwise find above it in `/tmp`, where the worker can write, and only once the clone's config is awaywork's again: a `.git` the worker turned into a link, put a symlink in outside its hooks, or pointed at another repo's objects, gets no more of it, and nothing's published from that clone. A clone the runner can't take back, say a `chown` that fails on something the worker left there, ends its chain with that error: nothing's published, and awaywork doesn't touch the clone again.
+- **The clone is the only thing it shares.** Clones, the worker's `HOME` (a fresh one per clone) and the skills plugin live under `/tmp`, not in the run dir. Each clone belongs to the worker while setup, a check or the agent runs in it, and to the runner again, checked to be the same folder and closed to others, before awaywork's own git touches it. That git takes the clone's own `.git` and nothing else, never a repo it would otherwise find above it in `/tmp`, where the worker can write, and only once the clone's config is awaywork's again: a `.git` the worker turned into a link, put a symlink in outside its hooks, or pointed at another repo's objects, gets no more of it, and nothing's published from that clone. A clone the runner can't take back, say a `chown` that fails on something the worker left there, ends its chain with that error: nothing's published, and awaywork doesn't touch the clone again.
 - **Nothing outlives its phase.** After each one, awaywork kills every process the worker has, detached or not, so nothing it left can change the clone later.
 - **No value on argv.** The worker's env goes through sudo's own env, with only the names on its command line (`sudo --preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,…`), so `/proc/<pid>/cmdline` shows no value. awaywork's own pushes use gh's credential helper, never a token in a URL.
 - **No silent fallback.** A hosted runner without the user, say a workflow that calls `awaywork run` without the action, refuses to start: `can't run as the awaywork user on this GitHub-hosted runner: run awaywork through its action, which creates it`.
@@ -177,6 +181,8 @@ agent: ok   crontab refused
 agent: ok   no PATH or toolchain dir writable
 agent: ok   nothing left from an earlier phase
 ```
+
+That spike predates the `HOME` per clone: the worker's is a `/tmp/awaywork-XXXXXX` now, as in the [local run](#a-worker-user-on-your-linux-machine).
 
 What it doesn't close:
 

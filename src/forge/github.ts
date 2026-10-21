@@ -124,7 +124,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   const forge: Forge = {
     async clone(repo, branch, dir, fork) {
       const pick = fork ? ['--no-checkout'] : branch ? ['--branch', branch] : []
-      await run('git', [...withGhLogin, 'clone', ...pick, remote(repo), dir])
+      // An origin rewritten to a local path would hardlink its objects, and the chown hand them to the worker.
+      await run('git', [...withGhLogin, 'clone', '--no-local', ...pick, remote(repo), dir])
       await run('git', ['-C', dir, 'config', 'credential.helper', ''])
       if (!fork) return
       // The fork's branch isn't in the repo; a same-named one there is other code.

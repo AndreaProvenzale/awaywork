@@ -1,11 +1,22 @@
 import { existsSync } from 'node:fs'
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
-import { isolate, WORKER, workerFor, workerRoot } from '../src/core/launch.js'
+import {
+  asWorker,
+  isolate,
+  launch,
+  lostToWorker,
+  WORKER,
+  workerFor,
+  workerHome,
+  workerRoot,
+} from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
+import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
 import { commitsSince, createChecks, head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
@@ -45,7 +56,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       'ln -s /etc/hostname link',
     ]
     const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
-    expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY} unset`)
+    expect(result.output).toBe(`${WORKER}\n${workerHome(dir)} ${CANARY} unset`)
     expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
     expect(await owner(dir)).toBe(process.getuid?.())
     expect(await owner('/etc/hostname')).toBe(0)
@@ -90,6 +101,72 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(await owner(join(dir, 'agent.sh'))).toBe(process.getuid?.())
     // chown never followed the link the first test planted, either way.
     expect(await owner('/etc/hostname')).toBe(0)
+  })
+
+  it('loses a clone or home the worker swapped for a link to a folder of yours, or a folder of its own', async () => {
+    const yours = await mkdtemp(join(homedir(), 'awaywork-yours-'))
+    await execa('git', ['init', '-q', yours])
+    const config = await readFile(join(yours, '.git', 'config'), 'utf8')
+    for (const swap of [`ln -s ${yours} "$f"`, 'mkdir "$f"'])
+      for (const f of ['$PWD', '$HOME']) {
+        const clone = await workerRoot()
+        await execa('git', ['init', '-q', clone])
+        const phase = runCommand(`f=${f}; cd / && mv "$f" "$f.moved" && ${swap}`, clone, env, {
+          secrets: [],
+        })
+        await expect(phase).rejects.toThrow("isn't the folder handed to the worker")
+        expect(lostToWorker(clone)).toBe(true)
+        // Nothing of the chain's runs in it again.
+        await expect(runCommand('true', clone, env, { secrets: [] })).rejects.toThrow('lost')
+        const home = workerHome(clone)
+        const left = [clone, `${clone}.moved`, `${home}`, `${home}.moved`]
+        await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', ...left], { reject: false })
+      }
+    expect(await readFile(join(yours, '.git', 'config'), 'utf8')).toBe(config)
+    await rm(yours, { recursive: true })
+  })
+
+  it('leaves no folder of a clone or its home that another user can write', async () => {
+    const clone = await workerRoot()
+    const open = 'mkdir -p sub/.git ~/.config && chmod 777 . sub sub/.git ~ ~/.config'
+    expect((await runCommand(open, clone, env, { secrets: [] })).failed).toBeUndefined()
+    const home = workerHome(clone) as string
+    for (const path of [clone, `${clone}/sub/.git`, home, `${home}/.config`]) {
+      expect((await stat(path)).mode & 0o066).toBe(0)
+      const other = await execa('sudo', ['-n', '-u', WORKER, 'touch', `${path}/x`], {
+        reject: false,
+      })
+      expect(other.stderr).toContain('Permission denied')
+    }
+  })
+
+  it('gives each clone a HOME of its own', async () => {
+    const [a, b] = [await workerRoot(), await workerRoot()]
+    const plant = 'echo "$HOME" && echo registry=https://evil.example > ~/.npmrc'
+    const first = await runCommand(plant, a, env, { secrets: [] })
+    const second = await runCommand('echo "$HOME" && cat ~/.npmrc', b, env, { secrets: [] })
+    expect(first.output).toBe(workerHome(a))
+    expect(second.output).toMatch(new RegExp(`^${workerHome(b)}\\n.*No such file`))
+    expect(workerHome(a)).toMatch(/^\/tmp\/awaywork-[A-Za-z0-9]{6}$/)
+    expect(workerHome(a)).not.toBe(workerHome(b))
+    expect(await owner(workerHome(a) as string)).toBe(process.getuid?.())
+  })
+
+  it('lends the Codex login to the worker’s HOME and saves its refresh back', async () => {
+    const yours = await mkdtemp(join(homedir(), 'awaywork-codex-'))
+    const authFile = join(yours, 'auth.json')
+    const auth = (refresh: string) =>
+      JSON.stringify({ tokens: { refresh_token: refresh, account_id: 'acct' } })
+    await writeFile(authFile, auth('r0'))
+    const codex = codexProvider('codex', join(yours, 'codex.lock'), authFile)
+    const clone = await workerRoot()
+    const refresh = `id -un && cat ~/.codex/auth.json && printf '%s' '${auth('r1')}' > ~/.codex/auth.json`
+    const phase = () =>
+      launch('/bin/sh', ['-c', refresh], { cwd: clone, env, extendEnv: false, reject: false })
+    const ran = await asWorker(clone, phase, codex.login)
+    expect(ran.stdout).toBe(`${WORKER}\n${auth('r0')}`)
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    await rm(yours, { recursive: true })
   })
 
   it('never takes a repo the worker planted in /tmp for the clone’s', async () => {

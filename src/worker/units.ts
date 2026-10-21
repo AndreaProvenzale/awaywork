@@ -20,6 +20,7 @@ import {
   gitUnrestored,
   isolated,
   lostToWorker,
+  workerHome,
   workerRoot,
 } from '../core/launch.js'
 import type { RunReport, UnitResult } from '../core/report.js'
@@ -624,7 +625,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    if (!input.dryRun && !lostToWorker(dir)) await rm(dir, { recursive: true, force: true })
+    for (const path of [dir, workerHome(dir)])
+      if (path && !input.dryRun && !lostToWorker(path))
+        await rm(path, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }

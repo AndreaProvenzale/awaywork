@@ -428,14 +428,14 @@ isolation: user # default: none; or container
 
 ```text
 FAIL  isolation: user, but can't run as the awaywork user (sudo: unknown user awaywork); make the worker user once:
-    sudo useradd --create-home --user-group --shell /bin/bash awaywork
+    sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork
     echo awaywork | sudo tee -a /etc/cron.deny /etc/at.deny
     sudo visudo -f /etc/sudoers.d/awaywork   # with these two lines:
     runner ALL=(awaywork) NOPASSWD:SETENV: ALL
     runner ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]
 ```
 
-The first line lets you run anything as the worker, the second only the two `chown`s that hand it a clone and take it back; why that's safe is in [Safety](./safety.md#a-worker-user-on-your-linux-machine). Then:
+The user has no home and no login shell: each clone gets a fresh `HOME`, and nothing logs in as it. The first sudoers line lets you run anything as the worker, the second only the two `chown`s that hand it a clone and its `HOME` and take them back; why that's safe is in [Safety](./safety.md#a-worker-user-on-your-linux-machine). Then:
 
 ```text
 ok    isolation: user: setup, the agent and the checks run as awaywork
@@ -443,7 +443,7 @@ ok    isolation: user: setup, the agent and the checks run as awaywork
 
 A few things change with it:
 
-- **The agent logs in as the worker.** It has its own `HOME`, `/home/awaywork`, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`), and log Codex in once with `sudo -u awaywork -i codex login`. Quota probes still read your own login, so use the same account.
+- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves it back after, under the lock every Codex run takes, since a refresh rotates it.
 - **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter.
 - **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
 - **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.

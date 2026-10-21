@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -6,10 +7,9 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
-import { CONTAINER_HOME, contained, launch, stopContainers } from '../core/launch.js'
+import { launch } from '../core/launch.js'
 import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
-import { readOutput, refuseSymlinks } from '../worker/workspace.js'
 
 /** No user config (MCP servers, notify hooks, plugins), no saved session. */
 const EXEC = ['exec', '--json', '--ephemeral', '--ignore-user-config']
@@ -29,11 +29,21 @@ const configSchema = z.strictObject({
     ),
 })
 
+/** Your Codex login, which `codex login` keeps in `auth.json`. */
+export const codexLogin = (env: NodeJS.ProcessEnv) =>
+  join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
+
 /**
  * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;
- * runs and probes hold a per-machine lock.
+ * runs and probes hold a per-machine lock. A worker user gets a copy of it, saved back after its run.
  */
-export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lock')): Provider {
+export function codexProvider(
+  bin = 'codex',
+  lockFile = join(stateDir, 'codex.lock'),
+  authFile = codexLogin(process.env),
+): Provider {
+  // Held from a login lent to the worker until it's saved back, the run in between.
+  let lent = false
   async function probe(env: NodeJS.ProcessEnv): Promise<Quota | null> {
     const child = execa(bin, ['app-server'], {
       env,
@@ -94,15 +104,52 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       }
     },
 
+    /**
+     * Copies the login into the worker's `home/.codex`, and saves the worker's back once it's yours again:
+     * a refresh rotates it, and the copy you kept would die a day later. Not if yours changed meanwhile.
+     */
+    async login(home) {
+      const release = await lock(lockFile, () => {})
+      lent = true
+      const done = async () => {
+        lent = false
+        await release()
+      }
+      try {
+        const auth = await readFile(authFile, 'utf8').catch(() => undefined)
+        const dir = join(home, '.codex')
+        // An earlier phase's, a link included.
+        await rm(dir, { recursive: true, force: true })
+        await mkdir(dir, { mode: 0o700 })
+        if (auth !== undefined) await writeFile(join(dir, 'auth.json'), auth, { mode: 0o600 })
+        return async (back) => {
+          try {
+            const used = back && auth !== undefined ? await loginIn(dir) : undefined
+            const mine = await readFile(authFile, 'utf8').catch(() => undefined)
+            const same = account(auth) !== undefined && account(used) === account(auth)
+            if (used && used !== auth && mine === auth && same) {
+              await writeFile(`${authFile}.awaywork`, used, { mode: 0o600 })
+              await rename(`${authFile}.awaywork`, authFile)
+            }
+          } catch {
+            // Yours stays as it was.
+          } finally {
+            await done()
+          }
+        }
+      } catch (e) {
+        await done()
+        throw e
+      }
+    },
+
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
-      const release = await lock(lockFile, () => {})
+      const release = lent ? async () => {} : await lock(lockFile, () => {})
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
-      let giveBack: (() => Promise<void>) | undefined
       try {
-        if (contained()) giveBack = await lendLogin(job.dir)
         const model = job.model ? ['-m', job.model] : []
         const { config = {} } = configSchema.parse(job.config ?? {})
         const overrides = Object.entries(config).flatMap(([k, v]) => [
@@ -136,7 +183,6 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
           }
         }
         const { exitCode } = await child
-        await giveBack?.()
         // The stream carries no quota; reading it mid-run would start a second process on auth.json.
         if (!signal.aborted) {
           const quota = await probe(process.env).catch(() => null)
@@ -145,7 +191,6 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         const ok = done?.type === 'done' && done.ok && exitCode === 0
         yield { type: 'done', ok: ok && !signal.aborted && !capped.signal.aborted, turns }
       } finally {
-        await giveBack?.()
         await release()
       }
     },
@@ -156,47 +201,6 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
 }
 
 export const codex = codexProvider()
-
-/** Your Codex login, which `codex login` keeps in `auth.json`. */
-export const codexLogin = (env: NodeJS.ProcessEnv) =>
-  join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
-
-/**
- * Copies your Codex login into the container's `HOME`; the function it returns takes it back once the container
- * is gone and saves a refreshed one over yours, since a refresh rotates the refresh token and the old one dies (#190).
- */
-async function lendLogin(dir: string): Promise<() => Promise<void>> {
-  const mine = codexLogin(process.env)
-  const lent = await readFile(mine, 'utf8').catch(() => {
-    throw new Error(`no Codex login at ${mine} to lend the container: run codex login`)
-  })
-  const home = join(CONTAINER_HOME, '.codex')
-  const file = join(dir, home, 'auth.json')
-  await refuseSymlinks(dir, [home])
-  await mkdir(join(dir, home), { recursive: true })
-  await rm(file, { force: true })
-  await writeFile(file, lent, { mode: 0o600, flag: 'wx' })
-  let given = false
-  return async () => {
-    if (given) return
-    given = true
-    await stopContainers()
-    try {
-      await refuseSymlinks(dir, [join(home, 'auth.json')])
-      const back = await readOutput(file)
-      if (back === lent || !isLogin(back)) return
-      await writeFile(`${mine}.awaywork`, back, { mode: 0o600 })
-      await rename(`${mine}.awaywork`, mine)
-    } finally {
-      await rm(join(dir, home), { recursive: true, force: true })
-    }
-  }
-}
-
-function isLogin(text: string): boolean {
-  const json = parseJson(text)
-  return typeof json === 'object' && json !== null && 'tokens' in json
-}
 
 /** `-c` overrides for the unit's MCP servers; their secrets reach them by name, kept out of the shell's env. */
 export function mcpOverrides(servers: Record<string, McpServer>): string[] {
@@ -293,6 +297,26 @@ export function toQuota(
     return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt }]
   })
   return windows.length ? { windows } : null
+}
+
+/** The worker's `auth.json` in `dir`, read without following a link it left there. */
+async function loginIn(dir: string): Promise<string | undefined> {
+  if (!(await lstat(dir)).isDirectory()) return
+  const file = await open(join(dir, 'auth.json'), constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const stats = await file.stat()
+    return stats.isFile() && stats.size < 65_536 ? await file.readFile('utf8') : undefined
+  } finally {
+    await file.close()
+  }
+}
+
+/** The ChatGPT account an `auth.json` logs into, when it has a refresh token. */
+function account(auth: string | undefined): string | undefined {
+  const tokens = parseJson(auth ?? '')?.tokens
+  return typeof tokens?.refresh_token === 'string' && typeof tokens.account_id === 'string'
+    ? tokens.account_id
+    : undefined
 }
 
 /** Waits until no other live process holds the lock file, then takes it. */
