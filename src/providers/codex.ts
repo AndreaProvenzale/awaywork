@@ -101,10 +101,10 @@ export function codexProvider(
     },
 
     /**
-     * Copies the login into the worker's `home/.codex`, and saves the worker's back once it's yours again:
-     * a refresh rotates it, and the copy you kept would die a day later. Not if yours changed meanwhile.
+     * Copies the login into the worker's `home/.codex`, and saves the worker's refresh of it back once it's yours
+     * again: a refresh rotates it, and the copy you kept would die a day later. Only its tokens, and not if yours changed meanwhile.
      */
-    async login(home) {
+    async login(home, log) {
       const release = await lock(lockFile, () => {})
       lent = true
       const done = async () => {
@@ -120,16 +120,23 @@ export function codexProvider(
         if (auth !== undefined) await writeFile(join(dir, 'auth.json'), auth, { mode: 0o600 })
         return async (back) => {
           try {
-            const used = back && auth !== undefined ? await loginIn(dir) : undefined
-            const mine = await readFile(authFile, 'utf8').catch(() => undefined)
-            const same = account(auth) !== undefined && account(used) === account(auth)
-            if (used && used !== auth && mine === auth && same) {
-              await writeFile(`${authFile}.awaywork`, used, { mode: 0o600 })
-              await rename(`${authFile}.awaywork`, authFile)
-            }
-          } catch {
-            // Yours stays as it was.
+            if (!back || auth === undefined) return
+            const used = await loginIn(dir)
+            if (used === auth) return
+            if ((await readFile(authFile, 'utf8').catch(() => undefined)) !== auth)
+              throw new Error('yours changed since it was lent')
+            const saved = refreshOf(auth, used)
+            if (!saved)
+              throw new Error(
+                "the worker's isn't a refresh of the one lent: its mode, API key or account differs",
+              )
+            await writeFile(`${authFile}.awaywork`, saved, { mode: 0o600 })
+            await rename(`${authFile}.awaywork`, authFile)
+          } catch (e) {
+            log?.(`codex: kept your login as it was: ${(e as Error).message}`)
           } finally {
+            // rm unlinks a link the worker left there, never what it points to.
+            if (back) await rm(dir, { recursive: true, force: true }).catch(() => {})
             await done()
           }
         }
@@ -295,16 +302,33 @@ export function toQuota(
   return windows.length ? { windows } : null
 }
 
-/** The worker's `auth.json` in `dir`, read without following a link it left there. */
-async function loginIn(dir: string): Promise<string | undefined> {
-  if (!(await lstat(dir)).isDirectory()) return
-  const file = await open(join(dir, 'auth.json'), constants.O_RDONLY | constants.O_NOFOLLOW)
+/** The worker's `auth.json` in `dir`, read without following a link or blocking on a FIFO it left there. */
+async function loginIn(dir: string): Promise<string> {
+  if (!(await lstat(dir)).isDirectory()) throw new Error(`${dir} isn't a folder`)
+  const flags = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
+  const file = await open(join(dir, 'auth.json'), flags)
   try {
     const stats = await file.stat()
-    return stats.isFile() && stats.size < 65_536 ? await file.readFile('utf8') : undefined
+    if (!stats.isFile() || stats.size >= 65_536)
+      throw new Error("the worker's auth.json isn't a small regular file")
+    return await file.readFile('utf8')
   } finally {
     await file.close()
   }
+}
+
+/** `lent` with the tokens and `last_refresh` of `used`, when `used` refreshes it: the same mode, API key and account. */
+function refreshOf(lent: string, used: string): string | undefined {
+  const [was, now] = [parseJson(lent), parseJson(used)]
+  if (account(lent) === undefined || typeof now?.tokens !== 'object' || now.tokens === null) return
+  const same = (key: string) => (now[key] ?? null) === (was[key] ?? null)
+  if (!same('auth_mode') || !same('OPENAI_API_KEY')) return
+  if (now.tokens.account_id !== was.tokens.account_id) return
+  const tokens = { ...was.tokens }
+  for (const key of ['access_token', 'id_token', 'refresh_token'])
+    if (typeof now.tokens[key] === 'string') tokens[key] = now.tokens[key]
+  const refreshed = typeof now.last_refresh === 'string' ? now.last_refresh : was.last_refresh
+  return JSON.stringify({ ...was, tokens, last_refresh: refreshed })
 }
 
 /** The ChatGPT account an `auth.json` logs into, when it has a refresh token. */

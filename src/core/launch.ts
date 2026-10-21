@@ -199,7 +199,11 @@ async function handOver(dirs: string[], owner: string): Promise<Handed[]> {
       return { dir, dev, ino }
     }),
   )
-  for (const dir of dirs) await chownOrLose(dirs, owner, dir)
+  for (const dir of dirs) {
+    // A fresh clone is as open as git made it until then.
+    await closeOrLose(dirs, dir)
+    await chownOrLose(dirs, owner, dir)
+  }
   return handed
 }
 
@@ -221,15 +225,19 @@ async function takeBack(handed: Handed[]): Promise<void> {
     if (!now?.isDirectory() || now.dev !== dev || now.ino !== ino)
       lose(dirs, `${dir} isn't the folder handed to the worker, left as it is`)
     // Only after the lstat: chmod -R follows a link it's named.
-    const closed = await execa(bin('chmod'), ['-R', 'u+rwX,go-rwx', dir], { reject: false })
-    if (closed.failed)
-      lose(
-        dirs,
-        `couldn't close the clone to others, left as it is: ${closed.stderr || closed.shortMessage}`,
-      )
-    // The next phase's worker starts in it, through a chdir of the developer's.
-    await chmod(dir, 0o711)
+    await closeOrLose(dirs, dir)
   }
+}
+
+async function closeOrLose(dirs: string[], dir: string): Promise<void> {
+  const closed = await execa(bin('chmod'), ['-R', 'u+rwX,go-rwx', dir], { reject: false })
+  if (closed.failed)
+    lose(
+      dirs,
+      `couldn't close the clone to others, left as it is: ${closed.stderr || closed.shortMessage}`,
+    )
+  // The next phase's worker starts in it, through a chdir of the developer's.
+  await chmod(dir, 0o711)
 }
 
 async function chownOrLose(dirs: string[], owner: string, dir: string): Promise<void> {
