@@ -111,6 +111,7 @@
               "description": "Units per run"
             },
             "turns": {
+              "default": 60,
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991,
@@ -118,8 +119,7 @@
             }
           },
           "required": [
-            "units",
-            "turns"
+            "units"
           ],
           "additionalProperties": false,
           "description": "Caps when the provider's quota can't be read"
@@ -191,10 +191,6 @@
                             "description": "Turns per unit"
                           }
                         },
-                        "required": [
-                          "units",
-                          "turns"
-                        ],
                         "additionalProperties": false,
                         "description": "Caps when the provider's quota can't be read"
                       }
@@ -262,10 +258,6 @@
                             "description": "Turns per unit"
                           }
                         },
-                        "required": [
-                          "units",
-                          "turns"
-                        ],
                         "additionalProperties": false,
                         "description": "Caps when the provider's quota can't be read"
                       }
@@ -339,9 +331,6 @@
                           "description": "Turns per unit"
                         }
                       },
-                      "required": [
-                        "units"
-                      ],
                       "additionalProperties": false,
                       "description": "Caps when the provider's quota can't be read"
                     }
