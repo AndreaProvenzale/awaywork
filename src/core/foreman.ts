@@ -59,11 +59,46 @@ export interface LoopRound {
   max: number
 }
 
+/** Why an item made no unit. */
+export type SkipKind =
+  | 'no_rule'
+  | 'skipped_by_you'
+  | 'unchanged'
+  | 'over_cap'
+  | 'waiting_for_review'
+  | 'gave_up'
+  | 'no_repo'
+  | 'invalid_branch'
+  | 'refused_delivery'
+  | 'unstackable'
+
+/** Whether you can act to make the item run: the rest is the config working as intended. */
+export const needsYou: Record<SkipKind, boolean> = {
+  no_rule: false,
+  skipped_by_you: false,
+  unchanged: false,
+  over_cap: false,
+  waiting_for_review: true,
+  gave_up: true,
+  no_repo: true,
+  invalid_branch: true,
+  refused_delivery: true,
+  unstackable: true,
+}
+
+export interface Skipped {
+  item: Item
+  kind: SkipKind
+  reason: string
+  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself. */
+  url?: string
+}
+
 export interface RunPlan {
   queue: Rule[]
   defaultQueue: boolean
   units: PlannedUnit[]
-  skipped: { item: Item; reason: string }[]
+  skipped: Skipped[]
   allowances: Record<string, Allowance>
 }
 
@@ -85,7 +120,7 @@ export function planRun(input: {
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   const { ranked, unmatched } = rank(input.items, queue)
-  const skipped = unmatched.map((item) => ({ item, reason: noRuleReason(item, queue) }))
+  const skipped: Skipped[] = unmatched.map((item) => ({ item, ...noRuleReason(item, queue) }))
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
@@ -101,33 +136,35 @@ export function planRun(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
-    const skip = (reason: string) => skipped.push(...items.map((item) => ({ item, reason })))
+    const skip = (kind: SkipKind, reason: string, url?: string) =>
+      skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
     const skippedByUser = items
       .map((item) => `${item.source}:${item.key}`)
       .find((key) => skips[key])
     if (skippedByUser) {
-      skip(describeSkip(skippedByUser, skips[skippedByUser] as Skip))
+      skip('skipped_by_you', describeSkip(skippedByUser, skips[skippedByUser] as Skip))
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
     if (ours && !pickup) {
-      skip(`waiting for review: awaywork PR ${ours.url} is open`)
+      skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
     const held = pushedOnto(items, input.attempts ?? {})
     if (held) {
-      skip(`waiting for review: awaywork pushed onto ${held.url}`)
+      skip('waiting_for_review', `waiting for review: awaywork pushed onto ${held.url}`, held.url)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
     if (since.every(Boolean)) {
-      skip(`unchanged since run ${since.sort().at(-1)}`)
+      skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
     const retries = items.map((i) => gaveUpUntil(i, rule.skill, input.attempts ?? {}, now))
     if (retries.every(Boolean)) {
       const next = Math.min(...retries.map(Number))
       skip(
+        'gave_up',
         `gave up after ${MAX_ATTEMPTS} attempts; next try on ${new Date(next).toLocaleDateString('sv-SE')}`,
       )
       continue
@@ -140,7 +177,7 @@ export function planRun(input: {
     const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
-      skip('no repo: no linked PR or repo field')
+      skip('no_repo', 'no repo: no linked PR or repo field')
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
@@ -154,7 +191,7 @@ export function planRun(input: {
       )
     const branch = branchOf(committing)
     if (!isValidRef(branch)) {
-      skip(`branch template ${template} renders an invalid name "${branch}"`)
+      skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
     const base = pr?.branch ?? ''
@@ -162,12 +199,15 @@ export function planRun(input: {
     const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
     const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
     if (refused) {
-      skip(committing === rule ? refused : `${refused}, and ${committing.skill} commits`)
+      skip(
+        'refused_delivery',
+        committing === rule ? refused : `${refused}, and ${committing.skill} commits`,
+      )
       continue
     }
     const unstackable = stackRefusal(rule, reports)
     if (unstackable) {
-      skip(unstackable)
+      skip('unstackable', unstackable)
       continue
     }
     const overCap = () => {
@@ -184,7 +224,7 @@ export function planRun(input: {
     }
     const capped = overCap()
     if (capped) {
-      skip(capped)
+      skip('over_cap', capped)
       continue
     }
 
@@ -327,15 +367,20 @@ function deliveryRefusal(
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
-function noRuleReason(item: Item, queue: Rule[]): string {
+function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const closest = closestRule(item, queue)
-  const why = isAwayworkPr(item)
-    ? `waiting for review: awaywork PR ${item.url} is open`
-    : 'matched no rule'
-  if (!closest) return why
+  const ours = isAwayworkPr(item)
+  const kind = ours ? 'waiting_for_review' : 'no_rule'
+  const why = ours ? `waiting for review: awaywork PR ${item.url} is open` : 'matched no rule'
+  const url = ours ? { url: item.url } : {}
+  if (!closest) return { kind, reason: why, ...url }
   const rule = queue[closest.rule] as Rule
   const failed = describeFailed(rule.where, item, closest.failed)
-  return `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`
+  return {
+    kind,
+    reason: `${why}; closest #${closest.rule + 1} ${rule.skill}: ${failed.join('; ')}`,
+    ...url,
+  }
 }
 
 function describeFailed(where: Where, item: Item, keys: string[]): string[] {

@@ -1,6 +1,6 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
@@ -13,8 +13,17 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import type { RunReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
+import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
+import type {
+  Ctx,
+  Deliver,
+  Forge,
+  Item,
+  McpServer,
+  Provider,
+  Quota,
+  Source,
+} from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
@@ -91,6 +100,41 @@ async function earlierReport(
     if ((await readOutput(join(out, outputFile.report))).trim())
       return { skill: last.skill, out, earlierRun: last.runId }
   }
+}
+
+/** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
+const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
+
+/** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
+async function leftBy(
+  runDir: string,
+  chainId: string,
+  r: UnitResult,
+  deliver: Deliver,
+  lead: boolean,
+): Promise<Pick<UnitResult, 'files' | 'summary'>> {
+  if (!r.step) return {}
+  // Relative and with `/`: report.json is read on other machines, from an uploaded artifact.
+  const step = posix.join('units', chainId, r.step)
+  const slice = posix.join('units', chainId, sliceOut(r.planned.slice ?? 0))
+  const all: StepFiles = {
+    log: posix.join(step, 'worker.log'),
+    report: posix.join(step, 'out', outputFile.report),
+    diff: posix.join(step, 'out', 'diff.patch'),
+    ...(lead && {
+      sliceBody: posix.join(slice, outputFile[deliver]),
+      sliceDiff: posix.join(slice, 'diff.patch'),
+    }),
+  }
+  const files: StepFiles = Object.fromEntries(
+    Object.entries(all).filter(([, f]) => existsSync(join(runDir, f))),
+  )
+  const read = async (f?: string) => (f ? readOutput(join(runDir, f)) : '')
+  // Only a draft PR's body opens with its title.
+  const summary =
+    summaryOf(await read(files.sliceBody), deliver === 'draft_pr') ||
+    summaryOf(await read(files.report))
+  return { files, ...(summary && { summary }) }
 }
 
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
@@ -222,14 +266,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let retrying: Retry | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
+    // Each slice's first step, which publishes it.
+    const leads = new Set<UnitResult>()
 
     /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find(
         (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
       )
-      const out = join(chainDir, at > 0 ? `out-${at + 1}` : 'out')
+      const out = join(chainDir, sliceOut(at))
       if (from !== undefined && lead && ran && !input.dryRun) {
+        leads.add(lead)
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
@@ -595,6 +642,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
+    for (const r of done) {
+      // A committing slice that committed nothing published its reports.
+      const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
+    }
     if (!input.dryRun) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done

@@ -10,7 +10,7 @@ import {
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
 import { type PlannedUnit, planRun } from '../src/core/foreman.js'
-import type { RunReport } from '../src/core/report.js'
+import { type RunReport, summaryOf } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { githubPr } from './fakes/items.js'
@@ -118,7 +118,18 @@ queue: [{ skill: fix, where: { checks: failing } }]
       startedAt: new Date('2026-10-15T22:00:00Z'),
       finishedAt: new Date('2026-10-15T23:00:00Z'),
       plan,
-      results: [{ planned: plan.units[0] as PlannedUnit, status: 'prepared' }],
+      results: [
+        {
+          planned: plan.units[0] as PlannedUnit,
+          status: 'done',
+          outcome: { kind: 'pr', url: 'https://github.com/acme/api/pull/9', commits: 1, head: 'a' },
+          summary: 'Ran the tests.',
+          files: {
+            log: 'units/acme-api-1/1-fix/worker.log',
+            sliceBody: 'units/acme-api-1/out/pr.md',
+          },
+        },
+      ],
       quotas: {},
     }
     const json = reportJson(report, ['a warning'])
@@ -134,6 +145,39 @@ queue: [{ skill: fix, where: { checks: failing } }]
     expect(parsed.plan.units[0].unit.items).toEqual([ref(1)])
     expect(parsed.results[0].planned.unit.items).toEqual([ref(1)])
     expect(parsed.plan.skipped[0].item).toEqual(ref(2))
+    expect(parsed.plan.skipped[0].kind).toBe('no_rule')
+    expect(parsed.results[0]).toMatchObject({
+      outcome: { url: 'https://github.com/acme/api/pull/9' },
+      summary: 'Ran the tests.',
+      files: { log: 'units/acme-api-1/1-fix/worker.log', sliceBody: 'units/acme-api-1/out/pr.md' },
+    })
     expect(json).not.toContain('PRIVATE')
+  })
+})
+
+describe('summaryOf', () => {
+  it("takes a PR body's first paragraph past its title, on one line", () => {
+    const body = '# Fix the flaky test\n\nNo code changes: both red\nchecks are unrelated.\n\nMore.'
+    expect(summaryOf(body, true)).toBe('No code changes: both red checks are unrelated.')
+    expect(summaryOf('Fix it\n\n## Why\nThe retry hid it.', true)).toBe('The retry hid it.')
+  })
+
+  it('leaves out HTML comments, as a PR template leaves them', () => {
+    const body = 'Fix it\n\n<!-- Describe the change -->\n## Summary\nDid it.<!--\nwhy\n-->'
+    expect(summaryOf(body, true)).toBe('Did it.')
+  })
+
+  it("takes a report's first paragraph, cut to 200 characters", () => {
+    expect(summaryOf('\nApprove: the diff does what #5 asks.\n\nNits below.')).toBe(
+      'Approve: the diff does what #5 asks.',
+    )
+    const long = summaryOf('word '.repeat(60)) ?? ''
+    expect(long).toHaveLength(200)
+    expect(long.endsWith('…')).toBe(true)
+  })
+
+  it('is undefined for an empty file or a body with only a title', () => {
+    expect(summaryOf('')).toBeUndefined()
+    expect(summaryOf('Fix the flaky test\n', true)).toBeUndefined()
   })
 })

@@ -476,6 +476,15 @@ queue:
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
 
+  expect(report.results[2]).toMatchObject({
+    summary: 'Done.',
+    files: {
+      log: 'units/acme-api-1/3-fix/worker.log',
+      sliceBody: 'units/acme-api-1/out-2/pr.md',
+      sliceDiff: 'units/acme-api-1/out-2/diff.patch',
+    },
+  })
+
   expect(seen['acme-api-1-fix']).toEqual(['pr.md', 'report.md'])
   expect(bodies['acme-api-1-fix']).toBe(published)
   expect(prompts['acme-api-1-fix']).toContain(
@@ -783,8 +792,13 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
 it('refuses a stack on a step that reports, or after steps that all report', async () => {
   const reasons = async (rule: string) =>
     (await run(`queue: [${rule}]\n`, [issue(1)], worker())).plan.skipped.map((s) => s.reason)
-  expect(await reasons('{ skill: implement, then: [{ skill: review, stack: true }] }')).toEqual([
-    'stack on review: it reports, so its draft PR would have nothing in it',
+  const refused = await run(
+    'queue: [{ skill: implement, then: [{ skill: review, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+  )
+  expect(refused.plan.skipped.map((s) => [s.kind, s.reason])).toEqual([
+    ['unstackable', 'stack on review: it reports, so its draft PR would have nothing in it'],
   ])
   expect(
     await reasons(

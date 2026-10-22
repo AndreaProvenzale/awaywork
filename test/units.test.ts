@@ -419,7 +419,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
         await git(job.dir, 'add', 'fix.txt')
         await git(job.dir, 'commit', '-qm', 'Add rate limits')
         await writeFile(join(out, 'pr.md'), 'Add rate limits\n\nRan the tests.')
-      }
+      } else await writeFile(join(out, 'pr.md'), 'No change\n\n## Triage\nThe red check is flaky.')
       yield { type: 'done', ok: true, turns: 2 }
     },
   }
@@ -460,6 +460,24 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     ['acme-api-6-review', 'skipped', 'acme-api-6 committed nothing'],
   ])
   expect(report.results.map((u) => u.passedOver)).toEqual([undefined, undefined, undefined, true])
+  const [five, six] = ['units/acme-api-5', 'units/acme-api-6']
+  expect(report.results.map((u) => [u.summary, u.files])).toEqual([
+    [
+      'Ran the tests.',
+      {
+        log: `${five}/1-implement/worker.log`,
+        diff: `${five}/1-implement/out/diff.patch`,
+        sliceBody: `${five}/out/pr.md`,
+        sliceDiff: `${five}/out/diff.patch`,
+      },
+    ],
+    ['Approve.', { log: `${five}/2-review/worker.log`, report: `${five}/2-review/out/report.md` }],
+    [
+      'The red check is flaky.',
+      { log: `${six}/1-implement/worker.log`, sliceBody: `${six}/out/pr.md` },
+    ],
+    [undefined, undefined],
+  ])
   const review = seen[1]
   expect(review?.files).toContain('fix.txt')
   expect(review?.diff).toMatch(/^\+\+\+ b\/fix\.txt$/m)
@@ -951,6 +969,7 @@ repos:
     {
       kind: 'pushed',
       branch: 'feature-1',
+      url: 'https://github.com/acme/api/pull/1',
       commits: 2,
       text: 'Work on acme-api-1-implement\n\nDone.',
       head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
@@ -1081,6 +1100,92 @@ queue: [{ skill: fix, deliver: push, then: review }]
     unpublished: true,
   })
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
+})
+
+it.each([
+  ['Fixed the two failing assertions in auth.test.ts.', ''],
+  ['Fixed the two failing assertions in auth.test.ts.', '\n\nRan pnpm test: green.'],
+])("sums up a push from its summary's first paragraph, which has no title", async (first, rest) => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-summary-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix, deliver: push }]
+`)
+  const plan = planRun({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const summarizer: Provider = {
+    ...committer,
+    async *run(job, signal) {
+      yield* committer.run(job, signal)
+      await writeFile(join(job.dir, '.away/out/pr.md'), `${first}${rest}`)
+    },
+  }
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: summarizer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results[0]?.outcome?.kind).toBe('pushed')
+  expect(report.results[0]?.summary).toBe(first)
+  expect(report.results[0]?.files?.sliceBody).toBe('units/acme-api-1/out/pr.md')
+})
+
+it("lists a slice's PR body and sums it up when its publish fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-publish-error-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+  )
+  const plan = planRun({
+    config,
+    items: [issue(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge: {
+      ...forge,
+      draftPr: async () => {
+        throw new Error('gh pr create failed')
+      },
+    },
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const [result] = report.results
+  expect(result).toMatchObject({ status: 'error', reason: 'gh pr create failed', summary: 'Done.' })
+  expect(result?.outcome).toBeUndefined()
+  expect(result?.files).toMatchObject({
+    log: 'units/acme-api-1/1-implement/worker.log',
+    sliceBody: 'units/acme-api-1/out/pr.md',
+  })
 })
 
 it('leaves a push the forge refuses unpublished, not an error', async () => {
@@ -2051,6 +2156,29 @@ it('publishes nothing when interrupted, and retries the chain without counting a
   })
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})
+})
+
+it('lists and sums up the joined report a committing chain published when it committed nothing', async () => {
+  const provider = looper({})
+  const { report } = await loopRun('queue: [{ skill: plan, then: [implement] }]', [issue(1)], {
+    ...provider,
+    async *run(job, signal) {
+      if (job.unit.deliver === 'report') yield* provider.run(job, signal)
+      else {
+        await writeFile(
+          join(job.dir, '.away/out/pr.md'),
+          'No change\n\nThe plan was already done upstream.',
+        )
+        yield { type: 'done', ok: true, turns: 1 }
+      }
+    },
+  })
+
+  expect(report.results[0]).toMatchObject({
+    outcome: { kind: 'report', text: 'acme-api-1 says nothing.' },
+    summary: 'acme-api-1 says nothing.',
+  })
+  expect(report.results[0]?.files?.sliceBody).toBe('units/acme-api-1/out/report.md')
 })
 
 it('ends a chain at a step that failed, still reports what it has, and counts a failure', async () => {

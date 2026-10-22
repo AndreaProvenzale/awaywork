@@ -2,8 +2,11 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reportJson } from '../src/cli/format.js'
 import { printReport } from '../src/cli/run.js'
 import { remoteDir, runsDir } from '../src/config/paths.js'
+import type { RunReport } from '../src/core/report.js'
+import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -94,6 +97,34 @@ describe('report command', () => {
     await printReport('20261013-220000', false, run, true)
     expect(err).toEqual([`no JSON report for run 20261013-220000 in ${runsDir}`])
     expect(process.exitCode).toBe(1)
+  })
+
+  it("reads back what run wrote: each unit's summary, files and links, and why items were skipped", async () => {
+    const [done, skipped] = [githubPr(1), githubPr(2)]
+    const planned = { unit: { id: 'acme-api-1', items: [done] } }
+    const result = {
+      planned,
+      status: 'done',
+      outcome: { kind: 'none', reason: 'no commits' },
+      summary: 'No code changes: the red check is flaky.',
+      files: ['units/acme-api-1/1-fix/worker.log', 'units/acme-api-1/out/pr.md'],
+    }
+    const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
+    const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
+    await writeFile(join(runsDir, run.runId, 'report.json'), reportJson(run))
+    const { out } = output()
+    await printReport(run.runId, false, await controlRepo([], ''), true)
+    const json = JSON.parse(out.join('\n'))
+    expect(json.results[0]).toEqual({
+      ...result,
+      planned: {
+        unit: {
+          id: 'acme-api-1',
+          items: [{ source: 'github', key: 'acme/api#1', title: 'PR 1', url: done.url }],
+        },
+      },
+    })
+    expect(json.plan.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#2' } })
   })
 
   it('prints only the error with --json for a run with steps but no report.json', async () => {
