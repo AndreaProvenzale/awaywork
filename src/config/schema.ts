@@ -447,6 +447,13 @@ const repo = z.strictObject({
     ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
+  image: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
+    ),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])
@@ -489,10 +496,10 @@ export const configSchema = z
       .prefault({})
       .describe('Unit counts and time per run, for every provider'),
     isolation: z
-      .enum(['none', 'user'])
+      .enum(['none', 'user', 'container'])
       .default('none')
       .describe(
-        'Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); always user on a GitHub-hosted runner',
+        "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner",
       ),
     budget: budget.prefault({}),
     providers: z
@@ -543,6 +550,14 @@ export const configSchema = z
       ),
   })
   .superRefine((cfg, ctx) => {
+    if (cfg.isolation === 'container')
+      for (const [name, repo] of Object.entries(cfg.repos))
+        if (!repo.image)
+          ctx.addIssue({
+            code: 'custom',
+            path: ['repos', name, 'image'],
+            message: 'required with isolation: container: the image its units run in',
+          })
     const providerIds = cfg.providers.flatMap(Object.keys)
     const commandIds = providerIds.filter((id) => !Object.hasOwn(providers, id))
     if (commandIds.length > 0 && !cfg.limits.unit_minutes)

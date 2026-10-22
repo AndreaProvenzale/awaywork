@@ -222,6 +222,8 @@ sources:
 
 `verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output. Pass or fail, that tail lands in `verify.log` next to what the slice published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/` (`out-2/` on for a [stacked slice](./chains.md#stack)), not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
+`image` is the Docker image the repo's units run in under [`isolation: container`](#in-a-container).
+
 `test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file. A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
 
 ### What runs in the clone
@@ -419,7 +421,7 @@ Servers start for your own PRs and for issues and tasks, but not on someone else
 ## Isolation
 
 ```yaml
-isolation: user # default: none
+isolation: user # default: none; or container
 ```
 
 `none` runs setup, the agent and the checks as you. Everything in [Safety](./safety.md) keeps your credentials out of the agent's way, not out of its reach: it can read what you can ([Not a sandbox](./safety.md#not-a-sandbox)). `user` runs them as `awaywork`, a user with nothing of yours, which on your Linux box or a self-hosted Linux runner you make once. `awaywork doctor` tells you how, here for a user `runner` (uid and gid 1001), with your own name and ids in yours:
@@ -445,8 +447,42 @@ A few things change with it:
 - **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter.
 - **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
 - **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
-- **Always on a GitHub-hosted runner**, whatever the config says: there `none` is ignored, and the action makes the user.
+- **Always on a GitHub-hosted runner**, whatever the config says: there `none` and `container` are ignored, and the action makes the user.
 - **One developer per worker user.** Whoever has the `chown` line can chown any awaywork clone folder, someone else's too.
+
+### In a container
+
+```yaml
+isolation: container
+repos:
+  acme/api:
+    image: ghcr.io/acme/api-dev:latest # what setup, the agent and the checks run in
+    setup: pnpm i --frozen-lockfile
+```
+
+`container` is the one for your Mac, and for more than a user hides on Linux. Setup, every agent run and every check start in a fresh container of the repo's `image` through Docker (Docker Desktop, Colima, or the engine on Linux). It mounts the clone, at its own path, and the skills plugin, read-only, and nothing else: not your home, not the docker socket. It runs as your uid and gid, so what it writes in the clone stays yours, with every capability dropped and `no-new-privileges`, so a `sudo` the image hands out goes nowhere. Each container is gone before awaywork looks at the clone again, `docker rm -f` included on a timeout, the window's end or Ctrl-C, since killing the `docker run` client stops nothing inside; when docker doesn't say so within a minute, the clone is lost. `awaywork replay` runs in one too. `doctor` checks that Docker answers, that each repo's image is here (or pulls it) and that the agents' CLIs run in it, here with a test image of stand-ins:
+
+```text
+ok    isolation: container: setup, the agent and the checks run in a fresh container of the repo's image (Docker 27.4.0)
+ok    isolation: acme/leak: awaywork-leak has claude 2.1.290 (Claude Code stand-in), codex codex-cli 0.162.1 (stand-in)
+```
+
+And when one isn't there:
+
+```text
+FAIL  isolation: acme/leak: awaywork-nope:1 isn't here and couldn't be pulled (Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp 54.156.126.76:443: i/o timeout)
+```
+
+The image is yours to build, and what's in it is all the units get:
+
+- **The agent CLIs and the toolchain.** `claude`, `codex` or your command provider's binary, whichever the repo's rules use, plus whatever setup and the checks run, and the commands of the [MCP servers](#mcp-servers) its rules name: stdio servers start inside, as the agent's children. Not `gh` or `glab`: awaywork's own forge calls run outside. Install things system-wide rather than under `/root`, since the container runs as your uid, and mind the `ENTRYPOINT`: awaywork skips it and runs its commands as they are.
+- **Every repo gets one.** Under `container`, a `repos` entry without an `image` is a config error (`repos.acme/api.image: required with isolation: container: the image its units run in`), and a unit in a repo with no entry at all is skipped: `no image for acme/web: isolation: container needs one in its repos entry`. Nothing falls back to running as you.
+- **Pulled once.** A missing image is pulled by the first `docker run` (or by `doctor`); after that awaywork uses it as it is, so `docker pull` to update it.
+- **Only the env it needs.** A container gets the image's own environment, plus what awaywork sets (the `none` placeholders, its git config, the prompt's path) and that phase's secrets, by name, never on argv: setup its repo's `secrets`, the agent its provider's and its MCP servers'. Nothing else of yours, your ssh agent included, so a variable a tool needs goes in `secrets` or in the image.
+- **A `HOME` in the clone.** It's `.away/home`, fresh with each clone: what setup puts there, a `pip install --user` or a browser download, reaches the chain's agents and checks, and goes with the clone, so caches don't survive the night. Bake them into the image.
+- **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
+- **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
+- **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
 
 ## Secrets
 

@@ -2,6 +2,7 @@ import { dirname, join } from 'node:path'
 import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
+import { isolateFor } from '../core/launch.js'
 import { forgeFor } from '../forge/index.js'
 import { providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -18,6 +19,7 @@ export function replayCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
+        await isolateFor(config.isolation, process.env)
         const abort = new AbortController()
         for (const signal of ['SIGINT', 'SIGTERM'] as const) {
           process.once(signal, () => abort.abort())

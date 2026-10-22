@@ -54,6 +54,13 @@ export function isCommandProvider(cfg: unknown): cfg is CommandProviderConfig {
   return typeof cfg === 'object' && cfg !== null && 'command' in cfg
 }
 
+/** The binary a command runs: its first word that doesn't set a variable. */
+export const commandBinary = (command: string) =>
+  command
+    .trim()
+    .split(/\s+/)
+    .find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? ''
+
 /** A provider that runs the user's own command: their CLI and login, no live rate-limit events. */
 export function commandProvider(
   id: string,
@@ -96,11 +103,7 @@ export function commandProvider(
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
-      const bin =
-        cfg.command
-          .trim()
-          .split(/\s+/)
-          .find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? ''
+      const bin = commandBinary(cfg.command)
       const out = await execa(`command -v '${bin.replaceAll("'", "'\\''")}'`, {
         shell: true,
         reject: false,

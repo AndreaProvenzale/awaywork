@@ -14,7 +14,7 @@ import {
 } from '../config/paths.js'
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
-import { isolate, workerFor } from '../core/launch.js'
+import { isolateFor } from '../core/launch.js'
 import {
   type Chain,
   chains,
@@ -76,7 +76,7 @@ export function runCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        isolate(await workerFor(config.isolation, process.env))
+        await isolateFor(config.isolation, process.env)
         const now = new Date()
         const until = opts.scheduled
           ? runEnd(config.windows, now, process.env)
@@ -125,7 +125,7 @@ export function runCommand(program: Command): void {
           return
         }
         const runDir = join(runsDir, runId)
-        await mkdir(runDir, { recursive: true })
+        await mkdir(runDir, { recursive: true, mode: 0o700 })
         if (process.env.GITHUB_OUTPUT)
           await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
         const skipped = plan.skipped.length > 0 ? `\n${formatSkipped(plan.skipped)}\n` : ''

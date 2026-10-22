@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
@@ -76,6 +76,8 @@ describe('run command', () => {
     const id = (await readdir(runsDir)).sort().at(-1) ?? ''
     const json = JSON.parse(await readFile(join(runsDir, id, 'report.json'), 'utf8'))
     expect(json.runId).toBe(id)
+    // Closed to other local users, with every clone and copy in it.
+    expect((await stat(join(runsDir, id))).mode & 0o777).toBe(0o700)
   })
 
   it("hands the run's id and dir to the next steps of an Actions job", async () => {

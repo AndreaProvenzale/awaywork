@@ -29,6 +29,10 @@ const configSchema = z.strictObject({
     ),
 })
 
+/** Your Codex login, which `codex login` keeps in `auth.json`. */
+export const codexLogin = (env: NodeJS.ProcessEnv) =>
+  join(env.CODEX_HOME || join(homedir(), '.codex'), 'auth.json')
+
 /**
  * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;
  * runs and probes hold a per-machine lock. A worker user gets a copy of it, saved back after its run.
@@ -106,8 +110,7 @@ export function codexProvider(
      */
     async login(home, log) {
       // Read now, not at import: a CODEX_HOME may come from awaywork's env file.
-      const authFile =
-        authPath ?? join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'auth.json')
+      const authFile = authPath ?? codexLogin(process.env)
       const release = await lock(lockFile, () => {})
       lent = true
       const done = async () => {

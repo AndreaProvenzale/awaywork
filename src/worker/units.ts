@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, posix } from 'node:path'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
@@ -14,7 +14,16 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { gitUnrestored, isolated, lostToWorker, workerHome, workerRoot } from '../core/launch.js'
+import {
+  CONTAINER_HOME,
+  contain,
+  contained,
+  gitUnrestored,
+  isolated,
+  lostToWorker,
+  workerHome,
+  workerRoot,
+} from '../core/launch.js'
 import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
 import type {
   Ctx,
@@ -55,6 +64,7 @@ import {
 } from './steps.js'
 import {
   configSecrets,
+  copyOut,
   notSymlink,
   outputFile,
   type Previous,
@@ -303,11 +313,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {
-          if (!lostToWorker(dir))
-            await cp(join(dir, WORK_DIR, 'out'), out, {
-              recursive: true,
-              filter: notSymlink,
-            }).catch(() => {})
+          if (!lostToWorker(dir)) await copyOut(join(dir, WORK_DIR, 'out'), out).catch(() => {})
         }
       }
       if (last || ended) return
@@ -375,6 +381,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         end('the window ended')
         continue
       }
+      const image = input.config.repos[p.unit.repo]?.image
+      if (contained() && !image) {
+        end(`no image for ${p.unit.repo}: isolation: container needs one in its repos entry`)
+        continue
+      }
       const unit = { ...p.unit, ...shape }
       const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
       const { provider: id, passed } = route(candidates, allowances, routed)
@@ -408,6 +419,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
       const plugin = join(root, 'plugins', unit.id)
+      if (contained() && image) contain(dir, { image, plugin, secrets })
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -636,11 +648,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const lost = lostToWorker(dir)
         // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
         if (cloned !== undefined && !lost)
-          await cp(join(dir, WORK_DIR), unitDir, {
-            recursive: true,
+          await copyOut(join(dir, WORK_DIR), unitDir, {
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
-            filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
+            filter: async (src) =>
+              ![join(dir, WORK_DIR, 'gh'), join(dir, CONTAINER_HOME)].includes(src) &&
+              (await notSymlink(src)),
           }).catch(() => {})
         if (start && !lost)
           try {

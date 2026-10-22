@@ -158,6 +158,14 @@ describe('config', () => {
     expect(problems(rule('random'))).toEqual([expect.stringContaining('queue[0].order')])
   })
 
+  it('needs an image for every repo under isolation: container', () => {
+    const repos = 'repos: { acme/api: { setup: npm ci }, acme/web: { image: acme/web:dev } }'
+    expect(problems(`${minimal}isolation: container\n${repos}`)).toEqual([
+      'repos.acme/api.image: required with isolation: container: the image its units run in',
+    ])
+    expect(problems(`${minimal}isolation: user\n${repos}`)).toEqual([])
+  })
+
   it('rejects unknown and unconfigured providers and sources', () => {
     expect(problems('providers: [gemini: {}]\nsources: { github: { repos: [a/b] } }')).toEqual([
       'providers[0]: gemini.command: not a built-in provider; a custom provider needs a `command`',

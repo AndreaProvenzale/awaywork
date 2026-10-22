@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import {
   copyFile,
   mkdir,
@@ -22,11 +22,18 @@ import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { isolate } from '../src/core/launch.js'
+import {
+  asWorker,
+  contain,
+  containerize,
+  isolate,
+  launch,
+  lostToWorker,
+} from '../src/core/launch.js'
 import { formatReport, type RunReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
-import type { Item, Provider, Source } from '../src/core/types.js'
+import type { Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -890,6 +897,98 @@ it('ends the chain on a clone it couldn’t take back from the worker user, and 
     process.env.PATH = path
     if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
   }
+})
+
+it('runs no unit in a repo without an image under isolation: container', async () => {
+  containerize(true)
+  try {
+    const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], worker())
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['skipped', 'no image for acme/api: isolation: container needs one in its repos entry'],
+    ])
+  } finally {
+    containerize(false)
+  }
+})
+
+/** A docker on PATH that runs `script`, at one path for every test, since bin looks it up once. */
+const fakeDocker = join(mkdtempSync(join(tmpdir(), 'awaywork-docker-')), 'docker')
+
+it.each([
+  // Runs nothing and always lists the container as running.
+  ['lists it as still running', 'case "$1" in ps) echo 0123abcd;; esac'],
+  ['never answers', 'case "$1" in rm|ps) exec sleep 600;; esac'],
+])('ends the chain on a clone whose container it couldn’t remove: docker %s', async (_, script) => {
+  await writeFile(fakeDocker, `#!/bin/sh\n${script}\n`, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
+  let clone = ''
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    run: (job, signal) => {
+      clone = job.dir
+      return base.run(job, signal)
+    },
+  }
+  try {
+    const { report, opened } = await run(
+      "repos: { acme/api: { image: acme/api:dev, setup: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', "couldn't remove the phase's container, left the clone as it is"],
+      [
+        'skipped',
+        "acme-api-1 error: couldn't remove the phase's container, left the clone as it is",
+      ],
+    ])
+    expect(opened).toEqual([])
+    expect(clone).toBe('')
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
+})
+
+/** Runs one phase of a fresh clone that starts a container under `script`'s docker, and logs docker's subcommands. */
+async function containerPhase(script: string, login?: Login) {
+  const log = `${fakeDocker}.log`
+  await writeFile(fakeDocker, `#!/bin/sh\necho "$1" >> ${log}\n${script}\n`, { mode: 0o755 })
+  await rm(log, { force: true })
+  const path = process.env.PATH
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
+  const dir = await mkdtemp(join(tmpdir(), 'awaywork-clone-'))
+  contain(dir, { image: 'acme/api:dev', secrets: [] })
+  try {
+    const phase = asWorker(dir, () => launch('true', [], { cwd: dir, reject: false }), login)
+    const error = await phase.then(
+      () => undefined,
+      (e: Error) => e.message,
+    )
+    return { dir, error, calls: (await readFile(log, 'utf8')).split('\n').filter(Boolean) }
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
+}
+
+it('loses a clone whose container it couldn’t remove before saving its login back, so a save that throws can’t keep it', async () => {
+  const login: Login = async () => async () => {
+    throw new Error('the lock is stuck')
+  }
+  const { dir, error } = await containerPhase('case "$1" in ps) echo 0123abcd;; esac', login)
+  expect(error).toBe('the lock is stuck')
+  expect(lostToWorker(dir)).toBe(true)
+})
+
+it('asks docker about a container once when its ps never answers, not again for each removal', async () => {
+  const { error, calls } = await containerPhase('case "$1" in ps) exec sleep 600;; esac')
+  expect(error).toBe("couldn't remove the phase's container, left the clone as it is")
+  expect(calls.filter((c) => c === 'ps')).toHaveLength(1)
 })
 
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
