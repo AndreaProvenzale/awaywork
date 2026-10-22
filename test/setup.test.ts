@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { runCommand, runSetup } from '../src/worker/setup.js'
+import { escaped, escaping } from './fakes/escape.js'
 
 const env = { PATH: process.env.PATH, NPM_TOKEN: 'npm-secret' }
 const alive = (pid: number) => {
@@ -70,5 +71,24 @@ describe('runCommand', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('ends soon after a stop, whatever still holds its output', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-command-'))
+    const pid = join(dir, 'escaped.pid')
+    const stop = new AbortController()
+    const run = runCommand(`echo hi; ${escaping(pid)}; sleep 30`, dir, env, {
+      secrets: [],
+      signal: stop.signal,
+    })
+    await escaped(pid)
+    stop.abort()
+    const stopped = Date.now()
+    try {
+      expect(await run).toEqual({ output: 'hi', failed: 'interrupted', stopped: true })
+    } finally {
+      process.kill(await escaped(pid), 'SIGKILL')
+    }
+    expect(Date.now() - stopped).toBeLessThan(5000)
   })
 })

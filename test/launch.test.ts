@@ -22,6 +22,7 @@ import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
 import { commandEnv, workerEnv } from '../src/worker/workspace.js'
+import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 
 vi.mock('../src/core/launch.js', async (original) => {
@@ -58,25 +59,32 @@ describe('the launcher', () => {
   })
 
   it('ends each provider’s stopped agent soon after it exits, whatever still holds its output', async () => {
-    const pid = join(dir, 'escaped.pid')
-    const spawn = `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'inherit' }); require('node:fs').writeFileSync('${pid}', String(c.pid)); c.unref()`
-    const agent = join(dir, 'escapes.sh')
-    await writeFile(agent, `#!/bin/sh\n'${process.execPath}' -e "${spawn}"\nsleep 30\n`, {
-      mode: 0o755,
-    })
+    const agent = (name: string) => join(dir, `${name}.sh`)
     const providers = [
-      claudeProvider(agent),
-      codexProvider(agent, join(dir, 'codex.lock')),
-      commandProvider('mine', { command: agent, secrets: [], skills_dir: '.agents/skills' }),
+      claudeProvider(agent('claude')),
+      codexProvider(agent('codex'), join(dir, 'codex.lock')),
+      commandProvider('mine', {
+        command: agent('mine'),
+        secrets: [],
+        skills_dir: '.agents/skills',
+      }),
     ]
     for (const provider of providers) {
-      const started = Date.now()
+      const pid = join(dir, `${provider.id}.pid`)
+      await writeFile(agent(provider.id), `#!/bin/sh\n${escaping(pid)}\nsleep 30\n`, {
+        mode: 0o755,
+      })
+      const stop = new AbortController()
+      const run = drain(provider.run(job, stop.signal))
+      await escaped(pid)
+      stop.abort()
+      const stopped = Date.now()
       try {
-        await drain(provider.run(job, AbortSignal.timeout(500)))
+        await run
       } finally {
-        process.kill(Number(await readFile(pid, 'utf8')), 'SIGKILL')
+        process.kill(await escaped(pid), 'SIGKILL')
       }
-      expect(Date.now() - started, provider.id).toBeLessThan(5000)
+      expect(Date.now() - stopped, provider.id).toBeLessThan(5000)
     }
   }, 30_000)
 

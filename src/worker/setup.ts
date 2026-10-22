@@ -56,6 +56,7 @@ export async function runCommand(
       killDescendants: true,
       reject: false,
       all: true,
+      cancelSignal: stop,
     })
     const release = killGroupWhenDone(subprocess, stop)
     const result = await subprocess

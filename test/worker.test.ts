@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -8,6 +7,7 @@ import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
 import { defaultLimits, shortage, startWatchdog } from '../src/worker/watchdog.js'
+import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 
@@ -146,25 +146,24 @@ describe('worker', () => {
 
   it('stops after unit_minutes while a process that left the group holds the output', async () => {
     const pid = join(job.dir, `awaywork-escaped-${process.pid}.pid`)
-    const spawn = `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'inherit' }); require('node:fs').writeFileSync('${pid}', String(c.pid)); c.unref()`
-    const command = `'${process.execPath}' -e "${spawn}"; echo started; sleep 30`
+    const command = `${escaping(pid)}; echo started; sleep 30`
     const provider = commandProvider('x', { command, secrets: [], skills_dir: '.agents/skills' })
     const lines: string[] = []
     const started = Date.now()
     try {
       const result = await runWorker(provider, job, allowance(budget, null, now, windows), {
         log: (l) => lines.push(l),
-        maxMinutes: 0.01,
+        maxMinutes: 0.05,
         watch: () => idle,
       })
-      expect(Date.now() - started).toBeLessThan(5000)
+      expect(Date.now() - started).toBeLessThan(6000)
       expect(result).toMatchObject({
         status: 'stopped: time',
-        reason: 'reached unit_minutes (0.01)',
+        reason: 'reached unit_minutes (0.05)',
       })
-      expect(lines).toEqual(['started', 'stop: reached unit_minutes (0.01)'])
+      expect(lines).toEqual(['started', 'stop: reached unit_minutes (0.05)'])
     } finally {
-      process.kill(Number(await readFile(pid, 'utf8')), 'SIGKILL')
+      process.kill(await escaped(pid), 'SIGKILL')
     }
   }, 60_000)
 })
