@@ -185,9 +185,13 @@ export async function bitbucketChecks(config: Config, run: Exec = exec): Promise
     (await twg<{ full_name: string }[]>(run, any)
       .then(([r]) => r?.full_name)
       .catch(() => undefined))
+  const ssh =
+    process.env.GIT_SSH_COMMAND ||
+    (await run('git', ['config', '--get', 'core.sshCommand']).catch(() => '')).trim() ||
+    'ssh'
   if (repo)
     await run('git', ['ls-remote', bitbucketRemote(repo), 'HEAD'], {
-      GIT_SSH_COMMAND: 'ssh -o BatchMode=yes',
+      GIT_SSH_COMMAND: `${ssh} -o BatchMode=yes`,
     }).then(
       () => check('ok', 'git over ssh', repo),
       (e: Error & { stderr?: string }) =>

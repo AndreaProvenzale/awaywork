@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
@@ -89,6 +89,8 @@ describe('doctor on Bitbucket', () => {
     readFile(join(import.meta.dirname, 'fixtures', 'twg', name), 'utf8')
   const config = (repos: string) =>
     parseConfig(`providers: [codex]\nsources: { bitbucket: { repos: ${repos} } }\n`)
+  beforeEach(() => vi.stubEnv('GIT_SSH_COMMAND', ''))
+  afterEach(() => vi.unstubAllEnvs())
 
   it('checks twg instead of gh', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
@@ -118,7 +120,7 @@ describe('doctor on Bitbucket', () => {
         detail: 'stored in keychain: masking it from workers is verified only for file storage',
       },
     ])
-    expect(run.calls[1]).toEqual([
+    expect(run.calls[2]).toEqual([
       'git',
       'ls-remote',
       'git@bitbucket.org:andrea89/awaywork-sandbox.git',
@@ -155,6 +157,20 @@ describe('doctor on Bitbucket', () => {
       },
     ])
     expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' })
+  })
+
+  it('adds BatchMode to the ssh command git would use: GIT_SSH_COMMAND, else core.sshCommand', async () => {
+    const envs: (Record<string, string> | undefined)[] = []
+    const run: Exec = async (_cmd, args, env) => {
+      envs.push(env)
+      if (args[0] === 'config') return 'ssh -i ~/.ssh/bitbucket\n'
+      return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
+    }
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/bitbucket -o BatchMode=yes' })
+    vi.stubEnv('GIT_SSH_COMMAND', 'ssh -i ~/.ssh/env')
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/env -o BatchMode=yes' })
   })
 })
 
