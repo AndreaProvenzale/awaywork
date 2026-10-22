@@ -10,7 +10,7 @@ import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from '.
 export type Outcome =
   | { kind: 'pr'; url: string; commits: number; head: string }
   | { kind: 'report'; text: string }
-  | { kind: 'pushed'; branch: string; commits: number; text: string; head: string }
+  | { kind: 'pushed'; branch: string; url: string; commits: number; text: string; head: string }
   | { kind: 'none'; reason: string; unpublished?: true }
 
 /** A chain's own repo, kept across its slices, and the tip the slice before pushed in place of the clone's `start`. */
@@ -86,7 +86,7 @@ async function deliver(
   const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
-  if (!oldest) return { kind: 'none', reason: 'no commits' }
+  if (!oldest) return { kind: 'none', reason: 'nothing' }
   if (!text)
     return {
       kind: 'none',
@@ -134,7 +134,7 @@ async function deliver(
       pr: pr.number,
     })
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
-    return { kind: 'pushed', branch: unit.base, commits: commits.length, text, head }
+    return { kind: 'pushed', branch: unit.base, url: pr.url, commits: commits.length, text, head }
   }
   await forge.push(repo, unit.branch, { repo: unit.repo })
   // The items' link lines let their trackers link the PR, whatever its branch is called.

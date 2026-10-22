@@ -43,12 +43,11 @@ awaywork schedule remove
   ```
   awaywork run at 2026-10-12 22:34:18
   warning: source chores: Command failed with exit code 1: ./chores.sh
-
-  CHORES_TOKEN is not set
+    Error: CHORES_TOKEN is not set
   Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/20261012-203418
   ```
 
-  A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
+  A failed command gets two lines, its error and the last error line of its stderr, however much it printed. A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
 
 - The job bakes in the window starts, one trigger each. When you change them, `config edit` and `doctor` warn until `schedule install` runs again.
 
@@ -91,11 +90,13 @@ Before the first run:
 
 The runner is GitHub-hosted by default: a fresh VM each run, with no Codex. Self-hosted is a machine of yours, see [Running Codex](#running-codex). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
 
-This writes `.github/workflows/awaywork.yml`: a cron at each window's start in your current timezone, plus `workflow_dispatch` for a manual run; `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
+This writes `.github/workflows/awaywork.yml`: a cron at each window's start, plus `workflow_dispatch` for a manual run; `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
 
 1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.
 3. Run it once by hand from the Actions tab.
+
+GitHub runs the cron in UTC, so `schedule install` converts each start from your current timezone at its standard time, and the job's `TZ` keeps window ends and `days` in that timezone. The run never starts before the window opens, but in summer time it starts up to an hour into it: a `18:00` window in Rome fires at `17:00` UTC, which is 19:00 there from March to October, so keep windows on Actions longer than an hour or summer runs land past their end. Changed timezone? Run `schedule install` again.
 
 `doctor`, run inside the repo, checks that every secret the workflow names exists in the repo or its org, and fails naming the missing ones. A workflow that doesn't parse fails, since it won't run either. When gh can't list the repo's or the org's secrets (no access, no remote, not logged in), it warns why instead of guessing what's missing. The action fails before anything else when `GH_TOKEN` is empty, which is how a job whose secrets didn't reach it shows.
 
@@ -114,7 +115,7 @@ A GitHub-hosted runner starts with an empty state dir, so it keeps no attempts, 
 GitHub also ends a job on its hosted runners at 6 hours, whatever your window says. So there a run stops 5h40 after `awaywork run` starts, or at the window's end when that comes first, and the 20 minutes left go to publishing and the report; the workflow sets `timeout-minutes: 360` to match. A longer window, like `18:00-07:00`, effectively lasts about 6 hours there, and `plan` on the runner says so:
 
 ```
-Warnings
+Warnings 1
   GitHub-hosted runners end a job at 6 hours, so a run stops 5h40 after it starts, before 18:00-07:00 ends
 ```
 

@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { killGroupWhenDone } from '../core/group.js'
+import { awaitGroup, killGroupWhenDone } from '../core/group.js'
 import { launch } from '../core/launch.js'
 import type { Provider, Quota } from '../core/types.js'
 
@@ -78,8 +78,7 @@ export function commandProvider(
       detached: true,
     })
     // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-    killGroupWhenDone(subprocess)
-    const { stdout } = await subprocess
+    const { stdout } = await awaitGroup(subprocess)
     let json: unknown
     try {
       json = JSON.parse(stdout)

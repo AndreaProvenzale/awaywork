@@ -1,6 +1,6 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
@@ -8,6 +8,7 @@ import { describeCondition, holds } from '../core/condition.js'
 import {
   bySlice,
   describeChain,
+  isNamed,
   modelFor,
   type PlannedUnit,
   type RunPlan,
@@ -23,8 +24,17 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import type { RunReport, UnitResult } from '../core/report.js'
-import type { Ctx, Forge, Item, McpServer, Provider, Quota, Source } from '../core/types.js'
+import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
+import type {
+  Ctx,
+  Deliver,
+  Forge,
+  Item,
+  McpServer,
+  Provider,
+  Quota,
+  Source,
+} from '../core/types.js'
 import { commitsSince, createChecks, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
@@ -104,6 +114,41 @@ async function earlierReport(
   }
 }
 
+/** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
+const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
+
+/** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
+async function leftBy(
+  runDir: string,
+  chainId: string,
+  r: UnitResult,
+  deliver: Deliver,
+  lead: boolean,
+): Promise<Pick<UnitResult, 'files' | 'summary'>> {
+  if (!r.step) return {}
+  // Relative and with `/`: report.json is read on other machines, from an uploaded artifact.
+  const step = posix.join('units', chainId, r.step)
+  const slice = posix.join('units', chainId, sliceOut(r.planned.slice ?? 0))
+  const all: StepFiles = {
+    log: posix.join(step, 'worker.log'),
+    report: posix.join(step, 'out', outputFile.report),
+    diff: posix.join(step, 'out', 'diff.patch'),
+    ...(lead && {
+      sliceBody: posix.join(slice, outputFile[deliver]),
+      sliceDiff: posix.join(slice, 'diff.patch'),
+    }),
+  }
+  const files: StepFiles = Object.fromEntries(
+    Object.entries(all).filter(([, f]) => existsSync(join(runDir, f))),
+  )
+  const read = async (f?: string) => (f ? readOutput(join(runDir, f)) : '')
+  // Only a draft PR's body opens with its title.
+  const summary =
+    summaryOf(await read(files.sliceBody), deliver === 'draft_pr') ||
+    summaryOf(await read(files.report))
+  return { files, ...(summary && { summary }) }
+}
+
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
 interface Retry {
   result: UnitResult
@@ -112,14 +157,12 @@ interface Retry {
   keep: () => void
 }
 
-/** The units `name` names, by unit id or item key in any case. */
-export function namedUnits(plan: RunPlan, name: string): Set<string> {
-  const only = slug(name)
-  return new Set(
-    plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
-      .map((p) => p.unit.id),
-  )
+/** The chains `name` names by a unit id or an item, in any case: each chain's first step. */
+export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
+  const heads = plan.units
+    .filter((p) => p.unit.id === name.toLowerCase() || p.unit.items.some((i) => isNamed(i, name)))
+    .map((p) => p.chain ?? p.unit.id)
+  return plan.units.filter((p) => !p.chain && heads.includes(p.unit.id))
 }
 
 /**
@@ -136,14 +179,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
-  if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
+  const named = input.only ? namedChains(input.plan, input.only) : []
+  if (input.only && named.length !== 1)
+    throw new Error(`"${input.only}" names ${named.length} units in this run's plan, not one`)
   // A step needs its whole chain.
-  const heads = new Set(
-    [...wanted].map((id) => input.plan.units.find((p) => p.unit.id === id)?.chain ?? id),
-  )
   const chains = input.plan.units
-    .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
+    .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
   // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
@@ -235,14 +276,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let retrying: Retry | undefined
     // Why the steps left didn't run, and whether they're passed over rather than missed.
     let ended: { reason: string; passedOver?: true } | undefined
+    // Each slice's first step, which publishes it.
+    const leads = new Set<UnitResult>()
 
     /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find(
         (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
       )
-      const out = join(chainDir, at > 0 ? `out-${at + 1}` : 'out')
+      const out = join(chainDir, sliceOut(at))
       if (from !== undefined && lead && ran && !input.dryRun) {
+        leads.add(lead)
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
@@ -359,15 +403,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           end(free.skip)
           continue
         }
-        if (free.branch !== named)
-          input.ctx.log(`${unit.id}: ${named} is taken on ${unit.repo}, using ${free.branch}`)
+        if (free.taken)
+          input.ctx.log(`${unit.id}: ${free.taken} is taken on ${unit.repo}, using ${free.branch}`)
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
       if (retryOf) retryOf.result.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
-      input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
+      const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
+      // A unit its `when` may pass over says it starts only once that held.
+      const gated = !!unit.rule.when && !retryOf && !input.dryRun
+      if (!gated) input.ctx.log(starts)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
@@ -447,6 +494,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           )
           if (failed) {
             Object.assign(result, { status: 'skipped', reason: failed })
+            input.ctx.log(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
             ended = { reason: `${unit.id} setup failed` }
             continue
           }
@@ -461,6 +509,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (met.check?.stopped || met.check?.timedOut) {
             const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
             Object.assign(result, { status: 'skipped', reason })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             ended = { reason }
             interrupted ||= !!input.signal?.aborted
@@ -470,6 +519,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             const failed = met.check?.failed ? ` (${met.check.failed})` : ''
             const reason = `when ${describeCondition(when)} didn't hold${failed}`
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
             if (p === opening) ended = { reason, passedOver: true }
@@ -484,6 +534,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             continue
           }
         }
+        if (gated) input.ctx.log(starts)
         const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
         const named = unit.rule.mcp ?? []
         if (named.length > 0 && unit.foreign)
@@ -621,6 +672,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
+    for (const r of done) {
+      // A committing slice that committed nothing published its reports.
+      const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
+    }
     for (const path of [dir, workerHome(dir)])
       if (path && !input.dryRun && !lostToWorker(path))
         await rm(path, { recursive: true, force: true })

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { linkTasks } from '../src/cli/plan.js'
+import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Ctx } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
@@ -166,8 +167,13 @@ describe('asana config and linking', () => {
     }
     const task = asanaTask(12, {}, { key: 'ENG-12' })
     const issue = fakeItem({ key: 'ENG-12', type: 'issue' })
-    await linkTasks([task, issue], fakeForge([pr]), ctx)
+    const steps: Step[] = []
+    await linkTasks([task, issue], fakeForge([pr]), ctx, (step) => steps.push(step))
     expect(task.linkedPrs.map((p) => p.number)).toEqual([4])
+    expect(steps).toEqual([
+      { name: 'linking PRs', state: 'running', detail: '0/1' },
+      { name: 'linking PRs', state: 'done', detail: '1/1' },
+    ])
     expect(issue.linkedPrs).toEqual([])
     const failing = { ...fakeForge(), prsFor: () => Promise.reject(new Error('gh: not logged in')) }
     const other = asanaTask(13)
