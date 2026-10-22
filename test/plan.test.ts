@@ -1199,6 +1199,7 @@ describe('attempts', () => {
       'prepared',
       'stopped: aborted',
       'stopped: quota',
+      'stopped: resources',
       'stopped: session',
       'stopped: window ended',
     ]

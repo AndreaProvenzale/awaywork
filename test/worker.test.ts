@@ -7,7 +7,7 @@ import { type Allowance, allowance } from '../src/core/budget.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
-import { defaultLimits, startWatchdog } from '../src/worker/watchdog.js'
+import { defaultLimits, shortage, startWatchdog } from '../src/worker/watchdog.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 
@@ -201,5 +201,17 @@ describe('watchdog', () => {
     await new Promise((ok) => setTimeout(ok, 200))
     await watchdog.stop()
     expect(reasons[0]).toBe('memory below Infinity GB')
+  })
+
+  it('says what the machine is short of, on the volume of a dir that may not exist yet', async () => {
+    const none = { ...defaultLimits, minMemory: 0, minDisk: 0 }
+    const dir = join(tmpdir(), 'awaywork-none', 'work')
+    expect(await shortage(dir, none)).toBeUndefined()
+    expect(await shortage(dir, { ...none, minMemory: Number.POSITIVE_INFINITY })).toBe(
+      'memory below Infinity GB',
+    )
+    expect(await shortage(dir, { ...none, minDisk: Number.POSITIVE_INFINITY })).toBe(
+      'disk below Infinity GB',
+    )
   })
 })
