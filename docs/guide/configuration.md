@@ -198,7 +198,7 @@ ok    twg andrea89
 ok    git over ssh: andrea89/awaywork-sandbox
 ```
 
-`twg andrea89` is `twg bb workspace get` for each workspace in `repos`; `git over ssh` is a `git ls-remote` with `-o BatchMode=yes` added to the ssh command git uses (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`), so a key that would prompt fails here and not at 3am. It warns when twg keeps its login anywhere but a file, since hiding that from workers is only checked for files ([Safety](./safety.md#what-the-agent-can-reach)).
+`twg andrea89` is `twg bb workspace get` for each workspace in `repos`; `git over ssh` is a `git ls-remote` with `-o BatchMode=yes` added to the ssh command git uses (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is, since it may be plink), so a key that would prompt fails here and not at 3am. It warns when twg keeps its login anywhere but a file, since hiding that from workers is only checked for files ([Safety](./safety.md#what-the-agent-can-reach)).
 
 A run then ends like on GitHub, with a draft PR whose footer links it back to the item:
 

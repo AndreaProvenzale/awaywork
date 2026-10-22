@@ -89,7 +89,10 @@ describe('doctor on Bitbucket', () => {
     readFile(join(import.meta.dirname, 'fixtures', 'twg', name), 'utf8')
   const config = (repos: string) =>
     parseConfig(`providers: [codex]\nsources: { bitbucket: { repos: ${repos} } }\n`)
-  beforeEach(() => vi.stubEnv('GIT_SSH_COMMAND', ''))
+  beforeEach(() => {
+    vi.stubEnv('GIT_SSH_COMMAND', '')
+    vi.stubEnv('GIT_SSH', '')
+  })
   afterEach(() => vi.unstubAllEnvs())
 
   it('checks twg instead of gh', async () => {
@@ -171,6 +174,21 @@ describe('doctor on Bitbucket', () => {
     vi.stubEnv('GIT_SSH_COMMAND', 'ssh -i ~/.ssh/env')
     await bitbucketChecks(config('[acme/web]'), run)
     expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/env -o BatchMode=yes' })
+  })
+
+  it('leaves a GIT_SSH wrapper to git, since it may be plink, which takes no -o', async () => {
+    vi.stubEnv('GIT_SSH', '/usr/local/bin/plink')
+    const calls: [string[], Record<string, string> | undefined][] = []
+    const run: Exec = async (_cmd, args, env) => {
+      calls.push([args, env])
+      if (args[0] === 'config') return ''
+      return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
+    }
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(calls).toContainEqual([
+      ['ls-remote', 'git@bitbucket.org:acme/web.git', 'HEAD'],
+      undefined,
+    ])
   })
 })
 
