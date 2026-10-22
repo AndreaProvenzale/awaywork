@@ -72,12 +72,15 @@ runs:
       env:
         UNIT: ${{ inputs.unit }}
         AWAYWORK_CONFIG: ${{ inputs.config }}
+    # The job summary renders markdown: report.md as saved, not the terminal text.
     - name: Morning report
-      if: always()
+      if: always() && steps.run.outputs.run-dir != ''
       shell: bash
-      run: awaywork report >> "$GITHUB_STEP_SUMMARY" || true
+      run: |
+        cat "$RUN_DIR/report.md" >> "$GITHUB_STEP_SUMMARY" ||
+          echo "No report.md: the run was cut short." >> "$GITHUB_STEP_SUMMARY"
       env:
-        AWAYWORK_CONFIG: ${{ inputs.config }}
+        RUN_DIR: ${{ steps.run.outputs.run-dir }}
     # `awaywork report` in the control repo reads runs from these; only this run's files, never the whole runs dir.
     - name: Upload the run
       if: always() && steps.run.outputs.run-id != ''

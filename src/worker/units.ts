@@ -8,6 +8,7 @@ import { describeCondition, holds } from '../core/condition.js'
 import {
   bySlice,
   describeChain,
+  isNamed,
   modelFor,
   type PlannedUnit,
   type RunPlan,
@@ -145,14 +146,12 @@ interface Retry {
   keep: () => void
 }
 
-/** The units `name` names, by unit id or item key in any case. */
-export function namedUnits(plan: RunPlan, name: string): Set<string> {
-  const only = slug(name)
-  return new Set(
-    plan.units
-      .filter((p) => p.unit.id === only || p.unit.items.some((i) => slug(i.key) === only))
-      .map((p) => p.unit.id),
-  )
+/** The chains `name` names by a unit id or an item, in any case: each chain's first step. */
+export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
+  const heads = plan.units
+    .filter((p) => p.unit.id === name.toLowerCase() || p.unit.items.some((i) => isNamed(i, name)))
+    .map((p) => p.chain ?? p.unit.id)
+  return plan.units.filter((p) => !p.chain && heads.includes(p.unit.id))
 }
 
 /**
@@ -169,14 +168,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
   const results: UnitResult[] = []
-  const wanted = input.only ? namedUnits(input.plan, input.only) : new Set<string>()
-  if (input.only && wanted.size === 0) throw new Error(`no unit "${input.only}" in this run's plan`)
+  const named = input.only ? namedChains(input.plan, input.only) : []
+  if (input.only && named.length !== 1)
+    throw new Error(`"${input.only}" names ${named.length} units in this run's plan, not one`)
   // A step needs its whole chain.
-  const heads = new Set(
-    [...wanted].map((id) => input.plan.units.find((p) => p.unit.id === id)?.chain ?? id),
-  )
   const chains = input.plan.units
-    .filter((p) => !p.chain && (!input.only || heads.has(p.unit.id)))
+    .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
 
@@ -383,15 +380,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           end(free.skip)
           continue
         }
-        if (free.branch !== named)
-          input.ctx.log(`${unit.id}: ${named} is taken on ${unit.repo}, using ${free.branch}`)
+        if (free.taken)
+          input.ctx.log(`${unit.id}: ${free.taken} is taken on ${unit.repo}, using ${free.branch}`)
         shape.branch = unit.branch = free.branch
       }
       routed[id] = (routed[id] ?? 0) + 1
       if (retryOf) retryOf.result.retried = true
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, retryOf ? 1 : 0) ?? entry?.model
-      input.ctx.log(`${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`)
+      const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
+      // A unit its `when` may pass over says it starts only once that held.
+      const gated = !!unit.rule.when && !retryOf && !input.dryRun
+      if (!gated) input.ctx.log(starts)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
@@ -470,6 +470,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           )
           if (failed) {
             Object.assign(result, { status: 'skipped', reason: failed })
+            input.ctx.log(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
             ended = { reason: `${unit.id} setup failed` }
             continue
           }
@@ -484,6 +485,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (met.check?.stopped || met.check?.timedOut) {
             const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
             Object.assign(result, { status: 'skipped', reason })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             ended = { reason }
             interrupted ||= !!input.signal?.aborted
@@ -493,6 +495,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             const failed = met.check?.failed ? ` (${met.check.failed})` : ''
             const reason = `when ${describeCondition(when)} didn't hold${failed}`
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
             if (p === opening) ended = { reason, passedOver: true }
@@ -507,6 +510,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             continue
           }
         }
+        if (gated) input.ctx.log(starts)
         const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
         const named = unit.rule.mcp ?? []
         if (named.length > 0 && unit.foreign)

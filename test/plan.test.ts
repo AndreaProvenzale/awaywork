@@ -2,7 +2,15 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
+import {
+  describeAllowance,
+  formatPlan,
+  formatWhy,
+  listedUnits,
+  namedItems,
+  planJson,
+  queueLines,
+} from '../src/cli/format.js'
 import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import {
@@ -52,6 +60,10 @@ function plan(
 }
 const rows = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.rule + 1, u.unit.skill, u.provider ?? '-', u.unit.deliver])
+const why = (p: ReturnType<typeof plan>, name: string) => {
+  const [item] = namedItems(p, name)
+  return item && formatWhy(p, item)
+}
 
 const issue = fakeItem({
   source: 'github',
@@ -85,13 +97,7 @@ describe('plan', () => {
     })
     expect(result.units[2]?.unit).toMatchObject({ base: 'feature-2', foreign: true })
     expect(formatPlan(result)).toMatchInlineSnapshot(`
-      "Queue
-        #1  fix        type=pr mine=true checks=failing
-        #2  implement  source=github type=issue label=awaywork repo=acme/api
-        #3  review     type=pr review_requested=true
-        #4  implement  source=asana section=Ready tags=backend provider=codex
-
-      Providers
+      "Providers
         provider  window     used  ceiling  set by   resets in  session / stop at
         claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
           other limits: reserve cap 90%, pacing 54%
@@ -99,18 +105,20 @@ describe('plan', () => {
           4 units, 60 turns each (no quota reading)
 
       Units
-           unit        repo      rule  skill                 provider  deliver   branch
-        1  acme-api-1  acme/api  #1    fix (built-in)        claude    draft_pr  away/acme-api-1
-           github acme/api#1: PR 1
-           + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  away/acme-api-5
-           github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    away/acme-api-2
-           github acme/api#2: PR 2
+           item   rule  skill                 provider  deliver   title
+        1  api#1  #1    fix (built-in)        claude    draft_pr  PR 1
+           + T-7: same feature, matched #4
+        2  api#5  #2    implement (built-in)  claude    draft_pr  Add rate limits
+        3  api#2  #3    review (built-in)     claude    report    PR 2
 
-      Skipped
-        github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
-        asana T-8: no repo: no linked PR or repo field"
+      Needs you
+        T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
+             Task 8
+
+      Skipped 1: 1 no_rule
+
+      awaywork plan --skipped [kind]  lists them
+      awaywork plan --why <key>       says why an item is planned or not"
     `)
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
     expect(result.skipped.map((s) => [s.kind, needsYou[s.kind]])).toEqual([
@@ -184,7 +192,7 @@ queue: [{ skill: fix, where: { unresolved_threads: { gte: 2, lt: 5 } } }]`
     expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
       ['no_rule', 'matched no rule; closest #1 fix: unresolved_threads is 1, wants >= 2 and < 5'],
     ])
-    expect(formatPlan(result)).toContain('#1  fix  unresolved_threads>=2 unresolved_threads<5')
+    expect(queueLines(result)).toContain('  #1  fix  unresolved_threads>=2 unresolved_threads<5')
   })
 
   it('names the failing relative date of the closest rule', () => {
@@ -197,7 +205,7 @@ queue: [{ skill: fix, where: { updated: { older_than: 3d } } }]`
     expect(result.skipped.map((s) => s.reason)).toEqual([
       `matched no rule; closest #1 fix: updated is ${now}, wants older than 3d`,
     ])
-    expect(formatPlan(result)).toContain('#1  fix  updated:older_than=3d')
+    expect(queueLines(result)).toContain('  #1  fix  updated:older_than=3d')
   })
 
   it('names the failed text match', () => {
@@ -390,13 +398,12 @@ queue:
       [[], []],
     ])
     const text = formatPlan(result)
-    expect(text).toContain('#1  plan  type=issue model=claude:opus then=implement,review')
-    expect(text).toMatch(
-      /1 {2}acme-api-5 .* plan \(built-in\) {2}claude {4}draft_pr {2}away\/acme-api-5\n/,
+    expect(queueLines(result).join('\n')).toContain(
+      '#1  plan  type=issue model=claude:opus then=implement,review',
     )
     expect(text).toContain(
       [
-        '     github acme/api#5: Add rate limits',
+        '  1  api#5  #1    plan (built-in)  claude    draft_pr  Add rate limits',
         '     then implement (built-in) on claude',
         '     then review (built-in) on codex',
       ].join('\n'),
@@ -441,7 +448,7 @@ queue:
       ['acme-api-2-plan', '-', undefined],
     ])
     const text = formatPlan(result)
-    expect(text).toContain('then=loop(review,fix),plan')
+    expect(queueLines(result).join('\n')).toContain('then=loop(review,fix),plan')
     expect(text).toContain(
       [
         '     then loop review ⇄ fix until verdict approve or comments, at most 3 rounds',
@@ -528,7 +535,7 @@ queue:
       ['acme-api-5', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
       ['acme-api-5-implement', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
     ])
-    expect(formatPlan(result)).toMatch(/acme-api-5\s+acme\/api .* report\s+away\/acme-api-5\n/)
+    expect(why(result, 'acme/api#5')).toMatch(/deliver +report\n +branch +away\/acme-api-5$/)
     const mine = plan(yaml, [githubPr(1)], {})
     expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
       'acme-api-1-implement-1',
@@ -557,12 +564,10 @@ queue:
       ['acme/api#2', 'refused_delivery', "deliver push: feature-2 is someone else's PR"],
       ['acme/api#5', 'refused_delivery', 'deliver push: no PR of yours to push onto'],
     ])
-    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+    expect(why(result, 'api#1')).toMatch(/deliver +push\n +branch +feature-1$/)
     // A chain that starts with a report still pushes what a later step commits.
     const relayed = plan(yaml.replace('skill: fix,', 'skill: plan,'), [mine], {})
-    expect(formatPlan(relayed)).toMatch(
-      /acme-api-1\s+acme\/api .* plan \(built-in\)\s+claude\s+push\s+feature-1\n/,
-    )
+    expect(formatPlan(relayed)).toMatch(/api#1 +#1 +plan \(built-in\) +claude +push +PR 1\n/)
   })
 
   it('lets a push or draft PR rule take the first linked PR that is yours', () => {

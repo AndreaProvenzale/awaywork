@@ -70,7 +70,7 @@ Items that share a key or a linked PR (repo and branch) are one unit, one piece 
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
 - A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, a watchdog stop for low memory or disk, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end): it tries again next run. `run --unit` runs it anyway, as its one try.
-- `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan` lists it under Skipped with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
+- `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
 - `awaywork approve <source:key>` marks an item approved, for items with no tracker section, state or label to say so (those already work through `where`). Rules read it as the key `approved`, like `title`: `skill: implement, where: { approved: true }` waits for it, so you can approve a `plan` report today and have `implement` take the item tonight. An item takes the first rule it matches, so that rule goes above the one that plans the item (or give the `plan` rule `approved: false`), as in the example below. The approval clears once the unit planned with it finishes, as an attempt counts it: a failed step or work left unpublished keeps it for the retry. An approval you give during a run stays. Approvals live in `~/.local/state/awaywork/approvals.json`.
 - A chain's first step on an item gets the item's latest report in `.away/context/previous/report.md` (the last one of the latest chain on it that left a report), and the prompt says it is from an earlier run. That is how an approved `implement` finds the plan, on a retry too: a failed `implement` that wrote no report doesn't replace the plan. Later steps get the step before, as always.
 - Units run one at a time, in queue order. A unit is a chain: the rule's skill, then its [`then`](./chains.md#then) steps, one after the other in one clone, publishing once when the chain ends, or once per slice when a step says [`stack`](./chains.md#stack). A [loop](./chains.md#loops) repeats steps, and a step with a [`when`](./chains.md#when) runs only when its condition holds.
@@ -128,19 +128,60 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 
 ## The morning report
 
-`awaywork report` prints the last run: units done and skipped with the reason, each provider's windows before and after against the ceiling, and the report-only outputs. A unit with `then` steps is one row, with its steps under it (and with [stacked slices](./chains.md#stack), each slice with its steps):
+`awaywork report` prints the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, the skipped items counted by kind, and each provider's long window before and after against the ceiling:
 
 ```
-#  Unit                    Skill                                  Provider       Status                                                                        Result
-1  acme-api-12             implement → loop(review ⇄ fix) → docs  claude, codex  done, 70 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  https://github.com/acme/api/pull/42 (3 commits), verdict approve
-   └ acme-api-12           implement                              claude         done, 14 turns                                                                1 commit
-   └ acme-api-12-review-1  review                                 codex          done, 14 turns                                                                a report, verdict changes
-   └ acme-api-12-fix-1     fix                                    claude         done, 14 turns                                                                1 commit
-   └ acme-api-12-review-2  review                                 codex          done, 14 turns                                                                a report, verdict approve
-   └ acme-api-12-docs      docs                                   claude         done, 14 turns                                                                1 commit
+Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
+
+Units
+     item   skill   status          result
+  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
+     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
+  2  web#3  fix     done, 9 turns   no commits
+     No code changes: the red check is the visual diff job, which fails on main too since #212.
+  3  api#2  review  done, 6 turns   report, verdict approve
+     Approve: the session cache keys on the user id and expires with the token.
+
+Needs you
+  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+       Export invoices as CSV
+
+Skipped 2: 1 no_rule, 1 over_cap
+
+Quota
+  claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+
+awaywork report 20261019-220012 --unit <n|key>    shows one
+awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
 ```
 
-On a terminal its tables are aligned and statuses coloured; piped, it is the markdown as saved, so in GitHub Actions it lands in the job summary. `awaywork report --json` prints the run's results as [JSON](./agents.md) instead, from the `report.json` written when the run ends. `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner). A [`notify` command](./configuration.md#notify) can send it elsewhere.
+`report --unit <n>` takes the number from that table, the unit id (a step's gives its chain) or an item, and prints the unit in full: its links, each step with its provider and what it left, the files it left (the ones still there: a run [from the runner](./scheduling.md#reports-from-the-runner) has none), then its PR body or report:
+
+```
+$ awaywork report --unit 2
+2  web#3  WIP: new billing page
+  skill   fix
+  status  done, 9 turns
+  result  no commits
+  item    https://github.com/acme/web/pull/3
+  steps   acme-web-3  fix  claude  done, 9 turns  nothing
+  files   ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/1-fix/worker.log
+          ~/.local/state/awaywork/runs/20261019-220012/units/acme-web-3/out/pr.md
+
+Fix the billing page build
+
+No code changes: the red check is the visual diff job, which fails on main too since #212.
+
+## What I checked
+
+- `pnpm test` passes locally.
+- The failing job is `visual`, unrelated to this diff.
+```
+
+An item key that is all digits, like an Asana gid, wins over a row number. A name that fits two units, `api#1` under two owners say, is refused with each one's `source:key`, here and in `run --unit` and `plan --why`. `report --skipped [kind]` lists the skipped items with the reason, as `plan --skipped` does. A long reason, like a failed setup's output, gets its first line in the row and all of it under `--unit`. A unit with `then` steps is one row, its chain in the skill column and each [stacked slice](./chains.md#stack)'s result in turn.
+
+The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain and a line per unit that wrote a summary, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, draft PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
 
 While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
 

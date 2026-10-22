@@ -1,8 +1,16 @@
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import { type Allowance, pct } from './budget.js'
-import { bySlice, describeChain, type PlannedUnit, type RunPlan } from './foreman.js'
-import type { Quota } from './types.js'
+import {
+  bySlice,
+  describeChain,
+  needsYou,
+  type PlannedUnit,
+  type RunPlan,
+  type Skipped,
+  shortRef,
+} from './foreman.js'
+import type { Item, Quota } from './types.js'
 
 export interface UnitResult {
   planned: PlannedUnit
@@ -103,18 +111,14 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
       const escaped = cells.map((c) => String(c).replaceAll('|', '\\|'))
       out.push(`| ${escaped.join(' | ').replaceAll('\n', ' ')} |`)
     }
-    chains(r).forEach((chain, i) => {
+    const listed = chains(r)
+    listed.forEach((chain, i) => {
       const { head, steps, skills, slices } = chain
-      row([i + 1, head.planned.unit.id, skills, providers(steps), ...chainCells(chain)])
-      const stepRow = (s: UnitResult, indent: string) =>
-        row([
-          '',
-          `${indent}└ ${s.planned.unit.id}`,
-          s.planned.unit.skill,
-          s.provider ?? '-',
-          stepStatus(s),
-          stepResult(s),
-        ])
+      row([i + 1, linkedItem(head), skills, providers(steps), ...chainCells(chain)])
+      const stepRow = (s: UnitResult, indent: string) => {
+        const [id, ...cells] = stepCells(s)
+        row(['', `${indent}└ ${id}`, ...cells])
+      }
       // A chain of one step is its own row; a longer one lists every step that was listed under it, by slice when it has several.
       if (slices.length > 1)
         slices.forEach((slice, k) => {
@@ -124,17 +128,26 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
         })
       else if (steps.length > 1) for (const s of steps) stepRow(s, '')
     })
+    const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
+    if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
   }
-  if (r.plan.skipped.length > 0) {
-    out.push('', '## Skipped items', '')
-    for (const s of r.plan.skipped) out.push(`- ${s.item.source} ${s.item.key}: ${s.reason}`)
+  const waiting = r.plan.skipped.filter((s) => needsYou[s.kind])
+  if (waiting.length > 0) {
+    out.push('', '## Needs you', '')
+    for (const s of waiting) out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}`)
+  }
+  const rest = r.plan.skipped.filter((s) => !needsYou[s.kind])
+  if (rest.length > 0) {
+    out.push('', `<details><summary>Skipped (${rest.length})</summary>`)
+    for (const [kind, list] of byKind(rest)) {
+      out.push('', `### ${kind} (${list.length})`, '')
+      for (const s of list) out.push(`- ${shortRef(s.item)}: ${s.reason}`)
+    }
+    out.push('', '</details>')
   }
   out.push('', '## Quota', '')
   if (Object.keys(r.plan.allowances).length === 0) out.push('None.')
-  for (const [id, a] of Object.entries(r.plan.allowances)) {
-    const units = r.results.filter((u) => u.provider === id)
-    out.push(`- ${id}: ${quotaLine(a, r.quotas[id], units)}`)
-  }
+  for (const line of quotaLines(r)) out.push(`- ${line}`)
 
   const reports = r.results.filter((u) => u.outcome && 'text' in u.outcome)
   if (reports.length > 0) {
@@ -142,35 +155,67 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     for (const u of reports) {
       const top = u.planned.unit.items[0]
       const text = u.outcome && 'text' in u.outcome ? u.outcome.text : ''
-      out.push('', `### ${u.planned.unit.id}: ${top?.title} (${u.planned.unit.skill})`, '')
-      out.push(top?.url ?? '', '', text)
+      out.push(
+        '',
+        `### ${refOf(u)}: ${top?.title} (${u.planned.unit.skill})`,
+        '',
+        top?.url ?? '',
+        '',
+      )
+      if (u.summary) out.push(u.summary, '')
+      // Under this `###`, the report's own headings start at `####`.
+      out.push('<details><summary>Full report</summary>', '', demote(text.trim(), 4))
+      out.push('', '</details>')
     }
   }
   return `${out.join('\n')}\n`
 }
 
-/** A few lines for the terminal. */
-export function summarize(r: RunReport, reportPath: string): string {
+/** `Run <id>: 1 draft PRs, 2 reports, 3 units`. */
+export function runHeadline(r: RunReport): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
-  const listed = chains(r)
-  const head = `Run ${r.runId}: ${count('pr')} draft PRs, ${count('report')} reports, ${listed.length} units`
-  const line = (indent: string, s: UnitResult) =>
-    `${indent}${s.planned.unit.id}  ${stepStatus(s)}  ${stepResult(s)}`
-  const rows = listed.flatMap((chain) => [
-    `  ${chain.head.planned.unit.id}  ${chainCells(chain).join('  ')}`,
-    ...(chain.slices.length > 1
-      ? chain.slices.flatMap(({ steps }, k) => [
-          `    slice ${k + 1}  ${status(chainOf(steps))}  ${result(chainOf(steps))}`,
-          ...steps.map((s) => line('      ', s)),
-        ])
-      : chain.steps.length > 1
-        ? chain.steps.map((s) => line('    ', s))
-        : []),
-  ])
-  return [head, ...rows, `Report: ${reportPath}`].join('\n')
+  const dry = r.dryRun ? ' (dry run)' : ''
+  return `Run ${r.runId}${dry}: ${count('pr')} draft PRs, ${count('report')} reports, ${chains(r).length} units`
 }
 
-interface Chain {
+function refOf(u: UnitResult): string {
+  const top = u.planned.unit.items[0]
+  return top ? shortRef(top) : u.planned.unit.id
+}
+
+const refAndTitle = (item: Item) => `${shortRef(item)} ${item.title}`.replace(/[[\]]/g, '\\$&')
+
+function linkedItem(u: UnitResult): string {
+  const top = u.planned.unit.items[0]
+  return top ? `[${refAndTitle(top)}](${top.url})` : u.planned.unit.id
+}
+
+/** Skipped items by kind, the largest group first; a report from before kinds has them as `unknown`. */
+export function byKind(skipped: Skipped[]): [string, Skipped[]][] {
+  const groups = new Map<string, Skipped[]>()
+  for (const s of skipped) {
+    const kind = s.kind ?? 'unknown'
+    groups.set(kind, [...(groups.get(kind) ?? []), s])
+  }
+  return [...groups].sort((a, b) => b[1].length - a[1].length)
+}
+
+/** Shifts markdown headings outside code fences so the topmost is at `level`. */
+function demote(text: string, level: number): string {
+  let fenced = false
+  const lines = text.split('\n').map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    return { line, depth: fenced ? 0 : (/^(#{1,6})\s/.exec(line)?.[1]?.length ?? 0) }
+  })
+  const shift = Math.max(0, level - Math.min(...lines.map((l) => l.depth || 7)))
+  return lines
+    .map(({ line, depth }) =>
+      depth ? `${'#'.repeat(Math.min(6, depth + shift))}${line.slice(depth)}` : line,
+    )
+    .join('\n')
+}
+
+export interface Chain {
   head: UnitResult
   steps: UnitResult[]
   skills: string
@@ -178,7 +223,7 @@ interface Chain {
 }
 
 /** The run's results grouped by chain and slice, with what the plan chained: e.g. `implement → loop(review ⇄ fix)`. */
-function chains(r: RunReport): Chain[] {
+export function chains(r: RunReport): Chain[] {
   return r.results
     .filter((u) => !u.planned.chain && !u.retried)
     .map((head) => {
@@ -194,14 +239,18 @@ function chains(r: RunReport): Chain[] {
     })
 }
 
-/** A chain's status and result; with several slices, each slice's result in turn, its loops on its own row. */
-function chainCells({ steps, slices }: Chain): [string, string] {
+/** A chain's status and result; with several slices, each slice's result in turn, its loops on its own row. `loops: false` keeps them out of the status. */
+export function chainCells(
+  { steps, slices }: Chain,
+  show = result,
+  loops = true,
+): [string, string] {
   const chain = chainOf(steps)
   const capped = chain.planned.capped ? ` (${chain.planned.capped})` : ''
-  if (slices.length === 1 || chain.status === 'skipped')
-    return [`${status(chain)}${capped}`, result(chain)]
-  const each = slices.map((slice) => result(chainOf(slice.steps)))
-  return [`${status({ ...chain, loop: undefined })}${capped}`, each.join('; ')]
+  const loop = loops && slices.length === 1 ? chain.loop : undefined
+  const cell = `${status({ ...chain, loop })}${capped}`
+  if (slices.length === 1 || chain.status === 'skipped') return [cell, show(chain)]
+  return [cell, slices.map((slice) => show(chainOf(slice.steps))).join('; ')]
 }
 
 /** A chain as one result: its first step's last attempt, with every step's turns and the latest verdict. */
@@ -214,6 +263,11 @@ function chainOf(steps: UnitResult[]): UnitResult {
 
 function providers(steps: UnitResult[]): string {
   return [...new Set(steps.flatMap((s) => s.provider ?? []))].join(', ') || '-'
+}
+
+/** A step's id, skill, provider, status and what it left. */
+export function stepCells(s: UnitResult): string[] {
+  return [s.planned.unit.id, s.planned.unit.skill, s.provider ?? '-', stepStatus(s), stepResult(s)]
 }
 
 /** A step's own status: how the chain's loops went is on the chain's row. */
@@ -259,6 +313,14 @@ function result(u: UnitResult): string {
   if (u.outcome?.kind === 'pushed')
     return `${u.outcome.commits} commits pushed onto ${u.outcome.branch}, report below${verdict}`
   return `${u.outcome?.reason ?? '-'}${verdict}`
+}
+
+/** Each provider's long window before and after the run, against its ceiling. */
+export function quotaLines(r: RunReport): string[] {
+  return Object.entries(r.plan.allowances).map(([id, a]) => {
+    const units = r.results.filter((u) => u.provider === id)
+    return `${id}: ${quotaLine(a, r.quotas[id], units)}`
+  })
 }
 
 function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): string {

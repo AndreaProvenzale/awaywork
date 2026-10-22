@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reportJson } from '../src/cli/format.js'
 import { printReport } from '../src/cli/run.js'
 import { remoteDir, runsDir } from '../src/config/paths.js'
-import type { RunReport } from '../src/core/report.js'
+import type { RunReport, StepFiles } from '../src/core/report.js'
 import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
@@ -107,7 +107,10 @@ describe('report command', () => {
       status: 'done',
       outcome: { kind: 'none', reason: 'no commits' },
       summary: 'No code changes: the red check is flaky.',
-      files: ['units/acme-api-1/1-fix/worker.log', 'units/acme-api-1/out/pr.md'],
+      files: {
+        log: 'units/acme-api-1/1-fix/worker.log',
+        sliceBody: 'units/acme-api-1/out/pr.md',
+      } satisfies StepFiles,
     }
     const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
     const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
@@ -125,6 +128,75 @@ describe('report command', () => {
       },
     })
     expect(json.plan.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#2' } })
+  })
+
+  it('prints a run from its report.json, one unit with the files still there, or its skips', async () => {
+    const item = githubPr(1)
+    const planned = { unit: { id: 'acme-api-1', skill: 'fix', items: [item] } }
+    const files = {
+      log: 'units/acme-api-1/1-fix/worker.log',
+      sliceBody: 'units/acme-api-1/out/pr.md',
+    }
+    const result = {
+      planned,
+      status: 'done',
+      outcome: { kind: 'none', reason: 'no commits' },
+      summary: 'No code changes: the red check is flaky.',
+      files,
+    }
+    const plan = {
+      queue: [],
+      units: [planned],
+      allowances: {},
+      skipped: [{ item: githubPr(2), kind: 'over_cap', reason: 'over the cap: limits.units is 1' }],
+    }
+    const id = '20261015-220000'
+    const run = { runId: id, startedAt: 0, finishedAt: 0, plan, results: [result], quotas: {} }
+    await writeFile(join(runsDir, id, 'report.json'), reportJson(run as unknown as RunReport))
+    await mkdir(join(runsDir, id, 'units/acme-api-1/out'), { recursive: true })
+    const body = '# Flaky upload test\n\nNo code changes: the red check is flaky.\n'
+    await writeFile(join(runsDir, id, files.sliceBody), body)
+    const { out, err } = output()
+    const gh = await controlRepo([], '')
+
+    await printReport(id, false, gh)
+    expect(out.join('\n')).toContain(
+      '  1  api#1  fix    done    no commits\n     No code changes: the red check is flaky.',
+    )
+    expect(out.join('\n')).toContain('Skipped 1: 1 over_cap')
+
+    out.length = 0
+    await printReport(id, false, gh, false, { unit: 'acme/api#1' })
+    expect(out.join('\n')).toBe(
+      [
+        '1  api#1  PR 1',
+        '  skill   fix',
+        '  status  done',
+        '  result  no commits',
+        '  item    https://github.com/acme/api/pull/1',
+        '  steps   acme-api-1  fix  -  done  -',
+        `  files   ${join(runsDir, id, files.sliceBody)}`,
+        '',
+        body.trim(),
+      ].join('\n'),
+    )
+
+    out.length = 0
+    await printReport(id, false, gh, false, { skipped: 'over_cap' })
+    expect(out).toEqual(['Skipped over_cap (1)\n  api#2: over the cap: limits.units is 1'])
+
+    await printReport(id, false, gh, false, { unit: '2' })
+    expect(err).toEqual([`no unit "2" in run ${id}; awaywork report lists them`])
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('prints report.md for a run without report.json, which --unit needs', async () => {
+    const { out, err } = output()
+    await printReport('20261013-220000', false, await controlRepo([], ''))
+    expect(out).toEqual([report('20261013-220000', [pr, 'report below'])])
+    await printReport('20261013-220000', false, await controlRepo([], ''), false, { unit: '1' })
+    expect(err).toEqual(['run 20261013-220000 has no report.json, which --unit and --skipped read'])
+    expect(process.exitCode).toBe(1)
   })
 
   it('prints only the error with --json for a run with steps but no report.json', async () => {

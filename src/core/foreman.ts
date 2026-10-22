@@ -437,3 +437,13 @@ export function slug(key: string): string {
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
+
+/** `api#5` for an `owner/repo#n` key, its repo's name without the owner; any other key as is. */
+export const shortRef = ({ key }: Pick<Item, 'key'>) =>
+  key.replace(/^[^/\s]+\/(?=[^/\s]+#\d+$)/, '')
+
+/** Whether `name` is the item's key, `source:key` or short ref, in any case, and nothing looser. */
+export const isNamed = (item: Item, name: string) =>
+  [item.key, `${item.source}:${item.key}`, shortRef(item)].some(
+    (n) => n.toLowerCase() === name.toLowerCase(),
+  )

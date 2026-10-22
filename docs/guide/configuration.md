@@ -313,7 +313,7 @@ The retry starts from the clone as the failed step found it: that attempt's comm
 Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
 
 ```markdown
-| 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
+| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
 |  | └ acme-api-1 | fix | claude | failed, 3 turns (retried on the next model) | 1 commit |
 |  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
 |  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
@@ -336,14 +336,14 @@ There are no built-in integrations. A command that fails or takes over a minute 
   notify failed for acme-api-1: Command failed with exit code 3: ...
 ```
 
-Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other:
+Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead. They call the first `awaywork` on your PATH, which after an `npx` install is none or another version, so write its full path there:
 
 ```yaml
 notify:                         # ntfy, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes"
-    --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+    awaywork report "$AWAYWORK_RUN_ID" |
+    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" --data-binary @- "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
@@ -351,7 +351,7 @@ notify:                         # ntfy, the morning report only
 notify:                         # a Slack incoming webhook, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    jq -Rs '{text:.}' "$AWAYWORK_REPORT" |
+    awaywork report "$AWAYWORK_RUN_ID" | jq -Rs '{text:.}' |
     curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
