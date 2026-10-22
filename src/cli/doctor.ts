@@ -18,6 +18,7 @@ import {
   WORKER,
   workerFor,
 } from '../core/launch.js'
+import { counted } from '../core/report.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
@@ -144,7 +145,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     if (!source) continue
     const secrets = source.secrets(cfg).map(secret)
     await source.items(cfg, ctx).then(
-      (items) => report('ok', id, [`${items.length} open items`, ...secrets].join(', ')),
+      (items) => report('ok', id, [counted(items.length, 'open item'), ...secrets].join(', ')),
       (e: Error) => report('FAIL', id, [e.message, ...secrets].join(', ')),
     )
     if (isCommand(cfg) && /(^|\s)(~|\$HOME)\//.test(cfg.command))
