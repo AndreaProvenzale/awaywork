@@ -62,6 +62,7 @@ import {
   setupEnv,
   snapshot,
 } from './steps.js'
+import { shortage } from './watchdog.js'
 import {
   configSecrets,
   copyOut,
@@ -93,6 +94,8 @@ export interface RunInput {
   ctx: Ctx
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
+  /** Why the machine is too short on memory or disk at a clone's dir to start a unit. */
+  shortage?: (dir: string) => Promise<string | undefined>
   skillDirs?: { user: string; builtin: string }
   /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
   attempts?: Attempts
@@ -379,6 +382,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       if (input.until && new Date() >= input.until) {
         end('the window ended')
+        continue
+      }
+      const short = await (input.shortage ?? shortage)(dir)
+      if (short) {
+        end(short)
         continue
       }
       const image = input.config.repos[p.unit.repo]?.image

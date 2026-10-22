@@ -280,6 +280,7 @@ queue: [{ skill: review }]
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   }
   const report = await runUnits({
