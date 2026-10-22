@@ -85,8 +85,9 @@ export function pushedOnto(items: Item[], attempts: Attempts): PrRef | undefined
  * Attempts plus the items of every chain that ran: finished when each of its steps that ran was
  * done and no slice's publish left anything behind. A failed, errored or timed-out step, or work
  * left unpublished, retries the chain and counts one failure; a step that didn't run (skipped, a
- * dry run, aborted) or a stop the item didn't cause (quota, session, window end) counts nothing;
- * a step passed over, by its `when` or after one that made nothing, doesn't count.
+ * dry run, aborted) or a stop the item didn't cause (quota, session, window end, low memory or
+ * disk) counts nothing; a step passed over, by its `when` or after one that made nothing, doesn't
+ * count.
  */
 export function recordAttempts(attempts: Attempts, report: RunReport): Attempts {
   const next = { ...attempts }
