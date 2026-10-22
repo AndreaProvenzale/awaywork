@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import {
@@ -14,7 +15,14 @@ import {
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { isolate, workerFor } from '../core/launch.js'
-import { formatReport, localTime, runLine, summarize } from '../core/report.js'
+import {
+  type Chain,
+  chains,
+  formatReport,
+  localTime,
+  type RunReport,
+  runLine,
+} from '../core/report.js'
 import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
@@ -25,12 +33,25 @@ import { providersOf } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
-import { namedUnits, runUnits } from '../worker/units.js'
+import { namedChains, runUnits } from '../worker/units.js'
+import { type ItemCommands, interactive, itemCommands, openScreen, type Screen } from './browse.js'
 import { reportConfigError } from './config.js'
-import { formatPlan, formatReportForTerminal, listedUnits, reportJson } from './format.js'
-import { probeAndPlan, ruleNumber } from './plan.js'
+import {
+  ambiguous,
+  findChains,
+  formatPlan,
+  formatRun,
+  formatSkipped,
+  formatUnit,
+  listedUnits,
+  reportJson,
+  summarize,
+} from './format.js'
+import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
 import { gitRoot } from './schedule.js'
+import { configuredSources } from './skip.js'
 import { unitsFile } from './stats.js'
+import { type OnProgress, runTriage, type UnitFiles } from './triage.js'
 
 type RunOptions = {
   dryRun?: boolean
@@ -83,9 +104,18 @@ export function runCommand(program: Command): void {
           skillsDirOf(path),
           { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
         )
-        for (const warning of warnings) console.error(`warning: ${warning}`)
-        if (opts.unit && namedUnits(plan, opts.unit).size === 0) {
-          console.error(`no unit "${opts.unit}" in this run's plan; awaywork plan lists them`)
+        for (const warning of warnings)
+          console.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
+        const named = opts.unit ? namedChains(plan, opts.unit) : []
+        if (opts.unit && named.length !== 1) {
+          console.error(
+            named.length
+              ? ambiguous(
+                  opts.unit,
+                  named.flatMap((p) => p.unit.items.slice(0, 1)),
+                )
+              : `no unit "${opts.unit}" in this run's plan; awaywork plan lists them`,
+          )
           process.exitCode = 1
           return
         }
@@ -98,7 +128,8 @@ export function runCommand(program: Command): void {
         await mkdir(runDir, { recursive: true })
         if (process.env.GITHUB_OUTPUT)
           await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
-        await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n`)
+        const skipped = plan.skipped.length > 0 ? `\n${formatSkipped(plan.skipped)}\n` : ''
+        await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n${skipped}`)
         console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
 
         const abort = new AbortController()
@@ -131,6 +162,7 @@ export function runCommand(program: Command): void {
           clearApprovals(await loadApprovals(approvalsPath), report),
         )
         console.log(summarize(report, reportPath))
+        if (interactive()) console.log(styleText('dim', 'awaywork report browses this run'))
         if (config.notify) {
           const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
           if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
@@ -144,16 +176,43 @@ export function runCommand(program: Command): void {
 
   program
     .command('report [id]')
-    .description("print a run's morning report; the latest by default")
+    .description("print a run's morning report, the latest by default; browsable in a terminal")
     .option('--list', 'list the last 20 runs: units, draft PRs and reports')
     .addOption(
-      new Option('--json', "print the run's results as JSON instead of the markdown").conflicts(
-        'list',
-      ),
+      new Option('--json', "print the run's results as JSON instead of the text").conflicts('list'),
     )
-    .action((id: string | undefined, opts: { list?: boolean; json?: boolean }) =>
-      printReport(id, !!opts.list, exec, !!opts.json),
+    .addOption(
+      new Option(
+        '--unit <n|key>',
+        'show one unit in full, by its number in the report, unit id or item key',
+      ).conflicts(['list', 'json']),
     )
+    .addOption(
+      new Option('--skipped [kind]', 'list the skipped items, or those of one kind')
+        .choices(skipKinds)
+        .conflicts(['list', 'json', 'unit']),
+    )
+    .action(async (id: string | undefined, opts: ReportOptions) => {
+      const browsing = interactive() && !opts.list && !opts.json && !opts.unit && !opts.skipped
+      const screen = browsing ? openScreen('Loading the report') : undefined
+      try {
+        await printReport(id, !!opts.list, exec, !!opts.json, {
+          ...opts,
+          browse: screen && { screen, commands: itemCommands(() => configuredSources(program)) },
+        })
+      } finally {
+        screen?.close()
+      }
+    })
+}
+
+type ReportOptions = {
+  list?: boolean
+  json?: boolean
+  unit?: string
+  skipped?: string | true
+  /** Browse the run on this screen, already open, instead of printing it. */
+  browse?: { screen: Screen; commands: ItemCommands }
 }
 
 const reportJsonFile = 'report.json'
@@ -170,17 +229,22 @@ export async function printReport(
   list: boolean,
   run: Exec = exec,
   json = false,
+  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'> = {},
 ) {
+  const screen = view.browse?.screen
+  // Kept off the screen: they go in the view's warnings, or out once it's closed.
+  const held: string[] = []
+  const warn = (e: unknown) => (screen ? held.push(remoteWarning(e)) : warnRemote(e))
   const local = (await readdir(runsDir).catch(() => [])).sort()
-  const uploaded = id && local.includes(id) ? [] : await remoteRuns(run)
+  const uploaded = id && local.includes(id) ? [] : await remoteRuns(run, warn, screen?.progress)
   const runs: Run[] = [
     ...local.map((id) => ({ id, dir: join(runsDir, id) })),
     ...uploaded
       .filter((r) => !local.includes(r.id))
       .map((r) => ({ id: r.id, dir: join(remoteDir, r.repo, r.artifact), uploaded: r })),
   ].sort((a, b) => a.id.localeCompare(b.id))
-  const read = (r: Run) =>
-    readFile(join(r.dir, json ? reportJsonFile : 'report.md'), 'utf8').catch(() => undefined)
+  const read = (r: Run, file = json ? reportJsonFile : 'report.md') =>
+    readFile(join(r.dir, file), 'utf8').catch(() => undefined)
 
   if (list) {
     if (runs.length === 0) console.log(`no runs in ${runsDir}`)
@@ -195,16 +259,31 @@ export async function printReport(
     return
   }
   let picked = id ? runs.find((r) => r.id === id) : runs.at(-1)
-  if (picked?.uploaded)
+  if (picked?.uploaded) {
+    const name = `run ${picked.id}`
+    screen?.progress({ name, state: 'running', detail: 'fetching from GitHub' })
     try {
       await fetchRun(picked.uploaded, picked.dir, run)
+      screen?.progress({ name, state: 'done', detail: 'fetched from GitHub' })
     } catch (e) {
-      warnRemote(e)
+      warn(e)
+      screen?.progress({ name, state: 'failed', detail: remoteReason(e) })
       picked = id ? undefined : runs.findLast((r) => !r.uploaded)
     }
+  }
+  const results = !json && picked ? await read(picked, reportJsonFile) : undefined
+  if (results !== undefined && picked)
+    return printRun(picked.dir, JSON.parse(results), view, !!picked.uploaded, held)
+  screen?.close()
+  for (const warning of held) console.error(`warning: ${warning}`)
   const which = id ?? picked?.id
   if (!which) {
     console.error(`no runs in ${runsDir}`)
+    process.exitCode = 1
+    return
+  }
+  if (view.unit || view.skipped) {
+    console.error(`run ${which} has no ${reportJsonFile}, which --unit and --skipped read`)
     process.exitCode = 1
     return
   }
@@ -222,7 +301,60 @@ export async function printReport(
       console.log(`Running (or cut short): ${running.name}`)
       console.log(`Its stream: ${running.log}`)
     }
-  } else console.log(json || !process.stdout.isTTY ? text : formatReportForTerminal(text))
+  } else console.log(text)
+}
+
+/** A run from its report.json: the whole run, browsed or printed, one unit with the files it left, or its skipped items. */
+async function printRun(
+  dir: string,
+  report: RunReport & { warnings?: string[] },
+  view: Pick<ReportOptions, 'unit' | 'skipped' | 'browse'>,
+  remote: boolean,
+  held: string[] = [],
+) {
+  if (view.skipped)
+    return console.log(
+      formatSkipped(report.plan.skipped, view.skipped === true ? undefined : view.skipped),
+    )
+  if (!view.unit && view.browse) {
+    const units = await Promise.all(
+      chains(report).map((chain, i) => unitFiles(dir, { chain, n: i + 1 })),
+    )
+    const warnings = [...held, ...(report.warnings ?? [])]
+    const state = runTriage(report, warnings, units, process.stdout.rows, remote)
+    return view.browse.screen.browse(state, view.browse.commands)
+  }
+  if (!view.unit) return console.log(formatRun(report, report.warnings, true))
+  const named = findChains(report, view.unit)
+  const [found] = named
+  if (!found || named.length > 1) {
+    const tops = named.flatMap(({ chain }) => chain.head.planned.unit.items.slice(0, 1))
+    console.error(
+      found
+        ? ambiguous(view.unit, tops)
+        : `no unit "${view.unit}" in run ${report.runId}; awaywork report lists them`,
+    )
+    process.exitCode = 1
+    return
+  }
+  console.log((await unitFiles(dir, found)).text)
+}
+
+/** A unit's `--unit` text, and the worker.log and diff it left that are still there. */
+async function unitFiles(dir: string, found: { chain: Chain; n: number }): Promise<UnitFiles> {
+  const there = (file: string | undefined) =>
+    file && existsSync(join(dir, file)) ? join(dir, file) : undefined
+  const { head, steps } = found.chain
+  const files = steps.flatMap((s) => Object.values(s.files ?? {}).flatMap((f) => there(f) ?? []))
+  const bodyFile = there(head.files?.sliceBody) ?? there(head.files?.report)
+  const outcomeText = head.outcome && 'text' in head.outcome ? head.outcome.text : undefined
+  const body = bodyFile ? await readFile(bodyFile, 'utf8') : outcomeText
+  return {
+    text: formatUnit(found, [...new Set(files)], body, true),
+    // The last step that ran is the one that ended the chain.
+    log: steps.map((s) => there(s.files?.log)).findLast(Boolean),
+    diff: [head.files?.sliceDiff, ...steps.map((s) => s.files?.diff)].map(there).find(Boolean),
+  }
 }
 
 /** The steps a run started, oldest first: each has a `worker.log`, and the last one written is the latest. */
@@ -239,19 +371,37 @@ async function startedSteps(runDir: string): Promise<{ name: string; log: string
 }
 
 /** The runs the control repo in this directory uploaded: none outside one, and none with a warning when GitHub fails. */
-async function remoteRuns(run: Exec): Promise<UploadedRun[]> {
+async function remoteRuns(
+  run: Exec,
+  warn = warnRemote,
+  onProgress?: OnProgress,
+): Promise<UploadedRun[]> {
   // A runner's own report is of the run it just made, never of an earlier upload.
   if (process.env.GITHUB_ACTIONS) return []
   const root = await gitRoot(run)
   if (!root || !existsSync(join(root, WORKFLOW))) return []
-  return uploadedRuns(basename(WORKFLOW, '.yml'), run).catch((e: unknown) => {
-    warnRemote(e)
-    return []
-  })
+  const name = 'runs on GitHub'
+  onProgress?.({ name, state: 'running' })
+  return uploadedRuns(basename(WORKFLOW, '.yml'), run).then(
+    (runs) => {
+      onProgress?.({ name, state: 'done', detail: `${runs.length} runs` })
+      return runs
+    },
+    (e: unknown) => {
+      warn(e)
+      onProgress?.({ name, state: 'failed', detail: remoteReason(e) })
+      return []
+    },
+  )
 }
 
-function warnRemote(e: unknown) {
+function remoteReason(e: unknown): string {
   const { stderr, message } = e as { stderr?: string; message?: string }
-  const reason = (stderr || message || String(e)).trim().split('\n')[0]
-  console.error(`warning: runs on GitHub left out: ${reason}`)
+  return (stderr || message || String(e)).trim().split('\n')[0] ?? ''
+}
+
+const remoteWarning = (e: unknown) => `runs on GitHub left out: ${remoteReason(e)}`
+
+function warnRemote(e: unknown) {
+  console.error(`warning: ${remoteWarning(e)}`)
 }
