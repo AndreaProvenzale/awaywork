@@ -81,7 +81,7 @@ queue:                          # first matching rule wins; top = highest priori
 
 ## Windows, limits and budget
 
-A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or to the workflow's `timezone` in GitHub Actions, where a GitHub-hosted runner [cuts a run at about 6 hours](./scheduling.md#in-github-actions) whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
+A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or in GitHub Actions to the timezone you ran `schedule install` in, where a run may start [up to an hour late in summer time](./scheduling.md#in-github-actions) and a GitHub-hosted runner cuts it at about 6 hours whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
 
 ```yaml
 windows:
@@ -122,7 +122,7 @@ limits:
 
 The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
 
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and a `budget.fallback` needs no `turns`. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
 
 ```json
 {
