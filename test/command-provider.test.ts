@@ -95,6 +95,9 @@ describe('command provider config', () => {
     expect(describeAllowance('codex', a)).toBe(
       'fallback: 4 units, 60 turns each (no quota reading)',
     )
+    expect(describeAllowance('codex', { ...a, units: 1, turns: 1 })).toBe(
+      'fallback: 1 unit, 1 turn each (no quota reading)',
+    )
   })
 
   it('refuses a name that is not a plain lowercase word', () => {
@@ -157,6 +160,15 @@ describe('command provider', () => {
       { type: 'quota', quota },
       { type: 'done', ok: true, turns: 0 },
     ])
+  })
+
+  it('kills its probe group if awaywork exits first, and stops watching once done', async () => {
+    const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+    const before = process.listenerCount('exit')
+    const pending = commandProvider('x', cfg({ probe: 'echo nope' })).probe(ctx)
+    expect(process.listenerCount('exit')).toBe(before + 1)
+    await expect(pending).rejects.toThrow('did not print JSON')
+    expect(process.listenerCount('exit')).toBe(before)
   })
 
   it('stops a probe at its timeout, with whatever it started', async () => {

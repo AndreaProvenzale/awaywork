@@ -4,18 +4,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
-import { formatPlan, formatReportForTerminal } from '../src/cli/format.js'
+import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { recordAttempts } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
-import { formatReport, runLine, summarize } from '../src/core/report.js'
+import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
-import { type RunInput, runUnits } from '../src/worker/units.js'
+import { namedChains, type RunInput, runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
@@ -163,33 +163,41 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 
   const text = formatReport(report)
   expect(text).toContain(
-    '| 1 | acme-api-1 | fix | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits) |',
+    '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commit) |',
   )
-  expect(text).toContain(`| 2 | acme-api-3 | fix | - | skipped | ${tried} |`)
   expect(text).toContain(
-    '| 3 | acme-api-2 | review | claude | done, 5 turns | report below, verdict approve |',
+    `| 2 | [api#3 PR 3](https://github.com/acme/api/pull/3) | fix | - | skipped | ${tried} |`,
+  )
+  expect(text).toContain(
+    '| 3 | [api#2 PR 2](https://github.com/acme/api/pull/2) | review | claude | done, 5 turns | report below, verdict approve |',
   )
   expect(text).toContain(
     '- claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
   )
   expect(text).toContain(
-    '### acme-api-2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.',
+    '### api#2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.\n\n<details><summary>Full report</summary>\n\nApprove.\n\n</details>',
   )
-  const shown = formatReportForTerminal(text)
-  expect(shown).toContain(
+  expect(formatRun(report)).toContain(
     [
-      '#  Unit        Skill   Provider  Status         Result',
-      '1  acme-api-1  fix     claude    done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1 (1 commits)',
-      `2  acme-api-3  fix     -         skipped        ${tried}`,
+      'Units 3',
+      '     item   skill   status         result',
+      '  1  api#1  fix     done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1',
+      '     Ran the failing test.',
+      '  2  api#3  fix     skipped        awaywork tried this in https://github.com/acme/api/pull/7;…',
+      '     PR 3',
+      '  3  api#2  review  done, 5 turns  report, verdict approve',
+      '     Approve.',
+      '',
+      'Quota',
+      '  claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
+      '',
+      'awaywork report 20260925-010000 --unit <n|key>  shows one',
     ].join('\n'),
   )
-  expect(shown).not.toContain('|')
-  expect(shown.startsWith(text.slice(0, text.indexOf('| #')))).toBe(true)
-  expect(shown.endsWith(text.slice(text.indexOf('\n## Quota')))).toBe(true)
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run 20260925-010000: 1 draft PRs, 1 reports, 3 units',
+    'Run 20260925-010000: 1 draft PR, 1 report, 3 units',
   )
-  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PRs, 1 reports')
+  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PR, 1 report')
   expect(runLine('20260925-020000', undefined)).toBe('20260925-020000  no report')
 })
 
@@ -203,13 +211,13 @@ it('reports a run with no provider and a multi-line warning', () => {
       '',
       '2026-10-12 22:34:18 to 2026-10-12 22:34:18, local time',
       '',
-      '## Warnings',
+      '## Warnings (1)',
       '',
       '- source chores: failed',
       '',
       '  not set',
       '',
-      '## Units',
+      '## Units (0)',
       '',
       'None.',
       '',
@@ -259,14 +267,47 @@ it('prepares workspaces without running a worker or context command on a dry run
   ])
   expect(existsSync(join(root, 'run/work/acme-api-2/.away/prompt.md'))).toBe(true)
   expect(existsSync(fetched)).toBe(false)
-  for (const only of ['acme/api#2', 'ACME-API-2']) {
+  for (const only of ['acme/api#2', 'ACME-API-2', 'api#2', 'github:acme/api#2']) {
     const byKey = await runUnits({ ...input, only })
     expect(byKey.results.map((u) => u.planned.unit.id)).toEqual(['acme-api-2'])
   }
-  await expect(runUnits({ ...input, only: 'nope' })).rejects.toThrow('no unit "nope"')
+  await expect(runUnits({ ...input, only: 'nope' })).rejects.toThrow('"nope" names 0 units')
 
   const ended = await runUnits({ ...input, until: new Date(0) })
   expect(ended.results.map((u) => u.reason)).toEqual(['the window ended', 'the window ended'])
+})
+
+it('names a unit by its exact id, key, source:key or ref only, and refuses a name for two', async () => {
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+  )
+  const labs = {
+    ...githubPr(1),
+    id: 'labs-1',
+    key: 'acme-labs/api#1',
+    url: 'https://github.com/acme-labs/api/pull/1',
+    linkedPrs: [],
+  }
+  const task = fakeItem({
+    source: 'tracker',
+    key: 'API-1',
+    type: 'task',
+    fields: { repo: 'acme/api' },
+  })
+  const plan = planRun({
+    config,
+    items: [githubPr(1), labs, task],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const named = (name: string) => namedChains(plan, name).map((p) => p.unit.id)
+  expect(named('API-1')).toEqual(['api-1'])
+  expect(named('acme/api#1')).toEqual(['acme-api-1'])
+  expect(named('api#1')).toEqual(['acme-api-1', 'acme-labs-api-1'])
+  expect(named('api-1#')).toEqual([])
+  await expect(runUnits({ plan, only: 'api#1' } as RunInput)).rejects.toThrow(
+    `"api#1" names 2 units in this run's plan, not one`,
+  )
 })
 
 it('prepares every step of a chain named by one of its steps, in one clone, on a dry run', async () => {
@@ -427,7 +468,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
         await git(job.dir, 'add', 'fix.txt')
         await git(job.dir, 'commit', '-qm', 'Add rate limits')
         await writeFile(join(out, 'pr.md'), 'Add rate limits\n\nRan the tests.')
-      }
+      } else await writeFile(join(out, 'pr.md'), 'No change\n\n## Triage\nThe red check is flaky.')
       yield { type: 'done', ok: true, turns: 2 }
     },
   }
@@ -464,10 +505,28 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
       },
     ],
     ['acme-api-5-review', 'done', 'a report'],
-    ['acme-api-6', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-6', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-6-review', 'skipped', 'acme-api-6 committed nothing'],
   ])
   expect(report.results.map((u) => u.passedOver)).toEqual([undefined, undefined, undefined, true])
+  const [five, six] = ['units/acme-api-5', 'units/acme-api-6']
+  expect(report.results.map((u) => [u.summary, u.files])).toEqual([
+    [
+      'Ran the tests.',
+      {
+        log: `${five}/1-implement/worker.log`,
+        diff: `${five}/1-implement/out/diff.patch`,
+        sliceBody: `${five}/out/pr.md`,
+        sliceDiff: `${five}/out/diff.patch`,
+      },
+    ],
+    ['Approve.', { log: `${five}/2-review/worker.log`, report: `${five}/2-review/out/report.md` }],
+    [
+      'The red check is flaky.',
+      { log: `${six}/1-implement/worker.log`, sliceBody: `${six}/out/pr.md` },
+    ],
+    [undefined, undefined],
+  ])
   const review = seen[1]
   expect(review?.files).toContain('fix.txt')
   expect(review?.diff).toMatch(/^\+\+\+ b\/fix\.txt$/m)
@@ -965,6 +1024,7 @@ repos:
     {
       kind: 'pushed',
       branch: 'feature-1',
+      url: 'https://github.com/acme/api/pull/1',
       commits: 2,
       text: 'Work on acme-api-1-implement\n\nDone.',
       head: (await git(origin, 'rev-parse', 'feature-1')).stdout,
@@ -993,14 +1053,12 @@ repos:
   )
   const text = formatReport(report)
   expect(text).toContain(
-    '| 1 | acme-api-1 | fix → implement | claude | done, 2 turns | 2 commits pushed onto feature-1, report below |',
+    '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → implement | claude | done, 2 turns | 2 commits pushed onto feature-1, report below |',
   )
   expect(text).toContain(
-    '|  | └ acme-api-1-implement | implement | claude | done, 1 turns | 1 commit |',
+    '|  | └ acme-api-1-implement | implement | claude | done, 1 turn | 1 commit |',
   )
-  expect(text).toContain(
-    '### acme-api-1: PR 1 (fix)\n\nhttps://github.com/acme/api/pull/1\n\nWork on acme-api-1-implement',
-  )
+  expect(text).toContain('### api#1: PR 1 (fix)\n\nhttps://github.com/acme/api/pull/1\n\n')
 })
 
 it("pushes every round's commits onto your PR once, with how the loop went in the summary", async () => {
@@ -1021,7 +1079,7 @@ queue:
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  expect(formatPlan(plan)).toMatch(/acme-api-1 .* push\s+feature-1\n/)
+  expect(formatPlan(plan)).toMatch(/api#1 .* push +PR 1\n/)
   const verdicts = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' }
   const report = await runUnits({
     config,
@@ -1095,6 +1153,92 @@ queue: [{ skill: fix, deliver: push, then: review }]
     unpublished: true,
   })
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
+})
+
+it.each([
+  ['Fixed the two failing assertions in auth.test.ts.', ''],
+  ['Fixed the two failing assertions in auth.test.ts.', '\n\nRan pnpm test: green.'],
+])("sums up a push from its summary's first paragraph, which has no title", async (first, rest) => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-summary-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: fix, deliver: push }]
+`)
+  const plan = planRun({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const summarizer: Provider = {
+    ...committer,
+    async *run(job, signal) {
+      yield* committer.run(job, signal)
+      await writeFile(join(job.dir, '.away/out/pr.md'), `${first}${rest}`)
+    },
+  }
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: summarizer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  expect(report.results[0]?.outcome?.kind).toBe('pushed')
+  expect(report.results[0]?.summary).toBe(first)
+  expect(report.results[0]?.files?.sliceBody).toBe('units/acme-api-1/out/pr.md')
+})
+
+it("lists a slice's PR body and sums it up when its publish fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-publish-error-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: implement }]',
+  )
+  const plan = planRun({
+    config,
+    items: [issue(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge: {
+      ...forge,
+      draftPr: async () => {
+        throw new Error('gh pr create failed')
+      },
+    },
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const [result] = report.results
+  expect(result).toMatchObject({ status: 'error', reason: 'gh pr create failed', summary: 'Done.' })
+  expect(result?.outcome).toBeUndefined()
+  expect(result?.files).toMatchObject({
+    log: 'units/acme-api-1/1-implement/worker.log',
+    sliceBody: 'units/acme-api-1/out/pr.md',
+  })
 })
 
 it('leaves a push the forge refuses unpublished, not an error', async () => {
@@ -1290,18 +1434,20 @@ queue:
   const text = formatReport(report)
   expect(text).toContain(
     [
-      `| 1 | acme-api-1 | implement → loop(review ⇄ fix) → plan | claude | done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
-      '|  | └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turns | a report, verdict changes |',
-      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turns | a report, verdict approve |',
-      '|  | └ acme-api-1-plan | plan | claude | done, 1 turns | a report |',
+      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → loop(review ⇄ fix) → plan | claude | done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
+      '|  | └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turn | a report, verdict changes |',
+      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turn | a report, verdict approve |',
+      '|  | └ acme-api-1-plan | plan | claude | done, 1 turn | a report |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
-  expect(summarize(report, 'report.md')).toContain(
-    `  acme-api-1  done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve)  ${url} (2 commits), verdict approve\n    acme-api-1  done, 1 turns  1 commit\n`,
-  )
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
+  expect(summarize(report, 'report.md').split('\n').slice(2)).toEqual([
+    `  1  api#1  implement → loop(review ⇄ fix) → plan  done, 5 turns  ${url}, verdict approve`,
+    '     Done.',
+    'Report: report.md',
+  ])
 })
 
 it("suffixes a taken branch, even one without a PR that awaywork didn't push, and carries the name through every step", async () => {
@@ -1684,6 +1830,7 @@ queue:
     allowances: { claude: allowance(config.budget, quota(0.36), week, config.windows) },
     skills: { builtin: builtinSkills },
   })
+  const logged: string[] = []
   const report = await runUnits({
     config,
     configDir: root,
@@ -1694,7 +1841,7 @@ queue:
     providers: { claude: committer },
     sources: { github: fakeSource() as Source },
     forge,
-    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    ctx: { env: { PATH: process.env.PATH }, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -1702,6 +1849,11 @@ queue:
   expect(review?.status).toBe('skipped')
   expect(review?.reason).toMatch(/^when the window resets within 1 run didn't hold/)
   expect(implemented?.status).toBe('done')
+  expect(logged).toEqual([
+    "acme-api-1: skipped, when the window resets within 1 run didn't hold",
+    'acme-api-2: implement on claude',
+    'acme-api-2: done',
+  ])
 })
 
 it('records no attempt for a rule whose quota when does not hold', async () => {
@@ -2065,6 +2217,29 @@ it('publishes nothing when interrupted, and retries the chain without counting a
   })
   expect(opened).toEqual([])
   expect(recordAttempts({}, report)).toEqual({})
+})
+
+it('lists and sums up the joined report a committing chain published when it committed nothing', async () => {
+  const provider = looper({})
+  const { report } = await loopRun('queue: [{ skill: plan, then: [implement] }]', [issue(1)], {
+    ...provider,
+    async *run(job, signal) {
+      if (job.unit.deliver === 'report') yield* provider.run(job, signal)
+      else {
+        await writeFile(
+          join(job.dir, '.away/out/pr.md'),
+          'No change\n\nThe plan was already done upstream.',
+        )
+        yield { type: 'done', ok: true, turns: 1 }
+      }
+    },
+  })
+
+  expect(report.results[0]).toMatchObject({
+    outcome: { kind: 'report', text: 'acme-api-1 says nothing.' },
+    summary: 'acme-api-1 says nothing.',
+  })
+  expect(report.results[0]?.files?.sliceBody).toBe('units/acme-api-1/out/report.md')
 })
 
 it('ends a chain at a step that failed, still reports what it has, and counts a failure', async () => {
@@ -3024,8 +3199,7 @@ it('escapes a pipe in a check command, so the report table keeps its cells', asy
   expect(row).toBe(
     "|  | └ acme-api-1-review | review | claude | skipped | when `git log \\| grep -q nothing-like-this` passes didn't hold (Command failed with exit code 1: 'git log \\| grep -q nothing-like-this') |",
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
-  expect(formatReportForTerminal(text)).toContain('`git log | grep -q nothing-like-this`')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
 })
 
 it("doesn't write a check's log through a symlink a round left in the clone", async () => {
