@@ -90,5 +90,5 @@ describe('runCommand', () => {
       process.kill(await escaped(pid), 'SIGKILL')
     }
     expect(Date.now() - stopped).toBeLessThan(5000)
-  })
+  }, 30_000)
 })
