@@ -167,7 +167,7 @@ describe('publish', () => {
     await body('Title')
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: 'no commits',
+      reason: 'nothing',
     })
     await commit('first')
     await body('')
@@ -205,6 +205,7 @@ describe('publish', () => {
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'pushed',
       branch: 'feature-1',
+      url: 'https://github.com/acme/api/pull/1',
       commits: 1,
       text: 'Fixed the flaky test.',
       head: expect.stringMatching(/^[0-9a-f]{40}$/),

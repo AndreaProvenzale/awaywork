@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { linkProblem } from '../core/footer.js'
+import { awaitGroup } from '../core/group.js'
 import type { Item, Source } from '../core/types.js'
 
 export const linkTemplate = z
@@ -106,8 +107,7 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
         detached: true,
       })
       // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-      subprocess.nodeChildProcess.on('exit', () => killGroup(subprocess.pid))
-      const { stdout } = await subprocess
+      const { stdout } = await awaitGroup(subprocess)
       let json: unknown
       try {
         json = JSON.parse(stdout)
@@ -127,15 +127,6 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     async prefetch(item, dir) {
       await writeFile(join(dir, 'item.md'), itemMarkdown(item))
     },
-  }
-}
-
-function killGroup(pid: number | undefined): void {
-  if (pid === undefined) return
-  try {
-    process.kill(-pid, 'SIGKILL')
-  } catch {
-    // The group already exited.
   }
 }
 

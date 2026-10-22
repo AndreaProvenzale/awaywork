@@ -2,8 +2,17 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { describeAllowance, formatPlan, listedUnits, planJson } from '../src/cli/format.js'
+import {
+  describeAllowance,
+  formatPlan,
+  formatWhy,
+  listedUnits,
+  namedItems,
+  planJson,
+  queueLines,
+} from '../src/cli/format.js'
 import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
+import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -14,7 +23,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { planRun } from '../src/core/foreman.js'
+import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
 import type { Item, PrRef, Quota } from '../src/core/types.js'
@@ -52,6 +61,10 @@ function plan(
 }
 const rows = (p: ReturnType<typeof plan>) =>
   p.units.map((u) => [u.unit.id, u.rule + 1, u.unit.skill, u.provider ?? '-', u.unit.deliver])
+const why = (p: ReturnType<typeof plan>, name: string) => {
+  const [item] = namedItems(p, name)
+  return item && formatWhy(p, item)
+}
 
 const issue = fakeItem({
   source: 'github',
@@ -85,34 +98,34 @@ describe('plan', () => {
     })
     expect(result.units[2]?.unit).toMatchObject({ base: 'feature-2', foreign: true })
     expect(formatPlan(result)).toMatchInlineSnapshot(`
-      "Queue
-        #1  fix        type=pr mine=true checks=failing
-        #2  implement  source=github type=issue label=awaywork repo=acme/api
-        #3  review     type=pr review_requested=true
-        #4  implement  source=asana section=Ready tags=backend provider=codex
-
-      Providers
+      "Providers
         provider  window     used  ceiling  set by   resets in  session / stop at
         claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
           other limits: reserve cap 90%, pacing 54%
         codex     fallback
           4 units, 60 turns each (no quota reading)
 
-      Units
-           unit        repo      rule  skill                 provider  deliver   branch
-        1  acme-api-1  acme/api  #1    fix (built-in)        claude    draft_pr  away/acme-api-1
-           github acme/api#1: PR 1
-           + asana T-7: same feature, matched #4
-        2  acme-api-5  acme/api  #2    implement (built-in)  claude    draft_pr  away/acme-api-5
-           github acme/api#5: Add rate limits
-        3  acme-api-2  acme/api  #3    review (built-in)     claude    report    away/acme-api-2
-           github acme/api#2: PR 2
+      Units 3
+           item   rule  skill                 provider  deliver   title
+        1  api#1  #1    fix (built-in)        claude    draft_pr  PR 1
+           + T-7: same feature, matched #4
+        2  api#5  #2    implement (built-in)  claude    draft_pr  Add rate limits
+        3  api#2  #3    review (built-in)     claude    report    PR 2
 
-      Skipped
-        github acme/api#3: matched no rule; closest #1 fix: checks is passing, wants failing
-        asana T-8: no repo: no linked PR or repo field"
+      Needs you 1
+        T-8  no repo: no linked PR or repo field
+             Task 8
+
+      Skipped 1: 1 no_rule
+
+      awaywork plan --skipped [kind]  lists them
+      awaywork plan --why <key>       says why an item is planned or not"
     `)
     expect(formatPlan(result, [], true)).toBe(formatPlan(result))
+    expect(result.skipped.map((s) => [s.kind, needsYou[s.kind]])).toEqual([
+      ['no_rule', false],
+      ['no_repo', true],
+    ])
   })
 
   it('plans only a repo glob or a rule, under the full run caps', () => {
@@ -177,10 +190,10 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/api] } }
 queue: [{ skill: fix, where: { unresolved_threads: { gte: 2, lt: 5 } } }]`
     const result = plan(yaml, [githubPr(1, { unresolved_threads: 1 })], { claude: week(0.1) })
-    expect(result.skipped.map((s) => s.reason)).toEqual([
-      'matched no rule; closest #1 fix: unresolved_threads is 1, wants >= 2 and < 5',
+    expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
+      ['no_rule', 'matched no rule; closest #1 fix: unresolved_threads is 1, wants >= 2 and < 5'],
     ])
-    expect(formatPlan(result)).toContain('#1  fix  unresolved_threads>=2 unresolved_threads<5')
+    expect(queueLines(result)).toContain('  #1  fix  unresolved_threads>=2 unresolved_threads<5')
   })
 
   it('names the failing relative date of the closest rule', () => {
@@ -193,7 +206,7 @@ queue: [{ skill: fix, where: { updated: { older_than: 3d } } }]`
     expect(result.skipped.map((s) => s.reason)).toEqual([
       `matched no rule; closest #1 fix: updated is ${now}, wants older than 3d`,
     ])
-    expect(formatPlan(result)).toContain('#1  fix  updated:older_than=3d')
+    expect(queueLines(result)).toContain('  #1  fix  updated:older_than=3d')
   })
 
   it('names the failed text match', () => {
@@ -386,13 +399,12 @@ queue:
       [[], []],
     ])
     const text = formatPlan(result)
-    expect(text).toContain('#1  plan  type=issue model=claude:opus then=implement,review')
-    expect(text).toMatch(
-      /1 {2}acme-api-5 .* plan \(built-in\) {2}claude {4}draft_pr {2}away\/acme-api-5\n/,
+    expect(queueLines(result).join('\n')).toContain(
+      '#1  plan  type=issue model=claude:opus then=implement,review',
     )
     expect(text).toContain(
       [
-        '     github acme/api#5: Add rate limits',
+        '  1  api#5  #1    plan (built-in)  claude    draft_pr  Add rate limits',
         '     then implement (built-in) on claude',
         '     then review (built-in) on codex',
       ].join('\n'),
@@ -437,7 +449,7 @@ queue:
       ['acme-api-2-plan', '-', undefined],
     ])
     const text = formatPlan(result)
-    expect(text).toContain('then=loop(review,fix),plan')
+    expect(queueLines(result).join('\n')).toContain('then=loop(review,fix),plan')
     expect(text).toContain(
       [
         '     then loop review ⇄ fix until verdict approve or comments, at most 3 rounds',
@@ -471,8 +483,8 @@ queue:
       'acme-api-5',
     ])
     expect(result.units).toHaveLength(15)
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#3', 'over the cap: rule #1 units is 2'],
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#3', 'over_cap', 'over the cap: rule #1 units is 2'],
     ])
   })
 
@@ -486,8 +498,11 @@ queue:
     ])
     const result = plan(yaml('review', 'plan'), [{ ...theirs, key: 'acme/api#2.lock' }], {})
     expect(result.units).toEqual([])
-    expect(result.skipped.map((s) => s.reason)).toEqual([
-      'branch template away/{key} renders an invalid name "away/acme-api-2.lock"',
+    expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
+      [
+        'invalid_branch',
+        'branch template away/{key} renders an invalid name "away/acme-api-2.lock"',
+      ],
     ])
   })
 
@@ -504,16 +519,24 @@ queue:
     const fork = { ...(forked.linkedPrs[0] as PrRef), branch: 'main', head: 'f0f0f0f', fork: true }
     const closing = { ...issue, linkedPrs: [{ ...fork, number: 4, branch: 'patch' }] }
     const result = plan(yaml, [theirs, { ...forked, linkedPrs: [fork] }, closing], {})
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#2', "deliver draft_pr: feature-2 is someone else's PR, and implement commits"],
-      ['acme/api#3', 'deliver draft_pr: main is on a fork, and implement commits'],
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      [
+        'acme/api#2',
+        'refused_delivery',
+        "deliver draft_pr: feature-2 is someone else's PR, and implement commits",
+      ],
+      [
+        'acme/api#3',
+        'refused_delivery',
+        'deliver draft_pr: main is on a fork, and implement commits',
+      ],
     ])
     // With deliver: report no step commits, so the chain reports on the fork, at its head.
     expect(result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base, unit.fork])).toEqual([
       ['acme-api-5', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
       ['acme-api-5-implement', 'report', 'patch', { number: 4, head: 'f0f0f0f' }],
     ])
-    expect(formatPlan(result)).toMatch(/acme-api-5\s+acme\/api .* report\s+away\/acme-api-5\n/)
+    expect(why(result, 'acme/api#5')).toMatch(/deliver +report\n +branch +away\/acme-api-5$/)
     const mine = plan(yaml, [githubPr(1)], {})
     expect(mine.units.map(({ unit }) => [unit.id, unit.base])).toContainEqual([
       'acme-api-1-implement-1',
@@ -538,16 +561,14 @@ queue:
       ['acme-api-1-implement-1', 'push', 'feature-1'],
       ['acme-api-1-implement-2', 'push', 'feature-1'],
     ])
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#2', "deliver push: feature-2 is someone else's PR"],
-      ['acme/api#5', 'deliver push: no PR of yours to push onto'],
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#2', 'refused_delivery', "deliver push: feature-2 is someone else's PR"],
+      ['acme/api#5', 'refused_delivery', 'deliver push: no PR of yours to push onto'],
     ])
-    expect(formatPlan(result)).toMatch(/acme-api-1\s+acme\/api .* push\s+feature-1\n/)
+    expect(why(result, 'api#1')).toMatch(/deliver +push\n +branch +feature-1$/)
     // A chain that starts with a report still pushes what a later step commits.
     const relayed = plan(yaml.replace('skill: fix,', 'skill: plan,'), [mine], {})
-    expect(formatPlan(relayed)).toMatch(
-      /acme-api-1\s+acme\/api .* plan \(built-in\)\s+claude\s+push\s+feature-1\n/,
-    )
+    expect(formatPlan(relayed)).toMatch(/api#1 +#1 +plan \(built-in\) +claude +push +PR 1\n/)
   })
 
   it('lets a push or draft PR rule take the first linked PR that is yours', () => {
@@ -605,10 +626,10 @@ queue:
       'acme-web-5',
       'acme-app-6',
     ])
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#2', 'over the cap: rule #1 units is 1'],
-      ['acme/api#4', 'over the cap: limits.units_per_repo is 2'],
-      ['acme/ops#7', 'over the cap: limits.units is 4'],
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#2', 'over_cap', 'over the cap: rule #1 units is 1'],
+      ['acme/api#4', 'over_cap', 'over the cap: limits.units_per_repo is 2'],
+      ['acme/ops#7', 'over_cap', 'over the cap: limits.units is 4'],
     ])
   })
 
@@ -679,6 +700,32 @@ queue:
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('reports each source and provider as it loads, for the loader', async () => {
+    const yaml =
+      'providers: [codex]\nsources: { tracker: { command: "echo []" }, chores: { command: "exit 3" } }\n'
+    const steps: Step[] = []
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    try {
+      await probeAndPlan(parseConfig(yaml), await mkdtemp(join(tmpdir(), 'awaywork-skills-')), {
+        retry: true,
+        onProgress: (step) => steps.push(step),
+      })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(steps).toEqual([
+      { name: 'tracker', state: 'running' },
+      { name: 'tracker', state: 'done', detail: '0 items' },
+      { name: 'chores', state: 'running' },
+      { name: 'chores', state: 'failed', detail: "Command failed with exit code 3: 'exit 3'" },
+      {
+        name: 'codex quota',
+        state: 'failed',
+        detail: expect.stringMatching(/^unavailable: a GitHub-hosted runner/),
+      },
+    ])
   })
 
   it("masks a failing source's secret in the warnings plan prints", async () => {
@@ -807,9 +854,19 @@ queue:
       'providers: [claude: {}]\nsources: { github: { repos: [acme/*] }, asana: { workspace: "1" } }\nqueue: [{ skill: fix }]'
     const result = plan(yaml, [{ ...ours, linkedPrs: [pr] }, task], {})
     expect(result.units).toEqual([])
-    expect(result.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
-      'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
+    expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
+      [
+        'waiting_for_review',
+        'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
+      ],
+      [
+        'waiting_for_review',
+        'waiting for review: awaywork PR https://github.com/acme/api/pull/9 is open',
+      ],
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.url])).toEqual([
+      ['acme/api#9', 'https://github.com/acme/api/pull/9'],
+      ['T-4', 'https://github.com/acme/api/pull/9'],
     ])
   })
 
@@ -831,9 +888,13 @@ queue: [{ skill: fix, deliver: push }]`
     const pushedAt = '2026-01-02T00:00:00Z'
     const held = plan(yaml, [at('def5678', pushedAt), at('def5678', pushedAt, 2)], {}, {}, attempts)
     expect(held.units.map(({ unit }) => unit.id)).toEqual(['acme-api-2'])
-    expect(held.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
+    expect(held.skipped.map((s) => [s.kind, s.reason])).toEqual([
+      [
+        'waiting_for_review',
+        'waiting for review: awaywork pushed onto your PR https://github.com/acme/api/pull/1',
+      ],
     ])
+    expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')
     const movedOn = plan(yaml, [at('0a1b2c3', '2026-01-03T00:00:00Z')], {}, {}, attempts)
     expect(movedOn.units).toHaveLength(1)
   })
@@ -913,9 +974,13 @@ queue:
     }
     const result = plan(yaml, [ours(1, 1), ours(2, 0)], {})
     expect(rows(result)).toEqual([['acme-api-1', 3, 'fix', 'claude', 'draft_pr']])
-    expect(result.skipped.map((s) => s.reason)).toEqual([
-      'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #3 fix: my_unresolved_threads is 0, wants not 0',
+    expect(result.skipped.map((s) => [s.kind, s.reason])).toEqual([
+      [
+        'waiting_for_review',
+        'waiting for review: awaywork PR https://github.com/acme/api/pull/2 is open; closest #3 fix: my_unresolved_threads is 0, wants not 0',
+      ],
     ])
+    expect(result.skipped[0]?.url).toBe('https://github.com/acme/api/pull/2')
   })
 
   it('skips every item of a feature when one of them is skipped, and says why', () => {
@@ -931,10 +996,10 @@ queue:
       skips: { 'asana:T-7': { reason: 'blocked on design' }, 'linear:acme/api#1': {} },
     })
     expect(result.units).toEqual([])
-    expect(result.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#5', expect.stringContaining('matched no rule')],
-      ['acme/api#1', 'skipped with awaywork skip asana:T-7: blocked on design'],
-      ['T-7', 'skipped with awaywork skip asana:T-7: blocked on design'],
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#5', 'no_rule', expect.stringContaining('matched no rule')],
+      ['acme/api#1', 'skipped_by_you', 'skipped with awaywork skip asana:T-7: blocked on design'],
+      ['T-7', 'skipped_by_you', 'skipped with awaywork skip asana:T-7: blocked on design'],
     ])
   })
 })
@@ -972,8 +1037,8 @@ describe('attempts', () => {
     ]
     const again = plan(yaml, items, {}, {}, attempts)
     expect(again.units.map((u) => u.unit.id)).toEqual(['acme-api-2', 'acme-api-3'])
-    expect(again.skipped.map((s) => [s.item.key, s.reason])).toEqual([
-      ['acme/api#1', 'unchanged since run r1'],
+    expect(again.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#1', 'unchanged', 'unchanged since run r1'],
     ])
     const changed = plan(yaml, [githubPr(1, { updated: later })], {}, {}, attempts)
     expect(changed.units.map((u) => u.unit.id)).toEqual(['acme-api-1'])
@@ -1163,7 +1228,7 @@ describe('attempts', () => {
     const pr = githubPr(1, { updated: '2026-01-09T00:00:00Z' })
     const midnight = new Date(2026, 0, 8, 0, 0, 5)
     expect(plan(yaml, [pr], {}, {}, failed(midnight), midnight.getTime()).skipped).toMatchObject([
-      { reason: 'gave up after 3 attempts; next try on 2026-01-15' },
+      { kind: 'gave_up', reason: 'gave up after 3 attempts; next try on 2026-01-15' },
     ])
     const springForward = startedAt.getTime() + (7 * 24 - 1) * 3600_000 - 3000
     expect(plan(yaml, [pr], {}, {}, failed(startedAt), springForward).units).toHaveLength(1)
@@ -1186,6 +1251,7 @@ describe('plan --json', () => {
     expect(json.units[0].unit).toMatchObject({ id: 'acme-api-5', skill: 'implement' })
     expect(json.units[0].unit.items[0]).not.toHaveProperty('raw')
     expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
+    expect(json.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#3' } })
   })
 })
 
