@@ -1,0 +1,14 @@
+{
+  "apiVersion": "v2",
+  "command": "auth.storage.status",
+  "data": {
+    "authority": "file",
+    "backend": "file",
+    "version": 1
+  },
+  "meta": {
+    "resourceClass": "entity",
+    "sourceMode": "native",
+    "resourceType": "auth-storage"
+  }
+}

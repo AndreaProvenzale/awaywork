@@ -1,13 +1,14 @@
 import type { z } from 'zod'
 import type { Source } from '../core/types.js'
 import { asana } from './asana.js'
+import { bitbucket } from './bitbucket.js'
 import { commandSource, isCommand } from './command.js'
 import { github } from './github.js'
 import { jira } from './jira.js'
 import { linear } from './linear.js'
 
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
-export const sources: Record<string, Source<any>> = { github, asana, linear, jira }
+export const sources: Record<string, Source<any>> = { github, bitbucket, asana, linear, jira }
 
 /** The built-in source with this id, else the command source its config describes. */
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config

@@ -8,6 +8,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
 
 - Node 22 or later, and `git`.
 - [`gh`](https://cli.github.com) logged in (`gh auth login`). GitHub is both a source of work and where awaywork pushes branches and opens draft PRs.
+  - Code on Bitbucket Cloud instead? Atlassian's `twg` logged in and an SSH key, see [Bitbucket and Jira](./configuration.md#bitbucket-and-jira).
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.

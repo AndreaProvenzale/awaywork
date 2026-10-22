@@ -652,8 +652,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
             filter: async (src) =>
-              ![join(dir, WORK_DIR, 'gh'), join(dir, CONTAINER_HOME)].includes(src) &&
-              (await notSymlink(src)),
+              ![
+                join(dir, WORK_DIR, 'gh'),
+                join(dir, WORK_DIR, 'twg'),
+                join(dir, CONTAINER_HOME),
+              ].includes(src) && (await notSymlink(src)),
           }).catch(() => {})
         if (start && !lost)
           try {

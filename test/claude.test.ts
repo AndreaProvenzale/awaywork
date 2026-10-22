@@ -93,9 +93,17 @@ describe('claude provider', () => {
     expect(events.at(-1)).toEqual({ type: 'done', ok: false, turns: 0 })
   })
 
-  it('gives the model no forge token, no withheld secret and no gh login, only placeholder tokens', () => {
+  it('gives the model no forge token, no withheld secret and no gh or twg login, only placeholder tokens', () => {
     const env = workerEnv(
-      { PATH: '/bin', GH_TOKEN: 'x', GITHUB_TOKEN: 'y', ASANA_TOKEN: 'z' },
+      {
+        PATH: '/bin',
+        GH_TOKEN: 'x',
+        GITHUB_TOKEN: 'y',
+        ASANA_TOKEN: 'z',
+        TWG_BBC_TOKEN: 'b',
+        TWG_PROFILE: 'p',
+        TWG_CONFIG_DIR: '/home/me/.config/twg',
+      },
       '/work',
       ['ASANA_TOKEN'],
     )
@@ -104,6 +112,7 @@ describe('claude provider', () => {
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
+      TWG_CONFIG_DIR: '/work/.away/twg',
       GIT_CONFIG_GLOBAL: '/work/.away/gitconfig',
       GIT_CONFIG_NOSYSTEM: '1',
     })
@@ -126,12 +135,14 @@ describe('claude provider', () => {
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
+      TWG_CONFIG_DIR: '/work/.away/twg',
     })
     expect(commandEnv(env, '/work', [])).toEqual({
       ...env,
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
+      TWG_CONFIG_DIR: '/work/.away/twg',
     })
   })
 

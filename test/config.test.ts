@@ -222,8 +222,9 @@ describe('config', () => {
       expect.stringMatching(/^mcp.s.env: /),
     ])
     expect(server('{ command: x, secrets: [GITHUB_TOKEN] }')).toEqual([
-      expect.stringMatching(/^mcp.s.secrets\[0\]: GH_ and GITHUB_ names are reserved/),
+      expect.stringMatching(/^mcp.s.secrets\[0\]: GH_, GITHUB_ and TWG_ names are reserved/),
     ])
+    expect(server('{ command: x, secrets: [TWG_BBC_TOKEN] }')).toHaveLength(1)
     expect(server('{ url: "file:///x" }')).toHaveLength(1)
     expect(server('{ command: x, tools: ["a, b"] }')).toEqual([
       'mcp.s.tools[0]: expected a tool name like search_issues',

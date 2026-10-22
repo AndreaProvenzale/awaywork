@@ -417,6 +417,49 @@
           "additionalProperties": false,
           "description": "My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge"
         },
+        "bitbucket": {
+          "type": "object",
+          "properties": {
+            "repos": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[^/*?\\s]+\\/[^/\\s]+$"
+              },
+              "description": "Bitbucket Cloud repos, workspace/name; * globs the name, e.g. acme/*"
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            }
+          },
+          "required": [
+            "repos"
+          ],
+          "additionalProperties": false,
+          "description": "The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira"
+        },
         "asana": {
           "type": "object",
           "properties": {

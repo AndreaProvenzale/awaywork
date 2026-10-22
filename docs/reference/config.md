@@ -155,6 +155,7 @@ Where work comes from: built-in sources or your own commands; at least one.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `github` | object |  | My PRs, PRs awaiting my review and issues assigned to me, plus any extra searches; also the forge |
+| `bitbucket` | object |  | The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira |
 | `asana` | object |  | My incomplete Asana tasks |
 | `linear` | object |  | My open Linear issues |
 | `jira` | object |  | My unresolved Jira Cloud issues |
@@ -178,6 +179,19 @@ Fetches more context for an item, with secrets kept out of the agent's environme
 |---|---|---|---|
 | `command` (required) | string |  | Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder |
 | `secrets` | string[] | `[]` | Env vars the command needs; withheld from workers, listed in Actions |
+
+## `sources.bitbucket`
+
+The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pair it with a source such as jira.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `repos` (required) | string[] |  | Bitbucket Cloud repos, workspace/name; * globs the name, e.g. acme/* |
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+
+## `sources.bitbucket.context`
+
+Same keys as `sources.github.context`.
 
 ## `sources.asana`
 

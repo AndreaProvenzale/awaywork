@@ -379,8 +379,8 @@ const mcpServer = z
           .string()
           .min(1)
           .refine(
-            (name) => !/^(GH|GITHUB)_/.test(name),
-            'GH_ and GITHUB_ names are reserved: workers never get GitHub tokens and Actions refuses GITHUB_ secrets; use another, like MCP_GITHUB_TOKEN',
+            (name) => !/^(GH|GITHUB|TWG)_/.test(name),
+            'GH_, GITHUB_ and TWG_ names are reserved: workers never get forge logins and Actions refuses GITHUB_ secrets; use another, like MCP_GITHUB_TOKEN',
           ),
       )
       .default([])
@@ -586,6 +586,13 @@ export const configSchema = z
           message: 'expected a lowercase name like sentry',
         })
     const sourceIds = Object.keys(cfg.sources)
+    const bitbucket = sourceIds.includes('bitbucket')
+    if (bitbucket && sourceIds.includes('github'))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['sources', 'bitbucket'],
+        message: 'one forge per config: github or bitbucket, not both',
+      })
     providerIds.forEach((id, i) => {
       if (providerIds.indexOf(id) !== i)
         ctx.addIssue({ code: 'custom', path: ['providers', i], message: `"${id}" is listed twice` })
@@ -597,6 +604,13 @@ export const configSchema = z
           code: 'custom',
           path: [...at, 'source'],
           message: `source "${r.source}" is not configured`,
+        })
+      if (bitbucket && r.deliver === 'push')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message:
+            "push isn't available on Bitbucket: twg reads neither branch restrictions nor auto-merge, so awaywork can't check them; use draft_pr",
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
