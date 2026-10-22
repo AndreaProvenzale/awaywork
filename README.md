@@ -127,7 +127,7 @@ Early in the week that's a small slice, and it gets greedier as the reset gets c
 
 ## The paranoid bit
 
-- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. It's not a sandbox, though: the agent runs as you, with your ssh agent, and can read what you can.
+- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. It's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes, merges or comments, and it never touches anyone else's branch.
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.

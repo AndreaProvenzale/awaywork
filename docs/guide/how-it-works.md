@@ -111,7 +111,7 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 - `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and failed-check logs, or the issue or task with its comments.
 - The skills go where the agent looks for them (`.claude/skills/`, `.agents/skills/`).
 - The prompt is, in order: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule).
-- The agent has no forge token, no source's or other provider's secret, a `gh` config without a login and placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN`.
+- The agent has no forge token, no source's or other provider's secret, an empty `GH_CONFIG_DIR` with placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN`, no ssh agent, no system git config, and a global one with only your commit identity and git-lfs's filter ([Safety](./safety.md#what-the-agent-can-reach)).
 - A turn cap bounds the run (200, or `fallback.turns` without a quota reading), `limits.unit_minutes` caps its wall-clock time when set (status `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of disk, then kills every process it left behind.
 
 ## Delivery

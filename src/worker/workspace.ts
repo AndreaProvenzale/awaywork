@@ -32,8 +32,9 @@ export const outputFile: Record<Deliver, string> = {
 /** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills']
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
-/** Credentials that aren't tokens: askpass helpers and git config set through the env. */
+/** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
 const credentialPlumbing = [
+  'SSH_AUTH_SOCK',
   'SSH_ASKPASS',
   'GIT_ASKPASS',
   'GIT_CONFIG_PARAMETERS',
@@ -105,6 +106,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
+  if (!w.reuse) await writeGitConfig(dir, w.ctx.env)
 
   const { user, builtin } = w.skillDirs ?? {
     user: skillsDirIn(w.configDir),
@@ -180,6 +182,32 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
 }
 
+/**
+ * Writes the global git config of the model and the checks: the commit identity and git-lfs's filter as
+ * the developer's git resolves them in the clone, and none of their signing, credential helpers or hooks.
+ */
+async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const read = (...args: string[]) =>
+    execa(bin('git'), ['-C', dir, 'config', '--null', ...args], {
+      env,
+      extendEnv: false,
+      reject: false,
+    })
+  const entries: string[][] = []
+  for (const key of ['user.name', 'user.email']) {
+    const { stdout } = await read('--get', key)
+    if (stdout) entries.push([key, stdout.slice(0, -1)])
+  }
+  const lfs = await read('--get-regexp', '^filter\\.lfs\\.')
+  for (const entry of lfs.stdout.split('\0').filter(Boolean)) entries.push(entry.split(/\n(.*)/s))
+  const file = gitConfigFile(dir)
+  await writeFile(file, '', { flag: 'wx' })
+  for (const [key = '', value = 'true'] of entries)
+    await execa(bin('git'), ['config', '--file', file, '--add', key, value])
+}
+
+const gitConfigFile = (dir: string) => join(dir, WORK_DIR, 'gitconfig')
+
 /** Throws when a symlink, which a worker may have planted, sits anywhere on one of `paths` in the clone. */
 export async function refuseSymlinks(dir: string, paths: string[]): Promise<void> {
   for (const path of paths) {
@@ -245,7 +273,7 @@ export function commandEnv(
   }
 }
 
-/** The env of the model and the checks: `commandEnv`'s without the credential plumbing. */
+/** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config and no system one. */
 export function workerEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
@@ -254,7 +282,11 @@ export function workerEnv(
   const kept = Object.entries(commandEnv(env, dir, withheld)).filter(
     ([name]) => !credentialPlumbing.includes(name) && !gitConfigEntry.test(name),
   )
-  return Object.fromEntries(kept)
+  return {
+    ...Object.fromEntries(kept),
+    GIT_CONFIG_GLOBAL: gitConfigFile(dir),
+    GIT_CONFIG_NOSYSTEM: '1',
+  }
 }
 
 /** Every secret the config names, for `workerEnv` to withhold. */

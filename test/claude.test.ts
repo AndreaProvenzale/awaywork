@@ -104,10 +104,12 @@ describe('claude provider', () => {
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
+      GIT_CONFIG_GLOBAL: '/work/.away/gitconfig',
+      GIT_CONFIG_NOSYSTEM: '1',
     })
   })
 
-  it('gives the model no askpass helper or git config from the env, but the ssh agent; setup keeps them', () => {
+  it("gives the model no askpass helper, ssh agent or developer's git config; setup keeps them", () => {
     const plumbing = {
       SSH_ASKPASS: '/askpass',
       GIT_ASKPASS: '/askpass',
@@ -119,8 +121,8 @@ describe('claude provider', () => {
     const env = { PATH: '/bin', GIT_CONFIG_GLOBAL: '/g', SSH_AUTH_SOCK: '/agent.sock', ...plumbing }
     expect(workerEnv(env, '/work', [])).toEqual({
       PATH: '/bin',
-      GIT_CONFIG_GLOBAL: '/g',
-      SSH_AUTH_SOCK: '/agent.sock',
+      GIT_CONFIG_GLOBAL: '/work/.away/gitconfig',
+      GIT_CONFIG_NOSYSTEM: '1',
       GH_CONFIG_DIR: '/work/.away/gh',
       GH_TOKEN: 'none',
       GH_ENTERPRISE_TOKEN: 'none',
