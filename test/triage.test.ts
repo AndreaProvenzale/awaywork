@@ -182,7 +182,8 @@ describe('triage view', () => {
     const selected = lines.find((l) => l.includes('\u001b[7m')) ?? ''
     expect(selected).toContain('⚠️')
     expect([...stripVTControlCharacters(selected)].length).toBe(60)
-    expect(clipLine('⚠️⚠️⚠️', 4)).toBe('⚠️⚠…')
+    expect(clipLine('⚠️⚠️⚠️', 4)).toBe('⚠️…')
+    expect(clipLine('🇮🇹 👍🏽 ⌚️ ok', 8)).toBe('🇮🇹 👍🏽 …')
     expect(clipLine('1️⃣ ok', 5)).toBe('1️⃣ ok')
   })
 
@@ -192,7 +193,7 @@ describe('triage view', () => {
     expect(clipLine('中文标题', 6)).toBe('中文…')
     expect(clipLine('fix 🐛 now', 7)).toBe('fix 🐛…')
     expect(clipLine('cafe\u0301', 4)).toBe('cafe\u0301')
-    expect(clipLine('कार', 2)).toBe('क…')
+    expect(clipLine('कारण', 3)).toBe('का…')
     for (const line of view(run(), 30, 30))
       expect([...stripVTControlCharacters(line)].length).toBeLessThanOrEqual(30)
   })

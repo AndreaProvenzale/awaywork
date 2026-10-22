@@ -1,4 +1,4 @@
-import { styleText } from 'node:util'
+import { stripVTControlCharacters, styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import {
@@ -95,8 +95,40 @@ const styler =
 
 const TITLE = 60
 
-export const clip = (text: string, length: number) =>
-  text.length > length ? `${text.slice(0, length - 1).trimEnd()}…` : text
+const segmenter = new Intl.Segmenter()
+
+export const graphemes = (text: string) => Array.from(segmenter.segment(text), (s) => s.segment)
+
+/** CJK, Hangul and fullwidth forms take two columns; marks and joiners none. */
+const wide = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{20000}-\u{3fffd}]/u
+const charColumns = (char: string) =>
+  /\p{Mn}|\p{Me}|\p{Default_Ignorable_Code_Point}/u.test(char) ? 0 : wide.test(char) ? 2 : 1
+
+/** The columns a grapheme takes: an emoji two, whatever its flag, skin tone, VS16 or joiner sequence. */
+export const columns = (grapheme: string) =>
+  /\p{Emoji_Presentation}|️/u.test(grapheme)
+    ? 2
+    : [...grapheme].reduce((sum, char) => sum + charColumns(char), 0)
+
+/** The columns `text` takes in a terminal, escape codes aside. */
+export const width = (text: string) =>
+  graphemes(stripVTControlCharacters(text)).reduce((sum, g) => sum + columns(g), 0)
+
+export const pad = (text: string, cols: number) =>
+  text + ' '.repeat(Math.max(0, cols - width(text)))
+
+/** `text` cut to `length` columns with an ellipsis, never inside a grapheme. */
+export function clip(text: string, length: number): string {
+  if (width(text) <= length) return text
+  let out = ''
+  let room = length - 1
+  for (const g of graphemes(text)) {
+    room -= columns(g)
+    if (room < 0) break
+    out += g
+  }
+  return `${out.trimEnd()}…`
+}
 
 /** The plan as text: providers, units, what needs you and how many items were skipped. */
 export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = false): string {
@@ -631,10 +663,10 @@ function table(
   rows: string[][],
   style: (cell: string, r: number, c: number) => string = (cell) => cell,
 ): string[] {
-  const widths = rows[0]?.map((_, c) => Math.max(...rows.map((r) => r[c]?.length ?? 0))) ?? []
+  const widths = rows[0]?.map((_, c) => Math.max(...rows.map((r) => width(r[c] ?? '')))) ?? []
   return rows.map((row, r) =>
     row
-      .map((cell, c) => style(cell.padEnd(widths[c] ?? 0), r, c))
+      .map((cell, c) => style(pad(cell, widths[c] ?? 0), r, c))
       .join('  ')
       .trimEnd(),
   )
