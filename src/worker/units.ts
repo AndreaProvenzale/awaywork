@@ -14,6 +14,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
+import { gitUnrestored, isolated, lostToWorker, workerRoot } from '../core/launch.js'
 import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
 import type {
   Ctx,
@@ -176,6 +177,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
+  // The worker user can't reach the run dir: its clones and plugins go where it can.
+  const root = isolated() ? await workerRoot() : input.runDir
 
   const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
     env: input.ctx.env,
@@ -238,7 +241,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
-    const dir = join(input.runDir, 'work', first.unit.id)
+    const dir = join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length
@@ -277,8 +280,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
-          lead.outcome = interrupted
-            ? { kind: 'none', reason: 'interrupted', unpublished: true }
+          const kept = interrupted
+            ? 'interrupted'
+            : lostToWorker(dir)
+              ? 'the clone is lost to the worker user'
+              : gitUnrestored(dir)
+                ? "the clone's .git was refused"
+                : undefined
+          lead.outcome = kept
+            ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
                 publisher,
                 { ...first.unit, ...shape, deliver },
@@ -293,9 +303,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {
-          await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink }).catch(
-            () => {},
-          )
+          if (!lostToWorker(dir))
+            await cp(join(dir, WORK_DIR, 'out'), out, {
+              recursive: true,
+              filter: notSymlink,
+            }).catch(() => {})
         }
       }
       if (last || ended) return
@@ -395,7 +407,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
-      const plugin = join(input.runDir, 'plugins', unit.id)
+      const plugin = join(root, 'plugins', unit.id)
       await mkdir(unitDir, { recursive: true })
       const logFile = createWriteStream(join(unitDir, 'worker.log'))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -621,15 +633,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (loop) loop.ended ??= ended.reason
       } finally {
         await new Promise((done) => logFile.end(done))
+        const lost = lostToWorker(dir)
         // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
-        if (cloned !== undefined)
+        if (cloned !== undefined && !lost)
           await cp(join(dir, WORK_DIR), unitDir, {
             recursive: true,
             // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
             force: false,
             filter: async (src) => src !== join(dir, WORK_DIR, 'gh') && (await notSymlink(src)),
           }).catch(() => {})
-        if (start)
+        if (start && !lost)
           try {
             await restoreGit(dir)
             await handOff(dir, start, unitDir)
@@ -651,15 +664,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
       Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
     }
-    if (!input.dryRun) await rm(dir, { recursive: true, force: true })
+    if (!input.dryRun && !lostToWorker(dir)) await rm(dir, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }
 
-  for (const chain of chains) {
-    const done = await runChain(chain)
-    results.push(...done)
-    await notifyUnits(done.filter((r) => !r.retried))
+  try {
+    for (const chain of chains) {
+      const done = await runChain(chain)
+      results.push(...done)
+      await notifyUnits(done.filter((r) => !r.retried))
+    }
+  } finally {
+    if (root !== input.runDir && !input.dryRun && !lostToWorker(root))
+      await rm(root, { recursive: true, force: true })
   }
 
   const { runId, dryRun, plan } = input

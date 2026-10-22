@@ -1,0 +1,182 @@
+import { existsSync } from 'node:fs'
+import { readFile, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { execa } from 'execa'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
+import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
+import type { Job } from '../src/core/types.js'
+import { commandProvider } from '../src/providers/command.js'
+import { commitsSince, createChecks, head } from '../src/worker/checks.js'
+import { runWorker } from '../src/worker/run.js'
+import { runCommand } from '../src/worker/setup.js'
+import { restoreGitConfig } from '../src/worker/workspace.js'
+
+const CANARY = 'canary-4f2a9c'
+const env = {
+  PATH: process.env.PATH,
+  HOME: process.env.HOME,
+  XDG_CONFIG_HOME: `${process.env.HOME}/.config`,
+  CANARY,
+  AWAYWORK_PARENT: `${process.pid}`,
+}
+const leftover = async () => (await execa('pgrep', ['-u', WORKER], { reject: false })).stdout
+const owner = async (path: string) => (await stat(path)).uid
+const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'test' }
+
+/** Linux with passwordless sudo and the worker user, as on a hosted runner after `action.yml`; run with AWAYWORK_WORKER_TEST=1. */
+describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () => {
+  let dir: string
+  beforeAll(async () => {
+    expect(await hostedWorker({ RUNNER_ENVIRONMENT: 'github-hosted' })).toBe(WORKER)
+    dir = join(await workerRoot(), 'clone')
+    await execa('git', ['init', '-q', dir])
+    isolate(WORKER)
+  })
+  afterAll(() => isolate(undefined))
+
+  it('runs a command as the worker, with the env but none of its values on argv', async () => {
+    const leaks = [
+      'id -un; echo "$HOME $CANARY ${XDG_CONFIG_HOME-unset}"',
+      // Builtins only: an exec'd command would carry the value on its own argv. A process can exit before its read.
+      'for f in /proc/[0-9]*/cmdline; do c=$(tr "\\0" " " 2>/dev/null < $f); case "$c" in *"$CANARY"*) echo "argv: $f $c";; esac; done',
+      'cat /proc/$AWAYWORK_PARENT/environ >/dev/null 2>&1 && echo "environ readable"',
+      'echo out > out.txt',
+      'ln -s /etc/hostname link',
+    ]
+    const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
+    expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY} unset`)
+    expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
+    expect(await owner(dir)).toBe(process.getuid?.())
+    expect(await owner('/etc/hostname')).toBe(0)
+  })
+
+  it('stops a check that hangs and detaches, and leaves no process behind', async () => {
+    const started = Date.now()
+    const result = await runCommand('setsid sleep 300 & sleep 300', dir, env, {
+      secrets: [],
+      timeoutMs: 2000,
+    })
+    expect(result.timedOut).toBe(true)
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(await leftover()).toBe('')
+  })
+
+  it('reaps what setup leaves running once it exits', async () => {
+    const started = Date.now()
+    expect((await runCommand('sleep 300 & echo started', dir, env, { secrets: [] })).output).toBe(
+      'started',
+    )
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(await leftover()).toBe('')
+  })
+
+  it('stops an agent that ignores SIGTERM at the window’s end', async () => {
+    await writeFile(join(dir, 'agent.sh'), "trap '' TERM; setsid sleep 300 & sleep 300\n")
+    const agent = commandProvider('mine', {
+      command: 'sh agent.sh',
+      secrets: [],
+      skills_dir: '.agents/skills',
+    })
+    const job = { dir, prompt: '', maxTurns: 1, env, unit: {} } as unknown as Job
+    const started = Date.now()
+    const result = await runWorker(agent, job, allowance, {
+      log: () => {},
+      until: new Date(Date.now() + 2000),
+    })
+    expect(result.status).toBe('stopped: window ended')
+    expect(Date.now() - started).toBeLessThan(15_000)
+    expect(await leftover()).toBe('')
+    expect(await owner(join(dir, 'agent.sh'))).toBe(process.getuid?.())
+    // chown never followed the link the first test planted, either way.
+    expect(await owner('/etc/hostname')).toBe(0)
+  })
+
+  it('never takes a repo the worker planted in /tmp for the clone’s', async () => {
+    expect(existsSync('/tmp/.git')).toBe(false)
+    const clone = join(dirname(dir), 'planted')
+    await execa('git', ['init', '-q', clone])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    // As on the hosted image, whose /etc/gitconfig trusts every repo.
+    const trustAll = {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'safe.directory',
+      GIT_CONFIG_VALUE_0: '*',
+    }
+    Object.assign(process.env, trustAll)
+    try {
+      const planted = await runCommand('cp -R .git /tmp/.git && rm .git/HEAD', clone, env, {
+        secrets: [],
+      })
+      expect(planted.failed).toBeUndefined()
+      expect(existsSync('/tmp/.git/HEAD')).toBe(true)
+      await restoreGitConfig(clone, '')
+      await expect(head(clone)).rejects.toThrow("not a git repository: '.git'")
+    } finally {
+      for (const name of Object.keys(trustAll)) delete process.env[name]
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/.git'])
+    }
+  })
+
+  it('runs no git in a clone whose .git the worker linked to a repo of its own', async () => {
+    const clone = join(dirname(dir), 'linked')
+    await execa('git', ['init', '-q', clone])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    const start = await head(clone)
+    // A partial clone whose promisor "fetch" logs who ran it, with which token.
+    const phase = [
+      'r=/tmp/awaywork-linked && rm -rf $r && mkdir -m 777 $r',
+      `printf '#!/bin/sh\\necho "$(id -un) GH_TOKEN=$GH_TOKEN" >> '$r'/log\\nexit 1\\n' > $r/cmd && chmod 755 $r/cmd`,
+      `git init -q $r/repo && git -C $r/repo ${commit.join(' ')} -m w`,
+      'git -C $r/repo config core.repositoryformatversion 1 && git -C $r/repo config extensions.partialClone origin',
+      'git -C $r/repo config remote.origin.promisor true && git -C $r/repo config remote.origin.uploadpack $r/cmd',
+      'chmod -R a+rwX $r/repo/.git && rm -rf .git && ln -s $r/repo/.git .git',
+    ].join(' && ')
+    process.env.GH_TOKEN = CANARY
+    try {
+      expect((await runCommand(phase, clone, env, { secrets: [] })).failed).toBeUndefined()
+      await expect(restoreGitConfig(clone, '')).rejects.toThrow(
+        '.git in the clone is not a directory',
+      )
+      const refused = await commitsSince(clone, start).catch((e: Error) => e.message)
+      expect(await readFile('/tmp/awaywork-linked/log', 'utf8').catch(() => 'not run')).toBe(
+        'not run',
+      )
+      expect(refused).toContain('no git in the clone')
+    } finally {
+      delete process.env.GH_TOKEN
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
+    }
+  })
+
+  it('runs no hook the worker left in .git/hooks when its git status writes the index', async () => {
+    const clone = join(dirname(dir), 'hooked')
+    await execa('git', ['init', '-q', clone])
+    await writeFile(join(clone, 'README'), 'hi\n')
+    await execa('git', ['-C', clone, 'add', 'README'])
+    const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q']
+    await execa('git', ['-C', clone, ...commit, '-m', 'start'])
+    const config = await readFile(join(clone, '.git', 'config'), 'utf8')
+    const phase = [
+      'r=/tmp/awaywork-hooked && rm -rf $r && mkdir -m 777 $r',
+      `printf '#!/bin/sh\\necho "$(id -un) GH_TOKEN=$GH_TOKEN" >> '$r'/log\\n' > .git/hooks/post-index-change`,
+      'chmod 755 .git/hooks/post-index-change',
+      // Stat-dirty, so `git status` refreshes the index and writes it.
+      'touch -d @1000000000 README',
+    ].join(' && ')
+    process.env.GH_TOKEN = CANARY
+    try {
+      expect((await runCommand(phase, clone, env, { secrets: [] })).failed).toBeUndefined()
+      await restoreGitConfig(clone, config)
+      await createChecks({ env, secrets: [] }).baseline(clone)
+      expect(await readFile('/tmp/awaywork-hooked/log', 'utf8').catch(() => 'not run')).toBe(
+        'not run',
+      )
+    } finally {
+      delete process.env.GH_TOKEN
+      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-hooked'])
+    }
+  })
+})

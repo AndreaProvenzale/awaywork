@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import {
   copyFile,
   mkdir,
@@ -20,6 +21,7 @@ import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
+import { isolate } from '../src/core/launch.js'
 import { formatReport, type RunReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
@@ -44,6 +46,9 @@ const quota = {
   ],
 }
 const week = reset * 1000 - 3 * 24 * 60 * 60 * 1000
+
+/** What a slice publishes from a clone whose `.git` the restore refused. */
+const refused = { kind: 'none', reason: "the clone's .git was refused", unpublished: true }
 
 const issue = (n: number, fields: Item['fields'] = {}) =>
   fakeItem({
@@ -598,10 +603,7 @@ it('publishes a stacked slice on the branch its own type names', async () => {
   ])
 })
 
-it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
-  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
-  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
-  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+it('cuts slice 2 in the clone with nothing over its base', async () => {
   const over: string[] = []
   const base = worker()
   const provider: Provider = {
@@ -609,6 +611,29 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     async *run(job, signal) {
       if (job.unit.id === 'acme-api-1-fix')
         over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
+      yield* base.run(job, signal)
+    },
+  }
+  const { rows } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    provider,
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  expect(over).toEqual([''])
+})
+
+it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
+  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
+  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
       const events = []
       for await (const event of base.run(job, signal)) events.push(event)
       if (job.unit.id === 'acme-api-1')
@@ -625,12 +650,17 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     provider,
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+    ['acme-api-1', 'error', refused],
+    [
+      'acme-api-1-fix',
+      'skipped',
+      expect.stringMatching(
+        /^acme-api-1 error: \.git\/(FETCH_HEAD|logs\/HEAD) in the clone is a symlink$/,
+      ),
+    ],
   ])
   for (const victim of Object.values(planted))
     expect(await readFile(victim, 'utf8')).toBe('untouched\n')
-  expect(over).toEqual([''])
 })
 
 it('ends the chain on a .git/index a worker symlinked, writing nothing through it', async () => {
@@ -663,9 +693,39 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   )
   expect(await readFile(victim)).toEqual(planted)
   expect(rows).toEqual([
-    ['acme-api-1', 'error', '.git/index in the clone is a symlink'],
+    ['acme-api-1', 'error', refused],
     ['acme-api-1-fix', 'skipped', 'acme-api-1 error: .git/index in the clone is a symlink'],
   ])
+})
+
+it('runs no hook a worker left in .git/hooks when its own git writes the index', async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      const hook = join(job.dir, '.git', 'hooks', 'post-index-change')
+      await writeFile(hook, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\n`, { mode: 0o755 })
+      // Stat-dirty, so `git status` refreshes the index and writes it.
+      const later = new Date(Date.now() + 60_000)
+      await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { opened } = await run(
+      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
 })
 
 it("runs no check in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
@@ -697,7 +757,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
     )
     expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
     expect(rows).toEqual([
-      ['acme-api-1', 'error', '.git/objects/info/alternates in the clone points elsewhere'],
+      ['acme-api-1', 'error', refused],
       [
         'acme-api-1-fix',
         'skipped',
@@ -706,6 +766,124 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
     ])
   } finally {
     delete process.env.ZZ_SECRET
+  }
+})
+
+it.each([
+  ['links .git to a repo of its own', 'link'],
+  ['plants an empty alternates', 'alternates'],
+])('publishes nothing and runs no git in a refused clone whose worker %s', async (_, how) => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      // A partial clone whose promisor "fetch" is the worker's command, run by any git missing an object.
+      const repo = how === 'link' ? await mkdtemp(join(tmpdir(), 'awaywork-planted-')) : job.dir
+      const cmd = join(dirname(job.dir), 'cmd')
+      await writeFile(cmd, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\nexit 1\n`, {
+        mode: 0o755,
+      })
+      if (how === 'link') {
+        await git(repo, 'init', '-q')
+        await git(repo, 'commit', '-q', '--allow-empty', '-m', 'planted')
+      } else await writeFile(join(repo, '.git', 'objects', 'info', 'alternates'), '')
+      for (const [key, value] of [
+        ['core.repositoryformatversion', '1'],
+        ['extensions.partialClone', 'origin'],
+        ['remote.origin.promisor', 'true'],
+        ['remote.origin.uploadpack', cmd],
+      ])
+        await git(repo, 'config', key as string, value as string)
+      if (how === 'link') {
+        await rm(join(job.dir, '.git'), { recursive: true, force: true })
+        await symlink(join(repo, '.git'), join(job.dir, '.git'))
+      } else await writeFile(join(repo, '.git', 'HEAD'), `${'1'.repeat(40)}\n`)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { rows, opened } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened).toEqual([])
+    expect(rows).toEqual([['acme-api-1', 'error', refused]])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
+it('never lets git find a repo above the clone, where a worker can plant one', async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        // The clone's repo moves up a level; an empty `.git` stays, so git would walk up to it.
+        const planted = join(dirname(job.dir), '.git')
+        await rm(planted, { recursive: true, force: true })
+        await execa('mv', [join(job.dir, '.git'), planted])
+        await mkdir(join(job.dir, '.git'))
+        const config = (...args: string[]) =>
+          execa(bin('git'), ['--git-dir', planted, 'config', ...args])
+        await config('core.worktree', job.dir)
+        await config('filter.evil.clean', `sh -c 'echo ran >> ${marker}; cat'`)
+        await writeFile(join(job.dir, '.gitattributes'), '* filter=evil\n')
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  const { rows } = await run(
+    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    provider,
+  )
+  expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+  expect(rows[0]?.slice(0, 2)).toEqual(['acme-api-1', 'error'])
+  expect(rows[0]?.[2]).toContain("not a git repository: '.git'")
+})
+
+it('ends the chain on a clone it couldn’t take back from the worker user, and touches it no more', async () => {
+  // A sudo that runs nothing and refuses to chown anything back from the worker.
+  const fakes = await mkdtemp(join(tmpdir(), 'awaywork-sudo-'))
+  const sudo = `#!/bin/sh\ncase "$*" in *chown*awaywork:*) exit 0;; *chown*) echo refused >&2; exit 1;; esac\n`
+  await writeFile(join(fakes, 'sudo'), sudo, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${fakes}:${path}`
+  isolate('awaywork')
+  const base = worker()
+  let clone = ''
+  const provider: Provider = {
+    ...base,
+    run: (job, signal) => {
+      clone = job.dir
+      return base.run(job, signal)
+    },
+  }
+  try {
+    const { report, opened } = await run(
+      'queue: [{ skill: implement, then: [fix] }]\n',
+      [issue(1)],
+      provider,
+    )
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', "couldn't chown the clone, left as it is: refused"],
+      ['skipped', "acme-api-1 error: couldn't chown the clone, left as it is: refused"],
+    ])
+    expect(report.results[0]?.outcome?.kind).toBe('none')
+    expect(opened).toEqual([])
+    expect(existsSync(join(clone, 'acme-api-1.txt'))).toBe(true)
+  } finally {
+    isolate(undefined)
+    process.env.PATH = path
+    await rm(dirname(dirname(clone)), { recursive: true, force: true })
   }
 })
 

@@ -65,6 +65,10 @@ runs:
           echo "GIT_AUTHOR_EMAIL=$user@users.noreply.github.com"
           echo "GIT_COMMITTER_EMAIL=$user@users.noreply.github.com"
         } >> "$GITHUB_ENV"
+    - name: Make the worker user
+      if: runner.environment == 'github-hosted'
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/scripts/worker-user.sh"
     - name: Run
       id: run
       shell: bash

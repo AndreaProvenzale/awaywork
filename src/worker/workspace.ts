@@ -6,6 +6,7 @@ import {
   lstat,
   mkdir,
   open,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -17,6 +18,7 @@ import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
+import { gitUnrestored, markGitRestored } from '../core/launch.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
@@ -41,6 +43,23 @@ const credentialPlumbing = [
   'GIT_CONFIG_COUNT',
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
+
+/** Flags that run no hook a worker left in `.git/hooks`, nor any fsmonitor command, nor git in a submodule. */
+const noHooks = [
+  'core.hooksPath=/dev/null',
+  'core.fsmonitor=false',
+  'submodule.recurse=false',
+  'diff.submodule=short',
+].flatMap((entry) => ['-c', entry])
+
+/**
+ * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
+ * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
+ */
+export function inClone(dir: string): string[] {
+  if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
+  return ['-C', dir, '--git-dir=.git', ...noHooks]
+}
 
 interface WorkspaceInput {
   unit: Unit
@@ -99,7 +118,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     const fork = w.replay && unit.fork ? { number: unit.fork.number } : unit.fork
     await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
-    await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    await execa(bin('git'), [...inClone(dir), 'checkout', '-q', '-b', unit.branch, ...from])
     // Linked or not, a branch's own `.away` could lead awaywork's writes and deletes anywhere.
     if (await lstat(join(dir, WORK_DIR)).catch(() => undefined))
       throw new Error(`${WORK_DIR} in the clone comes from the branch, not awaywork`)
@@ -169,17 +188,24 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
  * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * whose index, which git writes through a symlink, is one.
+ * holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
   if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
-  await refuseSymlinks(dir, ['.git/index'])
+  for (const entry of await readdir(git, { recursive: true, withFileTypes: true })) {
+    const path = relative(git, join(entry.parentPath, entry.name))
+    // awaywork's git runs no hook and writes none, so a setup that links its hooks is fine.
+    if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
+      throw new Error(`.git/${path} in the clone is a symlink`)
+  }
   for (const path of ['commondir', 'objects/info/alternates'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
   await rm(join(git, 'config'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
+  markGitRestored(dir)
 }
 
 /**
@@ -188,7 +214,7 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
  */
 async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void> {
   const read = (...args: string[]) =>
-    execa(bin('git'), ['-C', dir, 'config', '--null', ...args], {
+    execa(bin('git'), [...inClone(dir), 'config', '--null', ...args], {
       env,
       extendEnv: false,
       reject: false,
@@ -382,10 +408,8 @@ async function copySkill(dir: string, source: string, target: string) {
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
-  // In a chain's clone, the config is a worker's: run no fsmonitor command from it.
-  const git = ['-C', dir, '-c', 'core.fsmonitor=false']
-  const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
-  await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  const { stdout } = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--', ...paths])
+  await execa(bin('git'), [...inClone(dir), 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

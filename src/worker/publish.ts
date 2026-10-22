@@ -51,7 +51,9 @@ export async function publish(
   const repo = stack?.repo ?? (await mkdtemp(join(tmpdir(), 'awaywork-publish-')))
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
-    await git(repo, 'fetch', '-q', '--no-tags', dir, '+HEAD:refs/heads/work')
+    // From the clone's own `.git` only, like `inClone`.
+    const strict = '--upload-pack=git-upload-pack --strict'
+    await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
     return await deliver(unit, repo, forge, runId, start, file, text, stack?.onto, closes)
   } finally {
     if (!stack) await rm(repo, { recursive: true, force: true })

@@ -12,8 +12,8 @@ An agent working unattended on your repos is only acceptable if the worst run le
 - **Only its own agent's secret.** Every secret a configured source declares (`ASANA_TOKEN`, `LINEAR_API_KEY`, `JIRA_API_TOKEN`, or your `token_env`), your `notify.secrets`, every repo's `secrets`, every MCP server's `secrets` and every other provider's (`CLAUDE_CODE_OAUTH_TOKEN` for a Codex worker) is removed too. A Claude worker keeps `CLAUDE_CODE_OAUTH_TOKEN`, which its binary needs; Codex uses the machine's own login and gets no secret. A unit also keeps the secrets of the [MCP servers](#mcp-servers) its rule names. The rest of your environment stays so repo tooling runs, including any variable you added to the env file that nothing declares.
 - **Setup outside the agent.** A repo's `setup` runs before the agent in the same environment, without the agent's secret and with only that repo's `secrets` added, none on a PR someone else opened or on a branch a worker wrote: earlier in the run, or an awaywork PR a rule took up again. On a PR by someone without write access or org membership it doesn't run at all. Whatever it leaves running is stopped before the agent starts.
 - **Context outside the agent.** A built-in source's `context` command fetches what an item points at with its own `secrets`, kept out of the agent's environment. It runs in the config file's folder, not the clone, so nothing the branch commits runs with them, and only the regular files it writes reach the agent: don't write a secret there.
-- **Checks outside the agent.** An `until` or `when` command runs the code a worker wrote, like `setup` on a branch a worker wrote: none of the repo's `secrets`, but on your machine, outside the worker's sandbox. So it doesn't run on an untrusted author's PR.
-- **A throwaway clone.** Each unit gets a fresh clone with no credential helper left in it, on a new branch. `.away/` (context, prompt, output) is excluded from git, so it can't be committed. A branch that commits its own `.away`, a folder or a link, is refused before awaywork writes anything there, so a link to somewhere else can't make it write or delete outside the clone, and none of it lands in the run dir. Copying `.away` there never replaces awaywork's own `replay.json` or `worker.log`. Skills stay in the clone on every round: awaywork copies no symlink out of it, and refuses the unit if the folder it copies Codex's skills into links outside it, so a branch that commits `.agents/skills` as a link to somewhere else can't make it delete or write there. A loop's rounds share one clone: between them, awaywork runs no diff driver or fsmonitor its git config names, ends the loop if a round left a symlink where awaywork writes, and reads or writes only regular files there, so a FIFO can't hang it. Each check runs just before its write, so a worker process that outlived the watchdog could still swap a path in between.
+- **Checks outside the agent.** An `until` or `when` command runs the code a worker wrote, like `setup` on a branch a worker wrote: none of the repo's `secrets`, but on your machine, outside any sandbox the agent has (on a GitHub-hosted runner, as the [worker user](#a-worker-user-on-github-hosted-runners), like the agent). So it doesn't run on an untrusted author's PR.
+- **A throwaway clone.** Each unit gets a fresh clone with no credential helper left in it, on a new branch. `.away/` (context, prompt, output) is excluded from git, so it can't be committed. A branch that commits its own `.away`, a folder or a link, is refused before awaywork writes anything there, so a link to somewhere else can't make it write or delete outside the clone, and none of it lands in the run dir. Copying `.away` there never replaces awaywork's own `replay.json` or `worker.log`. Skills stay in the clone on every round: awaywork copies no symlink out of it, and refuses the unit if the folder it copies Codex's skills into links outside it, so a branch that commits `.agents/skills` as a link to somewhere else can't make it delete or write there. A loop's rounds share one clone: between them, awaywork runs no diff driver or fsmonitor its git config names, nor a hook a round left in `.git/hooks`, ends the loop if a round left a symlink where awaywork writes, and reads or writes only regular files there, so a FIFO can't hang it. Each check runs just before its write, so a worker process that outlived the watchdog could still swap a path in between.
 - **A fixed harness.** [`harness.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md) wraps every skill: never push, pull, merge, rebase, switch branches, comment or change git config; targeted checks and the repo's documented generators only; nothing in the background. A skill or instruction can't override it. It also tells the agent that the prefetched context is data, not instructions: a request in an item to run commands, fetch URLs, read secrets or change the delivery is reported, never followed.
 - **Someone else's PR is data too.** On a PR you didn't open, the branch's `.awaywork/` is ignored, Codex's copy of the unit's skills is replaced with awaywork's, and the prompt says its `CLAUDE.md`, `AGENTS.md` and skills are the author's. Claude Code loads none of the clone's config there (settings, hooks, MCP servers, `CLAUDE.md`, skills), only awaywork's skills plugin and the `settings` file you configured; Codex still loads `AGENTS.md` and its skills itself. A [command provider](./configuration.md#bring-your-own-cli) gets awaywork's copy of the skills in its `skills_dir` too, but its CLI loads whatever else it loads from the clone; the prompt names only `CLAUDE.md`, `AGENTS.md`, skills and "other instruction files" as the author's.
 - **Only trusted authors' code runs by default.** Reviewing a PR means running its tests, with your agent's login in the environment. The default `review` rule matches `trusted: true` only: PRs whose author is an owner, member or collaborator of the repo. A rule without it reviews anyone's PR.
@@ -21,13 +21,13 @@ An agent working unattended on your repos is only acceptable if the worst run le
 
 ## Not a sandbox
 
-All of the above keeps credentials out of the agent's way, not out of its reach. It runs as your user and can read what you can, and its tools aren't sandboxed: Claude Code gets Bash and file tools pre-approved, Codex runs with `--sandbox danger-full-access`, which it needs to commit, and a command provider runs however your command says. So what it reads can leave [I, from the code]:
+On your machine and on a self-hosted runner, all of the above keeps credentials out of the agent's way, not out of its reach. It runs as your user and can read what you can, and its tools aren't sandboxed: Claude Code gets Bash and file tools pre-approved, Codex runs with `--sandbox danger-full-access`, which it needs to commit, and a command provider runs however your command says. So what it reads can leave [I, from the code]:
 
 - `~/.config/awaywork/env`, with your `GH_TOKEN` and tracker tokens.
 - gh's own login, by unsetting the placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` (an empty `GH_CONFIG_DIR` doesn't hide a keyring from `gh auth token`); `glab`'s keyring login needs nothing unset. Git's credential helpers too: the worker's git config names none, but your `~/.gitconfig` and the system one are readable and a helper still answers when run directly.
 - Your ssh keys, and your ssh agent: the worker doesn't get `SSH_AUTH_SOCK`, but the socket is still there to find (on macOS, `launchctl getenv SSH_AUTH_SOCK` hands it back).
 - A VS Code terminal's git askpass (`VSCODE_GIT_*`).
-- On Linux, awaywork's own environment under `/proc`, `GH_TOKEN` included. On a runner, that's your personal access token.
+- On Linux, awaywork's own environment under `/proc`, `GH_TOKEN` included. On a self-hosted runner, that's your personal access token.
 
 What that leaves open:
 
@@ -37,7 +37,56 @@ What that leaves open:
 - **Codex reads the PR author's `AGENTS.md`** on someone else's PR, as above.
 - **A command provider's repo config** on someone else's PR: its CLI loads whatever repo config it loads, e.g. MCP servers or hooks in its config dir, and awaywork can't stop that.
 
-So run awaywork on a machine or runner where that's acceptable. Real isolation is [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
+So run awaywork on a machine or runner where that's acceptable. GitHub's hosted runners get a [worker user](#a-worker-user-on-github-hosted-runners) instead; isolation on your own machine is the rest of [#200](https://github.com/AndreaProvenzale/awaywork/issues/200).
+
+### A worker user on GitHub-hosted runners
+
+A GitHub-hosted runner is where your classic token runs unattended against issue text, with passwordless sudo on top, so there awaywork doesn't run repo code as you at all. Setup, the agent and the checks run as `awaywork`, a user the action makes before the run, and it's always on:
+
+- **A user with nothing.** No sudo, no `docker`, no group but its own, no crontab. The action locks the runner's home (`chmod 700`), where your checkout, the step scripts and `RUNNER_TEMP` live, with `GITHUB_ENV`, which sets the env of the steps after, and takes the write bit off everything world-writable on the disks: the image ships some 800,000 such paths, `/usr/local/bin` and the toolcache's `node` among them, where the worker could plant a `ps` or a `gh` that awaywork runs next with your token. It also takes it off the default ACLs of some 36,000 folders, the toolcache's among them, which would make what a later step installs there world-writable again. That step takes under two minutes of the job, most of it reading the disk. The step refuses a runner whose kernel lets a user hardlink a file it can't write, or follow someone else's symlink in `/tmp` (`fs.protected_hardlinks` and `fs.protected_symlinks`, both on in GitHub's image).
+- **The clone is the only thing it shares.** Clones and the skills plugin live under `/tmp`, not in the run dir. Each clone belongs to the worker while setup, a check or the agent runs in it, and to the runner again before awaywork's own git touches it. That git takes the clone's own `.git` and nothing else, never a repo it would otherwise find above it in `/tmp`, where the worker can write, and only once the clone's config is awaywork's again: a `.git` the worker turned into a link, put a symlink in outside its hooks, or pointed at another repo's objects, gets no more of it, and nothing's published from that clone. A clone the runner can't take back, say a `chown` that fails on something the worker left there, ends its chain with that error: nothing's published, and awaywork doesn't touch the clone again.
+- **Nothing outlives its phase.** After each one, awaywork kills every process the worker has, detached or not, so nothing it left can change the clone later.
+- **No value on argv.** The worker's env goes through sudo's own env, with only the names on its command line (`sudo --preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,…`), so `/proc/<pid>/cmdline` shows no value. awaywork's own pushes use gh's credential helper, never a token in a URL.
+- **No silent fallback.** A hosted runner without the user, say a workflow that calls `awaywork run` without the action, refuses to start: `can't run as the awaywork user on this GitHub-hosted runner: run awaywork through its action, which creates it`.
+
+A spike ran a script that tries every leak above from setup, a `when` check and two agent runs, with the job's `GITHUB_TOKEN` as `GH_TOKEN`. Before:
+
+```
+agent: as runner (5 groups: runner adm users docker systemd-journal), HOME=/home/runner
+agent: LEAK awaywork's env /proc/2635/environ
+agent: LEAK reads the step scripts in RUNNER_TEMP
+agent: LEAK can write GITHUB_ENV for the steps after
+agent: LEAK sudo -n true works
+agent: LEAK docker works (root by another name)
+agent: LEAK crontab: a job outlives any kill
+agent: LEAK can plant files the runner runs in: /opt/hostedtoolcache/node/22.23.3/x64/bin /usr/local/bin …
+agent: LEAK 2 leftover from an earlier phase still runs
+```
+
+And with the worker user:
+
+```
+agent: as awaywork (1 groups: awaywork), HOME=/home/awaywork, cwd=/tmp/awaywork-koRaYq/work/spike-1
+agent: ok   awaywork's env /proc/2890/environ
+agent: ok   any /proc/*/environ
+agent: ok   any /proc/*/cmdline
+agent: ok   gh auth token, GH_TOKEN and GH_CONFIG_DIR unset
+agent: ok   RUNNER_TEMP refused
+agent: ok   GITHUB_ENV not writable
+agent: ok   sudo -n true refused
+agent: ok   docker refused
+agent: ok   crontab refused
+agent: ok   no PATH or toolchain dir writable
+agent: ok   nothing left from an earlier phase
+```
+
+What it doesn't close:
+
+- **The agent's own secrets.** Claude's `CLAUDE_CODE_OAUTH_TOKEN` and the secrets of the MCP servers the rule names are in the worker's env, as they have to be.
+- **The network.** It's open: what the worker can read, the clone included, it can send anywhere.
+- **The clone.** It's the worker's while it runs, so what it leaves there is what the checks run and what awaywork publishes, as everywhere.
+- **What's world-readable.** The toolchains, `/tmp`, and every process's command line (not its env).
+- **The machine.** It can still fill the disk or the memory; the watchdog stops the unit then.
 
 ## Public repos
 
@@ -58,7 +107,7 @@ What it can't hide:
 - CI logs in `checks.md`: a PR's tests print whatever its code says.
 - What a trusted person or a bot quotes, like a review bot summing up a stranger's comment.
 
-So the agent can still be steered, and it can read your `GH_TOKEN` ([Not a sandbox](#not-a-sandbox)). The classic token `schedule install` asks for reaches every repo you can, not only the ones awaywork works on; whether that's fine or worth a dedicated account is your call. A fine-grained token would reach less, but it [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which the `checks` field and `checks.md` read, so those likely break. Nobody has tried one yet.
+So the agent can still be steered, and off GitHub's hosted runners it can read your `GH_TOKEN` ([Not a sandbox](#not-a-sandbox)). The classic token `schedule install` asks for reaches every repo you can, not only the ones awaywork works on; whether that's fine or worth a dedicated account is your call. A fine-grained token would reach less, but it [can't call the Checks API](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#fine-grained-personal-access-tokens-limitations), which the `checks` field and `checks.md` read, so those likely break. Nobody has tried one yet.
 
 ## MCP servers
 
@@ -77,14 +126,14 @@ A rule's `mcp` gives its units your servers, and with them more reach, so the gu
 - Only a **draft** PR, into the default branch or your own PR's branch in the repo (an awaywork PR a rule naming `ours` took up again included), one per unit, however many steps its chain has, plus one per [stacked slice](./chains.md#stack), into the slice before's branch. Never into someone else's PR or a PR from a fork: only a report delivers there. A fork PR is cloned from the repo's pull ref; nothing goes to the fork. It never merges, approves, requests reviewers or comments; your own [`notify` command](./configuration.md#pr-labels-reviewers-and-ready-for-review) can, as you.
 - A draft PR stacked on an awaywork PR joins that PR's GitHub stack, or starts one with it, only while that PR tops its stack or has none. Linking edits neither PR, but GitHub then merges a stack bottom-up: merging a PR merges the ones below it too, and GitHub rebases the ones above after a merge.
 - Only when the agent wrote a PR body, `pr.md`, for a draft PR or a push alike, and only once the unit's chain, or its slice, ended. A run killed before that publishes nothing more.
-- Publishing fetches the clone's HEAD into a repo awaywork creates for it, where it adds the trailer, diffs and pushes. The unit's commits are those after the commit the clone held before setup and the first agent ran. The clone's config, attributes, hooks and refs, which the agent can write, neither steer where a push goes, nor pick which commits get the trailer, nor run anything: after `setup` and each agent run, and before and after each check, awaywork puts back the config the clone had when it was cloned. It refuses a `.git` that borrows a repo or objects from elsewhere, or a symlinked `.git/index`, and the step errors: no check or `verify` runs on that clone, so a slice whose `verify` runs isn't published, and the only git left there is publishing's `rev-list` and fetch, which only read it. In the clone, publishing only reads the PR body or report, writes `diff.patch` next to it, and appends the chain's notes, the items' link lines, a GitHub issue's `Closes` line on the last slice of a chain cut from the default branch and a stacked PR's "merge that first" line to the body. It refuses if the body, the report or `diff.patch` is a symlink, and reads or writes only regular files. The symlink check runs just before, so a worker process that outlived the watchdog could still swap a path in between.
+- Publishing fetches the clone's HEAD into a repo awaywork creates for it, where it adds the trailer, diffs and pushes. The unit's commits are those after the commit the clone held before setup and the first agent ran. The clone's config, attributes, hooks and refs, which the agent can write, neither steer where a push goes, nor pick which commits get the trailer, nor run anything: after `setup` and each agent run, and before and after each check, awaywork puts back the config the clone had when it was cloned, and its own git there runs no hook and, even with your global `submodule.recurse` or `diff.submodule`, no git in a submodule, whose own config the agent can write too. It refuses a `.git` that holds a symlink outside its hooks, an alternates file or a `commondir`, and the step errors: awaywork runs no more git in that clone, so no check or `verify` runs there and its slice isn't published. In the clone, publishing only reads the PR body or report, writes `diff.patch` next to it, and appends the chain's notes, the items' link lines, a GitHub issue's `Closes` line on the last slice of a chain cut from the default branch and a stacked PR's "merge that first" line to the body. It refuses if the body, the report or `diff.patch` is a symlink, and reads or writes only regular files. The symlink check runs just before, so a worker process that outlived the watchdog could still swap a path in between.
 - A [stacked slice](./chains.md#stack) never fetches anything into the clone: awaywork's own repo re-parents its commits onto the slice before's as pushed, while adding the trailer. In the clone it runs one `git checkout -b` for the slice's new branch at the clone's tip, with no hook, fsmonitor or reflog. Before it, awaywork refuses a symlink anywhere on the path to `.git/HEAD`, `.git/index` or the new branch's ref, and deletes `.git/logs`, so git writes only that branch, HEAD and the index, each by renaming a fresh lock file, and nothing outside the clone.
 - `report` delivery pushes nothing at all.
 - Every PR says it came from awaywork: a footer with the run id and the items it's for in the body, and an `Awaywork: <run id>` commit trailer. Pushed commits carry the trailer too. Adding it re-creates each commit, so a commit signature doesn't carry over: a branch that requires signed commits refuses the push.
 
 ## Resources
 
-A watchdog polls every 2 s. It stops the unit below 1.5 GB of free memory or 2 GB of free disk, and at the end kills every process the agent started, including detached ones. The agent also runs in a process group of its own, killed as soon as it exits or awaywork is stopped (short of `SIGKILL`). A process that leaves the group, as an agent's own command runner may, is left to the watchdog; one that also detaches between two polls escapes both, and could still change the clone after awaywork checked it. Each run also has a turn cap and stops at the quota ceiling, except on a command provider, which has neither: `limits.unit_minutes` is what stops its unit.
+A watchdog polls every 2 s. It stops the unit below 1.5 GB of free memory or 2 GB of free disk, and at the end kills every process the agent started, including detached ones. The agent also runs in a process group of its own, killed as soon as it exits or awaywork is stopped (short of `SIGKILL`). A process that leaves the group, as an agent's own command runner may, is left to the watchdog; one that also detaches between two polls escapes both, and could still change the clone after awaywork checked it. Not on a GitHub-hosted runner: there, after setup, each check and each agent run, awaywork kills every process the [worker user](#a-worker-user-on-github-hosted-runners) has, detached or not, in one `kill -9 -1` as that user, and a timeout or the window's end does the same right away. Each run also has a turn cap and stops at the quota ceiling, except on a command provider, which has neither: `limits.unit_minutes` is what stops its unit.
 
 ## Secrets on a runner
 

@@ -12,7 +12,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
@@ -22,7 +22,13 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace, readOutput, workerEnv, writeOutput } from '../src/worker/workspace.js'
+import {
+  prepareWorkspace,
+  readOutput,
+  restoreGitConfig,
+  workerEnv,
+  writeOutput,
+} from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -704,5 +710,32 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await link(outside, join(dir, 'hard'))
     expect(await readOutput(join(dir, 'sym'))).toBe('')
     expect(await readOutput(join(dir, 'hard'))).toBe('')
+  })
+
+  it.each(['objects', 'refs', 'info', 'objects/pack', 'refs/heads', 'logs/HEAD'])(
+    'refuses a clone whose .git/%s a worker linked elsewhere',
+    async (path) => {
+      const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+      await git(dir, 'init', '-q')
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+      const elsewhere = join(await mkdtemp(join(tmpdir(), 'ns-elsewhere-')), basename(path))
+      await rename(join(dir, '.git', path), elsewhere)
+      await symlink(elsewhere, join(dir, '.git', path))
+      await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+        `.git/${path} in the clone is a symlink`,
+      )
+    },
+  )
+
+  it('accepts a hook a setup linked, still refusing a link elsewhere in .git', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    await symlink('../../scripts/pre-commit', join(dir, '.git/hooks/pre-commit'))
+    await restoreGitConfig(dir, '')
+    await symlink(tmpdir(), join(dir, '.git/objects/pack/elsewhere'))
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/objects/pack/elsewhere in the clone is a symlink',
+    )
   })
 })
