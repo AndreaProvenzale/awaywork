@@ -100,15 +100,18 @@ const segmenter = new Intl.Segmenter()
 export const graphemes = (text: string) => Array.from(segmenter.segment(text), (s) => s.segment)
 
 /** CJK, Hangul and fullwidth forms take two columns; marks and joiners none. */
-const wide = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{20000}-\u{3fffd}]/u
+const wide =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]/u
 const charColumns = (char: string) =>
   /\p{Mn}|\p{Me}|\p{Default_Ignorable_Code_Point}/u.test(char) ? 0 : wide.test(char) ? 2 : 1
 
-/** The columns a grapheme takes: an emoji two, whatever its flag, skin tone, VS16 or joiner sequence. */
-export const columns = (grapheme: string) =>
-  /\p{Emoji_Presentation}|️/u.test(grapheme)
-    ? 2
-    : [...grapheme].reduce((sum, char) => sum + charColumns(char), 0)
+/** The columns a grapheme takes: an emoji two, whatever its flag, skin tone or VS16; a joiner sequence its parts, as a terminal that doesn't join it draws them. */
+export const columns = (grapheme: string): number =>
+  grapheme.includes('\u200d')
+    ? grapheme.split('\u200d').reduce((sum, part) => sum + columns(part), 0)
+    : /\p{Emoji_Presentation}|\ufe0f/u.test(grapheme)
+      ? 2
+      : [...grapheme].reduce((sum, char) => sum + charColumns(char), 0)
 
 /** The columns `text` takes in a terminal, escape codes aside. */
 export const width = (text: string) =>

@@ -36,6 +36,12 @@ describe('clip', () => {
     expect(clip(`ok ${emoji} done`, 5)).toBe('ok…')
   })
 
+  it('counts a joiner sequence as its parts, as a terminal that does not join it draws them', () => {
+    expect(width('👨‍👩‍👧')).toBe(6)
+    expect(clip('ok 👨‍👩‍👧 done', 10)).toBe('ok 👨‍👩‍👧…')
+    expect(clip('ok 👨‍👩‍👧 done', 9)).toBe('ok…')
+  })
+
   it('pads by width', () => {
     expect(pad('🇮🇹', 4)).toBe('🇮🇹  ')
   })

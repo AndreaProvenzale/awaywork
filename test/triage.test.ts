@@ -185,6 +185,7 @@ describe('triage view', () => {
     expect(clipLine('⚠️⚠️⚠️', 4)).toBe('⚠️…')
     expect(clipLine('🇮🇹 👍🏽 ⌚️ ok', 8)).toBe('🇮🇹 👍🏽 …')
     expect(clipLine('1️⃣ ok', 5)).toBe('1️⃣ ok')
+    expect(clipLine('👨‍👩‍👧 ok', 8)).toBe('👨‍👩‍👧 …')
   })
 
   it('clips lines to the width, keeping their styles closed', () => {
