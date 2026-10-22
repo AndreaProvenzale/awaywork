@@ -1,6 +1,7 @@
 import { cp, lstat, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execa } from 'execa'
 import type { Config } from '../config/schema.js'
 import { slug } from '../core/foreman.js'
 import type { Item } from '../core/types.js'
@@ -56,6 +57,8 @@ export async function fetchContexts(items: Item[], dir: string, f: FetchInput): 
         signal: f.signal,
         until: f.until,
         timeoutMs: TIMEOUT_MS,
+        // The config's command, not the repo's: it runs as awaywork, outside the launcher.
+        start: execa,
       })
       if (output) f.log(`context ${item.key}: ${output}`)
       const why = failed ?? (await unfit(out))

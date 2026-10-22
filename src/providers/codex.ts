@@ -5,6 +5,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { stateDir } from '../config/paths.js'
 import { killGroupWhenDone } from '../core/group.js'
+import { launch } from '../core/launch.js'
 import { headerSecret } from '../core/mcp.js'
 import type { McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
@@ -106,7 +107,7 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
         ])
         const mcp = mcpOverrides(job.mcp ?? {})
         const args = [...EXEC, ...model, ...overrides, ...mcp, ...FULL_ACCESS, '-C', job.dir, '-']
-        const child = execa(bin, args, {
+        const child = launch(bin, args, {
           cwd: job.dir,
           env: job.env,
           extendEnv: false,

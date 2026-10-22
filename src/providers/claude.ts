@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
 import { killGroupWhenDone } from '../core/group.js'
+import { launch } from '../core/launch.js'
 import type { Job, McpServer, Provider, Quota, WorkerEvent } from '../core/types.js'
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
@@ -65,7 +66,7 @@ export function claudeProvider(bin = 'claude'): Provider {
       const tools = [TOOLS, ...servers.flatMap(([name, s]) => mcpTools(name, s.tools))]
       // Denies whatever isn't allowed, whatever mode the binary would default to.
       args.push('--permission-mode', 'dontAsk', '--allowedTools', tools.join(' '))
-      const child = execa(bin, args, {
+      const child = launch(bin, args, {
         cwd: job.dir,
         env: { ...job.env, ...noConnectors },
         extendEnv: false,
