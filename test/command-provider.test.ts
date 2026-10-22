@@ -141,6 +141,24 @@ describe('command provider', () => {
     expect(events.at(-1)).toEqual({ type: 'done', ok: false, turns: 0 })
   })
 
+  it('keeps what a stopped command prints on its way out', async () => {
+    const p = commandProvider(
+      'x',
+      cfg({ command: "trap 'echo tail; exit 1' TERM; echo started; sleep 30 & wait" }),
+    )
+    const abort = new AbortController()
+    const events: WorkerEvent[] = []
+    for await (const e of p.run(job(), abort.signal)) {
+      events.push(e)
+      abort.abort()
+    }
+    expect(events).toEqual([
+      { type: 'log', line: 'started' },
+      { type: 'log', line: 'tail' },
+      { type: 'done', ok: false, turns: 0 },
+    ])
+  })
+
   it('has no quota without a probe, and reads Quota as is from one', async () => {
     const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
     expect(await commandProvider('x', cfg()).probe(ctx)).toBeNull()

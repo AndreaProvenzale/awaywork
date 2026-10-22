@@ -57,6 +57,29 @@ describe('the launcher', () => {
     ])
   })
 
+  it('ends each provider’s stopped agent soon after it exits, whatever still holds its output', async () => {
+    const pid = join(dir, 'escaped.pid')
+    const spawn = `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'inherit' }); require('node:fs').writeFileSync('${pid}', String(c.pid)); c.unref()`
+    const agent = join(dir, 'escapes.sh')
+    await writeFile(agent, `#!/bin/sh\n'${process.execPath}' -e "${spawn}"\nsleep 30\n`, {
+      mode: 0o755,
+    })
+    const providers = [
+      claudeProvider(agent),
+      codexProvider(agent, join(dir, 'codex.lock')),
+      commandProvider('mine', { command: agent, secrets: [], skills_dir: '.agents/skills' }),
+    ]
+    for (const provider of providers) {
+      const started = Date.now()
+      try {
+        await drain(provider.run(job, AbortSignal.timeout(500)))
+      } finally {
+        process.kill(Number(await readFile(pid, 'utf8')), 'SIGKILL')
+      }
+      expect(Date.now() - started, provider.id).toBeLessThan(5000)
+    }
+  }, 30_000)
+
   it('starts setup and the checks, not the parent’s git', async () => {
     await execa('git', ['init', '-q', dir])
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
