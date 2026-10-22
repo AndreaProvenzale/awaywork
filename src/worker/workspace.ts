@@ -35,20 +35,6 @@ export const outputFile: Record<Deliver, string> = {
 /** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills']
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
-/** twg's logins through the env, gone whatever the forge: a GitHub user may be logged in to twg for Jira. */
-const twgLogin = [
-  'TWG_TOKEN',
-  'TWG_BBC_TOKEN',
-  'TWG_BBC_USER',
-  'TWG_USER',
-  'TWG_PROFILE',
-  'TWG_SITE',
-  'TWG_AUTH_STORAGE_KEY',
-  'TWG_OAUTH_ACCESS_TOKEN',
-  'TWG_ADMIN_TOKEN',
-  'TWG_MCP_TOKEN',
-  'TWG_CUSTOM_HEADERS',
-]
 /** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
 const credentialPlumbing = [
   'SSH_AUTH_SOCK',
@@ -320,8 +306,9 @@ export function commandEnv(
   dir: string,
   withheld: string[],
 ): NodeJS.ProcessEnv {
-  const hidden = new Set([...forgeTokens, ...twgLogin, ...withheld])
-  const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
+  const hidden = new Set([...forgeTokens, ...withheld])
+  // Every TWG_ name, whatever the forge: twg logins come in many names, and you may be logged in for Jira alone.
+  const kept = Object.entries(env).filter(([name]) => !hidden.has(name) && !name.startsWith('TWG_'))
   return {
     ...Object.fromEntries(kept),
     GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh'),

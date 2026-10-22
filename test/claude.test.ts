@@ -94,19 +94,23 @@ describe('claude provider', () => {
   })
 
   it('gives the model no forge token, no withheld secret and no gh or twg login, only placeholder tokens', () => {
-    const env = workerEnv(
-      {
-        PATH: '/bin',
-        GH_TOKEN: 'x',
-        GITHUB_TOKEN: 'y',
-        ASANA_TOKEN: 'z',
-        TWG_BBC_TOKEN: 'b',
-        TWG_PROFILE: 'p',
-        TWG_CONFIG_DIR: '/home/me/.config/twg',
-      },
-      '/work',
-      ['ASANA_TOKEN'],
-    )
+    const developer = {
+      PATH: '/bin',
+      GH_TOKEN: 'x',
+      GITHUB_TOKEN: 'y',
+      ASANA_TOKEN: 'z',
+      TWG_BBC_TOKEN: 'b',
+      TWG_PROFILE: 'p',
+      TWG_STATLAS_TOKEN: 's',
+      TWG_KEY_CONTENT: 'k',
+      TWG_CONFIG_DIR: '/home/me/.config/twg',
+    }
+    const env = workerEnv(developer, '/work', ['ASANA_TOKEN'])
+    expect(
+      Object.keys(commandEnv(developer, '/work', ['ASANA_TOKEN'])).filter((name) =>
+        name.startsWith('TWG_'),
+      ),
+    ).toEqual(['TWG_CONFIG_DIR'])
     expect(env).toEqual({
       PATH: '/bin',
       GH_CONFIG_DIR: '/work/.away/gh',
