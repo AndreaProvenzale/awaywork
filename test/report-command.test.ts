@@ -2,8 +2,11 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reportJson } from '../src/cli/format.js'
 import { printReport } from '../src/cli/run.js'
 import { remoteDir, runsDir } from '../src/config/paths.js'
+import type { RunReport, StepFiles } from '../src/core/report.js'
+import { githubPr } from './fakes/items.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
   const { mkdtemp } = await import('node:fs/promises')
@@ -96,6 +99,105 @@ describe('report command', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it("reads back what run wrote: each unit's summary, files and links, and why items were skipped", async () => {
+    const [done, skipped] = [githubPr(1), githubPr(2)]
+    const planned = { unit: { id: 'acme-api-1', items: [done] } }
+    const result = {
+      planned,
+      status: 'done',
+      outcome: { kind: 'none', reason: 'no commits' },
+      summary: 'No code changes: the red check is flaky.',
+      files: {
+        log: 'units/acme-api-1/1-fix/worker.log',
+        sliceBody: 'units/acme-api-1/out/pr.md',
+      } satisfies StepFiles,
+    }
+    const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
+    const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
+    await writeFile(join(runsDir, run.runId, 'report.json'), reportJson(run))
+    const { out } = output()
+    await printReport(run.runId, false, await controlRepo([], ''), true)
+    const json = JSON.parse(out.join('\n'))
+    expect(json.results[0]).toEqual({
+      ...result,
+      planned: {
+        unit: {
+          id: 'acme-api-1',
+          items: [{ source: 'github', key: 'acme/api#1', title: 'PR 1', url: done.url }],
+        },
+      },
+    })
+    expect(json.plan.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#2' } })
+  })
+
+  it('prints a run from its report.json, one unit with the files still there, or its skips', async () => {
+    const item = githubPr(1)
+    const planned = { unit: { id: 'acme-api-1', skill: 'fix', items: [item] } }
+    const files = {
+      log: 'units/acme-api-1/1-fix/worker.log',
+      sliceBody: 'units/acme-api-1/out/pr.md',
+    }
+    const result = {
+      planned,
+      status: 'done',
+      outcome: { kind: 'none', reason: 'no commits' },
+      summary: 'No code changes: the red check is flaky.',
+      files,
+    }
+    const plan = {
+      queue: [],
+      units: [planned],
+      allowances: {},
+      skipped: [{ item: githubPr(2), kind: 'over_cap', reason: 'over the cap: limits.units is 1' }],
+    }
+    const id = '20261015-220000'
+    const run = { runId: id, startedAt: 0, finishedAt: 0, plan, results: [result], quotas: {} }
+    await writeFile(join(runsDir, id, 'report.json'), reportJson(run as unknown as RunReport))
+    await mkdir(join(runsDir, id, 'units/acme-api-1/out'), { recursive: true })
+    const body = '# Flaky upload test\n\nNo code changes: the red check is flaky.\n'
+    await writeFile(join(runsDir, id, files.sliceBody), body)
+    const { out, err } = output()
+    const gh = await controlRepo([], '')
+
+    await printReport(id, false, gh)
+    expect(out.join('\n')).toContain(
+      '  1  api#1  fix    done    no commits\n     No code changes: the red check is flaky.',
+    )
+    expect(out.join('\n')).toContain('Skipped 1: 1 over_cap')
+
+    out.length = 0
+    await printReport(id, false, gh, false, { unit: 'acme/api#1' })
+    expect(out.join('\n')).toBe(
+      [
+        '1  api#1  PR 1',
+        '  skill   fix',
+        '  status  done',
+        '  result  no commits',
+        '  item    https://github.com/acme/api/pull/1',
+        `  files   ${join(runsDir, id, files.sliceBody)}`,
+        '',
+        body.trim(),
+      ].join('\n'),
+    )
+
+    out.length = 0
+    await printReport(id, false, gh, false, { skipped: 'over_cap' })
+    expect(out).toEqual(['Skipped over_cap (1)\n  api#2: over the cap: limits.units is 1'])
+
+    await printReport(id, false, gh, false, { unit: '2' })
+    expect(err).toEqual([`no unit "2" in run ${id}; awaywork report lists them`])
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('prints report.md for a run without report.json, which --unit needs', async () => {
+    const { out, err } = output()
+    await printReport('20261013-220000', false, await controlRepo([], ''))
+    expect(out).toEqual([report('20261013-220000', [pr, 'report below'])])
+    await printReport('20261013-220000', false, await controlRepo([], ''), false, { unit: '1' })
+    expect(err).toEqual(['run 20261013-220000 has no report.json, which --unit and --skipped read'])
+    expect(process.exitCode).toBe(1)
+  })
+
   it('prints only the error with --json for a run with steps but no report.json', async () => {
     const step = join(runsDir, '20261015-220000', 'units', 'u0', 'fix')
     await mkdir(step, { recursive: true })
@@ -120,10 +222,10 @@ describe('report command', () => {
     const { out, err } = output()
     await printReport(undefined, true, run)
     expect(out).toEqual([
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261014-223527  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261016-010203  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261014-223527  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
     ])
     expect(err).toEqual([])
     expect(run.calls).toContainEqual(
@@ -152,11 +254,30 @@ describe('report command', () => {
       'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)'
     expect(err).toEqual([warning, warning])
     expect(out).toEqual([
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
       report('20261015-220000', ['report below']),
     ])
     expect(process.exitCode).toBeUndefined()
+  })
+
+  it('leaves the screen before saying there are no runs, with the warnings it held', async () => {
+    await rm(runsDir, { recursive: true, force: true })
+    const run = await controlRepo(['awaywork.yml'], '', /^gh api/)
+    const { err } = output()
+    const screen = {
+      progress: () => {},
+      browse: async () => {},
+      close: () => void err.push('closed'),
+    }
+    const commands = { skip: async () => '', approve: async () => '' }
+    await printReport(undefined, false, run, false, { browse: { screen, commands } })
+    expect(err).toEqual([
+      'closed',
+      'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)',
+      `no runs in ${runsDir}`,
+    ])
+    expect(process.exitCode).toBe(1)
   })
 
   it('points a run without a report at the step that is working', async () => {

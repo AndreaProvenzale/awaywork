@@ -2,15 +2,7 @@ import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import {
-  type Check,
-  checkDetails,
-  checkLog,
-  commitsSince,
-  git,
-  noHooks,
-  type RanCheck,
-} from './checks.js'
+import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
@@ -34,18 +26,19 @@ export type StepReport = { id: string; skill: string; text: string }
  * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
  * one with no PR whose tip has awaywork's trailer is a push whose PR failed: either way the unit
  * is skipped until that branch is deleted, even where no attempts are kept. A branch the chain
- * `published` in this run is only taken.
+ * `published` in this run is only taken; the first one anything else holds comes back as `taken`.
  */
 export async function freeBranch(
   forge: Forge,
   unit: Unit,
   published: Set<string>,
-): Promise<{ branch: string } | { skip: string }> {
+): Promise<{ branch: string; taken?: string } | { skip: string }> {
   const items = unit.items.map((i) => `${i.source}:${i.key}`)
+  let taken: string | undefined
   for (let n = 1; n <= MAX_SUFFIX; n++) {
     const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
     if (published.has(branch)) continue
-    if (!(await forge.branchExists(unit.repo, branch))) return { branch }
+    if (!(await forge.branchExists(unit.repo, branch))) return { branch, taken }
     const prs = await forge.prsOn(unit.repo, branch)
     if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
       return { skip: `${branch} exists on ${unit.repo} without a PR; delete it to run again` }
@@ -54,6 +47,7 @@ export async function freeBranch(
     )
     if (tried)
       return { skip: `awaywork tried this in ${tried.url}; delete ${branch} to run it again` }
+    taken ??= branch
   }
   return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
 }
@@ -67,7 +61,7 @@ export async function freeBranch(
 export async function cutBranch(dir: string, branch: string): Promise<void> {
   await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
   await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
-  await git(dir, ...noHooks, '-c', 'core.logAllRefUpdates=false', 'checkout', '-q', '-b', branch)
+  await git(dir, '-c', 'core.logAllRefUpdates=false', 'checkout', '-q', '-b', branch)
 }
 
 export interface Publisher {
@@ -99,7 +93,7 @@ export async function publishSlice(
   if (deliver === 'report' || (await commitsSince(dir, from)) === 0) {
     const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
     if (!text)
-      return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'no commits' }
+      return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'nothing' }
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     return { kind: 'report', text }

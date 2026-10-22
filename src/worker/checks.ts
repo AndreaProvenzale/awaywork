@@ -5,7 +5,7 @@ import { bin } from '../config/paths.js'
 import { type Facts, holds } from '../core/condition.js'
 import type { Condition, Unit } from '../core/types.js'
 import { runCommand } from './setup.js'
-import { refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
+import { inClone, refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
 
 const CHECK_LOG_CHARS = 8000
 
@@ -106,10 +106,7 @@ export function createChecks(input: ChecksInput) {
 }
 
 export const git = async (dir: string, ...args: string[]) =>
-  (await execa(bin('git'), ['-C', dir, ...args])).stdout
-
-/** Flags that run no hook or fsmonitor command from a clone's config. */
-export const noHooks = ['-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false']
+  (await execa(bin('git'), [...inClone(dir), ...args])).stdout
 
 export const head = (dir: string) => git(dir, 'rev-parse', 'HEAD')
 
@@ -122,7 +119,7 @@ const refusal = (failed: string): Check => ({ output: '', failed, refused: true 
 /** `git status --porcelain` lines, one per uncommitted path; a nested repo's own config runs nothing. */
 async function uncommitted(dir: string): Promise<string[]> {
   const status = ['status', '--porcelain', '--ignore-submodules=dirty']
-  return (await git(dir, '-c', 'core.fsmonitor=false', ...status)).split('\n').filter(Boolean)
+  return (await git(dir, ...status)).split('\n').filter(Boolean)
 }
 
 /** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */

@@ -1,13 +1,14 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { allowance } from '../src/core/budget.js'
 import { planRun } from '../src/core/foreman.js'
+import { containerize, isolate } from '../src/core/launch.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, PrRef } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
@@ -22,7 +23,8 @@ import { fakeSource } from './fakes/source.js'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
-it('replays a unit on its base commit and saved context, and publishes nothing', async () => {
+/** A past run of one `fix` unit on acme/api, with `extra` config, for a replay to rebuild. */
+async function pastRun(extra = '') {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-replay-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
@@ -51,7 +53,7 @@ providers: [claude]
 sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: fix, where: { checks: failing } }
-`)
+${extra}`)
   const quota = {
     windows: [
       { name: 'five_hour', span: 'short' as const, used: 0.1, resetsAt: 1790254200 },
@@ -69,37 +71,26 @@ queue:
   const skillDirs = { user: join(root, 'none'), builtin: builtinSkillsDir }
   const providers = { claude: worker }
   const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+  const watch = () => ({ stop: async () => {} })
+  const shared = { config, configDir: root, runDir, providers, forge, ctx, watch, skillDirs }
   const report = await runUnits({
-    config,
-    configDir: root,
+    ...shared,
     plan,
     runId: '20260925-010000',
-    runDir,
     dryRun: false,
-    providers,
     sources: { github: fakeSource() },
-    forge,
-    ctx,
-    watch: () => ({ stop: async () => {} }),
-    skillDirs,
   })
   expect(report.results.map((u) => u.status)).toEqual(['done'])
+  return { root, origin, forge, prompts, replay: { ...shared, unitId: 'acme-api-1', sources: {} } }
+}
+
+it('replays a unit on its base commit and saved context, and publishes nothing', async () => {
+  const { origin, forge, prompts, replay } = await pastRun()
   const base = (await git(origin, 'rev-parse', 'HEAD')).stdout
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'moved on')
   const pushed = new Set(forge.branches)
 
-  const result = await replayUnit({
-    config,
-    configDir: root,
-    runDir,
-    unitId: 'acme-api-1',
-    providers,
-    sources: {},
-    forge,
-    ctx,
-    watch: () => ({ stop: async () => {} }),
-    skillDirs,
-  })
+  const result = await replayUnit(replay)
 
   expect(result.status).toBe('done')
   expect(result.commits).toBe(1)
@@ -109,6 +100,133 @@ queue:
   expect(await readFile(join(result.out, 'pr.md'), 'utf8')).toMatch(/^Fix/)
   expect(prompts).toHaveLength(2)
   expect(forge.branches).toEqual(pushed)
+})
+
+it('keeps the clone in a folder only you can open, its hooks removed without following a link', async () => {
+  const { root, replay } = await pastRun()
+  const hooks = join(root, 'hooks')
+  await mkdir(hooks)
+  await writeFile(join(hooks, 'post-checkout'), '#!/bin/sh\ntouch ran\n', { mode: 0o755 })
+  const planting: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await rm(join(job.dir, '.git', 'hooks'), { recursive: true, force: true })
+      await symlink(hooks, join(job.dir, '.git', 'hooks'))
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+
+  const result = await replayUnit({ ...replay, providers: { claude: planting } })
+
+  await git(result.dir, 'checkout', '-q', '-b', 'mine')
+  expect(existsSync(join(result.dir, 'ran'))).toBe(false)
+  expect(existsSync(join(hooks, 'post-checkout'))).toBe(true)
+  expect((await stat(join(replay.runDir, 'replays'))).mode & 0o777).toBe(0o700)
+  expect((await stat(dirname(result.out))).mode & 0o777).toBe(0o700)
+})
+
+it.each([
+  ['its setup fails', 'setup', /setup failed/],
+  ['its worker throws', 'worker', /^boom$/],
+  ['its worker throws after a link in .git', 'link', /^boom$/],
+] as const)(
+  'puts back the kept clone’s .git when %s, and says where the clone is',
+  async (_, how, error) => {
+    const { root, replay } = await pastRun()
+    const ran = join(root, 'ran')
+    const plant = (dir: string) =>
+      `git -C ${dir} config core.fsmonitor "touch ${ran}; true" && printf '#!/bin/sh\\ntouch ${ran}\\n' > ${dir}/.git/hooks/post-checkout && chmod +x ${dir}/.git/hooks/post-checkout`
+    const throwing: Provider = {
+      ...fakeProvider('claude'),
+      async *run(job) {
+        await execa('sh', ['-c', plant(job.dir)])
+        if (how === 'link') await symlink(root, join(job.dir, '.git', 'info', 'x'))
+        yield { type: 'log', line: 'planted' }
+        throw new Error('boom')
+      },
+    }
+    const setup = { 'acme/api': { setup: `${plant('.')} && exit 1` } }
+    const lines: string[] = []
+    const failing = {
+      ...replay,
+      config: how === 'setup' ? { ...replay.config, repos: setup } : replay.config,
+      providers: { claude: throwing },
+      ctx: { ...replay.ctx, log: (line: string) => void lines.push(line) },
+    }
+
+    await expect(replayUnit(failing as typeof replay)).rejects.toThrow(error)
+
+    const [kept = ''] = await readdir(join(replay.runDir, 'replays'))
+    const dir = join(replay.runDir, 'replays', kept, 'work')
+    expect(lines).toContain(
+      `the clone stays in ${dir}: run no git in it, not even git status; fetch its branch from your own checkout instead: git fetch ${dir} away/acme-api-1`,
+    )
+    if (how === 'link') {
+      expect(lines.at(-1)).toBe(
+        'its .git is as the worker left it: .git/info/x in the clone is a symlink',
+      )
+      return
+    }
+    expect(await readFile(join(dir, '.git', 'config'), 'utf8')).not.toContain('fsmonitor')
+    expect(existsSync(join(dir, '.git', 'hooks'))).toBe(false)
+    await git(dir, 'status')
+    await git(dir, 'checkout', '-q', '-b', 'mine')
+    expect(existsSync(ran)).toBe(false)
+  },
+)
+
+it('keeps a replay’s fresh clone yours alone under isolation: user until its first hand-over', async () => {
+  const { root, forge, replay } = await pastRun("repos: { acme/api: { setup: 'true' } }")
+  // A sudo that runs nothing and refuses to chown anything back from the worker.
+  const sudo = `#!/bin/sh\ncase "$*" in *chown*awaywork:*) exit 0;; *chown*) echo refused >&2; exit 1;; esac\n`
+  await writeFile(join(root, 'sudo'), sudo, { mode: 0o755 })
+  let clone = ''
+  let mode = 0
+  const cloning = {
+    ...forge,
+    clone: async (repo: string, branch: string, dir: string) => {
+      clone = dir
+      mode = (await stat(dir)).mode & 0o777
+      await forge.clone(repo, branch, dir)
+    },
+  }
+  const path = process.env.PATH
+  process.env.PATH = `${root}:${path}`
+  isolate('awaywork')
+  try {
+    await expect(replayUnit({ ...replay, forge: cloning })).rejects.toThrow(
+      "couldn't chown the clone, left as it is: refused",
+    )
+    expect(mode).toBe(0o700)
+  } finally {
+    isolate(undefined)
+    process.env.PATH = path
+    if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
+  }
+})
+
+it('replays in a container of the repo’s image under isolation: container, and needs one', async () => {
+  const { root, replay } = await pastRun(
+    "repos: { acme/api: { image: acme/api:dev, setup: 'true' } }",
+  )
+  const calls = join(root, 'docker.log')
+  await writeFile(join(root, 'docker'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${root}:${path}`
+  containerize(true)
+  try {
+    const result = await replayUnit(replay)
+    const log = await readFile(calls, 'utf8')
+    expect(log).toContain(`--mount type=bind,source=${result.dir},target=${result.dir}`)
+    expect(log).toMatch(/ acme\/api:dev \/bin\/sh -c true\n/)
+    const bare = { ...replay, config: { ...replay.config, repos: {} } }
+    await expect(replayUnit(bare)).rejects.toThrow(
+      'no image for acme/api: isolation: container needs one in its repos entry',
+    )
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
 })
 
 it('replays a fork unit on its saved commit after the PR moved', async () => {

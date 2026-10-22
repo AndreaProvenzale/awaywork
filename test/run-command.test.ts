@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
@@ -52,6 +52,8 @@ async function latestRun() {
 describe('run command', () => {
   beforeEach(() => {
     vi.stubEnv('GITHUB_OUTPUT', '')
+    // CI's own hosted runner has no worker user.
+    vi.stubEnv('RUNNER_ENVIRONMENT', '')
   })
 
   afterEach(() => {
@@ -66,7 +68,7 @@ describe('run command', () => {
     expect(err[0]).toMatch(/^warning: source chores: Command failed with exit code 1/)
     const { report } = await latestRun()
     expect(report).toMatch(/\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d to \S+ \S+, local time\n/)
-    expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
+    expect(report).toContain('## Warnings (1)\n\n- source chores: Command failed with exit code 1')
   })
 
   it('writes the results as report.json next to report.md', async () => {
@@ -74,6 +76,8 @@ describe('run command', () => {
     const id = (await readdir(runsDir)).sort().at(-1) ?? ''
     const json = JSON.parse(await readFile(join(runsDir, id, 'report.json'), 'utf8'))
     expect(json.runId).toBe(id)
+    // Closed to other local users, with every clone and copy in it.
+    expect((await stat(join(runsDir, id))).mode & 0o777).toBe(0o700)
   })
 
   it("hands the run's id and dir to the next steps of an Actions job", async () => {

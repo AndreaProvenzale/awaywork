@@ -167,7 +167,7 @@ describe('publish', () => {
     await body('Title')
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: 'no commits',
+      reason: 'nothing',
     })
     await commit('first')
     await body('')
@@ -205,6 +205,7 @@ describe('publish', () => {
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'pushed',
       branch: 'feature-1',
+      url: 'https://github.com/acme/api/pull/1',
       commits: 1,
       text: 'Fixed the flaky test.',
       head: expect.stringMatching(/^[0-9a-f]{40}$/),
@@ -274,6 +275,16 @@ describe('publish', () => {
       reason: '4 commits include a merge, not pushed',
       unpublished: true,
     })
+  })
+
+  it("fetches from the clone's own .git, never a repo at the clone's root", async () => {
+    await commit('first')
+    await body('Title')
+    await execa('sh', ['-c', 'cp -R .git/* .'], { cwd: dir })
+    await rm(join(dir, '.git/HEAD'))
+    await expect(publish(unit(), dir, fakeForge(), 'r1', start)).rejects.toThrow(
+      'does not appear to be a git repository',
+    )
   })
 
   it("runs nothing the clone's config names, and diffs only the new commits", async () => {

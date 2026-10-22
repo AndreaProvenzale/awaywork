@@ -63,6 +63,29 @@ describe('config', () => {
     })
   })
 
+  it('defaults fallback turns, inheriting top-level caps an override leaves out', () => {
+    const fallbacks = (budget: string, override: string) =>
+      parseConfig(
+        `providers: [claude: { budget: { fallback: ${override} } }, codex]\nsources: { github: { repos: [acme/api] } }\nbudget: { fallback: ${budget} }\n`,
+      ).providers.map((p) => p.budget.fallback)
+    expect(fallbacks('{ units: 2 }', '{ units: 1 }')).toEqual([
+      { units: 1, turns: 60 },
+      { units: 2, turns: 60 },
+    ])
+    expect(fallbacks('{ units: 2, turns: 30 }', '{ units: 1 }')).toEqual([
+      { units: 1, turns: 30 },
+      { units: 2, turns: 30 },
+    ])
+    expect(fallbacks('{ units: 2, turns: 30 }', '{ units: 1, turns: 10 }')).toEqual([
+      { units: 1, turns: 10 },
+      { units: 2, turns: 30 },
+    ])
+    expect(fallbacks('{ units: 2, turns: 30 }', '{ turns: 10 }')).toEqual([
+      { units: 2, turns: 10 },
+      { units: 2, turns: 30 },
+    ])
+  })
+
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
@@ -140,6 +163,14 @@ describe('config', () => {
     const rule = (order: string) => `${minimal}queue: [{ skill: implement, order: ${order} }]`
     expect(parseConfig(rule('oldest')).queue?.[0]?.order).toBe('oldest')
     expect(problems(rule('random'))).toEqual([expect.stringContaining('queue[0].order')])
+  })
+
+  it('needs an image for every repo under isolation: container', () => {
+    const repos = 'repos: { acme/api: { setup: npm ci }, acme/web: { image: acme/web:dev } }'
+    expect(problems(`${minimal}isolation: container\n${repos}`)).toEqual([
+      'repos.acme/api.image: required with isolation: container: the image its units run in',
+    ])
+    expect(problems(`${minimal}isolation: user\n${repos}`)).toEqual([])
   })
 
   it('rejects unknown and unconfigured providers and sources', () => {

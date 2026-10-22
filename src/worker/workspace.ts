@@ -1,11 +1,13 @@
-import { constants, existsSync } from 'node:fs'
+import { type CopyOptions, constants, existsSync } from 'node:fs'
 import {
   appendFile,
+  chmod,
   cp,
   type FileHandle,
   lstat,
   mkdir,
   open,
+  readdir,
   readFile,
   realpath,
   rm,
@@ -17,6 +19,7 @@ import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
+import { gitUnrestored, markGitRestored } from '../core/launch.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
@@ -32,8 +35,9 @@ export const outputFile: Record<Deliver, string> = {
 /** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills']
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
-/** Credentials that aren't tokens: askpass helpers and git config set through the env. */
+/** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
 const credentialPlumbing = [
+  'SSH_AUTH_SOCK',
   'SSH_ASKPASS',
   'GIT_ASKPASS',
   'GIT_CONFIG_PARAMETERS',
@@ -41,9 +45,26 @@ const credentialPlumbing = [
 ]
 const gitConfigEntry = /^GIT_CONFIG_(KEY|VALUE)_\d+$/
 
+/** Flags that run no hook a worker left in `.git/hooks`, nor any fsmonitor command, nor git in a submodule. */
+const noHooks = [
+  'core.hooksPath=/dev/null',
+  'core.fsmonitor=false',
+  'submodule.recurse=false',
+  'diff.submodule=short',
+].flatMap((entry) => ['-c', entry])
+
+/**
+ * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
+ * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
+ */
+export function inClone(dir: string): string[] {
+  if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
+  return ['-C', dir, '--git-dir=.git', ...noHooks]
+}
+
 interface WorkspaceInput {
   unit: Unit
-  /** The clone; it must not exist yet. */
+  /** The clone; it must not exist yet, or be empty. */
   dir: string
   config: Config
   /** Instruction paths in the config resolve against it; the user's skills are its `skills/`. */
@@ -98,13 +119,14 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     const fork = w.replay && unit.fork ? { number: unit.fork.number } : unit.fork
     await w.forge.clone(unit.repo, unit.base, dir, fork)
     const from = w.replay ? [w.replay.commit] : []
-    await execa(bin('git'), ['-C', dir, 'checkout', '-q', '-b', unit.branch, ...from])
+    await execa(bin('git'), [...inClone(dir), 'checkout', '-q', '-b', unit.branch, ...from])
     // Linked or not, a branch's own `.away` could lead awaywork's writes and deletes anywhere.
     if (await lstat(join(dir, WORK_DIR)).catch(() => undefined))
       throw new Error(`${WORK_DIR} in the clone comes from the branch, not awaywork`)
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
+  if (!w.reuse) await writeGitConfig(dir, w.ctx.env)
 
   const { user, builtin } = w.skillDirs ?? {
     user: skillsDirIn(w.configDir),
@@ -167,18 +189,51 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 /**
  * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
  * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * whose index, which git writes through a symlink, is one.
+ * holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
   const git = join(dir, '.git')
   if (!(await lstat(git)).isDirectory()) throw new Error('.git in the clone is not a directory')
-  await refuseSymlinks(dir, ['.git/index'])
+  for (const entry of await readdir(git, { recursive: true, withFileTypes: true })) {
+    const path = relative(git, join(entry.parentPath, entry.name))
+    // awaywork's git runs no hook and writes none, so a setup that links its hooks is fine.
+    if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
+      throw new Error(`.git/${path} in the clone is a symlink`)
+  }
   for (const path of ['commondir', 'objects/info/alternates'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
   await rm(join(git, 'config'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
+  markGitRestored(dir)
 }
+
+/**
+ * Writes the global git config of the model and the checks: the commit identity and git-lfs's filter as
+ * the developer's git resolves them in the clone, and none of their signing, credential helpers or hooks.
+ */
+async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const read = (...args: string[]) =>
+    execa(bin('git'), [...inClone(dir), 'config', '--null', ...args], {
+      env,
+      extendEnv: false,
+      reject: false,
+    })
+  const entries: string[][] = []
+  for (const key of ['user.name', 'user.email']) {
+    const { stdout } = await read('--get', key)
+    if (stdout) entries.push([key, stdout.slice(0, -1)])
+  }
+  const lfs = await read('--get-regexp', '^filter\\.lfs\\.')
+  for (const entry of lfs.stdout.split('\0').filter(Boolean)) entries.push(entry.split(/\n(.*)/s))
+  const file = gitConfigFile(dir)
+  await writeFile(file, '', { flag: 'wx' })
+  for (const [key = '', value = 'true'] of entries)
+    await execa(bin('git'), ['config', '--file', file, '--add', key, value])
+}
+
+const gitConfigFile = (dir: string) => join(dir, WORK_DIR, 'gitconfig')
 
 /** Throws when a symlink, which a worker may have planted, sits anywhere on one of `paths` in the clone. */
 export async function refuseSymlinks(dir: string, paths: string[]): Promise<void> {
@@ -229,6 +284,22 @@ export async function writeOutput(path: string, text: string, append = false): P
 /** A `cp` filter that leaves symlinks behind, so nothing later writes through one. */
 export const notSymlink = async (src: string) => !(await lstat(src)).isSymbolicLink()
 
+/**
+ * Copies what repo code left in the clone out of it, without a symlink, nor the setuid or setgid bit
+ * a container can set on a file it writes as you, which would otherwise sit in your run dir.
+ */
+export async function copyOut(src: string, dest: string, options: CopyOptions = {}): Promise<void> {
+  try {
+    await cp(src, dest, { recursive: true, filter: notSymlink, ...options })
+  } finally {
+    for (const path of await readdir(dest, { recursive: true }).catch(() => [])) {
+      const stats = await lstat(join(dest, path))
+      if (!stats.isSymbolicLink() && stats.mode & 0o6000)
+        await chmod(join(dest, path), stats.mode & 0o1777)
+    }
+  }
+}
+
 /** The env of setup: no forge token, none of `withheld`, and gh without its config or keyring login. */
 export function commandEnv(
   env: NodeJS.ProcessEnv,
@@ -245,7 +316,7 @@ export function commandEnv(
   }
 }
 
-/** The env of the model and the checks: `commandEnv`'s without the credential plumbing. */
+/** The env of the model and the checks: `commandEnv`'s without the credential plumbing, on awaywork's global git config and no system one. */
 export function workerEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
@@ -254,7 +325,11 @@ export function workerEnv(
   const kept = Object.entries(commandEnv(env, dir, withheld)).filter(
     ([name]) => !credentialPlumbing.includes(name) && !gitConfigEntry.test(name),
   )
-  return Object.fromEntries(kept)
+  return {
+    ...Object.fromEntries(kept),
+    GIT_CONFIG_GLOBAL: gitConfigFile(dir),
+    GIT_CONFIG_NOSYSTEM: '1',
+  }
 }
 
 /** Every secret the config names, for `workerEnv` to withhold. */
@@ -350,10 +425,8 @@ async function copySkill(dir: string, source: string, target: string) {
 
 /** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
 async function hideFromGit(dir: string, paths: string[]): Promise<void> {
-  // In a chain's clone, the config is a worker's: run no fsmonitor command from it.
-  const git = ['-C', dir, '-c', 'core.fsmonitor=false']
-  const { stdout } = await execa(bin('git'), [...git, 'ls-files', '-z', '--', ...paths])
-  await execa(bin('git'), [...git, 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  const { stdout } = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--', ...paths])
+  await execa(bin('git'), [...inClone(dir), 'update-index', '-z', '--skip-worktree', '--stdin'], {
     input: stdout,
   })
 }

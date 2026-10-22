@@ -1,4 +1,5 @@
 import { type Allowance, pct } from '../core/budget.js'
+import { asWorker } from '../core/launch.js'
 import type { Job, Provider, Quota } from '../core/types.js'
 import { startWatchdog, type Watchdog } from './watchdog.js'
 
@@ -63,19 +64,26 @@ export async function runWorker(
     )
 
   const result: WorkerResult = { status: 'failed', turns: 0 }
+  const { login } = provider
   try {
-    for await (const event of provider.run(job, abort.signal)) {
-      if (event.type === 'log') log(event.line)
-      if (event.type === 'quota') {
-        result.quota = event.quota
-        const limit = overLimit(event.quota, allowance)
-        if (limit) stop(limit.status, limit.reason)
-      }
-      if (event.type === 'done') {
-        result.turns = event.turns
-        if (event.ok) result.status = 'done'
-      }
-    }
+    await asWorker(
+      job.dir,
+      async () => {
+        for await (const event of provider.run(job, abort.signal)) {
+          if (event.type === 'log') log(event.line)
+          if (event.type === 'quota') {
+            result.quota = event.quota
+            const limit = overLimit(event.quota, allowance)
+            if (limit) stop(limit.status, limit.reason)
+          }
+          if (event.type === 'done') {
+            result.turns = event.turns
+            if (event.ok) result.status = 'done'
+          }
+        }
+      },
+      login && ((home) => login(home, log)),
+    )
   } finally {
     signal?.removeEventListener('abort', onAbort)
     clearTimeout(windowEnd)

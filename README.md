@@ -20,30 +20,33 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 
 ```
-$ awaywork plan
-Queue
-  #1  fix     source=github type=pr mine=true checks=failing
-  #2  fix     source=github type=pr mine=true unresolved_threads!=0
-  #3  fix     source=github type=pr mine=true ours=true my_unresolved_threads!=0
-  #4  review  source=github type=pr review_requested=true trusted=true
-
+$ awaywork plan | cat
 Providers
-  provider  window     used  ceiling  set by  resets in  session / stop at
-  claude    seven_day  36%   54%      pacing  3 runs     2% / 90%
-    other limits: reserve cap 90%
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
+    other limits: pacing 90%
 
-Units
-     unit        repo      rule  skill              provider  deliver   branch
-  1  acme-api-1  acme/api  #1    fix (built-in)     claude    draft_pr  away/acme-api-1
-     github acme/api#1: Add rate limits
-  2  acme-api-2  acme/api  #4    review (built-in)  claude    report    away/acme-api-2
-     github acme/api#2: Cache invalidation
+Units 3
+     item   rule  skill              provider  deliver   title
+  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+     + api#5: same feature, matched #3
+  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
+
+Needs you 1
+  T-4  no repo: no linked PR or repo field
+       Export invoices as CSV
+
+Skipped 2: 1 no_rule, 1 over_cap
+
+awaywork plan --skipped [kind]  lists them
+awaywork plan --why <key>       says why an item is planned or not
 ```
 
 Looks sane? Run one unit for real:
 
 ```sh
-awaywork run --unit acme-api-1
+awaywork run --unit api#1
 ```
 
 Then schedule it for when you're away:
@@ -54,17 +57,34 @@ awaywork schedule install    # asks: this machine (launchd, systemd or cron) or 
 
 GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists.
 
-Next morning:
+Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
 
 ```
-$ awaywork report
-| # | Unit       | Skill  | Provider | Status        | Result                                  |
-|---|------------|--------|----------|---------------|-----------------------------------------|
-| 1 | acme-api-1 | fix    | claude   | done, 5 turns | github.com/acme/api/pull/42 (1 commits) |
-| 2 | acme-api-2 | review | claude   | done          | report below                            |
+☾ >_ awaywork  You're away, your agents work
 
-- claude: seven_day 36% to 45%, ceiling 54%; session 2% to 10%, stop at 90%
+Run 20261019-220012: 1 draft PR, 1 report, 3 units
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
+claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+
+▾ Needs you 1
+  T-4  no repo: no linked PR or repo field
+       Export invoices as CSV
+
+▾ Units 3
+     item   skill   status          result
+  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
+     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
+  2  web#3  fix     done, 9 turns   nothing
+     No code changes: the red check is the visual diff job, which fails on main too since #212.
+  3  api#2  review  done, 6 turns   report, verdict approve
+     Approve: the session cache keys on the user id and expires with the token.
+
+▸ Skipped 2: 1 no_rule, 1 over_cap
+
+⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
 ```
+
+Piped or in CI, `plan` and `report` print plain text, like the `plan` above.
 
 **Docs:** https://andreaprovenzale.github.io/awaywork/ · **Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
 
@@ -107,7 +127,7 @@ Early in the week that's a small slice, and it gets greedier as the reset gets c
 
 ## The paranoid bit
 
-- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. It's not a sandbox, though: the agent runs as you, with your ssh agent, and can read what you can.
+- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes, merges or comments, and it never touches anyone else's branch.
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.

@@ -1,3 +1,4 @@
+import { existsSync, mkdtempSync } from 'node:fs'
 import {
   copyFile,
   mkdir,
@@ -5,6 +6,7 @@ import {
   readdir,
   readFile,
   rm,
+  stat,
   symlink,
   utimes,
   writeFile,
@@ -13,17 +15,25 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it } from 'vitest'
-import { formatPlan } from '../src/cli/format.js'
+import { formatPlan, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun } from '../src/core/foreman.js'
-import { formatReport, type RunReport, runLine, summarize } from '../src/core/report.js'
+import {
+  asWorker,
+  contain,
+  containerize,
+  isolate,
+  launch,
+  lostToWorker,
+} from '../src/core/launch.js'
+import { formatReport, type RunReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
-import type { Item, Provider, Source } from '../src/core/types.js'
+import type { Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -45,6 +55,9 @@ const quota = {
 }
 const week = reset * 1000 - 3 * 24 * 60 * 60 * 1000
 
+/** What a slice publishes from a clone whose `.git` the restore refused. */
+const refused = { kind: 'none', reason: "the clone's .git was refused", unpublished: true }
+
 const issue = (n: number, fields: Item['fields'] = {}) =>
   fakeItem({
     source: 'github',
@@ -61,6 +74,7 @@ async function originForge(root: string) {
   await git(origin, 'branch', 'feature-1')
   const opened: { head: string; base: string; body: string }[] = []
   const pushedOnto: string[] = []
+  const cloneModes: number[] = []
   const fake = fakeForge()
   // The PRs on each branch as the forge lists them, with the footer it adds.
   const footers: Record<string, string> = {}
@@ -78,6 +92,7 @@ async function originForge(root: string) {
         : [],
     clone: async (_repo: string, branch: string, dir: string) => {
       await execa(bin('git'), ['clone', '-q', ...(branch ? ['--branch', branch] : []), origin, dir])
+      cloneModes.push((await stat(dir)).mode & 0o777)
     },
     push: async (dir: string, branch: string, opts: { repo: string }) => {
       await fake.push(dir, branch, opts)
@@ -102,7 +117,7 @@ async function originForge(root: string) {
       return `https://example.com/${repo}/pull/${head}`
     },
   }
-  return { origin, opened, pushedOnto, forge }
+  return { origin, opened, pushedOnto, cloneModes, forge }
 }
 
 /**
@@ -168,6 +183,8 @@ async function run(
     attempts?: Attempts
     /** Files earlier runs left, by path in the runs dir. */
     earlier?: Record<string, string>
+    /** Branches something else already holds on the remote. */
+    taken?: string[]
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -176,6 +193,8 @@ async function run(
     await writeFile(join(root, file), text)
   }
   const env = await originForge(root)
+  for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
+  const logged: string[] = []
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
   )
@@ -197,7 +216,7 @@ async function run(
     providers: { claude: provider },
     sources: { github: fakeSource() as Source },
     forge: env.forge,
-    ctx: { env: {}, log: () => {} },
+    ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
@@ -206,7 +225,7 @@ async function run(
     r.status,
     r.outcome ?? r.made ?? r.reason,
   ])
-  return { ...env, plan, report, rows }
+  return { ...env, plan, report, rows, logged }
 }
 
 it('runs a chain with a loop in one clone and opens one draft PR with every step in it', async () => {
@@ -407,7 +426,7 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     worker({}, { idle: ['acme-api-1'] }),
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-implement', 'skipped', 'acme-api-1 wrote no report'],
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
@@ -427,7 +446,7 @@ it('opens a draft PR per slice: a stacked one on -2, on the slice before as push
   const prompts: Record<string, string> = {}
   const bodies: Record<string, string> = {}
   const hooked = join(await mkdtemp(join(tmpdir(), 'awaywork-hook-')), 'log')
-  const { rows, opened, origin, report, plan, forge } = await run(
+  const { rows, opened, origin, report, plan, forge, logged } = await run(
     `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_PR_URL" >> ${hooked}' }
 queue:
   - skill: implement
@@ -441,6 +460,14 @@ queue:
     ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
     ['acme-api-1-review', 'done', 'a report'],
     ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  expect(logged).toEqual([
+    'acme-api-1: implement on claude',
+    'acme-api-1: done',
+    'acme-api-1-review: review on claude',
+    'acme-api-1-review: done',
+    'acme-api-1-fix: fix on claude',
+    'acme-api-1-fix: done',
   ])
   const published = [
     'Add rate limits',
@@ -476,6 +503,15 @@ queue:
   const files = await git(origin, 'ls-tree', '--name-only', 'away/acme-api-1-2')
   expect(files.stdout.split('\n')).toEqual(['acme-api-1-fix.txt', 'acme-api-1.txt'])
 
+  expect(report.results[2]).toMatchObject({
+    summary: 'Done.',
+    files: {
+      log: 'units/acme-api-1/3-fix/worker.log',
+      sliceBody: 'units/acme-api-1/out-2/pr.md',
+      sliceDiff: 'units/acme-api-1/out-2/diff.patch',
+    },
+  })
+
   expect(seen['acme-api-1-fix']).toEqual(['pr.md', 'report.md'])
   expect(bodies['acme-api-1-fix']).toBe(published)
   expect(prompts['acme-api-1-fix']).toContain(
@@ -498,17 +534,20 @@ queue:
   const text = formatReport(report)
   expect(text).toContain(
     [
-      `| 1 | acme-api-1 | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
-      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commits) |`,
-      '|  |   └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  |   └ acme-api-1-review | review | claude | done, 1 turns | a report |',
-      `|  | └ slice 2 | fix | claude | done, 1 turns | ${pull('away/acme-api-1-2')} (1 commits) |`,
-      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turns | 1 commit |',
+      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commit); ${pull('away/acme-api-1-2')} (1 commit) |`,
+      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commit) |`,
+      '|  |   └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  |   └ acme-api-1-review | review | claude | done, 1 turn | a report |',
+      `|  | └ slice 2 | fix | claude | done, 1 turn | ${pull('away/acme-api-1-2')} (1 commit) |`,
+      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turn | 1 commit |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 2 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 2 draft PRs, 0 reports')
+  expect(runLine('r1', text.replaceAll('(1 commit)', '(1 commits)'))).toBe(
+    'r1  1 unit, 2 draft PRs, 0 reports',
+  )
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run r1: 2 draft PRs, 0 reports, 1 units',
+    'Run r1: 2 draft PRs, 0 reports, 1 unit',
   )
   expect((await readFile(hooked, 'utf8')).split('\n')).toEqual([
     `acme-api-1 ${pull('away/acme-api-1')}`,
@@ -524,8 +563,28 @@ queue:
   expect(recordAttempts({}, report)['github:acme/api#1']?.failed).toBeUndefined()
 })
 
+it("logs a slice passing over a branch that isn't its chain's", async () => {
+  const { rows, logged } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+    { taken: ['away/acme-api-1-2'] },
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-3', 1)],
+  ])
+  expect(logged).toEqual([
+    'acme-api-1: implement on claude',
+    'acme-api-1: done',
+    'acme-api-1-fix: away/acme-api-1-2 is taken on acme/api, using away/acme-api-1-3',
+    'acme-api-1-fix: fix on claude',
+    'acme-api-1-fix: done',
+  ])
+})
+
 it('prepares a stacked slice on its own branch in a dry run', async () => {
-  const { report } = await run(
+  const { report, logged } = await run(
     'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
     [issue(1)],
     worker(),
@@ -535,6 +594,7 @@ it('prepares a stacked slice on its own branch in a dry run', async () => {
     ['acme-api-1', 'prepared', 'away/acme-api-1'],
     ['acme-api-1-fix', 'prepared', 'away/acme-api-1-2'],
   ])
+  expect(logged).toEqual(['acme-api-1: implement on claude', 'acme-api-1-fix: fix on claude'])
 })
 
 it('publishes a stacked slice on the branch its own type names', async () => {
@@ -553,10 +613,7 @@ it('publishes a stacked slice on the branch its own type names', async () => {
   ])
 })
 
-it('cuts slice 2 in the clone with nothing over its base, through no symlink a worker planted in .git', async () => {
-  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
-  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
-  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+it('cuts slice 2 in the clone with nothing over its base', async () => {
   const over: string[] = []
   const base = worker()
   const provider: Provider = {
@@ -564,6 +621,29 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     async *run(job, signal) {
       if (job.unit.id === 'acme-api-1-fix')
         over.push((await git(job.dir, 'log', '--oneline', 'away/acme-api-1..HEAD')).stdout)
+      yield* base.run(job, signal)
+    },
+  }
+  const { rows } = await run(
+    'queue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n',
+    [issue(1)],
+    provider,
+  )
+  expect(rows).toEqual([
+    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
+    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+  ])
+  expect(over).toEqual([''])
+})
+
+it('ends the chain on a symlink a worker planted in .git, writing nothing through it', async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-victim-'))
+  const planted = { FETCH_HEAD: join(outside, 'fetch'), 'logs/HEAD': join(outside, 'reflog') }
+  for (const victim of Object.values(planted)) await writeFile(victim, 'untouched\n')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
       const events = []
       for await (const event of base.run(job, signal)) events.push(event)
       if (job.unit.id === 'acme-api-1')
@@ -580,12 +660,17 @@ it('cuts slice 2 in the clone with nothing over its base, through no symlink a w
     provider,
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', pr('away/acme-api-1-2', 1)],
+    ['acme-api-1', 'error', refused],
+    [
+      'acme-api-1-fix',
+      'skipped',
+      expect.stringMatching(
+        /^acme-api-1 error: \.git\/(FETCH_HEAD|logs\/HEAD) in the clone is a symlink$/,
+      ),
+    ],
   ])
   for (const victim of Object.values(planted))
     expect(await readFile(victim, 'utf8')).toBe('untouched\n')
-  expect(over).toEqual([''])
 })
 
 it('ends the chain on a .git/index a worker symlinked, writing nothing through it', async () => {
@@ -618,9 +703,39 @@ it('ends the chain on a .git/index a worker symlinked, writing nothing through i
   )
   expect(await readFile(victim)).toEqual(planted)
   expect(rows).toEqual([
-    ['acme-api-1', 'error', '.git/index in the clone is a symlink'],
+    ['acme-api-1', 'error', refused],
     ['acme-api-1-fix', 'skipped', 'acme-api-1 error: .git/index in the clone is a symlink'],
   ])
+})
+
+it('runs no hook a worker left in .git/hooks when its own git writes the index', async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      const hook = join(job.dir, '.git', 'hooks', 'post-index-change')
+      await writeFile(hook, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\n`, { mode: 0o755 })
+      // Stat-dirty, so `git status` refreshes the index and writes it.
+      const later = new Date(Date.now() + 60_000)
+      await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { opened } = await run(
+      "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened.map((pr) => pr.head)).toEqual(['away/acme-api-1'])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
 })
 
 it("runs no check in a clone whose .git it couldn't restore, so a planted filter never runs", async () => {
@@ -652,7 +767,7 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
     )
     expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
     expect(rows).toEqual([
-      ['acme-api-1', 'error', '.git/objects/info/alternates in the clone points elsewhere'],
+      ['acme-api-1', 'error', refused],
       [
         'acme-api-1-fix',
         'skipped',
@@ -662,6 +777,218 @@ it("runs no check in a clone whose .git it couldn't restore, so a planted filter
   } finally {
     delete process.env.ZZ_SECRET
   }
+})
+
+it.each([
+  ['links .git to a repo of its own', 'link'],
+  ['plants an empty alternates', 'alternates'],
+])('publishes nothing and runs no git in a refused clone whose worker %s', async (_, how) => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      // A partial clone whose promisor "fetch" is the worker's command, run by any git missing an object.
+      const repo = how === 'link' ? await mkdtemp(join(tmpdir(), 'awaywork-planted-')) : job.dir
+      const cmd = join(dirname(job.dir), 'cmd')
+      await writeFile(cmd, `#!/bin/sh\necho "ran $ZZ_SECRET" >> ${marker}\nexit 1\n`, {
+        mode: 0o755,
+      })
+      if (how === 'link') {
+        await git(repo, 'init', '-q')
+        await git(repo, 'commit', '-q', '--allow-empty', '-m', 'planted')
+      } else await writeFile(join(repo, '.git', 'objects', 'info', 'alternates'), '')
+      for (const [key, value] of [
+        ['core.repositoryformatversion', '1'],
+        ['extensions.partialClone', 'origin'],
+        ['remote.origin.promisor', 'true'],
+        ['remote.origin.uploadpack', cmd],
+      ])
+        await git(repo, 'config', key as string, value as string)
+      if (how === 'link') {
+        await rm(join(job.dir, '.git'), { recursive: true, force: true })
+        await symlink(join(repo, '.git'), join(job.dir, '.git'))
+      } else await writeFile(join(repo, '.git', 'HEAD'), `${'1'.repeat(40)}\n`)
+      yield* events
+    },
+  }
+  process.env.ZZ_SECRET = 'hunter2'
+  try {
+    const { rows, opened } = await run('queue: [{ skill: implement }]\n', [issue(1)], provider)
+    expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+    expect(opened).toEqual([])
+    expect(rows).toEqual([['acme-api-1', 'error', refused]])
+  } finally {
+    delete process.env.ZZ_SECRET
+  }
+})
+
+it('never lets git find a repo above the clone, where a worker can plant one', async () => {
+  const marker = join(await mkdtemp(join(tmpdir(), 'awaywork-marker-')), 'marker')
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    async *run(job, signal) {
+      const events = []
+      for await (const event of base.run(job, signal)) events.push(event)
+      if (job.unit.id === 'acme-api-1') {
+        // The clone's repo moves up a level; an empty `.git` stays, so git would walk up to it.
+        const planted = join(dirname(job.dir), '.git')
+        await rm(planted, { recursive: true, force: true })
+        await execa('mv', [join(job.dir, '.git'), planted])
+        await mkdir(join(job.dir, '.git'))
+        const config = (...args: string[]) =>
+          execa(bin('git'), ['--git-dir', planted, 'config', ...args])
+        await config('core.worktree', job.dir)
+        await config('filter.evil.clean', `sh -c 'echo ran >> ${marker}; cat'`)
+        await writeFile(join(job.dir, '.gitattributes'), '* filter=evil\n')
+        const later = new Date(Date.now() + 60_000)
+        await utimes(join(job.dir, 'acme-api-1.txt'), later, later)
+      }
+      yield* events
+    },
+  }
+  const { rows } = await run(
+    "repos: { acme/api: { verify: 'true' } }\nqueue: [{ skill: implement, then: [{ skill: fix, stack: true }] }]\n",
+    [issue(1)],
+    provider,
+  )
+  expect(await readFile(marker, 'utf8').catch(() => 'no marker')).toBe('no marker')
+  expect(rows[0]?.slice(0, 2)).toEqual(['acme-api-1', 'error'])
+  expect(rows[0]?.[2]).toContain("not a git repository: '.git'")
+})
+
+it('ends the chain on a clone it couldn’t take back from the worker user, and touches it no more', async () => {
+  // A sudo that runs nothing and refuses to chown anything back from the worker.
+  const fakes = await mkdtemp(join(tmpdir(), 'awaywork-sudo-'))
+  const sudo = `#!/bin/sh\ncase "$*" in *chown*awaywork:*) exit 0;; *chown*) echo refused >&2; exit 1;; esac\n`
+  await writeFile(join(fakes, 'sudo'), sudo, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${fakes}:${path}`
+  isolate('awaywork')
+  const base = worker()
+  let clone = ''
+  const provider: Provider = {
+    ...base,
+    run: (job, signal) => {
+      clone = job.dir
+      return base.run(job, signal)
+    },
+  }
+  try {
+    const { report, opened, cloneModes } = await run(
+      'queue: [{ skill: implement, then: [fix] }]\n',
+      [issue(1)],
+      provider,
+    )
+    // Yours alone until its first hand-over.
+    expect(cloneModes).toEqual([0o700])
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', "couldn't chown the clone, left as it is: refused"],
+      ['skipped', "acme-api-1 error: couldn't chown the clone, left as it is: refused"],
+    ])
+    expect(report.results[0]?.outcome?.kind).toBe('none')
+    expect(opened).toEqual([])
+    expect(existsSync(join(clone, 'acme-api-1.txt'))).toBe(true)
+  } finally {
+    isolate(undefined)
+    process.env.PATH = path
+    if (clone.startsWith('/tmp/awaywork-')) await rm(clone, { recursive: true, force: true })
+  }
+})
+
+it('runs no unit in a repo without an image under isolation: container', async () => {
+  containerize(true)
+  try {
+    const { report } = await run('queue: [{ skill: implement }]\n', [issue(1)], worker())
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['skipped', 'no image for acme/api: isolation: container needs one in its repos entry'],
+    ])
+  } finally {
+    containerize(false)
+  }
+})
+
+/** A docker on PATH that runs `script`, at one path for every test, since bin looks it up once. */
+const fakeDocker = join(mkdtempSync(join(tmpdir(), 'awaywork-docker-')), 'docker')
+
+it.each([
+  // Runs nothing and always lists the container as running.
+  ['lists it as still running', 'case "$1" in ps) echo 0123abcd;; esac'],
+  ['never answers', 'case "$1" in rm|ps) exec sleep 600;; esac'],
+])('ends the chain on a clone whose container it couldn’t remove: docker %s', async (_, script) => {
+  await writeFile(fakeDocker, `#!/bin/sh\n${script}\n`, { mode: 0o755 })
+  const path = process.env.PATH
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
+  let clone = ''
+  const base = worker()
+  const provider: Provider = {
+    ...base,
+    run: (job, signal) => {
+      clone = job.dir
+      return base.run(job, signal)
+    },
+  }
+  try {
+    const { report, opened } = await run(
+      "repos: { acme/api: { image: acme/api:dev, setup: 'true' } }\nqueue: [{ skill: implement, then: [fix] }]\n",
+      [issue(1)],
+      provider,
+    )
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', "couldn't remove the phase's container, left the clone as it is"],
+      [
+        'skipped',
+        "acme-api-1 error: couldn't remove the phase's container, left the clone as it is",
+      ],
+    ])
+    expect(opened).toEqual([])
+    expect(clone).toBe('')
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
+})
+
+/** Runs one phase of a fresh clone that starts a container under `script`'s docker, and logs docker's subcommands. */
+async function containerPhase(script: string, login?: Login) {
+  const log = `${fakeDocker}.log`
+  await writeFile(fakeDocker, `#!/bin/sh\necho "$1" >> ${log}\n${script}\n`, { mode: 0o755 })
+  await rm(log, { force: true })
+  const path = process.env.PATH
+  process.env.PATH = `${dirname(fakeDocker)}:${path}`
+  containerize(true, 500)
+  const dir = await mkdtemp(join(tmpdir(), 'awaywork-clone-'))
+  contain(dir, { image: 'acme/api:dev', secrets: [] })
+  try {
+    const phase = asWorker(dir, () => launch('true', [], { cwd: dir, reject: false }), login)
+    const error = await phase.then(
+      () => undefined,
+      (e: Error) => e.message,
+    )
+    return { dir, error, calls: (await readFile(log, 'utf8')).split('\n').filter(Boolean) }
+  } finally {
+    containerize(false)
+    process.env.PATH = path
+  }
+}
+
+it('loses a clone whose container it couldn’t remove before saving its login back, so a save that throws can’t keep it', async () => {
+  const login: Login = async () => async () => {
+    throw new Error('the lock is stuck')
+  }
+  const { dir, error } = await containerPhase('case "$1" in ps) echo 0123abcd;; esac', login)
+  expect(error).toBe('the lock is stuck')
+  expect(lostToWorker(dir)).toBe(true)
+})
+
+it('asks docker about a container once when its ps never answers, not again for each removal', async () => {
+  const { error, calls } = await containerPhase('case "$1" in ps) exec sleep 600;; esac')
+  expect(error).toBe("couldn't remove the phase's container, left the clone as it is")
+  expect(calls.filter((c) => c === 'ps')).toHaveLength(1)
 })
 
 it('starts a slice at a loop with stack, and diffs `changed` from where the chain started', async () => {
@@ -719,7 +1046,7 @@ it('ends the chain when a stacked slice starts with a step that commits nothing'
   )
   expect(rows).toEqual([
     ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
   ])
   expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])
@@ -776,15 +1103,20 @@ queue: [{ skill: implement, then: [review, { skill: fix, stack: true }] }]
   // A capped chain left slices out, so none of its PRs closes the issue.
   expect(opened.map((o) => o.body.includes('Closes'))).toEqual([false, true, false])
   expect(formatReport(report)).toContain(
-    '| 2 | acme-api-2 | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
+    '| 2 | [api#2 Fix the thing](https://example.com/1) | implement → review | claude | done, 2 turns (stack fix: over the cap: limits.units is 3) |',
   )
 })
 
 it('refuses a stack on a step that reports, or after steps that all report', async () => {
   const reasons = async (rule: string) =>
     (await run(`queue: [${rule}]\n`, [issue(1)], worker())).plan.skipped.map((s) => s.reason)
-  expect(await reasons('{ skill: implement, then: [{ skill: review, stack: true }] }')).toEqual([
-    'stack on review: it reports, so its draft PR would have nothing in it',
+  const refused = await run(
+    'queue: [{ skill: implement, then: [{ skill: review, stack: true }] }]\n',
+    [issue(1)],
+    worker(),
+  )
+  expect(refused.plan.skipped.map((s) => [s.kind, s.reason])).toEqual([
+    ['unstackable', 'stack on review: it reports, so its draft PR would have nothing in it'],
   ])
   expect(
     await reasons(

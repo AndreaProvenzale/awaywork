@@ -1,7 +1,8 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { killGroupWhenDone } from '../core/group.js'
+import { awaitGroup, killGroupWhenDone } from '../core/group.js'
+import { launch } from '../core/launch.js'
 import type { Provider, Quota } from '../core/types.js'
 
 const TIMEOUT_MS = 60_000
@@ -53,6 +54,13 @@ export function isCommandProvider(cfg: unknown): cfg is CommandProviderConfig {
   return typeof cfg === 'object' && cfg !== null && 'command' in cfg
 }
 
+/** The binary a command runs: its first word that doesn't set a variable. */
+export const commandBinary = (command: string) =>
+  command
+    .trim()
+    .split(/\s+/)
+    .find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? ''
+
 /** A provider that runs the user's own command: their CLI and login, no live rate-limit events. */
 export function commandProvider(
   id: string,
@@ -70,8 +78,7 @@ export function commandProvider(
       detached: true,
     })
     // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-    killGroupWhenDone(subprocess)
-    const { stdout } = await subprocess
+    const { stdout } = await awaitGroup(subprocess)
     let json: unknown
     try {
       json = JSON.parse(stdout)
@@ -96,11 +103,7 @@ export function commandProvider(
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
-      const bin =
-        cfg.command
-          .trim()
-          .split(/\s+/)
-          .find((word) => !/^[A-Za-z_]\w*=/.test(word)) ?? ''
+      const bin = commandBinary(cfg.command)
       const out = await execa(`command -v '${bin.replaceAll("'", "'\\''")}'`, {
         shell: true,
         reject: false,
@@ -112,7 +115,7 @@ export function commandProvider(
 
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
-      const child = execa(cfg.command, {
+      const child = launch(cfg.command, [], {
         shell: true,
         cwd: job.dir,
         env: { ...job.env, AWAYWORK_PROMPT: join(job.dir, '.away', 'prompt.md') },

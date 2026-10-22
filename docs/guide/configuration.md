@@ -1,5 +1,5 @@
 ---
-description: The awaywork config file by example and what stays stable, covering run windows, limits, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
+description: The awaywork config file by example and what stays stable, covering run windows, limits, budgets, providers, sources, branch names, PR links, per-repo settings, instructions, queue rules with where matching, and isolation.
 ---
 
 # Configuration
@@ -81,7 +81,7 @@ queue:                          # first matching rule wins; top = highest priori
 
 ## Windows, limits and budget
 
-A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or to the workflow's `timezone` in GitHub Actions, where a GitHub-hosted runner [cuts a run at about 6 hours](./scheduling.md#in-github-actions) whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
+A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or in GitHub Actions to the timezone you ran `schedule install` in, where a run may start [up to an hour late in summer time](./scheduling.md#in-github-actions) and a GitHub-hosted runner cuts it at about 6 hours whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
 
 ```yaml
 windows:
@@ -122,7 +122,7 @@ limits:
 
 The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
 
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and a `budget.fallback` needs no `turns`. Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
 
 ```json
 {
@@ -222,6 +222,8 @@ sources:
 
 `verify` runs in the clone once each slice ends, outside the model, before it is published; it's a repo setting. Use it for lint, format or the repo's tests. A failure doesn't stop the publish: the PR body or the push's summary gets the tail of its output. Pass or fail, that tail lands in `verify.log` next to what the slice published, the run's `~/.local/state/awaywork/runs/<id>/units/<unit>/out/` (`out-2/` on for a [stacked slice](./chains.md#stack)), not in your terminal. It runs once per commit, with none of the secrets. A `report` delivery has nothing to publish and skips it.
 
+`image` is the Docker image the repo's units run in under [`isolation: container`](#in-a-container).
+
 `test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file. A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
 
 ### What runs in the clone
@@ -313,7 +315,7 @@ The retry starts from the clone as the failed step found it: that attempt's comm
 Both attempts show in the report and count against the budget. Towards [giving up](./how-it-works.md#units) on an item the retry speaks for the step, unless a quota, session or window stop cut it short: then the first failure counts. `notify` hears only about the retry:
 
 ```markdown
-| 1 | acme-api-1 | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits), verdict approve |
+| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → review | claude | done, 13 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commit), verdict approve |
 |  | └ acme-api-1 | fix | claude | failed, 3 turns (retried on the next model) | 1 commit |
 |  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
 |  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
@@ -336,14 +338,14 @@ There are no built-in integrations. A command that fails or takes over a minute 
   notify failed for acme-api-1: Command failed with exit code 3: ...
 ```
 
-Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other:
+Anything it leaves running in the background is stopped when it exits. A command that only cares about one event exits early on the other. `$AWAYWORK_REPORT` is markdown for GitHub, with folded `<details>` sections a phone or chat app shows as tags, so these two send the plain text `awaywork report` prints instead. They call the first `awaywork` on your PATH, which after an `npx` install is none or another version, so write its full path there:
 
 ```yaml
 notify:                         # ntfy, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" -H "Markdown: yes"
-    --data-binary @"$AWAYWORK_REPORT" "https://ntfy.sh/$NTFY_TOPIC"
+    awaywork report "$AWAYWORK_RUN_ID" |
+    curl -sf -H "Title: awaywork $AWAYWORK_RUN_ID" --data-binary @- "https://ntfy.sh/$NTFY_TOPIC"
   secrets: [NTFY_TOPIC]
 ```
 
@@ -351,7 +353,7 @@ notify:                         # ntfy, the morning report only
 notify:                         # a Slack incoming webhook, the morning report only
   command: >-
     [ "$AWAYWORK_EVENT" = run ] || exit 0;
-    jq -Rs '{text:.}' "$AWAYWORK_REPORT" |
+    awaywork report "$AWAYWORK_RUN_ID" | jq -Rs '{text:.}' |
     curl -sf -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
@@ -415,6 +417,72 @@ queue:
 The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
 
 Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers need a login a runner doesn't have, and workers never get your claude.ai connectors. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
+
+## Isolation
+
+```yaml
+isolation: user # default: none; or container
+```
+
+`none` runs setup, the agent and the checks as you. Everything in [Safety](./safety.md) keeps your credentials out of the agent's way, not out of its reach: it can read what you can ([Not a sandbox](./safety.md#not-a-sandbox)). `user` runs them as `awaywork`, a user with nothing of yours, which on your Linux box or a self-hosted Linux runner you make once. `awaywork doctor` tells you how, here for a user `runner` (uid and gid 1001), with your own name and ids in yours:
+
+```text
+FAIL  isolation: user, but can't run as the awaywork user (sudo: unknown user awaywork); make the worker user once:
+    sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork
+    echo awaywork | sudo tee -a /etc/cron.deny /etc/at.deny
+    sudo visudo -f /etc/sudoers.d/awaywork   # with these two lines:
+    runner ALL=(awaywork) NOPASSWD:SETENV: ALL
+    runner ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]
+```
+
+The user has no home and no login shell: each clone gets a fresh `HOME`, and nothing logs in as it. The first sudoers line lets you run anything as the worker, the second only the two `chown`s that hand it a clone and its `HOME` and take them back; why that's safe is in [Safety](./safety.md#a-worker-user-on-your-linux-machine). Then:
+
+```text
+ok    isolation: user: setup, the agent and the checks run as awaywork
+```
+
+A few things change with it:
+
+- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves its refreshed tokens back after, under the lock every Codex run takes, since a refresh rotates them. Those tokens are the worker's word, so read [what it doesn't close](./safety.md#a-worker-user-on-your-linux-machine) before you lend it yours.
+- **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter.
+- **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
+- **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
+- **Always on a GitHub-hosted runner**, whatever the config says: there `none` and `container` are ignored, and the action makes the user.
+- **One developer per worker user.** Whoever has the `chown` line can chown any awaywork clone folder, someone else's too.
+
+### In a container
+
+```yaml
+isolation: container
+repos:
+  acme/api:
+    image: ghcr.io/acme/api-dev:latest # what setup, the agent and the checks run in
+    setup: pnpm i --frozen-lockfile
+```
+
+`container` is the one for your Mac, and for more than a user hides on Linux. Setup, every agent run and every check start in a fresh container of the repo's `image` through Docker (Docker Desktop, Colima, or the engine on Linux). It mounts the clone, at its own path, and the skills plugin, read-only, and nothing else: not your home, not the docker socket. It runs as your uid and gid, so what it writes in the clone stays yours, with every capability dropped and `no-new-privileges`, so a `sudo` the image hands out goes nowhere. Each container is gone before awaywork looks at the clone again, `docker rm -f` included on a timeout, the window's end or Ctrl-C, since killing the `docker run` client stops nothing inside; when docker doesn't say so within a minute, the clone is lost. `awaywork replay` runs in one too. `doctor` checks that Docker answers, that each repo's image is here (or pulls it) and that the agents' CLIs run in it, here with a test image of stand-ins:
+
+```text
+ok    isolation: container: setup, the agent and the checks run in a fresh container of the repo's image (Docker 27.4.0)
+ok    isolation: acme/leak: awaywork-leak has claude 2.1.290 (Claude Code stand-in), codex codex-cli 0.162.1 (stand-in)
+```
+
+And when one isn't there:
+
+```text
+FAIL  isolation: acme/leak: awaywork-nope:1 isn't here and couldn't be pulled (Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp 54.156.126.76:443: i/o timeout)
+```
+
+The image is yours to build, and what's in it is all the units get:
+
+- **The agent CLIs and the toolchain.** `claude`, `codex` or your command provider's binary, whichever the repo's rules use, plus whatever setup and the checks run, and the commands of the [MCP servers](#mcp-servers) its rules name: stdio servers start inside, as the agent's children. Not `gh` or `glab`: awaywork's own forge calls run outside. Install things system-wide rather than under `/root`, since the container runs as your uid, and mind the `ENTRYPOINT`: awaywork skips it and runs its commands as they are.
+- **Every repo gets one.** Under `container`, a `repos` entry without an `image` is a config error (`repos.acme/api.image: required with isolation: container: the image its units run in`), and a unit in a repo with no entry at all is skipped: `no image for acme/web: isolation: container needs one in its repos entry`. Nothing falls back to running as you.
+- **Pulled once.** A missing image is pulled by the first `docker run` (or by `doctor`); after that awaywork uses it as it is, so `docker pull` to update it.
+- **Only the env it needs.** A container gets the image's own environment, plus what awaywork sets (the `none` placeholders, its git config, the prompt's path) and that phase's secrets, by name, never on argv: setup its repo's `secrets`, the agent its provider's and its MCP servers'. Nothing else of yours, your ssh agent included, so a variable a tool needs goes in `secrets` or in the image.
+- **A `HOME` in the clone.** It's `.away/home`, fresh with each clone: what setup puts there, a `pip install --user` or a browser download, reaches the chain's agents and checks, and goes with the clone, so caches don't survive the night. Bake them into the image.
+- **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
+- **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
+- **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
 
 ## Secrets
 

@@ -1,7 +1,9 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 
@@ -17,11 +19,17 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const configDir = mkdtempSync(join(tmpdir(), 'awaywork-config-'))
-  return { ...(await importOriginal<object>()), configDir }
+  const original = await importOriginal<typeof import('../src/config/paths.js')>()
+  // bin looks a name up once per process, so a test's fake docker comes in through the env.
+  const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
+  const runsDir = mkdtempSync(join(tmpdir(), 'awaywork-runs-'))
+  return { ...original, configDir, runsDir, bin }
 })
 
-const { runChecks, workflowSecretChecks } = await import('../src/cli/doctor.js')
-const { configDir } = await import('../src/config/paths.js')
+const { containerChecks, isolationChecks, runChecks, workflowSecretChecks } = await import(
+  '../src/cli/doctor.js'
+)
+const { configDir, runsDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
   it('reports each check as { status, what, detail } and stops at a missing config', async () => {
@@ -74,6 +82,111 @@ describe('doctor', () => {
     })
     expect(checks.at(-1)?.what).toBe('github')
   })
+})
+
+describe('doctor on isolation', () => {
+  it('warns on none, pointing at the guide', async () => {
+    expect(await isolationChecks('none', {})).toEqual([
+      {
+        status: 'warn',
+        what: 'isolation',
+        detail:
+          'none: setup, the agent and the checks run as you, your logins in reach; see https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox',
+      },
+    ])
+  })
+
+  it('fails container where docker doesn’t answer', async () => {
+    vi.stubEnv('DOCKER_HOST', 'unix:///nonexistent/docker.sock')
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const checks = await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    expect(checks).toHaveLength(1)
+    expect(checks[0]?.status).toBe('FAIL')
+    expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.+\)$/)
+  })
+
+  it('fails container where docker never answers, rather than wait on it', async () => {
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    await writeFile(join(fakes, 'docker'), '#!/bin/sh\nexec sleep 600\n', { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const started = Date.now()
+    const checks = await containerChecks(config, process.env, 500)
+    vi.unstubAllEnvs()
+    expect(Date.now() - started).toBeLessThan(5000)
+    expect(checks).toHaveLength(1)
+    expect(checks[0]?.detail).toMatch(/^container, but docker isn't reachable \(.*timed out/)
+  })
+
+  it('fails container where the engine can’t mount the run dir', async () => {
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    const docker = [
+      '#!/bin/sh',
+      'case "$*" in',
+      "  *--mount*) echo 'docker: Error response from daemon: bind source path does not exist' >&2; exit 125;;",
+      '  version*) echo 27.4.0;;',
+      'esac',
+    ]
+    await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const checks = await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'isolation',
+      detail: `the engine can't mount ${runsDir}, where the clones go (docker: Error response from daemon: bind source path does not exist): share it with the engine's VM`,
+    })
+  })
+
+  it('mounts an empty folder under the run dir for its check, never the past runs, and removes it', async () => {
+    await mkdir(join(runsDir, '20261020-000000'), { recursive: true })
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    const docker = [
+      '#!/bin/sh',
+      'case "$*" in',
+      '  *--mount*) src="$*"; src=${src#*source=}; src=${src%%,*}; echo "$src" > "$0.src"; ls -A "$src" > "$0.ls";;',
+      '  version*) echo 27.4.0;;',
+      'esac',
+    ]
+    await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [claude]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    const mounted = (await readFile(join(fakes, 'docker.src'), 'utf8')).trim()
+    expect(mounted.startsWith(join(runsDir, '.mount-check-'))).toBe(true)
+    expect(await readFile(join(fakes, 'docker.ls'), 'utf8')).toBe('')
+    expect(existsSync(mounted)).toBe(false)
+  })
+
+  // Where the worker user exists, real-isolation.test.ts runs.
+  it.skipIf(process.env.AWAYWORK_WORKER_TEST)(
+    'fails user it can’t run as, with the setup to paste on Linux',
+    async () => {
+      const [check] = await isolationChecks('user', {})
+      expect(check?.status).toBe('FAIL')
+      if (process.platform !== 'linux')
+        expect(check?.detail).toBe(
+          `user, but isolation: user runs on Linux only, not ${process.platform}`,
+        )
+      else {
+        expect(check?.detail).toMatch(
+          /^user, but can't run as the awaywork user \(.*\); make the worker user once:\n/,
+        )
+        expect(check?.detail).toContain('ALL=(awaywork) NOPASSWD:SETENV: ALL')
+      }
+    },
+  )
 })
 
 describe('doctor in a control repo', () => {

@@ -25,12 +25,12 @@ const branch = z.string().superRefine((template, ctx) => {
   if (problem) ctx.addIssue({ code: 'custom', message: problem })
 })
 
+const fallbackUnits = z.int().positive().describe('Units per run')
+const turns = z.int().positive().describe('Turns per unit')
+const caps = "Caps when the provider's quota can't be read"
 const fallback = z
-  .strictObject({
-    units: z.int().positive().describe('Units per run'),
-    turns: z.int().positive().describe('Turns per unit'),
-  })
-  .describe("Caps when the provider's quota can't be read")
+  .strictObject({ units: fallbackUnits.optional(), turns: turns.optional() })
+  .describe(caps)
 const reserve = 'Never go past 1 - reserve of any window'
 const perRun = 'At most this share of the long window per run'
 const sessionMax = 'Stop a worker past this share of the short window'
@@ -39,7 +39,10 @@ const budget = z
     reserve: percent.prefault('10%').describe(reserve),
     per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
-    fallback: fallback.default({ units: 4, turns: 60 }),
+    fallback: fallback
+      .extend({ units: fallbackUnits, turns: turns.default(60) })
+      .describe(caps)
+      .default({ units: 4, turns: 60 }),
   })
   .describe('Quota shares; any provider can override them')
 const budgetOverride = z
@@ -81,20 +84,7 @@ const providerOverride = z
       ]),
     ),
   )
-  .catchall(
-    commandProviderConfig.extend({
-      // It has no turns to cap.
-      budget: budgetOverride
-        .extend({
-          fallback: fallback
-            .partial({ turns: true })
-            .describe(fallback.description ?? '')
-            .optional(),
-        })
-        .describe(budgetOverride.description ?? '')
-        .optional(),
-    }),
-  )
+  .catchall(commandProviderConfig.extend({ budget: budgetOverride.optional() }))
   .refine((entry) => Object.keys(entry).length === 1, {
     message: 'each entry names exactly one provider',
     when: (payload) => payload.issues.length === 0,
@@ -458,6 +448,13 @@ const repo = z.strictObject({
     ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),
+  image: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
+    ),
 })
 
 const itemType = z.enum(['pr', 'issue', 'task'])
@@ -499,6 +496,12 @@ export const configSchema = z
       })
       .prefault({})
       .describe('Unit counts and time per run, for every provider'),
+    isolation: z
+      .enum(['none', 'user', 'container'])
+      .default('none')
+      .describe(
+        "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner",
+      ),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)
@@ -548,6 +551,14 @@ export const configSchema = z
       ),
   })
   .superRefine((cfg, ctx) => {
+    if (cfg.isolation === 'container')
+      for (const [name, repo] of Object.entries(cfg.repos))
+        if (!repo.image)
+          ctx.addIssue({
+            code: 'custom',
+            path: ['repos', name, 'image'],
+            message: 'required with isolation: container: the image its units run in',
+          })
     const providerIds = cfg.providers.flatMap(Object.keys)
     const commandIds = providerIds.filter((id) => !Object.hasOwn(providers, id))
     if (commandIds.length > 0 && !cfg.limits.unit_minutes)

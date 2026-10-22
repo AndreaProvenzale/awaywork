@@ -1,5 +1,5 @@
-import { execa } from 'execa'
 import { killGroupWhenDone } from '../core/group.js'
+import { asWorker, type Launch, launch } from '../core/launch.js'
 
 const TIMEOUT_MS = 15 * 60_000
 const TAIL_LINES = 5
@@ -12,10 +12,12 @@ interface SetupOptions {
   until?: Date
   /** Stop the command after this long; default 15 minutes. */
   timeoutMs?: number
+  /** How the command starts: through the launcher, unless it is awaywork's own and not the repo's. */
+  start?: Launch
 }
 
 /**
- * Runs the repo's setup command in the clone; returns why it failed with its output's tail, never throws.
+ * Runs the repo's setup command in the clone; returns why it failed with its output's tail, and throws only on a clone lost to the worker user.
  * It runs in its own process group, killed when the command exits or is stopped, so nothing it started outlives it.
  */
 export async function runSetup(
@@ -37,26 +39,31 @@ export async function runCommand(
   command: string,
   dir: string,
   env: NodeJS.ProcessEnv,
-  { secrets, signal, until, timeoutMs = TIMEOUT_MS }: SetupOptions,
+  { secrets, signal, until, timeoutMs = TIMEOUT_MS, start = launch }: SetupOptions,
 ): Promise<{ output: string; failed?: string; stopped?: true; timedOut?: true }> {
   const windowEnds = until !== undefined && until.getTime() < Date.now() + timeoutMs
   const deadline = AbortSignal.timeout(
     Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
   )
   const stop = signal ? AbortSignal.any([signal, deadline]) : deadline
-  const subprocess = execa(command, {
-    shell: true,
-    cwd: dir,
-    env,
-    extendEnv: false,
-    stdin: 'ignore',
-    killDescendants: true,
-    reject: false,
-    all: true,
-  })
-  const release = killGroupWhenDone(subprocess, stop)
-  const result = await subprocess
-  release()
+  const run = async () => {
+    const subprocess = start(command, [], {
+      shell: true,
+      cwd: dir,
+      env,
+      extendEnv: false,
+      stdin: 'ignore',
+      killDescendants: true,
+      reject: false,
+      all: true,
+    })
+    const release = killGroupWhenDone(subprocess, stop)
+    const result = await subprocess
+    release()
+    return result
+  }
+  // Only repo code runs as the worker, in a clone it owns while it runs.
+  const result = await (start === launch ? asWorker(dir, run) : run())
 
   const output = maskSecrets(result.all.trim(), secrets, env)
   if (!result.failed) return { output }

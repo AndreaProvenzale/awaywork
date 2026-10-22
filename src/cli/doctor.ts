@@ -1,15 +1,27 @@
 import { existsSync, statSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
+import { execa } from 'execa'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
-import { configDir, envFile, skillsDirIn, skillsDirOf } from '../config/paths.js'
+import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
+import {
+  DOCKER_TIMEOUT_MS,
+  dockerVersion,
+  inImage,
+  sudoersLines,
+  WORKER,
+  workerFor,
+} from '../core/launch.js'
 import type { Ctx } from '../core/types.js'
 import { type Exec, exec } from '../forge/gh.js'
+import { codexLogin } from '../providers/codex.js'
+import { commandBinary, isCommandProvider } from '../providers/command.js'
 import { providerFor } from '../providers/index.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
@@ -88,6 +100,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
+  const boxed =
+    config.isolation === 'container' && process.env.RUNNER_ENVIRONMENT !== 'github-hosted'
+  const isolation = boxed
+    ? await containerChecks(config, process.env)
+    : await isolationChecks(config.isolation, process.env)
+  for (const c of isolation) report(c.status, c.what, c.detail)
+  const asWorker = !boxed && isolation[0]?.status === 'ok'
 
   for (const { id, config: providerConfig, budget } of config.providers) {
     const provider = providerFor(id, providerConfig)
@@ -108,6 +127,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       ...provider.secrets.map(secret),
     ]
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
+    const unset = provider.secrets.filter((name) => !process.env[name])
+    if (asWorker && !provider.login && unset.length > 0)
+      report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     await provider.probe(ctx).then(
       (quota) => {
         const a = allowance(budget, quota, Date.now(), config.windows)
@@ -133,6 +155,157 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const facts = [server.command ?? server.url, ...server.secrets.map(secret)].join(', ')
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
   }
+  return checks
+}
+
+const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
+
+/** Who repo code runs as, and on local Linux what `isolation: user` still needs from you. */
+export async function isolationChecks(
+  isolation: Config['isolation'],
+  env: NodeJS.ProcessEnv,
+): Promise<Check[]> {
+  const worker = await workerFor(isolation, env).catch((e: Error) => e)
+  if (worker === undefined)
+    return [
+      {
+        status: 'warn',
+        what: 'isolation',
+        detail: `none: setup, the agent and the checks run as you, your logins in reach; see ${SAFETY}`,
+      },
+    ]
+  if (worker instanceof Error) {
+    const local = env.RUNNER_ENVIRONMENT !== 'github-hosted' && process.platform === 'linux'
+    const setup = [
+      'make the worker user once:',
+      `sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin ${WORKER}`,
+      `echo ${WORKER} | sudo tee -a /etc/cron.deny /etc/at.deny`,
+      `sudo visudo -f /etc/sudoers.d/${WORKER}   # with these two lines:`,
+      ...sudoersLines(),
+    ]
+    const detail = `user, but ${worker.message}${local ? `; ${setup.join('\n    ')}` : ''}`
+    return [{ status: 'FAIL', what: 'isolation', detail }]
+  }
+  const checks: Check[] = [
+    {
+      status: 'ok',
+      what: 'isolation',
+      detail: `user: setup, the agent and the checks run as ${worker}`,
+    },
+  ]
+  const home = homedir()
+  const mode = statSync(home).mode & 0o777
+  if (mode & 0o007)
+    checks.push({
+      status: 'warn',
+      what: 'isolation',
+      detail: `${home} is mode ${mode.toString(8)}, so the worker reads what's world-readable in it: chmod o-rwx ~`,
+    })
+  const path = (env.PATH ?? '').split(':').filter(Boolean)
+  const { stdout } = await execa(
+    bin('sudo'),
+    [
+      '-n',
+      '-u',
+      worker,
+      '/bin/sh',
+      '-c',
+      'for d; do [ -x "$d" ] || echo "$d"; done',
+      'sh',
+      ...path,
+    ],
+    { reject: false },
+  )
+  const unreachable = stdout.split('\n').filter(Boolean)
+  if (unreachable.length)
+    checks.push({
+      status: 'warn',
+      what: 'isolation',
+      detail: `${worker} can't enter ${unreachable.join(', ').replaceAll(home, '~')} on your PATH: tools there won't run as it`,
+    })
+  return checks
+}
+
+/** Under `isolation: container`: docker answers, each repo's image is here with the agents' CLIs in it, and the logins a container can use. */
+export async function containerChecks(
+  config: Config,
+  env: NodeJS.ProcessEnv,
+  timeout = DOCKER_TIMEOUT_MS,
+): Promise<Check[]> {
+  const check = (status: Status, detail: string): Check => ({ status, what: 'isolation', detail })
+  const version = await dockerVersion(timeout).catch((e: Error) => e)
+  if (version instanceof Error) return [check('FAIL', `container, but ${version.message}`)]
+  const checks = [
+    check(
+      'ok',
+      `container: setup, the agent and the checks run in a fresh container of the repo's image (Docker ${version})`,
+    ),
+  ]
+  const docker = (...args: string[]) => execa(bin('docker'), args, { reject: false, timeout })
+  const clis = config.providers.map(({ id, config: cfg }) =>
+    isCommandProvider(cfg)
+      ? { id, command: ['/bin/sh', '-c', 'command -v "$0"', commandBinary(cfg.command)] }
+      : { id, command: [id, '--version'] },
+  )
+  let mounted = false
+  for (const [repo, { image }] of Object.entries(config.repos)) {
+    if (!image) continue
+    if ((await docker('image', 'inspect', image)).failed) {
+      const pulled = await execa(bin('docker'), ['pull', '--quiet', image], {
+        reject: false,
+        timeout: 10 * timeout,
+      })
+      if (pulled.failed) {
+        const why = pulled.stderr.trim().split('\n').at(-1) || pulled.shortMessage
+        checks.push(check('FAIL', `${repo}: ${image} isn't here and couldn't be pulled (${why})`))
+        continue
+      }
+    }
+    if (!mounted) {
+      mounted = true
+      await mkdir(runsDir, { recursive: true })
+      // An empty folder shares the runs dir's mount path without showing the image any past run.
+      const probe = await mkdtemp(join(runsDir, '.mount-check-'))
+      const ran = await docker(...inImage(image, ['true'], [probe]))
+      await rm(probe, { recursive: true, force: true })
+      if (ran.failed) {
+        const why = ran.stderr.trim().split('\n')[0] || ran.shortMessage
+        checks.push(
+          check(
+            'FAIL',
+            `the engine can't mount ${runsDir}, where the clones go (${why}): share it with the engine's VM`,
+          ),
+        )
+      }
+    }
+    const found: string[] = []
+    const missing: string[] = []
+    for (const { id, command } of clis) {
+      const ran = await docker(...inImage(image, command))
+      if (ran.failed) missing.push(id)
+      else found.push(`${id} ${ran.stdout.trim().split('\n')[0]}`)
+    }
+    if (found.length) checks.push(check('ok', `${repo}: ${image} has ${found.join(', ')}`))
+    if (missing.length)
+      checks.push(
+        check('warn', `${repo}: ${image} can't run ${missing.join(', ')}: its units fail there`),
+      )
+  }
+  const ids = config.providers.map((p) => p.id)
+  if (ids.includes('claude') && !env.CLAUDE_CODE_OAUTH_TOKEN)
+    checks.push(
+      check(
+        'warn',
+        "CLAUDE_CODE_OAUTH_TOKEN unset: a container can't see your keychain login; make one with claude setup-token and put it in the env file",
+      ),
+    )
+  if (ids.includes('codex') && !existsSync(codexLogin(env)))
+    checks.push(
+      check(
+        'warn',
+        `no ${codexLogin(env)} to lend the container: Codex needs its login in a file (codex login)`,
+      ),
+    )
   return checks
 }
 

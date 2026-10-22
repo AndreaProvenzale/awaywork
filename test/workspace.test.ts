@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import {
+  chmod,
   link,
   lstat,
   mkdir,
@@ -12,7 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
@@ -22,7 +23,14 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
-import { prepareWorkspace, readOutput, writeOutput } from '../src/worker/workspace.js'
+import {
+  copyOut,
+  prepareWorkspace,
+  readOutput,
+  restoreGitConfig,
+  workerEnv,
+  writeOutput,
+} from '../src/worker/workspace.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -227,6 +235,96 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       expect((await lstat(copy)).isDirectory()).toBe(true)
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
     }
+  })
+
+  it("gives the worker a global git config with the developer's identity and lfs filter only", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-ws-'))
+    const dir = join(root, 'clone')
+    await writeFile(
+      join(root, 'included'),
+      '[filter "lfs"]\n\tprocess = git-lfs filter-process\n[core]\n\thooksPath = /hooks\n',
+    )
+    await writeFile(
+      join(root, '.gitconfig'),
+      [
+        '[user]\n\tname = Dev Eloper\n\temail = dev@example.com\n\tsigningkey = /missing.pub',
+        '[commit]\n\tgpgsign = true\n[gpg]\n\tformat = ssh',
+        '[credential]\n\thelper = store',
+        '[filter "lfs"]\n\tclean = git-lfs clean -- %f\n\trequired = true',
+        `[include]\n\tpath = ${join(root, 'included')}\n`,
+      ].join('\n'),
+    )
+    await writeFile(
+      join(root, 'system'),
+      [
+        '[filter "lfs"]\n\tsmudge = git-lfs smudge -- %f',
+        '[tag]\n\tgpgsign = true\n[credential]\n\thelper = store\n',
+      ].join('\n'),
+    )
+    const env = { PATH: process.env.PATH, HOME: root, GIT_CONFIG_SYSTEM: join(root, 'system') }
+    const prepare = (reuse: boolean) =>
+      prepareWorkspace({
+        unit: {
+          id: 'acme-api-1',
+          items: [fakeItem()],
+          repo: 'acme/api',
+          base: '',
+          foreign: false,
+          untrusted: false,
+          branch: 'away/acme-api-1',
+          rule: { skill: 'fix', provider: [], skills: [], instructions: [] },
+          skill: 'fix',
+          skills: [],
+          providers: ['claude'],
+          instructions: [],
+          deliver: 'draft_pr',
+        },
+        dir,
+        plugin: join(root, 'plugin'),
+        config: parseConfig('providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }'),
+        configDir: root,
+        forge: {
+          ...fakeForge(),
+          async clone(_repo: string, _branch: string, into: string) {
+            await mkdir(into)
+            await execa(bin('git'), ['init', '-q', '-b', 'main', into])
+            await git(into, 'commit', '-q', '--allow-empty', '-m', 'init')
+          },
+        },
+        sources: { fake: fakeSource() as Source },
+        provider: claude,
+        ctx: { env, log: () => {} },
+        reuse,
+      })
+    await prepare(false)
+
+    const worker = (...args: string[]) =>
+      execa(bin('git'), ['-C', dir, ...args], {
+        env: workerEnv(env, dir, []),
+        extendEnv: false,
+        reject: false,
+      })
+    expect((await worker('config', '--global', '--list')).stdout).toBe(
+      [
+        'user.name=Dev Eloper',
+        'user.email=dev@example.com',
+        'filter.lfs.smudge=git-lfs smudge -- %f',
+        'filter.lfs.clean=git-lfs clean -- %f',
+        'filter.lfs.required=true',
+        'filter.lfs.process=git-lfs filter-process',
+      ].join('\n'),
+    )
+    expect((await worker('config', '--get', 'credential.helper')).stdout).toBe('')
+    expect((await worker('commit', '-q', '--allow-empty', '-m', 'work')).exitCode).toBe(0)
+    expect((await worker('log', '-1', '--format=%an <%ae> %G?')).stdout).toBe(
+      'Dev Eloper <dev@example.com> N',
+    )
+    expect((await worker('tag', '-a', 'v1', '-m', 'v1')).exitCode).toBe(0)
+    expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+
+    await worker('config', '--global', 'worker.wrote', 'this')
+    await prepare(true)
+    expect((await worker('config', '--global', 'worker.wrote')).stdout).toBe('this')
   })
 
   describe("with skills in the repo's .claude/skills and .agents/skills", () => {
@@ -614,5 +712,52 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await link(outside, join(dir, 'hard'))
     expect(await readOutput(join(dir, 'sym'))).toBe('')
     expect(await readOutput(join(dir, 'hard'))).toBe('')
+  })
+
+  it.each(['objects', 'refs', 'info', 'objects/pack', 'refs/heads', 'logs/HEAD'])(
+    'refuses a clone whose .git/%s a worker linked elsewhere',
+    async (path) => {
+      const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+      await git(dir, 'init', '-q')
+      await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+      const elsewhere = join(await mkdtemp(join(tmpdir(), 'ns-elsewhere-')), basename(path))
+      await rename(join(dir, '.git', path), elsewhere)
+      await symlink(elsewhere, join(dir, '.git', path))
+      await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+        `.git/${path} in the clone is a symlink`,
+      )
+    },
+  )
+
+  it('accepts a hook a setup linked, still refusing a link elsewhere in .git', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    await symlink('../../scripts/pre-commit', join(dir, '.git/hooks/pre-commit'))
+    await restoreGitConfig(dir, '')
+    await symlink(tmpdir(), join(dir, '.git/objects/pack/elsewhere'))
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/objects/pack/elsewhere in the clone is a symlink',
+    )
+  })
+
+  it('copies out of the clone without its symlinks or a setuid or setgid bit', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-copy-out-'))
+    await mkdir(join(dir, 'out', 'sub'), { recursive: true })
+    for (const [name, mode] of [
+      ['suid', 0o4755],
+      ['sub/sgid', 0o2750],
+      ['plain', 0o640],
+    ] as const) {
+      await writeFile(join(dir, 'out', name), 'x')
+      await chmod(join(dir, 'out', name), mode)
+    }
+    await symlink('/etc/hosts', join(dir, 'out', 'link'))
+    await copyOut(join(dir, 'out'), join(dir, 'copy'))
+    const mode = async (name: string) => (await lstat(join(dir, 'copy', name))).mode & 0o7777
+    expect([await mode('suid'), await mode('sub/sgid'), await mode('plain')]).toEqual([
+      0o755, 0o750, 0o640,
+    ])
+    expect(existsSync(join(dir, 'copy', 'link'))).toBe(false)
   })
 })

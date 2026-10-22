@@ -34,7 +34,7 @@ Setting up:
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. Override with `--provider claude codex` (first takes units first), `--source github asana` and `--window 23:00-06:00`. Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear is likewise skipped unless `LINEAR_API_KEY` is set. Jira is skipped: it needs a site and an email. It refuses to replace an existing config without `--force`. To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). Asana gids come from `https://app.asana.com/api/1.0/workspaces` and `/projects` with the user's token.
 3. Put secrets in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. Ask the user for them; don't read them from other tools' files.
 4. `awaywork doctor` until the config's line isn't `FAIL`.
-5. `awaywork plan`, and show the user the result.
+5. `awaywork plan`, and show the user the result. When stdin and stdout are both a terminal, `plan` and `report` open an interactive view; piped (`| cat`) or with `CI` set, they print text.
 
 What each command does:
 
@@ -52,8 +52,20 @@ What each command does:
 
 Machine-readable output:
 
-- `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload.
+- `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload. Each skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an awaywork PR for review: the PR to open, which may not be the item. Its `kind` is `waiting_for_review`, `gave_up`, `no_repo`, `invalid_branch`, `refused_delivery` or `unstackable` when the user can act to make it run (review the awaywork PR, read the failed logs, give the item a repo, fix the rule), and `no_rule`, `over_cap`, `unchanged` or `skipped_by_you` when it's the config doing its job.
 - `awaywork doctor --json` prints the checks as an array of `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`. It exits 1 when any check is `FAIL`, as without `--json`.
-- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`, `warnings`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`.
+- `awaywork report --json` prints the run's results (`runId`, `dryRun`, `startedAt`, `finishedAt`, `plan`, `results`, `quotas`, `warnings`) as one object, read from the run's `report.json`. Items are references only: `source`, `key`, `title` and `url`. Skipped entries have a `kind`, as in `plan --json`, except in a run from before skips had kinds. Each step that started has `files`, paths relative to the run dir: `log`, `report` and `diff` (its own commits) from the step's folder, and on a slice's first step, which publishes it, `sliceBody` and `sliceDiff` from `out/` (`out-2/` for a stacked slice and so on), the PR body or push summary (the joined report when the slice published reports) and the commits it published, or would have if the publish failed. A key is there only when its file was. A run [from the runner](./scheduling.md#reports-from-the-runner) comes with only `report.md`, `report.json` and `units.json`, so check a path exists before opening it. `summary` is the first paragraph of `sliceBody`, else of `report`. The PR it opened or pushed onto is `outcome.url`. A `fix` that found nothing to commit, trimmed:
+
+  ```json
+  {
+    "status": "done",
+    "outcome": { "kind": "none", "reason": "nothing" },
+    "summary": "No code changes: both red checks are unrelated to this diff.",
+    "files": {
+      "log": "units/acme-api-5/1-fix/worker.log",
+      "sliceBody": "units/acme-api-5/out/pr.md"
+    }
+  }
+  ```
 
 `awaywork <command> --help` and the [CLI reference](../reference/cli.md) list every option.

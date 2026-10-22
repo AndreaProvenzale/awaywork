@@ -1,18 +1,27 @@
 import { randomBytes } from 'node:crypto'
-import { cp, mkdir, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { type Allowance, MAX_TURNS } from '../core/budget.js'
 import { modelFor } from '../core/foreman.js'
+import {
+  contain,
+  contained,
+  isolated,
+  lostToWorker,
+  workerHome,
+  workerRoot,
+} from '../core/launch.js'
 import type { Ctx, Forge, Provider, Source, Unit } from '../core/types.js'
 import { runWorker, type WorkerOptions, type WorkerResult } from './run.js'
 import { runSetup } from './setup.js'
 import {
   commandEnv,
   configSecrets,
-  notSymlink,
+  copyOut,
+  inClone,
   prepareWorkspace,
   restoreGitConfig,
   WORK_DIR,
@@ -52,7 +61,7 @@ interface ReplayResult extends WorkerResult {
 
 /**
  * Rebuilds a past unit's first step from its run dir: the same base commit and saved context, today's skills and instructions.
- * Nothing is published; the clone stays under `replays/` in that run dir.
+ * Under the run's isolation, and nothing is published; the clone stays under `replays/` in that run dir, or in `/tmp` under `user`.
  */
 export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const chainDir = join(r.runDir, 'units', r.unitId)
@@ -70,12 +79,19 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   const { unit } = state
   const provider = r.providers[state.provider]
   if (!provider) throw new Error(`provider ${state.provider} is not configured`)
+  const image = r.config.repos[unit.repo]?.image
+  if (contained() && !image)
+    throw new Error(`no image for ${unit.repo}: isolation: container needs one in its repos entry`)
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
   const root = join(r.runDir, 'replays', `${r.unitId}-${stamp}-${randomBytes(2).toString('hex')}`)
-  const dir = join(root, 'work')
-  const plugin = join(root, 'plugin')
-  await mkdir(root, { recursive: true })
+  // The worker user can't reach the run dir: the clone and the plugin get folders of their own under /tmp.
+  const dir = isolated() ? await workerRoot(0o700) : join(root, 'work')
+  const plugins = isolated() ? await workerRoot() : root
+  const plugin = join(plugins, 'plugin')
+  await mkdir(root, { recursive: true, mode: 0o700 })
+  const secrets = configSecrets(r.config, r.providers, r.sources)
+  if (contained() && image) contain(dir, { image, plugin, secrets })
   const log = (line: string) => r.ctx.log(line)
   const prompt = await prepareWorkspace({
     ...r,
@@ -89,41 +105,63 @@ export async function replayUnit(r: ReplayInput): Promise<ReplayResult> {
   })
 
   const entry = r.config.providers.find((c) => c.id === state.provider)
-  const secrets = configSecrets(r.config, r.providers, r.sources)
   const withheld = secrets.filter((name) => !provider.secrets.includes(name))
   const gitConfig = await readFile(join(dir, '.git', 'config'), 'utf8')
-  const setup = r.config.repos[unit.repo]?.setup
-  if (setup && !unit.untrusted) {
-    const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
-      secrets: [],
+  let worker: WorkerResult
+  try {
+    const setup = r.config.repos[unit.repo]?.setup
+    if (setup && !unit.untrusted) {
+      const failed = await runSetup(setup, dir, commandEnv(r.ctx.env, dir, secrets), log, {
+        secrets: [],
+        signal: r.signal,
+      })
+      if (failed) throw new Error(failed)
+    }
+    const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'replay' }
+    const job = {
+      unit,
+      dir,
+      prompt,
+      maxTurns: MAX_TURNS,
+      model: modelFor(unit.rule.model, state.provider) ?? entry?.model,
+      env: workerEnv(r.ctx.env, dir, withheld),
+      config: entry?.config,
+      configDir: r.configDir,
+      plugin,
+    }
+    worker = await runWorker(provider, job, allowance, {
+      log,
       signal: r.signal,
+      maxMinutes: r.config.limits.unit_minutes,
+      watch: r.watch,
     })
-    if (failed) throw new Error(failed)
+  } catch (e) {
+    // The failure is the error to report; a restore failing after it is logged.
+    await keep(dir, gitConfig, unit.branch, log).catch((restore: Error) =>
+      log(`its .git is as the worker left it: ${restore.message}`),
+    )
+    throw e
   }
-  const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'replay' }
-  const job = {
-    unit,
-    dir,
-    prompt,
-    maxTurns: MAX_TURNS,
-    model: modelFor(unit.rule.model, state.provider) ?? entry?.model,
-    env: workerEnv(r.ctx.env, dir, withheld),
-    config: entry?.config,
-    configDir: r.configDir,
-    plugin,
-  }
-  const worker = await runWorker(provider, job, allowance, {
-    log,
-    signal: r.signal,
-    maxMinutes: r.config.limits.unit_minutes,
-    watch: r.watch,
-  })
-  await restoreGitConfig(dir, gitConfig)
+  await keep(dir, gitConfig, unit.branch, log)
   const out = join(root, 'out')
-  await cp(join(dir, WORK_DIR, 'out'), out, { recursive: true, filter: notSymlink })
+  await copyOut(join(dir, WORK_DIR, 'out'), out)
   await rm(plugin, { recursive: true, force: true })
+  for (const path of [plugins, workerHome(dir)])
+    if (path && path !== root) await rm(path, { recursive: true, force: true })
   const commits = Number(
-    (await execa(bin('git'), ['-C', dir, 'rev-list', '--count', `${state.commit}..HEAD`])).stdout,
+    (await execa(bin('git'), [...inClone(dir), 'rev-list', '--count', `${state.commit}..HEAD`]))
+      .stdout,
   )
   return { ...worker, dir, out, commits }
+}
+
+/** Says where the clone stays, then puts back its git config and removes its hooks, unless it's lost to the worker. */
+async function keep(dir: string, gitConfig: string, branch: string, log: (line: string) => void) {
+  log(
+    `the clone stays in ${dir}: run no git in it, not even git status; fetch its branch from your own checkout instead: git fetch ${dir} ${branch}`,
+  )
+  if (lostToWorker(dir)) return
+  await restoreGitConfig(dir, gitConfig)
+  // Your git in the clone kept for you runs none of the worker's hooks; a link is removed, not followed.
+  await rm(join(dir, '.git', 'hooks'), { recursive: true, force: true })
 }
