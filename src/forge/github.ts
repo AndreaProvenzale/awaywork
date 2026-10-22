@@ -113,6 +113,14 @@ async function pushHead(
   }
 }
 
+/** GitHub has no nested groups: a longer path is another forge's, not a repo to cut short. */
+function ownerAndName(repo: string) {
+  const [owner, name, ...rest] = repo.split('/')
+  if (!owner || !name || rest.length)
+    throw new Error(`${repo} isn't a GitHub repo: expected owner/name`)
+  return { owner, name }
+}
+
 export const githubHost = (config: Config) =>
   (config.sources.github as { host?: string } | undefined)?.host
 
@@ -184,7 +192,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
     },
 
     async prsOn(repo, branch) {
-      const [owner = '', name = ''] = repo.split('/')
+      const { owner, name } = ownerAndName(repo)
       const { repository } = await graphql<{
         repository: {
           pullRequests: {
@@ -198,7 +206,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
     },
 
     async tipMessage(repo, branch) {
-      const [owner = '', name = ''] = repo.split('/')
+      const { owner, name } = ownerAndName(repo)
       const { repository } = await graphql<{
         repository: { ref: { target: { message?: string } } | null }
       }>(run, tipQuery, { owner, name, ref: `refs/heads/${branch}` })
@@ -213,7 +221,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
 
     /** Reads the PR live: hours may have passed since planning. */
     async fastForward(dir, branch, from, { repo, pr }) {
-      const [owner = '', name = ''] = repo.split('/')
+      const { owner, name } = ownerAndName(repo)
       const { repository: r } = await graphql<{ repository: PrState }>(run, prStateQuery, {
         owner,
         name,

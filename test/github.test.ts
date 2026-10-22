@@ -582,6 +582,14 @@ describe('github forge', () => {
     )
   })
 
+  it('refuses a nested repo path instead of cutting it to owner/name', async () => {
+    const run = recorded([])
+    await expect(githubForge(run).prsOn('group/sub/api', 'away/eng-12')).rejects.toThrow(
+      "group/sub/api isn't a GitHub repo",
+    )
+    expect(run.calls).toEqual([])
+  })
+
   it("reads the message of a branch's tip", async () => {
     const target = { message: 'Fix it\n\nAwaywork: r0' }
     const run = recorded([
