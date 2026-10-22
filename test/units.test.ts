@@ -155,7 +155,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
 
   const text = formatReport(report)
   expect(text).toContain(
-    '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commits) |',
+    '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 5 turns | https://example.com/acme/api/pull/away/acme-api-1 (1 commit) |',
   )
   expect(text).toContain(
     `| 2 | [api#3 PR 3](https://github.com/acme/api/pull/3) | fix | - | skipped | ${tried} |`,
@@ -171,7 +171,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
   )
   expect(formatRun(report)).toContain(
     [
-      'Units',
+      'Units 3',
       '     item   skill   status         result',
       '  1  api#1  fix     done, 5 turns  https://example.com/acme/api/pull/away/acme-api-1',
       '     Ran the failing test.',
@@ -187,9 +187,9 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     ].join('\n'),
   )
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run 20260925-010000: 1 draft PRs, 1 reports, 3 units',
+    'Run 20260925-010000: 1 draft PR, 1 report, 3 units',
   )
-  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PRs, 1 reports')
+  expect(runLine('20260925-010000', text)).toBe('20260925-010000  3 units, 1 draft PR, 1 report')
   expect(runLine('20260925-020000', undefined)).toBe('20260925-020000  no report')
 })
 
@@ -203,13 +203,13 @@ it('reports a run with no provider and a multi-line warning', () => {
       '',
       '2026-10-12 22:34:18 to 2026-10-12 22:34:18, local time',
       '',
-      '## Warnings',
+      '## Warnings (1)',
       '',
       '- source chores: failed',
       '',
       '  not set',
       '',
-      '## Units',
+      '## Units (0)',
       '',
       'None.',
       '',
@@ -497,7 +497,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
       },
     ],
     ['acme-api-5-review', 'done', 'a report'],
-    ['acme-api-6', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-6', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-6-review', 'skipped', 'acme-api-6 committed nothing'],
   ])
   expect(report.results.map((u) => u.passedOver)).toEqual([undefined, undefined, undefined, true])
@@ -1042,7 +1042,7 @@ repos:
     '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix → implement | claude | done, 2 turns | 2 commits pushed onto feature-1, report below |',
   )
   expect(text).toContain(
-    '|  | └ acme-api-1-implement | implement | claude | done, 1 turns | 1 commit |',
+    '|  | └ acme-api-1-implement | implement | claude | done, 1 turn | 1 commit |',
   )
   expect(text).toContain('### api#1: PR 1 (fix)\n\nhttps://github.com/acme/api/pull/1\n\n')
 })
@@ -1421,14 +1421,14 @@ queue:
   expect(text).toContain(
     [
       `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → loop(review ⇄ fix) → plan | claude | done, 5 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${url} (2 commits), verdict approve |`,
-      '|  | └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turns | a report, verdict changes |',
-      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turns | 1 commit |',
-      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turns | a report, verdict approve |',
-      '|  | └ acme-api-1-plan | plan | claude | done, 1 turns | a report |',
+      '|  | └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-1 | review | claude | done, 1 turn | a report, verdict changes |',
+      '|  | └ acme-api-1-fix-1 | fix | claude | done, 1 turn | 1 commit |',
+      '|  | └ acme-api-1-review-2 | review | claude | done, 1 turn | a report, verdict approve |',
+      '|  | └ acme-api-1-plan | plan | claude | done, 1 turn | a report |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
   expect(summarize(report, 'report.md').split('\n').slice(2)).toEqual([
     `  1  api#1  implement → loop(review ⇄ fix) → plan  done, 5 turns  ${url}, verdict approve`,
     '     Done.',
@@ -3185,7 +3185,7 @@ it('escapes a pipe in a check command, so the report table keeps its cells', asy
   expect(row).toBe(
     "|  | └ acme-api-1-review | review | claude | skipped | when `git log \\| grep -q nothing-like-this` passes didn't hold (Command failed with exit code 1: 'git log \\| grep -q nothing-like-this') |",
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 1 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 draft PR, 0 reports')
 })
 
 it("doesn't write a check's log through a symlink a round left in the clone", async () => {

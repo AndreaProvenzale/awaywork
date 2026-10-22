@@ -11,6 +11,7 @@ import {
   formatWhy,
   listedUnits,
   namedItems,
+  needsYouRows,
   reportJson,
   statusMarker,
   warningLines,
@@ -21,6 +22,7 @@ import { type PlannedUnit, planRun, type RunPlan } from '../src/core/foreman.js'
 import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
+import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
 import { asanaTask, githubPr } from './fakes/items.js'
 
 describe('statusMarker', () => {
@@ -190,29 +192,6 @@ describe('summaryOf', () => {
   })
 })
 
-/** An acme plan: one unit, one over the cap, one matching no rule and a task with no repo. */
-function acmePlan() {
-  const config = parseConfig(`
-limits: { units: 1 }
-providers: [claude: {}]
-sources: { github: { repos: [acme/api] } }
-queue:
-  - { skill: fix, where: { checks: failing } }
-  - { skill: implement, where: { type: task } }
-`)
-  return planRun({
-    config,
-    items: [
-      githubPr(1, { checks: 'failing' }),
-      githubPr(2, { checks: 'failing' }),
-      githubPr(3),
-      asanaTask(4),
-    ],
-    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: { builtin: builtinSkills },
-  })
-}
-
 const why = (plan: RunPlan, name: string) => {
   const [item] = namedItems(plan, name)
   return item && formatWhy(plan, item)
@@ -241,33 +220,6 @@ function loopRun(loop: string): RunReport {
   return run
 }
 
-/** A run of the acme plan: a draft PR, with its summary and files. */
-function acmeRun(): RunReport {
-  const plan = acmePlan()
-  return {
-    runId: '20261019-220000',
-    dryRun: false,
-    startedAt: new Date(2026, 9, 19, 22, 0, 0),
-    finishedAt: new Date(2026, 9, 19, 22, 41, 7),
-    plan,
-    results: [
-      {
-        planned: plan.units[0] as PlannedUnit,
-        provider: 'claude',
-        status: 'done',
-        turns: 12,
-        outcome: { kind: 'pr', url: 'https://github.com/acme/api/pull/9', commits: 2, head: 'a' },
-        summary: 'Retries the flaky upload test instead of sleeping.',
-        files: {
-          log: 'units/acme-api-1/1-fix/worker.log',
-          sliceBody: 'units/acme-api-1/out/pr.md',
-        },
-      },
-    ],
-    quotas: {},
-  }
-}
-
 describe('plan views', () => {
   it('lists the units, what needs you, and counts the rest by kind', () => {
     expect(formatPlan(acmePlan())).toMatchInlineSnapshot(`
@@ -276,12 +228,12 @@ describe('plan views', () => {
         claude    fallback
           4 units, 60 turns each (no quota reading)
 
-      Units
+      Units 1
            item   rule  skill           provider  deliver   title
         1  api#1  #1    fix (built-in)  claude    draft_pr  PR 1
 
-      Needs you
-        T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
+      Needs you 1
+        T-4  no repo: no linked PR or repo field
              Task 4
 
       Skipped 2: 1 no_rule, 1 over_cap
@@ -289,6 +241,60 @@ describe('plan views', () => {
       awaywork plan --skipped [kind]  lists them
       awaywork plan --why <key>       says why an item is planned or not"
     `)
+  })
+
+  it('keeps a Needs you reason but the closest rule, and the rest, with the URL once, under --why', () => {
+    const plan = acmePlan()
+    plan.skipped.push(waitingSkip())
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
+      'api#31  waiting for review: awaywork PR is open',
+    )
+    expect(formatWhy(plan, githubPr(31))).toMatchInlineSnapshot(`
+      "github acme/api#31  PR 31
+        https://github.com/acme/api/pull/31
+        skipped: waiting_for_review
+          waiting for review: awaywork PR is open; closest #3 fix: checks is passing, wants failing"
+    `)
+  })
+
+  it('keeps the date a gave_up reason gives in Needs you', () => {
+    const plan = acmePlan()
+    const reason = 'gave up after 3 attempts; next try on 2026-01-15'
+    plan.skipped.push({ item: githubPr(31), kind: 'gave_up', reason })
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(`api#31  ${reason}`)
+  })
+
+  it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {
+    const plan = acmePlan()
+    const url = 'https://github.com/acme/api/pull/31'
+    const reason = `waiting for review: awaywork pushed onto your PR ${url}`
+    plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
+    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
+      'api#31  waiting for review: awaywork pushed onto your PR',
+    )
+    expect(formatWhy(plan, githubPr(31))).toBe(
+      `github acme/api#31  PR 31\n  ${url}\n  skipped: waiting_for_review\n    waiting for review: awaywork pushed onto your PR`,
+    )
+  })
+
+  it('says which PR an item waits on under --why when it is another', () => {
+    const plan = acmePlan()
+    const pr = 'https://github.com/acme/api/pull/31'
+    const issue = asanaTask(7)
+    plan.skipped.push({ ...waitingSkip(), item: issue })
+    expect(formatWhy(plan, issue)).toContain(
+      `  skipped: waiting_for_review\n    waiting for review: awaywork PR is open; closest #3 fix: checks is passing, wants failing\n    waits on ${pr}`,
+    )
+  })
+
+  it("clips a Needs you row's reason and title at the given width, as the view asks", () => {
+    const plan = acmePlan()
+    const long = { ...waitingSkip(), reason: `no repo: ${'x'.repeat(80)}` }
+    plan.skipped.push({ ...long, kind: 'no_repo' })
+    const [, row] = needsYouRows(plan.skipped)
+    expect(row?.lines[0]).toBe(`api#31  no repo: ${'x'.repeat(50)}…`)
+    const [, whole] = needsYouRows(plan.skipped, undefined, Number.POSITIVE_INFINITY)
+    expect(whole?.lines[0]).toBe(`api#31  no repo: ${'x'.repeat(80)}`)
   })
 
   it('lists every skipped item, or those of one kind', () => {
@@ -380,7 +386,7 @@ queue: [{ skill: fix }]
 
   it('indents each line of a warning under its first', () => {
     expect(warningLines(['source tracker: Command failed\n\nError: boom', 'one line'])).toEqual([
-      'Warnings',
+      'Warnings 2',
       '  source tracker: Command failed',
       '    Error: boom',
       '  one line',
@@ -392,19 +398,19 @@ queue: [{ skill: fix }]
 describe('report views', () => {
   it('prints a run from its report.json: units with summaries, needs you, counts, quota, hints', () => {
     expect(formatRun(acmeRun(), ['source tracker: Command failed'])).toMatchInlineSnapshot(`
-      "Run 20261019-220000: 1 draft PRs, 0 reports, 1 units
+      "Run 20261019-220000: 1 draft PR, 0 reports, 1 unit
       2026-10-19 22:00:00 to 2026-10-19 22:41:07
 
-      Warnings
+      Warnings 1
         source tracker: Command failed
 
-      Units
+      Units 1
            item   skill  status          result
         1  api#1  fix    done, 12 turns  https://github.com/acme/api/pull/9
            Retries the flaky upload test instead of sleeping.
 
-      Needs you
-        T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4
+      Needs you 1
+        T-4  no repo: no linked PR or repo field
              Task 4
 
       Skipped 2: 1 no_rule, 1 over_cap
@@ -417,17 +423,20 @@ describe('report views', () => {
     `)
   })
 
-  it('counts skips from a report.json older than kinds as unknown, never as needing you', () => {
+  it('lists skips from a report.json older than kinds uncounted, never as needing you', () => {
     const run = acmeRun()
-    const old = run.plan.skipped.map(({ item, reason }) => ({ item, reason }))
-    const report = { ...run, plan: { ...run.plan, skipped: old } } as unknown as RunReport
-    const text = formatRun(report)
-    expect(text).toContain('Skipped 3: 3 unknown')
+    run.plan.skipped = run.plan.skipped.map(({ item, reason }) => ({ item, reason }))
+    const text = formatRun(run)
+    expect(text).toContain('\nSkipped 3\n')
     expect(text).not.toContain('Needs you')
-    expect(formatSkipped(report.plan.skipped, 'unknown')).toMatch(/^Skipped unknown \(3\)\n/)
+    expect(formatSkipped(run.plan.skipped)).toMatch(/^Skipped 3\n {2}api#3: matched no rule;/)
+    expect(formatWhy(run.plan, asanaTask(4))).toContain('\n  skipped\n    no repo')
+    expect(formatReport(run)).toContain(
+      '<summary>Skipped (3)</summary>\n\n- api#3: matched no rule',
+    )
   })
 
-  it('shows one unit by number, unit id or item, with its steps, files and body', () => {
+  it('shows one unit by number, unit id or item, with its files and body, and no steps for one step', () => {
     const run = acmeRun()
     const [found] = findChains(run, '1')
     expect(findChains(run, 'acme-api-1')).toEqual([found])
@@ -443,7 +452,6 @@ describe('report views', () => {
         status  done, 12 turns
         result  https://github.com/acme/api/pull/9
         item    https://github.com/acme/api/pull/1
-        steps   acme-api-1  fix  claude  done, 12 turns  -
         files   /runs/20261019-220000/units/acme-api-1/1-fix/worker.log
 
       # Fix the flaky upload test
@@ -488,7 +496,7 @@ describe('report views', () => {
     delete result.summary
     const units = formatRun(run).split('\n\n')[1] ?? ''
     expect(units).toMatchInlineSnapshot(`
-      "Units
+      "Units 1
            item   skill  status                                                        result
         1  api#1  fix    failed, 12 turns (git clone: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  https://github.com/acme/api/pull/9
            PR 1"
@@ -508,7 +516,7 @@ describe('report views', () => {
     Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
     const units = formatRun(run).split('\n\n')[1] ?? ''
     expect(units).toMatchInlineSnapshot(`
-      "Units
+      "Units 1
            item   skill  status   result
         1  api#1  fix    skipped  setup failed: Command failed with exit code 1: pnpm install…
            Retries the flaky upload test instead of sleeping."
@@ -522,7 +530,6 @@ describe('report views', () => {
                    ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with frozen-lockfile
                     Failure reason:
         item    https://github.com/acme/api/pull/1
-        steps   acme-api-1  fix  claude  skipped  setup failed: Command failed with exit code 1: pnpm install…
 
       Retries the flaky upload test instead of sleeping."
     `)
@@ -568,7 +575,7 @@ describe('report views', () => {
       '| 1 | [api#1 PR 1](https://github.com/acme/api/pull/1) | fix | claude | done, 12 turns | report below |\n\n- **api#1**: Retries the flaky upload test instead of sleeping.\n',
     )
     expect(text).toContain(
-      '## Needs you\n\n- [T-4 Task 4](https://app.asana.com/0/1/4): no repo: no linked PR or repo field\n',
+      '## Needs you (1)\n\n- [T-4 Task 4](https://app.asana.com/0/1/4): no repo: no linked PR or repo field\n',
     )
     expect(text).toContain(
       [

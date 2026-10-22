@@ -26,7 +26,8 @@ Commands:
                          starting queue
   config                 print the config schema or edit the config
   plan [options]         show the next run's units in order, with each
-                         provider's ceiling; runs no worker
+                         provider's ceiling; runs no worker; browsable in a
+                         terminal
   skip [options] [key]   leave an item (source:key, e.g. github:acme/api#5)
                          alone in the coming runs; with no key, list skipped
                          items
@@ -37,7 +38,8 @@ Commands:
   skills                 list skills and eject built-ins to tweak
   run [options]          plan the units, start a worker per unit and publish
                          draft PRs and reports
-  report [options] [id]  print a run's morning report; the latest by default
+  report [options] [id]  print a run's morning report, the latest by default;
+                         browsable in a terminal
   stats [options]        what each rule, skill and provider cost and delivered
                          across all runs
   replay <run> <unit>    re-run a past run's unit, its first step, on its base
@@ -111,7 +113,8 @@ Options:
 ```text
 Usage: awaywork plan [options]
 
-show the next run's units in order, with each provider's ceiling; runs no worker
+show the next run's units in order, with each provider's ceiling; runs no
+worker; browsable in a terminal
 
 Options:
   --json            print the plan and warnings as JSON
@@ -122,8 +125,7 @@ Options:
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "unstackable",
-                    "unknown")
+                    "invalid_branch", "refused_delivery", "unstackable")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -230,7 +232,7 @@ Options:
 ```text
 Usage: awaywork report [options] [id]
 
-print a run's morning report; the latest by default
+print a run's morning report, the latest by default; browsable in a terminal
 
 Options:
   --list            list the last 20 runs: units, draft PRs and reports
@@ -240,8 +242,7 @@ Options:
   --skipped [kind]  list the skipped items, or those of one kind (choices:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
                     "waiting_for_review", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "unstackable",
-                    "unknown")
+                    "invalid_branch", "refused_delivery", "unstackable")
   -h, --help        display help for command
 ```
 

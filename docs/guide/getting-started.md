@@ -50,23 +50,68 @@ awaywork doctor   # the config, binaries, credentials, quota, sources
 awaywork plan
 ```
 
-`plan` reads your sources and each provider's quota and prints what a run would do, without running an agent:
+`plan` reads your sources and each provider's quota and shows what a run would do, without running an agent. In a terminal it opens at once and shows each step as it loads:
 
 ```
+☾ >_ awaywork  You're away, your agents work
+
+⠸ Planning the next run
+  ✔ github        5 items
+  ✔ tracker       2 items
+  ✔ linking PRs   2/2
+  ⠸ claude quota
+
+q quit
+```
+
+Then the same screen is a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
+
+```
+☾ >_ awaywork  You're away, your agents work
+
 Providers
   provider  window     used  ceiling  set by       resets in  session / stop at
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
     other limits: pacing 90%
 
-Units
+▾ Needs you 1
+  T-4  no repo: no linked PR or repo field
+       Export invoices as CSV
+
+▾ Units 3
      item   rule  skill              provider  deliver   title
   1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
      + api#5: same feature, matched #3
   2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
-Needs you
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+▾ Skipped 2: 1 no_rule, 1 over_cap
+  ▾ no_rule 1
+    T-7  closest #3 implement: type is task, wants issue
+         Onboarding emails
+  ▸ over_cap 1
+
+⏎ unfold  o open  s skip  a approve  ? help  q quit
+```
+
+`⏎` on an item pages why it's planned or skipped, `o` opens it, `s` skips it in the coming runs; `?` lists the rest, and [the morning report](./how-it-works.md#the-morning-report) has the table. Piped or in CI it prints plain text:
+
+```
+$ awaywork plan | cat
+Providers
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
+    other limits: pacing 90%
+
+Units 3
+     item   rule  skill              provider  deliver   title
+  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+     + api#5: same feature, matched #3
+  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
+  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
+
+Needs you 1
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
@@ -117,7 +162,7 @@ awaywork run --dry-run         # clone, context and prompt, no agent
 awaywork run --unit api#1      # one real unit
 awaywork run --repo 'acme/*'   # only units in matching repos
 awaywork run --rule 4          # only units of queue rule #4
-awaywork report                # the morning report of the last run
+awaywork report                # browse the last run; piped, its morning report
 awaywork report --list         # recent runs, to pick an id for report <id>
 awaywork report --unit 2       # one unit in full: its files, PR body or report
 ```

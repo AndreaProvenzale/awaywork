@@ -12,6 +12,7 @@ import {
   queueLines,
 } from '../src/cli/format.js'
 import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
+import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import {
   type Attempts,
@@ -104,15 +105,15 @@ describe('plan', () => {
         codex     fallback
           4 units, 60 turns each (no quota reading)
 
-      Units
+      Units 3
            item   rule  skill                 provider  deliver   title
         1  api#1  #1    fix (built-in)        claude    draft_pr  PR 1
            + T-7: same feature, matched #4
         2  api#5  #2    implement (built-in)  claude    draft_pr  Add rate limits
         3  api#2  #3    review (built-in)     claude    report    PR 2
 
-      Needs you
-        T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
+      Needs you 1
+        T-8  no repo: no linked PR or repo field
              Task 8
 
       Skipped 1: 1 no_rule
@@ -701,6 +702,32 @@ queue:
     }
   })
 
+  it('reports each source and provider as it loads, for the loader', async () => {
+    const yaml =
+      'providers: [codex]\nsources: { tracker: { command: "echo []" }, chores: { command: "exit 3" } }\n'
+    const steps: Step[] = []
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    try {
+      await probeAndPlan(parseConfig(yaml), await mkdtemp(join(tmpdir(), 'awaywork-skills-')), {
+        retry: true,
+        onProgress: (step) => steps.push(step),
+      })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(steps).toEqual([
+      { name: 'tracker', state: 'running' },
+      { name: 'tracker', state: 'done', detail: '0 items' },
+      { name: 'chores', state: 'running' },
+      { name: 'chores', state: 'failed', detail: "Command failed with exit code 3: 'exit 3'" },
+      {
+        name: 'codex quota',
+        state: 'failed',
+        detail: expect.stringMatching(/^unavailable: a GitHub-hosted runner/),
+      },
+    ])
+  })
+
   it("masks a failing source's secret in the warnings plan prints", async () => {
     const yaml =
       'providers: [codex]\nsources: { chores: { command: \'echo "auth failed for $CHORES_TOKEN" >&2; exit 1\', secrets: [CHORES_TOKEN] } }\n'
@@ -864,7 +891,7 @@ queue: [{ skill: fix, deliver: push }]`
     expect(held.skipped.map((s) => [s.kind, s.reason])).toEqual([
       [
         'waiting_for_review',
-        'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
+        'waiting for review: awaywork pushed onto your PR https://github.com/acme/api/pull/1',
       ],
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')

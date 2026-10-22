@@ -20,21 +20,21 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 
 ```
-$ awaywork plan
+$ awaywork plan | cat
 Providers
   provider  window     used  ceiling  set by       resets in  session / stop at
   claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
     other limits: pacing 90%
 
-Units
+Units 3
      item   rule  skill              provider  deliver   title
   1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
      + api#5: same feature, matched #3
   2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
-Needs you
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+Needs you 1
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap
@@ -57,34 +57,34 @@ awaywork schedule install    # asks: this machine (launchd, systemd or cron) or 
 
 GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists.
 
-Next morning:
+Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
 
 ```
-$ awaywork report
-Run 20261019-220012: 1 draft PRs, 1 reports, 3 units
-2026-10-19 22:00:12 to 2026-10-19 23:47:40
+☾ >_ awaywork  You're away, your agents work
 
-Units
+Run 20261019-220012: 1 draft PR, 1 report, 3 units
+2026-10-19 22:00:12 to 2026-10-19 23:47:40
+claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+
+▾ Needs you 1
+  T-4  no repo: no linked PR or repo field
+       Export invoices as CSV
+
+▾ Units 3
      item   skill   status          result
   1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
-     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 500.
-  2  web#3  fix     done, 9 turns   no commits
+     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
+  2  web#3  fix     done, 9 turns   nothing
      No code changes: the red check is the visual diff job, which fails on main too since #212.
   3  api#2  review  done, 6 turns   report, verdict approve
      Approve: the session cache keys on the user id and expires with the token.
 
-Needs you
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
-       Export invoices as CSV
+▸ Skipped 2: 1 no_rule, 1 over_cap
 
-Skipped 2: 1 no_rule, 1 over_cap
-
-Quota
-  claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
-
-awaywork report 20261019-220012 --unit <n|key>    shows one
-awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
+⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
 ```
+
+Piped or in CI, `plan` and `report` print plain text, like the `plan` above.
 
 **Docs:** https://andreaprovenzale.github.io/awaywork/ · **Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
 

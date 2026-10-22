@@ -167,7 +167,7 @@ describe('publish', () => {
     await body('Title')
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: 'no commits',
+      reason: 'nothing',
     })
     await commit('first')
     await body('')

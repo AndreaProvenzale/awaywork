@@ -101,7 +101,7 @@ export async function publishSlice(
   if (deliver === 'report' || (await commitsSince(dir, from)) === 0) {
     const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
     if (!text)
-      return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'no commits' }
+      return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'nothing' }
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     return { kind: 'report', text }

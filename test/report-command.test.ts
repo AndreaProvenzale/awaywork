@@ -174,7 +174,6 @@ describe('report command', () => {
         '  status  done',
         '  result  no commits',
         '  item    https://github.com/acme/api/pull/1',
-        '  steps   acme-api-1  fix  -  done  -',
         `  files   ${join(runsDir, id, files.sliceBody)}`,
         '',
         body.trim(),
@@ -223,10 +222,10 @@ describe('report command', () => {
     const { out, err } = output()
     await printReport(undefined, true, run)
     expect(out).toEqual([
-      '20261016-010203  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261014-223527  1 units, 1 draft PRs, 0 reports  (github: awaywork)',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261016-010203  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261014-223527  1 unit, 1 draft PR, 0 reports  (github: awaywork)',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
     ])
     expect(err).toEqual([])
     expect(run.calls).toContainEqual(
@@ -255,11 +254,30 @@ describe('report command', () => {
       'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)'
     expect(err).toEqual([warning, warning])
     expect(out).toEqual([
-      '20261015-220000  1 units, 0 draft PRs, 1 reports',
-      '20261013-220000  2 units, 1 draft PRs, 1 reports',
+      '20261015-220000  1 unit, 0 draft PRs, 1 report',
+      '20261013-220000  2 units, 1 draft PR, 1 report',
       report('20261015-220000', ['report below']),
     ])
     expect(process.exitCode).toBeUndefined()
+  })
+
+  it('leaves the screen before saying there are no runs, with the warnings it held', async () => {
+    await rm(runsDir, { recursive: true, force: true })
+    const run = await controlRepo(['awaywork.yml'], '', /^gh api/)
+    const { err } = output()
+    const screen = {
+      progress: () => {},
+      browse: async () => {},
+      close: () => void err.push('closed'),
+    }
+    const commands = { skip: async () => '', approve: async () => '' }
+    await printReport(undefined, false, run, false, { browse: { screen, commands } })
+    expect(err).toEqual([
+      'closed',
+      'warning: runs on GitHub left out: HTTP 401: Bad credentials (https://api.github.com/graphql)',
+      `no runs in ${runsDir}`,
+    ])
+    expect(process.exitCode).toBe(1)
   })
 
   it('points a run without a report at the step that is working', async () => {

@@ -411,7 +411,7 @@ it('ends the chain after a report step that wrote no report, and reports nothing
     worker({}, { idle: ['acme-api-1'] }),
   )
   expect(rows).toEqual([
-    ['acme-api-1', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-implement', 'skipped', 'acme-api-1 wrote no report'],
     ['acme-api-1-review', 'skipped', 'acme-api-1 wrote no report'],
   ])
@@ -519,17 +519,20 @@ queue:
   const text = formatReport(report)
   expect(text).toContain(
     [
-      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commits); ${pull('away/acme-api-1-2')} (1 commits) |`,
-      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commits) |`,
-      '|  |   └ acme-api-1 | implement | claude | done, 1 turns | 1 commit |',
-      '|  |   └ acme-api-1-review | review | claude | done, 1 turns | a report |',
-      `|  | └ slice 2 | fix | claude | done, 1 turns | ${pull('away/acme-api-1-2')} (1 commits) |`,
-      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turns | 1 commit |',
+      `| 1 | [api#1 Fix the thing](https://example.com/1) | implement → review → stack fix | claude | done, 3 turns | ${pull('away/acme-api-1')} (1 commit); ${pull('away/acme-api-1-2')} (1 commit) |`,
+      `|  | └ slice 1 | implement → review | claude | done, 2 turns | ${pull('away/acme-api-1')} (1 commit) |`,
+      '|  |   └ acme-api-1 | implement | claude | done, 1 turn | 1 commit |',
+      '|  |   └ acme-api-1-review | review | claude | done, 1 turn | a report |',
+      `|  | └ slice 2 | fix | claude | done, 1 turn | ${pull('away/acme-api-1-2')} (1 commit) |`,
+      '|  |   └ acme-api-1-fix | fix | claude | done, 1 turn | 1 commit |',
     ].join('\n'),
   )
-  expect(runLine('r1', text)).toBe('r1  1 units, 2 draft PRs, 0 reports')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 2 draft PRs, 0 reports')
+  expect(runLine('r1', text.replaceAll('(1 commit)', '(1 commits)'))).toBe(
+    'r1  1 unit, 2 draft PRs, 0 reports',
+  )
   expect(summarize(report, 'report.md').split('\n')[0]).toBe(
-    'Run r1: 2 draft PRs, 0 reports, 1 units',
+    'Run r1: 2 draft PRs, 0 reports, 1 unit',
   )
   expect((await readFile(hooked, 'utf8')).split('\n')).toEqual([
     `acme-api-1 ${pull('away/acme-api-1')}`,
@@ -761,7 +764,7 @@ it('ends the chain when a stacked slice starts with a step that commits nothing'
   )
   expect(rows).toEqual([
     ['acme-api-1', 'done', pr('away/acme-api-1', 1)],
-    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'no commits' }],
+    ['acme-api-1-fix', 'done', { kind: 'none', reason: 'nothing' }],
     ['acme-api-1-review', 'skipped', 'acme-api-1-fix committed nothing'],
   ])
   expect(opened.map((o) => o.head)).toEqual(['away/acme-api-1'])

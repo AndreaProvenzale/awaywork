@@ -66,7 +66,7 @@ describe('run command', () => {
     expect(err[0]).toMatch(/^warning: source chores: Command failed with exit code 1/)
     const { report } = await latestRun()
     expect(report).toMatch(/\n\d{4}-\d\d-\d\d \d\d:\d\d:\d\d to \S+ \S+, local time\n/)
-    expect(report).toContain('## Warnings\n\n- source chores: Command failed with exit code 1')
+    expect(report).toContain('## Warnings (1)\n\n- source chores: Command failed with exit code 1')
   })
 
   it('writes the results as report.json next to report.md', async () => {
