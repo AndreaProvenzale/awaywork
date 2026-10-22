@@ -19,10 +19,11 @@ import {
   view,
 } from '../src/cli/triage.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
+import { githubPr } from './fakes/items.js'
 
 const files = [{ text: '1  api#1  PR 1', log: '/runs/1/worker.log' }]
 
-const needsRow = 'T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4'
+const needsRow = 'T-4  no repo: no linked PR or repo field'
 
 const run = (rows = 30) => runTriage(acmeRun(), ['source tracker: Command failed'], files, rows)
 
@@ -41,7 +42,7 @@ describe('triage view', () => {
   it('shows the run: header, warnings, needs you and units unfolded, skipped folded', () => {
     expect(screen(run(24))).toMatchInlineSnapshot(`
       [
-        "Run 20261019-220000: 1 draft PRs, 0 reports, 1 units",
+        "Run 20261019-220000: 1 draft PR, 0 reports, 1 unit",
         "2026-10-19 22:00:00 to 2026-10-19 22:41:07",
         "claude: fallback, 1 of 4 units (no quota reading)",
         "",
@@ -49,7 +50,7 @@ describe('triage view', () => {
         "  source tracker: Command failed",
         "",
         "▾ Needs you 1",
-        "  T-4  no repo: no linked PR or repo field  https://app.asana.com/0/1/4",
+        "  T-4  no repo: no linked PR or repo field",
         "       Task 4",
         "",
         "▾ Units 1",
@@ -93,28 +94,105 @@ describe('triage view', () => {
     expect(selectedLine(runTriage(r, warnings, files, 30))).toBe(warnings[0])
   })
 
-  it('clips a long Needs you reason as the plain rows do', () => {
+  it('keeps a Needs you reason but the closest rule, and opens the PR it waits on', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
-    expect(screen(planTriage(plan, [], 30), 130)).toContain(
-      '  api#31  waiting for review: awaywork PR is open; closest #3 fix: ch…  https://github.com/acme/api/pull/31',
+    const state = planTriage(plan, [], 30)
+    expect(screen(state)).toContain('  api#31  waiting for review: awaywork PR is open')
+    expect(update(press(state, 'down'), 'o').effect).toMatchObject({
+      target: 'https://github.com/acme/api/pull/31',
+    })
+  })
+
+  it('names the PR awaywork pushed onto in Needs you without its URL', () => {
+    const plan = acmePlan()
+    const url = 'https://github.com/acme/api/pull/31'
+    const reason = `waiting for review: awaywork pushed onto your PR ${url}`
+    plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
+    expect(screen(planTriage(plan, [], 30))).toContain(
+      '  api#31  waiting for review: awaywork pushed onto your PR',
     )
   })
 
-  it('unfolds Skipped into kinds, each folded, and a kind into its items', () => {
+  it('clips results and titles to the terminal, not to a fixed width', () => {
+    const r = acmeRun()
+    const [result] = r.results
+    if (!result) return
+    const url = `https://github.com/acme/api/pull/${'9'.repeat(70)}`
+    const reason = `awaywork tried this in ${url}`
+    Object.assign(result, { status: 'skipped', reason, turns: undefined, outcome: undefined })
+    delete result.summary
+    result.planned.unit.items[0] = { ...githubPr(1), title: `PR ${'1'.repeat(80)}` }
+    const lines = screen(runTriage(r, [], files, 30), 200)
+    expect(lines).toContain(`  1  api#1  fix    skipped  awaywork tried this in ${url}`)
+    expect(lines).toContain(`     PR ${'1'.repeat(80)}`)
+    expect(screen(runTriage(r, [], files, 30), 60)).toContain(`     PR ${'1'.repeat(51)}…`)
+  })
+
+  it('unfolds Skipped into kinds, each folded, and a kind into its items without what the kind says', () => {
     const skipped = press(run(), 'G', 'right')
     expect(screen(skipped)).toContain('  ▸ no_rule 1')
     expect(screen(skipped)).toContain('  ▸ over_cap 1')
     const open = press(skipped, 'down', 'space')
-    expect(screen(open)).toContain(
-      '    api#3: matched no rule; closest #1 fix: checks is passing, wants failing',
-    )
+    expect(screen(open)).toContain('    api#3  closest #1 fix: checks is passing, wants failing')
+    expect(screen(open)).toContain('           PR 3')
     expect(selectedLine(open)).toBe('▾ no_rule 1')
+    expect(screen(press(open, 'down', 'down', 'right'))).toContain('    api#2  limits.units is 1')
+  })
+
+  it('lists the items of a single kind right under Skipped', () => {
+    const r = acmeRun()
+    r.plan.skipped = r.plan.skipped.filter((s) => s.kind !== 'over_cap')
+    const open = press(runTriage(r, [], files, 30), 'G', 'right')
+    expect(screen(open)).toContain('▾ Skipped 1: 1 no_rule')
+    expect(selectedLine(press(open, 'down'))).toBe(
+      'api#3  closest #1 fix: checks is passing, wants failing',
+    )
+  })
+
+  it('lists skips from a report.json older than kinds right under Skipped, uncounted', () => {
+    const r = acmeRun()
+    r.plan.skipped = r.plan.skipped.map(({ item, reason }) => ({ item, reason }))
+    const open = press(runTriage(r, [], files, 30), 'G', 'right')
+    expect(screen(open)).toContain('▾ Skipped 3')
+    expect(screen(open)).toContain(
+      '  api#3  matched no rule; closest #1 fix: checks is passing, wants failing',
+    )
+    expect(screen(open)).toContain('  T-4    no repo: no linked PR or repo field')
+    expect(screen(open)).not.toContain('Needs you')
+  })
+
+  it('fits wide titles to the terminal and pads the selected row to it', () => {
+    const wide = '中文标题🐛'
+    const columns = (line: string) =>
+      [...stripVTControlCharacters(line)].reduce((n, c) => n + (wide.includes(c) ? 2 : 1), 0)
+    const r = acmeRun()
+    for (const s of r.plan.skipped) s.item = { ...s.item, title: wide.repeat(20) }
+    for (const s of r.plan.skipped.filter((s) => s.kind === 'no_repo'))
+      s.reason = `no repo: ${wide}`
+    const lines = view(runTriage(r, [], files, 30), 60, 30)
+    for (const line of lines) expect(columns(line)).toBeLessThanOrEqual(60)
+    expect(columns(lines.find((l) => l.includes('\u001b[7m')) ?? '')).toBe(60)
+  })
+
+  it('counts an emoji that VS16 widens as two columns', () => {
+    const r = acmeRun()
+    for (const s of r.plan.skipped) s.reason = `${s.reason} ⚠️`
+    const lines = view(runTriage(r, [], files, 30), 60, 30)
+    const selected = lines.find((l) => l.includes('\u001b[7m')) ?? ''
+    expect(selected).toContain('⚠️')
+    expect([...stripVTControlCharacters(selected)].length).toBe(60)
+    expect(clipLine('⚠️⚠️⚠️', 4)).toBe('⚠️⚠…')
+    expect(clipLine('1️⃣ ok', 5)).toBe('1️⃣ ok')
   })
 
   it('clips lines to the width, keeping their styles closed', () => {
     expect(clipLine('\u001b[1mabcdef\u001b[22m', 4)).toBe('\u001b[1mabc…\u001b[22m')
     expect(clipLine('abc', 4)).toBe('abc')
+    expect(clipLine('中文标题', 6)).toBe('中文…')
+    expect(clipLine('fix 🐛 now', 7)).toBe('fix 🐛…')
+    expect(clipLine('cafe\u0301', 4)).toBe('cafe\u0301')
+    expect(clipLine('कार', 2)).toBe('क…')
     for (const line of view(run(), 30, 30))
       expect([...stripVTControlCharacters(line)].length).toBeLessThanOrEqual(30)
   })
@@ -125,17 +203,31 @@ describe('triage view', () => {
     expect(screen(state).slice(0, 4)).toEqual([
       brand,
       '',
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
       '2026-10-19 22:00:00 to 2026-10-19 22:41:07',
     ])
     expect(screen(state)).toHaveLength(24)
     expect(screen(state).at(-2)).toMatch(/^⏎ read/)
     // 3 header lines, a blank, a body line, the footer and the status: no room for the brand.
     expect(screen(resize(state, 8), 100, 8)[0]).toBe(
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
     )
     expect(screen(resize(state, 8), 100, 8).at(-2)).toMatch(/^⏎ read/)
     expect(screen(resize(state, 9), 100, 9)[0]).toBe(brand)
+  })
+
+  it("leaves log and diff out of a plan's footer and help, as a plan has neither", () => {
+    const plan = planTriage(acmePlan(), [], 30)
+    const footer = stripVTControlCharacters(view(plan, 120, 30).at(-2) ?? '')
+    expect(footer).toBe('⏎ read  o open  s skip  a approve  ? help  q quit')
+    const help = screen(update(plan, '?').state)
+    expect(help).toContain("  o                 open the unit's PR, else the item")
+    expect(help.join('\n')).not.toMatch(/^ {2}[ld] /m)
+    const unit = press(plan, 'down', 'down')
+    expect(update(unit, 'l')).toEqual({ state: unit })
+    expect(screen(update(run(), '?').state)).toContain(
+      "  l                 page the step's worker.log",
+    )
   })
 
   it('dims the keys a row has nothing behind', () => {
@@ -354,7 +446,7 @@ describe('loader', () => {
     expect(screen(ready(l, run(24))).slice(0, 3)).toEqual([
       brand,
       '',
-      'Run 20261019-220000: 1 draft PRs, 0 reports, 1 units',
+      'Run 20261019-220000: 1 draft PR, 0 reports, 1 unit',
     ])
   })
 })

@@ -3,10 +3,9 @@ import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import {
   isNamed,
-  needsYou,
   type PlannedUnit,
   type RunPlan,
-  type Skipped,
+  type SkipKind,
   shortRef,
 } from '../core/foreman.js'
 import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
@@ -15,8 +14,11 @@ import {
   type Chain,
   chainCells,
   chains,
+  counted,
   localTime,
+  needsYouOn,
   quotaLines,
+  type ReportedSkip,
   type RunReport,
   runHeadline,
   stepCells,
@@ -58,7 +60,7 @@ export function reportJson(report: RunReport, warnings: string[] = []): string {
 }
 
 /** One per chain: its first step stands for it. */
-export function listedUnits(plan: RunPlan) {
+export function listedUnits(plan: Pick<RunPlan, 'units'>) {
   return plan.units.filter((p) => !p.chain)
 }
 
@@ -138,10 +140,10 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
   return out
 }
 
-const stepsOf = (plan: RunPlan, head: PlannedUnit) =>
+const stepsOf = (plan: Pick<RunPlan, 'units'>, head: PlannedUnit) =>
   plan.units.filter((p) => p.chain === head.unit.id)
 
-const deliverOf = (plan: RunPlan, p: PlannedUnit) =>
+const deliverOf = (plan: Pick<RunPlan, 'units'>, p: PlannedUnit) =>
   [p, ...stepsOf(plan, p)].find((s) => s.unit.deliver !== 'report')?.unit.deliver ?? 'report'
 
 export function planUnitLines(plan: RunPlan, style: Style = (_, text) => text): string[] {
@@ -149,10 +151,11 @@ export function planUnitLines(plan: RunPlan, style: Style = (_, text) => text): 
   return units.length === 0 ? ['  none'] : indent([header, ...units.flat()])
 }
 
-/** The units table, unindented: one row per unit with its item, rule, skill, provider, delivery and title, then its `when`, merged items and chain. */
+/** The units table, unindented: one row per unit with its item, rule, skill, provider, delivery and title, clipped at `clipAt`, then its `when`, merged items and chain. */
 export function planUnitTable(
   plan: RunPlan,
   style: Style = (_, text) => text,
+  clipAt = TITLE,
 ): { header: string; units: string[][] } {
   const units = listedUnits(plan)
   const rows = units.map((p, i) => {
@@ -164,7 +167,7 @@ export function planUnitTable(
       describeSkill(p),
       p.provider ?? '-',
       deliverOf(plan, p),
-      clip(top?.title ?? '', TITLE),
+      clip(top?.title ?? '', clipAt),
     ]
   })
   const header = ['', 'item', 'rule', 'skill', 'provider', 'deliver', 'title']
@@ -204,61 +207,84 @@ export function planUnitTable(
   return { header: style('bold', lines[0] ?? ''), units: blocks }
 }
 
-/** The skipped items you can act on: each one's ref, why, and the item or the PR it waits on, then its title. */
-export function needsYouLines(skipped: Skipped[], style: Style = (_, text) => text): string[] {
+/** The skipped items you can act on: each one's ref and why, then its title. */
+export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
   const rows = needsYouRows(skipped, style)
   if (rows.length === 0) return []
   return ['', heading('Needs you', rows.length, style), ...indent(rows.flatMap((row) => row.lines))]
 }
 
-/** Each skipped item you can act on, with its row of the Needs you table and its title, unindented. */
+/** Each skipped item you can act on, with its row of the Needs you table, its reason without the closest rule clipped at `clipAt`, and its title, unindented. */
 export function needsYouRows(
-  skipped: Skipped[],
+  skipped: ReportedSkip[],
   style: Style = (_, text) => text,
-): { skipped: Skipped; lines: string[] }[] {
-  const waiting = skipped.filter((s) => needsYou[s.kind])
-  if (waiting.length === 0) return []
-  const lines = table(
-    waiting.map((s) => {
-      const url = s.url ?? s.item.url
-      return [shortRef(s.item), brief(s.reason.replace(` ${url}`, '')), url]
-    }),
-  )
-  const under = ' '.repeat(Math.max(...waiting.map((s) => shortRef(s.item).length)) + 2)
-  return waiting.map((s, i) => ({
+  clipAt = CELL,
+) {
+  const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(/; closest #.*$/, ''), clipAt)
+  return itemRows(skipped.filter(needsYouOn), reason, style, clipAt)
+}
+
+/** What a reason starts with that its kind already says. */
+const kindSays: Partial<Record<SkipKind, RegExp>> = {
+  no_rule: /^matched no rule(; |$)/,
+  over_cap: /^over the cap: /,
+  unchanged: /^unchanged /,
+}
+
+/** A row per skipped item, unindented: its ref and why, less what its kind says, then its title. */
+export function skippedRows(skipped: ReportedSkip[], style: Style, clipAt: number) {
+  const said = (s: ReportedSkip) => (s.kind && kindSays[s.kind]) || ''
+  const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(said(s), ''), clipAt)
+  return itemRows(skipped, reason, style, clipAt)
+}
+
+/** A skip's reason without the URL its row, or `--why`, already shows. */
+const reasonOf = (s: ReportedSkip) => s.reason.replace(` ${s.url ?? s.item.url}`, '')
+
+function itemRows<S extends ReportedSkip>(
+  skipped: S[],
+  text: (s: S) => string,
+  style: Style,
+  clipAt: number,
+): { skipped: S; lines: string[] }[] {
+  if (skipped.length === 0) return []
+  const lines = table(skipped.map((s) => [shortRef(s.item), text(s)]))
+  const under = ' '.repeat(Math.max(...skipped.map((s) => shortRef(s.item).length)) + 2)
+  return skipped.map((s, i) => ({
     skipped: s,
-    lines: [lines[i] ?? '', style('dim', `${under}${clip(s.item.title, TITLE)}`)],
+    lines: [lines[i] ?? '', style('dim', `${under}${clip(s.item.title, clipAt)}`)],
   }))
 }
 
 /** The other skipped items, counted by kind on one line. */
-export function skippedLines(skipped: Skipped[], style: Style = (_, text) => text): string[] {
-  const rest = skipped.filter((s) => !needsYou[s.kind])
+export function skippedLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
+  const rest = skipped.filter((s) => !needsYouOn(s))
   if (rest.length === 0) return []
   return ['', skippedHeading(rest, style)]
 }
 
-/** `Skipped 2: 1 no_rule, 1 over_cap`. */
-export function skippedHeading(skipped: Skipped[], style: Style = (_, text) => text): string {
-  const counts = byKind(skipped).map(([kind, list]) => `${list.length} ${kind}`)
-  return `${heading('Skipped', skipped.length, style)}: ${counts.join(', ')}`
+/** `Skipped 2: 1 no_rule, 1 over_cap`, or `Skipped 2` for skips without kinds. */
+export function skippedHeading(skipped: ReportedSkip[], style: Style = (_, text) => text): string {
+  const counts = byKind(skipped)?.map(([kind, list]) => `${list.length} ${kind}`)
+  const title = heading('Skipped', skipped.length, style)
+  return counts ? `${title}: ${counts.join(', ')}` : title
 }
 
-export const skippedLine = (s: Skipped) => `${shortRef(s.item)}: ${s.reason}`
+const skippedLine = (s: ReportedSkip) => `${shortRef(s.item)}: ${s.reason}`
 
 function hintLines(style: Style, hints: [string, string][]): string[] {
   return table(hints).map((line) => style('dim', line))
 }
 
 /** Every skipped item and why, under the counts `plan` shows, or those of one kind. */
-export function formatSkipped(skipped: Skipped[], kind?: string): string {
-  const line = (s: Skipped) => `  ${skippedLine(s)}`
+export function formatSkipped(skipped: ReportedSkip[], kind?: string): string {
+  const line = (s: ReportedSkip) => `  ${skippedLine(s)}`
   if (kind) {
-    const list = skipped.filter((s) => (s.kind ?? 'unknown') === kind)
+    const list = skipped.filter((s) => s.kind === kind)
     return [`Skipped ${kind} (${list.length})`, ...list.map(line)].join('\n')
   }
-  const waiting = skipped.filter((s) => needsYou[s.kind])
-  const rest = skipped.filter((s) => !needsYou[s.kind])
+  const waiting = skipped.filter(needsYouOn)
+  const rest = skipped.filter((s) => !needsYouOn(s))
   const out = waiting.length > 0 ? [`Needs you ${waiting.length}`, ...waiting.map(line)] : []
   if (rest.length > 0) out.push(skippedHeading(rest), ...rest.map(line))
   return out.length > 0 ? out.join('\n') : 'Skipped 0'
@@ -280,7 +306,7 @@ export function ambiguous(name: string, items: Item[]): string {
 }
 
 /** Why an item is or isn't planned: its unit, or why it was skipped. */
-export function formatWhy(plan: RunPlan, named: Item): string {
+export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const units = listedUnits(plan)
   const out: string[] = []
   const heading = (item: Item) => [`${item.source} ${item.key}  ${item.title}`, `  ${item.url}`]
@@ -306,8 +332,13 @@ export function formatWhy(plan: RunPlan, named: Item): string {
     )
   })
   for (const s of plan.skipped.filter((s) => isIt(s.item))) {
-    out.push(...(out.length ? [''] : []), ...heading(s.item), `  skipped: ${s.kind ?? 'unknown'}`)
-    out.push(`    ${s.reason}`, ...(s.url ? [`    waits on ${s.url}`] : []))
+    out.push(
+      ...(out.length ? [''] : []),
+      ...heading(s.item),
+      `  skipped${s.kind ? `: ${s.kind}` : ''}`,
+    )
+    const waits = s.url && s.url !== s.item.url ? [`    waits on ${s.url}`] : []
+    out.push(`    ${reasonOf(s)}`, ...waits)
     // The closest rule is named by its number.
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
@@ -315,7 +346,7 @@ export function formatWhy(plan: RunPlan, named: Item): string {
 }
 
 /** The queue as numbered rules. */
-export function queueLines(plan: RunPlan): string[] {
+export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): string[] {
   const rules = plan.queue.map((r, i) => [`#${i + 1}`, r.skill, describeRule(r)])
   return [
     plan.defaultQueue ? 'Queue (default: no queue in config)' : 'Queue',
@@ -419,8 +450,8 @@ function allowanceNote(id: string, a: Allowance): string {
 
 function describeFallback(id: string, a: FallbackAllowance): string {
   // A command provider has no turn cap, so its fallback turns mean nothing.
-  const turns = Object.hasOwn(providers, id) ? `, ${a.turns} turns each` : ''
-  return `${a.units} units${turns} (${a.reason})`
+  const turns = Object.hasOwn(providers, id) ? `, ${counted(a.turns, 'turn')} each` : ''
+  return `${counted(a.units, 'unit')}${turns} (${a.reason})`
 }
 
 // `reserve` is the share kept back; its limit is the cap that leaves it.
@@ -443,7 +474,7 @@ function indent(lines: string[]): string[] {
   return lines.map((l) => `  ${l}`)
 }
 
-/** A unit's result: its PR, `no commits`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
+/** A unit's result: its PR, `nothing`, or a report, and its verdict; `why` shapes a skip's or error's reason. */
 function unitResult(u: UnitResult, why = (reason: string) => reason): string {
   if (u.status === 'skipped') return why(u.reason ?? '')
   const o = u.outcome
@@ -461,16 +492,20 @@ function unitResult(u: UnitResult, why = (reason: string) => reason): string {
 const CELL = 60
 
 /** A cell's first line, clipped: `--unit` has the rest. */
-function brief(text: string): string {
+function brief(text: string, clipAt = CELL): string {
   const [first = '', ...rest] = text.split('\n')
-  return clip(rest.length > 0 ? `${first.trimEnd()}…` : first, CELL)
+  return clip(rest.length > 0 ? `${first.trimEnd()}…` : first, clipAt)
 }
 
-/** One row per chain, numbered as `report --unit` takes them: item, skills, status and result, then its summary or title. */
-export function reportUnitRows(r: RunReport): { cells: string[]; summary?: string }[] {
+/** One row per chain, numbered as `report --unit` takes them: item, skills, status and result, then its summary or title; the result and title clipped at `clipAt`. */
+export function reportUnitRows(
+  r: RunReport,
+  clipAt = TITLE,
+): { cells: string[]; summary?: string }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
-    const [status, result] = chainCells(chain, (u) => unitResult(u, brief), false)
+    const why = (reason: string) => brief(reason, clipAt)
+    const [status, result] = chainCells(chain, (u) => unitResult(u, why), false)
     return {
       cells: [
         String(i + 1),
@@ -479,7 +514,7 @@ export function reportUnitRows(r: RunReport): { cells: string[]; summary?: strin
         brief(status),
         result,
       ],
-      summary: chain.head.summary ?? (top && clip(top.title, TITLE)),
+      summary: chain.head.summary ?? (top && clip(top.title, clipAt)),
     }
   })
 }
@@ -493,8 +528,9 @@ function reportUnitLines(r: RunReport, styled: boolean): string[] {
 export function reportUnitTable(
   r: RunReport,
   styled: boolean,
+  clipAt = TITLE,
 ): { header: string; units: string[][] } {
-  const rows = reportUnitRows(r)
+  const rows = reportUnitRows(r, clipAt)
   const header = ['', 'item', 'skill', 'status', 'result']
   const lines = table([header, ...rows.map((row) => row.cells)], (cell, i, c) =>
     styled && i > 0 && c === 3 ? styleText(statusStyle(cell), cell) : cell,
@@ -558,10 +594,11 @@ export function formatUnit(
     ...(head.loop ? [['loop', head.loop]] : []),
     ['result', result],
     ['item', top?.url ?? '-'],
-    ...table(chain.steps.map((s) => stepCells(s).map(brief))).map((line, i) => [
-      i ? '' : 'steps',
-      line,
-    ]),
+    // One step's line would only repeat the status and result.
+    ...(chain.steps.length > 1
+      ? table(chain.steps.map((s) => stepCells(s).map((c) => brief(c))))
+      : []
+    ).map((line, i) => [i ? '' : 'steps', line]),
     ...files.map((file, i) => [i ? '' : 'files', file]),
   ].flatMap(([label = '', value = '']) => block(value).map((line, i) => [i ? '' : label, line]))
   const ref = top ? shortRef(top) : head.planned.unit.id

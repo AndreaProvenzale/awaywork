@@ -84,7 +84,7 @@ async function deliver(
   const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
-  if (!oldest) return { kind: 'none', reason: 'no commits' }
+  if (!oldest) return { kind: 'none', reason: 'nothing' }
   if (!text)
     return {
       kind: 'none',

@@ -7,6 +7,7 @@ import {
   needsYou,
   type PlannedUnit,
   type RunPlan,
+  type SkipKind,
   type Skipped,
   shortRef,
 } from './foreman.js'
@@ -54,12 +55,18 @@ export interface StepFiles {
   sliceDiff?: string
 }
 
+/** A skip as report.json holds it: one written before skips had kinds has none. */
+export type ReportedSkip = Omit<Skipped, 'kind'> & Partial<Pick<Skipped, 'kind'>>
+
+/** Whether you can act to make the skipped item run; a skip without a kind doesn't say. */
+export const needsYouOn = (s: ReportedSkip): s is Skipped => !!s.kind && needsYou[s.kind]
+
 export interface RunReport {
   runId: string
   dryRun: boolean
   startedAt: Date
   finishedAt: Date
-  plan: RunPlan
+  plan: Omit<RunPlan, 'skipped'> & { skipped: ReportedSkip[] }
   results: UnitResult[]
   /** The last quota a worker saw, per provider. */
   quotas: Record<string, Quota>
@@ -136,18 +143,19 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
   }
-  const waiting = r.plan.skipped.filter((s) => needsYou[s.kind])
+  const waiting = r.plan.skipped.filter(needsYouOn)
   if (waiting.length > 0) {
     out.push('', `## Needs you (${waiting.length})`, '')
     for (const s of waiting) out.push(`- [${refAndTitle(s.item)}](${s.item.url}): ${s.reason}`)
   }
-  const rest = r.plan.skipped.filter((s) => !needsYou[s.kind])
+  const rest = r.plan.skipped.filter((s) => !needsYouOn(s))
   if (rest.length > 0) {
     out.push('', `<details><summary>Skipped (${rest.length})</summary>`)
-    for (const [kind, list] of byKind(rest)) {
-      out.push('', `### ${kind} (${list.length})`, '')
-      for (const s of list) out.push(`- ${shortRef(s.item)}: ${s.reason}`)
-    }
+    const lines = (list: ReportedSkip[]) => list.map((s) => `- ${shortRef(s.item)}: ${s.reason}`)
+    const groups = byKind(rest)
+    if (!groups) out.push('', ...lines(rest))
+    for (const [kind, list] of groups ?? [])
+      out.push('', `### ${kind} (${list.length})`, '', ...lines(list))
     out.push('', '</details>')
   }
   out.push('', '## Quota', '')
@@ -176,11 +184,14 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   return `${out.join('\n')}\n`
 }
 
-/** `Run <id>: 1 draft PRs, 2 reports, 3 units`. */
+/** `3 units`, `1 unit`. */
+export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`
+
+/** `Run <id>: 1 draft PR, 2 reports, 3 units`. */
 export function runHeadline(r: RunReport): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
   const dry = r.dryRun ? ' (dry run)' : ''
-  return `Run ${r.runId}${dry}: ${count('pr')} draft PRs, ${count('report')} reports, ${chains(r).length} units`
+  return `Run ${r.runId}${dry}: ${counted(count('pr'), 'draft PR')}, ${counted(count('report'), 'report')}, ${counted(chains(r).length, 'unit')}`
 }
 
 function refOf(u: UnitResult): string {
@@ -195,13 +206,11 @@ function linkedItem(u: UnitResult): string {
   return top ? `[${refAndTitle(top)}](${top.url})` : u.planned.unit.id
 }
 
-/** Skipped items by kind, the largest group first; a report from before kinds has them as `unknown`. */
-export function byKind(skipped: Skipped[]): [string, Skipped[]][] {
-  const groups = new Map<string, Skipped[]>()
-  for (const s of skipped) {
-    const kind = s.kind ?? 'unknown'
-    groups.set(kind, [...(groups.get(kind) ?? []), s])
-  }
+/** Skipped items by kind, the largest group first; none when a skip has no kind, as in a report.json from before kinds. */
+export function byKind(skipped: ReportedSkip[]): [SkipKind, Skipped[]][] | undefined {
+  if (!skipped.every((s): s is Skipped => !!s.kind)) return undefined
+  const groups = new Map<SkipKind, Skipped[]>()
+  for (const s of skipped) groups.set(s.kind, [...(groups.get(s.kind) ?? []), s])
   return [...groups].sort((a, b) => b[1].length - a[1].length)
 }
 
@@ -294,14 +303,14 @@ export function runLine(runId: string, report: string | undefined): string {
     .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
   // A chain of several slices lists each one's result, separated by `; `.
   const parts = results.flatMap((r) => r.split('; '))
-  const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits\)(, verdict \S+)?$/.test(r)).length
+  const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits?\)(, verdict \S+)?$/.test(r)).length
   const reports = parts.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
-  return `${runId}  ${results.length} units, ${prs} draft PRs, ${reports} reports${dry}`
+  return `${runId}  ${counted(results.length, 'unit')}, ${counted(prs, 'draft PR')}, ${counted(reports, 'report')}${dry}`
 }
 
 function status(u: UnitResult): string {
-  const turns = u.turns ? `, ${u.turns} turns` : ''
+  const turns = u.turns ? `, ${counted(u.turns, 'turn')}` : ''
   const why = [
     u.status !== 'skipped' && u.reason,
     u.retried && 'retried on the next model',
@@ -313,10 +322,11 @@ function status(u: UnitResult): string {
 function result(u: UnitResult): string {
   if (u.status === 'skipped') return u.reason ?? ''
   const verdict = u.verdict ? `, verdict ${u.verdict}` : ''
-  if (u.outcome?.kind === 'pr') return `${u.outcome.url} (${u.outcome.commits} commits)${verdict}`
+  if (u.outcome?.kind === 'pr')
+    return `${u.outcome.url} (${counted(u.outcome.commits, 'commit')})${verdict}`
   if (u.outcome?.kind === 'report') return `report below${verdict}`
   if (u.outcome?.kind === 'pushed')
-    return `${u.outcome.commits} commits pushed onto ${u.outcome.branch}, report below${verdict}`
+    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}, report below${verdict}`
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 
@@ -329,7 +339,8 @@ export function quotaLines(r: RunReport): string[] {
 }
 
 function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): string {
-  if (a.kind === 'fallback') return `fallback, ${units.length} of ${a.units} units (${a.reason})`
+  if (a.kind === 'fallback')
+    return `fallback, ${units.length} of ${counted(a.units, 'unit')} (${a.reason})`
   const long = last?.windows.find((w) => w.name === a.window)?.used ?? a.used
   const short = last?.windows.find((w) => w.span === 'short')
   const session = a.session

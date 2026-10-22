@@ -152,7 +152,11 @@ export function planRun(input: {
     }
     const held = pushedOnto(items, input.attempts ?? {})
     if (held) {
-      skip('waiting_for_review', `waiting for review: awaywork pushed onto ${held.url}`, held.url)
+      skip(
+        'waiting_for_review',
+        `waiting for review: awaywork pushed onto your PR ${held.url}`,
+        held.url,
+      )
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))

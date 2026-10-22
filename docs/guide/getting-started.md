@@ -75,7 +75,7 @@ Providers
     other limits: pacing 90%
 
 ▾ Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 ▾ Units 3
@@ -87,10 +87,11 @@ Providers
 
 ▾ Skipped 2: 1 no_rule, 1 over_cap
   ▾ no_rule 1
-    T-7: matched no rule; closest #3 implement: type is task, wants issue
+    T-7  closest #3 implement: type is task, wants issue
+         Onboarding emails
   ▸ over_cap 1
 
-⏎ unfold  o open  l log  d diff  s skip  a approve  ? help  q quit
+⏎ unfold  o open  s skip  a approve  ? help  q quit
 ```
 
 `⏎` on an item pages why it's planned or skipped, `o` opens it, `s` skips it in the coming runs; `?` lists the rest, and [the morning report](./how-it-works.md#the-morning-report) has the table. Piped or in CI it prints plain text:
@@ -110,7 +111,7 @@ Units 3
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
 Needs you 1
-  T-4  no repo: no linked PR or repo field  https://tracker.acme.dev/T-4
+  T-4  no repo: no linked PR or repo field
        Export invoices as CSV
 
 Skipped 2: 1 no_rule, 1 over_cap

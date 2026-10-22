@@ -113,7 +113,7 @@ describe('plan', () => {
         3  api#2  #3    review (built-in)     claude    report    PR 2
 
       Needs you 1
-        T-8  no repo: no linked PR or repo field  https://app.asana.com/0/1/8
+        T-8  no repo: no linked PR or repo field
              Task 8
 
       Skipped 1: 1 no_rule
@@ -891,7 +891,7 @@ queue: [{ skill: fix, deliver: push }]`
     expect(held.skipped.map((s) => [s.kind, s.reason])).toEqual([
       [
         'waiting_for_review',
-        'waiting for review: awaywork pushed onto https://github.com/acme/api/pull/1',
+        'waiting for review: awaywork pushed onto your PR https://github.com/acme/api/pull/1',
       ],
     ])
     expect(held.skipped[0]?.url).toBe('https://github.com/acme/api/pull/1')

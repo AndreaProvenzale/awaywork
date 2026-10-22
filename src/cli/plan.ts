@@ -115,8 +115,8 @@ type PlanOptions = {
   why?: string
 }
 
-/** What `--skipped` filters on; `unknown` is a skip from a report.json older than kinds. */
-export const skipKinds = [...Object.keys(needsYou), 'unknown']
+/** What `--skipped` filters on. */
+export const skipKinds = Object.keys(needsYou)
 
 export function ruleNumber(text: string): number {
   const n = Number(text)

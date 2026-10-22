@@ -1,6 +1,13 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { needsYou, type RunPlan, type Skipped } from '../core/foreman.js'
-import { byKind, chains, quotaLines, type RunReport } from '../core/report.js'
+import type { RunPlan } from '../core/foreman.js'
+import {
+  byKind,
+  chains,
+  needsYouOn,
+  quotaLines,
+  type ReportedSkip,
+  type RunReport,
+} from '../core/report.js'
 import type { Item } from '../core/types.js'
 import {
   formatWhy,
@@ -12,7 +19,7 @@ import {
   reportUnitTable,
   runHeader,
   skippedHeading,
-  skippedLine,
+  skippedRows,
   warningBlock,
 } from './format.js'
 
@@ -36,6 +43,8 @@ export interface State {
   brand?: string
   header: string[]
   sections: Row[]
+  /** What this view's keys can do: a plan has no logs or diffs. */
+  actions: readonly Action[]
   open: ReadonlySet<string>
   selected: string
   /** The first body line on screen. */
@@ -55,16 +64,16 @@ type Format = Parameters<typeof styleText>[0]
 // Only a terminal ever sees this view.
 const style = (format: Format, text: string) => styleText(format, text, { validateStream: false })
 
-/** Every key, as `?` and the docs list them. */
-export const keys: [string, string][] = [
+/** Every key, as `?` and the docs list them, with the action it needs. */
+const keys: [string, string, Action?][] = [
   ['↑ ↓  j k', 'move'],
   ['g G  Home End', 'first, last row'],
   ['PgDn PgUp  ^D ^U', 'a screen down, up'],
   ['→ ← Space', 'unfold, fold, as ⏎ on a heading; ← on a row goes to its section'],
   ['⏎', 'read it in $PAGER: the unit in full, or why the item is planned or skipped'],
   ['o', "open the unit's PR, else the item"],
-  ['l', "page the step's worker.log"],
-  ['d', 'page the diff'],
+  ['l', "page the step's worker.log", 'log'],
+  ['d', 'page the diff', 'diff'],
   ['s', 'skip the item in the coming runs, after y'],
   ['a', 'approve the item, after y; there is no undo'],
   ['?', 'this help'],
@@ -89,7 +98,12 @@ const section = (id: string, title: string, children: Row[], more?: string[]): R
   more,
 })
 
-function skipRow(plan: RunPlan, s: Skipped, [text = '', ...more]: string[], id: string): Row {
+function skipRow(
+  plan: RunReport['plan'],
+  s: ReportedSkip,
+  [text = '', ...more]: string[],
+  id: string,
+): Row {
   const key = itemKey(s.item)
   return {
     id,
@@ -118,33 +132,47 @@ function warningSection(warnings: string[]): Row[] {
   return [section('warnings', 'Warnings', rows)]
 }
 
-/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded. */
-function sectionsOf(plan: RunPlan, warnings: string[], units: Row): Row[] {
-  const needs = needsYouRows(plan.skipped, style).map(({ skipped, lines }, i) =>
+// The view clips each line to the terminal, not each cell.
+const whole = Infinity
+
+/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several. */
+function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Row[] {
+  const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
     skipRow(plan, skipped, lines, `needs/${i}`),
   )
-  const rest = plan.skipped.filter((s) => !needsYou[s.kind])
-  const groups = byKind(rest).map(([kind, list]) => ({
-    id: `skipped/${kind}`,
-    text: `${kind} ${list.length}`,
-    children: list.map((s, i) => skipRow(plan, s, [skippedLine(s)], `skipped/${kind}/${i}`)),
-  }))
+  const rest = plan.skipped.filter((s) => !needsYouOn(s))
+  const rows = (list: ReportedSkip[], id: string) =>
+    skippedRows(list, style, whole).map(({ skipped, lines }, i) =>
+      skipRow(plan, skipped, lines, `${id}/${i}`),
+    )
+  const kinds = byKind(rest) ?? []
+  const children =
+    kinds.length > 1
+      ? kinds.map(([kind, list]) => ({
+          id: `skipped/${kind}`,
+          text: `${kind} ${list.length}`,
+          children: rows(list, `skipped/${kind}`),
+        }))
+      : rows(rest, 'skipped')
   return [
     ...warningSection(warnings),
     ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
     units,
-    ...(rest.length
-      ? [{ id: 'skipped', text: skippedHeading(rest, style), children: groups }]
-      : []),
+    ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
   ]
 }
 
 const unitSection = (header: string, rows: Row[]) =>
   section('units', 'Units', rows, [rows.length ? header : style('dim', 'none')])
 
-function triage(header: string[], sections: Row[], rows: number): State {
+function triage(
+  header: string[],
+  sections: Row[],
+  rows: number,
+  actions: readonly Action[],
+): State {
   const open = new Set(sections.filter((s) => s.id !== 'skipped').map((s) => s.id))
-  const state = { header, sections, open, selected: '', top: 0, rows, marks: {} }
+  const state = { header, sections, actions, open, selected: '', top: 0, rows, marks: {} }
   const list = visible(state)
   const first =
     list.find((v) => v.parent === 'needs') ??
@@ -156,7 +184,7 @@ function triage(header: string[], sections: Row[], rows: number): State {
 
 /** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
 export function planTriage(plan: RunPlan, warnings: string[], rows: number): State {
-  const { header, units } = planUnitTable(plan, style)
+  const { header, units } = planUnitTable(plan, style, whole)
   const listed = listedUnits(plan)
   const unitRows = units.map(([text = '', ...more], i): Row => {
     const top = listed[i]?.unit.items[0]
@@ -166,16 +194,13 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number): Sta
       text,
       more,
       act: { read: top && formatWhy(plan, top), open: top?.url, skip: key, approve: key },
-      why: {
-        log: 'not run yet: a plan has no worker.log',
-        diff: 'not run yet: a plan has no diff',
-      },
     }
   })
   return triage(
     providerLines(plan, style),
     sectionsOf(plan, warnings, unitSection(header, unitRows)),
     rows,
+    ['read', 'open', 'skip', 'approve'],
   )
 }
 
@@ -194,7 +219,7 @@ export function runTriage(
   rows: number,
   remote = false,
 ): State {
-  const { header, units } = reportUnitTable(r, true)
+  const { header, units } = reportUnitTable(r, true, whole)
   const missing = (file: string) =>
     remote ? 'a run fetched from GitHub keeps only its report' : `this unit left no ${file}`
   const unitRows = chains(r).map(({ head }, i): Row => {
@@ -221,6 +246,7 @@ export function runTriage(
     [...runHeader(r, style), ...quotaLines(r)],
     sectionsOf(r.plan, warnings, unitSection(header, unitRows)),
     rows,
+    footerKeys.map(([, action]) => action),
   )
 }
 
@@ -372,7 +398,7 @@ export function update(s: State, key: string): { state: State; effect?: Effect }
       return { state, effect: { action: 'quit' } }
   }
   const action = actionKeys[key]
-  if (!action) return { state }
+  if (!action || !s.actions.includes(action)) return { state }
   if (action === 'read' && row.children) return fold(!s.open.has(row.id))
   const target = row.act?.[action]
   if (!target) return { state: { ...state, status: `${labelOf(action)}: ${whyNot(row, action)}` } }
@@ -404,7 +430,7 @@ export function view(s: State, cols: number, rows: number): string[] {
   const height = bodyHeight(s, rows)
   const list = visible(s)
   const body = s.help
-    ? keyLines()
+    ? keyLines(s)
     : layout(s)
         .slice(s.top, s.top + height)
         .map((line) => {
@@ -472,21 +498,36 @@ export function loadingView(l: Loading, cols: number, rows: number): string[] {
 /** The view, on the loader's screen under the same brand. */
 export const ready = (l: Loading, s: State): State => follow({ ...s, brand: l.brand })
 
-function keyLines(): string[] {
-  const width = Math.max(...keys.map(([k]) => k.length))
-  return [style('bold', 'Keys'), ...keys.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]
+function keyLines(s: State): string[] {
+  const shown = keys.filter(([, , action]) => !action || s.actions.includes(action))
+  const width = Math.max(...shown.map(([k]) => k.length))
+  return [style('bold', 'Keys'), ...shown.map(([k, what]) => `  ${k.padEnd(width)}  ${what}`)]
 }
 
 function footer(s: State): string {
   const row = visible(s).find((v) => v.row.id === s.selected)?.row
-  const shown = footerKeys.map(([key, action, label]) => {
+  const listed = footerKeys.filter(([, action]) => s.actions.includes(action))
+  const shown = listed.map(([key, action, label]) => {
     if (action === 'read' && row?.children) return `${key} ${isOpen(s, row) ? 'fold' : 'unfold'}`
     return row?.act?.[action] ? `${key} ${label}` : style('dim', `${key} ${label}`)
   })
   return [...shown, '? help', 'q quit'].join('  ')
 }
 
-const width = (text: string) => [...stripVTControlCharacters(text)].length
+/** CJK, Hangul, fullwidth forms and emoji take two columns; VS16 widens the character before it; marks and joiners none. */
+const wide =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Emoji_Presentation}/u
+const columns = (char: string) =>
+  char === '\ufe0f'
+    ? 1
+    : /\p{Mn}|\p{Me}|\p{Default_Ignorable_Code_Point}/u.test(char)
+      ? 0
+      : wide.test(char)
+        ? 2
+        : 1
+
+const width = (text: string) =>
+  [...stripVTControlCharacters(text)].reduce((sum, char) => sum + columns(char), 0)
 
 const pad = (text: string, cols: number) => text + ' '.repeat(Math.max(0, cols - width(text)))
 
@@ -494,7 +535,7 @@ const pad = (text: string, cols: number) => text + ' '.repeat(Math.max(0, cols -
 export function clipLine(text: string, cols: number): string {
   if (width(text) <= cols) return text
   let out = ''
-  let shown = 0
+  let room = cols - 1
   // biome-ignore lint/suspicious/noControlCharactersInRegex: it splits on SGR escape codes
   for (const part of text.split(/(\u001b\[[\d;]*m)/)) {
     if (part.startsWith('\u001b[')) {
@@ -502,9 +543,9 @@ export function clipLine(text: string, cols: number): string {
       continue
     }
     for (const char of part) {
-      if (shown < cols - 1) out += char
-      else if (shown === cols - 1) out += '…'
-      shown++
+      if (room < 0) break
+      room -= columns(char)
+      out += room < 0 ? '…' : char
     }
   }
   return out
