@@ -455,6 +455,6 @@ describe('loader', () => {
 describe('pager', () => {
   it('is $PAGER, else less kept open on short texts, as it is for cat', () => {
     expect(pagerCommand('most')).toBe('most')
-    for (const pager of ['', 'cat']) expect(pagerCommand(pager)).toBe('less -R -+F -+X')
+    for (const pager of ['', 'cat']) expect(pagerCommand(pager)).toBe('less -R -c -+F -+X')
   })
 })
