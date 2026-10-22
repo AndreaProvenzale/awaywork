@@ -63,7 +63,7 @@ export function inClone(dir: string): string[] {
 
 interface WorkspaceInput {
   unit: Unit
-  /** The clone; it must not exist yet. */
+  /** The clone; it must not exist yet, or be empty. */
   dir: string
   config: Config
   /** Instruction paths in the config resolve against it; the user's skills are its `skills/`. */

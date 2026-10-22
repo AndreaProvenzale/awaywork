@@ -488,6 +488,12 @@ export const configSchema = z
       })
       .prefault({})
       .describe('Unit counts and time per run, for every provider'),
+    isolation: z
+      .enum(['none', 'user'])
+      .default('none')
+      .describe(
+        'Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); always user on a GitHub-hosted runner',
+      ),
     budget: budget.prefault({}),
     providers: z
       .array(providerEntry)

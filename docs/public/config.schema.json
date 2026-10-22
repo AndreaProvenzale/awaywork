@@ -76,6 +76,15 @@
       },
       "additionalProperties": false
     },
+    "isolation": {
+      "default": "none",
+      "description": "Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); always user on a GitHub-hosted runner",
+      "type": "string",
+      "enum": [
+        "none",
+        "user"
+      ]
+    },
     "budget": {
       "default": {},
       "type": "object",

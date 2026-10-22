@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -242,5 +242,133 @@ describe('codex provider', () => {
     expect(waits).toEqual([`codex: waiting for pid ${process.pid}, which holds ${file}`])
     await release()
     await (await next)()
+  })
+
+  it('lends its login to a worker’s home and saves the refreshed one back, under the lock', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-codex-login-'))
+    const [authFile, held] = [join(dir, 'auth.json'), join(dir, 'codex.lock')]
+    const auth = (refresh: string, account = 'acct-1') =>
+      JSON.stringify({ tokens: { access_token: 'a', refresh_token: refresh, account_id: account } })
+    const lending = codexProvider(bin, held, authFile)
+    const lend = async (back: boolean, phase: (codex: string) => Promise<unknown>) => {
+      const home = await mkdtemp(join(dir, 'home-'))
+      const logs: string[] = []
+      const save = await lending.login?.(home, (line) => logs.push(line))
+      expect(await readFile(held, 'utf8')).toBe(String(process.pid))
+      await phase(join(home, '.codex'))
+      await save?.(back)
+      expect(existsSync(held)).toBe(false)
+      expect(existsSync(join(home, '.codex'))).toBe(!back)
+      return logs.join('\n')
+    }
+    await writeFile(authFile, auth('r0'))
+    await lend(true, async (codex) => {
+      expect(await readFile(join(codex, 'auth.json'), 'utf8')).toBe(auth('r0'))
+      // The run takes no second lock.
+      await collect(lending.run(job(), new AbortController().signal))
+      await writeFile(join(codex, 'auth.json'), auth('r1'))
+    })
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+
+    const refreshed = (codex: string, account?: string) =>
+      writeFile(join(codex, 'auth.json'), auth('r2', account))
+    await lend(false, (codex) => refreshed(codex))
+    expect(await lend(true, (codex) => refreshed(codex, 'acct-2'))).toContain('account differs')
+    await lend(true, async (codex) => {
+      await writeFile(join(dir, 'planted.json'), auth('r2'))
+      await rm(join(codex, 'auth.json'))
+      await symlink(join(dir, 'planted.json'), join(codex, 'auth.json'))
+    })
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    const fifo = await lend(true, async (codex) => {
+      await rm(join(codex, 'auth.json'))
+      await execa('mkfifo', [join(codex, 'auth.json')])
+    })
+    expect(fifo).toContain("isn't a small regular file")
+    expect(
+      await lend(true, async (codex) => {
+        await refreshed(codex)
+        await writeFile(authFile, auth('mine'))
+      }),
+    ).toContain('yours changed since it was lent')
+    expect(await readFile(authFile, 'utf8')).toBe(auth('mine'))
+  })
+
+  it('lends and saves back the login of a CODEX_HOME set in awaywork’s env file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-codex-home-'))
+    const [fromEnvFile, fallback] = [join(dir, 'codex-from-env-file'), join(dir, '.codex')]
+    await mkdir(fromEnvFile)
+    await mkdir(fallback)
+    const auth = (refresh: string) =>
+      JSON.stringify({ tokens: { refresh_token: refresh, account_id: 'acct-1' } })
+    await writeFile(join(fromEnvFile, 'auth.json'), auth('r0'))
+    await writeFile(join(fallback, 'auth.json'), auth('home'))
+    vi.stubEnv('HOME', dir)
+    vi.stubEnv('CODEX_HOME', undefined)
+    try {
+      const lending = codexProvider(bin, join(dir, 'codex.lock'))
+      await writeFile(join(dir, 'env'), `CODEX_HOME=${fromEnvFile}\n`)
+      process.loadEnvFile(join(dir, 'env'))
+      const home = await mkdtemp(join(dir, 'home-'))
+      const save = await lending.login?.(home, () => {})
+      expect(await readFile(join(home, '.codex', 'auth.json'), 'utf8')).toBe(auth('r0'))
+      await writeFile(join(home, '.codex', 'auth.json'), auth('r1'))
+      await save?.(true)
+      expect(await readFile(join(fromEnvFile, 'auth.json'), 'utf8')).toBe(auth('r1'))
+      expect(await readFile(join(fallback, 'auth.json'), 'utf8')).toBe(auth('home'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('saves back only the tokens of a refresh, never a key, mode or account the worker swapped in', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-codex-forged-'))
+    const authFile = join(dir, 'auth.json')
+    const lending = codexProvider(bin, join(dir, 'codex.lock'), authFile)
+    const tokens = (id: string) => ({
+      access_token: `a${id}`,
+      id_token: `i${id}`,
+      refresh_token: `r${id}`,
+      account_id: 'acct-1',
+    })
+    const yours = {
+      auth_mode: 'chatgpt',
+      OPENAI_API_KEY: null,
+      tokens: tokens('0'),
+      last_refresh: 't0',
+      agent_identity: 'mine',
+    }
+    const handBack = async (lent: object, worker: object) => {
+      await writeFile(authFile, JSON.stringify(lent))
+      const home = await mkdtemp(join(dir, 'home-'))
+      const save = await lending.login?.(home, () => {})
+      await writeFile(join(home, '.codex', 'auth.json'), JSON.stringify(worker))
+      await save?.(true)
+      return JSON.parse(await readFile(authFile, 'utf8'))
+    }
+    const forged = {
+      ...yours,
+      auth_mode: 'apikey',
+      OPENAI_API_KEY: 'sk-attacker',
+      tokens: tokens('x'),
+    }
+    expect(await handBack(yours, forged)).toEqual(yours)
+    const keyed = { ...yours, OPENAI_API_KEY: 'sk-dev' }
+    expect(
+      await handBack(keyed, { ...keyed, OPENAI_API_KEY: 'sk-attacker', tokens: tokens('1') }),
+    ).toEqual(keyed)
+
+    const refresh = {
+      ...yours,
+      tokens: tokens('1'),
+      last_refresh: 't1',
+      agent_identity: 'theirs',
+      personal_access_token: 'theirs',
+    }
+    expect(await handBack(yours, refresh)).toEqual({
+      ...yours,
+      tokens: tokens('1'),
+      last_refresh: 't1',
+    })
   })
 })

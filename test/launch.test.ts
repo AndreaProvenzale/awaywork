@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { hostedWorker, isolate, launch, sudoArgs, WORKER } from '../src/core/launch.js'
+import { isolate, launch, sudoArgs, WORKER, workerFor } from '../src/core/launch.js'
 import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
@@ -111,6 +111,7 @@ describe('the launcher', () => {
       '--preserve-env=PATH,CLAUDE_CODE_OAUTH_TOKEN,GH_TOKEN',
       '--',
       '/usr/bin/env',
+      ...['-u', 'CODEX_HOME', '-u', 'CLAUDE_CONFIG_DIR'],
       ...['-u', 'XDG_CONFIG_HOME', '-u', 'XDG_CACHE_HOME', '-u', 'XDG_DATA_HOME'],
       ...['-u', 'XDG_STATE_HOME', '-u', 'XDG_RUNTIME_DIR'],
       '/opt/node/bin/claude',
@@ -126,14 +127,21 @@ describe('the launcher', () => {
     expect(shell.slice(-3)).toEqual(['/bin/sh', '-c', 'npm ci && npm test'])
   })
 
-  // Where the worker user exists, real-isolation.test.ts takes the hosted runner's side.
+  // Where the worker user exists, real-isolation.test.ts takes the other side.
   it.skipIf(process.env.AWAYWORK_WORKER_TEST)(
-    'isolates on a GitHub-hosted runner only, and refuses one without the worker user',
+    'isolates under isolation: user or on a GitHub-hosted runner, and refuses without the worker user',
     async () => {
-      expect(await hostedWorker({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
-      expect(await hostedWorker({})).toBeUndefined()
-      await expect(hostedWorker({ RUNNER_ENVIRONMENT: 'github-hosted' })).rejects.toThrow(
-        "can't run as the awaywork user",
+      expect(await workerFor('none', { RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
+      expect(await workerFor('none', {})).toBeUndefined()
+      const refused =
+        process.platform === 'linux'
+          ? "can't run as the awaywork user"
+          : `isolation: user runs on Linux only, not ${process.platform}`
+      await expect(workerFor('none', { RUNNER_ENVIRONMENT: 'github-hosted' })).rejects.toThrow(
+        refused,
+      )
+      await expect(workerFor('user', { RUNNER_ENVIRONMENT: 'self-hosted' })).rejects.toThrow(
+        refused,
       )
     },
   )

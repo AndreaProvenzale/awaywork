@@ -1,4 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { execa } from 'execa'
@@ -29,9 +31,15 @@ const configSchema = z.strictObject({
 
 /**
  * The stock `codex` binary on the machine's own login (`codex login`), which Codex rotates in place;
- * runs and probes hold a per-machine lock.
+ * runs and probes hold a per-machine lock. A worker user gets a copy of it, saved back after its run.
  */
-export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lock')): Provider {
+export function codexProvider(
+  bin = 'codex',
+  lockFile = join(stateDir, 'codex.lock'),
+  authPath?: string,
+): Provider {
+  // Held from a login lent to the worker until it's saved back, the run in between.
+  let lent = false
   async function probe(env: NodeJS.ProcessEnv): Promise<Quota | null> {
     const child = execa(bin, ['app-server'], {
       env,
@@ -92,9 +100,58 @@ export function codexProvider(bin = 'codex', lockFile = join(stateDir, 'codex.lo
       }
     },
 
+    /**
+     * Copies the login into the worker's `home/.codex`, and saves the worker's refresh of it back once it's yours
+     * again: a refresh rotates it, and the copy you kept would die a day later. Only its tokens, and not if yours changed meanwhile.
+     */
+    async login(home, log) {
+      // Read now, not at import: a CODEX_HOME may come from awaywork's env file.
+      const authFile =
+        authPath ?? join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'auth.json')
+      const release = await lock(lockFile, () => {})
+      lent = true
+      const done = async () => {
+        lent = false
+        await release()
+      }
+      try {
+        const auth = await readFile(authFile, 'utf8').catch(() => undefined)
+        const dir = join(home, '.codex')
+        // An earlier phase's, a link included.
+        await rm(dir, { recursive: true, force: true })
+        await mkdir(dir, { mode: 0o700 })
+        if (auth !== undefined) await writeFile(join(dir, 'auth.json'), auth, { mode: 0o600 })
+        return async (back) => {
+          try {
+            if (!back || auth === undefined) return
+            const used = await loginIn(dir)
+            if (used === auth) return
+            if ((await readFile(authFile, 'utf8').catch(() => undefined)) !== auth)
+              throw new Error('yours changed since it was lent')
+            const saved = refreshOf(auth, used)
+            if (!saved)
+              throw new Error(
+                "the worker's isn't a refresh of the one lent: its mode, API key or account differs",
+              )
+            await writeFile(`${authFile}.awaywork`, saved, { mode: 0o600 })
+            await rename(`${authFile}.awaywork`, authFile)
+          } catch (e) {
+            log?.(`codex: kept your login as it was: ${(e as Error).message}`)
+          } finally {
+            // rm unlinks a link the worker left there, never what it points to.
+            if (back) await rm(dir, { recursive: true, force: true }).catch(() => {})
+            await done()
+          }
+        }
+      } catch (e) {
+        await done()
+        throw e
+      }
+    },
+
     async *run(job, signal) {
       if (signal.aborted) return yield { type: 'done', ok: false, turns: 0 }
-      const release = await lock(lockFile, () => {})
+      const release = lent ? async () => {} : await lock(lockFile, () => {})
       const capped = new AbortController()
       let turns = 0
       let done: WorkerEvent | undefined
@@ -246,6 +303,43 @@ export function toQuota(
     return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt }]
   })
   return windows.length ? { windows } : null
+}
+
+/** The worker's `auth.json` in `dir`, read without following a link or blocking on a FIFO it left there. */
+async function loginIn(dir: string): Promise<string> {
+  if (!(await lstat(dir)).isDirectory()) throw new Error(`${dir} isn't a folder`)
+  const flags = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
+  const file = await open(join(dir, 'auth.json'), flags)
+  try {
+    const stats = await file.stat()
+    if (!stats.isFile() || stats.size >= 65_536)
+      throw new Error("the worker's auth.json isn't a small regular file")
+    return await file.readFile('utf8')
+  } finally {
+    await file.close()
+  }
+}
+
+/** `lent` with the tokens and `last_refresh` of `used`, when `used` refreshes it: the same mode, API key and account. */
+function refreshOf(lent: string, used: string): string | undefined {
+  const [was, now] = [parseJson(lent), parseJson(used)]
+  if (account(lent) === undefined || typeof now?.tokens !== 'object' || now.tokens === null) return
+  const same = (key: string) => (now[key] ?? null) === (was[key] ?? null)
+  if (!same('auth_mode') || !same('OPENAI_API_KEY')) return
+  if (now.tokens.account_id !== was.tokens.account_id) return
+  const tokens = { ...was.tokens }
+  for (const key of ['access_token', 'id_token', 'refresh_token'])
+    if (typeof now.tokens[key] === 'string') tokens[key] = now.tokens[key]
+  const refreshed = typeof now.last_refresh === 'string' ? now.last_refresh : was.last_refresh
+  return JSON.stringify({ ...was, tokens, last_refresh: refreshed })
+}
+
+/** The ChatGPT account an `auth.json` logs into, when it has a refresh token. */
+function account(auth: string | undefined): string | undefined {
+  const tokens = parseJson(auth ?? '')?.tokens
+  return typeof tokens?.refresh_token === 'string' && typeof tokens.account_id === 'string'
+    ? tokens.account_id
+    : undefined
 }
 
 /** Waits until no other live process holds the lock file, then takes it. */

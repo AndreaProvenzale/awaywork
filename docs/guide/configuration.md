@@ -1,5 +1,5 @@
 ---
-description: The awaywork config file by example and what stays stable, covering run windows, limits, budgets, providers, sources, branch names, PR links, per-repo settings, instructions and queue rules with where matching.
+description: The awaywork config file by example and what stays stable, covering run windows, limits, budgets, providers, sources, branch names, PR links, per-repo settings, instructions, queue rules with where matching, and isolation.
 ---
 
 # Configuration
@@ -415,6 +415,38 @@ queue:
 The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
 
 Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers need a login a runner doesn't have, and workers never get your claude.ai connectors. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
+
+## Isolation
+
+```yaml
+isolation: user # default: none
+```
+
+`none` runs setup, the agent and the checks as you. Everything in [Safety](./safety.md) keeps your credentials out of the agent's way, not out of its reach: it can read what you can ([Not a sandbox](./safety.md#not-a-sandbox)). `user` runs them as `awaywork`, a user with nothing of yours, which on your Linux box or a self-hosted Linux runner you make once. `awaywork doctor` tells you how, here for a user `runner` (uid and gid 1001), with your own name and ids in yours:
+
+```text
+FAIL  isolation: user, but can't run as the awaywork user (sudo: unknown user awaywork); make the worker user once:
+    sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin awaywork
+    echo awaywork | sudo tee -a /etc/cron.deny /etc/at.deny
+    sudo visudo -f /etc/sudoers.d/awaywork   # with these two lines:
+    runner ALL=(awaywork) NOPASSWD:SETENV: ALL
+    runner ALL=(root) NOPASSWD: /usr/bin/chown -R -h -P awaywork\: /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9], /usr/bin/chown -R -h -P 1001\:1001 /tmp/awaywork-[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]
+```
+
+The user has no home and no login shell: each clone gets a fresh `HOME`, and nothing logs in as it. The first sudoers line lets you run anything as the worker, the second only the two `chown`s that hand it a clone and its `HOME` and take them back; why that's safe is in [Safety](./safety.md#a-worker-user-on-your-linux-machine). Then:
+
+```text
+ok    isolation: user: setup, the agent and the checks run as awaywork
+```
+
+A few things change with it:
+
+- **The agent gets a login, not yours.** The worker's `HOME` is a fresh folder for each clone, so your keychain login isn't there: give Claude a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`). Until you do, `doctor` says `warn  claude: the awaywork user can't use your login: set CLAUDE_CODE_OAUTH_TOKEN`. Codex needs nothing: awaywork copies your own `auth.json` into the worker's `HOME` for the run and saves its refreshed tokens back after, under the lock every Codex run takes, since a refresh rotates them. Those tokens are the worker's word, so read [what it doesn't close](./safety.md#a-worker-user-on-your-linux-machine) before you lend it yours.
+- **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter.
+- **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
+- **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
+- **Always on a GitHub-hosted runner**, whatever the config says: there `none` is ignored, and the action makes the user.
+- **One developer per worker user.** Whoever has the `chown` line can chown any awaywork clone folder, someone else's too.
 
 ## Secrets
 

@@ -14,7 +14,7 @@ import {
   type RunPlan,
   slug,
 } from '../core/foreman.js'
-import { gitUnrestored, isolated, lostToWorker, workerRoot } from '../core/launch.js'
+import { gitUnrestored, isolated, lostToWorker, workerHome, workerRoot } from '../core/launch.js'
 import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
 import type {
   Ctx,
@@ -177,7 +177,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     .filter((p) => !p.chain && (!input.only || named.includes(p)))
     .map((head) => [head, ...input.plan.units.filter((p) => p.chain === head.unit.id)])
   const secrets = configSecrets(input.config, input.providers, input.sources)
-  // The worker user can't reach the run dir: its clones and plugins go where it can.
+  // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
   const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
@@ -241,7 +241,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
-    const dir = join(root, 'work', first.unit.id)
+    const dir = isolated() ? await workerRoot(0o700) : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
     const slices = bySlice(chain, (p) => p.slice).length
@@ -664,7 +664,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
       Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
     }
-    if (!input.dryRun && !lostToWorker(dir)) await rm(dir, { recursive: true, force: true })
+    for (const path of [dir, workerHome(dir)])
+      if (path && !input.dryRun && !lostToWorker(path))
+        await rm(path, { recursive: true, force: true })
     if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }

@@ -1,11 +1,22 @@
 import { existsSync } from 'node:fs'
-import { readFile, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { type Allowance, MAX_TURNS } from '../src/core/budget.js'
-import { hostedWorker, isolate, WORKER, workerRoot } from '../src/core/launch.js'
+import {
+  asWorker,
+  isolate,
+  launch,
+  lostToWorker,
+  WORKER,
+  workerFor,
+  workerHome,
+  workerRoot,
+} from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
+import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
 import { commitsSince, createChecks, head } from '../src/worker/checks.js'
 import { runWorker } from '../src/worker/run.js'
@@ -24,12 +35,12 @@ const leftover = async () => (await execa('pgrep', ['-u', WORKER], { reject: fal
 const owner = async (path: string) => (await stat(path)).uid
 const allowance: Allowance = { kind: 'fallback', units: 1, turns: MAX_TURNS, reason: 'test' }
 
-/** Linux with passwordless sudo and the worker user, as on a hosted runner after `action.yml`; run with AWAYWORK_WORKER_TEST=1. */
+/** Linux with the worker user and the sudo `awaywork doctor` asks for (or a hosted runner after `action.yml`); run with AWAYWORK_WORKER_TEST=1. */
 describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () => {
   let dir: string
   beforeAll(async () => {
-    expect(await hostedWorker({ RUNNER_ENVIRONMENT: 'github-hosted' })).toBe(WORKER)
-    dir = join(await workerRoot(), 'clone')
+    expect(await workerFor('user', process.env)).toBe(WORKER)
+    dir = await workerRoot()
     await execa('git', ['init', '-q', dir])
     isolate(WORKER)
   })
@@ -45,7 +56,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       'ln -s /etc/hostname link',
     ]
     const result = await runCommand(leaks.join('\n'), dir, env, { secrets: [] })
-    expect(result.output).toBe(`${WORKER}\n/home/${WORKER} ${CANARY} unset`)
+    expect(result.output).toBe(`${WORKER}\n${workerHome(dir)} ${CANARY} unset`)
     expect(await owner(join(dir, 'out.txt'))).toBe(process.getuid?.())
     expect(await owner(dir)).toBe(process.getuid?.())
     expect(await owner('/etc/hostname')).toBe(0)
@@ -92,9 +103,108 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     expect(await owner('/etc/hostname')).toBe(0)
   })
 
+  it('loses a clone or home the worker swapped for a link to a folder of yours, or a folder of its own', async () => {
+    const yours = await mkdtemp(join(homedir(), 'awaywork-yours-'))
+    await execa('git', ['init', '-q', yours])
+    const config = await readFile(join(yours, '.git', 'config'), 'utf8')
+    for (const swap of [`ln -s ${yours} "$f"`, 'mkdir "$f"'])
+      for (const f of ['$PWD', '$HOME']) {
+        const clone = await workerRoot()
+        await execa('git', ['init', '-q', clone])
+        const phase = runCommand(`f=${f}; cd / && mv "$f" "$f.moved" && ${swap}`, clone, env, {
+          secrets: [],
+        })
+        await expect(phase).rejects.toThrow("isn't the folder handed to the worker")
+        expect(lostToWorker(clone)).toBe(true)
+        // Nothing of the chain's runs in it again.
+        await expect(runCommand('true', clone, env, { secrets: [] })).rejects.toThrow('lost')
+        const home = workerHome(clone)
+        const left = [clone, `${clone}.moved`, `${home}`, `${home}.moved`]
+        await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', ...left], { reject: false })
+      }
+    expect(await readFile(join(yours, '.git', 'config'), 'utf8')).toBe(config)
+    await rm(yours, { recursive: true })
+  })
+
+  it('leaves no folder of a clone or its home that another user can write', async () => {
+    const clone = await workerRoot()
+    const open = 'mkdir -p sub/.git ~/.config && chmod 777 . sub sub/.git ~ ~/.config'
+    expect((await runCommand(open, clone, env, { secrets: [] })).failed).toBeUndefined()
+    const home = workerHome(clone) as string
+    for (const path of [clone, `${clone}/sub/.git`, home, `${home}/.config`]) {
+      expect((await stat(path)).mode & 0o066).toBe(0)
+      const other = await execa('sudo', ['-n', '-u', WORKER, 'touch', `${path}/x`], {
+        reject: false,
+      })
+      expect(other.stderr).toContain('Permission denied')
+    }
+  })
+
+  it('closes a fresh clone to others before its first phase', async () => {
+    const clone = await workerRoot()
+    await writeFile(join(clone, 'README'), 'hi\n', { mode: 0o644 })
+    await mkdir(join(clone, 'src'), { mode: 0o755 })
+    const paths = [clone, join(clone, 'README'), join(clone, 'src')]
+    const modes = await asWorker(clone, () =>
+      Promise.all(paths.map(async (path) => (await stat(path)).mode & 0o777)),
+    )
+    expect(modes).toEqual([0o711, 0o600, 0o700])
+  })
+
+  it('keeps a fresh clone from another user until its first phase, which still runs in it', async () => {
+    const clone = await workerRoot(0o700)
+    await execa('git', ['init', '-q', clone])
+    const other = await execa('sudo', ['-n', '-u', WORKER, 'cat', `${clone}/.git/HEAD`], {
+      reject: false,
+    })
+    expect(other.stderr).toContain('Permission denied')
+    const phase = await runCommand('git status --short && id -un', clone, env, { secrets: [] })
+    expect(phase.output).toBe(WORKER)
+  })
+
+  it('gives each clone a HOME of its own', async () => {
+    const [a, b] = [await workerRoot(), await workerRoot()]
+    const plant = 'echo "$HOME" && echo registry=https://evil.example > ~/.npmrc'
+    const first = await runCommand(plant, a, env, { secrets: [] })
+    const second = await runCommand('echo "$HOME" && cat ~/.npmrc', b, env, { secrets: [] })
+    expect(first.output).toBe(workerHome(a))
+    expect(second.output).toMatch(new RegExp(`^${workerHome(b)}\\n.*No such file`))
+    expect(workerHome(a)).toMatch(/^\/tmp\/awaywork-[A-Za-z0-9]{6}$/)
+    expect(workerHome(a)).not.toBe(workerHome(b))
+    expect(await owner(workerHome(a) as string)).toBe(process.getuid?.())
+  })
+
+  it('lends the Codex login to the worker’s HOME and saves its refresh back', async () => {
+    const yours = await mkdtemp(join(homedir(), 'awaywork-codex-'))
+    const authFile = join(yours, 'auth.json')
+    const auth = (refresh: string) =>
+      JSON.stringify({ tokens: { refresh_token: refresh, account_id: 'acct' } })
+    await writeFile(authFile, auth('r0'))
+    const codex = codexProvider('codex', join(yours, 'codex.lock'), authFile)
+    const clone = await workerRoot()
+    const refresh = `id -un && cat ~/.codex/auth.json && printf '%s' '${auth('r1')}' > ~/.codex/auth.json`
+    const phase = () =>
+      launch('/bin/sh', ['-c', refresh], { cwd: clone, env, extendEnv: false, reject: false })
+    const ran = await asWorker(clone, phase, codex.login)
+    expect(ran.stdout).toBe(`${WORKER}\n${auth('r0')}`)
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    expect(existsSync(join(workerHome(clone) as string, '.codex'))).toBe(false)
+
+    const fifo = () =>
+      launch('/bin/sh', ['-c', 'rm ~/.codex/auth.json && mkfifo ~/.codex/auth.json'], {
+        cwd: clone,
+        env,
+        extendEnv: false,
+      })
+    await asWorker(clone, fifo, codex.login)
+    expect(existsSync(join(yours, 'codex.lock'))).toBe(false)
+    expect(await readFile(authFile, 'utf8')).toBe(auth('r1'))
+    await rm(yours, { recursive: true })
+  })
+
   it('never takes a repo the worker planted in /tmp for the clone’s', async () => {
     expect(existsSync('/tmp/.git')).toBe(false)
-    const clone = join(dirname(dir), 'planted')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', clone, ...commit, '-m', 'start'])
@@ -106,21 +216,20 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
     }
     Object.assign(process.env, trustAll)
     try {
-      const planted = await runCommand('cp -R .git /tmp/.git && rm .git/HEAD', clone, env, {
-        secrets: [],
-      })
+      const plant = 'cp -R .git /tmp/.git && chmod -R a+rX /tmp/.git && rm .git/HEAD'
+      const planted = await runCommand(plant, clone, env, { secrets: [] })
       expect(planted.failed).toBeUndefined()
       expect(existsSync('/tmp/.git/HEAD')).toBe(true)
       await restoreGitConfig(clone, '')
       await expect(head(clone)).rejects.toThrow("not a git repository: '.git'")
     } finally {
       for (const name of Object.keys(trustAll)) delete process.env[name]
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/.git'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/.git'])
     }
   })
 
   it('runs no git in a clone whose .git the worker linked to a repo of its own', async () => {
-    const clone = join(dirname(dir), 'linked')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', clone, ...commit, '-m', 'start'])
@@ -147,12 +256,12 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       expect(refused).toContain('no git in the clone')
     } finally {
       delete process.env.GH_TOKEN
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-linked'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-linked'])
     }
   })
 
   it('runs no hook the worker left in .git/hooks when its git status writes the index', async () => {
-    const clone = join(dirname(dir), 'hooked')
+    const clone = await workerRoot()
     await execa('git', ['init', '-q', clone])
     await writeFile(join(clone, 'README'), 'hi\n')
     await execa('git', ['-C', clone, 'add', 'README'])
@@ -176,7 +285,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
       )
     } finally {
       delete process.env.GH_TOKEN
-      await execa('sudo', ['-n', 'rm', '-rf', '/tmp/awaywork-hooked'])
+      await execa('sudo', ['-n', '-u', WORKER, 'rm', '-rf', '/tmp/awaywork-hooked'])
     }
   })
 })

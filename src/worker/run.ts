@@ -64,21 +64,26 @@ export async function runWorker(
     )
 
   const result: WorkerResult = { status: 'failed', turns: 0 }
+  const { login } = provider
   try {
-    await asWorker(job.dir, async () => {
-      for await (const event of provider.run(job, abort.signal)) {
-        if (event.type === 'log') log(event.line)
-        if (event.type === 'quota') {
-          result.quota = event.quota
-          const limit = overLimit(event.quota, allowance)
-          if (limit) stop(limit.status, limit.reason)
+    await asWorker(
+      job.dir,
+      async () => {
+        for await (const event of provider.run(job, abort.signal)) {
+          if (event.type === 'log') log(event.line)
+          if (event.type === 'quota') {
+            result.quota = event.quota
+            const limit = overLimit(event.quota, allowance)
+            if (limit) stop(limit.status, limit.reason)
+          }
+          if (event.type === 'done') {
+            result.turns = event.turns
+            if (event.ok) result.status = 'done'
+          }
         }
-        if (event.type === 'done') {
-          result.turns = event.turns
-          if (event.ok) result.status = 'done'
-        }
-      }
-    })
+      },
+      login && ((home) => login(home, log)),
+    )
   } finally {
     signal?.removeEventListener('abort', onAbort)
     clearTimeout(windowEnd)
