@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs'
 import { statfs } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { execa } from 'execa'
 
 const GB = 2 ** 30
@@ -20,6 +22,18 @@ export interface Watchdog {
   stop(): Promise<void>
 }
 
+/** Why the machine is too short to run a worker: memory, or disk at `dir`'s closest existing directory. */
+export async function shortage(
+  dir: string,
+  limits: WatchdogLimits = defaultLimits,
+): Promise<string | undefined> {
+  if (process.availableMemory() < limits.minMemory)
+    return `memory below ${limits.minMemory / GB} GB`
+  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir)
+  const disk = await statfs(dir)
+  if (disk.bavail * disk.bsize < limits.minDisk) return `disk below ${limits.minDisk / GB} GB`
+}
+
 /**
  * Watches this process's descendants and the machine while one worker runs.
  *
@@ -39,10 +53,8 @@ export function startWatchdog(
 
   const tick = async () => {
     for (const [pid, started] of descendants(await processes())) seen.set(pid, started)
-    if (process.availableMemory() < limits.minMemory)
-      onLimit(`memory below ${limits.minMemory / GB} GB`)
-    const disk = await statfs(dir)
-    if (disk.bavail * disk.bsize < limits.minDisk) onLimit(`disk below ${limits.minDisk / GB} GB`)
+    const reason = await shortage(dir, limits)
+    if (reason) onLimit(reason)
   }
   const timer = setInterval(() => {
     ticking = ticking.then(tick).catch(() => {})

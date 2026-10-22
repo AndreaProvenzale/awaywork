@@ -163,6 +163,7 @@ const UNCOUNTED: UnitResult['status'][] = [
   'prepared',
   'stopped: aborted',
   'stopped: quota',
+  'stopped: resources',
   'stopped: session',
   'stopped: window ended',
 ]

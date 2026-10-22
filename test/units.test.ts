@@ -121,6 +121,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     forge,
     ctx: { env: loaded, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -259,6 +260,7 @@ it('prepares workspaces without running a worker or context command on a dry run
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: {}, log: () => {} },
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   }
   const report = await runUnits({ ...input, only: 'acme-api-2' })
@@ -340,6 +342,7 @@ it('prepares every step of a chain named by one of its steps, in one clone, on a
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: {}, log: () => {} },
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   expect(report.results.map((u) => [u.planned.unit.id, u.status, u.step])).toEqual([
@@ -398,6 +401,7 @@ it('stops a unit still running at the window end and publishes what it left', as
       forge,
       ctx: { env: {}, log: () => {} },
       watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
       skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
     })
     expect(report.results.map((u) => [u.status, u.outcome ?? u.reason])).toEqual([
@@ -415,6 +419,63 @@ it('stops a unit still running at the window end and publishes what it left', as
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('ends the run before a unit when the machine is short, launching no worker and counting nothing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-short-'))
+  const origin = join(root, 'origin')
+  await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
+  const forge = {
+    ...fakeForge(),
+    clone: async (_repo: string, _branch: string, dir: string) => {
+      await execa(bin('git'), ['clone', '-q', origin, dir])
+    },
+  }
+  const config = parseConfig(
+    'providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\nqueue: [{ skill: fix }]',
+  )
+  const plan = planRun({
+    config,
+    items: [1, 2, 3].map((n) => githubPr(n, { updated: '2026-01-01T00:00:00Z' })),
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  let runs = 0
+  const checked: string[] = []
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: {
+      claude: {
+        ...worker,
+        run: (...args) => {
+          runs++
+          return worker.run(...args)
+        },
+      },
+    },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: {}, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async (dir) => (checked.push(dir) > 1 ? 'disk below 2 GB' : undefined),
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  expect(report.results.map((u) => [u.planned.unit.id, u.status, u.reason])).toEqual([
+    ['acme-api-1', 'done', undefined],
+    ['acme-api-2', 'skipped', 'disk below 2 GB'],
+    ['acme-api-3', 'skipped', 'disk below 2 GB'],
+  ])
+  expect(runs).toBe(1)
+  expect(checked).toEqual(
+    ['acme-api-1', 'acme-api-2', 'acme-api-3'].map((id) => join(root, 'run/work', id)),
+  )
+  expect(Object.keys(recordAttempts({}, report))).toEqual(['github:acme/api#1'])
 })
 
 it('runs a chain in one clone, each step on what the one before left, and ends it after a step that committed nothing', async () => {
@@ -485,6 +546,7 @@ queue: [{ skill: implement, where: { type: issue }, then: review }]
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -601,6 +663,7 @@ repos:
       log: () => {},
     },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -682,6 +745,7 @@ queue:
       log: () => {},
     },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -749,6 +813,7 @@ it('stops a unit at unit_minutes', async () => {
       forge,
       ctx: { env: {}, log: () => {} },
       watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
       skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
     })
     expect(report.results.map((u) => [u.status, u.reason])).toEqual([
@@ -855,6 +920,7 @@ it("starts each of a repo's draft PRs from the default branch, not on this run's
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -906,6 +972,7 @@ queue: [{ skill: implement, then: review }]
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -964,6 +1031,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1017,6 +1085,7 @@ repos:
     forge,
     ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1093,6 +1162,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1144,6 +1214,7 @@ queue: [{ skill: fix, deliver: push, then: review }]
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1192,6 +1263,7 @@ queue: [{ skill: fix, deliver: push }]
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1229,6 +1301,7 @@ it("lists a slice's PR body and sums it up when its publish fails", async () => 
     },
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1278,6 +1351,7 @@ queue: [{ skill: fix, deliver: push }]
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1322,6 +1396,7 @@ repos:
     forge,
     ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1399,6 +1474,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1500,6 +1576,7 @@ queue:
     forge,
     ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1565,6 +1642,7 @@ it('skips a unit awaywork tried on a suffixed branch, one with every name taken,
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: {}, log: () => {} },
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const merged = report.results.at(-1)
@@ -1621,6 +1699,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1674,6 +1753,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1739,6 +1819,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH, COUNT: count, GIT_ASKPASS: '/askpass' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1792,6 +1873,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -1843,6 +1925,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const [review, implemented] = report.results
@@ -1886,6 +1969,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   expect(report.results[0]?.passedOver).toBe(true)
@@ -1934,6 +2018,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'skills'), builtin: builtinSkillsDir },
   })
 
@@ -2006,6 +2091,7 @@ queue:
     forge,
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -2052,6 +2138,7 @@ repos:
     forge,
     ctx: { env: { PATH: process.env.PATH, NPM_TOKEN: 'npm' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -2103,6 +2190,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -2147,6 +2235,7 @@ ${yaml}`)
     forge: { ...forge, ...overrides },
     ctx: { env: {}, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
     ...input,
   })
@@ -3442,6 +3531,7 @@ queue:
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
 
@@ -3577,6 +3667,7 @@ ${repos}
     forge,
     ctx: { env: { PATH: '/bin' }, log: () => {} },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const failed = recordAttempts({}, report)['github:acme/api#1']?.failed

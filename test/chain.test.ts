@@ -218,6 +218,7 @@ async function run(
     forge: env.forge,
     ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const rows = report.results.map((r) => [
