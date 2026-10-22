@@ -3,6 +3,7 @@ import type { Command } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
 import { runsDir } from '../config/paths.js'
 import { isolateFor } from '../core/launch.js'
+import { counted } from '../core/report.js'
 import { forgeFor } from '../forge/index.js'
 import { providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -41,7 +42,7 @@ export function replayCommand(program: Command): void {
           signal: abort.signal,
         })
         console.log(
-          `${unit}: ${result.status}, ${result.commits} commits on the local branch in ${result.dir}; output in ${result.out}`,
+          `${unit}: ${result.status}, ${counted(result.commits, 'commit')} on the local branch in ${result.dir}; output in ${result.out}`,
         )
       } catch (e) {
         reportConfigError(e)

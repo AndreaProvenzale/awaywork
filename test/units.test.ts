@@ -1149,7 +1149,7 @@ queue: [{ skill: fix, deliver: push, then: review }]
 
   expect(report.results[0]?.outcome).toEqual({
     kind: 'none',
-    reason: '1 commits but no summary, not pushed',
+    reason: '1 commit but no summary, not pushed',
     unpublished: true,
   })
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
