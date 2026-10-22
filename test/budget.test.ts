@@ -83,7 +83,7 @@ describe('route', () => {
   it('caps fallback providers by units already routed', () => {
     expect(route(['capped'], allowances, {})).toEqual({ provider: 'capped', passed: [] })
     expect(route(['capped'], allowances, { capped: 1 })).toEqual({
-      passed: ['capped used its 1 fallback units'],
+      passed: ['capped used its 1 fallback unit'],
     })
   })
 })

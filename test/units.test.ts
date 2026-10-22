@@ -3667,7 +3667,7 @@ it('keeps the failed attempt as without a list, and claims no retry, when the re
     fallback,
   )
   expect(tried).toEqual(['fix sonnet'])
-  const why = 'no provider left: claude used its 1 fallback units'
+  const why = 'no provider left: claude used its 1 fallback unit'
   expect(report.results.map((u) => [u.status, u.retried, u.reason])).toEqual([
     ['failed', undefined, `not retried: ${why}`],
     ['skipped', undefined, `acme-api-1 failed, not retried: ${why}`],

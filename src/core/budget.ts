@@ -70,7 +70,7 @@ export function route(
     passed.push(
       a.kind === 'quota'
         ? `${id} at its ceiling (${pct(a.used)} of ${pct(a.ceiling)})`
-        : `${id} used its ${a.units} fallback units`,
+        : `${id} used its ${a.units} fallback unit${a.units === 1 ? '' : 's'}`,
     )
   }
   return { passed }
