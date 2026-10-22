@@ -509,6 +509,22 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     },
   )
 
+  it('refuses a Bitbucket config and writes nothing', async () => {
+    const { root, config } = await setup()
+    await writeFile(config, 'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n')
+    await installWorkflow(config, {
+      run: async () => root,
+      ask: scriptedAsk([]),
+      env: {},
+      setSecret: async () => {},
+    })
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([
+      'GitHub Actions runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
+    ])
+    expect(existsSync(join(root, WORKFLOW))).toBe(false)
+  })
+
   it('keeps what differs without a terminal, shows the diff and exits 1', async () => {
     const { root, config, install } = await setup()
     await install()
