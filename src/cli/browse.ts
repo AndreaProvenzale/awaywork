@@ -33,9 +33,9 @@ export const itemCommands = (sources: () => Promise<string[]>): ItemCommands => 
   approve: async (key) => approveItem(key, await sources()),
 })
 
-/** `$PAGER` unless it's unset or `cat`, as git does; the default `less` stays open on short texts whatever `$LESS` says. */
+/** `$PAGER` unless it's unset or `cat`, as git does; the default `less` repaints from the top and stays open on short texts whatever `$LESS` says. */
 export const pagerCommand = (pager = process.env.PAGER) =>
-  pager && pager !== 'cat' ? pager : 'less -R -+F -+X'
+  pager && pager !== 'cat' ? pager : 'less -R -c -+F -+X'
 
 const enterScreen = '\u001b[?1049h\u001b[?25l'
 const leaveScreen = '\u001b[?25h\u001b[?1049l'

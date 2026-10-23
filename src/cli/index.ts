@@ -16,6 +16,12 @@ import { statsCommand } from './stats.js'
 // The environment wins over the file; scheduled jobs start without a login shell's variables.
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
+// A reader that went away, as `| head` does, ends the command quietly, like git.
+process.stdout.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code !== 'EPIPE') throw e
+  process.exit(0)
+})
+
 const program = new Command('awaywork')
   .description("Spend idle coding-subscription quota while you're away")
   .version(packageVersion)

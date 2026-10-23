@@ -18,6 +18,7 @@ import { isolateFor } from '../core/launch.js'
 import {
   type Chain,
   chains,
+  counted,
   formatReport,
   localTime,
   type RunReport,
@@ -130,7 +131,9 @@ export function runCommand(program: Command): void {
           await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
         const skipped = plan.skipped.length > 0 ? `\n${formatSkipped(plan.skipped)}\n` : ''
         await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n${skipped}`)
-        console.log(`Run ${runId}: ${listedUnits(plan).length} units planned, state in ${runDir}`)
+        console.log(
+          `Run ${runId}: ${counted(listedUnits(plan).length, 'unit')} planned, state in ${runDir}`,
+        )
 
         const abort = new AbortController()
         for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -384,7 +387,7 @@ async function remoteRuns(
   onProgress?.({ name, state: 'running' })
   return uploadedRuns(basename(WORKFLOW, '.yml'), run).then(
     (runs) => {
-      onProgress?.({ name, state: 'done', detail: `${runs.length} runs` })
+      onProgress?.({ name, state: 'done', detail: counted(runs.length, 'run') })
       return runs
     },
     (e: unknown) => {

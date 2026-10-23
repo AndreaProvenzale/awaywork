@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import { trailerKey } from '../core/footer.js'
+import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
@@ -90,7 +91,7 @@ async function deliver(
   if (!text)
     return {
       kind: 'none',
-      reason: `${commits.length} commits but no ${push ? 'summary' : 'PR body'}, not pushed`,
+      reason: `${counted(commits.length, 'commit')} but no ${push ? 'summary' : 'PR body'}, not pushed`,
       unpublished: true,
     }
   const pr = unit.items
@@ -106,7 +107,7 @@ async function deliver(
   if (await git(repo, 'rev-list', '--merges', 'work', `^${start}`))
     return {
       kind: 'none',
-      reason: `${commits.length} commits include a merge, not pushed`,
+      reason: `${counted(commits.length, 'commit')} include a merge, not pushed`,
       unpublished: true,
     }
   if (!push && (await forge.branchExists(unit.repo, unit.branch)))

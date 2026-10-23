@@ -1,4 +1,4 @@
-import { stripVTControlCharacters, styleText } from 'node:util'
+import { styleText } from 'node:util'
 import type { RunPlan } from '../core/foreman.js'
 import {
   byKind,
@@ -10,10 +10,13 @@ import {
 } from '../core/report.js'
 import type { Item } from '../core/types.js'
 import {
+  columns,
   formatWhy,
+  graphemes,
   heading,
   listedUnits,
   needsYouRows,
+  pad,
   planUnitTable,
   providerLines,
   reportUnitTable,
@@ -21,6 +24,7 @@ import {
   skippedHeading,
   skippedRows,
   warningBlock,
+  width,
 } from './format.js'
 
 /** What a key does on a row. */
@@ -514,23 +518,6 @@ function footer(s: State): string {
   return [...shown, '? help', 'q quit'].join('  ')
 }
 
-/** CJK, Hangul, fullwidth forms and emoji take two columns; VS16 widens the character before it; marks and joiners none. */
-const wide =
-  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua000-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{20000}-\u{3fffd}]|\p{Emoji_Presentation}/u
-const columns = (char: string) =>
-  char === '\ufe0f'
-    ? 1
-    : /\p{Mn}|\p{Me}|\p{Default_Ignorable_Code_Point}/u.test(char)
-      ? 0
-      : wide.test(char)
-        ? 2
-        : 1
-
-const width = (text: string) =>
-  [...stripVTControlCharacters(text)].reduce((sum, char) => sum + columns(char), 0)
-
-const pad = (text: string, cols: number) => text + ' '.repeat(Math.max(0, cols - width(text)))
-
 /** Cuts a line to `cols` columns with an ellipsis, keeping every escape code so styles still close. */
 export function clipLine(text: string, cols: number): string {
   if (width(text) <= cols) return text
@@ -542,10 +529,10 @@ export function clipLine(text: string, cols: number): string {
       out += part
       continue
     }
-    for (const char of part) {
+    for (const g of graphemes(part)) {
       if (room < 0) break
-      room -= columns(char)
-      out += room < 0 ? '…' : char
+      room -= columns(g)
+      out += room < 0 ? '…' : g
     }
   }
   return out

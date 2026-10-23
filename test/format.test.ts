@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ambiguous,
   brandHeader,
+  clip,
   describeRule,
   findChains,
   formatPlan,
@@ -12,9 +13,11 @@ import {
   listedUnits,
   namedItems,
   needsYouRows,
+  pad,
   reportJson,
   statusMarker,
   warningLines,
+  width,
 } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { allowance } from '../src/core/budget.js'
@@ -24,6 +27,25 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
 import { asanaTask, githubPr } from './fakes/items.js'
+
+describe('clip', () => {
+  it.each(['⌚️', '🇮🇹', '👍🏽'])('counts %s as one grapheme of two columns, never cut', (emoji) => {
+    expect(width(emoji)).toBe(2)
+    expect(clip(`ok ${emoji} done`, 10)).toBe(`ok ${emoji} done`)
+    expect(clip(`ok ${emoji} done`, 6)).toBe(`ok ${emoji}…`)
+    expect(clip(`ok ${emoji} done`, 5)).toBe('ok…')
+  })
+
+  it('counts a joiner sequence as its parts, as a terminal that does not join it draws them', () => {
+    expect(width('👨‍👩‍👧')).toBe(6)
+    expect(clip('ok 👨‍👩‍👧 done', 10)).toBe('ok 👨‍👩‍👧…')
+    expect(clip('ok 👨‍👩‍👧 done', 9)).toBe('ok…')
+  })
+
+  it('pads by width', () => {
+    expect(pad('🇮🇹', 4)).toBe('🇮🇹  ')
+  })
+})
 
 describe('statusMarker', () => {
   it('colors a glyph per status', () => {

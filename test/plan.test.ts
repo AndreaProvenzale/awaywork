@@ -251,10 +251,10 @@ queue:
     expect(rows(result).map((r) => r[3])).toEqual(['codex', '-', '-'])
     expect(result.units[1]?.passed).toEqual([
       'claude at its ceiling (95% of 90%)',
-      'codex used its 1 fallback units',
+      'codex used its 1 fallback unit',
     ])
     expect(formatPlan(result)).toContain(
-      'provider: claude at its ceiling (95% of 90%); codex used its 1 fallback units; none left',
+      'provider: claude at its ceiling (95% of 90%); codex used its 1 fallback unit; none left',
     )
   })
 

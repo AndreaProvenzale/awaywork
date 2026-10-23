@@ -173,7 +173,7 @@ describe('publish', () => {
     await body('')
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: '1 commits but no PR body, not pushed',
+      reason: '1 commit but no PR body, not pushed',
       unpublished: true,
     })
     await body('Title')
@@ -190,7 +190,7 @@ describe('publish', () => {
     await commit('first')
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: '1 commits but no summary, not pushed',
+      reason: '1 commit but no summary, not pushed',
       unpublished: true,
     })
     await body('Fixed the flaky test.\n')
@@ -359,7 +359,7 @@ describe('publish', () => {
     const forge = fakeForge()
     expect(await publish(unit(), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
-      reason: '1 commits but no PR body, not pushed',
+      reason: '1 commit but no PR body, not pushed',
       unpublished: true,
     })
     expect(forge.branches.size).toBe(0)

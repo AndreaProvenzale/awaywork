@@ -9,6 +9,7 @@ import { type Allowance, allowance, pct } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { defaultRules } from '../core/queue.js'
+import { counted } from '../core/report.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Source } from '../core/types.js'
@@ -231,7 +232,7 @@ export async function collectItems(
     await source.items(cfg, ctx).then(
       (found) => {
         items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
-        onProgress?.({ name: id, state: 'done', detail: `${found.length} items` })
+        onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
       },
       (e: Error) => {
         ctx.log(`source ${id}: ${sourceFailure(e)}`)

@@ -1220,7 +1220,7 @@ queue: [{ skill: fix, deliver: push, then: review }]
 
   expect(report.results[0]?.outcome).toEqual({
     kind: 'none',
-    reason: '1 commits but no summary, not pushed',
+    reason: '1 commit but no summary, not pushed',
     unpublished: true,
   })
   expect((await git(origin, 'log', '--format=%s', 'feature-1')).stdout).toBe('init')
@@ -3758,7 +3758,7 @@ it('keeps the failed attempt as without a list, and claims no retry, when the re
     fallback,
   )
   expect(tried).toEqual(['fix sonnet'])
-  const why = 'no provider left: claude used its 1 fallback units'
+  const why = 'no provider left: claude used its 1 fallback unit'
   expect(report.results.map((u) => [u.status, u.retried, u.reason])).toEqual([
     ['failed', undefined, `not retried: ${why}`],
     ['skipped', undefined, `acme-api-1 failed, not retried: ${why}`],
