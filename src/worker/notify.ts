@@ -72,9 +72,9 @@ export function notifyUnit(
       AWAYWORK_SKILL: unit.skill,
       AWAYWORK_STATUS: unit.status,
       ...(unit.items && {
-        AWAYWORK_ITEM_URL: unit.items.map((i) => i.url).join('\n'),
-        AWAYWORK_ITEM_KEY: unit.items.map((i) => i.key).join('\n'),
-        AWAYWORK_SOURCE: unit.items.map((i) => i.source).join('\n'),
+        AWAYWORK_ITEM_URL: linePerItem(unit.items.map((i) => i.url)),
+        AWAYWORK_ITEM_KEY: linePerItem(unit.items.map((i) => i.key)),
+        AWAYWORK_SOURCE: linePerItem(unit.items.map((i) => i.source)),
       }),
       ...(unit.repo && { AWAYWORK_REPO: unit.repo }),
       ...(unit.verdict && { AWAYWORK_VERDICT: unit.verdict }),
@@ -84,4 +84,8 @@ export function notifyUnit(
     },
     signal,
   )
+}
+
+function linePerItem(values: string[]): string {
+  return values.map((v) => v.replace(/\r?\n/g, ' ')).join('\n')
 }

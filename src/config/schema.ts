@@ -537,7 +537,7 @@ export const configSchema = z
           .string()
           .min(1)
           .describe(
-            'Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS and, when there is one, _PR_URL or _REPORT for a unit',
+            'Shell command; AWAYWORK_EVENT (unit or run) and AWAYWORK_RUN_ID are in its env, plus AWAYWORK_REPORT for a run, and _UNIT, _SKILL, _STATUS, _ITEM_URL, _ITEM_KEY and _SOURCE (one line per item), _REPO and, when there is one, _VERDICT, _PR_URL, _REPORT or _OUT_DIR for a unit',
           ),
         secrets: z
           .array(z.string().min(1))

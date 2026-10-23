@@ -112,7 +112,7 @@ queue:
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.
-- Any other file a skill writes in `.away/out/` (a `review.json`, say) is kept with the run and reaches the [notify](./configuration.md#notify) hook as `$AWAYWORK_OUT_DIR`; awaywork doesn't read it. A hook should treat those files as untrusted input: the model wrote them after reading other people's items.
+- Any other file a skill writes in `.away/out/` (a `review.json`, say) is kept with the run and reaches the [notify](./configuration.md#notify) hook as `$AWAYWORK_OUT_DIR`; awaywork doesn't read it. A hook should treat those files as untrusted input: the model wrote them after reading other people's items. The folder also holds what earlier steps of the chain left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
 - Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be.
 - Context is in `.away/context/<item>/`: `item.md` for every item, plus `diff.patch`, `threads.md` and `checks.md` for a PR.
 - `skills: [name]` on a rule, or at the top level for every unit, adds extra skills the agent may call, such as your team's conventions.
