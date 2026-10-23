@@ -295,7 +295,7 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step or verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports |
+| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or never runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |

@@ -120,6 +120,12 @@ async function earlierReport(
 /** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
 const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
 
+/** Why a `deliver: pr` slice opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
+function notReady(r: UnitResult): string {
+  const why = r.status === 'skipped' && r.reason?.split('\n')[0]?.split('; ')[0]
+  return `${r.planned.unit.id} ${r.status}${why ? `: ${why}` : ''}`
+}
+
 /** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
 async function leftBy(
   runDir: string,
@@ -289,9 +295,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
       )
       const out = join(chainDir, sliceOut(at))
+      // A step the chain ended before also leaves the slice unfinished; one passed over by its `when` doesn't.
       const failed = done.find(
         (r) =>
-          (r.planned.slice ?? 0) === at && !r.retried && /^(failed|stopped|error)/.test(r.status),
+          (r.planned.slice ?? 0) === at &&
+          !r.retried &&
+          (/^(failed|stopped|error)/.test(r.status) || (r.status === 'skipped' && !r.passedOver)),
       )
       if (from !== undefined && lead && ran && !input.dryRun) {
         leads.add(lead)
@@ -317,7 +326,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 stack,
                 // Only the whole chain, cut from the default branch, closes its issues.
                 last && !first.capped && base === '',
-                failed && `${failed.planned.unit.id} ${failed.status}`,
+                failed && notReady(failed),
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })

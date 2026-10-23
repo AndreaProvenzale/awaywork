@@ -185,6 +185,7 @@ async function run(
     earlier?: Record<string, string>
     /** Branches something else already holds on the remote. */
     taken?: string[]
+    shortage?: () => Promise<string | undefined>
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -218,7 +219,7 @@ async function run(
     forge: env.forge,
     ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
-    shortage: async () => undefined,
+    shortage: opts.shortage ?? (async () => undefined),
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   const rows = report.results.map((r) => [
@@ -325,12 +326,30 @@ it('opens a deliver: pr PR ready for review, or a draft when a loop ended before
   expect(drafted).toContain(`/pull/away/acme-api-1 (3 commits, draft: ${why}), verdict changes |`)
   expect(runLine('r1', drafted)).toBe('r1  1 unit, 1 draft PR, 0 reports')
   expect(runLine('r1', `${text}${drafted}`)).toBe('r1  2 units, 1 PR, 1 draft PR, 0 reports')
+  const other = text.replace(', ready for review)', ', reviewed) and then (more)')
+  expect(runLine('r1', other)).toBe('r1  1 unit, 0 draft PRs, 0 reports')
 })
 
 it('opens a deliver: pr PR as a draft when a step failed', async () => {
   const rule = 'queue: [{ skill: implement, deliver: pr }]\n'
   const { report } = await run(rule, [issue(1)], worker({}, { fail: ['acme-api-1'] }))
   expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', draft: 'acme-api-1 failed' })
+})
+
+it('opens a deliver: pr PR as a draft when the chain ended before a step, but not when a when passed it over', async () => {
+  const rule = 'queue: [{ skill: implement, deliver: pr, then: [review] }]\n'
+  const quota = 'claude: seven_day at 95%; codex: weekly at 90%'
+  const reasons = [undefined, quota]
+  const short = await run(rule, [issue(1)], worker({}), { shortage: async () => reasons.shift() })
+  expect(short.rows[1]).toEqual(['acme-api-1-review', 'skipped', quota])
+  const why = 'acme-api-1-review skipped: claude: seven_day at 95%'
+  expect(short.report.results[0]?.outcome).toMatchObject({ kind: 'pr', draft: why })
+
+  const gated =
+    'queue: [{ skill: implement, deliver: pr, then: [{ skill: review, when: { verdict: changes } }] }]\n'
+  const { report } = await run(gated, [issue(1)], worker({}))
+  expect(report.results[1]).toMatchObject({ status: 'skipped', passedOver: true })
+  expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', ready: true })
 })
 
 it('takes chain shapes the per-step model refused: a loop after a loop, and a gated step before one', async () => {
