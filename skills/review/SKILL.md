@@ -7,7 +7,7 @@ metadata:
 
 # Review
 
-The unit is someone else's pull request that the developer was asked to review, or this run's work in a chain. Nothing you write is posted: the developer reads your draft in the morning and decides what to say.
+The unit is someone else's pull request that the developer was asked to review, or this run's work in a chain. You post nothing: the developer reads your draft in the morning and decides what to say. A rule may have awaywork leave it on the pull request as the developer's pending review, which only they see until they submit it.
 
 - Read the PR description, diff, threads and checks in the context folder, or `previous/` for what the step before left (or an earlier run's report, when the prompt says so). The clone is at the PR's branch; read the code around the diff.
 - In a chain, the branch holds this run's work so far: review everything it adds over its base, not only the last step's `diff.patch`.
@@ -20,3 +20,5 @@ The report:
 1. Verdict in one line: approve, approve with comments, or request changes. Write the same as one word, `approve`, `comments` or `changes`, to `.away/out/verdict`.
 2. Findings ranked by severity, each with `path:line`, the problem, a concrete failure scenario, and a suggested fix.
 3. Paste-ready review comments, one per finding.
+
+Also write those comments to `.away/out/review.json`, one per finding on a line of the diff: `[{ "path": "src/limit.ts", "line": 42, "body": "..." }]`, `line` on the PR's new side. awaywork leaves them on that line when the review is posted, and keeps any outside the diff in its body.

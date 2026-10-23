@@ -63,7 +63,7 @@ queue:
   ```
 
 - A chain counts once against the [caps](./configuration.md#windows-limits-and-budget) and its rule's `units`, as soon as its first step has a provider, and once more per [stacked slice](#stack). A chain whose first slice is over a cap is skipped whole, naming the cap; a later slice over it is left out.
-- On someone else's PR or a PR from a fork, a chain that could commit (a step's skill commits and `deliver` isn't `report`) is skipped with the reason. `deliver: report` turns it into a review chain.
+- On someone else's PR or a PR from a fork, a chain that could commit (a step's skill commits and `deliver` isn't `report` or `pending_review`) is skipped with the reason. `deliver: report` turns it into a review chain, and `pending_review` leaves its last report on the PR as your pending review.
 - A skill runs at most once outside loops, and once across the chain's loops: a loop may repeat the rule's skill, as in `fix` then `loop: [review, fix]`.
 - Steps are named `<unit>-<skill>`, and `<unit>-<skill>-<round>` in a loop. Each leaves a folder under the run's `units/<unit>/`, numbered in the order the steps ran, next to `out/` with what the chain published (and `out-2/` on, one per [stacked slice](#stack)):
 

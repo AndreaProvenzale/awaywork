@@ -12,7 +12,7 @@ A skill tells the worker what to do with a unit. Every skill is an [Agent Skills
 | --- | --- | --- |
 | `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./chains.md#loops) | draft PR |
 | `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps | draft PR |
-| `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted. Writes a verdict: `approve`, `comments` or `changes` | report |
+| `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted, unless a rule's `deliver: pending_review` leaves it as your pending review. Writes a verdict: `approve`, `comments` or `changes`, and its line comments to `review.json` | report |
 | `plan` | A task with no PR: an implementation plan, no code | report |
 
 ```sh
@@ -112,6 +112,7 @@ queue:
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.
+- A skill that reviews a PR can write its line comments to `.away/out/review.json`, as `review` does: `[{ "path": "src/limit.ts", "line": 42, "body": "Burst should come from config." }]`, `line` on the PR's new side, at most 100 comments and 100 KB. Under [`deliver: pending_review`](./how-it-works.md#delivery) they land on those lines, with `report.md` as the review's body; a comment off the diff goes in the body, and an invalid file is left out, the result saying why. Under any other delivery nobody reads it.
 - Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be.
 - Context is in `.away/context/<item>/`: `item.md` for every item, plus `diff.patch`, `threads.md` and `checks.md` for a PR.
 - `skills: [name]` on a rule, or at the top level for every unit, adds extra skills the agent may call, such as your team's conventions.
