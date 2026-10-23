@@ -20,6 +20,7 @@ import {
 } from '../core/launch.js'
 import { counted } from '../core/report.js'
 import type { Ctx } from '../core/types.js'
+import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../providers/command.js'
@@ -65,14 +66,19 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const ctx: Ctx = { env: process.env, log: (line) => report('warn', line) }
   const secret = (name: string) => (process.env[name] ? `${name} set` : `${name} unset`)
 
-  for (const bin of ['git', 'gh']) {
+  const loaded = await loadConfig(path).catch((e: Error) => e)
+  const workspaces = loaded instanceof Error ? [] : bitbucketWorkspaces(loaded)
+  for (const bin of ['git', workspaces.length ? 'twg' : 'gh']) {
     const version = await exec(bin, ['--version']).catch(() => undefined)
     report(version ? 'ok' : 'FAIL', bin, version?.split('\n')[0] ?? 'not found on PATH')
   }
-  await exec('gh', ['auth', 'status']).then(
-    () => report('ok', 'gh login'),
-    () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
-  )
+  if (workspaces.length && !(loaded instanceof Error))
+    for (const c of await bitbucketChecks(loaded)) report(c.status, c.what, c.detail)
+  else
+    await exec('gh', ['auth', 'status']).then(
+      () => report('ok', 'gh login'),
+      () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
+    )
   if (existsSync(envFile)) {
     const mode = statSync(envFile).mode & 0o777
     if (mode === 0o600) report('ok', envFile, 'mode 600')
@@ -86,13 +92,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       `not used with this config; move or link its skills to ${skillsDirOf(path)}`,
     )
 
-  let config: Config
-  try {
-    config = await loadConfig(path)
-  } catch (e) {
-    report('FAIL', path, (e as Error).message.split('\n').slice(1).join('; ').trim())
+  if (loaded instanceof Error) {
+    report('FAIL', path, loaded.message.split('\n').slice(1).join('; ').trim())
     return checks
   }
+  const config = loaded
   const unknown = await unknownSkillsWarning(config, skillsDirOf(path))
   report(unknown ? 'warn' : 'ok', path, unknown)
   for (const warning of await staleSchedules(path, config.windows))
@@ -160,6 +164,55 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 }
 
 const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
+
+/**
+ * twg's login per workspace, and one SSH push path that needs no passphrase: under launchd or cron
+ * there's no agent to ask. A login whose storage isn't a file is one awaywork's masking is unverified on.
+ */
+export async function bitbucketChecks(config: Config, run: Exec = exec): Promise<Check[]> {
+  const checks: Check[] = []
+  const check = (status: Status, what: string, detail = '') => checks.push({ status, what, detail })
+  const login = 'log in with twg setup bitbucket, or set TWG_BBC_TOKEN'
+  const workspaces = bitbucketWorkspaces(config)
+  for (const w of workspaces)
+    await twg(run, ['bb', 'workspace', 'get', '-w', w]).then(
+      () => check('ok', `twg ${w}`),
+      (e: Error) => check('FAIL', `twg ${w}`, `${e.message.replace(/\.$/, '')}; ${login}`),
+    )
+  const repos = (config.sources.bitbucket as { repos: string[] }).repos
+  const any = ['bb', 'repo', 'query', '-w', workspaces[0] ?? '', '-n', '1']
+  const repo =
+    repos.find((r) => !r.includes('*')) ??
+    (await twg<{ full_name: string }[]>(run, any)
+      .then(([r]) => r?.full_name)
+      .catch(() => undefined))
+  const ssh =
+    process.env.GIT_SSH_COMMAND ||
+    (await run('git', ['config', '--get', 'core.sshCommand']).catch(() => '')).trim() ||
+    (process.env.GIT_SSH ? '' : 'ssh')
+  // A GIT_SSH wrapper may be plink, which takes no -o: leave it to git
+  const batch = ssh ? { GIT_SSH_COMMAND: `${ssh} -o BatchMode=yes` } : undefined
+  if (repo)
+    await run('git', ['ls-remote', bitbucketRemote(repo), 'HEAD'], batch).then(
+      () => check('ok', 'git over ssh', repo),
+      (e: Error & { stderr?: string }) =>
+        check(
+          'FAIL',
+          'git over ssh',
+          `${repo}: ${(e.stderr || e.message).trim().split('\n')[0]?.replace(/\.$/, '')}; add a key without a passphrase to Bitbucket, or keep one in an agent the scheduler sees`,
+        ),
+    )
+  const storage = await twg<{ data: { authority: string } }>(run, ['auth', 'storage', 'status'])
+    .then((s) => s.data.authority)
+    .catch(() => undefined)
+  if (storage && storage !== 'file')
+    check(
+      'warn',
+      'twg login',
+      `stored in ${storage}: masking it from workers is verified only for file storage`,
+    )
+  return checks
+}
 
 /** Who repo code runs as, and on local Linux what `isolation: user` still needs from you. */
 export async function isolationChecks(

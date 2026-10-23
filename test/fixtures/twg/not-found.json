@@ -1,0 +1,18 @@
+{
+  "ok": false,
+  "error": {
+    "code": "TWG_TOOL_EXECUTION_FAILED",
+    "kind": "twg_tool_execution_failed",
+    "message": "Resource not found. Check that the workspace, repository, and resource exist.",
+    "statusCode": 404,
+    "downstreamError": {
+      "message": "Resource not found. Check that the workspace, repository, and resource exist.",
+      "statusCode": 404,
+      "service": "backend"
+    },
+    "retry": {
+      "recommended": false,
+      "guidance": "do_not_retry_unchanged"
+    }
+  }
+}

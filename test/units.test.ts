@@ -147,6 +147,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     'GH_CONFIG_DIR',
     'GH_TOKEN',
     'GH_ENTERPRISE_TOKEN',
+    'TWG_CONFIG_DIR',
     'GIT_CONFIG_GLOBAL',
     'GIT_CONFIG_NOSYSTEM',
   ]
@@ -753,6 +754,7 @@ queue:
     'GH_CONFIG_DIR',
     'GH_TOKEN',
     'GH_ENTERPRISE_TOKEN',
+    'TWG_CONFIG_DIR',
     'GIT_CONFIG_GLOBAL',
     'GIT_CONFIG_NOSYSTEM',
   ]

@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "code": "AUTH_INVALID",
+    "kind": "bitbucket",
+    "mode": "bbc-token",
+    "statusCode": 401,
+    "message": "Bitbucket Cloud authentication required: no Bitbucket token configured.",
+    "summary": "Your Bitbucket token is missing or invalid. Run `twg setup bitbucket` to set one up.",
+    "remediation": {
+      "command": "twg setup bitbucket",
+      "env": ["TWG_BBC_TOKEN"]
+    }
+  }
+}

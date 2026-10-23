@@ -300,19 +300,21 @@ export async function copyOut(src: string, dest: string, options: CopyOptions = 
   }
 }
 
-/** The env of setup: no forge token, none of `withheld`, and gh without its config or keyring login. */
+/** The env of setup: no forge token, none of `withheld`, and gh and twg without their config or keyring login. */
 export function commandEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
   withheld: string[],
 ): NodeJS.ProcessEnv {
   const hidden = new Set([...forgeTokens, ...withheld])
-  const kept = Object.entries(env).filter(([name]) => !hidden.has(name))
+  // Every TWG_ name, whatever the forge: twg logins come in many names, and you may be logged in for Jira alone.
+  const kept = Object.entries(env).filter(([name]) => !hidden.has(name) && !name.startsWith('TWG_'))
   return {
     ...Object.fromEntries(kept),
     GH_CONFIG_DIR: join(dir, WORK_DIR, 'gh'),
     GH_TOKEN: 'none',
     GH_ENTERPRISE_TOKEN: 'none',
+    TWG_CONFIG_DIR: join(dir, WORK_DIR, 'twg'),
   }
 }
 

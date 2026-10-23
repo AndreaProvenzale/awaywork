@@ -2,10 +2,11 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
+import { recorded } from './fakes/gh.js'
 
 vi.mock('../src/forge/gh.js', () => ({
   exec: async (cmd: string, args: string[]) => {
@@ -26,9 +27,8 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   return { ...original, configDir, runsDir, bin }
 })
 
-const { containerChecks, isolationChecks, runChecks, workflowSecretChecks } = await import(
-  '../src/cli/doctor.js'
-)
+const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
+  await import('../src/cli/doctor.js')
 const { configDir, runsDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
@@ -81,6 +81,114 @@ describe('doctor', () => {
       detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`,
     })
     expect(checks.at(-1)?.what).toBe('github')
+  })
+})
+
+describe('doctor on Bitbucket', () => {
+  const twgFixture = (name: string) =>
+    readFile(join(import.meta.dirname, 'fixtures', 'twg', name), 'utf8')
+  const config = (repos: string) =>
+    parseConfig(`providers: [codex]\nsources: { bitbucket: { repos: ${repos} } }\n`)
+  beforeEach(() => {
+    vi.stubEnv('GIT_SSH_COMMAND', '')
+    vi.stubEnv('GIT_SSH', '')
+  })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('checks twg instead of gh', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'providers: [codex]\nsources: { bitbucket: { repos: [acme/api] } }\n')
+    const checks = await runChecks(path, () => {})
+    const what = checks.map((c) => c.what)
+    expect(what).toEqual(expect.arrayContaining(['twg', 'twg acme']))
+    expect(what).not.toContain('gh')
+    expect(what).not.toContain('gh login')
+  })
+
+  it("checks each workspace's login, an SSH key that needs no passphrase, and the login's storage", async () => {
+    const storage = (await twgFixture('auth-storage.json')).replace('"file"', '"keychain"')
+    const run = recorded([
+      [/workspace get -w andrea89 /, await twgFixture('workspace.json')],
+      [/^git ls-remote/, '44a1dfd4d436528bb6b67192292d83276c2b7962\tHEAD'],
+      [/auth storage status/, storage],
+    ])
+    const checks = await bitbucketChecks(config('[andrea89/awaywork-sandbox]'), run)
+    expect(checks).toEqual([
+      { status: 'ok', what: 'twg andrea89', detail: '' },
+      { status: 'ok', what: 'git over ssh', detail: 'andrea89/awaywork-sandbox' },
+      {
+        status: 'warn',
+        what: 'twg login',
+        detail: 'stored in keychain: masking it from workers is verified only for file storage',
+      },
+    ])
+    expect(run.calls[2]).toEqual([
+      'git',
+      'ls-remote',
+      'git@bitbucket.org:andrea89/awaywork-sandbox.git',
+      'HEAD',
+    ])
+  })
+
+  it('fails a workspace twg can’t read and a key that asks for a passphrase', async () => {
+    const authInvalid = await twgFixture('auth-invalid.json')
+    const envs: (Record<string, string> | undefined)[] = []
+    const run: Exec = async (cmd, args, env) => {
+      envs.push(env)
+      if (cmd === 'git')
+        throw Object.assign(new Error('Command failed with exit code 128'), {
+          stderr:
+            'git@bitbucket.org: Permission denied (publickey).\nfatal: Could not read from remote repository.',
+        })
+      if (args.includes('query')) return '[{ "full_name": "acme/web" }]'
+      if (args.includes('storage')) return twgFixture('auth-storage.json')
+      throw Object.assign(new Error('Command failed with exit code 77'), { stdout: authInvalid })
+    }
+    expect(await bitbucketChecks(config('[acme/*]'), run)).toEqual([
+      {
+        status: 'FAIL',
+        what: 'twg acme',
+        detail:
+          'twg bb workspace get: Bitbucket Cloud authentication required: no Bitbucket token configured; log in with twg setup bitbucket, or set TWG_BBC_TOKEN',
+      },
+      {
+        status: 'FAIL',
+        what: 'git over ssh',
+        detail:
+          'acme/web: git@bitbucket.org: Permission denied (publickey); add a key without a passphrase to Bitbucket, or keep one in an agent the scheduler sees',
+      },
+    ])
+    expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' })
+  })
+
+  it('adds BatchMode to the ssh command git would use: GIT_SSH_COMMAND, else core.sshCommand', async () => {
+    const envs: (Record<string, string> | undefined)[] = []
+    const run: Exec = async (_cmd, args, env) => {
+      envs.push(env)
+      if (args[0] === 'config') return 'ssh -i ~/.ssh/bitbucket\n'
+      return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
+    }
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/bitbucket -o BatchMode=yes' })
+    vi.stubEnv('GIT_SSH_COMMAND', 'ssh -i ~/.ssh/env')
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(envs).toContainEqual({ GIT_SSH_COMMAND: 'ssh -i ~/.ssh/env -o BatchMode=yes' })
+  })
+
+  it('leaves a GIT_SSH wrapper to git, since it may be plink, which takes no -o', async () => {
+    vi.stubEnv('GIT_SSH', '/usr/local/bin/plink')
+    const calls: [string[], Record<string, string> | undefined][] = []
+    const run: Exec = async (_cmd, args, env) => {
+      calls.push([args, env])
+      if (args[0] === 'config') return ''
+      return args.includes('storage') ? twgFixture('auth-storage.json') : '{}'
+    }
+    await bitbucketChecks(config('[acme/web]'), run)
+    expect(calls).toContainEqual([
+      ['ls-remote', 'git@bitbucket.org:acme/web.git', 'HEAD'],
+      undefined,
+    ])
   })
 })
 

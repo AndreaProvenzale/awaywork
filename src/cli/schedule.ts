@@ -293,6 +293,13 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
+    if (loaded.sources.bitbucket) {
+      console.error(
+        'GitHub Actions runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
+      )
+      process.exitCode = 1
+      return
+    }
     const current = await readFile(join(root, WORKFLOW), 'utf8').catch(() => '')
     const selfHosted = io.interactive
       ? await askSelfHosted(io.ask, isSelfHosted(current))

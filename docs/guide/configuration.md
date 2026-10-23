@@ -142,12 +142,13 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 | `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false` (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to |
 | `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
+| `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github` also takes a [`link`](#linking-prs).
+Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs).
 
 Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
 
@@ -169,6 +170,53 @@ Linear takes a personal API key (Settings > Account > Security & access). awaywo
 Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it. Tokens expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
+
+### Bitbucket and Jira
+
+Your code on Bitbucket Cloud, your tickets in Jira? Put `bitbucket` next to `jira`, and awaywork pushes and opens its draft PRs on Bitbucket instead of GitHub:
+
+```yaml
+sources:
+  bitbucket: { repos: [acme/*] }   # the forge; the workspace is literal, the name globs
+  jira:
+    site: acme.atlassian.net
+    email: me@acme.com
+    repo_map: { ENG: acme/api }    # project key -> workspace/name on Bitbucket
+```
+
+It goes through Atlassian's `twg` CLI the way GitHub goes through `gh`, and git goes over SSH with your own keys. So you need:
+
+- `twg` logged in to Bitbucket (`twg setup bitbucket`), or a Bitbucket API token in `TWG_BBC_TOKEN`.
+- An SSH key Bitbucket knows that git can use without asking for a passphrase: launchd and cron have no terminal to ask in. A key in an agent your scheduler sees works too.
+
+`awaywork doctor` checks both, instead of `gh`:
+
+```text
+ok    git: git version 2.56.0
+ok    twg: 1.3.8
+ok    twg andrea89
+ok    git over ssh: andrea89/awaywork-sandbox
+```
+
+`twg andrea89` is `twg bb workspace get` for each workspace in `repos`; `git over ssh` is a `git ls-remote` with `-o BatchMode=yes` added to the ssh command git uses (`GIT_SSH_COMMAND`, else `core.sshCommand`, else `ssh`; a `GIT_SSH` wrapper runs as is, since it may be plink), so a key that would prompt fails here and not at 3am. It warns when twg keeps its login anywhere but a file, since hiding that from workers is only checked for files ([Safety](./safety.md#what-the-agent-can-reach)).
+
+A run then ends like on GitHub, with a draft PR whose footer links it back to the item:
+
+```text
+Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
+     item       skill      status  result
+  1  SANDBOX-8  implement  done    https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/5
+     Appends one line to notes.txt, from a stub provider.
+```
+
+`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. What Bitbucket doesn't do yet:
+
+- **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
+- **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
+- **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
+- **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
+
+One forge per config: `github` and `bitbucket` together is an error.
 
 ## Branch names
 
@@ -414,7 +462,7 @@ queue:
       - { skill: review, mcp: [db] }
 ```
 
-The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_` or `GITHUB_` are reserved: workers never get GitHub tokens, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
+The shape is a subset of Claude Code's `.mcp.json`, translated for each agent: a `command` with `args` and `env`, or a `url` with `headers`. `secrets` names the env vars the server needs. A stdio server receives its secrets in its env under those same names. An HTTP server gets each one in a header, as `${NAME}`, or as `Bearer ${NAME}` for `Authorization`. A secret can't appear in `command`, `args` or `url`, where it would show in the process list, nor in `env`, where Codex takes only literal values. Names starting with `GH_`, `GITHUB_` or `TWG_` are reserved: workers never get forge logins, and Actions refuses `GITHUB_` secrets. `tools` limits what the agent may call: anything outside the list is refused. Only units whose rule names a server get its secrets. `awaywork schedule` maps them into the Actions workflow, and `awaywork doctor` shows whether each one is set.
 
 Servers start for your own PRs and for issues and tasks, but not on someone else's PR or an issue it closes, nor when one of their secrets is unset. Only token-based servers work unattended: OAuth-only servers need a login a runner doesn't have, and workers never get your claude.ai connectors. A server's secret is one the agent can read. A server's tools are tools that injected instructions can call. See [Safety](./safety.md#mcp-servers).
 

@@ -1,10 +1,9 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { footer, footerItems, isOurs } from '../core/footer.js'
+import { isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
+import { draftText, linksItem } from './pr.js'
+import { pushHead } from './push.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
@@ -25,8 +24,6 @@ type PrNode = {
 
 /** Git uses gh's login only for the command it is passed to; the clone keeps no helper. */
 const withGhLogin = ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential']
-/** Git in the push repo runs no hooks and sees history as it is, not as replace refs say. */
-const pushSafely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 
 const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $branch: String!) {
   repository(owner: $owner, name: $name) {
@@ -75,51 +72,13 @@ type Stack = {
   pull_requests: { number: number }[]
 }
 
-/**
- * Pushes `dir`'s HEAD from a bare repo of its own, so `dir`'s config, hooks and refs steer neither
- * where the push goes nor what runs. With `from`, only a descendant of it, while the branch is
- * still at it; without, only while the branch doesn't exist. The lease makes that a compare-and-swap
- * but lifts git's own fast-forward check, so the ancestry check here is what keeps history intact.
- */
-async function pushHead(
-  run: Exec,
-  remote: (repo: string) => string,
-  dir: string,
-  repo: string,
-  branch: string,
-  from?: string,
-) {
-  const bare = await mkdtemp(join(tmpdir(), 'awaywork-push-'))
-  const git = (...args: string[]) => run('git', ['-C', bare, ...pushSafely, ...args])
-  try {
-    await run('git', ['init', '-q', '--bare', bare])
-    await git('fetch', '-q', '--no-tags', dir, 'HEAD')
-    // One commit, checked and pushed: nothing can move a ref in between.
-    const head = (await git('rev-parse', '--verify', 'FETCH_HEAD^{commit}')).trim()
-    if (
-      from &&
-      !(await git('merge-base', '--is-ancestor', from, head).then(
-        () => true,
-        () => false,
-      ))
-    )
-      throw new Error(
-        `refusing to push onto ${branch} on ${repo}: not a fast-forward from ${from.slice(0, 7)}`,
-      )
-    const lease = `--force-with-lease=refs/heads/${branch}:${from ?? ''}`
-    await git(...withGhLogin, 'push', lease, remote(repo), `${head}:refs/heads/${branch}`)
-  } finally {
-    await rm(bare, { recursive: true, force: true })
-  }
-}
-
 export const githubHost = (config: Config) =>
   (config.sources.github as { host?: string } | undefined)?.host
 
 export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   const run = onHost(base, host === 'github.com' ? undefined : host)
   const remote = (repo: string) => `https://${host}/${repo}.git`
-  let myPrs: Promise<(PrNode & { items: string[] })[]> | undefined
+  let myPrs: Promise<PrNode[]> | undefined
 
   const forge: Forge = {
     async clone(repo, branch, dir, fork) {
@@ -139,30 +98,14 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await run('git', ['-C', dir, 'checkout', '-q', '--detach', head])
     },
 
-    /**
-     * My open PRs for the item: those whose footer names items by those items, whatever their names;
-     * the others by the key in their branch or title, or the item's link line in their body,
-     * or for Asana any URL to the task: its app writes `/0/0/<gid>`, not the permalink.
-     */
+    /** My open PRs for the item, as `linksItem` matches them. */
     async prsFor(item: Item): Promise<PrRef[]> {
-      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then((d) =>
-        d.search.nodes.map((pr) => ({ ...pr, items: footerItems(pr.body) })),
+      myPrs ??= graphql<{ search: { nodes: PrNode[] } }>(run, myPrsQuery, {}).then(
+        (d) => d.search.nodes,
       )
-      const key = bounded(item.key)
-      const link = item.link ? bounded(item.link) : undefined
-      const asanaUrl =
-        item.source === 'asana'
-          ? new RegExp(`app\\.asana\\.com/\\S*/${escapeRegExp(item.id)}(?!\\d)`)
-          : undefined
+      const links = linksItem(item)
       return (await myPrs)
-        .filter((pr) =>
-          pr.items.length
-            ? pr.items.includes(`${item.source}:${item.key}`)
-            : key.test(pr.headRefName) ||
-              key.test(pr.title) ||
-              !!link?.test(pr.body) ||
-              !!asanaUrl?.test(pr.body),
-        )
+        .filter((pr) => links({ branch: pr.headRefName, title: pr.title, body: pr.body }))
         .map((pr) => ({
           repo: pr.repository.nameWithOwner,
           number: pr.number,
@@ -208,7 +151,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
     async push(dir, branch, { repo }) {
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)
-      await pushHead(run, remote, dir, repo, branch)
+      await pushHead(run, withGhLogin, remote(repo), dir, repo, branch)
     },
 
     /** Reads the PR live: hours may have passed since planning. */
@@ -240,14 +183,11 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           ? `${branch} is protected`
           : undefined)
       if (refused) return refused
-      await pushHead(run, remote, dir, repo, branch, from)
+      await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    /** The body file's first line is the title; the rest, plus the footer, is the body. */
     async draftPr(repo, head, base, bodyFile, runId, items) {
-      const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
-      const title = first.replace(/^#+\s*/, '').trim() || head
-      const body = `${rest.join('\n').trim()}\n\n${footer(runId, items)}`
+      const { title, body } = await draftText(bodyFile, head, runId, items)
       const into = base ? ['--base', base] : []
       const args = ['pr', 'create', '-R', repo, '--draft', '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
@@ -272,8 +212,3 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   }
   return forge
 }
-
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/** `text` anywhere, in any case, but not inside a longer word or number. */
-const bounded = (text: string) => new RegExp(`(^|[^a-z0-9])${escapeRegExp(text)}($|[^a-z0-9])`, 'i')
