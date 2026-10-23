@@ -416,6 +416,8 @@ notify:                         # a line per step
 
 `secrets` names the env vars the command reads: workers never see them, and the GitHub Actions workflow passes them from repository secrets.
 
+More recipes, Notion and Slack per unit among them, are in [Where results go](./results.md).
+
 ### PR labels, reviewers and ready for review
 
 Ready for review is a rule's [`deliver: pr`](#queue-rules). Otherwise a PR gets the agent's title and body and nothing else: no labels, no reviewers, into the base awaywork picked. None of that is config. The `unit` event has the PR's URL, so `gh` does it:

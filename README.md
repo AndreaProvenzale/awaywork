@@ -150,6 +150,7 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 | [How it works](docs/guide/how-it-works.md) | Queue, units, budget, delivery |
 | [Configuration](docs/guide/configuration.md) | The config file by example; [reference](docs/reference/config.md). The schema holds across minor releases, [experimental keys aside](docs/guide/configuration.md#stability) |
 | [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
+| [Where results go](docs/guide/results.md) | Who sees what, and notify hooks for Notion, Slack and the like |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
