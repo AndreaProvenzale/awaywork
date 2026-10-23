@@ -36,8 +36,8 @@ Commands:
                          approved, for rules with `where: { approved: true }`; a
                          unit that finishes on it clears the approval
   skills                 list skills and eject built-ins to tweak
-  run [options]          plan the units, start a worker per unit and publish
-                         draft PRs and reports
+  run [options]          plan the units, start a worker per unit and publish PRs
+                         and reports
   report [options] [id]  print a run's morning report, the latest by default;
                          browsable in a terminal
   stats [options]        what each rule, skill and provider cost and delivered
@@ -215,7 +215,7 @@ Options:
 ```text
 Usage: awaywork run [options]
 
-plan the units, start a worker per unit and publish draft PRs and reports
+plan the units, start a worker per unit and publish PRs and reports
 
 Options:
   --dry-run      prepare each workspace (clone, context, prompt) but run no
@@ -235,7 +235,7 @@ Usage: awaywork report [options] [id]
 print a run's morning report, the latest by default; browsable in a terminal
 
 Options:
-  --list            list the last 20 runs: units, draft PRs and reports
+  --list            list the last 20 runs: units, PRs and reports
   --json            print the run's results as JSON instead of the text
   --unit <n|key>    show one unit in full, by its number in the report, unit id
                     or item key

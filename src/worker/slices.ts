@@ -81,7 +81,7 @@ export interface Publisher {
 
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports.
- * A `deliver: pr` slice opens as a draft when its `verify` failed or one of its loops ended before its `until` held.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
  */
 export async function publishSlice(
   deps: Publisher,
@@ -92,6 +92,7 @@ export async function publishSlice(
   loops: Record<number, OpenLoop>,
   stack?: Stack,
   closes = false,
+  failedStep?: string,
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
@@ -108,8 +109,10 @@ export async function publishSlice(
   const failed = await verify(deps, unit, dir, from)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   const unmet = Object.values(loops).find((l) => !l.held)
-  const notReady =
-    failed ?? (unmet && `loop ${unmet.skills.join(' ⇄ ')} ended before its until held`)
+  // `runLine` splits a chain's cell at `; `.
+  const why =
+    unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
+  const notReady = failedStep ?? failed ?? why
   return publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
 }
 

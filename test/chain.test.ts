@@ -303,7 +303,7 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
   })
 })
 
-it('opens a deliver: pr PR ready for review, or a draft when a loop ran out of rounds', async () => {
+it('opens a deliver: pr PR ready for review, or a draft when a loop ended before its until held', async () => {
   const rule = `queue:
   - skill: implement
     deliver: pr
@@ -318,13 +318,19 @@ it('opens a deliver: pr PR ready for review, or a draft when a loop ran out of r
 
   const changes = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'changes' }
   const unmet = await run(rule, [issue(1)], worker(changes))
-  const why = 'loop review ⇄ fix ended before its until held'
+  const why = 'loop review ⇄ fix: max 2 rounds reached'
   expect(unmet.report.results[0]?.outcome).toMatchObject({ kind: 'pr', draft: why })
   expect(unmet.report.results[0]?.loop).toBe('2 rounds of review ⇄ fix; max 2 rounds reached')
   const drafted = formatReport(unmet.report)
   expect(drafted).toContain(`/pull/away/acme-api-1 (3 commits, draft: ${why}), verdict changes |`)
   expect(runLine('r1', drafted)).toBe('r1  1 unit, 1 draft PR, 0 reports')
   expect(runLine('r1', `${text}${drafted}`)).toBe('r1  2 units, 1 PR, 1 draft PR, 0 reports')
+})
+
+it('opens a deliver: pr PR as a draft when a step failed', async () => {
+  const rule = 'queue: [{ skill: implement, deliver: pr }]\n'
+  const { report } = await run(rule, [issue(1)], worker({}, { fail: ['acme-api-1'] }))
+  expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', draft: 'acme-api-1 failed' })
 })
 
 it('takes chain shapes the per-step model refused: a loop after a loop, and a gated step before one', async () => {

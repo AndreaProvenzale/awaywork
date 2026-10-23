@@ -331,7 +331,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['draft_pr', 'pr', 'report', 'push'])
       .optional()
       .describe(
-        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when verify fails or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
+        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step or verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z

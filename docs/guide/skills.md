@@ -107,7 +107,7 @@ queue:
     where: { type: pr, mine: true, checks: failing, label: flaky }
 ```
 
-- `metadata.deliver: report` makes the skill report instead of commit; without it, it commits. Where its commits go is the rule's [`deliver`](./chains.md#then): a draft PR, or a ready PR or a `push` only a rule can opt in to.
+- `metadata.deliver: report` makes the skill report instead of commit; without it, it commits. Where its commits go is the rule's [`deliver`](./chains.md#then): a draft PR unless the rule opts in to a ready one or a `push`.
 - `metadata.type` is the conventional-commit type (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style` or `revert`) that fills `{type}` in a [branch name](./configuration.md#branch-names), e.g. `{type}/{key}-{title}` gives `feat/ENG-12-login-with-sso` for `implement` and `fix/ENG-14-null-token` for `fix`. The first skill that commits decides, and a [stacked slice](./chains.md#stack) takes its own first skill's; without one, or with any other word, it's `chore`. It's read at plan time, before the clone, so `.awaywork/skills/` in the repo doesn't set it: a repo skill that replaces a built-in gets the built-in's type, any other `chore`.
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 

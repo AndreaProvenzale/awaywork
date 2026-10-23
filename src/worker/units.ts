@@ -289,6 +289,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
       )
       const out = join(chainDir, sliceOut(at))
+      const failed = done.find(
+        (r) =>
+          (r.planned.slice ?? 0) === at && !r.retried && /^(failed|stopped|error)/.test(r.status),
+      )
       if (from !== undefined && lead && ran && !input.dryRun) {
         leads.add(lead)
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
@@ -313,6 +317,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 stack,
                 // Only the whole chain, cut from the default branch, closes its issues.
                 last && !first.capped && base === '',
+                failed && `${failed.planned.unit.id} ${failed.status}`,
               )
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })

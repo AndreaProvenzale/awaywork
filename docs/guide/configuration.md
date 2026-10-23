@@ -306,7 +306,7 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when `verify` failed or a loop ran out of rounds), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), or `report`, where no step commits |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), or `report`, where no step commits |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
@@ -424,9 +424,11 @@ notify:
   command: |
     set -e
     [ "$AWAYWORK_EVENT" = unit ] && [ -n "$AWAYWORK_PR_URL" ] || exit 0
-    # every step of the PR fires; once one got through, the label is there
-    gh pr view "$AWAYWORK_PR_URL" --json labels -q '.labels[].name' | grep -qx awaywork && exit 0
-    gh pr edit "$AWAYWORK_PR_URL" --add-label awaywork --add-reviewer octocat
+    gh pr edit "$AWAYWORK_PR_URL" --add-label awaywork
+    # every step of the PR fires: ask for review once, and never on a draft
+    skip=$(gh pr view "$AWAYWORK_PR_URL" --json isDraft,reviewRequests -q '.isDraft or (.reviewRequests | length > 0)')
+    [ "$skip" = false ] || exit 0
+    gh pr edit "$AWAYWORK_PR_URL" --add-reviewer octocat
 ```
 
 `set -e` stops at a `gh` that fails, a missing label say: the hook's failure is logged and the next step tries again.

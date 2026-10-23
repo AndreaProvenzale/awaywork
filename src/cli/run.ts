@@ -65,7 +65,7 @@ type RunOptions = {
 export function runCommand(program: Command): void {
   program
     .command('run')
-    .description('plan the units, start a worker per unit and publish draft PRs and reports')
+    .description('plan the units, start a worker per unit and publish PRs and reports')
     .option('--dry-run', 'prepare each workspace (clone, context, prompt) but run no worker')
     .option('--unit <id>', 'run only this unit, by id or item key')
     .option('--repo <glob>', 'run only units in repos matching owner/name, * globs')
@@ -180,7 +180,7 @@ export function runCommand(program: Command): void {
   program
     .command('report [id]')
     .description("print a run's morning report, the latest by default; browsable in a terminal")
-    .option('--list', 'list the last 20 runs: units, draft PRs and reports')
+    .option('--list', 'list the last 20 runs: units, PRs and reports')
     .addOption(
       new Option('--json', "print the run's results as JSON instead of the text").conflicts('list'),
     )

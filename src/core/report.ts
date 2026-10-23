@@ -310,9 +310,7 @@ export function runLine(runId: string, report: string | undefined): string {
     .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
   // A chain of several slices lists each one's result, separated by `; `.
   const parts = results.flatMap((r) => r.split('; '))
-  const prs = parts.filter((r) =>
-    /^https:\/\/\S+ \(\d+ commits?(, [^)]+)?\)(, verdict \S+)?$/.test(r),
-  )
+  const prs = parts.filter((r) => /^https:\/\/\S+ \(\d+ commits?(, .+)?\)(, verdict \S+)?$/.test(r))
   const ready = prs.filter((r) => r.includes(', ready for review)')).length
   const reports = parts.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
