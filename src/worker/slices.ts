@@ -90,7 +90,7 @@ export interface Publisher {
 
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
- * the last of them left as a pending review under `deliver: pending_review`.
+ * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
  * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
  */
 export async function publishSlice(
@@ -114,7 +114,9 @@ export async function publishSlice(
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     const last = reports.at(-1)
     if (deliver === 'pending_review' && last)
-      return leaveReview(deps.forge, unit, dir, from, text, last)
+      return failedStep
+        ? { kind: 'report', text, unposted: failedStep }
+        : leaveReview(deps.forge, unit, dir, from, text, last)
     return { kind: 'report', text }
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])

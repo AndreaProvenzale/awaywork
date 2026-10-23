@@ -442,6 +442,17 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
   )
 })
 
+it('delivers a deliver: pending_review report alone when a step failed', async () => {
+  const rule = 'queue: [{ skill: plan, deliver: pending_review, then: [review] }]\n'
+  const failing = worker({}, { fail: ['acme-api-1-review'] })
+  const { report, forge } = await run(rule, [githubPr(1, { mine: false })], failing)
+  expect(report.results[0]?.outcome).toMatchObject({
+    kind: 'report',
+    unposted: 'acme-api-1-review failed',
+  })
+  expect(forge.reviews).toEqual([])
+})
+
 it('takes chain shapes the per-step model refused: a loop after a loop, and a gated step before one', async () => {
   const { rows, opened } = await run(
     `queue:

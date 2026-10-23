@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { z } from 'zod'
 import { slug } from '../core/foreman.js'
-import type { Forge, Review, Unit } from '../core/types.js'
+import { type Forge, PendingReviewExists, type Review, type Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
 import { readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
 
@@ -60,7 +60,8 @@ export function commentableLines(diff: string): Map<string, Set<number>> {
     if (text.startsWith('diff --git ')) file = undefined
     else if (text.startsWith('+++ b/')) {
       file = new Set()
-      files.set(text.slice('+++ b/'.length), file)
+      // Git ends a path holding a space with a tab.
+      files.set(text.slice('+++ b/'.length).replace(/\t$/, ''), file)
     }
     const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(text)
     if (hunk) {
@@ -72,14 +73,21 @@ export function commentableLines(diff: string): Map<string, Set<number>> {
   return files
 }
 
+/** The body with `comments` it can't leave on a line of the diff. */
+function withComments(body: string, comments: Review['comments']): string {
+  if (!comments.length) return body
+  const listed = comments.map((c) => `\`${c.path}:${c.line}\`: ${c.body}`).join('\n\n')
+  return `${body}\n\n## Outside the diff\n\n${listed}`
+}
+
 /** A reason on one line, without the `; ` that `runLine` splits a result at. */
 const oneLine = (reason: string) => reason.split('\n')[0]?.split('; ')[0] ?? ''
 
 /**
  * Leaves the chain's last report on the PR the unit reviews as your pending review at `head`, the
  * commit the clone read, with the line comments its step left in `review.json`. A comment outside
- * the PR's diff would fail the whole review, so it goes in the body; any failure delivers the
- * report alone, saying why.
+ * the PR's diff would fail the whole review, so it goes in the body, as do all of them when the
+ * forge refuses the review anyway; any other failure delivers the report alone, saying why.
  */
 export async function leaveReview(
   forge: Forge,
@@ -102,10 +110,13 @@ export async function leaveReview(
     const lines = commentableLines(diff ? await readOutput(join(dir, diff)) : '')
     const inDiff = comments.filter((c) => lines.get(c.path)?.has(c.line))
     const outside = comments.filter((c) => !inDiff.includes(c))
-    const body = outside.length
-      ? `${last.text}\n\n## Outside the diff\n\n${outside.map((c) => `\`${c.path}:${c.line}\`: ${c.body}`).join('\n\n')}`
-      : last.text
-    const url = await forge.pendingReview(unit.repo, pr.number, head, { body, comments: inDiff })
+    const post = (review: Review) => forge.pendingReview(unit.repo, pr.number, head, review)
+    const url = await post({ body: withComments(last.text, outside), comments: inDiff }).catch(
+      (e) => {
+        if (!inDiff.length || e instanceof PendingReviewExists) throw e
+        return post({ body: withComments(last.text, comments), comments: [] })
+      },
+    )
     return {
       kind: 'review',
       url,

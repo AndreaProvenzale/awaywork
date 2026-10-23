@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Unit } from '../src/core/types.js'
+import { PendingReviewExists, type Unit } from '../src/core/types.js'
 import { commentableLines, leaveReview, parseComments } from '../src/worker/review.js'
 import { fakeForge } from './fakes/forge.js'
 import { fixture } from './fakes/gh.js'
@@ -46,6 +46,11 @@ describe('commentableLines', () => {
     expect([...(lines.get('new.txt') ?? [])]).toEqual([1, 2])
     expect([...(commentableLines(fixture('pr-1.diff')).get('src/limit.ts') ?? [])]).toEqual([1, 2])
     expect(commentableLines('').size).toBe(0)
+  })
+
+  it('takes a path holding a space without the tab git ends it with', () => {
+    const diff = ['--- a/my file.ts\t', '+++ b/my file.ts\t', '@@ -1 +1,2 @@', ' one', '+two']
+    expect([...(commentableLines(diff.join('\n')).get('my file.ts') ?? [])]).toEqual([1, 2])
   })
 })
 
@@ -162,6 +167,39 @@ describe('leaveReview', () => {
       ['Looks fine.', []],
       ['Looks fine.', []],
     ])
+  })
+
+  it('folds every comment into the body when the forge refuses its line comments', async () => {
+    const comments = [
+      { path: 'a.ts', line: 2, body: 'Why two?' },
+      { path: 'a.ts', line: 9, body: 'Far from the diff.' },
+    ]
+    const { dir, out, unit } = await setUp(JSON.stringify(comments))
+    const forge = fakeForge()
+    const post = forge.pendingReview
+    forge.pendingReview = async (repo, pr, head, review) => {
+      if (review.comments.length)
+        throw new Error('Unprocessable Entity: Line could not be resolved')
+      return post(repo, pr, head, review)
+    }
+    const outcome = await leaveReview(forge, unit, dir, 'abc', 'x', { text: 'Fine.', out })
+    expect(outcome).toMatchObject({ kind: 'review' })
+    expect(forge.reviews.map((r) => [r.body, r.comments])).toEqual([
+      ['Fine.\n\n## Outside the diff\n\n`a.ts:2`: Why two?\n\n`a.ts:9`: Far from the diff.', []],
+    ])
+    forge.pendingReview = async () => {
+      throw new Error('Unprocessable Entity')
+    }
+    const refused = await leaveReview(forge, unit, dir, 'abc', 'x', { text: 'Fine.', out })
+    expect(refused).toEqual({ kind: 'report', text: 'x', unposted: 'Unprocessable Entity' })
+    let posts = 0
+    forge.pendingReview = async () => {
+      posts++
+      throw new PendingReviewExists('your pending review is there already')
+    }
+    const there = await leaveReview(forge, unit, dir, 'abc', 'x', { text: 'Fine.', out })
+    expect(there).toMatchObject({ unposted: 'your pending review is there already' })
+    expect(posts).toBe(1)
   })
 
   it('delivers the report alone, saying why, when the forge refuses or the diff is a link', async () => {
