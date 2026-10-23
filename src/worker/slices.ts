@@ -81,7 +81,7 @@ export interface Publisher {
 
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports.
- * A `deliver: pr` slice opens as a draft when one of its steps failed, stopped or never ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
  */
 export async function publishSlice(
   deps: Publisher,

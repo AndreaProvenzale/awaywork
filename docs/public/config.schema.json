@@ -944,7 +944,7 @@
             }
           },
           "deliver": {
-            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or never runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
+            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
             "type": "string",
             "enum": [
               "draft_pr",

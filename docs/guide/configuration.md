@@ -306,7 +306,7 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed, stopped or never ran, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), or `report`, where no step commits |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), or `report`, where no step commits |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
