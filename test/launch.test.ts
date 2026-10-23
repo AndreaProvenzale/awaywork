@@ -22,6 +22,7 @@ import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
 import { commandEnv, workerEnv } from '../src/worker/workspace.js'
+import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 
 vi.mock('../src/core/launch.js', async (original) => {
@@ -56,6 +57,36 @@ describe('the launcher', () => {
       ['true', dir],
     ])
   })
+
+  it('ends each provider’s stopped agent soon after it exits, whatever still holds its output', async () => {
+    const agent = (name: string) => join(dir, `${name}.sh`)
+    const providers = [
+      claudeProvider(agent('claude')),
+      codexProvider(agent('codex'), join(dir, 'codex.lock')),
+      commandProvider('mine', {
+        command: agent('mine'),
+        secrets: [],
+        skills_dir: '.agents/skills',
+      }),
+    ]
+    for (const provider of providers) {
+      const pid = join(dir, `${provider.id}.pid`)
+      await writeFile(agent(provider.id), `#!/bin/sh\n${escaping(pid)}\nsleep 30\n`, {
+        mode: 0o755,
+      })
+      const stop = new AbortController()
+      const run = drain(provider.run(job, stop.signal))
+      await escaped(pid)
+      stop.abort()
+      const stopped = Date.now()
+      try {
+        await run
+      } finally {
+        process.kill(await escaped(pid), 'SIGKILL')
+      }
+      expect(Date.now() - stopped, provider.id).toBeLessThan(5000)
+    }
+  }, 30_000)
 
   it('starts setup and the checks, not the parent’s git', async () => {
     await execa('git', ['init', '-q', dir])

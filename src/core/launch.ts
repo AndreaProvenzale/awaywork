@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { chmod, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -70,8 +71,33 @@ export interface Box {
  * Isolation `none` starts it as is, as the developer's user; `user` starts it as the worker user,
  * and kills every process that user has once it exits, since the developer's user can't signal them;
  * `container` starts it in a fresh container, removed once its client exits, since killing that stops nothing inside.
+ * Once it's both stopped by its `cancelSignal` and exited, its output closes a moment later, whatever still holds it.
  */
 export function launch<O extends Options>(file: string, args: readonly string[], options: O) {
+  const subprocess = start(file, args, options)
+  closeOutputOnceStopped(subprocess.nodeChildProcess, options.cancelSignal)
+  return subprocess
+}
+
+/** How long a stopped launch's output stays open after it exits: past it, only a process that left its group holds it. */
+const STOPPED_OUTPUT_MS = 1000
+
+/** A process that left the group, like `setsid sleep 900 &`, would hold the pipe, and the provider reading it, until it exits. */
+function closeOutputOnceStopped(child: ChildProcess, signal?: AbortSignal): void {
+  if (!signal) return
+  const exited = new Promise((ok) => child.once('exit', ok))
+  const stopped = new Promise((ok) =>
+    signal.aborted ? ok(undefined) : signal.addEventListener('abort', ok, { once: true }),
+  )
+  void Promise.all([exited, stopped]).then(() =>
+    setTimeout(() => {
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+    }, STOPPED_OUTPUT_MS),
+  )
+}
+
+function start<O extends Options>(file: string, args: readonly string[], options: O) {
   if (boxed) return inContainer(file, args, options)
   if (!worker) return execa(file, args, options)
   const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, options), {
