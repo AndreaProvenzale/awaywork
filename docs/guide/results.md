@@ -13,8 +13,8 @@ Two questions: who gets to see the result, and whose thing it lands on.
 | Reach | Your PR, issue or task | Someone else's PR |
 | --- | --- | --- |
 | Only you | awaywork: `report` into the morning report, `pending_review` on your own PR (you can submit it only as a comment). Your hook: a note to yourself, like the ntfy recipe in [Notify](./configuration.md#notify) | awaywork: `report`, `pending_review`. Your hook: the same note to yourself |
-| Visible, nobody asked to look | awaywork: `draft_pr` (the default), `push` onto your own PR's branch. Your hook: labels on the PR, a page in your Notion, a Slack message | awaywork: nothing, it stays private. Your hook: a page in your Notion |
-| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; submitting the pending review is you, by hand. Your hook: reviewers |
+| Visible, nobody asked to look | awaywork: `draft_pr` (the default), `push` onto your own PR's branch. Your hook: labels on the PR, a page in your Notion, a Slack message | awaywork: nothing, it stays private. Your hook: a page in your Notion, a Slack message |
+| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; submitting the pending review is you, by hand. Your hook: a Slack message that @mentions someone |
 
 The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./configuration.md#queue-rules).
 
@@ -74,7 +74,7 @@ notify:
     set -e
     [ "$AWAYWORK_EVENT" = unit ] && [ "$AWAYWORK_SKILL" = review ] || exit 0
     [ "$AWAYWORK_STATUS" = done ] || exit 0
-    text="Review of $AWAYWORK_ITEM_KEY: $AWAYWORK_STATUS${AWAYWORK_VERDICT:+, verdict $AWAYWORK_VERDICT}
+    text="Review of $AWAYWORK_ITEM_KEY${AWAYWORK_VERDICT:+, verdict $AWAYWORK_VERDICT}
     $AWAYWORK_ITEM_URL"
     body=$(jq -n --arg text "$text" '{ text: $text }')
     curl -sSf -o /dev/null -H 'Content-Type: application/json' -d "$body" "$SLACK_WEBHOOK_URL"
@@ -84,7 +84,7 @@ notify:
 What lands in the channel:
 
 ```
-Review of acme/api#14: done, verdict approve
+Review of acme/api#14, verdict approve
 https://github.com/acme/api/pull/14
 ```
 
