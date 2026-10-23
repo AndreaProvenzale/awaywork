@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
+import { repoPath } from '../core/repo-path.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 
 const config = z
@@ -9,9 +10,11 @@ const config = z
     workspace: z.string().describe('Workspace gid'),
     projects: z.array(z.string()).optional().describe('Only tasks in these project gids'),
     repo_map: z
-      .record(z.string(), z.string().regex(/^[\w.-]+\/[\w.-]+$/))
+      .record(z.string(), repoPath)
       .optional()
-      .describe("Project gid -> owner/repo where its tasks' code lives"),
+      .describe(
+        "Project gid -> owner/repo (group/sub/project on forges that nest) where its tasks' code lives",
+      ),
     token_env: z.string().default('ASANA_TOKEN').describe('Env var holding the Asana token'),
   })
   .describe('My incomplete Asana tasks')

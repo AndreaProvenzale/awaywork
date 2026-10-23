@@ -150,6 +150,7 @@ describe('asana config and linking', () => {
     const mapped = (repo: string) =>
       `providers: [claude]\nsources: { asana: { workspace: "100", repo_map: { "11": ${repo} } } }`
     expect(() => parseConfig(mapped('acme/api'))).not.toThrow()
+    expect(() => parseConfig(mapped('group/sub/project'))).not.toThrow()
     expect(() => parseConfig(mapped('api'))).toThrow('repo_map')
     expect(() => parseConfig(yaml('{ repo: acme/api }'))).not.toThrow()
   })

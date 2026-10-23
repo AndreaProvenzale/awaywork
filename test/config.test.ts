@@ -152,6 +152,13 @@ describe('config', () => {
     ])
   })
 
+  it('keys repos by two or more path segments', () => {
+    const repos = (key: string) => `${minimal}repos: { ${key}: {} }`
+    expect(problems(repos('group/sub/project'))).toEqual([])
+    expect(problems(repos('acme/api'))).toEqual([])
+    expect(problems(repos('solo'))).not.toEqual([])
+  })
+
   it('takes a rule order', () => {
     const rule = (order: string) => `${minimal}queue: [{ skill: implement, order: ${order} }]`
     expect(parseConfig(rule('oldest')).queue?.[0]?.order).toBe('oldest')

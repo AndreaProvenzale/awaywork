@@ -432,14 +432,14 @@
               }
             },
             "repo_map": {
-              "description": "Project gid -> owner/repo where its tasks' code lives",
+              "description": "Project gid -> owner/repo (group/sub/project on forges that nest) where its tasks' code lives",
               "type": "object",
               "propertyNames": {
                 "type": "string"
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -486,14 +486,14 @@
           "type": "object",
           "properties": {
             "repo_map": {
-              "description": "Team key -> owner/repo where its issues' code lives",
+              "description": "Team key -> owner/repo (group/sub/project on forges that nest) where its issues' code lives",
               "type": "object",
               "propertyNames": {
                 "type": "string"
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -554,14 +554,14 @@
               "type": "string"
             },
             "repo_map": {
-              "description": "Project key -> owner/repo where its issues' code lives",
+              "description": "Project key -> owner/repo (group/sub/project on forges that nest) where its issues' code lives",
               "type": "object",
               "propertyNames": {
                 "type": "string"
               },
               "additionalProperties": {
                 "type": "string",
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
               }
             },
             "token_env": {
@@ -655,11 +655,11 @@
     },
     "repos": {
       "default": {},
-      "description": "Per-repo settings, keyed by owner/name",
+      "description": "Per-repo settings, keyed by owner/name, or group/sub/project on forges that nest",
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "pattern": "^[^/\\s]+\\/[^/\\s]+$"
+        "pattern": "^[^/\\s]+(\\/[^/\\s]+)+$"
       },
       "additionalProperties": {
         "type": "object",

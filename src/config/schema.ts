@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
 import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
+import { repoPath } from '../core/repo-path.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
@@ -513,9 +514,9 @@ export const configSchema = z
         'Branch name template; {key} or {title} is required, {type} is the conventional-commit type',
       ),
     repos: z
-      .record(z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'), repo)
+      .record(repoPath, repo)
       .default({})
-      .describe('Per-repo settings, keyed by owner/name'),
+      .describe('Per-repo settings, keyed by owner/name, or group/sub/project on forges that nest'),
     instructions: oneOrMany.default([]).describe('Instruction files added to every unit'),
     skills: z
       .array(z.string())
