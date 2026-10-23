@@ -49,7 +49,18 @@ export function notifyRun(
 /** Runs the notify command for one step of a finished unit, with its result in its env. */
 export function notifyUnit(
   command: string,
-  unit: { runId: string; id: string; skill: string; status: string; pr?: string; report?: string },
+  unit: {
+    runId: string
+    id: string
+    skill: string
+    status: string
+    items?: { url: string; key: string; source: string }[]
+    repo?: string
+    verdict?: string
+    pr?: string
+    report?: string
+    outDir?: string
+  },
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   return runHook(
@@ -60,8 +71,16 @@ export function notifyUnit(
       AWAYWORK_UNIT: unit.id,
       AWAYWORK_SKILL: unit.skill,
       AWAYWORK_STATUS: unit.status,
+      ...(unit.items && {
+        AWAYWORK_ITEM_URL: unit.items.map((i) => i.url).join('\n'),
+        AWAYWORK_ITEM_KEY: unit.items.map((i) => i.key).join('\n'),
+        AWAYWORK_SOURCE: unit.items.map((i) => i.source).join('\n'),
+      }),
+      ...(unit.repo && { AWAYWORK_REPO: unit.repo }),
+      ...(unit.verdict && { AWAYWORK_VERDICT: unit.verdict }),
       ...(unit.pr && { AWAYWORK_PR_URL: unit.pr }),
       ...(unit.report && { AWAYWORK_REPORT: unit.report }),
+      ...(unit.outDir && { AWAYWORK_OUT_DIR: unit.outDir }),
     },
     signal,
   )
