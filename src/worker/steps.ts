@@ -43,7 +43,9 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
   await Promise.all(
-    ['report.md', 'verdict', 'check.log'].map((f) => rm(join(out, f), { force: true })),
+    ['report.md', 'review.json', 'verdict', 'check.log'].map((f) =>
+      rm(join(out, f), { force: true }),
+    ),
   )
 }
 

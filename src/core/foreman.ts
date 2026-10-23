@@ -174,9 +174,12 @@ export function planRun(input: {
       )
       continue
     }
-    // A skill commits unless it reports; `deliver: report` makes every step report.
+    // A skill commits unless it reports; `deliver: report` and `pending_review` make every step report.
+    const review = rule.deliver === 'pending_review'
     const reports = (step: ThenStep) =>
-      rule.deliver === 'report' || resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
+      rule.deliver === 'report' ||
+      review ||
+      resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
     const committing = [rule, ...(rule.then ?? []).flatMap(stepsOf)].find((s) => !reports(s))
     const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
     const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
@@ -186,6 +189,10 @@ export function planRun(input: {
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
+    if (review && !pr) {
+      skip('refused_delivery', 'deliver pending_review: no pull request to review')
+      continue
+    }
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
     // A slice's name takes the type of its first committing step; the list's words keep it a valid ref.
     const branchOf = (step: ThenStep | undefined) =>
@@ -259,7 +266,7 @@ export function planRun(input: {
           ...(repoInstructions ? [repoInstructions] : []),
           ...step.instructions,
         ],
-        deliver: reports(step) ? 'report' : deliver,
+        deliver: review ? 'pending_review' : reports(step) ? 'report' : deliver,
       }
       const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({
@@ -361,7 +368,7 @@ function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string 
 
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
 function deliveryRefusal(
-  deliver: Exclude<Deliver, 'report'>,
+  deliver: Exclude<Deliver, 'report' | 'pending_review'>,
   base: string,
   foreign: boolean,
   fork: boolean,

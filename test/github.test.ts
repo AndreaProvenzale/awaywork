@@ -842,4 +842,52 @@ describe('github forge', () => {
     ])
     expect(await stackOn(stack([9, 11]))).toEqual([])
   })
+
+  it('leaves a pending review at the given commit, never beside a pending one of yours, refused in GitHub words', async () => {
+    const reviews = 'repos/acme/api/pulls/1/reviews'
+    const url = 'https://github.com/acme/api/pull/1#pullrequestreview-5'
+    const sent: unknown[] = []
+    const answering = (pending: string, post: () => string): Exec & { calls: string[][] } => {
+      const calls: string[][] = []
+      const run = async (cmd: string, args: string[]) => {
+        calls.push([cmd, ...args])
+        if (args.includes('--paginate')) return pending
+        sent.push(JSON.parse(await readFile(args.at(-1) as string, 'utf8')))
+        return post()
+      }
+      return Object.assign(run, { calls })
+    }
+    const review = { body: 'Looks fine.', comments: [{ path: 'a.ts', line: 2, body: 'Why?' }] }
+    const run = answering('', () => JSON.stringify({ html_url: url, state: 'PENDING' }))
+    expect(await githubForge(run).pendingReview('acme/api', 1, 'abc1234', review)).toBe(url)
+    expect(run.calls.map((c) => c.slice(0, 5))).toEqual([
+      ['gh', 'api', '--paginate', reviews, '--jq'],
+      ['gh', 'api', '--method', 'POST', reviews],
+    ])
+    expect(sent).toEqual([
+      {
+        commit_id: 'abc1234',
+        body: 'Looks fine.',
+        comments: [{ path: 'a.ts', line: 2, body: 'Why?', side: 'RIGHT' }],
+      },
+    ])
+
+    const pending = answering(`${url}\n`, () => '{}')
+    await expect(githubForge(pending).pendingReview('acme/api', 1, 'abc', review)).rejects.toThrow(
+      `your pending review ${url} is there already`,
+    )
+    expect(pending.calls).toHaveLength(1)
+
+    const stdout = JSON.stringify({
+      message: 'Unprocessable Entity',
+      errors: ['Line could not be resolved'],
+      status: '422',
+    })
+    const refused = answering('', () => {
+      throw Object.assign(new Error('Command failed with exit code 1: gh api'), { stdout })
+    })
+    await expect(githubForge(refused).pendingReview('acme/api', 1, 'abc', review)).rejects.toThrow(
+      /^Unprocessable Entity: Line could not be resolved$/,
+    )
+  })
 })

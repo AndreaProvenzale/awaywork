@@ -21,9 +21,11 @@ import {
   quotaLines,
   type ReportedSkip,
   type RunReport,
+  reviewed,
   runHeadline,
   stepCells,
   type UnitResult,
+  unposted,
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
@@ -520,8 +522,10 @@ function unitResult(u: UnitResult, why = (reason: string) => reason): string {
       : o?.kind === 'pushed'
         ? `pushed onto ${o.url || o.branch}`
         : o?.kind === 'report'
-          ? 'report'
-          : why(o?.reason ?? '-')
+          ? `report${unposted(o)}`
+          : o?.kind === 'review'
+            ? `${o.url} (${reviewed(o)})`
+            : why(o?.reason ?? '-')
   return u.verdict ? `${what}, verdict ${u.verdict}` : what
 }
 

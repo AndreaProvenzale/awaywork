@@ -19,7 +19,19 @@ export type Outcome =
       /** Why a `deliver: pr` PR opened as a draft. */
       draft?: string
     }
-  | { kind: 'report'; text: string }
+  | {
+      kind: 'report'
+      text: string
+      /** Why a `deliver: pending_review` report wasn't left as a review. */
+      unposted?: string
+    }
+  | {
+      kind: 'review'
+      url: string
+      text: string
+      /** Why its line comments were left out. */
+      note?: string
+    }
   | { kind: 'pushed'; branch: string; url: string; commits: number; text: string; head: string }
   | { kind: 'none'; reason: string; unpublished?: true }
 

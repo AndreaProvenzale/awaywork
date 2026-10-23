@@ -33,7 +33,7 @@ import {
 import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
-import type { Item, Login, Provider, Source } from '../src/core/types.js'
+import type { Forge, Item, Login, Provider, Source } from '../src/core/types.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -121,9 +121,9 @@ async function originForge(root: string) {
 }
 
 /**
- * Reports with `verdicts[id]`, or commits `<id>.txt` and keeps the PR body; `fail` stops a unit at max
- * turns, `idle` makes nothing, `abort` presses Ctrl-C in it; `seen`, `prompts` and `bodies` keep each
- * step's `previous/` listing, prompt and `previous/pr.md`.
+ * Reports with `verdicts[id]` and `reviews[id]` as its review.json, or commits `<id>.txt` and keeps the
+ * PR body; `fail` stops a unit at max turns, `idle` makes nothing, `abort` presses Ctrl-C in it; `seen`,
+ * `prompts` and `bodies` keep each step's `previous/` listing, prompt and `previous/pr.md`.
  */
 function worker(
   verdicts: Record<string, string> = {},
@@ -134,6 +134,7 @@ function worker(
     seen?: Record<string, string[]>
     prompts?: Record<string, string>
     bodies?: Record<string, string>
+    reviews?: Record<string, string>
   } = {},
 ): Provider {
   return {
@@ -155,9 +156,11 @@ function worker(
         return
       }
       const verdict = verdicts[job.unit.id]
-      if (job.unit.deliver === 'report') {
+      if (job.unit.deliver === 'report' || job.unit.deliver === 'pending_review') {
         await writeFile(join(out, 'report.md'), `${job.unit.id} says ${verdict ?? 'nothing'}.`)
         if (verdict) await writeFile(join(out, 'verdict'), `${verdict}\n`)
+        const review = opts.reviews?.[job.unit.id]
+        if (review) await writeFile(join(out, 'review.json'), review)
       } else {
         await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
         await git(job.dir, 'add', '.')
@@ -186,6 +189,8 @@ async function run(
     /** Branches something else already holds on the remote. */
     taken?: string[]
     shortage?: () => Promise<string | undefined>
+    source?: Source
+    pendingReview?: Forge['pendingReview']
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-chain-'))
@@ -195,6 +200,7 @@ async function run(
   }
   const env = await originForge(root)
   for (const branch of opts.taken ?? []) env.forge.branches.add(`acme/api:${branch}`)
+  if (opts.pendingReview) env.forge.pendingReview = opts.pendingReview
   const logged: string[] = []
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
@@ -215,7 +221,7 @@ async function run(
     signal: opts.signal,
     attempts: opts.attempts,
     providers: { claude: provider },
-    sources: { github: fakeSource() as Source },
+    sources: { github: opts.source ?? (fakeSource() as Source) },
     forge: env.forge,
     ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
@@ -350,6 +356,90 @@ it('opens a deliver: pr PR as a draft when the chain ended before a step, but no
   const { report } = await run(gated, [issue(1)], worker({}))
   expect(report.results[1]).toMatchObject({ status: 'skipped', passedOver: true })
   expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', ready: true })
+})
+
+it("leaves a deliver: pending_review chain's last report and its comments on the PR as a pending review", async () => {
+  const diff = [
+    'diff --git a/a.ts b/a.ts',
+    '--- a/a.ts',
+    '+++ b/a.ts',
+    '@@ -1 +1,2 @@',
+    ' one',
+    '+two',
+  ]
+  const source = {
+    ...fakeSource(),
+    prefetch: async (_item: Item, dir: string) =>
+      writeFile(join(dir, 'diff.patch'), diff.join('\n')),
+  } as Source
+  const comments = [
+    { path: 'a.ts', line: 2, body: 'Why two?' },
+    { path: 'a.ts', line: 7, body: 'Far away.' },
+  ]
+  const reviews = { 'acme-api-1-review': JSON.stringify(comments) }
+  const rule = 'queue: [{ skill: plan, deliver: pending_review, then: [review] }]\n'
+  const verdicts = { 'acme-api-1-review': 'changes' }
+  const prompts: Record<string, string> = {}
+  const pr = githubPr(1, { mine: false })
+  const reviewed = await run(rule, [pr], worker(verdicts, { reviews, prompts }), { source })
+  const url = 'https://example.com/acme/api/pull/1#pullrequestreview-1'
+  const text = [
+    '### acme-api-1',
+    '',
+    'acme-api-1 says nothing.',
+    '',
+    '### acme-api-1-review',
+    '',
+    'acme-api-1-review says changes.',
+  ].join('\n')
+  expect(reviewed.report.results[0]?.outcome).toEqual({ kind: 'review', url, text })
+  expect(reviewed.forge.reviews).toEqual([
+    {
+      repo: 'acme/api',
+      pr: 1,
+      head: (await git(reviewed.origin, 'rev-parse', 'feature-1')).stdout,
+      body: 'acme-api-1-review says changes.\n\n## Outside the diff\n\n`a.ts:7`: Far away.',
+      comments: [comments[0]],
+    },
+  ])
+  expect(reviewed.opened).toEqual([])
+  expect(prompts['acme-api-1']).toContain(
+    "Deliver: a review of `feature-1`. Write `.away/out/report.md`, the review's body, and any line comments in `.away/out/review.json`, and commit nothing",
+  )
+  expect(runHeadline(reviewed.report)).toBe(
+    'Run r1: 0 draft PRs, 0 reports, 1 pending review, 1 unit',
+  )
+  const posted = formatReport(reviewed.report)
+  expect(posted).toContain(`| ${url} (pending review), verdict changes |`)
+  expect(posted).toContain('acme-api-1-review says changes.')
+  expect(runLine('r1', posted)).toBe('r1  1 unit, 0 draft PRs, 0 reports, 1 pending review')
+  expect(summarize(reviewed.report, 'report.md')).toContain(
+    `${url} (pending review), verdict changes`,
+  )
+
+  const pendingReview = async () => {
+    throw new Error('your pending review is there already')
+  }
+  const { report } = await run(rule, [pr], worker(verdicts), { source, pendingReview })
+  expect(report.results[0]?.outcome).toEqual({
+    kind: 'report',
+    text,
+    unposted: 'your pending review is there already',
+  })
+  const unposted = formatReport(report)
+  expect(unposted).toContain(
+    '| report below (not posted: your pending review is there already), verdict changes |',
+  )
+  expect(runLine('r1', unposted)).toBe('r1  1 unit, 0 draft PRs, 1 report')
+  expect(summarize(report, 'report.md')).toContain(
+    'report (not posted: your pending review is there already), verdict changes',
+  )
+  expect(runLine('r1', `${posted}${unposted}`)).toBe(
+    'r1  2 units, 0 draft PRs, 1 report, 1 pending review',
+  )
+  expect(runLine('r1', posted.replace('(pending review)', '(pending)'))).toBe(
+    'r1  1 unit, 0 draft PRs, 0 reports',
+  )
 })
 
 it('takes chain shapes the per-step model refused: a loop after a loop, and a gated step before one', async () => {

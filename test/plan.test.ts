@@ -598,6 +598,32 @@ queue:
     }
   })
 
+  it('plans a pending_review chain on any PR, every step reporting, and refuses one with no PR to review', () => {
+    const yaml = `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: plan, deliver: pending_review, then: [review] }]
+`
+    const fork = { ...githubPr(2, { mine: false, trusted: false }) }
+    fork.linkedPrs = [{ ...(fork.linkedPrs[0] as PrRef), fork: true, head: 'abc1234' }]
+    const result = plan(yaml, [githubPr(1), fork, issue], {})
+    expect(
+      result.units.map(({ unit }) => [unit.id, unit.deliver, unit.base, unit.foreign]),
+    ).toEqual([
+      ['acme-api-1', 'pending_review', 'feature-1', false],
+      ['acme-api-1-review', 'pending_review', 'feature-1', false],
+      ['acme-api-2', 'pending_review', 'feature-2', true],
+      ['acme-api-2-review', 'pending_review', 'feature-2', true],
+    ])
+    expect(result.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#5', 'refused_delivery', 'deliver pending_review: no pull request to review'],
+    ])
+    expect(formatPlan(result)).toMatch(
+      /api#1 +#1 +plan \(built-in\) +claude +pending_review +PR 1\n/,
+    )
+    expect(why(result, 'api#2')).toMatch(/deliver +pending_review\n/)
+  })
+
   it('gathers every instruction file for the unit in prompt order', () => {
     const [first] = plan(example, [githubPr(1, { checks: 'failing' })], {}).units
     expect(first?.unit.instructions).toEqual(['notes/me.md', 'notes/acme-api.md'])

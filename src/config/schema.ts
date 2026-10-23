@@ -328,10 +328,10 @@ const rule: z.ZodType<Rule, unknown> = z
       ),
     ...stepSettings,
     deliver: z
-      .enum(['draft_pr', 'pr', 'report', 'push'])
+      .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review'])
       .optional()
       .describe(
-        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
+        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
@@ -612,11 +612,18 @@ export const configSchema = z
           message:
             "push isn't available on Bitbucket: twg reads neither branch restrictions nor auto-merge, so awaywork can't check them; use draft_pr",
         })
+      if (bitbucket && r.deliver === 'pending_review')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message:
+            "pending_review isn't available on Bitbucket: awaywork leaves pending reviews on GitHub only; use report",
+        })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
       if (Array.isArray(r.then))
         r.then.forEach((entry, j) => {
-          if (entry.stack && (r.deliver === 'push' || r.deliver === 'report'))
+          if (entry.stack && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
             ctx.addIssue({
               code: 'custom',
               path: [...at, 'then', j, 'stack'],

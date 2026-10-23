@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
@@ -210,6 +213,44 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const fields = prs.flatMap((n) => ['-F', `pull_requests[]=${n}`])
       await run('gh', ['api', '--method', 'POST', path, ...fields])
     },
+
+    /** Only its author sees a pending review, so one listed is yours, and GitHub allows one per PR. */
+    async pendingReview(repo, pr, head, { body, comments }) {
+      const reviews = `repos/${repo}/pulls/${pr}/reviews`
+      const select = '.[] | select(.state == "PENDING") | .html_url'
+      const [yours] = (await run('gh', ['api', '--paginate', reviews, '--jq', select]))
+        .split('\n')
+        .filter(Boolean)
+      if (yours) throw new Error(`your pending review ${yours} is there already`)
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-review-'))
+      try {
+        const file = join(dir, 'review.json')
+        const lines = comments.map((c) => ({ ...c, side: 'RIGHT' }))
+        // Without an `event`, the review stays pending.
+        await writeFile(file, JSON.stringify({ commit_id: head, body, comments: lines }))
+        const out = await run('gh', ['api', '--method', 'POST', reviews, '--input', file]).catch(
+          (e: Error) => {
+            throw refusal(e)
+          },
+        )
+        return JSON.parse(out).html_url
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
   }
   return forge
+}
+
+/** GitHub's own words for a call it refused, from the JSON `gh api` prints. */
+function refusal(e: Error & { stdout?: string }): Error {
+  try {
+    const { message, errors = [] } = JSON.parse(e.stdout ?? '')
+    const why = errors.map((x: string | { message?: string }) =>
+      typeof x === 'string' ? x : x.message,
+    )
+    return new Error([message, ...why].filter(Boolean).join(': '))
+  } catch {
+    return e
+  }
 }

@@ -31,7 +31,12 @@ export const outputFile: Record<Deliver, string> = {
   pr: 'pr.md',
   report: 'report.md',
   push: 'pr.md',
+  pending_review: 'report.md',
 }
+
+/** Whether a unit only reports: a `pending_review` one's report is left as a review. */
+export const reportsOnly = (deliver: Deliver) =>
+  deliver === 'report' || deliver === 'pending_review'
 
 /** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills']
@@ -448,13 +453,14 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
       : 'the default branch'
   const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
   // Later steps of the chain find the body an earlier one wrote in the clone.
-  const keep = unit.deliver !== 'report' && existsSync(join(dir, output))
+  const keep = !reportsOnly(unit.deliver) && existsSync(join(dir, output))
   const commit = `Commit on this branch and ${keep ? 'keep' : 'write'} \`${output}\`${keep ? ' current: it holds what the chain did so far' : ''}`
   const deliver = {
     draft_pr: `commits for a draft PR. ${commit}, the PR body.`,
     pr: `commits for a PR ready for review. ${commit}, the PR body.`,
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
+    pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
   }[unit.deliver]
   return [
     `## Your unit`,
