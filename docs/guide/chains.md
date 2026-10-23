@@ -10,7 +10,7 @@ No new chain features until real runs ask for them: only fixes and simplificatio
 
 ## `then`
 
-Steps run right after the rule's skill, one after the other, in the same clone and on the same branch. The whole chain is one unit: it publishes once, when it ends, as one draft PR, one push or one report, unless a step says [`stack`](#stack). A step is a skill name, or a map when you want to set more:
+Steps run right after the rule's skill, one after the other, in the same clone and on the same branch. The whole chain is one unit: it publishes once, when it ends, as one PR, one push or one report, unless a step says [`stack`](#stack). A step is a skill name, or a map when you want to set more:
 
 ```yaml
 queue:
@@ -28,10 +28,10 @@ queue:
 ```
 
 - A step takes `provider`, `model`, `skills`, `mcp` and `instructions`, plus `with`, [`when`](#when) and [`stack`](#stack). It inherits the first five from the rule unless it sets its own, and `[]` clears a list: above, `implement` gets `sentry`, `review` gets no MCP server and keeps `opus` should it route to Claude. `with`, `when` and `stack` are the step's own. Top-level `instructions` and `skills` still apply, as to every unit.
-- A skill commits unless its metadata says it reports, as the built-in `plan` and `review` do. The rule's `deliver` says where the chain's commits go: one draft PR (`draft_pr`, the default), a [`push`](#push) onto your own PR, or `report`, where no step commits. A chain that committed nothing publishes its steps' reports, joined, as one report. Steps have no `deliver` or `branch` of their own: a committing skill that should only report is a [skill of your own](./skills.md#write-your-own).
+- A skill commits unless its metadata says it reports, as the built-in `plan` and `review` do. The rule's `deliver` says where the chain's commits go: one draft PR (`draft_pr`, the default), one PR ready for review (`pr`), a [`push`](#push) onto your own PR, or `report`, where no step commits. A chain that committed nothing publishes its steps' reports, joined, as one report. Steps have no `deliver` or `branch` of their own: a committing skill that should only report is a [skill of your own](./skills.md#write-your-own).
 - Each step finds what the one before left in `.away/context/previous/`: its `report.md` and `verdict`, what the chain did so far in `pr.md`, its commits in `diff.patch`, and, in a loop, the `until` command's output in `check.log`.
 - `model` takes two per provider, `{ claude: [sonnet, opus] }`: a step that fails on the first [runs once more on the second](./configuration.md#retry-on-the-next-model), and the chain goes on from there.
-- A step that leaves nothing for the next one ends the chain: a committing step that commits nothing (`implement` writing questions instead of code), or a report step that writes no report. The steps after it are passed over and the chain counts as finished. A step that fails or stops, and the window's end, end it too: the chain publishes what it has. A draft PR it opened, or commits it [pushed](#push) onto your PR, wait for your review; otherwise the chain runs again the next run. Ctrl-C publishes nothing.
+- A step that leaves nothing for the next one ends the chain: a committing step that commits nothing (`implement` writing questions instead of code), or a report step that writes no report. The steps after it are passed over and the chain counts as finished. A step that fails or stops, and the window's end, end it too: the chain publishes what it has. A PR it opened, or commits it [pushed](#push) onto your PR, wait for your review; otherwise the chain runs again the next run. Ctrl-C publishes nothing.
 - The PR body is the `pr.md` the steps kept current, plus an `## Awaywork chain` section with how each loop went, its failing check if any, and the latest report of each report step:
 
   ```markdown
@@ -141,7 +141,7 @@ queue:
 
 ## `stack`
 
-A chain is one PR by default: an `implement` and its review rounds are one change. When it does two separable things, `stack: true` on a step starts a new **slice**, with a branch and a draft PR of its own, stacked on the slice before:
+A chain is one PR by default: an `implement` and its review rounds are one change. When it does two separable things, `stack: true` on a step starts a new **slice**, with a branch and a PR of its own, stacked on the slice before:
 
 ```yaml
 queue:
@@ -154,14 +154,14 @@ queue:
       - { skill: docs, stack: true }   # a skill of your own
 ```
 
-That publishes `away/acme-api-12` with the implement, review and fix rounds, then a draft PR for `docs` on `away/acme-api-12-2`, into `away/acme-api-12`.
+That publishes `away/acme-api-12` with the implement, review and fix rounds, then a PR for `docs` on `away/acme-api-12-2`, into `away/acme-api-12`.
 
 - A slice publishes as soon as its last step ends, before the next one starts. The next slice's branch is cut from its tip in the same clone, so `setup` doesn't run again, and its commits are pushed on top of the slice before's as pushed, each with the `Awaywork:` trailer.
 - Every slice renders the rule's [`branch`](./configuration.md#branch-names) with the `{type}` of its own first skill that commits: with `branch: "{type}/{key}"` and `metadata.type: docs` on your skill, the example gives `feat/acme-api-12` and `docs/acme-api-12`. A name that's taken, as every later slice's is with the default `away/{key}`, becomes the first free `-2` to `-10`. A branch the chain published this run never counts as awaywork having tried there.
 - The last slice's PR body carries `Closes <issue>` for a GitHub issue when the chain was cut from the default branch, so merging the stack closes it; earlier slices close nothing, and neither does a chain on your own PR, which closes the issue itself. If the last slice is passed over (its `when` doesn't hold, or its first step commits nothing), a cap leaves it out, or the chain ends before it, no PR carries `Closes` and the issue stays open: close it by hand once the stack merges. Workers write no link or stack lines.
 - A stacked PR's body ends with `Stacked on <PR>: merge that first.`, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks) the two are linked. Its first step finds the slice before's PR body, as published, in `.away/context/previous/pr.md`, next to what the step before left, and its prompt names the PR.
 - On a loop, `stack: true` starts the slice at the loop's first round. A loop sits inside one slice, so a step in a loop can't have it.
-- `stack` needs `deliver: draft_pr`, the default. `plan` skips a chain where it's on a step whose skill reports, or after steps that all report: there would be nothing to put in the PR, or nothing to stack on.
+- `stack` needs `deliver: draft_pr`, the default, or `pr`. With `pr`, each slice opens ready for review or as a draft on its own. `plan` skips a chain where it's on a step whose skill reports, or after steps that all report: there would be nothing to put in the PR, or nothing to stack on.
 - A stacked slice whose first step commits nothing ends the chain; the slices before it stay published. So does a stacked step whose [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end ends the chain too, and the open slice publishes what it has. Ctrl-C drops the open slice, and the ones that already ended stay published.
 - `when: { changed }` still diffs from where the chain started, so it sees the earlier slices' commits too.
 - Each slice counts once against the [caps](./configuration.md#windows-limits-and-budget), as soon as its first step has a provider. A chain keeps the slices that fit and leaves out the rest, naming the cap under it in `plan` and on its row in the report.
@@ -219,7 +219,7 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
   |  |   └ acme-api-12-docs | docs | claude | done, 14 turns | 1 commit |
   ```
 
-- [`notify`](./configuration.md#notify)'s unit event gives every step its own slice's PR in `AWAYWORK_PR_URL`, and `stats` counts each slice's draft PR.
+- [`notify`](./configuration.md#notify)'s unit event gives every step its own slice's PR in `AWAYWORK_PR_URL`, and `stats` counts each slice's PR.
 
 ::: warning Squash-merging the base Once the first PR is squash-merged and its branch deleted (as GitHub's "Automatically delete head branches" does), GitHub retargets the stacked one to the default branch; with the branch kept, it still targets the merged branch. Either way it still carries the first one's commits. Merging the default branch into it usually resolves cleanly, since the content is the same. Workers never rebase, and nobody does that merge for you. :::
 
@@ -237,7 +237,7 @@ queue:
 - Only onto an open PR you authored, awaywork's own included (they are opened with your login). On someone else's PR, a PR from a fork, or an item with no PR of yours, a chain that could commit is skipped with the reason.
 - The chain pushes once, when it ends: every step's commits, a [loop](#loops)'s rounds included.
 - A fast-forward only: awaywork pushes only commits on top of where the clone started, and refuses when the branch moved since, so it never rewrites history. It reads the PR again right before the push and refuses when it is no longer yours or open, or has auto-merge on, which would merge unreviewed commits, and when its branch lives on a fork, is the default branch, is protected, or also backs someone else's open PR in the repo. New commits that include a merge aren't pushed either. The commits get the `Awaywork:` trailer, which drops a commit's signature.
-- The agent writes `.away/out/pr.md`, as for a draft PR, and the steps keep it current; without it nothing is pushed. The PR body stays as it is: `pr.md`, with the chain's notes, goes into the morning report.
+- The agent writes `.away/out/pr.md`, as for a PR, and the steps keep it current; without it nothing is pushed. The PR body stays as it is: `pr.md`, with the chain's notes, goes into the morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
 - After a push, the PR waits for your review: no rule takes it while its head is still the commit awaywork pushed. Any commit on top releases it, yours or a bot's, and so does a rebase or an amend. Without that, the push itself would update the PR and run the rule again every run. The pushed head is kept in awaywork's state dir, which a [GitHub Actions runner](./scheduling.md#in-github-actions) doesn't keep: there, a push rule pushes again every run its `where` holds.
 - Got a bot that commits on every push, like an autofixer or a snapshot updater? Its commit lands right on top of awaywork's and releases the hold, so the rule pushes again every run its `where` holds: keep that repo out of the rule's `where`, e.g. `repo: { not: acme/web }`.

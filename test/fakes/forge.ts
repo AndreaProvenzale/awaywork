@@ -31,7 +31,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     fastForward: async (_dir, branch, from, { repo, pr }) => {
       fastForwards.push(`${repo}:${branch} (#${pr}) from ${from}`)
     },
-    draftPr: async (repo, head) => `https://example.com/${repo}/pull/${head}`,
+    openPr: async (repo, head) => `https://example.com/${repo}/pull/${head}`,
     stack: async (_repo, below, pr) => {
       stacked.push([below, pr])
     },

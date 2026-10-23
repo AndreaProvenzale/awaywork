@@ -28,6 +28,7 @@ import { contextSecrets } from './context.js'
 export const WORK_DIR = '.away'
 export const outputFile: Record<Deliver, string> = {
   draft_pr: 'pr.md',
+  pr: 'pr.md',
   report: 'report.md',
   push: 'pr.md',
 }
@@ -92,7 +93,7 @@ interface WorkspaceInput {
 export interface Previous {
   skill: string
   out: string
-  /** The slice before's draft PR, for a stacked slice's first step: its URL and the body as published. */
+  /** The slice before's PR, for a stacked slice's first step: its URL and the body as published. */
   published?: { url: string; body: string }
   /** Set when the output is from an earlier run: only its report is handed over. */
   earlierRun?: string
@@ -451,6 +452,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
   const commit = `Commit on this branch and ${keep ? 'keep' : 'write'} \`${output}\`${keep ? ' current: it holds what the chain did so far' : ''}`
   const deliver = {
     draft_pr: `commits for a draft PR. ${commit}, the PR body.`,
+    pr: `commits for a PR ready for review. ${commit}, the PR body.`,
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
   }[unit.deliver]
@@ -464,7 +466,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
       : []),
     ...(w.chain && w.slice
       ? [
-          `This unit is a step of a chain (${w.chain}) whose steps all work in this clone. Each slice, from the first step or a \`stack\` one on, publishes once when it ends, as a draft PR stacked on the slice before; this step is in slice ${w.slice.n} of ${w.slice.of}, and the branch may already hold its commits.`,
+          `This unit is a step of a chain (${w.chain}) whose steps all work in this clone. Each slice, from the first step or a \`stack\` one on, publishes once when it ends, as a PR stacked on the slice before; this step is in slice ${w.slice.n} of ${w.slice.of}, and the branch may already hold its commits.`,
         ]
       : []),
     ...(w.loop ? [loopSection(w.loop)] : []),
@@ -501,7 +503,7 @@ function followUp({ skill, out, published, earlierRun }: Previous): string {
     ? ", and the output of the loop's `until` command, which awaywork ran after it, in `check.log`"
     : ''
   const body = published
-    ? `, the body of the slice before's draft PR ${published.url} as published in \`${outputFile.draft_pr}\``
+    ? `, the body of the slice before's PR ${published.url} as published in \`${outputFile.draft_pr}\``
     : existsSync(join(out, outputFile.draft_pr))
       ? `, what the chain did so far in \`${outputFile.draft_pr}\``
       : ''

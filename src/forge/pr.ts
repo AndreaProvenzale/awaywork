@@ -28,7 +28,7 @@ export function linksItem(
 }
 
 /** The body file's first line is the title; the rest, plus the footer, is the body. */
-export async function draftText(
+export async function prText(
   bodyFile: string,
   head: string,
   runId: string,

@@ -145,9 +145,9 @@ async function leftBy(
     Object.entries(all).filter(([, f]) => existsSync(join(runDir, f))),
   )
   const read = async (f?: string) => (f ? readOutput(join(runDir, f)) : '')
-  // Only a draft PR's body opens with its title.
+  // Only a PR's body opens with its title.
   const summary =
-    summaryOf(await read(files.sliceBody), deliver === 'draft_pr') ||
+    summaryOf(await read(files.sliceBody), deliver === 'draft_pr' || deliver === 'pr') ||
     summaryOf(await read(files.report))
   return { files, ...(summary && { summary }) }
 }
@@ -170,8 +170,8 @@ export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
 
 /**
  * Runs the plan's chains one at a time, re-routing as windows fill. A rule's steps all work in one
- * clone, and each slice of the chain publishes once, when it ends: its commits as a draft PR or a
- * push onto your PR, else its reports. A draft PR stacks on the awaywork PR a rule took up, or on
+ * clone, and each slice of the chain publishes once, when it ends: its commits as a PR or a
+ * push onto your PR, else its reports. A PR stacks on the awaywork PR a rule took up, or on
  * the slice before, whose pushed tip the next slice's commits are published onto.
  * Every step leaves `units/<id>/<n>-<skill>/` in the run dir: its context, prompt, output and worker
  * log; what each slice published is in `units/<id>/out/`, `out-2/` and so on.
@@ -242,6 +242,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
     const deliver = chain.find((p) => p.unit.deliver !== 'report')?.unit.deliver ?? 'report'
+    const opensPr = deliver === 'draft_pr' || deliver === 'pr'
     // An awaywork PR a rule took up, when the chain works on its branch.
     const pickedUp = first.unit.items
       .flatMap((i) => i.linkedPrs)
@@ -250,7 +251,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const shape = {
       base,
       branch: first.unit.branch,
-      stackedOn: deliver === 'draft_pr' ? pickedUp?.url : undefined,
+      stackedOn: opensPr ? pickedUp?.url : undefined,
     }
     // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
     const since = pickedUp ? base : ''
@@ -282,7 +283,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
-    /** Publishes the open slice once its last step ended; after its draft PR, the next slice is cut at the clone's tip. */
+    /** Publishes the open slice once its last step ended; after its PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find(
         (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
@@ -327,7 +328,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (previous)
           previous.published = { url: outcome.url, body: join(out, outputFile.draft_pr) }
       } else if (!input.dryRun) {
-        ended = { reason: `${opening.unit.id} opened no draft PR to stack on`, passedOver: true }
+        ended = { reason: `${opening.unit.id} opened no PR to stack on`, passedOver: true }
         return
       }
       published.add(shape.branch)
@@ -402,7 +403,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         end(`no provider left: ${passed.join('; ') || 'none configured'}`)
         continue
       }
-      if ((cloned === undefined || cut) && deliver === 'draft_pr') {
+      if ((cloned === undefined || cut) && opensPr) {
         const named = p.unit.branch
         const free = await freeBranch(input.forge, p.unit, published).catch((e: Error) => ({
           skip: `couldn't check ${named} on ${unit.repo}: ${e.message}`,
@@ -641,9 +642,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (until.check) loop.check = until.check
           if (until.check?.stopped || until.check?.refused)
             loop.ended = `until ${describeCondition(p.loop.until)} not checked: ${until.check.failed}`
-          else if (untilHolds(p.loop.until, until.facts))
+          else if (untilHolds(p.loop.until, until.facts)) {
+            loop.held = true
             loop.ended = `until held: ${describeCondition(p.loop.until)}`
-          else if (isLast(p.loop)) loop.ended = maxReached(p.loop.max)
+          } else if (isLast(p.loop)) loop.ended = maxReached(p.loop.max)
         }
         if (loop && ended) loop.ended ??= ended.reason
       } catch (e) {

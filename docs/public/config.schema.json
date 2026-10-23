@@ -944,10 +944,11 @@
             }
           },
           "deliver": {
-            "description": "Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
+            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when verify fails or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
             "type": "string",
             "enum": [
               "draft_pr",
+              "pr",
               "report",
               "push"
             ]
@@ -1164,7 +1165,7 @@
                         "additionalProperties": false
                       },
                       "stack": {
-                        "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                        "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                         "type": "boolean"
                       }
                     },
@@ -1354,7 +1355,7 @@
                                 "additionalProperties": false
                               },
                               "stack": {
-                                "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                                 "type": "boolean"
                               }
                             },
@@ -1541,7 +1542,7 @@
                                   "additionalProperties": false
                                 },
                                 "stack": {
-                                  "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                  "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                                   "type": "boolean"
                                 }
                               },
@@ -1622,7 +1623,7 @@
                     "description": "At most this many rounds, up to 5"
                   },
                   "stack": {
-                    "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                    "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
                     "type": "boolean"
                   }
                 },
@@ -1811,7 +1812,7 @@
                               "additionalProperties": false
                             },
                             "stack": {
-                              "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                              "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                               "type": "boolean"
                             }
                           },
@@ -2001,7 +2002,7 @@
                                       "additionalProperties": false
                                     },
                                     "stack": {
-                                      "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                      "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                                       "type": "boolean"
                                     }
                                   },
@@ -2188,7 +2189,7 @@
                                         "additionalProperties": false
                                       },
                                       "stack": {
-                                        "description": "Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                                        "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
                                         "type": "boolean"
                                       }
                                     },
@@ -2269,7 +2270,7 @@
                           "description": "At most this many rounds, up to 5"
                         },
                         "stack": {
-                          "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+                          "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
                           "type": "boolean"
                         }
                       },

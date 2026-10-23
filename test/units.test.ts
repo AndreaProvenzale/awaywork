@@ -847,7 +847,7 @@ async function originForge(root: string) {
       if (head.stdout !== from) return `${branch} moved`
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
-    draftPr: async (repo: string, head: string, base: string, bodyFile: string) => {
+    openPr: async (repo: string, head: string, base: string, bodyFile: string) => {
       opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
       return `https://example.com/${repo}/pull/${head}`
     },
@@ -1297,7 +1297,7 @@ it("lists a slice's PR body and sums it up when its publish fails", async () => 
     sources: { github: fakeSource() as Source },
     forge: {
       ...forge,
-      draftPr: async () => {
+      openPr: async () => {
         throw new Error('gh pr create failed')
       },
     },
@@ -3502,8 +3502,8 @@ notify:
   ])
 })
 
-/** The PR body, the unit's `out/` in the run dir and what the run printed. */
-async function verified(repoConfig: string) {
+/** The PR body, the unit's `out/` in the run dir, what the run printed and what it published. */
+async function verified(repoConfig: string, deliver = 'draft_pr') {
   const lines: string[] = []
   const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
@@ -3513,7 +3513,7 @@ sources: { github: { repos: [acme/*] } }
 repos:
   acme/api: { ${repoConfig} }
 queue:
-  - skill: implement
+  - { skill: implement, deliver: ${deliver} }
 `)
   const plan = planRun({
     config,
@@ -3521,7 +3521,7 @@ queue:
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await runUnits({
+  const report = await runUnits({
     config,
     configDir: root,
     plan,
@@ -3538,7 +3538,7 @@ queue:
   })
 
   const out = join(root, 'run', 'units', 'acme-api-1', 'out')
-  return { body: opened[0]?.body ?? '', out, lines }
+  return { body: opened[0]?.body ?? '', out, lines, outcome: report.results[0]?.outcome }
 }
 
 it("publishes a unit whose verify failed with the command's output in the PR body", async () => {
@@ -3556,6 +3556,17 @@ it("leaves the PR body alone when verify passes, and its output out of the run's
     '$ echo all clean\nall clean\npassed\n',
   )
   expect(lines.join('\n')).not.toContain('all clean')
+})
+
+it('opens a deliver: pr PR as a draft when its verify failed, ready for review when it passed', async () => {
+  expect((await verified("verify: 'false'", 'pr')).outcome).toMatchObject({
+    kind: 'pr',
+    draft: 'verify failed',
+  })
+  expect((await verified("verify: 'true'", 'pr')).outcome).toMatchObject({
+    kind: 'pr',
+    ready: true,
+  })
 })
 
 it("doesn't write a failed verify through a link it left for the PR body", async () => {

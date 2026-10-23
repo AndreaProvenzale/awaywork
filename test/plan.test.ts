@@ -571,7 +571,7 @@ queue:
     expect(formatPlan(relayed)).toMatch(/api#1 +#1 +plan \(built-in\) +claude +push +PR 1\n/)
   })
 
-  it('lets a push or draft PR rule take the first linked PR that is yours', () => {
+  it('lets a push, draft PR or PR rule take the first linked PR that is yours', () => {
     const theirs = githubPr(2, { mine: false }).linkedPrs[0] as PrRef
     const mine = githubPr(1).linkedPrs[0] as PrRef
     const issue = { ...githubPr(5), linkedPrs: [theirs, mine] }
@@ -582,10 +582,14 @@ queue:
       ['push', 'feature-1'],
     ])
     expect(plan(yaml('draft_pr'), [issue], {}).units[0]?.unit.base).toBe('feature-1')
+    expect(plan(yaml('pr'), [issue], {}).units[0]?.unit).toMatchObject({
+      deliver: 'pr',
+      base: 'feature-1',
+    })
     expect(plan(yaml('report'), [issue], {}).units[0]?.unit.base).toBe('feature-2')
     const theirs2 = githubPr(3, { mine: false }).linkedPrs[0] as PrRef
     const both = [{ ...githubPr(6), linkedPrs: [theirs, theirs2] }]
-    for (const deliver of ['push', 'draft_pr']) {
+    for (const deliver of ['push', 'draft_pr', 'pr']) {
       const none = plan(yaml(deliver), both, {})
       expect(none.units).toEqual([])
       expect(none.skipped.map((s) => s.reason)).toEqual([

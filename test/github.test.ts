@@ -774,19 +774,20 @@ describe('github forge', () => {
     await expect(forge.push(clone, 'away/acme-api-2', { repo: 'acme/api' })).rejects.toThrow()
   }, 30_000)
 
-  it('opens a draft PR titled by the body file first line', async () => {
+  it('opens a PR titled by the body file first line, a draft only when asked', async () => {
     const dir = await tmp()
     const body = join(dir, 'PR_BODY.md')
     await writeFile(body, '# Refill the rate-limit bucket\n\nChecked: src/limit.test.ts passes.\n')
     const run = recorded([[/^gh pr create/, 'https://github.com/acme/api/pull/10\n']])
     const items = [fakeItem({ source: 'linear', key: 'ENG-12' })]
-    const url = await githubForge(run).draftPr(
+    const url = await githubForge(run).openPr(
       'acme/api',
       'away/acme-api-1',
       'rate-limits',
       body,
       'r1',
       items,
+      true,
     )
     expect(url).toBe('https://github.com/acme/api/pull/10')
     expect(run.calls[0]).toEqual([
@@ -806,8 +807,9 @@ describe('github forge', () => {
       `Checked: src/limit.test.ts passes.\n\n${footer('r1', items)}`,
     ])
     expect(footerItems(run.calls[0]?.at(-1))).toEqual(['linear:ENG-12'])
-    await githubForge(run).draftPr('acme/api', 'away/x', '', body, 'r1', items)
+    await githubForge(run).openPr('acme/api', 'away/x', '', body, 'r1', items, false)
     expect(run.calls[1]).not.toContain('--base')
+    expect(run.calls[1]).not.toContain('--draft')
   })
 
   it('stacks a PR on the one below it: a new stack, the top of its stack, never mid-stack', async () => {

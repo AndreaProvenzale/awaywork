@@ -20,6 +20,7 @@ import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
 import type {
   Condition,
+  Deliver,
   Item,
   Loop,
   Rule,
@@ -177,7 +178,7 @@ export function planRun(input: {
     const reports = (step: ThenStep) =>
       rule.deliver === 'report' || resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
     const committing = [rule, ...(rule.then ?? []).flatMap(stepsOf)].find((s) => !reports(s))
-    const deliver = rule.deliver === 'push' ? 'push' : 'draft_pr'
+    const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
     const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
@@ -351,7 +352,7 @@ function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string 
   for (const entry of rule.then ?? []) {
     const first = stepsOf(entry)[0] as ThenStep
     if (entry.stack && reports(first))
-      return `stack on ${first.skill}: it reports, so its draft PR would have nothing in it`
+      return `stack on ${first.skill}: it reports, so its PR would have nothing in it`
     if (entry.stack && steps.every(reports))
       return `stack on ${first.skill}: every step before it reports, so there is nothing to stack on`
     steps.push(...stepsOf(entry))
@@ -360,7 +361,7 @@ function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string 
 
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
 function deliveryRefusal(
-  deliver: 'draft_pr' | 'push',
+  deliver: Exclude<Deliver, 'report'>,
   base: string,
   foreign: boolean,
   fork: boolean,

@@ -30,7 +30,7 @@ import {
   launch,
   lostToWorker,
 } from '../src/core/launch.js'
-import { formatReport, type RunReport, runLine } from '../src/core/report.js'
+import { formatReport, type RunReport, runHeadline, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
 import type { Item, Login, Provider, Source } from '../src/core/types.js'
@@ -104,7 +104,7 @@ async function originForge(root: string) {
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
       pushedOnto.push(branch)
     },
-    draftPr: async (
+    openPr: async (
       repo: string,
       head: string,
       base: string,
@@ -301,6 +301,30 @@ it('runs a chain with a loop in one clone and opens one draft PR with every step
     updated: '2026-10-01T00:00:00Z',
     report: { runId: 'r1', unit: 'acme-api-1', step: '5-plan', skill: 'plan' },
   })
+})
+
+it('opens a deliver: pr PR ready for review, or a draft when a loop ran out of rounds', async () => {
+  const rule = `queue:
+  - skill: implement
+    deliver: pr
+    then: [{ loop: [review, fix], until: { verdict: approve }, max: 2 }]
+`
+  const approved = await run(rule, [issue(1)], worker({ 'acme-api-1-review-1': 'approve' }))
+  expect(approved.report.results[0]?.outcome).toMatchObject({ kind: 'pr', ready: true })
+  expect(runHeadline(approved.report)).toBe('Run r1: 1 PR, 0 reports, 1 unit')
+  const text = formatReport(approved.report)
+  expect(text).toContain('/pull/away/acme-api-1 (1 commit, ready for review), verdict approve |')
+  expect(runLine('r1', text)).toBe('r1  1 unit, 1 PR, 0 reports')
+
+  const changes = { 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'changes' }
+  const unmet = await run(rule, [issue(1)], worker(changes))
+  const why = 'loop review ⇄ fix ended before its until held'
+  expect(unmet.report.results[0]?.outcome).toMatchObject({ kind: 'pr', draft: why })
+  expect(unmet.report.results[0]?.loop).toBe('2 rounds of review ⇄ fix; max 2 rounds reached')
+  const drafted = formatReport(unmet.report)
+  expect(drafted).toContain(`/pull/away/acme-api-1 (3 commits, draft: ${why}), verdict changes |`)
+  expect(runLine('r1', drafted)).toBe('r1  1 unit, 1 draft PR, 0 reports')
+  expect(runLine('r1', `${text}${drafted}`)).toBe('r1  2 units, 1 PR, 1 draft PR, 0 reports')
 })
 
 it('takes chain shapes the per-step model refused: a loop after a loop, and a gated step before one', async () => {
@@ -519,13 +543,13 @@ queue:
     [
       'Unit `acme-api-1-fix`, skill `fix`. You are on the new branch `away/acme-api-1-2`, cut from `away/acme-api-1`.',
       '',
-      'This unit is a step of a chain (implement → review → stack fix) whose steps all work in this clone. Each slice, from the first step or a `stack` one on, publishes once when it ends, as a draft PR stacked on the slice before; this step is in slice 2 of 2, and the branch may already hold its commits.',
+      'This unit is a step of a chain (implement → review → stack fix) whose steps all work in this clone. Each slice, from the first step or a `stack` one on, publishes once when it ends, as a PR stacked on the slice before; this step is in slice 2 of 2, and the branch may already hold its commits.',
       '',
       `\`away/acme-api-1\` is the earlier awaywork PR ${pull('away/acme-api-1')}: your PR stacks on it, so leave its commits as they are.`,
     ].join('\n'),
   )
   expect(prompts['acme-api-1-fix']).toContain(
-    `the body of the slice before's draft PR ${pull('away/acme-api-1')} as published in \`pr.md\``,
+    `the body of the slice before's PR ${pull('away/acme-api-1')} as published in \`pr.md\``,
   )
   expect(prompts['acme-api-1-fix']).toContain('Commit on this branch and write `.away/out/pr.md`')
 
@@ -1117,7 +1141,7 @@ it('refuses a stack on a step that reports, or after steps that all report', asy
     worker(),
   )
   expect(refused.plan.skipped.map((s) => [s.kind, s.reason])).toEqual([
-    ['unstackable', 'stack on review: it reports, so its draft PR would have nothing in it'],
+    ['unstackable', 'stack on review: it reports, so its PR would have nothing in it'],
   ])
   expect(
     await reasons(
