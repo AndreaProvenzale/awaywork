@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PendingReviewExists, type Unit } from '../src/core/types.js'
+import type { Unit } from '../src/core/types.js'
 import { commentableLines, leaveReview, parseComments } from '../src/worker/review.js'
 import { fakeForge } from './fakes/forge.js'
 import { fixture } from './fakes/gh.js'
@@ -122,7 +122,7 @@ describe('leaveReview', () => {
         body: [
           'Looks fine.',
           '',
-          '## Outside the diff',
+          '## Line comments',
           '',
           '`a.ts:9`: Far from the diff.',
           '',
@@ -145,7 +145,7 @@ describe('leaveReview', () => {
     const forge = fakeForge()
     await leaveReview(forge, { ...unit, items: [task] }, dir, 'abc', 'x', { text: 'Fine.', out })
     expect(forge.reviews.map((r) => [r.body, r.comments])).toEqual([
-      ['Fine.\n\n## Outside the diff\n\n`a.ts:2`: Why two?', []],
+      ['Fine.\n\n## Line comments\n\n`a.ts:2`: Why two?', []],
     ])
   })
 
@@ -185,7 +185,7 @@ describe('leaveReview', () => {
     const outcome = await leaveReview(forge, unit, dir, 'abc', 'x', { text: 'Fine.', out })
     expect(outcome).toMatchObject({ kind: 'review' })
     expect(forge.reviews.map((r) => [r.body, r.comments])).toEqual([
-      ['Fine.\n\n## Outside the diff\n\n`a.ts:2`: Why two?\n\n`a.ts:9`: Far from the diff.', []],
+      ['Fine.\n\n## Line comments\n\n`a.ts:2`: Why two?\n\n`a.ts:9`: Far from the diff.', []],
     ])
     forge.pendingReview = async () => {
       throw new Error('Unprocessable Entity')
@@ -195,11 +195,11 @@ describe('leaveReview', () => {
     let posts = 0
     forge.pendingReview = async () => {
       posts++
-      throw new PendingReviewExists('your pending review is there already')
+      throw new Error('your pending review is there already')
     }
     const there = await leaveReview(forge, unit, dir, 'abc', 'x', { text: 'Fine.', out })
     expect(there).toMatchObject({ unposted: 'your pending review is there already' })
-    expect(posts).toBe(1)
+    expect(posts).toBe(2)
   })
 
   it('delivers the report alone, saying why, when the forge refuses or the diff is a link', async () => {

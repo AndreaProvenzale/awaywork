@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { z } from 'zod'
 import { slug } from '../core/foreman.js'
-import { type Forge, PendingReviewExists, type Review, type Unit } from '../core/types.js'
+import type { Forge, Review, Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
 import { readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
 
@@ -77,7 +77,7 @@ export function commentableLines(diff: string): Map<string, Set<number>> {
 function withComments(body: string, comments: Review['comments']): string {
   if (!comments.length) return body
   const listed = comments.map((c) => `\`${c.path}:${c.line}\`: ${c.body}`).join('\n\n')
-  return `${body}\n\n## Outside the diff\n\n${listed}`
+  return `${body}\n\n## Line comments\n\n${listed}`
 }
 
 /** A reason on one line, without the `; ` that `runLine` splits a result at. */
@@ -113,7 +113,7 @@ export async function leaveReview(
     const post = (review: Review) => forge.pendingReview(unit.repo, pr.number, head, review)
     const url = await post({ body: withComments(last.text, outside), comments: inDiff }).catch(
       (e) => {
-        if (!inDiff.length || e instanceof PendingReviewExists) throw e
+        if (!inDiff.length) throw e
         return post({ body: withComments(last.text, comments), comments: [] })
       },
     )

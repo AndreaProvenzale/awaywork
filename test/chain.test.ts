@@ -398,7 +398,7 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
       repo: 'acme/api',
       pr: 1,
       head: (await git(reviewed.origin, 'rev-parse', 'feature-1')).stdout,
-      body: 'acme-api-1-review says changes.\n\n## Outside the diff\n\n`a.ts:7`: Far away.',
+      body: 'acme-api-1-review says changes.\n\n## Line comments\n\n`a.ts:7`: Far away.',
       comments: [comments[0]],
     },
   ])
