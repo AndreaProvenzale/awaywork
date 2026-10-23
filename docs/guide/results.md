@@ -13,8 +13,8 @@ Two questions: who gets to see the result, and whose thing it lands on.
 | Reach | Your PR, issue or task | Someone else's PR |
 | --- | --- | --- |
 | Only you | awaywork: `report` into the morning report, `pending_review` on your own PR (you can submit it only as a comment). Your hook: a note to yourself, like the ntfy recipe in [Notify](./configuration.md#notify) | awaywork: `report`, `pending_review`. Your hook: the same note to yourself |
-| Visible, nobody asked to look | awaywork: `draft_pr` (the default), `push` onto your own PR's branch. Your hook: labels on the PR, a page in your Notion | awaywork: nothing, it stays private |
-| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers, a Slack message | awaywork: nothing. Submitting the pending review is you, by hand |
+| Visible, nobody asked to look | awaywork: `draft_pr` (the default), `push` onto your own PR's branch. Your hook: labels on the PR, a page in your Notion, a Slack message | awaywork: nothing, it stays private. Your hook: a page in your Notion |
+| Pings someone | awaywork: `pr`, a ready PR, which asks the code owners. Your hook: reviewers | awaywork: nothing; submitting the pending review is you, by hand. Your hook: reviewers |
 
 The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule in [Queue rules](./configuration.md#queue-rules).
 
@@ -43,16 +43,16 @@ notify:
     [ "$AWAYWORK_STATUS" = done ] && [ -n "$AWAYWORK_REPORT" ] || exit 0
     key=$(printf '%s\n' "$AWAYWORK_ITEM_KEY" | head -n 1)
     links=$(printf '%s\n' "$AWAYWORK_ITEM_URL" "$AWAYWORK_PR_URL" | sed '/^$/d; s/^/- /')
-    jq -Rs --arg parent "$NOTION_PAGE_ID" --arg title "Plan: $key" --arg links "$links" '{
+    body=$(jq -Rs --arg parent "$NOTION_PAGE_ID" --arg title "Plan: $key" --arg links "$links" '{
         parent: { page_id: $parent },
         properties: { title: { title: [{ text: { content: $title } }] } },
         markdown: ($links + "\n\n" + .)
-      }' "$AWAYWORK_REPORT" |
-      curl -sf -o /dev/null https://api.notion.com/v1/pages \
-        -H "Authorization: Bearer $NOTION_TOKEN" \
-        -H 'Notion-Version: 2026-03-11' \
-        -H 'Content-Type: application/json' \
-        --data-binary @-
+      }' "$AWAYWORK_REPORT")
+    curl -sSf -o /dev/null https://api.notion.com/v1/pages \
+      -H "Authorization: Bearer $NOTION_TOKEN" \
+      -H 'Notion-Version: 2026-03-11' \
+      -H 'Content-Type: application/json' \
+      -d "$body"
   secrets: [NOTION_TOKEN, NOTION_PAGE_ID]
 ```
 
@@ -66,17 +66,18 @@ You could instead give the rule a Notion [MCP server](./configuration.md#mcp-ser
 
 ### A Slack message when a review is ready
 
-A Slack [incoming webhook](https://api.slack.com/messaging/webhooks), once per `review` step:
+A Slack [incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks), once per finished `review` step:
 
 ```yaml
 notify:
   command: |
     set -e
     [ "$AWAYWORK_EVENT" = unit ] && [ "$AWAYWORK_SKILL" = review ] || exit 0
+    [ "$AWAYWORK_STATUS" = done ] || exit 0
     text="Review of $AWAYWORK_ITEM_KEY: $AWAYWORK_STATUS${AWAYWORK_VERDICT:+, verdict $AWAYWORK_VERDICT}
     $AWAYWORK_ITEM_URL"
-    jq -n --arg text "$text" '{ text: $text }' |
-      curl -sf -o /dev/null -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
+    body=$(jq -n --arg text "$text" '{ text: $text }')
+    curl -sSf -o /dev/null -H 'Content-Type: application/json' -d "$body" "$SLACK_WEBHOOK_URL"
   secrets: [SLACK_WEBHOOK_URL]
 ```
 
@@ -87,7 +88,7 @@ Review of acme/api#14: done, verdict approve
 https://github.com/acme/api/pull/14
 ```
 
-A message in a shared channel pings people, so that's your reach to pick: a channel of your own keeps it quiet.
+A shared channel shows it to everyone in it, so that's your reach to pick: a channel of your own keeps it to you. Add `@` mentions to the text and it pings people.
 
 ### Acting on a skill's own output
 
