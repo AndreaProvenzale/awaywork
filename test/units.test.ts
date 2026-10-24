@@ -1,5 +1,14 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -3810,7 +3819,7 @@ it('opens the body with the gates that ran when none fired, a card the worker wr
   ).toBe(true)
 })
 
-it("gives a gate's command the slice's base, so the clone's refs, replace refs and attributes can't hide a change", async () => {
+it("gives a gate's command the slice's base, so the clone's refs, replace refs, attributes and git config can't hide a change", async () => {
   const script =
     'if git diff "$AWAYWORK_FROM" HEAD | grep -q "^+GET"; then echo "+ GET /exports/vat"; exit 1; fi\n'
   const yaml = `${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`
@@ -3829,6 +3838,12 @@ it("gives a gate's command the slice's base, so the clone's refs, replace refs a
     (dir: string) => writeFile(join(dir, '.git/info/attributes'), '* -diff\n'),
     (dir: string) => commitFile(dir, '.gitattributes', '* -diff\n'),
     (dir: string) => writeFile(join(dir, '.gitattributes'), '* -diff\n'),
+    (dir: string) => appendFile(join(dir, '.away/gitconfig'), '[diff]\n\texternal = true\n'),
+    async (dir: string) => {
+      await writeFile(join(dir, '.away/attributes'), '* diff=blind\n')
+      const blind = `[core]\n\tattributesFile = ${join(dir, '.away/attributes')}\n[diff "blind"]\n\ttextconv = true\n`
+      await appendFile(join(dir, '.away/gitconfig'), blind)
+    },
   ]) {
     const { outcomes } = await gated(yaml, routes(hide), { script })
     expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
