@@ -113,6 +113,7 @@ queue:
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.
 - A skill that reviews a PR can write its line comments to `.away/out/review.json`, as `review` does: `[{ "path": "src/limit.ts", "line": 42, "body": "Burst should come from config." }]`, `line` on the PR's new side, at most 100 comments and 100 KB. Under [`deliver: pending_review`](./how-it-works.md#delivery) they land on those lines, with `report.md` as the review's body; a comment awaywork can't place on the diff goes in the body, and an invalid file is left out, the result saying why. Under any other delivery nobody reads it.
+- Any other file a skill writes in `.away/out/` is kept with the run and reaches the [notify](./configuration.md#notify) hook as `$AWAYWORK_OUT_DIR`; awaywork doesn't read it. A hook should treat those files as untrusted input: the model wrote them after reading other people's items. The folder also holds what earlier steps of its [slice](./chains.md#stack) left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
 - Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be.
 - Context is in `.away/context/<item>/`: `item.md` for every item, plus `diff.patch`, `threads.md` and `checks.md` for a PR.
 - `skills: [name]` on a rule, or at the top level for every unit, adds extra skills the agent may call, such as your team's conventions.
