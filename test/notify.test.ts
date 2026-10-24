@@ -26,6 +26,22 @@ it('runs the command with the unit event, its unit, status and PR in its env, an
   expect(await readFile(out, 'utf8')).toBe('unit a-1 fix done https://x/pull/2|\n')
 })
 
+it('gives the unit event one line per item, a newline in a value turned into a space, the repo, verdict and output folder when present', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-unit-')), 'out.txt')
+  const command = `echo "$AWAYWORK_ITEM_URL|$AWAYWORK_ITEM_KEY|$AWAYWORK_SOURCE|$AWAYWORK_REPO|$AWAYWORK_VERDICT|$AWAYWORK_OUT_DIR" > '${out}'`
+  const unit = { runId: '1', id: 'a-1', skill: 'fix', status: 'done' }
+  const items = [
+    { url: 'https://x/1', key: 'acme#1', source: 'github' },
+    { url: 'https://x/2', key: 'acme#\n2', source: 'github' },
+  ]
+  await notifyUnit(command, { ...unit, items, repo: 'acme/api', verdict: 'pass', outDir: '/o' })
+  expect(await readFile(out, 'utf8')).toBe(
+    'https://x/1\nhttps://x/2|acme#1\nacme# 2|github\ngithub|acme/api|pass|/o\n',
+  )
+  await notifyUnit(command, unit)
+  expect(await readFile(out, 'utf8')).toBe('|||||\n')
+})
+
 it.each(['sleep 30', 'sleep 30; true'])(
   "stops a running unit event's command and what it started on abort: %s",
   async (command) => {
