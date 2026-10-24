@@ -237,7 +237,14 @@ async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void
   }
   const lfs = await read('--get-regexp', '^filter\\.lfs\\.')
   for (const entry of lfs.stdout.split('\0').filter(Boolean)) entries.push(entry.split(/\n(.*)/s))
-  const file = gitConfigFile(dir)
+  gitEntries.set(dir, entries)
+  await writeConfigFile(gitConfigFile(dir), entries)
+}
+
+/** The entries `writeGitConfig` resolved for each clone, which the gates' config gets again. Per process. */
+const gitEntries = new Map<string, string[][]>()
+
+async function writeConfigFile(file: string, entries: string[][]): Promise<void> {
   await writeFile(file, '', { flag: 'wx' })
   for (const [key = '', value = 'true'] of entries)
     await execa(bin('git'), ['config', '--file', file, '--add', key, value])
@@ -364,8 +371,9 @@ export function checkEnv(
 }
 
 /**
- * The env of a gate's command and judge: a gate check's, on a global git config awaywork writes afresh, not the one the steps
- * could edit, with no attributes file and no diff or textconv drivers, so the clone's git shows it the slice as pushed.
+ * The env of a gate's command and judge: a gate check's, on a global git config awaywork writes afresh from the steps'
+ * identity and lfs filter, none of their edits, with no attributes file and no diff or textconv drivers, so the clone's
+ * git shows it the slice as pushed.
  */
 export async function gateEnv(
   env: NodeJS.ProcessEnv,
@@ -377,7 +385,10 @@ export async function gateEnv(
   const file = join(dir, WORK_DIR, 'gate-gitconfig')
   await refuseSymlinks(dir, [WORK_DIR])
   await rm(file, { recursive: true, force: true })
-  await writeFile(file, '[core]\n\tattributesFile = /dev/null\n', { flag: 'wx' })
+  await writeConfigFile(file, [
+    ...(gitEntries.get(dir) ?? []),
+    ['core.attributesFile', '/dev/null'],
+  ])
   return { ...checkEnv(env, dir, withheld, from, start), GIT_CONFIG_GLOBAL: file }
 }
 
