@@ -35,7 +35,7 @@ import type {
   Quota,
   Source,
 } from '../core/types.js'
-import { commitsSince, createChecks, head, untilHolds } from './checks.js'
+import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
 import type { Stack } from './publish.js'
@@ -264,8 +264,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       branch: first.unit.branch,
       stackedOn: opensPr ? pickedUp?.url : undefined,
     }
-    // `changed` diffs from where the chain started: the awaywork PR it took up, else the default branch.
-    const since = pickedUp ? base : ''
+    // `changed` diffs from where the chain started, the awaywork PR it took up, else the default branch, as cloned.
+    let since = ''
     const dir = isolated() ? await workerRoot(0o700) : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
@@ -280,6 +280,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let loops: Record<number, OpenLoop> = {}
     let reports: StepReport[] = []
     let cloned: string | undefined
+    // What gates compare their scripts with: an awaywork PR's commits are a worker's, so where it left the default branch.
+    let original: string | undefined
     // Where the open slice's commits start in the clone, and whether its branch is still to be cut there.
     let from: string | undefined
     let cut = false
@@ -326,7 +328,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 { ...first.unit, ...shape, deliver },
                 dir,
                 from,
-                cloned ?? from,
+                original ?? from,
                 reports,
                 loops,
                 stack,
@@ -501,6 +503,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (!reuse) {
           // Before setup or any worker touched the clone: the chain's commits are the ones after it.
           cloned = from = await head(dir)
+          if (chain.some((c) => c.unit.rule.when?.changed || c.loop?.until.changed))
+            since = await git(dir, 'rev-parse', `origin/${pickedUp ? base : 'HEAD'}`)
+          original =
+            pickedUp && unit.gates ? await git(dir, 'merge-base', 'origin/HEAD', 'HEAD') : cloned
           rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
           const state: ReplayState = { unit, provider: id, commit: cloned }
           await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
@@ -532,7 +538,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (!reuse) await baseline(dir)
         const { when } = unit.rule
         if (when && !retryOf) {
-          const met = await factsFor(when, unit, dir, since, verdict, log, whenLog)
+          const met = await factsFor(when, unit, dir, since, verdict, log, whenLog, { from })
           Object.assign(met.facts, quotaFacts(a))
           // A check stopped or timed out before it exited says nothing: the chain ends without passing over it.
           if (met.check?.stopped || met.check?.timedOut) {
@@ -649,16 +655,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         } else if (loop && p.loop) {
           if (result.verdict) loop.verdict = result.verdict
           const logFile = join(dir, WORK_DIR, 'out', 'check.log')
-          const until = await factsFor(
-            p.loop.until,
-            unit,
-            dir,
-            since,
-            loop.verdict,
-            log,
-            logFile,
-            true,
-          )
+          const until = await factsFor(p.loop.until, unit, dir, since, loop.verdict, log, logFile, {
+            from,
+            published: true,
+          })
           if (until.check) loop.check = until.check
           if (until.check?.stopped || until.check?.refused)
             loop.ended = `until ${describeCondition(p.loop.until)} not checked: ${until.check.failed}`

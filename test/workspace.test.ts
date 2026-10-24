@@ -741,6 +741,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     )
   })
 
+  it('drops attributes a worker wrote in .git/info, and refuses grafts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    await writeFile(join(dir, '.git/info/attributes'), '* -diff\n')
+    await restoreGitConfig(dir, '')
+    expect(existsSync(join(dir, '.git/info/attributes'))).toBe(false)
+    await writeFile(join(dir, '.git/info/grafts'), '')
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/info/grafts in the clone points elsewhere',
+    )
+  })
+
   it('copies out of the clone without its symlinks or a setuid or setgid bit', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-copy-out-'))
     await mkdir(join(dir, 'out', 'sub'), { recursive: true })

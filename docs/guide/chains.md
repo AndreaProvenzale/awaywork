@@ -121,7 +121,7 @@ queue:
 
 - `verdict` is the latest verdict written in the chain, by any step before this one. It matches as in `until`, except that `{ not: … }` also holds when no verdict was written.
 - `command` runs as in `until`, in the chain's clone before the step's agent starts. Prefix `!` to run a step only when a check fails, such as a fixer with `when: { command: "! pnpm test" }`; it finds the output in `.away/context/previous/when.log`. A check that times out says nothing: it ends the chain without passing over the step, and the chain publishes what it has as in [`then`](#then).
-- `changed` is a glob or a list; it holds when the chain's commits change a matching path, measured from where the chain started: the repo's default branch or the awaywork PR a rule took up. Globs are git's, from the repo root, with no leading `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
+- `changed` is a glob or a list; it holds when the chain's commits change a matching path, measured from where the chain started: the repo's default branch or the awaywork PR a rule took up, as the clone first saw it, so a ref the agent moves changes nothing. Globs are git's, from the repo root, with no leading `/`: `*` stays in one directory and `**` crosses them, so `*.md` matches `README.md` but not `docs/a.md`, and `src/auth/**` everything under it.
 - Every key set must hold. `plan` shows each step's `when`, and the report says which one didn't hold.
 - A passed-over step doesn't end a loop, unless its command didn't run: it wouldn't in a later round either. A round whose steps were all passed over ends it too, since the next would be the same.
 

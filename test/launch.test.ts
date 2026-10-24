@@ -21,7 +21,7 @@ import { commandProvider } from '../src/providers/command.js'
 import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
-import { commandEnv, workerEnv } from '../src/worker/workspace.js'
+import { checkEnv, commandEnv, workerEnv } from '../src/worker/workspace.js'
 import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -96,7 +96,7 @@ describe('the launcher', () => {
     const { check, rememberGitConfig } = createChecks({ env, secrets: [] })
     rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
     const unit = { untrusted: false } as Unit
-    expect((await check('exit 0', unit, dir, () => {}, false)).failed).toBeUndefined()
+    expect((await check('exit 0', unit, dir, () => {})).failed).toBeUndefined()
     expect(launched()).toEqual([
       ['true', dir],
       ['exit 0', dir],
@@ -218,6 +218,7 @@ describe('the launcher', () => {
     await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
     const envs = [
       commandEnv(base, dir, []),
+      checkEnv(base, dir, [], 'abc123'),
       ...vi.mocked(launch).mock.calls.map(([, , o]) => o.env),
     ]
     const set = envs.flatMap((env) => Object.keys(env ?? {})).filter((name) => !(name in base))
