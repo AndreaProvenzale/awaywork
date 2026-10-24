@@ -3507,13 +3507,14 @@ notify:
 })
 
 /** The PR body, the unit's `out/` in the run dir, what the run printed and what it published. */
-async function verified(repoConfig: string, deliver = 'draft_pr') {
+async function verified(repoConfig: string, deliver = 'draft_pr', top = '') {
   const lines: string[] = []
   const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
+${top}
 repos:
   acme/api: { ${repoConfig} }
 queue:
@@ -3581,6 +3582,95 @@ it("doesn't write a failed verify through a link it left for the PR body", async
   )
   expect(body).toBe('')
   expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
+})
+
+it('opens a deliver: pr PR as a draft when a gate fired, its card first in the body', async () => {
+  const { body, outcome } = await verified(
+    "gates: { ids: { changed: '*.txt' }, deps: { changed: package.json } }",
+    'pr',
+    "gates: { routes: { command: 'echo + GET /exports/vat; exit 1' } }",
+  )
+  expect(outcome).toMatchObject({ kind: 'pr', draft: 'gates routes, ids fired' })
+  expect(body).toMatch(
+    /^Add rate limits\n\n## Needs a decision\n\n### Gates \(from scripts\)\n\n- routes: \+ GET \/exports\/vat\n- ids: acme-api-1\.txt\n\nDone\.\n\n\nCloses acme\/api#1\n$/,
+  )
+})
+
+it('keeps a draft_pr PR a draft with the card, and adds no card when no gate fired', async () => {
+  const fired = await verified("gates: { ids: { changed: '*.txt' } }")
+  expect(fired.outcome).toMatchObject({ kind: 'pr' })
+  expect(fired.outcome).not.toHaveProperty('draft')
+  expect(fired.body).toContain(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt',
+  )
+  const quiet = await verified(
+    "gates: { deps: { changed: package.json }, ok: { command: 'true' } }",
+    'pr',
+  )
+  expect(quiet.outcome).toMatchObject({ kind: 'pr', ready: true })
+  expect(quiet.body).not.toContain('Needs a decision')
+})
+
+it("fires a gate whose command the PR changed, and one that can't run", async () => {
+  const { body, outcome } = await verified(
+    "gates: { lint: { command: 'sh acme-api-1.txt' }, routes: { command: scripts/missing.sh } }",
+    'pr',
+  )
+  expect(outcome).toMatchObject({ draft: 'gates lint, routes fired' })
+  expect(body).toContain('- lint: `acme-api-1.txt` changed in this PR\n')
+  expect(body).toContain('- routes: Command failed with exit code 127: scripts/missing.sh\n')
+})
+
+it("doesn't write the card through a link a gate's command left for the PR body", async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+  await writeFile(join(outside, 'pr.md'), 'mine\n')
+  const { body } = await verified(
+    `gates: { swap: { command: 'rm -r .away/out && ln -s ${outside} .away/out && false' } }`,
+  )
+  expect(body).toBe('')
+  expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
+})
+
+it('pushes onto your PR when a gate fired, with the card atop the summary in the report', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-gate-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+gates: { ids: { changed: '*.txt' } }
+queue: [{ skill: fix, deliver: push }]
+`)
+  const plan = planRun({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const [result] = report.results
+  expect(result?.outcome).toMatchObject({ kind: 'pushed', gated: 'gate ids fired' })
+  expect(result?.outcome && 'text' in result.outcome && result.outcome.text).toBe(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt\n\nWork on acme-api-1\n\nDone.',
+  )
+  expect(formatReport(report)).toContain(
+    '1 commit pushed onto feature-1, gate ids fired, report below',
+  )
 })
 
 const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }'

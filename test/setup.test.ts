@@ -85,7 +85,12 @@ describe('runCommand', () => {
     stop.abort()
     const stopped = Date.now()
     try {
-      expect(await run).toEqual({ output: 'hi', failed: 'interrupted', stopped: true })
+      expect(await run).toEqual({
+        output: 'hi',
+        stdout: 'hi',
+        failed: 'interrupted',
+        stopped: true,
+      })
     } finally {
       process.kill(await escaped(pid), 'SIGKILL')
     }

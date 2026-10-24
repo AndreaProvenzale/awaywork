@@ -283,6 +283,8 @@ export interface Unit {
   fork?: { number: number; head?: string }
   /** Command run in the clone after the worker, before publishing: a failure goes in the PR body or report. */
   verify?: string
+  /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body. */
+  gates?: Record<string, Gate>
   /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
   stackedOn?: string
   branch: string
@@ -292,6 +294,12 @@ export interface Unit {
   providers: string[]
   instructions: string[]
   deliver: Deliver
+}
+
+/** A gate fires when the slice's commits change a path matching one of `changed`, or one of `commands` fails. */
+export interface Gate {
+  changed: string[]
+  commands: string[]
 }
 
 export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review'
