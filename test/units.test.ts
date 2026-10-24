@@ -3676,15 +3676,21 @@ queue: [{ skill: fix, deliver: push }]
 
 /**
  * Runs `yaml` on an origin whose `scripts/gate.sh` is `script`, firing by default, each step's worker doing `act`,
- * which may return its PR body. `items` may add to the origin first.
+ * which may return its PR body. `items` may add to the origin first; `fallback` gives the providers, in order, and
+ * their fallback units, else claude has a quota reading.
  */
 async function gated(
   yaml: string,
-  act: (dir: string, skill: string) => Promise<unknown>,
+  act: (dir: string, skill: string, env: NodeJS.ProcessEnv) => Promise<unknown>,
   {
     script = 'echo "+ GET /exports/vat"; exit 1\n',
     items = async () => [issue(1)],
-  }: { script?: string; items?: (origin: string) => Promise<Item[]> } = {},
+    fallback,
+  }: {
+    script?: string
+    items?: (origin: string) => Promise<Item[]>
+    fallback?: Record<string, number>
+  } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-gated-'))
   const { origin, opened, forge } = await originForge(root)
@@ -3692,25 +3698,36 @@ async function gated(
   await writeFile(join(origin, 'scripts/gate.sh'), script)
   await git(origin, 'add', '.')
   await git(origin, 'commit', '-qm', 'gate')
+  const ids = Object.keys(fallback ?? { claude: 0 })
   const config = parseConfig(
-    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
+    `providers: [${ids.map((id) => `${id}: {}`).join(', ')}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
+  )
+  const allowances = Object.fromEntries(
+    ids.map((id): [string, Allowance] => [
+      id,
+      fallback
+        ? { kind: 'fallback', units: fallback[id] ?? 0, turns: 60, reason: 'no quota reading' }
+        : allowance(config.budget, null, 0, config.windows),
+    ]),
   )
   const plan = planRun({
     config,
     items: await items(origin),
-    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    allowances,
     skills: { builtin: builtinSkills },
   })
-  const worker: Provider = {
-    ...fakeProvider('claude'),
+  const runs: string[] = []
+  const worker = (id: string): Provider => ({
+    ...fakeProvider(id),
     async *run(job) {
-      const body = await act(job.dir, job.unit.skill)
+      runs.push(`${id}:${job.unit.skill}:${job.unit.items[0]?.id}`)
+      const body = await act(job.dir, job.unit.skill, job.env)
       const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
       // A gate's judge only reports.
       if (job.unit.deliver !== 'report') await writeFile(join(job.dir, '.away/out/pr.md'), text)
       yield { type: 'done', ok: true, turns: 1 }
     },
-  }
+  })
   const report = await runUnits({
     config,
     configDir: root,
@@ -3718,7 +3735,7 @@ async function gated(
     runId: 'r1',
     runDir: join(root, 'run'),
     dryRun: false,
-    providers: { claude: worker },
+    providers: Object.fromEntries(ids.map((id) => [id, worker(id)])),
     sources: { github: fakeSource() as Source },
     forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
@@ -3729,6 +3746,7 @@ async function gated(
   return {
     origin,
     opened,
+    runs,
     outcomes: report.results.map((r) => r.outcome),
     statuses: report.results.map((r) => [r.planned.unit.id, r.status]),
   }
@@ -3976,6 +3994,57 @@ it("fires the gate when its judge can't run", async () => {
   )
   expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
   expect(opened[0]?.body).toContain("- risk: judge didn't run: the provider fell over\n")
+})
+
+it("shows the judge the slice as pushed, whatever the steps did to the clone's replace refs, git config and attributes", async () => {
+  for (const hide of [
+    async (dir: string) => {
+      const tree = (await git(dir, 'rev-parse', 'HEAD~1^{tree}')).stdout
+      const decoy = (await git(dir, 'commit-tree', tree, '-p', 'HEAD^', '-m', 'decoy')).stdout
+      await git(dir, 'replace', 'HEAD', decoy)
+    },
+    (dir: string) =>
+      writeFile(join(dir, '.away/gitconfig'), '[diff]\n\texternal = true\n', { flag: 'a' }),
+    (dir: string) => writeFile(join(dir, '.gitattributes'), '* -diff\n'),
+  ]) {
+    let stepEnv: NodeJS.ProcessEnv = {}
+    const { outcomes } = await gated(
+      `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+      async (dir, skill, env) => {
+        if (skill !== 'judge') {
+          stepEnv = env
+          await commitFile(dir, 'db/001.sql', 'DROP TABLE users;\n')
+          return hide(dir)
+        }
+        const diff = await execa(bin('git'), ['diff', env.AWAYWORK_FROM ?? '', 'HEAD'], {
+          cwd: dir,
+          env,
+          extendEnv: false,
+        })
+        await verdict(diff.stdout.includes('+DROP TABLE') ? 'fires' : 'clear', 'drops users')(dir)
+      },
+    )
+    expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
+    expect(stepEnv.GIT_CONFIG_GLOBAL).toMatch(/\.away\/gitconfig$/)
+    expect(stepEnv).not.toHaveProperty('GIT_NO_REPLACE_OBJECTS')
+    expect(stepEnv).not.toHaveProperty('GIT_ATTR_SOURCE')
+  }
+})
+
+it('judges a slice on a provider that ran its steps without a fallback unit of its own, and on no other', async () => {
+  const { runs } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(verdict('clear')),
+    { items: async () => [issue(1), issue(2), issue(3)], fallback: { codex: 1, claude: 5 } },
+  )
+  expect(runs).toEqual([
+    'codex:implement:1',
+    'codex:judge:1',
+    'claude:implement:2',
+    'claude:judge:2',
+    'claude:implement:3',
+    'claude:judge:3',
+  ])
 })
 
 it('pushes onto your PR when its judge fired, the card atop the summary in the report', async () => {

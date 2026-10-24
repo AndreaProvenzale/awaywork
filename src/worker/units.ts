@@ -67,6 +67,7 @@ import { shortage } from './watchdog.js'
 import {
   configSecrets,
   copyOut,
+  judgeEnv,
   notSymlink,
   outputFile,
   type Previous,
@@ -299,14 +300,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
     /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the slice's `out/`. */
     const judge: Publisher['judge'] = async (gate, skill, unit, dir, from) => {
-      // A judge is part of its slice, which the fallback units already count.
-      const { provider: id, passed } = route(unit.providers, allowances, {})
+      // On a provider that ran a step of its slice, a judge rides on that step's fallback unit; elsewhere it takes one.
+      const ranSlice = new Set(
+        done
+          .filter((r) => (r.planned.slice ?? 0) === at && r.status !== 'skipped')
+          .map((r) => r.provider),
+      )
+      const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
+      const { provider: id, passed } = route(unit.providers, allowances, counted)
       const provider = id && input.providers[id]
       const a = id && allowances[id]
       if (!id || !provider || !a)
         return `no provider left: ${passed.join('; ') || 'none configured'}`
+      if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
       const image = input.config.repos[unit.repo]?.image
-      if (contained() && !image) return `no image for ${unit.repo}`
       const entry = input.config.providers.find((c) => c.id === id)
       const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
       const name = `judge-${gate}-${slug(skill)}`
@@ -353,7 +360,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           prompt,
           maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
           model,
-          env: workerEnv(input.ctx.env, dir, withheld),
+          env: await judgeEnv(input.ctx.env, dir, withheld, from, original),
           config: entry?.config,
           configDir: input.configDir,
           plugin,

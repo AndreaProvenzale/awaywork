@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -359,6 +359,12 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
       await writeFile(join(dir, 'src/new.ts'), 'y')
       await git(dir, 'add', 'src/new.ts')
     },
+    (dir: string) => link(join(dir, '.away/out/pr.md'), join(dir, '.away/pr-link')),
+    // Git normalizes the CRLFs on add and writes them back on checkout: only the bytes differ.
+    async (dir: string) => {
+      await writeFile(join(dir, '.away/.gitattributes'), 'out/pr.md text eol=crlf\n')
+      await writeFile(join(dir, '.away/out/pr.md'), 'Add VAT\r\n\r\nDone.\r\n')
+    },
   ]) {
     const { dir, from } = await slice()
     const tip = await git(dir, 'rev-parse', 'HEAD')
@@ -373,6 +379,7 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     expect(await git(dir, 'rev-parse', 'HEAD')).toBe(tip)
     expect(await git(dir, 'status', '--porcelain')).toBe('')
     expect(await readFile(join(dir, '.away/out/pr.md'), 'utf8')).toBe('Add VAT\n\nDone.\n')
+    expect((await stat(join(dir, '.away/out/pr.md'))).nlink).toBe(1)
     expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
   }
 })

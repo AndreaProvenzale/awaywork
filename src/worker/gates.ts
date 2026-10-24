@@ -133,6 +133,7 @@ async function judged(
     for (const file of [outputFile.report, 'verdict']) await rm(join(out, file), { force: true })
   }
   await clearOwn()
+  // Git reads `out/` through attributes, a `.away/.gitattributes` too, so it's also compared and put back as bytes.
   const files = await filesIn(out)
   const start = await head(dir)
   const saved = await snapshot(dir)
@@ -173,7 +174,7 @@ function reportLines(report: string): string[] {
 
 type Entry = Buffer | 'dir' | 'other'
 
-/** Each file and folder under `out`, a regular file by its bytes, read without following a link or blocking on a FIFO. */
+/** Each file and folder under `out`, a regular file with one link by its bytes, read without following a link or blocking on a FIFO. */
 async function filesIn(out: string): Promise<Map<string, Entry>> {
   const files = new Map<string, Entry>()
   for (const entry of await readdir(out, { recursive: true, withFileTypes: true })) {
@@ -184,7 +185,8 @@ async function filesIn(out: string): Promise<Map<string, Entry>> {
     }
     const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
     try {
-      files.set(relative(out, path), await file.readFile())
+      const linked = (await file.stat()).nlink > 1
+      files.set(relative(out, path), linked ? 'other' : await file.readFile())
     } finally {
       await file.close()
     }
