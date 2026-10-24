@@ -93,8 +93,9 @@ describe('the launcher', () => {
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', dir, ...commit, '-m', 'start'])
     expect(await runSetup('true', dir, env, () => {}, { secrets: [] })).toBeUndefined()
-    const { check, rememberGitConfig } = createChecks({ env, secrets: [] })
-    rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+    const { check, rememberClone } = createChecks({ env, secrets: [] })
+    const start = (await execa('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout
+    rememberClone(dir, await readFile(join(dir, '.git', 'config'), 'utf8'), start)
     const unit = { untrusted: false } as Unit
     expect((await check('exit 0', unit, dir, () => {})).failed).toBeUndefined()
     expect(launched()).toEqual([
@@ -218,7 +219,7 @@ describe('the launcher', () => {
     await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
     const envs = [
       commandEnv(base, dir, []),
-      checkEnv(base, dir, [], 'abc123'),
+      checkEnv(base, dir, [], 'abc123', 'abc123'),
       ...vi.mocked(launch).mock.calls.map(([, , o]) => o.env),
     ]
     const set = envs.flatMap((env) => Object.keys(env ?? {})).filter((name) => !(name in base))

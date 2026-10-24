@@ -47,15 +47,20 @@ export function createChecks(input: ChecksInput) {
   const baselines = new Map<string, Set<string>>()
   // Each clone's git config as cloned, put back after anything ran the worker's code in it.
   const gitConfigs = new Map<string, string>()
+  // Each clone's chain start, whose tree the checks' git reads attributes from.
+  const starts = new Map<string, string>()
   const restoreGit = (dir: string) => restoreGitConfig(dir, gitConfigs.get(dir) ?? '')
-  const rememberGitConfig = (dir: string, config: string) => gitConfigs.set(dir, config)
+  const rememberClone = (dir: string, config: string, start: string) => {
+    gitConfigs.set(dir, config)
+    starts.set(dir, start)
+  }
   const baseline = async (dir: string) => {
     baselines.set(dir, new Set(await uncommitted(dir)))
   }
 
   /**
    * Runs a condition's command in the clone outside the model, once per commit, with none of the
-   * secrets, and git reading history as it is, not as the clone's replace refs say.
+   * secrets, and git reading history as it is, not as the clone's replace refs say, and attributes from the chain's start.
    */
   const check = async (
     command: string,
@@ -74,7 +79,7 @@ export function createChecks(input: ChecksInput) {
     const key = `${dir} ${await head(dir)} ${from} ${command}`
     const known = left.length || fresh ? undefined : checks.get(key)
     if (known) return known
-    const env = checkEnv(input.env, dir, input.secrets, from)
+    const env = checkEnv(input.env, dir, input.secrets, from, starts.get(dir))
     const result = await runCommand(command, dir, env, {
       secrets: [],
       signal: input.signal,
@@ -115,7 +120,7 @@ export function createChecks(input: ChecksInput) {
     return { facts, check: ran }
   }
 
-  return { check, factsFor, restoreGit, rememberGitConfig, baseline }
+  return { check, factsFor, restoreGit, rememberClone, baseline }
 }
 
 export const git = async (dir: string, ...args: string[]) =>
