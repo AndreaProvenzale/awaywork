@@ -14,6 +14,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'How it works', link: '/guide/how-it-works' },
       { text: 'Configuration', link: '/guide/configuration' },
       { text: 'Chains', link: '/guide/chains' },
+      { text: 'Where results go', link: '/guide/results' },
       { text: 'Custom sources', link: '/guide/custom-sources' },
       { text: 'Skills', link: '/guide/skills' },
       { text: 'Scheduling', link: '/guide/scheduling' },
