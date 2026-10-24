@@ -11,6 +11,8 @@ const CHECK_LOG_CHARS = 8000
 
 export interface Check {
   output: string
+  /** The command's own stdout, without stderr, when it ran. */
+  stdout?: string
   failed?: string
   /** Cut short by Ctrl-C or the window's end: the condition is unknown, not false. */
   stopped?: true
@@ -124,9 +126,22 @@ async function uncommitted(dir: string): Promise<string[]> {
 
 /** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
 async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
+  return (await changedPaths(dir, `origin/${start || 'HEAD'}`, globs)).length > 0
+}
+
+/** The paths the commits since `from` change, those matching `globs` when given; a rename counts as both of its paths. */
+export async function changedPaths(dir: string, from: string, globs: string[] = []) {
   const paths = globs.map((glob) => `:(glob)${glob}`)
-  const since = `origin/${start || 'HEAD'}...HEAD`
-  return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
+  const diff = await git(
+    dir,
+    'diff',
+    '--name-only',
+    '--no-renames',
+    `${from}...HEAD`,
+    '--',
+    ...paths,
+  )
+  return diff.split('\n').filter(Boolean)
 }
 
 /** The command and the tail of its output. */

@@ -520,7 +520,7 @@ function unitResult(u: UnitResult, why = (reason: string) => reason): string {
     o?.kind === 'pr'
       ? `${o.url}${opened(o)}`
       : o?.kind === 'pushed'
-        ? `pushed onto ${o.url || o.branch}`
+        ? `pushed onto ${o.url || o.branch}${o.gated ? `, ${o.gated}` : ''}`
         : o?.kind === 'report'
           ? `report${unposted(o)}`
           : o?.kind === 'review'

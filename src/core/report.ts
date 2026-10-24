@@ -358,8 +358,10 @@ function result(u: UnitResult): string {
     return `${u.outcome.url} (${counted(u.outcome.commits, 'commit')}${opened(u.outcome)})${verdict}`
   if (u.outcome?.kind === 'report') return `report below${unposted(u.outcome)}${verdict}`
   if (u.outcome?.kind === 'review') return `${u.outcome.url} (${reviewed(u.outcome)})${verdict}`
-  if (u.outcome?.kind === 'pushed')
-    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}, report below${verdict}`
+  if (u.outcome?.kind === 'pushed') {
+    const gated = u.outcome.gated ? `, ${u.outcome.gated}` : ''
+    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}${gated}, report below${verdict}`
+  }
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 

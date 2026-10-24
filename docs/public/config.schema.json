@@ -697,8 +697,8 @@
       "type": "string"
     },
     "repos": {
-      "default": {},
       "description": "Per-repo settings, keyed by owner/name",
+      "default": {},
       "type": "object",
       "propertyNames": {
         "type": "string",
@@ -728,6 +728,40 @@
             "description": "Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published",
             "type": "string"
           },
+          "gates": {
+            "description": "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed or command",
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[\\w-]+$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "changed": {
+                  "description": "Git globs from the repo root; fires when the slice's commits change a matching path",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "command": {
+                  "description": "A shell command awaywork runs in the clone, outside the model; a non-zero exit fires, with its stdout as the line; so does one that can't run, times out, or names a file the commits changed",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
           "test": {
             "description": "Targeted test command, given to the worker in its prompt",
             "type": "string"
@@ -738,6 +772,40 @@
           },
           "image": {
             "description": "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gates": {
+      "description": "Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body",
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[\\w-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "changed": {
+            "description": "Git globs from the repo root; fires when the slice's commits change a matching path",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "command": {
+            "description": "A shell command awaywork runs in the clone, outside the model; a non-zero exit fires, with its stdout as the line; so does one that can't run, times out, or names a file the commits changed",
             "type": "string",
             "minLength": 1
           }
@@ -944,7 +1012,7 @@
             }
           },
           "deliver": {
-            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it",
+            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it",
             "type": "string",
             "enum": [
               "draft_pr",
