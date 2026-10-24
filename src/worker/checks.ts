@@ -5,7 +5,14 @@ import { bin } from '../config/paths.js'
 import { type Facts, holds } from '../core/condition.js'
 import type { Condition, Unit } from '../core/types.js'
 import { runCommand } from './setup.js'
-import { checkEnv, inClone, refuseSymlinks, restoreGitConfig, writeOutput } from './workspace.js'
+import {
+  checkEnv,
+  gateEnv,
+  inClone,
+  refuseSymlinks,
+  restoreGitConfig,
+  writeOutput,
+} from './workspace.js'
 
 const CHECK_LOG_CHARS = 8000
 
@@ -29,7 +36,7 @@ export interface CheckOptions {
   from?: string
   /** It decides what is published (`until`): files left uncommitted fail it. */
   published?: boolean
-  /** A gate's: runs even when this commit's result is known, keeps nothing, and its git reads attributes from the chain's start. */
+  /** A gate's: runs even when this commit's result is known, keeps nothing, and its git reads attributes from the chain's start on a fresh global config. */
   gate?: boolean
 }
 
@@ -79,7 +86,9 @@ export function createChecks(input: ChecksInput) {
     const key = `${dir} ${await head(dir)} ${from} ${command}`
     const known = left.length || gate ? undefined : checks.get(key)
     if (known) return known
-    const env = checkEnv(input.env, dir, input.secrets, from, gate ? starts.get(dir) : undefined)
+    const env = gate
+      ? await gateEnv(input.env, dir, input.secrets, from, starts.get(dir))
+      : checkEnv(input.env, dir, input.secrets, from)
     const result = await runCommand(command, dir, env, {
       secrets: [],
       signal: input.signal,

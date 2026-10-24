@@ -67,7 +67,7 @@ import { shortage } from './watchdog.js'
 import {
   configSecrets,
   copyOut,
-  judgeEnv,
+  gateEnv,
   notSymlink,
   outputFile,
   type Previous,
@@ -360,7 +360,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           prompt,
           maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
           model,
-          env: await judgeEnv(input.ctx.env, dir, withheld, from, original),
+          env: await gateEnv(input.ctx.env, dir, withheld, from, original),
           config: entry?.config,
           configDir: input.configDir,
           plugin,
