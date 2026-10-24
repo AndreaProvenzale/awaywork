@@ -343,8 +343,8 @@ export function workerEnv(
 }
 
 /**
- * The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs and reading attributes from the
- * chain's `start` rather than the worktree, and the slice's base as `AWAYWORK_FROM`.
+ * The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs and, for a gate's, reading attributes
+ * from the chain's `start` rather than the worktree, and the slice's base as `AWAYWORK_FROM`.
  */
 export function checkEnv(
   env: NodeJS.ProcessEnv,

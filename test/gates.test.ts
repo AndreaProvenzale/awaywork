@@ -148,7 +148,7 @@ it('fires a command gate on a non-zero exit, with its stdout on one line, else w
   ])
   expect(check).toHaveBeenCalledWith('scripts/clean.sh', gates, dir, expect.any(Function), {
     from,
-    fresh: true,
+    gate: true,
   })
 })
 

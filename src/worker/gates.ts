@@ -19,7 +19,7 @@ export interface Fired {
 
 /**
  * Runs the unit's gates: their globs on the slice's commits since `from`, their commands in the clone, each time
- * afresh, with `from` as `AWAYWORK_FROM`.
+ * afresh, with `from` as `AWAYWORK_FROM` and git reading attributes from the chain's start.
  * A command fires when it exits non-zero, its stdout the line, and fails closed: also when it can't
  * run, times out or is stopped, and, without running, when a file it names by its path from the repo
  * root isn't the one the clone held at `start`, before the chain's setup and workers.
@@ -43,7 +43,7 @@ export async function runGates(
         lines.push(`\`${swapped}\` changed, not run`)
         continue
       }
-      const ran = await check(command, unit, dir, () => {}, { from, fresh: true })
+      const ran = await check(command, unit, dir, () => {}, { from, gate: true })
       if (!ran.failed) continue
       const unchecked = ran.timedOut || ran.stopped || ran.refused
       lines.push(unchecked ? `\`${command}\` not checked: ${ran.failed}` : ran.stdout || ran.failed)
