@@ -3456,7 +3456,7 @@ it("runs a chain's notify unit events once it published, with its PR and each st
       - { loop: [review, fix], until: { verdict: approve }, max: 3 }
       - plan
 notify:
-  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT" >> '${out}'
+  command: echo "$AWAYWORK_UNIT $AWAYWORK_STATUS $AWAYWORK_PR_URL|$AWAYWORK_REPORT|$AWAYWORK_VERDICT|$AWAYWORK_OUT_DIR|$AWAYWORK_ITEM_KEY" >> '${out}'
 `
   const provider = looper({ 'acme-api-1-review-1': 'changes', 'acme-api-1-review-2': 'approve' })
   const firedBefore: Record<string, number> = {}
@@ -3480,16 +3480,20 @@ notify:
   const pr = 'https://example.com/acme/api/pull/away/acme-api-1'
   const lines = (await readFile(out, 'utf8')).trim().split('\n').slice(0, 5)
   expect(lines).toEqual([
-    expect.stringMatching(`^acme-api-1 done ${pr}\\|/.+/units/acme-api-1/1-implement/out/pr\\.md$`),
     expect.stringMatching(
-      `^acme-api-1-review-1 done ${pr}\\|/.+/units/acme-api-1/2-review/out/report\\.md$`,
-    ),
-    expect.stringMatching(`^acme-api-1-fix-1 done ${pr}\\|/.+/units/acme-api-1/3-fix/out/pr\\.md$`),
-    expect.stringMatching(
-      `^acme-api-1-review-2 done ${pr}\\|/.+/units/acme-api-1/4-review/out/report\\.md$`,
+      `^acme-api-1 done ${pr}\\|/.+/units/acme-api-1/1-implement/out/pr\\.md\\|\\|/.+/units/acme-api-1/1-implement/out\\|acme/api#1$`,
     ),
     expect.stringMatching(
-      `^acme-api-1-plan done ${pr}\\|/.+/units/acme-api-1/5-plan/out/report\\.md$`,
+      `^acme-api-1-review-1 done ${pr}\\|/.+/units/acme-api-1/2-review/out/report\\.md\\|changes\\|/.+/units/acme-api-1/2-review/out\\|acme/api#1$`,
+    ),
+    expect.stringMatching(
+      `^acme-api-1-fix-1 done ${pr}\\|/.+/units/acme-api-1/3-fix/out/pr\\.md\\|\\|/.+/units/acme-api-1/3-fix/out\\|acme/api#1$`,
+    ),
+    expect.stringMatching(
+      `^acme-api-1-review-2 done ${pr}\\|/.+/units/acme-api-1/4-review/out/report\\.md\\|approve\\|/.+/units/acme-api-1/4-review/out\\|acme/api#1$`,
+    ),
+    expect.stringMatching(
+      `^acme-api-1-plan done ${pr}\\|/.+/units/acme-api-1/5-plan/out/report\\.md\\|\\|/.+/units/acme-api-1/5-plan/out\\|acme/api#1$`,
     ),
   ])
   const reports = lines.flatMap((line) =>

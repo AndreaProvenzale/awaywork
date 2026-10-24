@@ -221,10 +221,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const pr = outcome?.kind === 'pr' ? outcome.url : undefined
       for (const r of slice) {
         if (input.signal?.aborted) return
-        const { id, skill, deliver } = r.planned.unit
+        const { id, skill, deliver, items, repo } = r.planned.unit
         const chainId = r.planned.chain ?? id
-        const out =
-          r.step && join(input.runDir, 'units', chainId, r.step, 'out', outputFile[deliver])
+        const outDir = r.step && join(input.runDir, 'units', chainId, r.step, 'out')
+        const out = outDir && join(outDir, outputFile[deliver])
         const failure = await notifyUnit(
           hook.command,
           {
@@ -232,8 +232,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             id,
             skill,
             status: r.status,
+            items,
+            repo,
+            verdict: r.verdict,
             pr,
             report: out && existsSync(out) ? out : undefined,
+            outDir: outDir && existsSync(outDir) ? outDir : undefined,
           },
           input.signal,
         )
