@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -10,7 +10,7 @@ import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Gate, Unit } from '../src/core/types.js'
 import type { Check } from '../src/worker/checks.js'
-import { gatesSection, runGates } from '../src/worker/gates.js'
+import { gatesSection, runGates, runJudges } from '../src/worker/gates.js'
 import { fakeItem } from './fakes/items.js'
 
 const git = async (dir: string, ...args: string[]) =>
@@ -35,7 +35,10 @@ async function committed(files: string[]) {
 const unit = (gates: Record<string, Partial<Gate>>) =>
   ({
     gates: Object.fromEntries(
-      Object.entries(gates).map(([name, g]) => [name, { changed: [], commands: [], ...g }]),
+      Object.entries(gates).map(([name, g]) => [
+        name,
+        { changed: [], commands: [], skills: [], ...g },
+      ]),
     ),
   }) as unknown as Unit
 
@@ -50,12 +53,14 @@ sources: { github: { repos: [acme/*] } }
 gates:
   schema: { changed: ["**/migrations/**"] }
   routes: { command: scripts/route-diff.sh }
+  risk: { skill: judge }
 repos:
   acme/api:
     gates:
       schema: { changed: "src/db/schema/**" }
       routes: { command: scripts/api-routes.sh }
       queues: { changed: ["src/jobs/**"] }
+      risk: { skill: our-judge }
 queue: [{ skill: implement }]
 `)
   const issue = (repo: string) =>
@@ -68,17 +73,23 @@ queue: [{ skill: implement }]
   })
   const gatesOf = (repo: string) => plan.units.find((p) => p.unit.repo === repo)?.unit.gates
   expect(gatesOf('acme/api')).toEqual({
-    schema: { changed: ['**/migrations/**', 'src/db/schema/**'], commands: [] },
-    routes: { changed: [], commands: ['scripts/route-diff.sh', 'scripts/api-routes.sh'] },
-    queues: { changed: ['src/jobs/**'], commands: [] },
+    schema: { changed: ['**/migrations/**', 'src/db/schema/**'], commands: [], skills: [] },
+    routes: {
+      changed: [],
+      commands: ['scripts/route-diff.sh', 'scripts/api-routes.sh'],
+      skills: [],
+    },
+    risk: { changed: [], commands: [], skills: ['judge', 'our-judge'] },
+    queues: { changed: ['src/jobs/**'], commands: [], skills: [] },
   })
   expect(gatesOf('acme/web')).toEqual({
-    schema: { changed: ['**/migrations/**'], commands: [] },
-    routes: { changed: [], commands: ['scripts/route-diff.sh'] },
+    schema: { changed: ['**/migrations/**'], commands: [], skills: [] },
+    routes: { changed: [], commands: ['scripts/route-diff.sh'], skills: [] },
+    risk: { changed: [], commands: [], skills: ['judge'] },
   })
 })
 
-it('takes one of changed or command per gate, each with something in it', () => {
+it('takes one of changed, command or skill per gate, each with something in it', () => {
   const problems = (gates: string) => {
     try {
       parseConfig(
@@ -90,9 +101,12 @@ it('takes one of changed or command per gate, each with something in it', () => 
     }
   }
   expect(problems('{ deps: { changed: package.json, command: "true" } }')).toEqual([
-    'gates.deps: expected changed or command, not both',
+    'gates.deps: expected one of changed, command or skill',
   ])
-  expect(problems('{ deps: {} }')).toEqual(['gates.deps: expected changed or command'])
+  expect(problems('{ deps: { command: "true", skill: judge } }')).toEqual([
+    'gates.deps: expected one of changed, command or skill',
+  ])
+  expect(problems('{ deps: {} }')).toEqual(['gates.deps: expected changed, command or skill'])
   expect(problems('{ deps: { changed: [] } }')).toEqual([
     'gates.deps.changed: expected at least one glob',
   ])
@@ -263,4 +277,110 @@ it('lays out the decision card, or the gates that ran when none fired', () => {
     '## Needs a decision\n\n### Gates (from scripts)\n\n- schema: migrations/20261023_add_vat_mode.ts\n- routes: + GET /exports/vat   + POST /exports/vat/retry\n\n---',
   )
   expect(gatesSection(gates, [])).toBe('Gates: none fired (schema, deps, routes)\n\n---')
+})
+
+it('puts the judges after the scripts, in a part of their own, and a card with only theirs', () => {
+  const judged = { name: 'risk', line: 'VAT rounding moved to each line', judged: true as const }
+  expect(gatesSection(['schema', 'risk'], [{ name: 'schema', line: 'db/1.sql' }, judged])).toBe(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- schema: db/1.sql\n\n### Judge\n\n- risk: VAT rounding moved to each line\n\n---',
+  )
+  expect(gatesSection(['risk'], [judged])).toBe(
+    '## Needs a decision\n\n### Judge\n\n- risk: VAT rounding moved to each line\n\n---',
+  )
+})
+
+/** A clone whose slice since `from` adds `src/app.ts`, with its PR body in `.away/out/`, which git ignores. */
+async function slice() {
+  const { dir, from } = await committed(['src/app.ts'])
+  await writeFile(join(dir, '.git/info/exclude'), '/.away/\n')
+  await mkdir(join(dir, '.away/out'), { recursive: true })
+  await writeFile(join(dir, '.away/out/pr.md'), 'Add VAT\n\nDone.\n')
+  await writeFile(join(dir, '.away/out/diff.patch'), 'the diff\n')
+  return { dir, from }
+}
+
+/** A judge that does `act` in the clone, then leaves `verdict` and `report`, and says why it didn't run, if so. */
+const judging = (
+  verdict: string,
+  report = '',
+  act: (dir: string) => Promise<unknown> = async () => {},
+  why?: string,
+) =>
+  vi.fn(async (_gate: string, _skill: string, _unit: Unit, dir: string) => {
+    await act(dir)
+    await writeFile(join(dir, '.away/out/verdict'), `${verdict}\n`)
+    await writeFile(join(dir, '.away/out/report.md'), report)
+    return why
+  })
+
+it("fires a gate on its judge's verdict, with the report's lines, and runs every judge it has", async () => {
+  const { dir, from } = await slice()
+  const gates = unit({ risk: { skills: ['judge', 'our-judge'] }, ok: { skills: ['judge'] } })
+  const judge = vi.fn(
+    async (gate: string, skill: string, _unit: Unit, dir: string, _from: string) => {
+      const fires = gate === 'risk' && skill === 'our-judge'
+      await writeFile(join(dir, '.away/out/verdict'), fires ? 'fires\n' : 'clear\n')
+      await writeFile(
+        join(dir, '.away/out/report.md'),
+        '- VAT rounding moved to each line → totals change\n\n* <!-- the rest\n',
+      )
+      return undefined
+    },
+  )
+  expect(await runJudges(judge, gates, dir, from)).toEqual([
+    { name: 'risk', line: 'VAT rounding moved to each line → totals change', judged: true },
+    { name: 'risk', line: '&lt;!-- the rest', judged: true },
+  ])
+  expect(judge.mock.calls.map((c) => [c[0], c[1], c[4]])).toEqual([
+    ['risk', 'judge', from],
+    ['risk', 'our-judge', from],
+    ['ok', 'judge', from],
+  ])
+  const quiet = judging('fires')
+  expect(await runJudges(quiet, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+    { name: 'risk', line: 'fired, with no report', judged: true },
+  ])
+})
+
+it('drops what a judge changed in the clone, and fires its gate whatever it says', async () => {
+  for (const act of [
+    async (dir: string) => {
+      await writeFile(join(dir, 'src/app.ts'), 'y')
+      await git(dir, 'commit', '-qam', 'judged')
+    },
+    (dir: string) => writeFile(join(dir, '.away/out/pr.md'), 'Add VAT\n\nReviewed: safe.\n'),
+    (dir: string) => writeFile(join(dir, '.away/out/extra.md'), 'x'),
+    async (dir: string) => {
+      await rm(join(dir, '.away/out'), { recursive: true })
+      await mkdir(join(dir, '.away/out'))
+    },
+    (dir: string) => writeFile(join(dir, 'src/app.ts'), 'y'),
+    async (dir: string) => {
+      await writeFile(join(dir, 'src/new.ts'), 'y')
+      await git(dir, 'add', 'src/new.ts')
+    },
+  ]) {
+    const { dir, from } = await slice()
+    const tip = await git(dir, 'rev-parse', 'HEAD')
+    const judge = judging('clear', '', act)
+    expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+      {
+        name: 'risk',
+        line: 'the judge changed the clone; awaywork dropped its changes',
+        judged: true,
+      },
+    ])
+    expect(await git(dir, 'rev-parse', 'HEAD')).toBe(tip)
+    expect(await git(dir, 'status', '--porcelain')).toBe('')
+    expect(await readFile(join(dir, '.away/out/pr.md'), 'utf8')).toBe('Add VAT\n\nDone.\n')
+    expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
+  }
+})
+
+it("fails closed: a judge that didn't run or finish fires, whatever it wrote", async () => {
+  const { dir, from } = await slice()
+  const judge = judging('clear', '', async () => {}, 'reached the window end')
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([
+    { name: 'risk', line: "judge didn't run: reached the window end", judged: true },
+  ])
 })

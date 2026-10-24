@@ -11,7 +11,7 @@ import {
   git,
   type RanCheck,
 } from './checks.js'
-import { describeFired, gatesSection, runGates } from './gates.js'
+import { describeFired, gatesSection, runGates, runJudges } from './gates.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { leaveReview } from './review.js'
 import {
@@ -95,6 +95,14 @@ export interface Publisher {
     log: (line: string) => void,
     options?: CheckOptions,
   ) => Promise<Check>
+  /** Runs gate `gate`'s judge `skill` on the slice's commits since `from` in the clone, as a step runs; why it didn't run or finish, if so. */
+  judge: (
+    gate: string,
+    skill: string,
+    unit: Unit,
+    dir: string,
+    from: string,
+  ) => Promise<string | undefined>
 }
 
 /**
@@ -135,6 +143,7 @@ export async function publishSlice(
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
   const failed = await verify(deps, unit, dir, from)
   const fired = await runGates(deps.check, unit, dir, from, start)
+  fired.push(...(await runJudges(deps.judge, unit, dir, from)))
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {

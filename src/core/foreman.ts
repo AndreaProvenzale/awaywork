@@ -327,16 +327,17 @@ export function planRun(input: {
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
 }
 
-/** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs and command join the top-level ones. */
+/** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs, command and skill join the top-level ones. */
 function gatesFor(config: Config, repo: string): Record<string, Gate> | undefined {
   const gates = new Map<string, Gate>()
   for (const [name, g] of [
     ...Object.entries(config.gates),
     ...Object.entries(config.repos[repo]?.gates ?? {}),
   ]) {
-    const gate = gates.get(name) ?? { changed: [], commands: [] }
+    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [] }
     gate.changed.push(...(g.changed ?? []))
     if (g.command) gate.commands.push(g.command)
+    if (g.skill) gate.skills.push(g.skill)
     gates.set(name, gate)
   }
   return gates.size ? Object.fromEntries(gates) : undefined

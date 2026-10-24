@@ -15,6 +15,7 @@ export const builtinSkills: Record<string, SkillMeta> = {
   plan: { deliver: 'report' },
   implement: { type: 'feat' },
   review: { deliver: 'report' },
+  judge: { deliver: 'report' },
 }
 
 const lookupOrder: Origin[] = ['user', 'repo', 'builtin']

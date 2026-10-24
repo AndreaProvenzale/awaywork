@@ -3706,7 +3706,8 @@ async function gated(
     async *run(job) {
       const body = await act(job.dir, job.unit.skill)
       const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
-      await writeFile(join(job.dir, '.away/out/pr.md'), text)
+      // A gate's judge only reports.
+      if (job.unit.deliver !== 'report') await writeFile(join(job.dir, '.away/out/pr.md'), text)
       yield { type: 'done', ok: true, turns: 1 }
     },
   }
@@ -3726,6 +3727,7 @@ async function gated(
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
   return {
+    origin,
     opened,
     outcomes: report.results.map((r) => r.outcome),
     statuses: report.results.map((r) => [r.planned.unit.id, r.status]),
@@ -3893,6 +3895,104 @@ it('diffs a when: { changed } from where the chain started as cloned, wherever t
     ['acme-api-1', 'done'],
     ['acme-api-1-fix', 'done'],
   ])
+})
+
+const riskGate = 'gates: { risk: { skill: judge } }'
+
+/** Each step commits `src/app.ts`, and the gate's judge does `judge` in the clone. */
+const judgedBy = (judge: (dir: string) => Promise<unknown>) => (dir: string, skill: string) =>
+  skill === 'judge' ? judge(dir) : commitFile(dir, 'src/app.ts', 'x')
+
+const verdict =
+  (word: string, report = '') =>
+  async (dir: string) => {
+    await writeFile(join(dir, '.away/out/verdict'), `${word}\n`)
+    await writeFile(join(dir, '.away/out/report.md'), report)
+  }
+
+it("drafts a deliver: pr PR when its judge fires, the report's lines in the card's Judge part", async () => {
+  let prompt = ''
+  const { opened, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(async (dir) => {
+      prompt = await readFile(join(dir, '.away/prompt.md'), 'utf8')
+      await verdict('fires', '- VAT rounding moved from the invoice total to each line\n')(dir)
+    }),
+  )
+  expect(outcomes[0]).toMatchObject({ kind: 'pr', draft: 'gate risk fired' })
+  expect(opened[0]?.body).toMatch(
+    /^implement\n\n## Needs a decision\n\n### Judge\n\n- risk: VAT rounding moved from the invoice total to each line\n\n---\n\nDone\./,
+  )
+  expect(prompt).toMatch(/You judge the commits on this branch since `[0-9a-f]{40}`/)
+  expect(prompt).toContain('# Judge')
+})
+
+it("can't clear a script's gate: a judge that doesn't fire adds nothing, and its gate is listed when none fired", async () => {
+  const quiet = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(verdict('clear', '- nothing to decide')),
+  )
+  expect(quiet.outcomes[0]).toMatchObject({ ready: true })
+  expect(quiet.opened[0]?.body).toMatch(/^implement\n\nGates: none fired \(risk\)\n\n---\n\nDone\./)
+
+  const scripted = await gated(
+    `${routesGate}\nrepos: { acme/api: { gates: { routes: { skill: judge } } } }\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(verdict('clear', 'routes: reviewed, safe')),
+  )
+  expect(scripted.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(scripted.opened[0]?.body).toContain(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- routes: + GET /exports/vat\n\n---\n\nDone.',
+  )
+})
+
+it('drops what the judge changed and fires its gate, publishing the steps’ commits and body', async () => {
+  const { origin, opened, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(async (dir) => {
+      await commitFile(dir, 'src/judged.ts', 'x')
+      await writeFile(join(dir, '.away/out/pr.md'), 'implement\n\nReviewed: safe.')
+      await writeFile(join(dir, 'src/app.ts'), 'y')
+      await verdict('clear')(dir)
+    }),
+  )
+  expect(outcomes[0]).toMatchObject({ kind: 'pr', commits: 1, draft: 'gate risk fired' })
+  expect(opened[0]?.body).toContain(
+    '### Judge\n\n- risk: the judge changed the clone; awaywork dropped its changes\n\n---\n\nDone.',
+  )
+  expect(opened[0]?.body).not.toContain('Reviewed')
+  const tip = outcomes[0]?.kind === 'pr' ? outcomes[0].head : ''
+  const files = (await git(origin, 'ls-tree', '-r', '--name-only', tip)).stdout
+  expect(files).toContain('src/app.ts')
+  expect(files).not.toContain('src/judged.ts')
+  expect((await git(origin, 'show', `${tip}:src/app.ts`)).stdout).toBe('x')
+})
+
+it("fires the gate when its judge can't run", async () => {
+  const { opened, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    judgedBy(async () => {
+      throw new Error('the provider fell over')
+    }),
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
+  expect(opened[0]?.body).toContain("- risk: judge didn't run: the provider fell over\n")
+})
+
+it('pushes onto your PR when its judge fired, the card atop the summary in the report', async () => {
+  const { outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: fix, deliver: push }]`,
+    judgedBy(verdict('fires', 'the export format changed → its consumers decide')),
+    {
+      items: async (origin) => {
+        await git(origin, 'branch', 'feature-1')
+        return [githubPr(1)]
+      },
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ kind: 'pushed', gated: 'gate risk fired' })
+  expect(outcomes[0]?.kind === 'pushed' && outcomes[0].text).toBe(
+    '## Needs a decision\n\n### Judge\n\n- risk: the export format changed → its consumers decide\n\n---\n\nfix\n\nDone.',
+  )
 })
 
 const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }'

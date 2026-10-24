@@ -729,7 +729,7 @@
             "type": "string"
           },
           "gates": {
-            "description": "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed or command",
+            "description": "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
             "default": {},
             "type": "object",
             "propertyNames": {
@@ -755,6 +755,11 @@
                 },
                 "command": {
                   "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "skill": {
+                  "description": "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
                   "type": "string",
                   "minLength": 1
                 }
@@ -806,6 +811,11 @@
           },
           "command": {
             "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+            "type": "string",
+            "minLength": 1
+          },
+          "skill": {
+            "description": "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
             "type": "string",
             "minLength": 1
           }

@@ -265,7 +265,7 @@ A custom source: any command that prints your open items as JSON.
 | `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
-| `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed or command |
+| `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
@@ -276,6 +276,7 @@ A custom source: any command that prints your open items as JSON.
 |---|---|---|---|
 | `changed` | string \| string[] |  | Git globs from the repo root; fires when the slice's commits change a matching path |
 | `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
+| `skill` | string |  | A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops |
 
 ## `gates.<key>`
 

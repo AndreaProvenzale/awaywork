@@ -28,6 +28,17 @@ export async function unknownSkills(config: Config, userDir: string): Promise<st
   const problems = config.skills
     .filter((name) => !resolveSkill(name, catalog))
     .map((name) => `skills: unknown skill "${name}" (not built in, not in ${userDir})`)
+  const gates = [
+    ...Object.entries(config.gates).map(([name, g]) => [`gates.${name}`, g] as const),
+    ...Object.entries(config.repos).flatMap(([repo, r]) =>
+      Object.entries(r.gates).map(([name, g]) => [`repos.${repo}.gates.${name}`, g] as const),
+    ),
+  ]
+  for (const [at, gate] of gates)
+    if (gate.skill && !resolveSkill(gate.skill, catalog))
+      problems.push(
+        `${at}.skill: unknown skill "${gate.skill}" (not built in, not in ${userDir}; a judge never comes from the repo)`,
+      )
   config.queue?.forEach((rule, i) => {
     for (const { step, at: path } of ruleSteps(rule)) {
       const at = `queue[${i}]${path.map((p) => (typeof p === 'number' ? `[${p}]` : `.${p}`)).join('')}`

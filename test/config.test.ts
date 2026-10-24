@@ -570,4 +570,13 @@ describe('skills', () => {
       'queue[0].then[0].loop[1]: unknown skill "our-fix" (not built in, not in /none)',
     ])
   })
+
+  it("checks a gate's judge, which never comes from the repo", async () => {
+    const cfg = parseConfig(
+      `${minimal}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { risk: { skill: our-judge } } } }`,
+    )
+    expect(await unknownSkills(cfg, '/none')).toEqual([
+      'repos.acme/api.gates.risk.skill: unknown skill "our-judge" (not built in, not in /none; a judge never comes from the repo)',
+    ])
+  })
 })
