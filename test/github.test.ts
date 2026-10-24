@@ -842,4 +842,44 @@ describe('github forge', () => {
     ])
     expect(await stackOn(stack([9, 11]))).toEqual([])
   })
+
+  it('leaves a pending review at the given commit, refused in GitHub words', async () => {
+    const reviews = 'repos/acme/api/pulls/1/reviews'
+    const url = 'https://github.com/acme/api/pull/1#pullrequestreview-5'
+    const sent: unknown[] = []
+    const answering = (post: () => string): Exec & { calls: string[][] } => {
+      const calls: string[][] = []
+      const run = async (cmd: string, args: string[]) => {
+        calls.push([cmd, ...args])
+        sent.push(JSON.parse(await readFile(args.at(-1) as string, 'utf8')))
+        return post()
+      }
+      return Object.assign(run, { calls })
+    }
+    const review = { body: 'Looks fine.', comments: [{ path: 'a.ts', line: 2, body: 'Why?' }] }
+    const run = answering(() => JSON.stringify({ html_url: url, state: 'PENDING' }))
+    expect(await githubForge(run).pendingReview('acme/api', 1, 'abc1234', review)).toBe(url)
+    expect(run.calls.map((c) => c.slice(0, 5))).toEqual([
+      ['gh', 'api', '--method', 'POST', reviews],
+    ])
+    expect(sent).toEqual([
+      {
+        commit_id: 'abc1234',
+        body: 'Looks fine.',
+        comments: [{ path: 'a.ts', line: 2, body: 'Why?', side: 'RIGHT' }],
+      },
+    ])
+
+    const stdout = JSON.stringify({
+      message: 'Unprocessable Entity',
+      errors: ['User can only have one pending review per pull request'],
+      status: '422',
+    })
+    const refused = answering(() => {
+      throw Object.assign(new Error('Command failed with exit code 1: gh api'), { stdout })
+    })
+    await expect(githubForge(refused).pendingReview('acme/api', 1, 'abc', review)).rejects.toThrow(
+      /^Unprocessable Entity: User can only have one pending review per pull request$/,
+    )
+  })
 })

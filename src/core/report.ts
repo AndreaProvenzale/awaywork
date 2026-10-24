@@ -187,13 +187,16 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
 /** `3 units`, `1 unit`. */
 export const counted = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`
 
-/** `Run <id>: 1 PR, 1 draft PR, 2 reports, 3 units`. */
+/** `Run <id>: 1 PR, 1 draft PR, 2 reports, 1 pending review, 3 units`. */
 export function runHeadline(r: RunReport): string {
   const count = (kind: Outcome['kind']) => r.results.filter((u) => u.outcome?.kind === kind).length
   const ready = r.results.filter((u) => u.outcome?.kind === 'pr' && u.outcome.ready).length
   const dry = r.dryRun ? ' (dry run)' : ''
-  return `Run ${r.runId}${dry}: ${prCounts(ready, count('pr') - ready)}, ${counted(count('report'), 'report')}, ${counted(chains(r).length, 'unit')}`
+  return `Run ${r.runId}${dry}: ${prCounts(ready, count('pr') - ready)}, ${counted(count('report'), 'report')}${reviewCount(count('review'))}, ${counted(chains(r).length, 'unit')}`
 }
+
+/** `, 1 pending review`, only when there are some. */
+const reviewCount = (n: number) => (n ? `, ${counted(n, 'pending review')}` : '')
 
 /** `1 PR, 1 draft PR`; ready PRs only when there are some. */
 function prCounts(ready: number, drafts: number): string {
@@ -314,9 +317,14 @@ export function runLine(runId: string, report: string | undefined): string {
     /^https:\/\/\S+ \(\d+ commits?(, ready for review|, draft: .+)?\)(, verdict \S+)?$/.test(r),
   )
   const ready = prs.filter((r) => r.includes(', ready for review)')).length
-  const reports = parts.filter((r) => /^report below(, verdict \S+)?$/.test(r)).length
+  const reports = parts.filter((r) =>
+    /^report below( \(not posted: .+\))?(, verdict \S+)?$/.test(r),
+  ).length
+  const reviews = parts.filter((r) =>
+    /^https:\/\/\S+ \(pending review(, .+)?\)(, verdict \S+)?$/.test(r),
+  ).length
   const dry = report.split('\n', 1)[0]?.endsWith('(dry run)') ? ' (dry run)' : ''
-  return `${runId}  ${counted(results.length, 'unit')}, ${prCounts(ready, prs.length - ready)}, ${counted(reports, 'report')}${dry}`
+  return `${runId}  ${counted(results.length, 'unit')}, ${prCounts(ready, prs.length - ready)}, ${counted(reports, 'report')}${reviewCount(reviews)}${dry}`
 }
 
 function status(u: UnitResult): string {
@@ -335,12 +343,21 @@ export function opened(o: Extract<Outcome, { kind: 'pr' }>): string {
   return o.draft ? `, draft: ${o.draft}` : ''
 }
 
+/** ` (not posted: <why>)` for a `deliver: pending_review` report left on no PR. */
+export const unposted = (o: Extract<Outcome, { kind: 'report' }>) =>
+  o.unposted ? ` (not posted: ${o.unposted})` : ''
+
+/** `pending review`, and why its line comments were left out. */
+export const reviewed = (o: Extract<Outcome, { kind: 'review' }>) =>
+  o.note ? `pending review, ${o.note}` : 'pending review'
+
 function result(u: UnitResult): string {
   if (u.status === 'skipped') return u.reason ?? ''
   const verdict = u.verdict ? `, verdict ${u.verdict}` : ''
   if (u.outcome?.kind === 'pr')
     return `${u.outcome.url} (${counted(u.outcome.commits, 'commit')}${opened(u.outcome)})${verdict}`
-  if (u.outcome?.kind === 'report') return `report below${verdict}`
+  if (u.outcome?.kind === 'report') return `report below${unposted(u.outcome)}${verdict}`
+  if (u.outcome?.kind === 'review') return `${u.outcome.url} (${reviewed(u.outcome)})${verdict}`
   if (u.outcome?.kind === 'pushed')
     return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}, report below${verdict}`
   return `${u.outcome?.reason ?? '-'}${verdict}`

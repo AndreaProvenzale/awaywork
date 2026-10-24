@@ -213,6 +213,7 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
 
 - **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
 - **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
+- **`deliver: pending_review`.** Refused when the config loads: awaywork leaves pending reviews on GitHub only.
 - **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
 - **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 
@@ -306,7 +307,7 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), or `report`, where no step commits |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |

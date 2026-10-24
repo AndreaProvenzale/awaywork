@@ -184,6 +184,17 @@ export interface Forge {
   ): Promise<string>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
+  /**
+   * Leaves `review` on PR `pr` as your pending review at commit `head`, unsubmitted and seen by no
+   * one else; returns its URL. Throws why it didn't, e.g. a pending review of yours already there.
+   */
+  pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
+}
+
+/** A review's body and its comments on lines of the PR's new side. */
+export interface Review {
+  body: string
+  comments: { path: string; line: number; body: string }[]
 }
 
 export type Scalar = string | number | boolean
@@ -244,7 +255,7 @@ export interface Loop {
 }
 
 export interface Rule extends Step {
-  /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report commits nothing. */
+  /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report and pending_review commit nothing. */
   deliver?: Deliver
   branch?: string
   source?: string
@@ -283,4 +294,4 @@ export interface Unit {
   deliver: Deliver
 }
 
-export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push'
+export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review'

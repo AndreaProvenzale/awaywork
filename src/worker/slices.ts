@@ -4,7 +4,15 @@ import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
 import { type Outcome, publish, type Stack } from './publish.js'
-import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
+import { leaveReview } from './review.js'
+import {
+  outputFile,
+  readOutput,
+  refuseSymlinks,
+  reportsOnly,
+  WORK_DIR,
+  writeOutput,
+} from './workspace.js'
 
 const MAX_SUFFIX = 10
 
@@ -20,7 +28,8 @@ export interface OpenLoop {
   held?: true
 }
 
-export type StepReport = { id: string; skill: string; text: string }
+/** A step's report, and its `out/` as copied to the run dir. */
+export type StepReport = { id: string; skill: string; text: string; out: string }
 
 /**
  * The unit's planned branch, else the first of `<branch>-2` to `-10` not on the remote. A taken name
@@ -80,7 +89,8 @@ export interface Publisher {
 }
 
 /**
- * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports.
+ * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
+ * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
  * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
  */
 export async function publishSlice(
@@ -96,12 +106,17 @@ export async function publishSlice(
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
-  if (deliver === 'report' || (await commitsSince(dir, from)) === 0) {
+  if (reportsOnly(deliver) || (await commitsSince(dir, from)) === 0) {
     const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
     if (!text)
-      return { kind: 'none', reason: deliver === 'report' ? 'no report written' : 'nothing' }
+      return { kind: 'none', reason: reportsOnly(deliver) ? 'no report written' : 'nothing' }
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
+    const last = reports.at(-1)
+    if (deliver === 'pending_review' && last)
+      return failedStep
+        ? { kind: 'report', text, unposted: failedStep }
+        : leaveReview(deps.forge, unit, from, text, last)
     return { kind: 'report', text }
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])

@@ -72,6 +72,7 @@ import {
   prepareWorkspace,
   readOutput,
   refuseSymlinks,
+  reportsOnly,
   WORK_DIR,
   workerEnv,
   writeOutput,
@@ -619,7 +620,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           const keep = () => {
             verdict = result.verdict ?? verdict
             if (report) {
-              reports.push({ id: unit.id, skill: unit.skill, text: report })
+              reports.push({ id: unit.id, skill: unit.skill, text: report, out })
               result.reported = true
             }
             previous = { skill: unit.skill, out }
@@ -630,17 +631,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         }
         verdict = result.verdict ?? verdict
         if (report) {
-          reports.push({ id: unit.id, skill: unit.skill, text: report })
+          reports.push({ id: unit.id, skill: unit.skill, text: report, out: join(unitDir, 'out') })
           result.reported = true
         }
         // What the next step works from: a committing step's commits, a report step's report.
-        const left = unit.deliver === 'report' ? report !== '' : commits > 0
+        const left = reportsOnly(unit.deliver) ? report !== '' : commits > 0
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
           interrupted = true
           ended = { reason: 'interrupted' }
         } else if (worker.status !== 'done') ended = { reason: `${unit.id} ${worker.status}` }
         else if (!left) {
-          const reason = `${unit.id} ${unit.deliver === 'report' ? 'wrote no report' : 'committed nothing'}`
+          const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
           if (loop && !(at > 0 && p === opening)) loop.ended = reason
           else ended = { reason, passedOver: true }

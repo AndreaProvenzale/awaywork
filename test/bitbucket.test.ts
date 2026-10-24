@@ -319,6 +319,19 @@ describe('bitbucket config', () => {
       expect.stringMatching(/^queue\[0\]\.deliver: push isn't available on Bitbucket/),
     ])
     expect(problems(config('  github: { repos: [acme/*] }', push))).toEqual([])
+    const review = 'queue:\n  - { skill: review, deliver: pending_review }'
+    expect(problems(config('  bitbucket: { repos: [acme/api] }', review))).toEqual([
+      expect.stringMatching(/^queue\[0\]\.deliver: pending_review isn't available on Bitbucket/),
+    ])
+  })
+
+  it('leaves no pending review', async () => {
+    const run = recorded([])
+    const review = { body: 'Fine.', comments: [] }
+    await expect(
+      bitbucketForge(['andrea89'], run).pendingReview(sandbox, 4, 'abc1234', review),
+    ).rejects.toThrow('awaywork leaves pending reviews on GitHub only')
+    expect(run.calls).toEqual([])
   })
 })
 

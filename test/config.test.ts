@@ -431,6 +431,9 @@ describe('config', () => {
     expect(chain('deliver: report, then: { skill: plan, stack: true }')).toEqual([
       'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not report: a stacked slice opens a PR',
     ])
+    expect(chain('deliver: pending_review, then: { skill: review, stack: true }')).toEqual([
+      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not pending_review: a stacked slice opens a PR',
+    ])
     expect(
       chain(
         'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',

@@ -166,6 +166,10 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
 
     /** Bitbucket has no stacked PRs; the upper PR's base is already the lower one's branch. */
     async stack() {},
+
+    async pendingReview() {
+      throw new Error('awaywork leaves pending reviews on GitHub only')
+    },
   }
   return forge
 }
