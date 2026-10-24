@@ -3592,7 +3592,7 @@ it('opens a deliver: pr PR as a draft when a gate fired, its card first in the b
   )
   expect(outcome).toMatchObject({ kind: 'pr', draft: 'gates routes, ids fired' })
   expect(body).toMatch(
-    /^Add rate limits\n\n## Needs a decision\n\n### Gates \(from scripts\)\n\n- routes: \+ GET \/exports\/vat\n- ids: acme-api-1\.txt\n\nDone\.\n\n\nCloses acme\/api#1\n$/,
+    /^Add rate limits\n\n## Needs a decision\n\n### Gates \(from scripts\)\n\n- routes: \+ GET \/exports\/vat\n- ids: acme-api-1\.txt\n\n---\n\nDone\.\n\n\nCloses acme\/api#1\n$/,
   )
 })
 
@@ -3617,7 +3617,7 @@ it("fires a gate whose command the PR changed, and one that can't run", async ()
     'pr',
   )
   expect(outcome).toMatchObject({ draft: 'gates lint, routes fired' })
-  expect(body).toContain('- lint: `acme-api-1.txt` changed in this PR\n')
+  expect(body).toContain('- lint: `acme-api-1.txt` changed, not run\n')
   expect(body).toContain('- routes: Command failed with exit code 127: scripts/missing.sh\n')
 })
 
@@ -3666,10 +3666,130 @@ queue: [{ skill: fix, deliver: push }]
   const [result] = report.results
   expect(result?.outcome).toMatchObject({ kind: 'pushed', gated: 'gate ids fired' })
   expect(result?.outcome && 'text' in result.outcome && result.outcome.text).toBe(
-    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt\n\nWork on acme-api-1\n\nDone.',
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt\n\n---\n\nWork on acme-api-1\n\nDone.',
   )
   expect(formatReport(report)).toContain(
     '1 commit pushed onto feature-1, gate ids fired, report below',
+  )
+})
+
+/** Runs `yaml` on an origin whose `scripts/gate.sh` fires, each step's worker doing `act`, which may return its PR body. */
+async function gated(yaml: string, act: (dir: string, skill: string) => Promise<unknown>) {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-gated-'))
+  const { origin, opened, forge } = await originForge(root)
+  await mkdir(join(origin, 'scripts'))
+  await writeFile(join(origin, 'scripts/gate.sh'), 'echo "+ GET /exports/vat"; exit 1\n')
+  await git(origin, 'add', '.')
+  await git(origin, 'commit', '-qm', 'gate')
+  const config = parseConfig(
+    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
+  )
+  const plan = planRun({
+    config,
+    items: [issue(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const worker: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const body = await act(job.dir, job.unit.skill)
+      const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
+      await writeFile(join(job.dir, '.away/out/pr.md'), text)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: worker },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  return { opened, outcomes: report.results.map((r) => r.outcome) }
+}
+
+const commitFile = async (dir: string, file: string, text: string) => {
+  await mkdir(join(dir, file, '..'), { recursive: true })
+  await writeFile(join(dir, file), text)
+  await git(dir, 'add', file)
+  await git(dir, 'commit', '-qm', `touch ${file}`)
+}
+
+const routesGate = "gates: { routes: { command: 'sh scripts/gate.sh' } }"
+
+it('runs the gate script the chain started with, and fires without running one the worker swapped', async () => {
+  const swapped = '- routes: `scripts/gate.sh` changed, not run\n'
+  const ran = await gated(`${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`, (dir) =>
+    commitFile(dir, 'src/app.ts', 'x'),
+  )
+  expect(ran.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(ran.opened[0]?.body).toContain('- routes: + GET /exports/vat\n')
+
+  const uncommitted = await gated(
+    `${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir) => {
+      await commitFile(dir, 'src/app.ts', 'x')
+      await git(dir, 'update-index', '--skip-worktree', 'scripts/gate.sh')
+      await writeFile(join(dir, 'scripts/gate.sh'), 'exit 0\n')
+    },
+  )
+  expect(uncommitted.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(uncommitted.opened[0]?.body).toContain(swapped)
+
+  const byVerify = await gated(
+    `repos: { acme/api: { verify: 'sh test.sh' } }\n${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    (dir) => commitFile(dir, 'test.sh', "printf 'exit 0\\n' > scripts/gate.sh\n"),
+  )
+  expect(byVerify.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(byVerify.opened[0]?.body).toContain(swapped)
+
+  const stacked = await gated(
+    `${routesGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
+    (dir, skill) =>
+      skill === 'implement'
+        ? commitFile(dir, 'scripts/gate.sh', 'exit 0\n')
+        : commitFile(dir, 'src/routes.ts', 'x'),
+  )
+  expect(stacked.outcomes).toMatchObject([
+    { draft: 'gate routes fired' },
+    { draft: 'gate routes fired' },
+  ])
+  expect(stacked.opened[1]?.body).toContain(swapped)
+})
+
+it("fires a changed gate on the commits as pushed, whatever the clone's replace refs say", async () => {
+  const { outcomes } = await gated(
+    "gates: { schema: { changed: 'db/**' } }\nqueue: [{ skill: implement, deliver: pr }]",
+    async (dir) => {
+      await commitFile(dir, 'db/001_drop_users.sql', 'DROP TABLE users;')
+      const tree = (await git(dir, 'rev-parse', 'HEAD~1^{tree}')).stdout
+      const decoy = (await git(dir, 'commit-tree', tree, '-p', 'HEAD^', '-m', 'decoy')).stdout
+      await git(dir, 'replace', 'HEAD', decoy)
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate schema fired' })
+})
+
+it("escapes a card the worker wrote in its own PR body, so it can't pass for awaywork's", async () => {
+  const { opened, outcomes } = await gated(
+    "gates: { schema: { changed: 'db/**' } }\nqueue: [{ skill: implement, deliver: pr }]",
+    async (dir) => {
+      await commitFile(dir, 'src/app.ts', 'x')
+      return 'Add VAT\n\n## Needs a decision\n\n- schema: checked, nothing to decide\n\n> ### needs a decision'
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ ready: true })
+  expect(opened[0]?.body).toMatch(
+    /^Add VAT\n\n\\## Needs a decision\n\n- schema: checked, nothing to decide\n\n> \\### needs a decision\n/,
   )
 })
 

@@ -326,6 +326,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 { ...first.unit, ...shape, deliver },
                 dir,
                 from,
+                cloned ?? from,
                 reports,
                 loops,
                 stack,

@@ -322,9 +322,11 @@ Gates run on every slice that publishes commits, once its chain's steps are done
 
 - schema: migrations/20261023_add_vat_mode.ts
 - routes: + GET /exports/vat   + POST /exports/vat/retry
+
+---
 ```
 
-awaywork writes the card, the agent never does. A `changed` line lists the first three matching paths and how many more; a `command` line is its stdout on one line, cut at 300 characters, or why it failed when it printed nothing. Then:
+awaywork writes the card, the agent never does: the `---` rule ends it, and a `## Needs a decision` heading in the agent's own text gets a `\` in front, so it shows as plain text and a PR never carries a card awaywork didn't write. A `changed` line lists the first three matching paths and how many more; a `command` line is its stdout on one line, cut at 300 characters, or why it failed when it printed nothing. Then:
 
 - `deliver: pr` opens the PR as a draft, and the report says which gates fired, like `draft: gate schema fired`.
 - `deliver: draft_pr` was a draft anyway: only the card is new.
@@ -340,7 +342,9 @@ Run 20261024-031502: 1 draft PR, 0 reports, 1 unit
      - schema: migrations/20261023_add_vat_mode.ts
 ```
 
-Gates fail closed: a command that can't run, times out, is stopped or isn't run on an untrusted author's PR fires its gate with the reason, like ``- routes: `scripts/route-diff.sh` not checked: timed out after 15 min``. One that names a file the slice's commits changed fires without running, as ``- routes: `scripts/route-diff.sh` changed in this PR``, since the agent could have rewritten the script that judges it. See [Safety](./safety.md#what-awaywork-publishes).
+Gates fail closed: a command that can't run, times out, is stopped or isn't run on an untrusted author's PR fires its gate with the reason, like ``- routes: `scripts/route-diff.sh` not checked: timed out after 15 min``. The agent could also rewrite the script that judges its work, so right before a command runs, awaywork compares each file it names with the same path at the commit the clone started from, before `setup` or any agent ran. A file that differs, is new or is gone fires the gate without running the command, as ``- routes: `scripts/route-diff.sh` changed, not run``, whether the change is committed in this slice or an earlier [stacked](./chains.md#stack) one, left uncommitted, hidden from `git status`, or made by `verify`.
+
+That only works when the command names its script by its path from the repo root, as a word of its own: `scripts/route-diff.sh` in `bash ./scripts/route-diff.sh --base main` or `(scripts/route-diff.sh) && echo ok` counts, but `cd scripts && sh route-diff.sh` doesn't. A file the command names that wasn't there when the chain started always fires it, so don't name one the command writes. And only the named files are compared: a helper the script sources, or the repo code it runs, is the agent's to change. See [Safety](./safety.md#what-awaywork-publishes).
 
 ## Queue rules
 

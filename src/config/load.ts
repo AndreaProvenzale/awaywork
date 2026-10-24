@@ -49,5 +49,8 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   const at = issue.path
     .map((p, i) => (typeof p === 'number' ? `[${p}]` : i === 0 ? String(p) : `.${String(p)}`))
     .join('')
-  return at ? `${at}: ${issue.message}` : issue.message
+  // A record key's own message, e.g. `expected owner/name`, sits under zod's generic one.
+  const message =
+    issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message
+  return at ? `${at}: ${message}` : message
 }

@@ -129,8 +129,8 @@ async function changes(dir: string, globs: string[], start = ''): Promise<boolea
   return (await changedPaths(dir, `origin/${start || 'HEAD'}`, globs)).length > 0
 }
 
-/** The paths the commits since `from` change, those matching `globs` when given; a rename counts as both of its paths. */
-export async function changedPaths(dir: string, from: string, globs: string[] = []) {
+/** The paths matching `globs` the commits since `from` change; a rename counts as both of its paths. */
+export async function changedPaths(dir: string, from: string, globs: string[]) {
   const paths = globs.map((glob) => `:(glob)${glob}`)
   const diff = await git(
     dir,

@@ -1,6 +1,12 @@
+import { constants } from 'node:fs'
+import { open } from 'node:fs/promises'
+import { join } from 'node:path'
+import { execa } from 'execa'
+import { bin } from '../config/paths.js'
 import type { Unit } from '../core/types.js'
 import { changedPaths } from './checks.js'
 import type { Publisher } from './slices.js'
+import { inClone } from './workspace.js'
 
 const SHOWN_PATHS = 3
 const LINE_CHARS = 300
@@ -12,30 +18,28 @@ export interface Fired {
 }
 
 /**
- * Runs the unit's gates on the slice's commits since `from`. A command fires when it exits non-zero, its
- * stdout the line, and fails closed: also when it can't run, times out or is stopped, and, without
- * running, when it names a file those commits changed.
+ * Runs the unit's gates: their globs on the slice's commits since `from`, their commands in the clone.
+ * A command fires when it exits non-zero, its stdout the line, and fails closed: also when it can't
+ * run, times out or is stopped, and, without running, when a file it names by its path from the repo
+ * root isn't the one the clone held at `start`, before the chain's setup and workers.
  */
 export async function runGates(
   check: Publisher['check'],
   unit: Unit,
   dir: string,
   from: string,
+  start: string,
 ): Promise<Fired[]> {
   if (!unit.gates) return []
-  const changed = await changedPaths(dir, from)
   const fired: Fired[] = []
   for (const [name, gate] of Object.entries(unit.gates)) {
     const lines: string[] = []
     const matched = gate.changed.length ? await changedPaths(dir, from, gate.changed) : []
     if (matched.length) lines.push(listed(matched))
     for (const command of gate.commands) {
-      const named = command
-        .split(/\s+/)
-        .map((token) => token.replace(/^["']+|["';]+$/g, '').replace(/^\.\//, ''))
-        .find((token) => changed.includes(token))
-      if (named) {
-        lines.push(`\`${named}\` changed in this PR`)
+      const swapped = await swappedFile(dir, start, command)
+      if (swapped) {
+        lines.push(`\`${swapped}\` changed, not run`)
         continue
       }
       const ran = await check(command, unit, dir, () => {}, false)
@@ -48,16 +52,61 @@ export async function runGates(
   return fired
 }
 
+/** The first word of `command` naming a file that differs from the one at `start`: edited, added or gone. */
+async function swappedFile(dir: string, start: string, command: string) {
+  const words = command.split(/[\s&|;()<>"'`]+/).map((word) => word.replace(/^\.\//, ''))
+  for (const word of new Set(words)) {
+    if (!word || word.startsWith('/') || word.split('/').includes('..')) continue
+    if (await differs(dir, start, word)) return word
+  }
+  return undefined
+}
+
+/** Compares the bytes on disk, through any symlink as the command would read them, never the index or attributes. */
+async function differs(dir: string, start: string, path: string): Promise<boolean> {
+  const was = await fileAt(dir, start, path)
+  const file = await open(join(dir, path), constants.O_RDONLY | constants.O_NONBLOCK).catch(
+    () => undefined,
+  )
+  if (!file) return was !== undefined
+  try {
+    const stats = await file.stat()
+    if (!stats.isFile()) return was !== undefined
+    if (!was || stats.size !== was.length) return true
+    return !(await file.readFile()).equals(was)
+  } finally {
+    await file.close()
+  }
+}
+
+/** The file at `path` in commit `start`, through symlinks within its tree, or undefined when there's none. */
+async function fileAt(dir: string, start: string, path: string): Promise<Buffer | undefined> {
+  const { stdout } = await execa(
+    bin('git'),
+    [...inClone(dir), 'cat-file', '--batch', '--follow-symlinks'],
+    { input: `${start}:${path}\n`, encoding: 'buffer' },
+  )
+  const out = Buffer.from(stdout)
+  const header = out.indexOf('\n')
+  const size = /^[0-9a-f]+ blob (\d+)$/.exec(out.subarray(0, header).toString())?.[1]
+  return size === undefined ? undefined : out.subarray(header + 1, header + 1 + Number(size))
+}
+
 /** E.g. `gate schema fired`, `gates schema, deps fired`. */
 export function describeFired(fired: Fired[]): string | undefined {
   if (!fired.length) return undefined
   return `${fired.length === 1 ? 'gate' : 'gates'} ${fired.map((f) => f.name).join(', ')} fired`
 }
 
-/** The card awaywork puts first in the PR body, which the model never writes. */
+/** The card awaywork puts first in the PR body, closed by a rule so nothing after it reads as its own. */
 export function decisionCard(fired: Fired[]): string {
   const gates = fired.map((f) => `- ${f.name}: ${f.line}`)
-  return ['## Needs a decision', '', '### Gates (from scripts)', '', ...gates].join('\n')
+  return ['## Needs a decision', '', '### Gates (from scripts)', '', ...gates, '', '---'].join('\n')
+}
+
+/** Escapes a `Needs a decision` heading in text awaywork didn't write, so only its own card renders as one. */
+export function disarmCards(text: string): string {
+  return text.replace(/(#{1,6}[ \t]+needs a decision)/gi, '\\$1')
 }
 
 function listed(paths: string[]): string {
