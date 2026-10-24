@@ -295,7 +295,7 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "report" \| "push" |  | Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports |
+| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
@@ -367,7 +367,7 @@ Run this rule's unit only when the quota holds; otherwise skip it.
 | `instructions` | string \| string[] |  | Instruction files added for this step; default the rule's, [] none |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
 | `when` | object |  | Run this step only when every key holds; otherwise skip it |
-| `stack` | boolean |  | Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR |
+| `stack` | boolean |  | Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR |
 
 ## `queue[].then.when`
 
@@ -396,7 +396,7 @@ Steps repeated until a condition holds.
 | `loop` (required) | string \| object \| (string \| object)[] |  | Steps run in turn every round, in the chain's clone |
 | `until` (required) | object |  | Ends the loop as soon as it holds; checked after every step |
 | `max` (required) | integer |  | At most this many rounds, up to 5 |
-| `stack` | boolean |  | Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR |
+| `stack` | boolean |  | Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR |
 
 ## `queue[].then.loop`
 

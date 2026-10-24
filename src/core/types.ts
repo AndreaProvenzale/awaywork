@@ -172,13 +172,15 @@ export interface Forge {
     from: string,
     opts: { repo: string; pr: number },
   ): Promise<string | undefined>
-  draftPr(
+  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`. */
+  openPr(
     repo: string,
     head: string,
     base: string,
     bodyFile: string,
     runId: string,
     items: Pick<Item, 'source' | 'key'>[],
+    draft: boolean,
   ): Promise<string>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
@@ -214,7 +216,7 @@ export interface Step {
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
 export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
   Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>> & {
-    /** Starts a new slice: a new branch cut from the slice before, and a draft PR stacked on its PR. */
+    /** Starts a new slice: a new branch cut from the slice before, and a PR stacked on its PR. */
     stack?: boolean
   }
 
@@ -242,7 +244,7 @@ export interface Loop {
 }
 
 export interface Rule extends Step {
-  /** How the chain publishes its commits: one draft PR, or a push onto your PR; report commits nothing. */
+  /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report commits nothing. */
   deliver?: Deliver
   branch?: string
   source?: string
@@ -281,4 +283,4 @@ export interface Unit {
   deliver: Deliver
 }
 
-export type Deliver = 'draft_pr' | 'report' | 'push'
+export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push'

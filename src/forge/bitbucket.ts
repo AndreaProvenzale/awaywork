@@ -5,7 +5,7 @@ import type { Config } from '../config/schema.js'
 import { isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
-import { draftText, linksItem } from './pr.js'
+import { linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
 type Side = { branch: { name: string }; repository: { full_name: string } }
@@ -148,14 +148,15 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return "Bitbucket can't push onto a PR: twg reads neither branch restrictions nor auto-merge"
     },
 
-    async draftPr(repo, head, base, bodyFile, runId, items) {
-      const { title, body } = await draftText(bodyFile, head, runId, items)
+    async openPr(repo, head, base, bodyFile, runId, items, draft) {
+      const { title, body } = await prText(bodyFile, head, runId, items)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
       try {
         const file = join(dir, 'description.md')
         await writeFile(file, body)
         const into = base ? ['--dest', base] : []
-        const args = ['bb', 'prs', 'create', '-r', repo, '--draft', '--source', head, ...into]
+        const asDraft = draft ? ['--draft'] : []
+        const args = ['bb', 'prs', 'create', '-r', repo, ...asDraft, '--source', head, ...into]
         const pr = await twg<Pr>(run, [...args, '--title', title, '--description-file', file])
         return pr.links.html.href
       } finally {

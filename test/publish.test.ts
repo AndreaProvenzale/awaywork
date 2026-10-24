@@ -118,7 +118,7 @@ describe('publish', () => {
     await body('Fix the thing\n\nChecked: tests pass.')
     const forge = fakeForge()
     const drafted: { body: string; items: string[] }[] = []
-    forge.draftPr = async (_repo, head, _base, bodyFile, _runId, items) => {
+    forge.openPr = async (_repo, head, _base, bodyFile, _runId, items) => {
       drafted.push({ body: await readFile(bodyFile, 'utf8'), items: items.map((i) => i.key) })
       return head
     }
@@ -135,12 +135,33 @@ describe('publish', () => {
     expect(forge.stacked).toEqual([['https://github.com/acme/api/pull/9', 'away/FAKE-1']])
   })
 
+  it('opens a deliver: pr PR ready for review unless something left it not ready, a draft_pr one never', async () => {
+    await commit('first')
+    await body('Fix the thing')
+    const forge = fakeForge()
+    const drafts: boolean[] = []
+    forge.openPr = async (_repo, head, _base, _bodyFile, _runId, _items, draft) => {
+      drafts.push(draft)
+      return head
+    }
+    const opened = async (deliver: Unit['deliver'], notReady?: string) => {
+      forge.branches.clear()
+      return publish(unit(deliver), dir, forge, 'r1', start, undefined, false, notReady)
+    }
+    expect(await opened('pr')).toMatchObject({ kind: 'pr', ready: true })
+    expect(await opened('pr', 'verify failed')).toMatchObject({ draft: 'verify failed' })
+    const drafted = await opened('draft_pr')
+    expect(drafted).not.toHaveProperty('ready')
+    expect(drafted).not.toHaveProperty('draft')
+    expect(drafts).toEqual([false, true, true])
+  })
+
   it('closes the GitHub issues, not the PRs', async () => {
     await commit('first')
     await body('Fix the thing')
     const forge = fakeForge()
     const bodies: string[] = []
-    forge.draftPr = async (_repo, head, _base, bodyFile) => {
+    forge.openPr = async (_repo, head, _base, bodyFile) => {
       bodies.push(await readFile(bodyFile, 'utf8'))
       return head
     }

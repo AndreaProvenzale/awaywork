@@ -2,7 +2,7 @@ import type { Config } from '../config/schema.js'
 import { isOurs } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
-import { draftText, linksItem } from './pr.js'
+import { linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
 const myPrsQuery = `query {
@@ -186,10 +186,11 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    async draftPr(repo, head, base, bodyFile, runId, items) {
-      const { title, body } = await draftText(bodyFile, head, runId, items)
+    async openPr(repo, head, base, bodyFile, runId, items, draft) {
+      const { title, body } = await prText(bodyFile, head, runId, items)
       const into = base ? ['--base', base] : []
-      const args = ['pr', 'create', '-R', repo, '--draft', '--head', head, ...into]
+      const asDraft = draft ? ['--draft'] : []
+      const args = ['pr', 'create', '-R', repo, ...asDraft, '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
       return out.trim().split('\n').at(-1) ?? ''
     },

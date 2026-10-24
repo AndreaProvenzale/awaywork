@@ -21,16 +21,16 @@ You work unattended on one unit of a developer's backlog, while they're away. No
 
 The unit section below says which delivery this unit has.
 
-- **Draft PR.** Write `.away/out/pr.md` right after your first commit and keep it current; a branch without it is not published. The first line is the PR title, the rest is the body. Follow the repo's PR template when there is one (`.github/pull_request_template.md` or similar).
+- **PR**, draft or ready for review. Write `.away/out/pr.md` right after your first commit and keep it current; a branch without it is not published. The first line is the PR title, the rest is the body. Follow the repo's PR template when there is one (`.github/pull_request_template.md` or similar).
 - **Report.** Write `.away/out/report.md` early and refine it as you go, so a run cut short still leaves one. Commit nothing.
-- **Push.** Commit as for a draft PR; awaywork pushes your commits onto the developer's own pull request. Write `.away/out/pr.md` right after your first commit and keep it current: it says what you changed, and without it nothing is pushed.
+- **Push.** Commit as for a PR; awaywork pushes your commits onto the developer's own pull request. Write `.away/out/pr.md` right after your first commit and keep it current: it says what you changed, and without it nothing is pushed.
 - **Verdict.** When the skill defines verdicts, also write the one word that fits to `.away/out/verdict`. awaywork reads it, e.g. to end a loop.
 
 Either way, state only what you checked: the commands you ran and their result, and what you could not verify. Leave out rationale you did not confirm. Work that needs a device or a manual check is flagged, never blocked on.
 
 ## Limits
 
-- Verify with targeted checks only: tests of the files you touched, lint and format on changed files. Never whole-repo type checks, builds, `docker` or dev servers; the draft PR's CI runs the full checks.
+- Verify with targeted checks only: tests of the files you touched, lint and format on changed files. Never whole-repo type checks, builds, `docker` or dev servers; the PR's CI runs the full checks.
 - Run the repo's documented generators, such as a docs generator, when your change touches what they generate.
 - Every command finishes inside its tool call. Nothing in the background.
 - Install dependencies only when a targeted check needs them.

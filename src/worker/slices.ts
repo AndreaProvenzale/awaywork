@@ -16,6 +16,8 @@ export interface OpenLoop {
   /** The last run of `until`'s command. */
   check?: RanCheck
   ended?: string
+  /** Its `until` held. */
+  held?: true
 }
 
 export type StepReport = { id: string; skill: string; text: string }
@@ -77,7 +79,10 @@ export interface Publisher {
   ) => Promise<Check>
 }
 
-/** Publishes a slice's commits since `from` as one draft PR or push, with its reports; without commits, its reports. */
+/**
+ * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
+ */
 export async function publishSlice(
   deps: Publisher,
   unit: Unit,
@@ -87,6 +92,7 @@ export async function publishSlice(
   loops: Record<number, OpenLoop>,
   stack?: Stack,
   closes = false,
+  failedStep?: string,
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
@@ -100,13 +106,23 @@ export async function publishSlice(
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
-  await verify(deps, unit, dir, from)
+  const failed = await verify(deps, unit, dir, from)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-  return publish(unit, dir, deps.forge, deps.runId, from, stack, closes)
+  const unmet = Object.values(loops).find((l) => !l.held)
+  // `runLine` splits a chain's cell at `; `.
+  const why =
+    unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
+  const notReady = failedStep ?? failed ?? why
+  return publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
 }
 
-/** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. */
-async function verify(deps: Publisher, unit: Unit, dir: string, start: string) {
+/** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. Returns how it failed. */
+async function verify(
+  deps: Publisher,
+  unit: Unit,
+  dir: string,
+  start: string,
+): Promise<string | undefined> {
   if (!unit.verify || (await commitsSince(dir, start)) === 0) return
   const ran = {
     command: unit.verify,
@@ -119,7 +135,9 @@ async function verify(deps: Publisher, unit: Unit, dir: string, start: string) {
   ])
   await mkdir(out, { recursive: true })
   await writeOutput(join(out, 'verify.log'), checkLog(ran))
-  if (ran.failed) await appendVerifyFailure(join(out, outputFile[unit.deliver]), ran)
+  if (!ran.failed) return
+  await appendVerifyFailure(join(out, outputFile[unit.deliver]), ran)
+  return `verify ${ran.stopped ? 'stopped' : 'failed'}`
 }
 
 /** The latest report of each skill: a loop's last review stands for its earlier ones. */

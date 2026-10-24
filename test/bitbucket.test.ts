@@ -220,7 +220,7 @@ describe('bitbucket forge', () => {
     expect(run.calls).toHaveLength(calls)
   })
 
-  it('opens a draft PR titled by the body file first line, its body from a file', async () => {
+  it('opens a PR titled by the body file first line, its body from a file, a draft only when asked', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
     const bodyFile = join(dir, 'PR_BODY.md')
     await writeFile(bodyFile, '# SANDBOX-7 Probe twg output\n\nProbes twg output for fixtures.\n')
@@ -235,13 +235,14 @@ describe('bitbucket forge', () => {
     )
     const items = [{ source: 'jira', key: 'SANDBOX-7' }]
     const forge = bitbucketForge(['andrea89'], run)
-    const url = await forge.draftPr(
+    const url = await forge.openPr(
       sandbox,
       'probe/awaywork-fixture',
       'main',
       bodyFile,
       'r1',
       items,
+      true,
     )
     expect(url).toBe('https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4')
     expect(run.calls[0]).toEqual([
@@ -263,8 +264,9 @@ describe('bitbucket forge', () => {
       ...json,
     ])
     expect(description).toBe(`Probes twg output for fixtures.\n\n${footer('r1', items)}`)
-    await forge.draftPr(sandbox, 'away/x', '', bodyFile, 'r1', items)
+    await forge.openPr(sandbox, 'away/x', '', bodyFile, 'r1', items, false)
     expect(run.calls[1]).not.toContain('--dest')
+    expect(run.calls[1]).not.toContain('--draft')
   })
 
   it("throws twg's own message, wherever it prints it", async () => {

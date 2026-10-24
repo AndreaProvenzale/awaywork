@@ -285,7 +285,7 @@ const stepObject = z.strictObject({
     .boolean()
     .optional()
     .describe(
-      'Start a new slice here: a new branch cut from the slice before, published as a draft PR stacked on its PR',
+      'Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR',
     ),
 })
 const step = z
@@ -312,7 +312,7 @@ const loop = z
       .boolean()
       .optional()
       .describe(
-        "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a draft PR stacked on its PR",
+        "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
       ),
   })
   .describe('Steps repeated until a condition holds')
@@ -328,10 +328,10 @@ const rule: z.ZodType<Rule, unknown> = z
       ),
     ...stepSettings,
     deliver: z
-      .enum(['draft_pr', 'report', 'push'])
+      .enum(['draft_pr', 'pr', 'report', 'push'])
       .optional()
       .describe(
-        "Where the chain's commits go: one draft PR (default) or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
+        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
@@ -616,11 +616,11 @@ export const configSchema = z
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
       if (Array.isArray(r.then))
         r.then.forEach((entry, j) => {
-          if (entry.stack && (r.deliver ?? 'draft_pr') !== 'draft_pr')
+          if (entry.stack && (r.deliver === 'push' || r.deliver === 'report'))
             ctx.addIssue({
               code: 'custom',
               path: [...at, 'then', j, 'stack'],
-              message: `stack needs deliver: draft_pr, not ${r.deliver}: a stacked slice opens a draft PR`,
+              message: `stack needs deliver: draft_pr or pr, not ${r.deliver}: a stacked slice opens a PR`,
             })
           if (isLoop(entry))
             entry.loop.forEach((step, k) => {

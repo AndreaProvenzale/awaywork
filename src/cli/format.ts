@@ -17,6 +17,7 @@ import {
   counted,
   localTime,
   needsYouOn,
+  opened,
   quotaLines,
   type ReportedSkip,
   type RunReport,
@@ -515,7 +516,7 @@ function unitResult(u: UnitResult, why = (reason: string) => reason): string {
   const o = u.outcome
   const what =
     o?.kind === 'pr'
-      ? o.url
+      ? `${o.url}${opened(o)}`
       : o?.kind === 'pushed'
         ? `pushed onto ${o.url || o.branch}`
         : o?.kind === 'report'

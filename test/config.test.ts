@@ -417,18 +417,19 @@ describe('config', () => {
     ])
   })
 
-  it('takes stack on a step or a loop of a draft_pr chain only, never inside a loop', () => {
+  it('takes stack on a step or a loop of a draft_pr or pr chain only, never inside a loop', () => {
     const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
     expect(
       chain(
         'then: [review, { skill: fix, stack: true }, { loop: [plan], until: { verdict: approve }, max: 1, stack: true }]',
       ),
     ).toEqual([])
+    expect(chain('deliver: pr, then: [{ skill: fix, stack: true }]')).toEqual([])
     expect(chain('deliver: push, then: [{ skill: fix, stack: true }]')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr, not push: a stacked slice opens a draft PR',
+      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not push: a stacked slice opens a PR',
     ])
     expect(chain('deliver: report, then: { skill: plan, stack: true }')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr, not report: a stacked slice opens a draft PR',
+      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not report: a stacked slice opens a PR',
     ])
     expect(
       chain(
