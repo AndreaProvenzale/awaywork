@@ -189,7 +189,6 @@ async function run(
     /** Branches something else already holds on the remote. */
     taken?: string[]
     shortage?: () => Promise<string | undefined>
-    source?: Source
     pendingReview?: Forge['pendingReview']
   } = {},
 ) {
@@ -221,7 +220,7 @@ async function run(
     signal: opts.signal,
     attempts: opts.attempts,
     providers: { claude: provider },
-    sources: { github: opts.source ?? (fakeSource() as Source) },
+    sources: { github: fakeSource() as Source },
     forge: env.forge,
     ctx: { env: {}, log: (line) => logged.push(line) },
     watch: () => ({ stop: async () => {} }),
@@ -359,19 +358,6 @@ it('opens a deliver: pr PR as a draft when the chain ended before a step, but no
 })
 
 it("leaves a deliver: pending_review chain's last report and its comments on the PR as a pending review", async () => {
-  const diff = [
-    'diff --git a/a.ts b/a.ts',
-    '--- a/a.ts',
-    '+++ b/a.ts',
-    '@@ -1 +1,2 @@',
-    ' one',
-    '+two',
-  ]
-  const source = {
-    ...fakeSource(),
-    prefetch: async (_item: Item, dir: string) =>
-      writeFile(join(dir, 'diff.patch'), diff.join('\n')),
-  } as Source
   const comments = [
     { path: 'a.ts', line: 2, body: 'Why two?' },
     { path: 'a.ts', line: 7, body: 'Far away.' },
@@ -381,7 +367,7 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
   const verdicts = { 'acme-api-1-review': 'changes' }
   const prompts: Record<string, string> = {}
   const pr = githubPr(1, { mine: false })
-  const reviewed = await run(rule, [pr], worker(verdicts, { reviews, prompts }), { source })
+  const reviewed = await run(rule, [pr], worker(verdicts, { reviews, prompts }))
   const url = 'https://example.com/acme/api/pull/1#pullrequestreview-1'
   const text = [
     '### acme-api-1',
@@ -398,8 +384,8 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
       repo: 'acme/api',
       pr: 1,
       head: (await git(reviewed.origin, 'rev-parse', 'feature-1')).stdout,
-      body: 'acme-api-1-review says changes.\n\n## Line comments\n\n`a.ts:7`: Far away.',
-      comments: [comments[0]],
+      body: 'acme-api-1-review says changes.',
+      comments,
     },
   ])
   expect(reviewed.opened).toEqual([])
@@ -420,7 +406,7 @@ it("leaves a deliver: pending_review chain's last report and its comments on the
   const pendingReview = async () => {
     throw new Error('your pending review is there already')
   }
-  const { report } = await run(rule, [pr], worker(verdicts), { source, pendingReview })
+  const { report } = await run(rule, [pr], worker(verdicts), { pendingReview })
   expect(report.results[0]?.outcome).toEqual({
     kind: 'report',
     text,

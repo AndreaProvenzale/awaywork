@@ -116,7 +116,7 @@ export async function publishSlice(
     if (deliver === 'pending_review' && last)
       return failedStep
         ? { kind: 'report', text, unposted: failedStep }
-        : leaveReview(deps.forge, unit, dir, from, text, last)
+        : leaveReview(deps.forge, unit, from, text, last)
     return { kind: 'report', text }
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])

@@ -19,4 +19,4 @@ The report:
 
 1. Verdict in one line: approve, approve with comments, or request changes. Write the same as one word, `approve`, `comments` or `changes`, to `.away/out/verdict`.
 2. Findings ranked by severity, each with `path:line`, the problem, a concrete failure scenario, and a suggested fix.
-3. Paste-ready review comments for each finding, in the report. When your unit's `Deliver:` line says a review, not a report, write them to `.away/out/review.json` instead: `[{ "path": "src/limit.ts", "line": 42, "body": "..." }]`, `line` on the PR's new side. awaywork leaves them on that line when the review is posted, and keeps any it can't place in its body.
+3. Paste-ready review comments for each finding, in the report. When your unit's `Deliver:` line says a review, not a report, write them to `.away/out/review.json` instead: `[{ "path": "src/limit.ts", "line": 42, "body": "..." }]`, `line` on the PR's new side, one that `diff.patch` adds or shows as context; findings elsewhere stay in the report. One comment off the diff and GitHub takes none of them, so awaywork lists them all in the review's body.
