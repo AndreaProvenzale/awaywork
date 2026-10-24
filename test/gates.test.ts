@@ -10,7 +10,7 @@ import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Gate, Unit } from '../src/core/types.js'
 import type { Check } from '../src/worker/checks.js'
-import { decisionCard, runGates } from '../src/worker/gates.js'
+import { gatesSection, runGates } from '../src/worker/gates.js'
 import { fakeItem } from './fakes/items.js'
 
 const git = async (dir: string, ...args: string[]) =>
@@ -146,7 +146,10 @@ it('fires a command gate on a non-zero exit, with its stdout on one line, else w
     { name: 'routes', line: '+ GET /exports/vat   + POST /exports/vat/retry' },
     { name: 'quiet', line: 'Command failed with exit code 127: scripts/quiet.sh' },
   ])
-  expect(check).toHaveBeenCalledWith('scripts/clean.sh', gates, dir, expect.any(Function), false)
+  expect(check).toHaveBeenCalledWith('scripts/clean.sh', gates, dir, expect.any(Function), {
+    from,
+    fresh: true,
+  })
 })
 
 it("fails closed: a command that times out, is stopped or isn't run fires", async () => {
@@ -249,13 +252,15 @@ it('passes when no gate fires, and has nothing to run without gates', async () =
   expect(await runGates(answering({}), {} as Unit, dir, from, from)).toEqual([])
 })
 
-it('lays out the decision card', () => {
+it('lays out the decision card, or the gates that ran when none fired', () => {
+  const gates = ['schema', 'deps', 'routes']
   expect(
-    decisionCard([
+    gatesSection(gates, [
       { name: 'schema', line: 'migrations/20261023_add_vat_mode.ts' },
       { name: 'routes', line: '+ GET /exports/vat   + POST /exports/vat/retry' },
     ]),
   ).toBe(
     '## Needs a decision\n\n### Gates (from scripts)\n\n- schema: migrations/20261023_add_vat_mode.ts\n- routes: + GET /exports/vat   + POST /exports/vat/retry\n\n---',
   )
+  expect(gatesSection(gates, [])).toBe('Gates: none fired (schema, deps, routes)\n\n---')
 })

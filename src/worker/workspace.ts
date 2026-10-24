@@ -194,9 +194,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 }
 
 /**
- * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
- * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * Puts back the clone's git config as it was cloned, and drops its `info/attributes`, so nothing a worker or check
+ * wrote there runs or steers awaywork's own git or a check's. Refuses a `.git` that now borrows a repo or objects
+ * from elsewhere, grafts its history, or holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
  * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
@@ -208,10 +208,11 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
     if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
       throw new Error(`.git/${path} in the clone is a symlink`)
   }
-  for (const path of ['commondir', 'objects/info/alternates'])
+  for (const path of ['commondir', 'objects/info/alternates', 'info/grafts'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
   await rm(join(git, 'config'), { recursive: true, force: true })
+  await rm(join(git, 'info', 'attributes'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
   markGitRestored(dir)
 }
@@ -338,6 +339,20 @@ export function workerEnv(
     ...Object.fromEntries(kept),
     GIT_CONFIG_GLOBAL: gitConfigFile(dir),
     GIT_CONFIG_NOSYSTEM: '1',
+  }
+}
+
+/** The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs, and the slice's base as `AWAYWORK_FROM`. */
+export function checkEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  withheld: string[],
+  from?: string,
+): NodeJS.ProcessEnv {
+  return {
+    ...workerEnv(env, dir, withheld),
+    GIT_NO_REPLACE_OBJECTS: '1',
+    ...(from && { AWAYWORK_FROM: from }),
   }
 }
 

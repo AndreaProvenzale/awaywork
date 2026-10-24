@@ -18,7 +18,8 @@ export interface Fired {
 }
 
 /**
- * Runs the unit's gates: their globs on the slice's commits since `from`, their commands in the clone.
+ * Runs the unit's gates: their globs on the slice's commits since `from`, their commands in the clone, each time
+ * afresh, with `from` as `AWAYWORK_FROM`.
  * A command fires when it exits non-zero, its stdout the line, and fails closed: also when it can't
  * run, times out or is stopped, and, without running, when a file it names by its path from the repo
  * root isn't the one the clone held at `start`, before the chain's setup and workers.
@@ -42,7 +43,7 @@ export async function runGates(
         lines.push(`\`${swapped}\` changed, not run`)
         continue
       }
-      const ran = await check(command, unit, dir, () => {}, false)
+      const ran = await check(command, unit, dir, () => {}, { from, fresh: true })
       if (!ran.failed) continue
       const unchecked = ran.timedOut || ran.stopped || ran.refused
       lines.push(unchecked ? `\`${command}\` not checked: ${ran.failed}` : ran.stdout || ran.failed)
@@ -98,15 +99,14 @@ export function describeFired(fired: Fired[]): string | undefined {
   return `${fired.length === 1 ? 'gate' : 'gates'} ${fired.map((f) => f.name).join(', ')} fired`
 }
 
-/** The card awaywork puts first in the PR body, closed by a rule so nothing after it reads as its own. */
-export function decisionCard(fired: Fired[]): string {
-  const gates = fired.map((f) => `- ${f.name}: ${f.line}`)
-  return ['## Needs a decision', '', '### Gates (from scripts)', '', ...gates, '', '---'].join('\n')
-}
-
-/** Escapes a `Needs a decision` heading in text awaywork didn't write, so only its own card renders as one. */
-export function disarmCards(text: string): string {
-  return text.replace(/(#{1,6}[ \t]+needs a decision)/gi, '\\$1')
+/**
+ * What awaywork puts first in the PR body whenever the unit has gates, closed by a rule so the agent's text is
+ * always below it: the decision card when one fired, else the gates that ran.
+ */
+export function gatesSection(gates: string[], fired: Fired[]): string {
+  if (!fired.length) return `Gates: none fired (${gates.join(', ')})\n\n---`
+  const lines = fired.map((f) => `- ${f.name}: ${f.line}`)
+  return ['## Needs a decision', '', '### Gates (from scripts)', '', ...lines, '', '---'].join('\n')
 }
 
 function listed(paths: string[]): string {

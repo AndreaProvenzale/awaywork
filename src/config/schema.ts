@@ -442,7 +442,7 @@ const gate = z
       .min(1)
       .optional()
       .describe(
-        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
       ),
   })
   .superRefine((g, ctx) => {
