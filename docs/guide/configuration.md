@@ -289,7 +289,7 @@ Every command in your config that touches a unit's clone, side by side. All of t
 | `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
 | `gates.<name>.command` | Once per slice, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](#gates) |
 
-`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs and reads attributes from the commit the chain started from. [Loops](./chains.md#loops) has the rest of their rules.
+`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. Only a gate's git reads attributes from the commit the chain started from; the other three keep the worktree's, so an eol or LFS rule the chain adds doesn't trip a `git status` or `git diff --exit-code` in your `verify`. [Loops](./chains.md#loops) has the rest of their rules.
 
 `skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
 

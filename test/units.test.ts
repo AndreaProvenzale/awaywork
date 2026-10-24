@@ -3835,6 +3835,17 @@ it("gives a gate's command the slice's base, so the clone's refs, replace refs a
   }
 })
 
+it("keeps a verify on the worktree's attributes, so an eol rule the chain adds leaves it clean", async () => {
+  const { outcomes } = await gated(
+    `repos: { acme/api: { verify: 'git diff --exit-code' } }\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir) => {
+      await commitFile(dir, '.gitattributes', '* text=auto\n')
+      await commitFile(dir, 'crlf.txt', 'a\r\nb\r\n')
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ ready: true })
+})
+
 it("runs a gate's command afresh, not taking a when's result on the same commit", async () => {
   const original = 'echo "+ GET /exports/vat"; exit 1\n'
   const { outcomes, statuses } = await gated(
