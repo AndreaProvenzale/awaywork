@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
-import { decisionCard, describeFired, type Fired, runGates } from './gates.js'
+import { decisionCard, describeFired, disarmCards, type Fired, runGates } from './gates.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { leaveReview } from './review.js'
 import {
@@ -94,12 +94,14 @@ export interface Publisher {
  * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
  * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
  * A fired gate's line goes in the decision card on top of the PR body, or of a push's summary, which goes only in the report.
+ * `start` is the commit the clone held before the chain's setup and workers, which gates check their scripts against.
  */
 export async function publishSlice(
   deps: Publisher,
   unit: Unit,
   dir: string,
   from: string,
+  start: string,
   reports: StepReport[],
   loops: Record<number, OpenLoop>,
   stack?: Stack,
@@ -124,7 +126,7 @@ export async function publishSlice(
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
   const failed = await verify(deps, unit, dir, from)
-  const fired = await runGates(deps.check, unit, dir, from)
+  const fired = await runGates(deps.check, unit, dir, from, start)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await prependCard(join(out, outputFile[deliver]), fired, deliver !== 'push')
@@ -138,13 +140,15 @@ export async function publishSlice(
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
 
-/** Puts the decision card first in the PR body, under its title line, or atop a push's summary. */
+/** Puts the decision card first in the PR body, under its title line, or atop a push's summary, escaping any card heading already there. */
 async function prependCard(file: string, fired: Fired[], titled: boolean): Promise<void> {
-  const body = (await readOutput(file)).trim()
-  if (!body || !fired.length) return
+  const written = (await readOutput(file)).trim()
+  const body = disarmCards(written)
+  if (!body || (!fired.length && body === written)) return
   const cut = titled ? body.indexOf('\n') + 1 || body.length : 0
   const title = titled ? `${body.slice(0, cut).trim()}\n\n` : ''
-  await writeOutput(file, `${title}${decisionCard(fired)}\n\n${body.slice(cut).trim()}\n`)
+  const card = fired.length ? `${decisionCard(fired)}\n\n` : ''
+  await writeOutput(file, `${title}${card}${body.slice(cut).trim()}\n`)
 }
 
 /** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. Returns how it failed. */

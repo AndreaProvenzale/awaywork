@@ -275,7 +275,7 @@ A custom source: any command that prints your open items as JSON.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `changed` | string \| string[] |  | Git globs from the repo root; fires when the slice's commits change a matching path |
-| `command` | string |  | A shell command awaywork runs in the clone, outside the model; a non-zero exit fires, with its stdout as the line; so does one that can't run, times out, or names a file the commits changed |
+| `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
 
 ## `gates.<key>`
 

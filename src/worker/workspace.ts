@@ -60,12 +60,13 @@ const noHooks = [
 ].flatMap((entry) => ['-c', entry])
 
 /**
- * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
+ * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant,
+ * and its history as it is, not as replace refs a worker wrote say.
  * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
  */
 export function inClone(dir: string): string[] {
   if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
-  return ['-C', dir, '--git-dir=.git', ...noHooks]
+  return ['-C', dir, '--git-dir=.git', '--no-replace-objects', ...noHooks]
 }
 
 interface WorkspaceInput {

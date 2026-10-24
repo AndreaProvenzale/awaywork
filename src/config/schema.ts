@@ -432,6 +432,7 @@ const mcpServer = z
 const gate = z
   .strictObject({
     changed: oneOrMany
+      .refine((globs) => globs.length > 0, 'expected at least one glob')
       .optional()
       .describe(
         "Git globs from the repo root; fires when the slice's commits change a matching path",
@@ -441,10 +442,18 @@ const gate = z
       .min(1)
       .optional()
       .describe(
-        "A shell command awaywork runs in the clone, outside the model; a non-zero exit fires, with its stdout as the line; so does one that can't run, times out, or names a file the commits changed",
+        "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
       ),
   })
-  .refine((g) => !g.changed !== !g.command, 'expected changed or command, not both')
+  .superRefine((g, ctx) => {
+    if ((g.changed === undefined) === (g.command === undefined))
+      ctx.addIssue({
+        code: 'custom',
+        message: g.changed
+          ? 'expected changed or command, not both'
+          : 'expected changed or command',
+      })
+  })
 const gates = z
   .record(z.string().regex(/^[\w-]+$/, 'expected a name like schema'), gate)
   .prefault({})

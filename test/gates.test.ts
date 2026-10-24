@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -78,22 +78,31 @@ queue: [{ skill: implement }]
   })
 })
 
-it('takes one of changed or command per gate', () => {
-  const problems = (gate: string) => {
+it('takes one of changed or command per gate, each with something in it', () => {
+  const problems = (gates: string) => {
     try {
       parseConfig(
-        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\ngates: { deps: ${gate} }\n`,
+        `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\ngates: ${gates}\n`,
       )
       return []
     } catch (e) {
       return (e as ConfigError).problems
     }
   }
-  expect(problems('{ changed: package.json, command: "true" }')).toEqual([
-    expect.stringContaining('expected changed or command, not both'),
+  expect(problems('{ deps: { changed: package.json, command: "true" } }')).toEqual([
+    'gates.deps: expected changed or command, not both',
   ])
-  expect(problems('{}')).toEqual([expect.stringContaining('expected changed or command')])
-  expect(problems('false')).not.toEqual([])
+  expect(problems('{ deps: {} }')).toEqual(['gates.deps: expected changed or command'])
+  expect(problems('{ deps: { changed: [] } }')).toEqual([
+    'gates.deps.changed: expected at least one glob',
+  ])
+  expect(problems('{ deps: { command: "" } }')).toEqual([
+    expect.stringMatching(/^gates\.deps\.command: Too small/),
+  ])
+  expect(problems('{ "my gate": { changed: a } }')).toEqual([
+    'gates.my gate: expected a name like schema',
+  ])
+  expect(problems('{ deps: false }')).not.toEqual([])
 })
 
 it('fires a changed gate on the paths the commits change, listing a few', async () => {
@@ -106,7 +115,7 @@ it('fires a changed gate on the paths the commits change, listing a few', async 
     'src/app.ts',
   ])
   const gates = unit({ schema: { changed: ['**/migrations/**'] }, deps: { changed: ['*.json'] } })
-  expect(await runGates(answering({}), gates, dir, from)).toEqual([
+  expect(await runGates(answering({}), gates, dir, from, from)).toEqual([
     {
       name: 'schema',
       line: 'db/migrations/1.ts, db/migrations/2.ts, db/migrations/3.ts and 2 more',
@@ -133,7 +142,7 @@ it('fires a command gate on a non-zero exit, with its stdout on one line, else w
     quiet: { commands: ['scripts/quiet.sh'] },
     clean: { commands: ['scripts/clean.sh'] },
   })
-  expect(await runGates(check, gates, dir, from)).toEqual([
+  expect(await runGates(check, gates, dir, from, from)).toEqual([
     { name: 'routes', line: '+ GET /exports/vat   + POST /exports/vat/retry' },
     { name: 'quiet', line: 'Command failed with exit code 127: scripts/quiet.sh' },
   ])
@@ -157,21 +166,67 @@ it("fails closed: a command that times out, is stopped or isn't run fires", asyn
     b: { commands: ['cut'] },
     c: { commands: ['refused'] },
   })
-  expect(await runGates(check, gates, dir, from)).toEqual([
+  expect(await runGates(check, gates, dir, from, from)).toEqual([
     { name: 'a', line: '`slow` not checked: timed out after 15 min' },
     { name: 'b', line: '`cut` not checked: the window ended' },
     { name: 'c', line: "`refused` not checked: not run on an untrusted author's PR" },
   ])
 })
 
-it('fires a gate whose command names a file the commits changed, without running it', async () => {
+it('fires a gate whose command names a file the commits added, without running it', async () => {
   const { dir, from } = await committed(['scripts/route-diff.sh', 'src/app.ts'])
   const check = answering({})
   const gates = unit({ routes: { commands: ['bash ./scripts/route-diff.sh --base main'] } })
-  expect(await runGates(check, gates, dir, from)).toEqual([
-    { name: 'routes', line: '`scripts/route-diff.sh` changed in this PR' },
+  expect(await runGates(check, gates, dir, from, from)).toEqual([
+    { name: 'routes', line: '`scripts/route-diff.sh` changed, not run' },
   ])
   expect(check).not.toHaveBeenCalled()
+})
+
+/** The line of a gate running `command` once `change` ran on a clone whose start holds `scripts/gate.sh`, and whether it ran. */
+async function afterChange(command: string, change: (dir: string) => Promise<unknown>) {
+  const { dir } = await committed(['scripts/gate.sh'])
+  const start = await git(dir, 'rev-parse', 'HEAD')
+  await change(dir)
+  // The slice starts at the clone's tip, as a stacked one does: its own commits change nothing.
+  const from = await git(dir, 'rev-parse', 'HEAD')
+  const check = answering({})
+  const fired = await runGates(check, unit({ routes: { commands: [command] } }), dir, from, start)
+  return { line: fired[0]?.line, ran: check.mock.calls.length > 0 }
+}
+
+it('fires, without running it, a command whose script differs from the one the chain started with', async () => {
+  const swapped = { line: '`scripts/gate.sh` changed, not run', ran: false }
+  const gate = 'sh scripts/gate.sh'
+  expect(await afterChange(gate, async () => {})).toEqual({ line: undefined, ran: true })
+  const earlierSlice = async (dir: string) => {
+    await writeFile(join(dir, 'scripts/gate.sh'), 'exit 0\n')
+    await git(dir, 'commit', '-qam', 'swap')
+  }
+  expect(await afterChange(gate, earlierSlice)).toEqual(swapped)
+  const hidden = async (dir: string) => {
+    await git(dir, 'update-index', '--skip-worktree', 'scripts/gate.sh')
+    await writeFile(join(dir, 'scripts/gate.sh'), 'y')
+  }
+  expect(await afterChange(gate, hidden)).toEqual(swapped)
+  expect(await afterChange(gate, (dir) => rm(join(dir, 'scripts/gate.sh')))).toEqual(swapped)
+  const added = (dir: string) => writeFile(join(dir, 'scripts/new.sh'), 'exit 0\n')
+  expect(await afterChange('sh scripts/new.sh', added)).toEqual({
+    line: '`scripts/new.sh` changed, not run',
+    ran: false,
+  })
+})
+
+it('finds the script among shell punctuation, by its path from the repo root', async () => {
+  const edit = (dir: string) => writeFile(join(dir, 'scripts/gate.sh'), 'exit 0\n')
+  for (const command of [
+    '(./scripts/gate.sh)&&echo ok',
+    'scripts/gate.sh>out',
+    '"scripts/gate.sh"; true',
+    'true || scripts/gate.sh | cat',
+  ])
+    expect(await afterChange(command, edit)).toMatchObject({ ran: false })
+  expect(await afterChange('cd scripts && sh gate.sh', edit)).toMatchObject({ ran: true })
 })
 
 it('fires a gate once when both its globs and its command do, and escapes a <', async () => {
@@ -182,7 +237,7 @@ it('fires a gate once when both its globs and its command do, and escapes a <', 
   const gates = unit({
     schema: { changed: ['**/migrations/**'], commands: ['scripts/schema.sh'] },
   })
-  expect(await runGates(check, gates, dir, from)).toEqual([
+  expect(await runGates(check, gates, dir, from, from)).toEqual([
     { name: 'schema', line: 'db/migrations/1.ts; &lt;!-- drops users' },
   ])
 })
@@ -190,8 +245,8 @@ it('fires a gate once when both its globs and its command do, and escapes a <', 
 it('passes when no gate fires, and has nothing to run without gates', async () => {
   const { dir, from } = await committed(['src/app.ts'])
   const gates = unit({ schema: { changed: ['**/migrations/**'] }, ok: { commands: ['true'] } })
-  expect(await runGates(answering({}), gates, dir, from)).toEqual([])
-  expect(await runGates(answering({}), {} as Unit, dir, from)).toEqual([])
+  expect(await runGates(answering({}), gates, dir, from, from)).toEqual([])
+  expect(await runGates(answering({}), {} as Unit, dir, from, from)).toEqual([])
 })
 
 it('lays out the decision card', () => {
@@ -201,6 +256,6 @@ it('lays out the decision card', () => {
       { name: 'routes', line: '+ GET /exports/vat   + POST /exports/vat/retry' },
     ]),
   ).toBe(
-    '## Needs a decision\n\n### Gates (from scripts)\n\n- schema: migrations/20261023_add_vat_mode.ts\n- routes: + GET /exports/vat   + POST /exports/vat/retry',
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- schema: migrations/20261023_add_vat_mode.ts\n- routes: + GET /exports/vat   + POST /exports/vat/retry\n\n---',
   )
 })
