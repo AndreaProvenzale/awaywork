@@ -1,9 +1,8 @@
 import { join } from 'node:path'
 import { z } from 'zod'
-import { slug } from '../core/foreman.js'
-import { type Forge, PendingReviewExists, type Review, type Unit } from '../core/types.js'
+import type { Forge, Review, Unit } from '../core/types.js'
 import type { Outcome } from './publish.js'
-import { readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
+import { readOutput } from './workspace.js'
 
 const MAX_BYTES = 100_000
 const MAX_COMMENTS = 100
@@ -36,48 +35,10 @@ export function parseComments(text: string): { comments: Review['comments']; inv
   return { comments: [], invalid: `${at}${issue?.message}` }
 }
 
-/** The new-side lines of each file a review can comment on: those a hunk adds or keeps as context. */
-export function commentableLines(diff: string): Map<string, Set<number>> {
-  const files = new Map<string, Set<number>>()
-  let file: Set<number> | undefined
-  let line = 0
-  let oldLeft = 0
-  let newLeft = 0
-  for (const text of diff.split('\n')) {
-    // Inside a hunk, its counts tell its lines from the next file's header, whatever they hold.
-    if (oldLeft > 0 || newLeft > 0) {
-      if (text.startsWith('+')) {
-        file?.add(line++)
-        newLeft--
-      } else if (text.startsWith('-')) oldLeft--
-      else if (!text.startsWith('\\')) {
-        file?.add(line++)
-        oldLeft--
-        newLeft--
-      }
-      continue
-    }
-    if (text.startsWith('diff --git ')) file = undefined
-    else if (text.startsWith('+++ b/')) {
-      file = new Set()
-      // Git ends a path holding a space with a tab.
-      files.set(text.slice('+++ b/'.length).replace(/\t$/, ''), file)
-    }
-    const hunk = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(text)
-    if (hunk) {
-      oldLeft = Number(hunk[1] ?? 1)
-      line = Number(hunk[2])
-      newLeft = Number(hunk[3] ?? 1)
-    }
-  }
-  return files
-}
-
-/** The body with `comments` it can't leave on a line of the diff. */
+/** The body with every line comment listed under it, for a review the forge won't take them in. */
 function withComments(body: string, comments: Review['comments']): string {
-  if (!comments.length) return body
   const listed = comments.map((c) => `\`${c.path}:${c.line}\`: ${c.body}`).join('\n\n')
-  return `${body}\n\n## Outside the diff\n\n${listed}`
+  return `${body}\n\n## Line comments\n\n${listed}`
 }
 
 /** A reason on one line, without the `; ` that `runLine` splits a result at. */
@@ -85,14 +46,13 @@ const oneLine = (reason: string) => reason.split('\n')[0]?.split('; ')[0] ?? ''
 
 /**
  * Leaves the chain's last report on the PR the unit reviews as your pending review at `head`, the
- * commit the clone read, with the line comments its step left in `review.json`. A comment outside
- * the PR's diff would fail the whole review, so it goes in the body, as do all of them when the
- * forge refuses the review anyway; any other failure delivers the report alone, saying why.
+ * commit the clone read, with the line comments its step left in `review.json`. GitHub refuses the
+ * whole review over one comment outside the PR's diff, so then they all go in the body; any other
+ * failure delivers the report alone, saying why.
  */
 export async function leaveReview(
   forge: Forge,
   unit: Unit,
-  dir: string,
   head: string,
   text: string,
   last: { text: string; out: string },
@@ -103,20 +63,11 @@ export async function leaveReview(
   if (!pr) return { kind: 'report', text, unposted: 'no pull request to review' }
   try {
     const { comments, invalid } = parseComments(await readOutput(join(last.out, 'review.json')))
-    // A PR the source only links, not an item of its own, has no diff fetched: every comment goes in the body.
-    const item = unit.items.find((i) => i.type === 'pr' && i.url === pr.url)
-    const diff = item && `${WORK_DIR}/context/${slug(item.key)}/diff.patch`
-    if (diff) await refuseSymlinks(dir, [diff])
-    const lines = commentableLines(diff ? await readOutput(join(dir, diff)) : '')
-    const inDiff = comments.filter((c) => lines.get(c.path)?.has(c.line))
-    const outside = comments.filter((c) => !inDiff.includes(c))
     const post = (review: Review) => forge.pendingReview(unit.repo, pr.number, head, review)
-    const url = await post({ body: withComments(last.text, outside), comments: inDiff }).catch(
-      (e) => {
-        if (!inDiff.length || e instanceof PendingReviewExists) throw e
-        return post({ body: withComments(last.text, comments), comments: [] })
-      },
-    )
+    const url = await post({ body: last.text, comments }).catch((e) => {
+      if (!comments.length) throw e
+      return post({ body: withComments(last.text, comments), comments: [] })
+    })
     return {
       kind: 'review',
       url,

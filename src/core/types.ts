@@ -191,9 +191,6 @@ export interface Forge {
   pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
 }
 
-/** Why `pendingReview` left nothing: a pending review of yours is on that PR already. */
-export class PendingReviewExists extends Error {}
-
 /** A review's body and its comments on lines of the PR's new side. */
 export interface Review {
   body: string
