@@ -289,7 +289,7 @@ Every command in your config that touches a unit's clone, side by side. All of t
 | `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
 | `gates.<name>.command` | Once per slice, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](#gates) |
 
-`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. [Loops](./chains.md#loops) has the rest of their rules.
+`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs and reads attributes from the commit the chain started from. [Loops](./chains.md#loops) has the rest of their rules.
 
 `skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
 
@@ -316,11 +316,11 @@ A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice start
 ```sh
 #!/bin/sh
 # scripts/route-diff.sh: fires when the slice adds a route
-routes=$(git diff "$AWAYWORK_FROM" HEAD -- src/routes | grep -E '^\+ *router\.(get|post)')
+routes=$(git diff --text "$AWAYWORK_FROM" HEAD -- src/routes | grep -E '^\+ *router\.(get|post)')
 [ -z "$routes" ] || { echo "$routes"; exit 1; }
 ```
 
-Diff from `$AWAYWORK_FROM`, never from a branch like `origin/main`: the clone's refs are the agent's to move. Its replace refs and `.git/info/attributes` are too, so the command's git ignores the first and awaywork deletes the second before it runs.
+Diff from `$AWAYWORK_FROM`, never from a branch like `origin/main`: the clone's refs are the agent's to move. So are its replace refs and attributes, where a `* -diff` turns the diff into `Binary files … differ`: the command's git ignores replace refs, awaywork deletes `.git/info/attributes` before it runs, and git reads `.gitattributes` files, committed or not, from the commit the chain started from rather than the worktree. Older git ignores that last part, hence the `--text`.
 
 Top-level gates apply to every repo, and a repo's `gates` can only add to them. A gate both define fires on either's globs, and when both have a `command`, both run and either one fires it. There's no way for a repo to turn off or loosen a top-level gate.
 

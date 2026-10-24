@@ -3827,6 +3827,8 @@ it("gives a gate's command the slice's base, so the clone's refs, replace refs a
       await git(dir, 'replace', 'HEAD', decoy)
     },
     (dir: string) => writeFile(join(dir, '.git/info/attributes'), '* -diff\n'),
+    (dir: string) => commitFile(dir, '.gitattributes', '* -diff\n'),
+    (dir: string) => writeFile(join(dir, '.gitattributes'), '* -diff\n'),
   ]) {
     const { outcomes } = await gated(yaml, routes(hide), { script })
     expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })

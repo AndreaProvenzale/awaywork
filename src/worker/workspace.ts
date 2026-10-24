@@ -342,16 +342,21 @@ export function workerEnv(
   }
 }
 
-/** The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs, and the slice's base as `AWAYWORK_FROM`. */
+/**
+ * The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs and reading attributes from the
+ * chain's `start` rather than the worktree, and the slice's base as `AWAYWORK_FROM`.
+ */
 export function checkEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
   withheld: string[],
   from?: string,
+  start?: string,
 ): NodeJS.ProcessEnv {
   return {
     ...workerEnv(env, dir, withheld),
     GIT_NO_REPLACE_OBJECTS: '1',
+    ...(start && { GIT_ATTR_SOURCE: start }),
     ...(from && { AWAYWORK_FROM: from }),
   }
 }
