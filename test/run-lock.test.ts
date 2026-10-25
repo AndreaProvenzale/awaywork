@@ -31,7 +31,7 @@ describe('takeRunLock', () => {
     expect(await readFile(file, 'utf8')).toBe('1 run-other')
   })
 
-  it("doesn't count a pid given to another process since the lock was written, or another user's", async () => {
+  it("doesn't count a pid given to another process since the lock was written, or another user's, but allows for a clock step", async () => {
     const reused = execa('sleep', ['30'], { reject: false })
     await writeFile(file, `${reused.pid} run-old`)
     const before = new Date(Date.now() - 3_600_000)
@@ -44,6 +44,16 @@ describe('takeRunLock', () => {
     } finally {
       reused.kill()
       await reused
+    }
+    const stepped = execa('sleep', ['30'], { reject: false })
+    await writeFile(file, `${stepped.pid} run-now`)
+    const skewed = new Date(Date.now() - 30_000)
+    await utimes(file, skewed, skewed)
+    try {
+      expect(await lockHolder(file)).toBe(stepped.pid)
+    } finally {
+      stepped.kill()
+      await stepped
     }
     if (process.getuid?.() === 0) return
     await writeFile(file, '1 run-root')
