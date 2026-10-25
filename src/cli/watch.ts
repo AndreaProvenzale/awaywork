@@ -44,6 +44,8 @@ export function watchCommand(program: Command): void {
       const stop = new AbortController()
       // `on`, not `once`: execa's signal-exit re-raises a signal it sees no other listener for.
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => stop.abort())
+      // Inherited by hooks and workers, so `schedule install` there won't stop this daemon.
+      process.env.AWAYWORK_WATCH = String(process.pid)
       return watch(configPath(program.opts().config), stop.signal)
     })
 }
@@ -323,7 +325,7 @@ export async function stopWatch(waitMs = 2 * MINUTE): Promise<number | undefined
   try {
     process.kill(pid, 'SIGTERM')
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ESRCH') return undefined
+    if (['ESRCH', 'EPERM'].includes((e as NodeJS.ErrnoException).code ?? '')) return undefined
     throw e
   }
   for (const end = Date.now() + waitMs; Date.now() < end; await setTimeout(200))
