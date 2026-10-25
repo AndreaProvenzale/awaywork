@@ -47,12 +47,18 @@ describe('allowance', () => {
     expect(ceiling(allowance(budget(), month(), now, daily, present))).toBe(0)
   })
 
-  it('reads an away run at the next window opening', () => {
+  it('reads an away run at the opening after its window', () => {
     // Day 3 of 7 now, day 4 at Friday's 01:00 opening.
     expect(ceiling(allowance(budget(), quota(0.2, 96), now, daily))).toBe(0.514)
-    const weekly = [{ days: ['sat' as const], start: '10:00', end: '18:00' }]
-    // Saturday 10:00 is 57 hours away, 3 before the reset.
-    expect(ceiling(allowance(budget(), quota(0.36, 60), now, weekly))).toBe(0.884)
+    const twice = [{ days: ['thu' as const, 'sat' as const], start: '01:00', end: '07:00' }]
+    // Saturday 01:00 is 48 hours away, 12 before the reset.
+    expect(ceiling(allowance(budget(), quota(0.36, 60), now, twice))).toBe(0.836)
+  })
+
+  it('reads away outside every window as a run at the next opening would', () => {
+    // At noon the next run is Friday's 01:00, which reads at Saturday's, day 5 of 7.
+    const noon = now + 11 * 3600 * 1000
+    expect(ceiling(allowance(budget(), quota(0.2, 96), noon, daily))).toBe(0.643)
   })
 
   it('reads an away run at the reset when no window opens before it', () => {
