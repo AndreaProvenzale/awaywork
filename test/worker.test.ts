@@ -34,7 +34,12 @@ const job: Job = {
 }
 
 const windows = [{ start: '01:00', end: '07:00' }]
-const budget = { reserve: 0.1, session_max: 0.9, fallback: { units: 4, turns: 60 } }
+const budget = {
+  reserve: 0.1,
+  session_max: 0.9,
+  present_session_max: 0.4,
+  fallback: { units: 4, turns: 60 },
+}
 const quota = await fakeProvider().probe({ env: {}, log: () => {} })
 const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
 const idle = { stop: async () => {} }
@@ -64,6 +69,15 @@ describe('worker', () => {
   it('stops once the short window reaches session_max', async () => {
     const result = await run(allowance({ ...budget, session_max: 0.02 }, quota, now, windows))
     expect(result).toMatchObject({
+      status: 'stopped: session',
+      reason: 'five_hour at 2%, stop at 2%',
+    })
+  })
+
+  it('stops a present run at present_session_max instead', async () => {
+    const strict = { ...budget, present_session_max: 0.02 }
+    expect(await run(allowance(strict, quota, now, windows))).toMatchObject({ status: 'done' })
+    expect(await run(allowance(strict, quota, now, windows, { present: true }))).toMatchObject({
       status: 'stopped: session',
       reason: 'five_hour at 2%, stop at 2%',
     })

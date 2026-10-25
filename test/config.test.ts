@@ -53,12 +53,14 @@ describe('config', () => {
       reserve: 0.1,
       per_run: 0.15,
       session_max: 0.9,
+      present_session_max: 0.4,
       fallback: { units: 4, turns: 60 },
     })
     expect(codex?.budget.per_run).toBe(0.05)
     expect(parseConfig(minimal).budget).toEqual({
       reserve: 0.1,
       session_max: 0.9,
+      present_session_max: 0.4,
       fallback: { units: 4, turns: 60 },
     })
   })
