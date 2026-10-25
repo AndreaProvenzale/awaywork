@@ -285,6 +285,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     signal: a.signal(),
     attempts: await loadAttempts(attemptsPath),
     turn: a.turn,
+    soon: !!a.soon,
   })
   const reportPath = join(runDir, 'report.md')
   await writeFile(reportPath, formatReport(report, warnings))

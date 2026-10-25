@@ -91,6 +91,38 @@ function serial() {
 }
 
 /**
+ * Sets launch's isolation for each of the daemon's runs, between two workers: to its config's for a
+ * run that starts `alone`, none other in progress; a run started meanwhile keeps the one in force, so
+ * no run's later chains switch. The promise settles once it's in force.
+ */
+export function isolation(turn: <T>(f: () => Promise<T>) => Promise<T>, log: (l: string) => void) {
+  // Unset while it switches and once a switch failed: isolateFor resets launch's state first.
+  let current: Config['isolation'] | undefined
+  let wanted: Config['isolation'] | undefined
+  let kept: Config['isolation'] | undefined
+  let switched: Promise<void> = Promise.resolve()
+  return (config: Config, alone: boolean): Promise<void> => {
+    if (!alone) {
+      if (config.isolation !== wanted && config.isolation !== kept)
+        log(
+          `isolation: ${config.isolation} waits for the runs in progress, a run starting meanwhile keeps ${wanted}`,
+        )
+      kept = config.isolation
+      return switched
+    }
+    kept = undefined
+    wanted = config.isolation
+    if (current !== config.isolation)
+      switched = turn(async () => {
+        current = undefined
+        await isolateFor(config.isolation, process.env)
+        current = config.isolation
+      })
+    return switched
+  }
+}
+
+/**
  * The daemon: each minute on the wall clock, starts the window run due and polls the sources of
  * `run: soon` rules that are due, starting a soon run for the units due, until `stop`.
  */
@@ -133,15 +165,7 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
   const inTurn = serial()
   // One worker at a time across the runs: the watchdog, isolation: user's kill and the container stops each count on it.
   const oneWorker = serial()
-  let isolation: Config['isolation'] | undefined
-  // Between workers, never under one: isolateFor resets launch's state as it starts.
-  const isolate = (config: Config) =>
-    config.isolation === isolation
-      ? Promise.resolve()
-      : oneWorker(async () => {
-          await isolateFor(config.isolation, process.env)
-          isolation = config.isolation
-        })
+  const isolate = isolation(oneWorker, event)
 
   const finish = (runId: string) =>
     inTurn(async () => {
@@ -156,9 +180,10 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     })
 
   /** Starts a run under the run lock, held while any of the daemon's runs is in progress; the lock's holder when that's someone else. */
-  const start = (r: Omit<DaemonRun, 'runId' | 'path' | 'stop' | 'claim' | 'turn' | 'isolate'>) =>
+  const start = (r: Omit<DaemonRun, 'runId' | 'path' | 'stop' | 'claim' | 'turn' | 'isolated'>) =>
     inTurn(async (): Promise<string | { pid: number; runId: string }> => {
-      if (!running.size) {
+      const alone = !running.size
+      if (alone) {
         const taken = await takeRunLock(runLockPath, 'watch')
         if (!('release' in taken)) return taken
         releaseLock = taken.release
@@ -175,15 +200,10 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
       })
       await save()
       const claim = (plan: RunPlan) => claimUnits(plan, runId, held, seen)
-      const run = daemonRun({
-        ...r,
-        path,
-        runId,
-        stop,
-        claim,
-        turn: oneWorker,
-        isolate: () => isolate(r.config),
-      })
+      const isolated = isolate(r.config, alone)
+      // Awaited once the run's dir is made.
+      isolated.catch(() => {})
+      const run = daemonRun({ ...r, path, runId, stop, claim, turn: oneWorker, isolated })
       running.set(
         runId,
         run
@@ -299,6 +319,8 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     await polling
     await Promise.all(running.values())
   } finally {
+    // The last run's finish, which may have left `running` before it released the run lock.
+    await inTurn(async () => {})
     await inSave(() => rm(watchStatePath, { force: true }))
     event('awaywork watch stopped')
     await lock.release()
@@ -316,8 +338,8 @@ interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn'> {
   runId: string
   stop: AbortSignal
   present: boolean
-  /** Sets the run's isolation for the launches its workers make. */
-  isolate: () => Promise<void>
+  /** Settles once the isolation the run's workers launch under is in force. */
+  isolated: Promise<void>
 }
 
 /** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. */
@@ -339,7 +361,7 @@ async function daemonRun(r: DaemonRun): Promise<void> {
   event(`${r.trigger} run ${r.runId} started${until}${units}`)
   try {
     await mkdir(runDir, { recursive: true, mode: 0o700 })
-    await r.isolate()
+    await r.isolated
     await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)

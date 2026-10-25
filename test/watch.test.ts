@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '../src/cli/schedule.js'
-import { appendLog, stopWatch, watch } from '../src/cli/watch.js'
+import { appendLog, isolation, stopWatch, watch } from '../src/cli/watch.js'
 import {
   runLockPath,
   runsDir,
@@ -13,6 +13,8 @@ import {
   watchLogPath,
   watchStatePath,
 } from '../src/config/paths.js'
+import type { Config } from '../src/config/schema.js'
+import { contained, isolateFor } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 
@@ -67,6 +69,20 @@ vi.mock('../src/forge/index.js', async () => {
     void (await execa('git', ['clone', '-q', workers.origin, dir]))
   return { forgeFor: () => ({ ...fakeForge(), clone }) }
 })
+/** How long releasing the run lock takes. */
+const lock = vi.hoisted(() => ({ releaseMs: 0 }))
+vi.mock('../src/core/run-lock.js', async (original) => {
+  const real = await original<typeof import('../src/core/run-lock.js')>()
+  const { setTimeout } = await import('node:timers/promises')
+  return {
+    ...real,
+    takeRunLock: async (file: string, runId: string) => {
+      const taken = await real.takeRunLock(file, runId)
+      if (!('release' in taken)) return taken
+      return { release: () => setTimeout(lock.releaseMs).then(taken.release) }
+    },
+  }
+})
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
   holdAwake: async () => () => {},
@@ -120,6 +136,7 @@ beforeEach(async () => {
   vi.stubEnv('RUNNER_ENVIRONMENT', '')
   for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath])
     await rm(file, { force: true })
+  lock.releaseMs = 0
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -128,6 +145,8 @@ afterEach(() => {
 
 describe('awaywork watch', () => {
   it('starts a window run in an open window, logging events and its output to the run dir', async () => {
+    // Stopping waits for the last run to let go of the run lock.
+    lock.releaseMs = 300
     const log = await watchUntil(await config(), 'Report: ')
     const runId = /window run (\d{8}-\d{6}) started, until /.exec(log)?.[1] ?? ''
     expect(log).toMatch(/^\S+ \S+ awaywork watch started, pid \d+, config /)
@@ -162,7 +181,7 @@ describe('awaywork watch', () => {
     expect(existsSync(runsDir) ? await readdir(runsDir) : []).toEqual(before)
   })
 
-  it('starts a present soon run for a due unit, notifying no run end, and backs off a failing source', async () => {
+  it('starts a present soon run for a due unit, notifying nothing for one that sat out, and backs off a failing source', async () => {
     const path = await config('[]')
     const dir = dirname(path)
     const item = {
@@ -191,7 +210,7 @@ notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
     const plan = await readFile(join(runsDir, runId, 'plan.txt'), 'utf8')
     expect(plan).toContain('present run (outside the windows)')
     expect(plan).toContain('claude sits out a present run')
-    expect(await readFile(join(dir, 'events.txt'), 'utf8')).toBe('unit\n')
+    expect(existsSync(join(dir, 'events.txt'))).toBe(false)
     expect(existsSync(runLockPath)).toBe(false)
   })
 
@@ -218,6 +237,7 @@ sources: { chores: { command: cat items.json, fields: [kind] } }
 queue:
   - { skill: plan, source: chores, where: { kind: soon }, run: soon }
   - { skill: plan, source: chores, where: { kind: later } }
+notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events.txt')}' }
 `,
     )
     // The window run probes first and waits for the soon run's worker, so both have a unit.
@@ -239,7 +259,39 @@ queue:
     expect(plan).toMatch(/CH-1: running in run \d{8}-\d{6}/)
     expect(workers.ran.sort()).toEqual(['ch-1', 'ch-2'])
     expect(workers.most).toBe(1)
+    const events = (await readFile(join(dir, 'events.txt'), 'utf8')).trim().split('\n')
+    expect(events.sort()).toEqual(['run', 'unit ch-1', 'unit ch-2'])
   }, 30_000)
+
+  it('switches isolation only with no run in progress, and again after a switch failed', async () => {
+    // A docker that answers, and a sudo that refuses: isolation: user fails on Linux too.
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-fakes-'))
+    await writeFile(join(fakes, 'docker'), '#!/bin/sh\necho 27.0\n', { mode: 0o755 })
+    await writeFile(join(fakes, 'sudo'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    vi.stubEnv('PATH', `${fakes}:${process.env.PATH}`)
+    const lines: string[] = []
+    const isolate = isolation(
+      (f) => f(),
+      (line) => lines.push(line),
+    )
+    const as = (isolation: Config['isolation']) => ({ isolation }) as Config
+    try {
+      await isolate(as('container'), true)
+      expect(contained()).toBe(true)
+      await expect(isolate(as('user'), true)).rejects.toThrow()
+      expect(contained()).toBe(false)
+      await isolate(as('container'), true)
+      expect(contained()).toBe(true)
+      await isolate(as('none'), false)
+      await isolate(as('none'), false)
+      expect(contained()).toBe(true)
+      expect(lines).toEqual([
+        'isolation: none waits for the runs in progress, a run starting meanwhile keeps container',
+      ])
+    } finally {
+      await isolateFor('none', process.env)
+    }
+  })
 
   it('exits in one line while another copy runs, and takes over a dead one', async () => {
     await writeFile(watchLockPath, `${process.pid} watch`)
