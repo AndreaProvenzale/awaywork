@@ -897,9 +897,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
-    // Every slice that ran published, only a `when` ended the chain early, and no step asked.
-    const finished =
-      !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0 && !asked
+    // Every slice that ran published, and only a `when` ended the chain early.
+    const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
     if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
       lead.moved = await moveItems(ownItems(first), onDone.move)
     for (const r of done) {
