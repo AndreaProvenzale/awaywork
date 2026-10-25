@@ -39,23 +39,22 @@ export async function shortage(
  * Watches the worker's processes and the machine while one worker runs.
  *
  * Node has no subreaper, so a background task that starts its own session and outlives
- * the model is reparented away from us. Every tick records each process `roots` names, the
- * worker's launches by default, and their descendants by pid and start time; `stop` kills
- * those still alive with the same start time, so a pid reused by an unrelated process is
- * spared. Workers run one at a time, awaywork watch's runs included, so every launch running
- * is this worker's; awaywork's own children, like the keep-awake one or a poll, are spared.
+ * the model is reparented away from us. Every tick records the worker's launches and their
+ * descendants by pid and start time; `stop` kills those still alive with the same start time,
+ * so a pid reused by an unrelated process is spared. Workers run one at a time, awaywork
+ * watch's runs included, so every launch running is this worker's; awaywork's own children,
+ * like the keep-awake one or a poll, are spared.
  */
 export function startWatchdog(
   dir: string,
   onLimit: (reason: string) => void,
   limits: WatchdogLimits = defaultLimits,
-  roots: () => number[] = launched,
 ): Watchdog {
   const seen = new Map<number, string>()
   let ticking: Promise<void> = Promise.resolve()
 
   const tick = async () => {
-    for (const [pid, started] of under(roots(), await processes())) seen.set(pid, started)
+    for (const [pid, started] of under(launched(), await processes())) seen.set(pid, started)
     const reason = await shortage(dir, limits)
     if (reason) onLimit(reason)
   }
@@ -81,12 +80,8 @@ export function startWatchdog(
 
 type Table = Map<number, { ppid: number; started: string }>
 
-const PS = ['-A', '-o', 'pid=,ppid=,lstart=']
-const PS_ENV = { env: { LC_ALL: 'C' } }
-
-const processes = async () => table((await execa('ps', PS, PS_ENV)).stdout)
-
-function table(stdout: string): Table {
+async function processes(): Promise<Table> {
+  const { stdout } = await execa('ps', ['-A', '-o', 'pid=,ppid=,lstart='], { env: { LC_ALL: 'C' } })
   const table: Table = new Map()
   for (const line of stdout.split('\n')) {
     const [, pid, ppid, started] = /^\s*(\d+)\s+(\d+)\s+(.*\S)/.exec(line) ?? []

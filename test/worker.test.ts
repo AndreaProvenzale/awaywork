@@ -212,24 +212,17 @@ describe('watchdog', () => {
     expect(alive(orphan)).toBe(false)
   })
 
-  it("spares awaywork's own children started meanwhile, like a poll in the daemon", async () => {
+  it("spares awaywork's own children, like the keep-awake one from before and a poll started meanwhile", async () => {
+    const awake = spawn('sleep', ['30'], { stdio: 'ignore' })
     const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
     const poll = spawn('sleep', ['30'], { stdio: 'ignore' })
     await new Promise((ok) => setTimeout(ok, 200))
     await watchdog.stop()
     await new Promise((ok) => setTimeout(ok, 100))
-    expect(poll.signalCode).toBeNull()
-    poll.kill('SIGKILL')
-  })
-
-  it('spares a descendant alive before it started, like the keep-awake child', async () => {
-    const awake = spawn('sleep', ['30'], { stdio: 'ignore' })
-    const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
-    await new Promise((ok) => setTimeout(ok, 200))
-    await watchdog.stop()
-    await new Promise((ok) => setTimeout(ok, 100))
     expect(awake.signalCode).toBeNull()
+    expect(poll.signalCode).toBeNull()
     awake.kill('SIGKILL')
+    poll.kill('SIGKILL')
   })
 
   it('reports low memory', async () => {
