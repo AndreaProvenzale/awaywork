@@ -207,6 +207,16 @@ describe('watchdog', () => {
     expect(alive(orphan)).toBe(false)
   })
 
+  it('spares a descendant alive before it started, like the keep-awake child', async () => {
+    const awake = spawn('sleep', ['30'], { stdio: 'ignore' })
+    const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
+    await new Promise((ok) => setTimeout(ok, 200))
+    await watchdog.stop()
+    await new Promise((ok) => setTimeout(ok, 100))
+    expect(awake.signalCode).toBeNull()
+    awake.kill('SIGKILL')
+  })
+
   it('reports low memory', async () => {
     const reasons: string[] = []
     const limits = { ...defaultLimits, intervalMs: 20, minMemory: Number.POSITIVE_INFINITY }
