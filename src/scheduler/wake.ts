@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
 import { describeStarts, type Start } from './index.js'
-import { onCalendar } from './systemd.js'
 
 const UNIT = 'awaywork-wake'
 const UNIT_DIR = '/etc/systemd/system'
 const PMSET_DAYS = 'MTWRFSU'
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const systemdRuns = () => existsSync('/run/systemd/system')
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -124,6 +124,14 @@ async function pmsetWake(starts: Start[], run: Exec): Promise<Wake | string> {
     install: async () => void (await run('sudo', args)),
   }
 }
+
+const onCalendar = (starts: Start[]) =>
+  starts
+    .map(
+      (start) =>
+        `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
+    )
+    .join('\n')
 
 export const wakeTimer = (starts: Start[]) => `[Unit]
 Description=Wake for awaywork runs
