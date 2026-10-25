@@ -14,8 +14,8 @@ export interface Pruned {
 
 /**
  * Removes the run dirs that started longer than `keep_runs` before `now`, going by the run id, a
- * UTC start time. Keeps the run holding the run lock, any with a replay started within `keep_runs`, every run attempts.json reads an item's
- * latest report from, and anything not named like a run.
+ * UTC start time. Keeps the run holding the run lock, any with a replay started within `keep_runs`,
+ * every run attempts.json reads an item's latest report from, and anything not named like a run.
  */
 export async function pruneRuns(config: Pick<Config, 'keep_runs'>, now: Date): Promise<Pruned> {
   const cutoff = now.getTime() - spanMs(config.keep_runs)
