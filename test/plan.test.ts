@@ -316,7 +316,7 @@ queue:
         '    other limits: per_run 14%, reserve cap 90%',
       ].join('\n'),
     )
-    expect(describeAllowance('codex', result.allowances.codex as Allowance)).toBe(
+    expect(describeAllowance('codex', result.allowances.codex as Allowance, 0.4)).toBe(
       '30d 4% used, ceiling 9% set by pacing (per_run 14%, reserve cap 90%; resets in 28 runs)',
     )
     expect(describeAllowance('claude', result.allowances.claude as Allowance, 0.4)).toBe(
