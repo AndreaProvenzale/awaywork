@@ -33,7 +33,7 @@ import { exec } from '../forge/gh.js'
 import { holdAwake } from '../scheduler/wake.js'
 import { maskSecrets } from '../worker/setup.js'
 import { probeAndPlan, sourceFailure } from './plan.js'
-import { executeRun, newRunId, pruneOld, type RunArgs, type RunLog } from './run.js'
+import { executeRun, newRunId, pruneOld, type RunArgs, type RunLog, serial } from './run.js'
 
 export function watchCommand(program: Command): void {
   program
@@ -60,7 +60,7 @@ interface WatchState {
   config: string
   runs: { trigger: Trigger; runId: string; until?: string }[]
   /** Each `run: soon` source's next poll, and its failed polls in a row. */
-  polls: Record<string, { next: string; failures?: number }>
+  polls: Record<string, Poll>
 }
 
 const MINUTE = 60_000
@@ -79,16 +79,6 @@ const event = (line: string) => appendLog(watchLogPath, `${localTime(new Date())
 
 const reason = (e: unknown) =>
   e instanceof ConfigError ? e.message : String((e as Error)?.stack ?? e)
-
-/** Runs each function it's given once the ones before it have settled. */
-function serial() {
-  let last: Promise<unknown> = Promise.resolve()
-  return <T>(f: () => Promise<T>): Promise<T> => {
-    const next = last.then(f)
-    last = next.catch(() => {})
-    return next
-  }
-}
 
 /**
  * Sets launch's isolation for each of the daemon's runs, between two workers: to its config's for a
@@ -137,17 +127,11 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     runs: [],
     polls: {},
   }
-  const polls: Record<string, Poll> = {}
+  const polls = state.polls
   // One at a time, through the same tmp file: renamed into place, so `schedule status` never reads it half-written.
   const inSave = serial()
   const save = () =>
     inSave(async () => {
-      state.polls = Object.fromEntries(
-        Object.entries(polls).map(([id, p]) => [
-          id,
-          { next: new Date(p.next).toISOString(), ...(p.failures && { failures: p.failures }) },
-        ]),
-      )
       await writeFile(`${watchStatePath}.tmp`, JSON.stringify(state))
       await rename(`${watchStatePath}.tmp`, watchStatePath)
     }).catch((e) => event(`couldn't save ${watchStatePath}: ${reason(e)}`))
@@ -199,8 +183,6 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
       await save()
       const claim = (plan: RunPlan) => claimUnits(plan, runId, held, seen)
       const isolated = isolate(r.config, alone)
-      // Awaited once the run's dir is made.
-      isolated.catch(() => {})
       const run = daemonRun({ ...r, path, runId, stop, claim, turn: oneWorker, isolated })
       running.set(
         runId,
@@ -367,8 +349,8 @@ async function daemonRun(r: DaemonRun): Promise<void> {
   const units = r.soon ? ` for ${r.soon.units.join(', ')}` : ''
   event(`${r.trigger} run ${r.runId} started${until}${units}`)
   try {
-    await mkdir(runDir, { recursive: true, mode: 0o700 })
     await r.isolated
+    await mkdir(runDir, { recursive: true, mode: 0o700 })
     await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)

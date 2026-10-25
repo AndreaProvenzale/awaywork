@@ -221,8 +221,18 @@ export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | '
   turn?: RunInput['turn']
 }
 
+/** Runs each function it's given once the ones before it have settled. */
+export function serial() {
+  let last: Promise<unknown> = Promise.resolve()
+  return <T>(f: () => Promise<T>): Promise<T> => {
+    const next = last.then(f)
+    last = next.catch(() => {})
+    return next
+  }
+}
+
 // Two of the daemon's runs ending together would each overwrite the other's attempts.
-let saving: Promise<unknown> = Promise.resolve()
+const inSaving = serial()
 
 /**
  * Plans and runs the units, writes the run's report, attempts and approvals, and notifies, a soon
@@ -291,12 +301,10 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   await writeFile(reportPath, formatReport(report, warnings))
   await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
   await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
-  const saved = saving.then(async () => {
+  await inSaving(async () => {
     await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
     await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
   })
-  saving = saved.catch(() => {})
-  await saved
   log.info(summarize(report, reportPath), true)
   if (a.browseHint) log.info(styleText('dim', 'awaywork report browses this run'))
   if (config.notify && !a.soon) {

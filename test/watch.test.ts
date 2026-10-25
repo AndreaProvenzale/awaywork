@@ -426,14 +426,14 @@ describe('schedule status', () => {
     const window = { trigger: 'window', runId: '20261025-230000', until: '2026-10-26T05:00:00Z' }
     const runs = [window, { trigger: 'soon', runId: '20261025-231500' }]
     const polls = {
-      github: { next: '2026-10-25T23:20:00Z' },
-      jira: { next: '2026-10-25T23:50:00Z', failures: 2 },
+      github: { next: Date.parse('2026-10-25T23:20:00Z') },
+      jira: { next: Date.parse('2026-10-25T23:50:00Z'), failures: 2 },
     }
     const since = '2026-10-25T07:12:03Z'
     const daemon = { pid: process.pid, since, config: path, runs, polls }
     await writeFile(watchStatePath, JSON.stringify(daemon))
     await printStatus(undefined, current)
-    const local = (iso: string) => new Date(iso).toLocaleString('sv-SE')
+    const local = (t: string | number) => new Date(t).toLocaleString('sv-SE')
     expect(out).toContain(`Daemon: running, pid ${process.pid}, since ${local(since)}`)
     expect(out).toContain(
       `Run in progress: window run 20261025-230000, until ${local(window.until)}`,
