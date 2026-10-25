@@ -4665,3 +4665,14 @@ it('asks nothing for a step that committed: its questions stay in its out folder
   expect(report.results[0]?.questions).toBeUndefined()
   expect(report.results[0]?.outcome?.kind).toBe('pr')
 })
+
+it('posts no questions over the comment limit, and keeps them in the report', async () => {
+  const long = 'x'.repeat(30_001)
+  const { report, writes } = await finishedRun('  - skill: implement', [yours(1)], asker(long))
+  expect(writes).toEqual([])
+  expect(report.results[0]?.questions).toEqual({
+    step: 'acme-api-1',
+    text: long,
+    unposted: 'questions.md is over 30000 bytes',
+  })
+})
