@@ -68,14 +68,6 @@ export function windowRun(
   return end
 }
 
-/** The next time a window opens after `now`, or undefined without windows. */
-export function nextOpening(windows: Window[], now: Date): Date | undefined {
-  const starts = occurrences(windows, now, 7)
-    .map(([start]) => start.getTime())
-    .filter((t) => t > now.getTime())
-  return starts.length ? new Date(Math.min(...starts)) : undefined
-}
-
 /** When a run started at `now` must stop on a GitHub-hosted runner, or undefined elsewhere. */
 export const hostedEnd = (now: Date, env: NodeJS.ProcessEnv) =>
   env.RUNNER_ENVIRONMENT === 'github-hosted'
@@ -104,6 +96,15 @@ export function runsLeft(windows: Window[], now: number, until: number): number 
     ([start, end]) => end.getTime() > now && start.getTime() < until,
   )
   return Math.max(1, left.length)
+}
+
+/** When the next window opens after `now` and before `until` (epoch ms), or undefined. */
+export function nextOpening(windows: Window[], now: number, until: number): number | undefined {
+  const days = Math.ceil((until - now) / DAY) + 1
+  const starts = occurrences(windows, new Date(now), days)
+    .map(([start]) => start.getTime())
+    .filter((start) => start > now && start < until)
+  return starts.length ? Math.min(...starts) : undefined
 }
 
 /** E.g. `01:00-07:00` or `sat,sun 10:00-18:00`. */

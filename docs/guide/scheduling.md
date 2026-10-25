@@ -173,7 +173,7 @@ That runs only `API-12`, outside any window, and retries it even if an earlier a
 Worth knowing:
 
 - The workflow's `concurrency: awaywork` doesn't cancel anything. A dispatch during the nightly run waits for it, and GitHub keeps only the newest pending run, so a second dispatch replaces the first.
-- It spends daytime quota, next to your own sessions. The ceiling still holds.
+- It spends daytime quota, next to your own sessions. The ceiling still holds, and since it starts outside every window, workers stop at `present_session_max` (40% of the 5-hour window by default).
 - "Run it when Sentry escalates" needs a relay: Sentry's alert webhooks can't, as far as we know, send the auth header and body GitHub's dispatch API wants. awaywork ships none, and holds no credentials for one; a small function of yours that calls `gh workflow run` is enough.
 
 ### Reports from the runner

@@ -1,6 +1,6 @@
 import type { Budget } from '../config/schema.js'
 import type { Quota } from './types.js'
-import { runsLeft, type Window } from './window.js'
+import { nextOpening, runsLeft, type Window } from './window.js'
 
 export const MAX_TURNS = 200
 
@@ -32,7 +32,8 @@ const WEEK_MINUTES = 7 * 24 * 60
 
 /**
  * This run's ceiling on the long window: the lowest of used + per_run, 1 - reserve and pacing, an even spend from 0 at the window's start to 1 - reserve at its reset.
- * A present run, one started outside every window, stops workers at `present_session_max` and skips providers without a quota reading.
+ * A present run, one started outside every window, reads pacing at its start, stops workers at `present_session_max` and skips providers without a quota reading.
+ * An away run reads pacing at the next window opening or the reset, whichever comes first: nobody else spends what accrues before then.
  */
 export function allowance(
   budget: Budget,
@@ -45,7 +46,9 @@ export function allowance(
   if (!long)
     return { kind: 'fallback', ...budget.fallback, reason, ...(present && { present: true }) }
   const length = (long.minutes ?? WEEK_MINUTES) * 60_000
-  const elapsed = now - (long.resetsAt * 1000 - length)
+  const reset = long.resetsAt * 1000
+  const readAt = present ? now : (nextOpening(windows, now, reset) ?? reset)
+  const elapsed = readAt - (reset - length)
   const limits: Extract<Allowance, { kind: 'quota' }>['limits'] = [
     { name: 'reserve', value: 1 - budget.reserve },
     {
@@ -62,7 +65,7 @@ export function allowance(
     used: long.used,
     resetsAt: long.resetsAt,
     ceiling: Math.min(...limits.map((l) => l.value)),
-    runs: runsLeft(windows, now, long.resetsAt * 1000),
+    runs: runsLeft(windows, now, reset),
     limits,
     session: short && {
       used: short.used,
@@ -94,7 +97,7 @@ export function route(
       continue
     }
     if (a.kind === 'fallback' && a.present) {
-      passed.push(`${id} has no quota reading, which a present run needs`)
+      passed.push(`${id} sits out a present run (${a.reason})`)
       continue
     }
     if (a.kind === 'quota' && a.used < a.ceiling) return { provider: id, passed }
@@ -111,8 +114,8 @@ export function route(
 /** Names the session limit a run got: away inside a window, present outside every window. */
 export const presenceLine = (present: boolean) =>
   present
-    ? 'present run (outside the windows): workers stop at present_session_max; providers without a quota reading sit out'
-    : 'away run (inside a window): workers stop at session_max'
+    ? 'present run (outside the windows): present_session_max'
+    : 'away run (inside a window): session_max'
 
 export const pct = (share: number) => `${Math.round(share * 1000) / 10}%`
 

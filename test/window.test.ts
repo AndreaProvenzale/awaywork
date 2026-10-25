@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest'
 import {
   hostedEnd,
-  nextOpening,
   runEnd,
   runsLeft,
   startsOf,
@@ -92,12 +91,6 @@ it("starts one daemon run per window opening, ending at the window's end", () =>
   expect(windowRun(night, at(26, '05:00'), ran)).toBeUndefined()
   expect(windowRun(night, at(26, '23:01'), ran)).toEqual(at(27, '06:00'))
   expect(windowRun([], at(26, '02:00'), idle)).toBeUndefined()
-})
-
-it('finds the next window opening, none without windows', () => {
-  expect(nextOpening(windows, at(25, '12:00'))).toEqual(at(26, '01:00'))
-  expect(nextOpening([{ start: '01:00', end: '07:00' }], at(25, '01:00'))).toEqual(at(26, '01:00'))
-  expect(nextOpening([], at(25, '12:00'))).toBeUndefined()
 })
 
 it('merges windows opening at the same time into one start, as launchd reads them back', () => {

@@ -469,10 +469,13 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-export function describeAllowance(id: string, a: Allowance): string {
-  if (a.kind === 'fallback') return `fallback: ${describeFallback(id, a)}`
+/** An allowance in one line; given `outside`, the present session limit, it also says what a run outside the windows gets. */
+export function describeAllowance(id: string, a: Allowance, outside?: number): string {
+  if (a.kind === 'fallback')
+    return `fallback: ${describeFallback(id, a)}${outside === undefined ? '' : ', sits out runs outside the windows'}`
+  const both = outside === undefined ? '' : ` in windows, ${pct(outside)} outside`
   const session = a.session
-    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)} (${a.session.limit})`
+    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}${both}`
     : ''
   return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${runs(a.runs)})${session}`
 }

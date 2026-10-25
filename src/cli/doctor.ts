@@ -20,7 +20,6 @@ import {
 } from '../core/launch.js'
 import { counted } from '../core/report.js'
 import type { Ctx } from '../core/types.js'
-import { windowEnd } from '../core/window.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
@@ -138,9 +137,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     await provider.probe(ctx).then(
       (quota) => {
-        const present = !windowEnd(config.windows, new Date())
-        const a = allowance(budget, quota, Date.now(), config.windows, { present })
-        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, describeAllowance(id, a))
+        const a = allowance(budget, quota, Date.now(), config.windows)
+        const line = describeAllowance(id, a, budget.present_session_max)
+        report(a.kind === 'quota' ? 'ok' : 'warn', `${id} quota`, line)
       },
       (e: Error) => report('FAIL', `${id} probe`, e.message),
     )

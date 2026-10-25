@@ -177,8 +177,9 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     (c) => c.windows,
     () => undefined,
   )
-  const next = windows && nextOpening(windows, now)
-  if (windows) lines.push(`Next window: ${next ? localTime(next) : 'none, no windows set'}`)
+  const next = windows && nextOpening(windows, now.getTime(), now.getTime() + 8 * DAY)
+  if (windows)
+    lines.push(`Next window: ${next ? localTime(new Date(next)) : 'none, no windows set'}`)
   lines.push(`Daemon log: ${watchLogPath}`)
   return lines
 }

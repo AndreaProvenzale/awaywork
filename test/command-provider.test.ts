@@ -98,6 +98,9 @@ describe('command provider config', () => {
     expect(describeAllowance('codex', { ...a, units: 1, turns: 1 })).toBe(
       'fallback: 1 unit, 1 turn each (no quota reading)',
     )
+    expect(describeAllowance('opencode', a, 0.4)).toBe(
+      'fallback: 4 units (no quota reading), sits out runs outside the windows',
+    )
   })
 
   it('refuses a name that is not a plain lowercase word', () => {
