@@ -259,3 +259,19 @@ it('leaves the other schedulers alone when the install fails', async () => {
   expect(out).toEqual(['cron failed'])
   expect(process.exitCode).toBe(1)
 })
+
+it('refuses inside the daemon it would stop, as a notify hook or a worker', async () => {
+  const { config, io } = await setup()
+  vi.stubEnv('AWAYWORK_WATCH', '4242')
+  try {
+    await installSchedule(config, 'cron', io([], false))
+  } finally {
+    vi.unstubAllEnvs()
+  }
+  expect(stops).toEqual([])
+  expect(installed).toEqual([])
+  expect(out).toEqual([
+    "awaywork watch started this, so it can't change the schedule; do it from a terminal",
+  ])
+  expect(process.exitCode).toBe(1)
+})

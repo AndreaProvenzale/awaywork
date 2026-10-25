@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -142,6 +142,19 @@ describe('stopping the daemon', () => {
     expect(out).toEqual([`Stopping awaywork watch (pid ${daemon.pid})`])
     expect(await stopWatch()).toBeUndefined()
     expect(out).toHaveLength(1)
+  })
+
+  it("leaves alone a pid reused since a crash left the lock, and another user's", async () => {
+    const other = execa('sleep', ['30'], { reject: false })
+    await writeFile(watchLockPath, `${other.pid} watch`)
+    const before = new Date(Date.now() - 3_600_000)
+    await utimes(watchLockPath, before, before)
+    expect(await stopWatch(300)).toBeUndefined()
+    other.kill('SIGKILL')
+    expect((await other).signal).toBe('SIGKILL')
+    await writeFile(watchLockPath, '1 watch')
+    expect(await stopWatch(300)).toBeUndefined()
+    expect(out).toEqual([])
   })
 
   it("gives up after the wait on one that doesn't exit, and says its pid", async () => {

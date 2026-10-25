@@ -74,6 +74,7 @@ export function scheduleCommand(program: Command): void {
     .command('remove')
     .description(`remove the scheduled job, and ${WORKFLOW} in the current repo`)
     .action(async () => {
+      if (insideWatch()) return
       const stuck = await stopWatch()
       if (stuck)
         console.log(
@@ -125,6 +126,16 @@ export async function printStatus(
   if (!found) console.log('No scheduled job installed')
   if (watched || (await lockHolder(watchLockPath)))
     for (const line of await watchStatus(watched ?? configPath(config))) console.log(line)
+}
+
+/** Refuses, saying so, in a process awaywork watch started: stopping the daemon would stop this too. */
+function insideWatch(): boolean {
+  if (!process.env.AWAYWORK_WATCH) return false
+  console.error(
+    "awaywork watch started this, so it can't change the schedule; do it from a terminal",
+  )
+  process.exitCode = 1
+  return true
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
@@ -200,6 +211,7 @@ export async function installSchedule(
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
+    if (insideWatch()) return
     const stuck = await stopWatch()
     if (stuck) {
       console.error(

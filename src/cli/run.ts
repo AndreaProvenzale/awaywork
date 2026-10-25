@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
@@ -116,16 +117,10 @@ export function runCommand(program: Command): void {
           now,
           until,
           log: consoleLog,
-          signal: () => {
-            const abort = new AbortController()
-            for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-              process.once(signal, () => abort.abort())
-            }
-            return abort.signal
-          },
+          browseHint: interactive(),
+          signal: abortOnSignals,
         })
         if (!ran) process.exitCode = 1
-        else if (interactive()) console.log(styleText('dim', 'awaywork report browses this run'))
       } catch (e) {
         reportConfigError(e)
       } finally {
@@ -177,6 +172,17 @@ const consoleLog: RunLog = {
   error: (line) => console.error(line),
 }
 
+/** A signal aborted by the first SIGINT or SIGTERM; a second one quits at once. */
+export function abortOnSignals(): AbortSignal {
+  const abort = new AbortController()
+  // `on`, not `once`: execa's signal-exit re-raises a signal it sees no other listener for.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const)
+    process.on(signal, () =>
+      abort.signal.aborted ? process.exit(128 + constants.signals[signal]) : abort.abort(),
+    )
+  return abort.signal
+}
+
 /** A run's id: its start in UTC, as `YYYYMMDD-HHMMSS`. */
 export const newRunId = () =>
   new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
@@ -199,6 +205,8 @@ export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | '
   now: Date
   until?: Date
   log: RunLog
+  /** Says `awaywork report` browses the run, after its summary. */
+  browseHint?: boolean
   /** The signal stopping the units, asked for as they start. */
   signal: () => AbortSignal
 }
@@ -267,6 +275,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
   await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
   log.info(summarize(report, reportPath), true)
+  if (a.browseHint) log.info(styleText('dim', 'awaywork report browses this run'))
   if (config.notify) {
     const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
