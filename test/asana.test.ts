@@ -120,7 +120,7 @@ describe('asana source', () => {
         ? new Response('', { status: 429, headers: { 'Retry-After': '0' } })
         : replay(input, init)
     expect(await asanaSource(limited).items(cfg, ctx)).toHaveLength(3)
-    expect(calls).toBe(10)
+    expect(calls).toBe(9)
   })
 
   it('prefetches item.md with fields and comments', async () => {
@@ -210,7 +210,11 @@ describe('asana writes', () => {
   it('moves a task to the section with that name in the first of its projects that has one', async () => {
     const http = writer()
     const move = { op: 'move', to: 'in review' } as const
-    expect(await asanaSource(http).write?.(cfg, task, move, ctx)).toBe('2026-01-04T08:00:00.000Z')
+    expect(await asanaSource(http).write?.(cfg, task, move, ctx)).toEqual({
+      before: '2026-01-04T08:00:00.000Z',
+      after: '2026-01-04T08:00:00.000Z',
+    })
+    expect(http.calls[0]?.url).toMatch(/\/tasks\/1201\?opt_fields=modified_at$/)
     const post = http.calls.find((c) => c.body)
     expect(post?.url).toBe('https://app.asana.com/api/1.0/sections/51/addTask')
     expect(JSON.parse(post?.body ?? '')).toEqual({ data: { task: '1201' } })
@@ -221,14 +225,21 @@ describe('asana writes', () => {
     )
   })
 
+  it('looks for the section only in the projects the config names', async () => {
+    const scoped = { ...cfg, projects: ['11'] }
+    await expect(
+      asanaSource(writer()).write?.(scoped, task, { op: 'move', to: 'In review' }, ctx),
+    ).rejects.toThrow(`T-1201's projects have no section "In review", only "Ready", "QA"`)
+  })
+
   it('comments as a story of plain text', async () => {
     const http = writer()
     await asanaSource(http).write?.(cfg, task, { op: 'comment', body: 'Which?\n\nOr?' }, ctx)
-    expect(http.calls[0]?.url).toBe('https://app.asana.com/api/1.0/tasks/1201/stories')
-    expect(JSON.parse(http.calls[0]?.body ?? '')).toEqual({ data: { text: 'Which?\n\nOr?' } })
+    expect(http.calls[1]?.url).toBe('https://app.asana.com/api/1.0/tasks/1201/stories')
+    expect(JSON.parse(http.calls[1]?.body ?? '')).toEqual({ data: { text: 'Which?\n\nOr?' } })
   })
 
-  it("marks the token's own stories as yours and every task as yours", async () => {
+  it("marks the assignee's own stories as yours and every task as yours", async () => {
     const mine = JSON.stringify({
       data: [
         {

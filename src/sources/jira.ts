@@ -54,7 +54,7 @@ interface Issue {
     priority: { name: string } | null
     issuetype: { name: string }
     project: { key: string }
-    assignee: { displayName: string } | null
+    assignee: { displayName: string; accountId?: string } | null
     created: string
     updated: string
     issuelinks?: {
@@ -66,6 +66,7 @@ interface Issue {
 }
 interface Comment {
   author: { displayName: string; accountId?: string } | null
+  updateAuthor?: { accountId?: string } | null
   body: Adf
   created: string
 }
@@ -146,14 +147,6 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     async items(cfg, ctx) {
       const token = tokenFrom(cfg, ctx)
       const custom = (await call<Field[]>(cfg, token, '/rest/api/3/field')).filter((f) => f.custom)
-      // A token scoped to read:jira-work alone may not read itself: then no comment counts as yours.
-      const me = await call<{ accountId: string }>(cfg, token, '/rest/api/3/myself').then(
-        (m) => m.accountId,
-        (e: Error) => {
-          ctx.log(`jira: couldn't read the token's own account: ${e.message}`)
-          return undefined
-        },
-      )
       const shared = (name: string) => custom.filter((f) => f.name === name).length > 1
       const names = new Map(
         custom.map((f) => [f.id, shared(f.name) ? `${f.name} (${f.id})` : f.name]),
@@ -186,7 +179,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
           (p: { comments: Comment[]; total: number }) => p.comments,
           (p, seen) => seen >= p.total,
         )
-        items.push(toItem(issue, comments, names, cfg, me))
+        items.push(toItem(issue, comments, names, cfg))
       }
       return items
     },
@@ -200,14 +193,14 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
       const issue = `/rest/api/3/issue/${item.id}`
+      const read = await call<{
+        fields: { updated: string }
+        transitions?: { id: string; to: { name: string } }[]
+      }>(cfg, token, `${issue}?fields=updated${write.op === 'move' ? '&expand=transitions' : ''}`)
       if (write.op === 'comment')
         await call(cfg, token, `${issue}/comment`, { body: textToAdf(write.body) })
       else {
-        const { transitions } = await call<{ transitions: { id: string; to: { name: string } }[] }>(
-          cfg,
-          token,
-          `${issue}/transitions`,
-        )
+        const transitions = read.transitions ?? []
         const to = transitions.find((t) => t.to.name.toLowerCase() === write.to.toLowerCase())
         if (!to)
           throw new Error(
@@ -220,7 +213,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
         token,
         `${issue}?fields=updated`,
       )
-      return iso(fields.updated)
+      return { before: iso(read.fields.updated), after: iso(fields.updated) }
     },
 
     /** Finds the site, maps projects to repos and lists the site's real status names. */
@@ -286,14 +279,10 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
   return token
 }
 
-function toItem(
-  issue: Issue,
-  comments: Comment[],
-  names: Map<string, string>,
-  cfg: Config,
-  me: string | undefined,
-): Item {
+function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, cfg: Config): Item {
   const f = issue.fields
+  // Issues are read as assigned to you: your comments are the assignee's that nobody else edited last.
+  const me = f.assignee?.accountId
   const repo = cfg.repo_map?.[f.project.key]
   const custom = [...names].flatMap(([id, name]) => {
     const value = fieldValue(f[id])
@@ -316,7 +305,9 @@ function toItem(
         author: c.author?.displayName ?? 'unknown',
         body: adfToMarkdown(c.body),
         at: iso(c.created),
-        ...(!!me && c.author?.accountId === me && { mine: true as const }),
+        ...(!!me &&
+          c.author?.accountId === me &&
+          (c.updateAuthor?.accountId ?? me) === me && { mine: true as const }),
       }))
       .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],

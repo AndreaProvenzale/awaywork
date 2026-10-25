@@ -7,7 +7,7 @@ import { execa } from 'execa'
 import { parse } from 'yaml'
 import { configPath, loadConfig } from '../config/load.js'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
-import type { Config } from '../config/schema.js'
+import { type Config, canMatch } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
 import { allowance } from '../core/budget.js'
 import {
@@ -157,7 +157,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   }
   config.queue?.forEach((rule, i) => {
     if (!rule.on_done) return
-    const scope = rule.source ? [rule.source] : Object.keys(config.sources)
+    // A rule without `source` moves the items of the source it matched: only those it can match.
+    const scope = rule.source
+      ? [rule.source]
+      : Object.keys(config.sources).filter((id) => canMatch(config.sources, id, rule.where))
     for (const id of scope.filter((id) => !sourceFor(id, config.sources[id])?.write))
       report('warn', `rule #${i + 1} on_done`, `${id} can't write to its items: they stay put`)
   })

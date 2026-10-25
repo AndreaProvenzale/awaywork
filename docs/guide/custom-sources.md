@@ -94,24 +94,26 @@ awaywork runs it once per write with the write as JSON on stdin: `op`, the item'
 { "op": "comment", "item": "AI-42", "id": "8812", "body": "Which header row?\n\n— awaywork" }
 ```
 
-No rule writes comments yet; when one does, the body ends with awaywork's `— awaywork` line, and the command posts it as is. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) after the write and awaywork records it, so its own move doesn't make the item look changed next run.
+No rule writes comments yet; when one does, the body ends with awaywork's `— awaywork` line, and the command posts it as is. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) right before and after the write as `{"before": "…", "after": "…"}`: when `before` is still what `command` printed, awaywork records `after`, so its own move doesn't make the item look changed next run, while someone else's change during the run still does.
 
 ```js
 // board-write.mjs: moves a card or comments on it, as you
 import { text } from 'node:stream/consumers'
 
 const write = JSON.parse(await text(process.stdin))
-const path = write.op === 'move' ? 'move' : 'comments'
-const res = await fetch(`https://board.example/api/cards/${write.id}/${path}`, {
+const card = `https://board.example/api/cards/${write.id}`
+const headers = { Authorization: `Bearer ${process.env.BOARD_TOKEN}`, 'Content-Type': 'application/json' }
+const before = (await (await fetch(card, { headers })).json()).card.updated_at
+const res = await fetch(`${card}/${write.op === 'move' ? 'move' : 'comments'}`, {
   method: 'POST',
-  headers: { Authorization: `Bearer ${process.env.BOARD_TOKEN}`, 'Content-Type': 'application/json' },
+  headers,
   body: JSON.stringify(write.op === 'move' ? { column: write.to } : { text: write.body }),
 })
 if (!res.ok) throw new Error(`${write.op} ${write.item}: ${res.status} ${await res.text()}`)
-console.log((await res.json()).card.updated_at)
+console.log(JSON.stringify({ before, after: (await res.json()).card.updated_at }))
 ```
 
-On a comment your `command` prints back, set `"mine": true` when your own account wrote it: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
+On a comment your `command` prints back, set `"mine": true` when your own account wrote it and, if the tracker says, nobody else edited it last: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
 
 ## Recipe: chores
 

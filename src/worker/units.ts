@@ -839,12 +839,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
-    const onDone = input.plan.queue[first.rule]?.on_done
+    const queued = input.plan.queue[first.rule]
+    const onDone = queued?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     // Every slice that ran published, and only a `when` ended the chain early.
     const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
+    // The destination is in one tracker's words: the rule's source, or the item it matched first.
+    const own = queued?.source ?? first.unit.items[0]?.source
     if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
-      lead.moved = await moveItems(first.unit.items, onDone.move)
+      lead.moved = await moveItems(
+        first.unit.items.filter((i) => i.source === own),
+        onDone.move,
+      )
     for (const r of done) {
       // A committing slice that committed nothing published its reports.
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver

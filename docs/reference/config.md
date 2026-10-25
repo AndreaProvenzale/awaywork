@@ -256,7 +256,7 @@ A custom source: any command that prints your open items as JSON.
 | `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
 | `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
-| `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated time after it. Without it, on_done writes nothing to this source |
+| `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |
 
 ## `repos.<key>`
 

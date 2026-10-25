@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { canMatch } from '../src/config/schema.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import { recorded } from './fakes/gh.js'
@@ -89,20 +90,39 @@ describe('doctor', () => {
     await writeFile(
       path,
       `providers: [codex]
-sources: { github: { repos: [a/b] }, tracker: { command: 'echo []' }, board: { command: 'echo []', write: 'true' } }
+sources:
+  github: { repos: [a/b] }
+  tracker: { command: 'echo []', fields: [column] }
+  notes: { command: 'echo []' }
+  board: { command: 'echo []', fields: [column], write: 'true' }
 queue:
-  - { skill: fix, on_done: { move: QA } }
+  - { skill: fix, where: { column: Ready }, on_done: { move: QA } }
   - { skill: fix, source: github, on_done: { move: QA } }
+  - { skill: fix, on_done: { move: QA } }
 `,
     )
     const checks = await runChecks(path, () => {})
+    const warn = (rule: number, id: string) => ({
+      status: 'warn',
+      what: `rule #${rule} on_done`,
+      detail: `${id} can't write to its items: they stay put`,
+    })
     expect(checks.filter((c) => c.what.includes('on_done'))).toEqual([
-      {
-        status: 'warn',
-        what: 'rule #1 on_done',
-        detail: "tracker can't write to its items: they stay put",
-      },
+      warn(1, 'tracker'),
+      warn(3, 'tracker'),
+      warn(3, 'notes'),
     ])
+  })
+
+  it('counts a source as matching a rule only with items and a field for each key', () => {
+    const { sources } = parseConfig(`
+providers: [codex]
+sources: { tracker: { command: 'echo []', fields: [column] }, jira: { site: a.atlassian.net, email: d@a.test } }
+`)
+    expect(canMatch(sources, 'tracker', {})).toBe(true)
+    expect(canMatch(sources, 'tracker', { any: [{ status: 'QA' }, { column: 'QA' }] })).toBe(true)
+    expect(canMatch(sources, 'jira', { column: 'QA' })).toBe(false)
+    expect(canMatch({ bitbucket: { repos: ['a/b'] } }, 'bitbucket', { type: 'pr' })).toBe(false)
   })
 })
 

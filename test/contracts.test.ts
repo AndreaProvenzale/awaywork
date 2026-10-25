@@ -82,7 +82,7 @@ sourceContract(
     linearFetch([
       [
         /query States/,
-        '{ "data": { "issue": { "team": { "states": { "nodes": [{ "id": "s1", "name": "In Review" }] } } } } }',
+        '{ "data": { "issue": { "updatedAt": "2026-01-03T08:00:00.000Z", "team": { "states": { "nodes": [{ "id": "s1", "name": "In Review" }] } } } } }',
       ],
       [/mutation IssueMove/, '{ "data": { "issueUpdate": { "success": true } } }'],
       [/query Updated/, '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z" } } }'],
@@ -101,9 +101,10 @@ sourceContract(
   jiraSource(
     jiraFetch([
       [
-        /\/issue\/10012\/transitions$/,
-        '{ "transitions": [{ "id": "21", "to": { "name": "In Review" } }] }',
+        /\/issue\/10012\?fields=updated&expand=transitions$/,
+        '{ "fields": { "updated": "2026-01-03T08:00:00.000+0000" }, "transitions": [{ "id": "21", "to": { "name": "In Review" } }] }',
       ],
+      [/\/issue\/10012\/transitions$/, '{}'],
       [
         /\/issue\/10012\?fields=updated$/,
         '{ "fields": { "updated": "2026-01-04T08:00:00.000+0000" } }',
