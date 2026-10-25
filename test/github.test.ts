@@ -476,6 +476,20 @@ describe('github source, finished items', () => {
     expect(done.map((i) => i.linkedPrs)).toEqual([[], [], []])
     expect(found.find((i) => i.key === 'acme/api#5')?.linkedPrs).toHaveLength(1)
   })
+
+  it("warns when a finished search hits GitHub's cap", async () => {
+    const capped = none.replace('"issueCount":0', '"issueCount":1500')
+    const exec = recorded([
+      [/q=is:issue is:closed/, capped],
+      [/is:closed/, none],
+      ...githubRoutes(),
+    ])
+    log.length = 0
+    await githubSource(exec).items({ repos: ['acme/*'] }, ctx, since)
+    expect(log).toEqual([
+      'github: "is:issue is:closed archived:false assignee:@me closed:>=2026-10-11" found 1500, GitHub returns the first 1000',
+    ])
+  })
 })
 
 describe('github enterprise host', () => {

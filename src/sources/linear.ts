@@ -23,9 +23,9 @@ export const API = 'https://api.linear.app/graphql'
 const FINISHED = ['completed', 'canceled']
 const OPEN = { state: { type: { nin: FINISHED } } }
 
-const issuesQuery = `query Issues($after: String, $filter: IssueFilter) {
+const issuesQuery = `query Issues($after: String, $filter: IssueFilter, $archived: Boolean) {
   viewer {
-    assignedIssues(first: 50, after: $after, filter: $filter) {
+    assignedIssues(first: 50, after: $after, filter: $filter, includeArchived: $archived) {
       nodes {
         id identifier title description url priorityLabel createdAt updatedAt completedAt canceledAt
         assignee { name }
@@ -139,10 +139,19 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     async items(cfg, ctx, since) {
       const token = tokenFrom(cfg, ctx)
       const after = since && { gte: since.toISOString() }
-      const filter = after ? { or: [OPEN, { completedAt: after }, { canceledAt: after }] } : OPEN
+      // Linear archives finished issues after a while; reading those keeps archived open ones out.
+      const filter = after
+        ? {
+            or: [
+              { ...OPEN, archivedAt: { null: true } },
+              { completedAt: after },
+              { canceledAt: after },
+            ],
+          }
+        : OPEN
       const issues = await all(
         issuesQuery,
-        { filter },
+        { filter, ...(after && { archived: true }) },
         token,
         (d: { viewer: { assignedIssues: Connection<Issue> } }) => d.viewer.assignedIssues,
       )

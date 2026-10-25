@@ -29,6 +29,8 @@ type Config = z.infer<typeof config>
 const PAGE = 100
 /** Finished PRs come in pages this small: a page of 100 with their files timed out on GitHub. */
 const FINISHED_PAGE = 50
+/** GitHub search returns no result past this many, however many pages. */
+const SEARCH_CAP = 1000
 const LOG_TAIL = 200
 /** Paths read per PR: a rule routes on where a change lands, and a huge one is huge wherever it lands. */
 const MAX_FILES = 500
@@ -230,7 +232,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
         : []
       const queries: Query[] = [...searches, ...extra, ...closed]
       for (const { q, fields, finished } of queries) {
-        const nodes = await (finished ? searchAll(run, q) : searchFirst(run, q, ctx.log))
+        const nodes = await (finished ? searchAll : searchFirst)(run, q, ctx.log)
         for (const node of nodes) {
           if (!inScope(node.repository.nameWithOwner)) continue
           const item = byId.get(node.id) ?? toItem(node)
@@ -304,8 +306,8 @@ async function searchFirst(run: Exec, q: string, log: (line: string) => void): P
   return search.nodes
 }
 
-/** Every page of a search bounded by a date. */
-async function searchAll(run: Exec, q: string): Promise<Node[]> {
+/** Every page of a search bounded by a date, up to GitHub's cap, saying when it hit it. */
+async function searchAll(run: Exec, q: string, log: (line: string) => void): Promise<Node[]> {
   const nodes: Node[] = []
   let after: string | undefined
   do {
@@ -314,6 +316,8 @@ async function searchAll(run: Exec, q: string): Promise<Node[]> {
       first: FINISHED_PAGE,
       ...(after && { after }),
     })
+    if (!after && search.issueCount > SEARCH_CAP)
+      log(`github: "${q}" found ${search.issueCount}, GitHub returns the first ${SEARCH_CAP}`)
     nodes.push(...search.nodes)
     after = search.pageInfo.hasNextPage ? search.pageInfo.endCursor : undefined
   } while (after)
