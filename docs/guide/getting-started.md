@@ -172,7 +172,7 @@ awaywork report --unit 2       # one unit in full: its files, PR body or report
 
 `--repo <glob>` and `--rule <n>` (rules count from 1, as `plan` shows them) work on `plan` and `run`, and together they both have to hold. The caps and ceilings stay the full run's, but only matching units count against them: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
 
-The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC.
+The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC. Run dirs stay 30 days, then a run removes them; [`keep_runs`](./configuration.md#old-runs) changes that.
 
 ## On a schedule
 

@@ -35,6 +35,7 @@ limits:                         # per run, every provider; unset by default
   units: 8
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
+keep_runs: 30d                  # default; older run dirs go when a run starts
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
@@ -687,6 +688,16 @@ The image is yours to build, and what's in it is all the units get:
 - **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
 - **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
 - **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
+
+## Old runs
+
+Run dirs pile up: each keeps its clones, logs and reports, and one clone of a big repo is easily 100 MB. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+
+```text
+Removed 3 runs older than 30d, 124.8 MB freed
+```
+
+A dir it can't remove is a `warning:`, never a failed run. `report --list`, `stats` and `replay` only see the runs kept.
 
 ## Secrets
 

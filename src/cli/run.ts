@@ -24,6 +24,7 @@ import {
   type RunReport,
   runLine,
 } from '../core/report.js'
+import { pruneRuns } from '../core/retention.js'
 import { takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
@@ -99,6 +100,12 @@ export function runCommand(program: Command): void {
             return
           }
           release = lock.release
+          const pruned = await pruneRuns(config, now)
+          for (const failure of pruned.failures) console.error(`warning: ${failure}`)
+          if (pruned.removed)
+            console.log(
+              `Removed ${counted(pruned.removed, 'run')} older than ${config.keep_runs}, ${(pruned.bytes / 2 ** 20).toFixed(1)} MB freed`,
+            )
         }
         const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
           config,

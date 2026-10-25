@@ -608,6 +608,11 @@ export const configSchema = z
       .describe(
         'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
       ),
+    keep_runs: span
+      .default('30d')
+      .describe(
+        "How long run dirs stay; older ones go when a run starts, except those holding an item's latest report",
+      ),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.isolation === 'container')

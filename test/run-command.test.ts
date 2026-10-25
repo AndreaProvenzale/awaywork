@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
@@ -78,6 +78,16 @@ describe('run command', () => {
     expect(json.runId).toBe(id)
     // Closed to other local users, with every clone and copy in it.
     expect((await stat(join(runsDir, id))).mode & 0o777).toBe(0o700)
+  })
+
+  it('prunes runs older than keep_runs when it starts, not on a dry run', async () => {
+    const old = join(runsDir, '20200101-000000')
+    await mkdir(old, { recursive: true })
+    await run(['--dry-run'])
+    expect(existsSync(old)).toBe(true)
+    const { out } = await run([])
+    expect(existsSync(old)).toBe(false)
+    expect(out).toContain('Removed 1 run older than 30d, 0.0 MB freed')
   })
 
   it("hands the run's id and dir to the next steps of an Actions job", async () => {
