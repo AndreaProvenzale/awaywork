@@ -547,7 +547,7 @@ queue:
     where: { status: Ready }
 ```
 
-The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
+The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing; either is 1m or more, as the daemon looks once a minute). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 

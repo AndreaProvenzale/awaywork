@@ -17,7 +17,13 @@ import {
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, contextCommand, linkTemplate, pollEvery } from '../sources/command.js'
+import {
+  commandConfig,
+  contextCommand,
+  linkTemplate,
+  pollEvery,
+  pollSpan,
+} from '../sources/command.js'
 import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -557,7 +563,7 @@ export const configSchema = z
       ),
     watch: z
       .strictObject({
-        every: span
+        every: pollSpan
           .default('5m')
           .describe(
             "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",

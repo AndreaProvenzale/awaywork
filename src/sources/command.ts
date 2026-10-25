@@ -4,7 +4,6 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { commentMarkdown, linkProblem } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
-import { spanPattern } from '../core/queue.js'
 import type { Ctx, Item, Source, Write } from '../core/types.js'
 
 export const linkTemplate = z
@@ -32,9 +31,12 @@ export const contextCommand = z
   })
   .describe("Fetches more context for an item, with secrets kept out of the agent's environment")
 
-export const pollEvery = z
+/** A poll interval: a span of a minute or more, the daemon's tick. */
+export const pollSpan = z
   .string()
-  .regex(spanPattern, 'expected a span like 15m: a number and m, h, d or w')
+  .regex(/^[1-9]\d*[mhdw]$/, 'expected a span of 1m or more, like 15m: a number and m, h, d or w')
+
+export const pollEvery = pollSpan
   .optional()
   .describe(
     'How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every',

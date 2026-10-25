@@ -4,7 +4,8 @@ import type { RunPlan, Skipped } from './foreman.js'
 import { spanMs } from './queue.js'
 import type { Item } from './types.js'
 
-const HOUR = 3_600_000
+const MINUTE = 60_000
+const HOUR = 60 * MINUTE
 
 /** A failed HTTP call's error, with the wait a 429's `Retry-After` (seconds) asks for in `retryAfter`, in ms. */
 export function httpError(message: string, res: Response): Error & { retryAfter?: number } {
@@ -34,34 +35,45 @@ export function soonSources(config: Config): Record<string, number> {
 }
 
 /**
- * The poll after one at `now`: an interval on success; after a failure, as long as the source's
- * `Retry-After` asks, else the interval doubled per failure in a row up to an hour, never shorter than the interval.
+ * The poll after one that ended at `now`, on the daemon's minute ticks: an interval on from the
+ * minute it ran in; after a failure, as long as the source's `Retry-After` asks, else the interval
+ * doubled per failure in a row up to an hour, never shorter than the interval.
  */
 export function nextPoll(
   every: number,
   now: number,
   failed?: { failures: number; retryAfter?: number },
 ): Poll {
-  if (!failed) return { next: now + every }
-  const wait = failed.retryAfter ?? Math.min(every * 2 ** failed.failures, HOUR)
-  return { next: now + Math.max(every, wait), failures: failed.failures }
+  const tick = now - (now % MINUTE)
+  if (!failed) return { next: tick + every }
+  const asked = failed.retryAfter && Math.ceil((now + failed.retryAfter) / MINUTE) * MINUTE
+  const doubled = tick + Math.min(every * 2 ** failed.failures, HOUR)
+  return { next: Math.max(tick + every, asked || doubled), failures: failed.failures }
 }
 
 const itemKey = (i: Pick<Item, 'source' | 'key'>) => `${i.source}:${i.key}`
 const updatedOf = (i: Item) => String(i.fields.updated ?? '')
 
+/** Each item's updated time when a run last took it, and when, by `source:key`. */
+export type Seen = Map<string, { updated: string; at: number }>
+
 /**
- * The ids of a poll's planned units that are due: none of its items held by a run, and one of
- * them new or changed since both its last attempt and the last time a run took it (`seen`).
+ * The ids of a poll's planned units that are due at `now`: none of its items held by a run, and
+ * one of them new or changed since its last attempt and since a run took it (`seen`) within the
+ * hour: a unit that run didn't attempt, out of quota or stopped, is due again an hour on.
  */
 export function dueUnits(
   plan: RunPlan,
   attempts: Attempts,
-  seen: Map<string, string>,
+  seen: Seen,
   held: Map<string, string>,
+  now: number,
 ): string[] {
-  const fresh = (i: Item) =>
-    attempts[itemKey(i)]?.updated !== updatedOf(i) && seen.get(itemKey(i)) !== updatedOf(i)
+  const taken = (i: Item) => {
+    const s = seen.get(itemKey(i))
+    return s?.updated === updatedOf(i) && now - s.at < HOUR
+  }
+  const fresh = (i: Item) => attempts[itemKey(i)]?.updated !== updatedOf(i) && !taken(i)
   return plan.units
     .filter((p) => !p.chain && !p.unit.items.some((i) => held.has(itemKey(i))))
     .filter((p) => p.unit.items.some(fresh))
@@ -69,15 +81,16 @@ export function dueUnits(
 }
 
 /**
- * Takes the plan's units for run `runId`: their items go in `held` (`source:key` to run id) and
- * `seen` (to their updated time). A unit with an item another run holds is skipped as running
+ * Takes the plan's units for run `runId` at `now`: their items go in `held` (`source:key` to run id)
+ * and `seen`. A unit with an item another run holds is skipped as running
  * there, with its chain.
  */
 export function claimUnits(
   plan: RunPlan,
   runId: string,
   held: Map<string, string>,
-  seen: Map<string, string>,
+  seen: Seen,
+  now = Date.now(),
 ): RunPlan {
   const skipped: Skipped[] = [...plan.skipped]
   const busy = new Set<string>()
@@ -96,7 +109,7 @@ export function claimUnits(
     }
     for (const i of p.unit.items) {
       held.set(itemKey(i), runId)
-      seen.set(itemKey(i), updatedOf(i))
+      seen.set(itemKey(i), { updated: updatedOf(i), at: now })
     }
   }
   const units = plan.units.filter((p) => !busy.has(p.chain ?? p.unit.id))

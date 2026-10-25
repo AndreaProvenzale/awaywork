@@ -113,6 +113,8 @@ export interface RunInput {
   skillDirs?: { user: string; builtin: string }
   /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
   attempts?: Attempts
+  /** Runs each chain and its notify when it's this run's turn: awaywork watch runs one worker at a time across its runs. */
+  turn?: <T>(chain: () => Promise<T>) => Promise<T>
 }
 
 /** The latest report an earlier run left on one of the items. */
@@ -921,11 +923,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   try {
-    for (const chain of chains) {
-      const done = await runChain(chain)
-      results.push(...done)
-      await notifyUnits(done.filter((r) => !r.retried))
-    }
+    const turn = input.turn ?? ((chain) => chain())
+    for (const chain of chains)
+      await turn(async () => {
+        const done = await runChain(chain)
+        results.push(...done)
+        await notifyUnits(done.filter((r) => !r.retried))
+      })
   } finally {
     if (root !== input.runDir && !input.dryRun && !lostToWorker(root))
       await rm(root, { recursive: true, force: true })

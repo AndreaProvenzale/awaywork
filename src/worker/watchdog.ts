@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { statfs } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { execa, execaSync } from 'execa'
+import { execa } from 'execa'
+import { launched } from '../core/launch.js'
 
 const GB = 2 ** 30
 
@@ -35,31 +36,26 @@ export async function shortage(
 }
 
 /**
- * Watches this process's descendants and the machine while one worker runs.
+ * Watches the worker's processes and the machine while one worker runs.
  *
  * Node has no subreaper, so a background task that starts its own session and outlives
- * the model is reparented away from us. Every tick records each descendant by pid and
- * start time; `stop` kills those still alive with the same start time, so a pid reused
- * by an unrelated process is spared. Workers run one at a time, so every descendant
- * started since the watchdog belongs to the worker; those already alive, like the run's
- * keep-awake child, are spared.
+ * the model is reparented away from us. Every tick records each process `roots` names, the
+ * worker's launches by default, and their descendants by pid and start time; `stop` kills
+ * those still alive with the same start time, so a pid reused by an unrelated process is
+ * spared. Workers run one at a time, awaywork watch's runs included, so every launch running
+ * is this worker's; awaywork's own children, like the keep-awake one or a poll, are spared.
  */
 export function startWatchdog(
   dir: string,
   onLimit: (reason: string) => void,
   limits: WatchdogLimits = defaultLimits,
+  roots: () => number[] = launched,
 ): Watchdog {
-  const before = new Map<number, string>()
-  try {
-    for (const [pid, started] of descendants(table(execaSync('ps', PS, PS_ENV).stdout)))
-      before.set(pid, started)
-  } catch {}
   const seen = new Map<number, string>()
   let ticking: Promise<void> = Promise.resolve()
 
   const tick = async () => {
-    for (const [pid, started] of descendants(await processes()))
-      if (before.get(pid) !== started) seen.set(pid, started)
+    for (const [pid, started] of under(roots(), await processes())) seen.set(pid, started)
     const reason = await shortage(dir, limits)
     if (reason) onLimit(reason)
   }
@@ -99,9 +95,11 @@ function table(stdout: string): Table {
   return table
 }
 
-function descendants(table: Table): [number, string][] {
+/** The processes `roots` names and their descendants, with their start times. */
+function under(roots: number[], table: Table): [number, string][] {
   const found: [number, string][] = []
-  const frontier = [process.pid]
+  const frontier = roots.filter((pid) => table.has(pid))
+  for (const pid of frontier) found.push([pid, table.get(pid)?.started ?? ''])
   while (frontier.length) {
     const parent = frontier.pop()
     for (const [pid, p] of table)

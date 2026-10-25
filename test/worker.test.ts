@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { type Allowance, allowance } from '../src/core/budget.js'
+import { launch } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
@@ -192,19 +193,33 @@ describe('watchdog', () => {
     }
   }
 
-  it('kills a descendant that started its own session and outlived its parent', async () => {
+  it("kills a launch's descendant that started its own session and outlived it", async () => {
     const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
-    const parent = spawn(process.execPath, [
-      '-e',
-      `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+    const parent = launch(
+      process.execPath,
+      [
+        '-e',
+        `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
        console.log(c.pid); setTimeout(() => process.exit(0), 500)`,
-    ])
-    const orphan = Number(await new Promise<string>((ok) => parent.stdout.once('data', ok)))
-    await new Promise((ok) => parent.once('exit', ok))
+      ],
+      {},
+    )
+    const orphan = Number(await new Promise<string>((ok) => parent.stdout?.once('data', ok)))
+    await parent
     expect(alive(orphan)).toBe(true)
     await watchdog.stop()
     await new Promise((ok) => setTimeout(ok, 100))
     expect(alive(orphan)).toBe(false)
+  })
+
+  it("spares awaywork's own children started meanwhile, like a poll in the daemon", async () => {
+    const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
+    const poll = spawn('sleep', ['30'], { stdio: 'ignore' })
+    await new Promise((ok) => setTimeout(ok, 200))
+    await watchdog.stop()
+    await new Promise((ok) => setTimeout(ok, 100))
+    expect(poll.signalCode).toBeNull()
+    poll.kill('SIGKILL')
   })
 
   it('spares a descendant alive before it started, like the keep-awake child', async () => {

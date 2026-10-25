@@ -13,17 +13,57 @@ import {
   watchLogPath,
   watchStatePath,
 } from '../src/config/paths.js'
+import type { Job } from '../src/core/types.js'
 import type { Schedule, Scheduler } from '../src/scheduler/index.js'
+
+/** The units the fake worker ran, the most at a time, how long each takes, a first probe's delay, and the repo each clone is of. */
+const workers = vi.hoisted(() => ({
+  ran: [] as string[],
+  running: 0,
+  most: 0,
+  ms: 0,
+  slowProbe: 0,
+  origin: '',
+}))
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
-  // No quota reading: a present run's units sit out, so none clones.
-  const providers = { claude: { ...fakeProvider('claude'), probe: async () => null } }
+  const { setTimeout } = await import('node:timers/promises')
+  const fake = fakeProvider('claude')
+  const providers = {
+    claude: {
+      ...fake,
+      // No quota reading: a present run's units sit out, so none clones.
+      probe: async () => {
+        const ms = workers.slowProbe
+        workers.slowProbe = 0
+        await setTimeout(ms)
+        return null
+      },
+      async *run(job: Job, signal: AbortSignal) {
+        workers.ran.push(job.unit.id)
+        workers.most = Math.max(workers.most, ++workers.running)
+        try {
+          await setTimeout(workers.ms)
+          yield* fake.run(job, signal)
+        } finally {
+          workers.running--
+        }
+      },
+    },
+  }
   return {
     providers,
     providerFor: (id: string) => providers[id as 'claude'],
     providersOf: () => providers,
   }
+})
+vi.mock('../src/forge/index.js', async () => {
+  const { fakeForge } = await import('./fakes/forge.js')
+  const { execa } = await import('execa')
+  const clone = async (_repo: string, _branch: string, dir: string) =>
+    void (await execa('git', ['clone', '-q', workers.origin, dir]))
+  return { forgeFor: () => ({ ...fakeForge(), clone }) }
 })
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
@@ -152,6 +192,51 @@ notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
     expect(await readFile(join(dir, 'events.txt'), 'utf8')).toBe('unit\n')
     expect(existsSync(runLockPath)).toBe(false)
   })
+
+  it('runs one worker at a time across overlapping runs, a soon one in a window until its end', async () => {
+    const path = await config()
+    const dir = dirname(path)
+    workers.origin = join(dir, 'origin')
+    await execa('git', ['init', '-q', '-b', 'main', workers.origin])
+    const id = ['-c', 'user.name=a', '-c', 'user.email=a@b']
+    await execa('git', [...id, '-C', workers.origin, 'commit', '-q', '--allow-empty', '-m', 'init'])
+    const item = (n: number, kind: string) => ({
+      id: String(n),
+      key: `CH-${n}`,
+      title: `Chore ${n}`,
+      url: `https://example.com/${n}`,
+      fields: { kind, repo: 'acme/api', updated: '2026-10-25T10:00:00Z' },
+    })
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item(1, 'soon'), item(2, 'later')]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
+sources: { chores: { command: cat items.json, fields: [kind] } }
+queue:
+  - { skill: plan, source: chores, where: { kind: soon }, run: soon }
+  - { skill: plan, source: chores, where: { kind: later } }
+`,
+    )
+    // The window run plans slower, so the soon run takes ch-1 first and both have a unit.
+    Object.assign(workers, { ran: [], most: 0, ms: 1000, slowProbe: 1500 })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(async () => expect((await daemonLog()).match(/Report: /g)).toHaveLength(2), {
+      timeout: 20_000,
+    })
+    stop.abort()
+    await done
+    const log = await daemonLog()
+    const windowRun = /window run (\d{8}-\d{6}) started, until (\S+ \S+)\n/.exec(log)
+    expect(log).toContain(
+      `soon run ${/soon run (\d{8}-\d{6})/.exec(log)?.[1]} started, until ${windowRun?.[2]} for ch-1`,
+    )
+    const plan = await readFile(join(runsDir, windowRun?.[1] ?? '', 'plan.txt'), 'utf8')
+    expect(plan).toMatch(/CH-1: running in run \d{8}-\d{6}/)
+    expect(workers.ran.sort()).toEqual(['ch-1', 'ch-2'])
+    expect(workers.most).toBe(1)
+  }, 30_000)
 
   it('exits in one line while another copy runs, and takes over a dead one', async () => {
     await writeFile(watchLockPath, `${process.pid} watch`)

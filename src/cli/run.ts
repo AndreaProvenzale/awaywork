@@ -39,7 +39,7 @@ import { providersOf } from '../providers/index.js'
 import { WORKFLOW } from '../scheduler/github-actions.js'
 import { notifyRun } from '../worker/notify.js'
 import { maskSecrets } from '../worker/setup.js'
-import { namedChains, runUnits } from '../worker/units.js'
+import { namedChains, type RunInput, runUnits } from '../worker/units.js'
 import { type ItemCommands, interactive, itemCommands, openScreen, type Screen } from './browse.js'
 import { reportConfigError } from './config.js'
 import {
@@ -218,6 +218,7 @@ export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | '
   soon?: { sources: string[]; units: string[] }
   /** Takes the planned units from the daemon's other runs, returning the plan this run runs. */
   claim?: (plan: RunPlan) => RunPlan
+  turn?: RunInput['turn']
 }
 
 // Two of the daemon's runs ending together would each overwrite the other's attempts.
@@ -283,6 +284,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     event: (line) => log.info(`  ${line}`, true),
     signal: a.signal(),
     attempts: await loadAttempts(attemptsPath),
+    turn: a.turn,
   })
   const reportPath = join(runDir, 'report.md')
   await writeFile(reportPath, formatReport(report, warnings))
