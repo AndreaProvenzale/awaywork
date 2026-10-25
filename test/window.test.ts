@@ -1,10 +1,12 @@
 import { expect, it } from 'vitest'
 import {
   hostedEnd,
+  nextOpening,
   runEnd,
   runsLeft,
   startsOf,
   tooLongForHosted,
+  type Window,
   windowEnd,
 } from '../src/core/window.js'
 
@@ -77,6 +79,33 @@ it('counts the windows left before a reset', () => {
   expect(runsLeft(windows, ms(25, '12:00'), ms(28, '12:00'))).toBe(5)
   expect(runsLeft(windows, ms(26, '11:00'), ms(26, '11:30'))).toBe(1)
   expect(runsLeft(windows, ms(25, '12:00'), ms(25, '12:30'))).toBe(1)
+})
+
+it("finds a run's next turn after the end of the window it is in, or of the next one to open", () => {
+  const ms = (day: number, time: string) => at(day, time).getTime()
+  const next = (windows: Window[], day: number, time: string) =>
+    nextOpening(windows, ms(day, time), ms(day, time) + 30 * 86_400_000)
+  const night = [{ start: '22:00', end: '06:00' }]
+  expect(next(night, 25, '22:00')).toBe(ms(26, '22:00'))
+  expect(next(night, 26, '01:00')).toBe(ms(26, '22:00'))
+  expect(next(night, 25, '12:00')).toBe(ms(26, '22:00'))
+  // 2026-09-26 is a Saturday
+  expect(next(windows, 26, '11:00')).toBe(ms(27, '01:00'))
+  const weekend = [{ days: ['sat' as const, 'sun' as const], start: '10:00', end: '18:00' }]
+  expect(next(weekend, 26, '10:00')).toBe(ms(27, '10:00'))
+  expect(next(weekend, 27, '10:00')).toBe(at(26, '10:00').getTime() + 7 * 86_400_000)
+  expect(next([...windows, { start: '03:00', end: '05:00' }], 25, '01:00')).toBe(ms(26, '01:00'))
+  expect(
+    next(
+      [
+        { start: '01:00', end: '03:00' },
+        { start: '03:00', end: '05:00' },
+      ],
+      25,
+      '01:00',
+    ),
+  ).toBe(ms(25, '03:00'))
+  expect(nextOpening(night, ms(25, '22:00'), ms(26, '22:00'))).toBeUndefined()
 })
 
 it('merges windows opening at the same time into one start, as launchd reads them back', () => {
