@@ -7,6 +7,7 @@ import { collectItems } from '../src/cli/plan.js'
 import { loadConfig, parseConfig } from '../src/config/load.js'
 import type { Ctx, Source } from '../src/core/types.js'
 import { type CommandConfig, commandConfig, commandSource } from '../src/sources/command.js'
+import { configSecrets, workerEnv } from '../src/worker/workspace.js'
 import { sourceContract } from './contracts/source.contract.js'
 
 const dir = fileURLToPath(new URL('fixtures/command', import.meta.url))
@@ -119,5 +120,76 @@ describe('command source', () => {
       'AI-42: undeclared field "column"; add it to `fields`',
     )
     expect(await run('exit 3')).toMatch(/exit code 3/)
+  })
+
+  it('writes nothing without a `write` command', () => {
+    expect(source.write).toBeUndefined()
+  })
+
+  it('pipes a write as JSON to its `write` command, in the config folder with its env', async () => {
+    const out = join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'write.json')
+    const write =
+      'cat > "$OUT"; pwd >> "$OUT.pwd"; echo "$TRACKER_TOKEN" >> "$OUT.pwd"; echo 2026-01-04T08:00:00Z'
+    const c = cfg({ write })
+    const writer = commandSource('tracker', c)
+    const [item] = await writer.items(c, ctx())
+    const env = ctx({ OUT: out, TRACKER_TOKEN: 'tok' })
+    const moved = await writer.write?.(c, item as never, { op: 'move', to: 'QA' }, env)
+    expect(moved).toBe('2026-01-04T08:00:00Z')
+    expect(JSON.parse(await readFile(out, 'utf8'))).toEqual({
+      op: 'move',
+      item: 'AI-42',
+      id: item?.id,
+      to: 'QA',
+    })
+    expect(await readFile(`${out}.pwd`, 'utf8')).toBe(`${dir}\ntok\n`)
+    await writer.write?.(c, item as never, { op: 'comment', body: 'Which?' }, env)
+    expect(JSON.parse(await readFile(out, 'utf8'))).toMatchObject({ op: 'comment', body: 'Which?' })
+  })
+
+  it('fails a write whose command fails, and returns no time it did not print', async () => {
+    const failing = cfg({ write: 'echo denied >&2; exit 2' })
+    const item = { id: '1', key: 'AI-1' } as never
+    await expect(
+      commandSource('tracker', failing).write?.(failing, item, { op: 'move', to: 'QA' }, ctx()),
+    ).rejects.toThrow(/denied/)
+    const quiet = cfg({ write: 'cat > /dev/null; echo moved' })
+    expect(
+      await commandSource('tracker', quiet).write?.(quiet, item, { op: 'move', to: 'QA' }, ctx()),
+    ).toBeUndefined()
+  })
+
+  it("keeps the write command's secrets, besides the read command's, from workers", () => {
+    const config = parseConfig(`
+providers: [claude]
+sources:
+  tracker: { command: 'node items.mjs', write: 'node write.mjs', secrets: [TRACKER_READ, TRACKER_WRITE] }
+`)
+    const tracker = commandSource('tracker', config.sources.tracker as CommandConfig)
+    const secrets = configSecrets(config, {}, { tracker })
+    const env = { PATH: '/bin', TRACKER_READ: 'r', TRACKER_WRITE: 'w' }
+    expect(Object.keys(workerEnv(env, '/tmp/clone', secrets))).not.toContain('TRACKER_WRITE')
+    expect(Object.keys(workerEnv(env, '/tmp/clone', secrets))).not.toContain('TRACKER_READ')
+  })
+
+  it('takes which comments your own account wrote, and makes every item yours', async () => {
+    const json = JSON.stringify([
+      {
+        id: '1',
+        key: 'A-1',
+        title: 't',
+        url: 'u',
+        comments: [
+          { author: 'me', body: 'x', at: 't', mine: true },
+          { author: 'qa', body: 'y', at: 't', mine: false },
+        ],
+      },
+    ])
+    const [item] = await source.items(cfg({ command: `echo '${json}'` }), ctx())
+    expect(item?.comments).toEqual([
+      { author: 'me', body: 'x', at: 't', mine: true },
+      { author: 'qa', body: 'y', at: 't' },
+    ])
+    expect(item?.mine).toBe(true)
   })
 })

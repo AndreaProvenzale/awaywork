@@ -217,6 +217,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
           if (!inScope(node.repository.nameWithOwner)) continue
           const item = byId.get(node.id) ?? toItem(node)
           Object.assign(item.fields, fields)
+          if (item.fields.mine) item.mine = true
           byId.set(node.id, item)
         }
       }
@@ -264,6 +265,17 @@ export function githubSource(base: Exec = exec): Source<Config> {
         .map((r) => r.trim())
         .filter(Boolean)
       return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
+    },
+
+    /** Comments on the issue or PR, or moves it by adding the label `to`, which GitHub makes when the repo has none. */
+    async write(_cfg, item, write) {
+      const run = onHost(base, URL.canParse(item.url) ? new URL(item.url).host : undefined)
+      // A PR is an issue too: its labels and conversation comments go through the issues API.
+      const path = `repos/${item.fields.repo}/issues/${item.key.split('#')[1]}`
+      if (write.op === 'comment')
+        await run('gh', ['api', `${path}/comments`, '-f', `body=${write.body}`])
+      else await run('gh', ['api', `${path}/labels`, '-f', `labels[]=${write.to}`])
+      return (await run('gh', ['api', path, '--jq', '.updated_at'])).trim()
     },
   }
 }
@@ -417,6 +429,7 @@ const toComment = (c: Comment) => ({
   author: c.author?.login ?? 'ghost',
   body: c.body,
   at: c.createdAt,
+  ...(c.viewerDidAuthor && { mine: true as const }),
 })
 
 function checkState(state: string | undefined): string | undefined {

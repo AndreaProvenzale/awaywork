@@ -15,6 +15,7 @@ import {
   chainCells,
   chains,
   counted,
+  describeMoved,
   localTime,
   needsYouOn,
   opened,
@@ -541,7 +542,7 @@ function brief(text: string, clipAt = CELL): string {
 export function reportUnitRows(
   r: RunReport,
   clipAt = TITLE,
-): { cells: string[]; summary?: string }[] {
+): { cells: string[]; summary?: string; moved: string[] }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
     const why = (reason: string) => brief(reason, clipAt)
@@ -555,6 +556,7 @@ export function reportUnitRows(
         result,
       ],
       summary: chain.head.summary ?? (top && clip(top.title, clipAt)),
+      moved: (chain.head.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
     }
   })
 }
@@ -581,6 +583,7 @@ export function reportUnitTable(
     units: rows.map((row, i) => [
       lines[i + 1] ?? '',
       ...(row.summary ? [styler(styled)('dim', `${under}${row.summary}`)] : []),
+      ...row.moved.map((line) => styler(styled)('dim', `${under}${line}`)),
     ]),
   }
 }

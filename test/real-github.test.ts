@@ -4,10 +4,11 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
+import { isAwayworkComment } from '../src/core/footer.js'
 import type { Item } from '../src/core/types.js'
 import { exec } from '../src/forge/gh.js'
 import { github } from '../src/sources/github.js'
-import { sourceField } from '../src/sources/index.js'
+import { sourceField, writeItem } from '../src/sources/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
 let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
@@ -83,6 +84,7 @@ jobs:
   let issue = 0
   let branched = false
   let pr = 0
+  let moved = ''
 
   beforeAll(async () => {
     login = (await gh('api', 'user', '--jq', '.login')).trim()
@@ -152,6 +154,7 @@ jobs:
           `issue #${issue}`,
           !!issue && (() => gh('issue', 'delete', String(issue), '-R', repo, '--yes')),
         ],
+        [`label ${moved}`, !!moved && (() => gh('label', 'delete', moved, '-R', repo, '--yes'))],
       ]),
     120_000,
   )
@@ -217,6 +220,23 @@ jobs:
     const setup = await github.init?.(scriptedAsk([[/GitHub repos/, initial]]), ctx)
     expect(setup?.config).toEqual({ repos: [`${login}/*`] })
   }, 30_000)
+
+  it('moves the seeded issue by a label new to the repo and comments on it as awaywork', async () => {
+    const key = `${repo}#${issue}`
+    const item = await settled((items) => items.find((i) => i.key === key))
+    moved = `${label}-moved-${run}`
+    const cfg = { repos: [repo] }
+    const updated = await writeItem(github, cfg, item, { op: 'move', to: moved }, ctx)
+    expect(updated).toMatch(/^\d{4}-\d\d-\d\dT[\d:]+Z$/)
+    await writeItem(github, cfg, item, { op: 'comment', body: `e2e question ${run}` }, ctx)
+    const back = await settled((items) => {
+      const found = items.find((i) => i.key === key)
+      return found?.labels.includes(moved) && found.comments.some(isAwayworkComment)
+        ? found
+        : undefined
+    })
+    expect(back.comments.find(isAwayworkComment)?.body).toBe(`e2e question ${run}\n\n— awaywork`)
+  }, 120_000)
 
   describe.skipIf(!reviewerToken)('with my review requested by a collaborator', () => {
     const reviewBranch = `${branch}-review`

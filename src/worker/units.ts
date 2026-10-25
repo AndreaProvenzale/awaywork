@@ -24,7 +24,13 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { type RunReport, type StepFiles, summaryOf, type UnitResult } from '../core/report.js'
+import {
+  type Moved,
+  type RunReport,
+  type StepFiles,
+  summaryOf,
+  type UnitResult,
+} from '../core/report.js'
 import type {
   Ctx,
   Deliver,
@@ -36,10 +42,11 @@ import type {
   Source,
   Unit,
 } from '../core/types.js'
+import { unwritable, writeItem } from '../sources/index.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
-import type { Stack } from './publish.js'
+import type { Outcome, Stack } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { maskSecrets, runSetup } from './setup.js'
@@ -161,6 +168,10 @@ async function leftBy(
   return { files, ...(summary && { summary }) }
 }
 
+/** A slice's outcome that published: a PR, a push, a report or a pending review left. */
+const delivered = (o: Outcome | undefined) =>
+  !!o && o.kind !== 'none' && !(o.kind === 'report' && o.unposted)
+
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
 interface Retry {
   result: UnitResult
@@ -213,6 +224,32 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     runId: input.runId,
     signal: input.signal,
     check,
+  }
+
+  /** Moves each of a finished unit's items that is yours to `to`; a write that fails is reported, never thrown. */
+  const moveItems = async (items: Item[], to: string): Promise<Moved[]> => {
+    const moved: Moved[] = []
+    for (const item of items) {
+      const source = input.sources[item.source]
+      const refused = unwritable(item, source)
+      if (refused) {
+        input.ctx.log(`on_done: ${item.key} not moved, ${refused}`)
+        continue
+      }
+      const ref = { item: `${item.source}:${item.key}`, to }
+      try {
+        const write = { op: 'move', to } as const
+        const cfg = input.config.sources[item.source]
+        const updated = await writeItem(source, cfg, item, write, input.ctx)
+        input.ctx.log(`on_done: moved ${item.key} to ${to}`)
+        moved.push({ ...ref, ...(updated && { updated }) })
+      } catch (e) {
+        const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+        input.ctx.log(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
+        moved.push({ ...ref, failed })
+      }
+    }
+    return moved
   }
 
   /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
@@ -293,8 +330,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
     let retrying: Retry | undefined
-    // Why the steps left didn't run, and whether they're passed over rather than missed.
-    let ended: { reason: string; passedOver?: true } | undefined
+    // Why the steps left didn't run, whether they're passed over rather than missed, and whether a slice's `when` did.
+    let ended: { reason: string; passedOver?: true; when?: true } | undefined
+    // A slice that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
+    let unfinished = false
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
@@ -435,6 +474,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (!lostToWorker(dir)) await copyOut(join(dir, WORK_DIR, 'out'), out).catch(() => {})
         }
       }
+      if (lead && (failed || !delivered(lead.outcome) || Object.values(loops).some((l) => !l.held)))
+        unfinished = true
       if (last || ended) return
       const outcome = lead?.outcome
       if (outcome?.kind === 'pr') {
@@ -650,7 +691,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
-            if (p === opening) ended = { reason, passedOver: true }
+            if (p === opening) ended = { reason, passedOver: true, when: true }
             // A refused check is refused every round: the loop would repeat without its step.
             else if (loop && p.loop && met.check?.refused) loop.ended = reason
             else if (loop && p.loop && p.loop.step === p.loop.skills.length - 1) {
@@ -798,6 +839,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
 
     await endSlice(true)
+    const onDone = input.plan.queue[first.rule]?.on_done
+    const lead = done.find((r) => !r.planned.chain && !r.retried)
+    // Every slice that ran published, and only a `when` ended the chain early.
+    const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
+    if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
+      lead.moved = await moveItems(first.unit.items, onDone.move)
     for (const r of done) {
       // A committing slice that committed nothing published its reports.
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver

@@ -16,7 +16,7 @@ From the prototype, which read a private tracker over REST:
 - Items where I am a reviewer, if the tracker has reviewers.
 - Linked PRs, if the tracker exposes them.
 
-Only a script reads the tracker, with a stored token, and prefetches into files. The model never holds the credential. Nothing is written back.
+Only a script reads the tracker, with a stored token, and prefetches into files. The model never holds the credential. Nothing is written back, except what a rule's `on_done` asks awaywork itself to write, on the developer's own items ([Writes](#writes)).
 
 ## Summary
 
@@ -117,11 +117,12 @@ Suggested order, by reach and headless ease [I]: GitHub, Jira, Linear, GitLab, A
 - **PR links.** `dev-status` stays unused: awaywork links issues through the forge by key, which Jira's own branch names carry [I].
 - **Blocked.** `blocked` is true when `fields.issuelinks` holds a link of type `Blocks` with an `inwardIssue` (the issue blocking this one) whose `status.statusCategory.key` is not `done` [I, tested by `real-jira.test.ts`]. A site that renamed the `Blocks` link type is not seen.
 - **Repo for an issue.** `repo_map` maps a project key to `owner/repo`.
+- **Writes.** A comment is `POST /rest/api/3/issue/{id}/comment` with an ADF `body`; a move reads `GET /issue/{id}/transitions` and posts `{ transition: { id } }` for the one whose `to.name` is the configured status; the issue's `updated` is read back with `?fields=updated`; comment authorship compares `author.accountId` with `GET /rest/api/3/myself`, and when the token can't read that, no comment counts as the developer's and items still load [I, tested against fixtures only]. Whether a token scoped to `read:jira-work` alone may call `/myself` is unchecked. A scoped token needs `write:jira-work` for both [I]. ADF has no hidden markup that round-trips through `adfToMarkdown`, so awaywork's mark is a visible last paragraph [I].
 
 ### Asana
 
 - PAT has the user's full access; read scopes exist for OAuth apps only [V] https://developers.asana.com/docs/oauth-scopes
-- **Token for awaywork.** There is no read-only PAT: the token in `token_env` can do anything the user can [V, above]. Service accounts need "Full Permissions" for the task endpoints [V]. awaywork only sends `GET`s and never hands the token to the worker. Make a PAT for awaywork alone so it can be revoked on its own. https://developers.asana.com/docs/personal-access-token
+- **Token for awaywork.** There is no read-only PAT: the token in `token_env` can do anything the user can [V, above]. Service accounts need "Full Permissions" for the task endpoints [V]. awaywork sends only `GET`s, plus the `POST`s of a rule's `on_done`, and never hands the token to the worker. Make a PAT for awaywork alone so it can be revoked on its own. https://developers.asana.com/docs/personal-access-token
 - `GET /tasks` needs `workspace` with `assignee`; `completed_since` keeps incomplete tasks plus ones completed after it; pages of up to 100 follow `next_page.offset` [V] https://developers.asana.com/reference/gettasks https://developers.asana.com/docs/pagination
 - A user id may be `"me"`, an email or a gid [V] https://developers.asana.com/reference/getuser
 - Status is a section (per project membership) or a custom field [I]. Comments are stories filtered by `resource_subtype=comment_added` [V] https://developers.asana.com/reference/getstoriesfortask
@@ -130,6 +131,7 @@ Suggested order, by reach and headless ease [I]: GitHub, Jira, Linear, GitLab, A
 - **Blocked.** `GET /tasks/{gid}/dependencies` lists the tasks this one waits on; `blocked` is true when one has `completed: false` [I, not run against the live API]. One extra call per task; when it fails, as it may on a plan without dependencies, the task has no `blocked`.
 - **PR links.** `GET /attachments?parent=<task>` lists a task's attachments, including `external` ones with a `view_url` [V] https://developers.asana.com/reference/getattachmentsforobject. Asana's GitHub Action "creates an attachment" for a PR whose description carries the task URL, through an Asana-hosted service [V] https://github.com/Asana/create-app-attachment-github-action; the attachment's subtype and URL fields are not documented [I]. The in-task GitHub widget is an app component whose resource lives on the app's server [V] https://developers.asana.com/reference/attachresource, so it may not show in `/attachments` at all [I]. awaywork links tasks through the forge instead: my PRs whose branch or title carries the task key, or whose body holds any `app.asana.com` URL ending in the task gid. Asana's GitHub app writes `/0/0/<gid>`, not the `permalink_url` form [V, its PR descriptions].
 - **Repo for a task.** Asana has no notion of a repo, so a task with no linked PR takes its repo from `repo_map` (project gid to `owner/repo`) in the source config.
+- **Writes.** `POST /sections/{section_gid}/addTask` with `{ data: { task } }` moves a task: "This will remove the task from other sections of the project", OAuth scope `tasks:write` [V] https://developers.asana.com/reference/addtaskforsection. awaywork looks the section up by name in each of the task's projects, the first that has it. A comment is a story, `POST /tasks/{gid}/stories` with plain `text`, which comes back in `text` as sent [I]; authorship compares `created_by.gid` with `GET /users/me` [I]. `modified_at` is read back after the write [I]. All tested against fixtures only.
 
 ### Trello
 
@@ -145,12 +147,14 @@ Suggested order, by reach and headless ease [I]: GitHub, Jira, Linear, GitLab, A
 - **PR links.** Not read from `attachments` until the claim below is verified: awaywork links issues through the forge by key, which matches Linear's own branch names (`dev/eng-12-title`) [I].
 - **Blocked.** `blocked` is true when `inverseRelations` holds a `blocks` relation whose issue's `state.type` is not `completed` or `canceled` [I, tested by `real-linear.test.ts`]. Only the first 10 relations are read: at 50, the issues query would pass the 10,000-point complexity limit [V] https://linear.app/developers/rate-limiting.
 - **Repo for an issue.** `repo_map` maps a team key to `owner/repo`.
+- **Writes.** `commentCreate(input: { issueId, body })` and `issueUpdate(id, input: { stateId })`, both returning `success`; `User.isMe` says whether a comment's user is the key's own; a team's `states` lists its workflow states [V, the SDK's `schema.graphql`] https://github.com/linear/linear/blob/master/packages/sdk/src/schema.graphql. Whether a Markdown HTML comment survives Linear's editor is not checked, so awaywork's mark is a visible last line, as everywhere [I]. Not run against the live API.
 
 ### GitHub
 
 - `@me` works in GraphQL `search` queries (`author:`, `assignee:`, `review-requested:`) [V]; `gh pr list --json` has no review threads, so items come from `gh api graphql` [V].
 - `gh run view --job <id> --log-failed` prints the whole job log, not just the failed step [V].
 - Projects v2 is GraphQL-only; fine-grained PATs reported to fail on it [C] https://github.com/orgs/community/discussions/156512
+- **Writes.** A PR is an issue: "Every pull request is an issue, but not every issue is a pull request", and labels and conversation comments go through the issues endpoints [V] https://docs.github.com/en/rest/issues/labels. `POST /repos/{owner}/{repo}/issues/{n}/labels` takes `{ labels: [...] }`, "the labels to add to the issue's existing labels" [V, same page]; that it creates a label the repo lacks isn't documented there [I]. awaywork calls it and `.../comments` through `gh api`, as the developer, then reads `updated_at` back [I, tested against recorded `gh` output]. A comment counts as the developer's by `viewerDidAuthor` [V]. A classic token's `repo` scope covers both [I]; the Actions workflow's `GITHUB_TOKEN` stays read-only, since awaywork writes with `GH_TOKEN`.
 
 ### GitLab
 
@@ -172,11 +176,20 @@ Suggested order, by reach and headless ease [I]: GitHub, Jira, Linear, GitLab, A
 - Shortcut: https://help.shortcut.com/hc/en-us/articles/205701199-Shortcut-API-Tokens
 - Plane: https://developers.plane.so/api-reference/introduction
 
+## Writes
+
+What `on_done` writes, in one place [I]:
+
+- Only items the rule matched as the developer's own (`Item.mine`): their PRs and issues assigned to them on GitHub, every Jira, Linear and Asana item (all read as assigned to them), every custom source item by its house rule. Never a review-requested PR, an item only an extra GitHub `search` found, or a new item.
+- Every comment ends with a visible `— awaywork` line. It counts as awaywork's only when it also comes from the token's own user, so a pasted line doesn't hide a comment from awaywork.
+- The item's updated time after the write is recorded as the attempt's, so awaywork's own write doesn't read as a change next run.
+
 ## Unverified, check before relying on it
 
 - Linear: PRs from the GitHub integration appear in `issue.attachments`.
 - Linear: personal keys limited to read and to teams; comment paging used by `linear.ts`.
 - Jira: basic auth of a scoped token on the gateway, `-comment` in `fields`, `*all` returning custom fields on `search/jql`.
+- Writes on every tracker: none has run against a live account yet; GitHub creating a missing label when one is added to an issue.
 - Asana: GitHub integration attachments readable via `/attachments`, and in which field the PR URL sits.
 - Plane: filtering by assignee and state, PR links.
 - ClickUp, Monday: any PR link in the API.

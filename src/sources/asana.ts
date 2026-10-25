@@ -65,7 +65,7 @@ interface Task {
 }
 interface Story {
   created_at: string
-  created_by: { name: string } | null
+  created_by: Named | null
   text: string
 }
 type Page<T> = { data: T[]; next_page: { offset: string } | null }
@@ -77,25 +77,37 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     let offset: string | undefined
     do {
       const query = new URLSearchParams({ ...params, limit: '100', ...(offset && { offset }) })
-      const page = await get<Page<T>>(`${path}?${query}`, token)
+      const page = await request<Page<T>>(`${path}?${query}`, token)
       all.push(...page.data)
       offset = page.next_page?.offset
     } while (offset)
     return all
   }
 
-  async function get<T>(pathAndQuery: string, token: string, attempt = 1): Promise<T> {
+  /** A GET, or a POST of `data`, waiting out 429s as `Retry-After` says. */
+  async function request<T>(
+    pathAndQuery: string,
+    token: string,
+    data?: object,
+    attempt = 1,
+  ): Promise<T> {
     const res = await http(`${API}${pathAndQuery}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      method: data ? 'POST' : 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        ...(data && { 'Content-Type': 'application/json' }),
+      },
+      ...(data && { body: JSON.stringify({ data }) }),
     })
     if (res.status === 429 && attempt < RETRIES) {
       await sleep(Number(res.headers.get('retry-after') ?? 60) * 1000)
-      return get(pathAndQuery, token, attempt + 1)
+      return request(pathAndQuery, token, data, attempt + 1)
     }
     const body = await res.json().catch(() => ({}))
     if (!res.ok)
       throw new Error(
-        `GET ${pathAndQuery.split('?')[0]}: ${res.status} ${body.errors?.[0]?.message ?? res.statusText}`,
+        `${data ? 'POST' : 'GET'} ${pathAndQuery.split('?')[0]}: ${res.status} ${body.errors?.[0]?.message ?? res.statusText}`,
       )
     return body as T
   }
@@ -131,6 +143,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
         },
         token,
       )
+      const me = await request<{ data: Named }>('/users/me?opt_fields=gid', token)
       const inScope = (t: Task) =>
         !cfg.projects || t.memberships.some((m) => cfg.projects?.includes(m.project.gid))
       const items: Item[] = []
@@ -149,7 +162,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           ctx.log(`asana: couldn't read the dependencies of ${task.gid}: ${e.message}`)
           return undefined
         })
-        items.push(toItem(task, stories, dependencies, cfg.repo_map))
+        items.push(toItem(task, stories, dependencies, me.data.gid, cfg.repo_map))
       }
       return items
     },
@@ -157,6 +170,37 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     /** Writes item.md: description, fields and comments. */
     async prefetch(item, dir) {
       await writeFile(join(dir, 'item.md'), taskMarkdown(item))
+    },
+
+    /** Comments on the task as a story, or moves it to the section named `to` in the first of its projects that has one. */
+    async write(cfg, item, write, ctx) {
+      const token = tokenFrom(cfg, ctx)
+      const task = `/tasks/${item.id}`
+      if (write.op === 'comment') await request(`${task}/stories`, token, { text: write.body })
+      else {
+        const seen: string[] = []
+        let section: Named | undefined
+        for (const { project } of (item.raw as Task).memberships) {
+          const sections = await getAll<Named>(
+            `/projects/${project.gid}/sections`,
+            { opt_fields: 'name' },
+            token,
+          )
+          seen.push(...sections.map((s) => `"${s.name}"`))
+          section = sections.find((s) => s.name.toLowerCase() === write.to.toLowerCase())
+          if (section) break
+        }
+        if (!section)
+          throw new Error(
+            `${item.key}'s projects have no section "${write.to}", only ${seen.join(', ') || 'none'}`,
+          )
+        await request(`/sections/${section.gid}/addTask`, token, { task: item.id })
+      }
+      const { data } = await request<{ data: { modified_at: string } }>(
+        `${task}?opt_fields=modified_at`,
+        token,
+      )
+      return data.modified_at
     },
 
     /** Picks a workspace and projects from the account and lists their real section names. */
@@ -234,6 +278,7 @@ function toItem(
   task: Task,
   stories: Story[],
   dependencies: { completed: boolean }[] | undefined,
+  me: string,
   repoMap: Config['repo_map'] = {},
 ): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
@@ -261,8 +306,10 @@ function toItem(
       author: s.created_by?.name ?? 'unknown',
       body: s.text,
       at: s.created_at,
+      ...(s.created_by?.gid === me && { mine: true as const }),
     })),
     linkedPrs: [],
+    mine: true,
     fields: {
       project: task.memberships.map((m) => m.project.name),
       section: sections,

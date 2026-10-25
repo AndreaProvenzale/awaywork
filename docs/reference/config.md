@@ -256,6 +256,7 @@ A custom source: any command that prints your open items as JSON.
 | `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
 | `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
+| `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated time after it. Without it, on_done writes nothing to this source |
 
 ## `repos.<key>`
 
@@ -315,6 +316,7 @@ First matching rule wins; top = highest priority.
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
 | `units` | integer |  | At most this many units per run from this rule; each of a chain's slices counts once |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps |
+| `on_done` | object |  | Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported |
 
 ## `queue[].where`
 
@@ -496,6 +498,14 @@ Same keys as `queue[].then.until`.
 ## `queue[].then[].until.verdict`
 
 Same keys as `queue[].then.when.verdict`.
+
+## `queue[].on_done`
+
+Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `move` (required) | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
 
 ## `notify`
 

@@ -82,6 +82,28 @@ describe('doctor', () => {
     })
     expect(checks.at(-1)?.what).toBe('github')
   })
+
+  it("warns when a rule's on_done may meet a source that can't write", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      `providers: [codex]
+sources: { github: { repos: [a/b] }, tracker: { command: 'echo []' }, board: { command: 'echo []', write: 'true' } }
+queue:
+  - { skill: fix, on_done: { move: QA } }
+  - { skill: fix, source: github, on_done: { move: QA } }
+`,
+    )
+    const checks = await runChecks(path, () => {})
+    expect(checks.filter((c) => c.what.includes('on_done'))).toEqual([
+      {
+        status: 'warn',
+        what: 'rule #1 on_done',
+        detail: "tracker can't write to its items: they stay put",
+      },
+    ])
+  })
 })
 
 describe('doctor on Bitbucket', () => {

@@ -65,7 +65,7 @@ interface Issue {
   }
 }
 interface Comment {
-  author: { displayName: string } | null
+  author: { displayName: string; accountId?: string } | null
   body: Adf
   created: string
 }
@@ -146,6 +146,14 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     async items(cfg, ctx) {
       const token = tokenFrom(cfg, ctx)
       const custom = (await call<Field[]>(cfg, token, '/rest/api/3/field')).filter((f) => f.custom)
+      // A token scoped to read:jira-work alone may not read itself: then no comment counts as yours.
+      const me = await call<{ accountId: string }>(cfg, token, '/rest/api/3/myself').then(
+        (m) => m.accountId,
+        (e: Error) => {
+          ctx.log(`jira: couldn't read the token's own account: ${e.message}`)
+          return undefined
+        },
+      )
       const shared = (name: string) => custom.filter((f) => f.name === name).length > 1
       const names = new Map(
         custom.map((f) => [f.id, shared(f.name) ? `${f.name} (${f.id})` : f.name]),
@@ -178,7 +186,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
           (p: { comments: Comment[]; total: number }) => p.comments,
           (p, seen) => seen >= p.total,
         )
-        items.push(toItem(issue, comments, names, cfg))
+        items.push(toItem(issue, comments, names, cfg, me))
       }
       return items
     },
@@ -186,6 +194,33 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     /** Writes item.md: description, fields and comments. */
     async prefetch(item, dir) {
       await writeFile(join(dir, 'item.md'), taskMarkdown(item))
+    },
+
+    /** Comments on the issue, or moves it through the transition whose target status is named `to`. */
+    async write(cfg, item, write, ctx) {
+      const token = tokenFrom(cfg, ctx)
+      const issue = `/rest/api/3/issue/${item.id}`
+      if (write.op === 'comment')
+        await call(cfg, token, `${issue}/comment`, { body: textToAdf(write.body) })
+      else {
+        const { transitions } = await call<{ transitions: { id: string; to: { name: string } }[] }>(
+          cfg,
+          token,
+          `${issue}/transitions`,
+        )
+        const to = transitions.find((t) => t.to.name.toLowerCase() === write.to.toLowerCase())
+        if (!to)
+          throw new Error(
+            `${item.key} has no transition to "${write.to}", only to ${transitions.map((t) => `"${t.to.name}"`).join(', ') || 'none'}`,
+          )
+        await call(cfg, token, `${issue}/transitions`, { transition: { id: to.id } })
+      }
+      const { fields } = await call<{ fields: { updated: string } }>(
+        cfg,
+        token,
+        `${issue}?fields=updated`,
+      )
+      return iso(fields.updated)
     },
 
     /** Finds the site, maps projects to repos and lists the site's real status names. */
@@ -251,7 +286,13 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
   return token
 }
 
-function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, cfg: Config): Item {
+function toItem(
+  issue: Issue,
+  comments: Comment[],
+  names: Map<string, string>,
+  cfg: Config,
+  me: string | undefined,
+): Item {
   const f = issue.fields
   const repo = cfg.repo_map?.[f.project.key]
   const custom = [...names].flatMap(([id, name]) => {
@@ -275,9 +316,11 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
         author: c.author?.displayName ?? 'unknown',
         body: adfToMarkdown(c.body),
         at: iso(c.created),
+        ...(!!me && c.author?.accountId === me && { mine: true as const }),
       }))
       .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],
+    mine: true,
     fields: {
       project: f.project.key,
       status: f.status.name,
@@ -316,6 +359,20 @@ function fieldValue(value: unknown): string | number | string[] | undefined {
     return typeof named === 'string' ? named : undefined
   }
   return undefined
+}
+
+/** Text as ADF, a paragraph per block between blank lines, its line breaks kept; nothing in it is parsed as Markdown. */
+export function textToAdf(text: string): Adf & { version: 1 } {
+  const content = text.split(/\n\s*\n/).map((block) => ({
+    type: 'paragraph',
+    content: block
+      .split('\n')
+      .flatMap((line, i): Adf[] => [
+        ...(i > 0 ? [{ type: 'hardBreak' }] : []),
+        ...(line ? [{ type: 'text', text: line }] : []),
+      ]),
+  }))
+  return { type: 'doc', version: 1, content }
 }
 
 /** Atlassian Document Format as minimal Markdown: text, marks, lists, tasks, tables, code, quotes, mentions. */

@@ -354,6 +354,19 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
       ),
+    on_done: z
+      .strictObject({
+        move: z
+          .string()
+          .min(1)
+          .describe(
+            "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add",
+          ),
+      })
+      .optional()
+      .describe(
+        "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+      ),
   })
   .describe('First matching rule wins; top = highest priority')
 

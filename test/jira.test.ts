@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { isAwayworkComment, markComment } from '../src/core/footer.js'
 import type { Ctx } from '../src/core/types.js'
-import { adfToMarkdown, jiraSource } from '../src/sources/jira.js'
+import { adfToMarkdown, jiraSource, textToAdf } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
 import { scriptedAsk } from './fakes/ask.js'
 import { jiraFetch, jiraFixture } from './fakes/jira.js'
@@ -290,5 +291,77 @@ describe('jira source', () => {
     expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/sub/api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('https://acme.atlassian.net', 'acme/api'))).toThrow('site')
+  })
+})
+
+describe('jira writes', () => {
+  const issue = { fields: { updated: '2026-01-04T08:00:00.000+0000' } }
+  const transitions = {
+    transitions: [
+      { id: '21', name: 'Start review', to: { name: 'In Review' } },
+      { id: '31', name: 'Done', to: { name: 'Done' } },
+    ],
+  }
+  const writer = () =>
+    recordedFetch([
+      [/\/issue\/10012\/transitions$/, JSON.stringify(transitions)],
+      [/\/issue\/10012\/comment$/, '{ "id": "1" }'],
+      [/\/issue\/10012\?fields=updated$/, JSON.stringify(issue)],
+    ])
+  const eng12 = { id: '10012', key: 'ENG-12' } as never
+
+  it('moves an issue through the transition whose target status has that name', async () => {
+    const http = writer()
+    const move = { op: 'move', to: 'in review' } as const
+    expect(await jiraSource(http).write?.(cfg, eng12, move, ctx)).toBe('2026-01-04T08:00:00.000Z')
+    const post = http.calls.find((c) => c.body)
+    expect(post?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/transitions')
+    expect(JSON.parse(post?.body ?? '')).toEqual({ transition: { id: '21' } })
+  })
+
+  it('names the statuses it can go to when none has that name', async () => {
+    await expect(
+      jiraSource(writer()).write?.(cfg, eng12, { op: 'move', to: 'QA' }, ctx),
+    ).rejects.toThrow('ENG-12 has no transition to "QA", only to "In Review", "Done"')
+  })
+
+  it('comments in ADF that reads back as the same text, mark included', async () => {
+    const http = writer()
+    const body = markComment('Which limit?\nPer key.\n\nOr per IP?')
+    await jiraSource(http).write?.(cfg, eng12, { op: 'comment', body }, ctx)
+    const sent = JSON.parse(http.calls[0]?.body ?? '')
+    expect(http.calls[0]?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/comment')
+    expect(sent.body).toEqual(textToAdf(body))
+    expect(adfToMarkdown(sent.body)).toBe(body)
+  })
+
+  it("marks the token's own comments as yours, so only those count as awaywork's", async () => {
+    const comments = JSON.stringify({
+      total: 2,
+      comments: [
+        { author: { displayName: 'Dev', accountId: '5b10' }, body: textToAdf(markComment('Q?')) },
+        { author: { displayName: 'QA', accountId: '5b20' }, body: textToAdf(markComment('Q?')) },
+      ].map((c) => ({ ...c, created: '2026-01-01T10:00:00.000+0000' })),
+    })
+    const http = jiraFetch([[/\/issue\/10012\/comment/, comments]])
+    const [found] = await jiraSource(http).items(cfg, ctx)
+    expect(found?.comments.map((c) => [c.author, c.mine, isAwayworkComment(c)])).toEqual([
+      ['Dev', true, true],
+      ['QA', undefined, false],
+    ])
+    expect(found?.mine).toBe(true)
+  })
+
+  it("reads the issues, no comment as yours, when the token can't read its own account", async () => {
+    const lines: string[] = []
+    const http = jiraFetch([
+      [/\/myself$/, { status: 403, body: '{ "errorMessages": ["Forbidden"] }' }],
+    ])
+    const found = await jiraSource(http).items(cfg, { ...ctx, log: (l) => lines.push(l) })
+    expect(found).toHaveLength(2)
+    expect(found.flatMap((i) => i.comments).some((c) => c.mine)).toBe(false)
+    expect(lines).toEqual([
+      "jira: couldn't read the token's own account: Jira /rest/api/3/myself: 403 Forbidden",
+    ])
   })
 })

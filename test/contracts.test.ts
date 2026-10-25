@@ -39,14 +39,34 @@ providerContract(fakeProvider(), () => ({
 sourceContract(fakeSource() as Source<unknown>, {})
 sourceContract(
   githubSource(
-    recorded([[/^gh api user --jq/, 'octo'], [/^gh api user\/orgs/, ''], ...githubRoutes()]),
+    recorded([
+      [/^gh api user --jq/, 'octo'],
+      [/^gh api user\/orgs/, ''],
+      [/^gh api repos\/acme\/api\/issues\/1\/labels /, '[]'],
+      [/^gh api repos\/acme\/api\/issues\/1 --jq/, '2026-02-02T08:00:00Z\n'],
+      ...githubRoutes(),
+    ]),
   ) as Source<unknown>,
   { repos: ['acme/*'] },
   {},
   () => scriptedAsk([[/^GitHub repos/, initial]]),
+  'qa',
 )
 sourceContract(
-  asanaSource(recordedFetch(asanaRoutes())) as Source<unknown>,
+  asanaSource(
+    recordedFetch([
+      [
+        /\/projects\/11\/sections\?/,
+        '{ "data": [{ "gid": "21", "name": "QA" }], "next_page": null }',
+      ],
+      [/\/sections\/21\/addTask$/, '{ "data": {} }'],
+      [
+        /\/tasks\/1201\?opt_fields=modified_at$/,
+        '{ "data": { "modified_at": "2026-01-04T08:00:00.000Z" } }',
+      ],
+      ...asanaRoutes(),
+    ]),
+  ) as Source<unknown>,
   { workspace: '100' },
   { ASANA_TOKEN: 'pat' },
   () =>
@@ -55,9 +75,19 @@ sourceContract(
       [/^Asana projects/, ['300']],
       [/^GitHub repo for tasks/, 'acme/api'],
     ]),
+  'QA',
 )
 sourceContract(
-  linearSource(linearFetch()) as Source<unknown>,
+  linearSource(
+    linearFetch([
+      [
+        /query States/,
+        '{ "data": { "issue": { "team": { "states": { "nodes": [{ "id": "s1", "name": "In Review" }] } } } } }',
+      ],
+      [/mutation IssueMove/, '{ "data": { "issueUpdate": { "success": true } } }'],
+      [/query Updated/, '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z" } } }'],
+    ]),
+  ) as Source<unknown>,
   {},
   { LINEAR_API_KEY: 'lin_api_key' },
   () =>
@@ -65,9 +95,21 @@ sourceContract(
       [/^Linear teams/, ['ENG']],
       [/^GitHub repo for issues in ENG/, 'acme/api'],
     ]),
+  'In Review',
 )
 sourceContract(
-  jiraSource(jiraFetch()) as Source<unknown>,
+  jiraSource(
+    jiraFetch([
+      [
+        /\/issue\/10012\/transitions$/,
+        '{ "transitions": [{ "id": "21", "to": { "name": "In Review" } }] }',
+      ],
+      [
+        /\/issue\/10012\?fields=updated$/,
+        '{ "fields": { "updated": "2026-01-04T08:00:00.000+0000" } }',
+      ],
+    ]),
+  ) as Source<unknown>,
   { site: 'acme.atlassian.net', email: 'dev@acme.test' },
   { JIRA_API_TOKEN: 'atl-token' },
   () =>
@@ -78,4 +120,5 @@ sourceContract(
       [/^Jira projects/, ['ENG']],
       [/^GitHub repo for issues in ENG/, 'acme/api'],
     ]),
+  'In Review',
 )
