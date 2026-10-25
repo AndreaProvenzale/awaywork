@@ -274,10 +274,20 @@ export function githubSource(base: Exec = exec): Source<Config> {
       const path = `repos/${item.fields.repo}/issues/${item.key.split('#')[1]}`
       const updated = async () => (await run('gh', ['api', path, '--jq', '.updated_at'])).trim()
       const before = await updated()
+      let url = ''
       if (write.op === 'comment')
-        await run('gh', ['api', `${path}/comments`, '-f', `body=${write.body}`])
+        url = (
+          await run('gh', [
+            'api',
+            `${path}/comments`,
+            '-f',
+            `body=${write.body}`,
+            '--jq',
+            '.html_url',
+          ])
+        ).trim()
       else await run('gh', ['api', `${path}/labels`, '-f', `labels[]=${write.to}`])
-      return { before, after: await updated() }
+      return { before, after: await updated(), ...(url && { url }) }
     },
   }
 }

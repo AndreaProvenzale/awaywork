@@ -245,7 +245,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       try {
         const write = { op: 'move', to } as const
         const cfg = input.config.sources[item.source]
-        const updated = await writeItem(source, cfg, item, write, input.ctx)
+        const { updated } = await writeItem(source, cfg, item, write, input.ctx)
         input.ctx.log(`on_done: moved ${item.key} to ${to}`)
         moved.push({ ...ref, ...(updated && { updated }) })
       } catch (e) {
@@ -283,9 +283,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     try {
       const write = { op: 'comment', body: questionsComment(text) } as const
       const cfg = input.config.sources[item.source]
-      await writeItem(input.sources[item.source], cfg, item, write, input.ctx)
-      input.ctx.log(`${p.unit.id}: questions posted on ${item.url}`)
-      return { item: ref, url: item.url }
+      const { url = item.url } = await writeItem(
+        input.sources[item.source],
+        cfg,
+        item,
+        write,
+        input.ctx,
+      )
+      input.ctx.log(`${p.unit.id}: questions posted on ${url}`)
+      return { item: ref, url }
     } catch (e) {
       const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
       input.ctx.log(`${p.unit.id}: couldn't post its questions on ${item.key}: ${failed}`)

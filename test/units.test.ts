@@ -4444,7 +4444,8 @@ it('keeps the updated time the plan read when someone changed the item during th
   expect(unchangedSince(next, 'implement', attempts)).toBeUndefined()
 })
 
-it("moves only the items of the rule's own source, or of the item it matched without one", async () => {
+/** Your PR and the tracker card it links, which dedupe into one unit. */
+function cardAndPr(): Item[] {
   const pr = githubPr(2, { mine: true })
   const card = fakeItem({
     source: 'tracker',
@@ -4455,10 +4456,13 @@ it("moves only the items of the rule's own source, or of the item it matched wit
     linkedPrs: pr.linkedPrs,
     fields: { repo: 'acme/api' },
   })
-  const yourPr = { ...pr, mine: true as const }
+  return [{ ...pr, mine: true as const }, card]
+}
+
+it("moves only the items of the rule's own source, or of the item it matched without one", async () => {
   const named = await finishedRun(
     '  - { skill: review, source: tracker, deliver: report, on_done: { move: QA } }\n  - { skill: review, deliver: report }',
-    [yourPr, card],
+    cardAndPr(),
   )
   expect(named.report.results[0]?.planned.unit.items.map((i) => i.key)).toEqual([
     'ENG-1',
@@ -4467,7 +4471,7 @@ it("moves only the items of the rule's own source, or of the item it matched wit
   expect(named.writes).toEqual([['ENG-1', { op: 'move', to: 'QA' }]])
   const unnamed = await finishedRun(
     '  - { skill: review, deliver: report, on_done: { move: QA } }',
-    [yourPr, card],
+    cardAndPr(),
   )
   expect(unnamed.writes).toEqual([['acme/api#2', { op: 'move', to: 'QA' }]])
 })
@@ -4571,6 +4575,29 @@ it("posts a step's questions once on your item, marked, and ends the chain witho
   expect(text).toContain('- **api#1**: questions posted on https://example.com/1')
   expect(text).toContain('## Questions\n\n### api#1: Fix the thing (acme-api-1)')
   expect(summarize(report, 'report.md')).toContain('     questions posted on https://example.com/1')
+})
+
+it('asks on the item on_done would move, and links the comment when the source returns it', async () => {
+  const named = await finishedRun(
+    '  - { skill: review, source: tracker, deliver: report }\n  - { skill: review, deliver: report }',
+    cardAndPr(),
+    asker('Which?'),
+  )
+  expect(named.writes.map(([key]) => key)).toEqual(['ENG-1'])
+  const commented = async () => ({ url: 'https://example.com/2#issuecomment-9' })
+  const unnamed = await finishedRun(
+    '  - { skill: review, deliver: report }',
+    cardAndPr(),
+    asker('Which?'),
+    commented,
+  )
+  expect(unnamed.report.results[0]?.questions).toMatchObject({
+    item: 'github:acme/api#2',
+    url: 'https://example.com/2#issuecomment-9',
+  })
+  expect(unnamed.lines).toContain(
+    'acme-api-2: questions posted on https://example.com/2#issuecomment-9',
+  )
 })
 
 it('keeps the questions in the report when the item is not yours or its source cannot write', async () => {

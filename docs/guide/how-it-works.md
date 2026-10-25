@@ -131,7 +131,7 @@ A skill commits unless its metadata says it reports, as `review` and `plan` do; 
 
 ## Questions
 
-A step that can't go on without a person's answer writes its questions to `.away/out/questions.md` and commits nothing, like `implement` on an issue too vague to build. The chain ends there, and awaywork posts them as one comment on the unit's item from the rule's source, when that item is yours: your PR, an issue assigned to you, a tracker item. The model writes the questions; awaywork adds the last two paragraphs. On GitHub it shows up as you:
+A step that can't go on without a person's answer writes its questions to `.away/out/questions.md` and commits nothing, like `implement` on an issue too vague to build. The chain ends there, and awaywork posts them as one comment on the unit's item from the rule's own tracker, the one [`on_done`](./configuration.md#on-done) would move, when that item is yours: your PR, an issue assigned to you, a tracker item. The model writes the questions; awaywork adds the last two paragraphs. On GitHub it shows up as you:
 
 ```
 andrea commented
@@ -156,7 +156,14 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 
 - Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo, or a bot; a tracker shows every comment on an item assigned to you. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. A step that still can't go on asks again.
 - It counts as awaywork's only when its `— awaywork` line comes from your own account, so a stranger pasting one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
-- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit.
+- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit, linking the comment itself on GitHub and the item elsewhere:
+
+  ```text
+    1  api#5  implement  done, 3 turns  nothing
+       Add rate limits
+       questions posted on https://github.com/acme/api/issues/5#issuecomment-2417736801
+  ```
+
 - A step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
 
 ## The morning report
