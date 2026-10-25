@@ -20,6 +20,7 @@ import { olderJob, type Schedule, type Scheduler, type Start } from '../src/sche
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
 import { parseService, service, systemd } from '../src/scheduler/systemd.js'
 import {
+  holdAwake,
   keepAwake,
   pmsetArgs,
   staleWake,
@@ -823,6 +824,28 @@ describe('wake', () => {
       throw new Error('Failed to connect to bus')
     }
     expect(await keepAwake(noBus, 'linux')).toEqual([])
+  })
+
+  it('holds awake through a child its release kills, and returns a no-op with nothing to run', async () => {
+    expect((await holdAwake(async () => '', 'win32'))()).toBeUndefined()
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-inhibit-'))
+    const pidFile = join(dir, 'pid')
+    const script = `#!/bin/sh\necho $$ > ${pidFile}\nexec sleep 30\n`
+    await writeFile(join(dir, 'systemd-inhibit'), script, { mode: 0o755 })
+    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`)
+    try {
+      const release = await holdAwake(async () => '', 'linux')
+      const pid = await vi.waitFor(async () => {
+        const pid = Number(await readFile(pidFile, 'utf8'))
+        if (!pid) throw new Error('no pid yet')
+        return pid
+      })
+      expect(() => process.kill(pid, 0)).not.toThrow()
+      release()
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('repeats one pmset wake on the days of the windows starting then', () => {
