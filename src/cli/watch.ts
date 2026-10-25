@@ -15,7 +15,7 @@ import type { Config } from '../config/schema.js'
 import { isolateFor } from '../core/launch.js'
 import { localTime } from '../core/report.js'
 import { lockHolder, takeRunLock } from '../core/run-lock.js'
-import { nextOpening, windowRun } from '../core/window.js'
+import { firstOpening, windowRun } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { holdAwake } from '../scheduler/wake.js'
 import { executeRun, newRunId, pruneOld, type RunLog } from './run.js'
@@ -177,7 +177,7 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     (c) => c.windows,
     () => undefined,
   )
-  const next = windows && nextOpening(windows, now.getTime(), now.getTime() + 8 * DAY)
+  const next = windows && firstOpening(windows, now.getTime() + 1, now.getTime() + 8 * DAY)
   if (windows)
     lines.push(`Next window: ${next ? localTime(new Date(next)) : 'none, no windows set'}`)
   lines.push(`Daemon log: ${watchLogPath}`)

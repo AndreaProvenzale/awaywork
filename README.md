@@ -125,7 +125,7 @@ Each run's ceiling on the weekly window is an even spend over the week:
 ceiling = (1 - reserve) × time since the last reset / week
 ```
 
-A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run you start by hand reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
+A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run outside your windows reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
 
 ## The paranoid bit
 

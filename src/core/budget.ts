@@ -33,7 +33,7 @@ const WEEK_MINUTES = 7 * 24 * 60
 /**
  * This run's ceiling on the long window: the lowest of used + per_run, 1 - reserve and pacing, an even spend from 0 at the window's start to 1 - reserve at its reset.
  * A present run, one started outside every window, reads pacing at its start, stops workers at `present_session_max` and skips providers without a quota reading.
- * An away run reads pacing at the next window opening or the reset, whichever comes first: nobody else spends what accrues before then.
+ * An away run reads pacing at the opening after its window, or the reset, whichever comes first: nobody else spends what accrues before then.
  */
 export function allowance(
   budget: Budget,
