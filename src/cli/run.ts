@@ -173,14 +173,16 @@ const consoleLog: RunLog = {
   error: (line) => console.error(line),
 }
 
-/** A signal aborted by the first SIGINT or SIGTERM; a second one quits at once. */
+/** A signal aborted by the first SIGINT or SIGTERM, which still exits 128+n once done; a second one quits at once. */
 export function abortOnSignals(): AbortSignal {
   const abort = new AbortController()
   // `on`, not `once`: execa's signal-exit re-raises a signal it sees no other listener for.
   for (const signal of ['SIGINT', 'SIGTERM'] as const)
-    process.on(signal, () =>
-      abort.signal.aborted ? process.exit(128 + constants.signals[signal]) : abort.abort(),
-    )
+    process.on(signal, () => {
+      if (abort.signal.aborted) process.exit(128 + constants.signals[signal])
+      process.exitCode = 128 + constants.signals[signal]
+      abort.abort()
+    })
   return abort.signal
 }
 

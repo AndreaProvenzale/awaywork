@@ -3,6 +3,9 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 
+// Wall-clock steps (Linux recomputes `lstart`) and NFS mtimes skew both stamps; a reused pid starts far later.
+const CLOCK_SLACK_MS = 60_000
+
 export type RunLock = { release: () => Promise<void> } | { pid: number; runId: string }
 
 /** Takes the lock file for this run, or says who holds it; a lock no live process of ours holds is taken over. Two runs starting together can still both win. */
@@ -28,19 +31,19 @@ export async function lockHolder(file: string): Promise<number | undefined> {
 }
 
 /**
- * The lock's pid and run, while that pid is a live process of ours that started no later than the
- * lock was written: a lock left by a crash can name a pid the OS has since given to something else.
+ * The lock's pid and run, while that pid is a live process of ours that started no later than about
+ * when the lock was written: a lock left by a crash can name a pid the OS has since given to something else.
  */
 async function holder(file: string): Promise<{ pid: number; runId: string } | undefined> {
+  const [first, runId = ''] = (await readFile(file, 'utf8').catch(() => '')).split(' ')
   const written = await stat(file).then(
     (s) => s.mtimeMs,
     () => undefined,
   )
-  const [first, runId = ''] = (await readFile(file, 'utf8').catch(() => '')).split(' ')
   const pid = Number(first)
   if (written === undefined || !pid || !alive(pid)) return undefined
   const started = await startOf(pid)
-  return started === undefined || started <= written ? { pid, runId } : undefined
+  return started === undefined || started <= written + CLOCK_SLACK_MS ? { pid, runId } : undefined
 }
 
 /** When a process started, to the second, from `ps`; undefined when `ps` can't say. */
