@@ -200,7 +200,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
-  const { check, factsFor, restoreGit, rememberClone, baseline } = createChecks({
+  const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
     env: input.ctx.env,
     secrets,
     signal: input.signal,
@@ -507,7 +507,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             since = await git(dir, 'rev-parse', `origin/${pickedUp ? base : 'HEAD'}`)
           original =
             pickedUp && unit.gates ? await git(dir, 'merge-base', 'origin/HEAD', 'HEAD') : cloned
-          rememberClone(dir, await readFile(join(dir, '.git', 'config'), 'utf8'), original)
+          rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
           const state: ReplayState = { unit, provider: id, commit: cloned }
           await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
         }
