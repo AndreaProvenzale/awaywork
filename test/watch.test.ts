@@ -224,6 +224,32 @@ notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
     expect(existsSync(runLockPath)).toBe(false)
   })
 
+  it('leaves a soon unit to the next poll while a manual run holds the run lock', async () => {
+    const path = await config('[]')
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'T',
+      url: 'https://e.com/1',
+      fields: { repo: 'acme/api' },
+    }
+    await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan, run: soon }]\n`,
+    )
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    try {
+      const log = await watchUntil(path, 'holds the run lock')
+      expect(log).toContain(
+        `ch-1 due, but run 20261025-010000 (pid ${process.pid}) holds the run lock; trying again at the next poll`,
+      )
+      expect(log).not.toContain('soon run')
+    } finally {
+      await rm(runLockPath, { force: true })
+    }
+  })
+
   it('runs one worker at a time across overlapping runs, a soon one in a window until its end', async () => {
     const path = await config()
     const dir = dirname(path)
