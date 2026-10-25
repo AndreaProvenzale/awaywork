@@ -51,14 +51,14 @@ const commentMutation = `mutation CommentCreate($issueId: String!, $body: String
 }`
 
 const statesQuery = `query States($id: String!) {
-  issue(id: $id) { updatedAt team { states(first: 100) { nodes { id name } } } }
+  issue(id: $id) { updatedAt assignee { isMe } team { states(first: 100) { nodes { id name } } } }
 }`
 
 const moveMutation = `mutation IssueMove($id: String!, $stateId: String!) {
   issueUpdate(id: $id, input: { stateId: $stateId }) { success }
 }`
 
-const updatedQuery = `query Updated($id: String!) { issue(id: $id) { updatedAt } }`
+const updatedQuery = `query Updated($id: String!) { issue(id: $id) { updatedAt assignee { isMe } } }`
 
 const teamsQuery = `query Teams($after: String) {
   teams(first: 50, after: $after) {
@@ -88,6 +88,8 @@ interface Comment {
   createdAt: string
   user: { name: string; isMe: boolean } | null
 }
+/** An issue as read right before a write. */
+type Read = { updatedAt: string; assignee: { isMe: boolean } | null }
 interface Team {
   key: string
   name: string
@@ -175,18 +177,21 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
       const id = item.id
-      const updated = async () =>
-        (await graphql<{ issue: { updatedAt: string } }>(updatedQuery, { id }, token)).issue
-          .updatedAt
+      const read = async () => (await graphql<{ issue: Read }>(updatedQuery, { id }, token)).issue
+      const yours = (issue: Read) => {
+        if (!issue.assignee?.isMe)
+          throw new Error(`${item.key} is no longer yours: not assigned to you`)
+        return issue.updatedAt
+      }
       let before: string
       if (write.op === 'comment') {
-        before = await updated()
+        before = yours(await read())
         await graphql(commentMutation, { issueId: id, body: write.body }, token)
       } else {
         const { issue } = await graphql<{
-          issue: { updatedAt: string; team: { states: { nodes: { id: string; name: string }[] } } }
+          issue: Read & { team: { states: { nodes: { id: string; name: string }[] } } }
         }>(statesQuery, { id }, token)
-        before = issue.updatedAt
+        before = yours(issue)
         const states = issue.team.states.nodes
         const state = states.find((s) => s.name.toLowerCase() === write.to.toLowerCase())
         if (!state)
@@ -195,7 +200,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
           )
         await graphql(moveMutation, { id, stateId: state.id }, token)
       }
-      return { before, after: await updated() }
+      return { before, after: (await read()).updatedAt }
     },
 
     /** Maps teams to repos and lists the account's real team keys and workflow state names. */

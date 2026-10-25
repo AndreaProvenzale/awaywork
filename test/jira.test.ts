@@ -295,17 +295,19 @@ describe('jira source', () => {
 })
 
 describe('jira writes', () => {
-  const before = { fields: { updated: '2026-01-03T09:30:00.000+0100' } }
+  const dev = { accountId: '5b10' }
+  const before = { fields: { updated: '2026-01-03T09:30:00.000+0100', assignee: dev } }
   const transitions = [
     { id: '21', name: 'Start review', to: { name: 'In Review' } },
     { id: '31', name: 'Done', to: { name: 'Done' } },
   ]
-  const writer = () =>
+  const writer = (read: object = before) =>
     recordedFetch([
       [
-        /\/issue\/10012\?fields=updated&expand=transitions$/,
-        JSON.stringify({ ...before, transitions }),
+        /\/issue\/10012\?fields=updated,assignee&expand=transitions$/,
+        JSON.stringify({ ...read, transitions }),
       ],
+      [/\/issue\/10012\?fields=updated,assignee$/, JSON.stringify(read)],
       [/\/issue\/10012\/transitions$/, '{}'],
       [/\/issue\/10012\/comment$/, '{ "id": "1" }'],
       [
@@ -313,7 +315,7 @@ describe('jira writes', () => {
         '{ "fields": { "updated": "2026-01-04T08:00:00.000+0000" } }',
       ],
     ])
-  const eng12 = { id: '10012', key: 'ENG-12' } as never
+  const eng12 = { id: '10012', key: 'ENG-12', raw: { fields: { assignee: dev } } } as never
 
   it('moves an issue through the transition whose target status has that name', async () => {
     const http = writer()
@@ -323,7 +325,7 @@ describe('jira writes', () => {
       after: '2026-01-04T08:00:00.000Z',
     })
     expect(http.calls.map((c) => c.url.split('/10012')[1])).toEqual([
-      '?fields=updated&expand=transitions',
+      '?fields=updated,assignee&expand=transitions',
       '/transitions',
       '?fields=updated',
     ])
@@ -338,12 +340,26 @@ describe('jira writes', () => {
     ).rejects.toThrow('ENG-12 has no transition to "QA", only to "In Review", "Done"')
   })
 
+  it('refuses an issue reassigned or unassigned since it was read', async () => {
+    for (const assignee of [{ accountId: '5b20' }, null]) {
+      const http = writer({ fields: { ...before.fields, assignee } })
+      for (const write of [
+        { op: 'move', to: 'In Review' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(jiraSource(http).write?.(cfg, eng12, write, ctx)).rejects.toThrow(
+          'ENG-12 is no longer yours: not assigned to you',
+        )
+      expect(http.calls.filter((c) => c.body)).toEqual([])
+    }
+  })
+
   it('comments in ADF that reads back as the same text, mark included', async () => {
     const http = writer()
     const body = markComment('Which limit?\nPer key.\n\nOr per IP?')
     await jiraSource(http).write?.(cfg, eng12, { op: 'comment', body }, ctx)
     const sent = JSON.parse(http.calls[1]?.body ?? '')
-    expect(http.calls[0]?.url).toMatch(/\/issue\/10012\?fields=updated$/)
+    expect(http.calls[0]?.url).toMatch(/\/issue\/10012\?fields=updated,assignee$/)
     expect(http.calls[1]?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/comment')
     expect(sent.body).toEqual(textToAdf(body))
     expect(adfToMarkdown(sent.body)).toBe(body)

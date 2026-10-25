@@ -102,16 +102,19 @@ describe('linear writes', () => {
       { id: 's2', name: 'In Review' },
     ],
   }
-  const writer = () =>
+  const writer = (assignee: { isMe: boolean } | null = { isMe: true }) =>
     recordedFetch([
       [
         /query States/,
         JSON.stringify({
-          data: { issue: { updatedAt: '2026-01-03T08:00:00.000Z', team: { states } } },
+          data: { issue: { updatedAt: '2026-01-03T08:00:00.000Z', assignee, team: { states } } },
         }),
       ],
       [/mutation (IssueMove|CommentCreate)/, '{ "data": { "x": { "success": true } } }'],
-      [/query Updated/, '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z" } } }'],
+      [
+        /query Updated/,
+        JSON.stringify({ data: { issue: { updatedAt: '2026-01-04T08:00:00.000Z', assignee } } }),
+      ],
     ])
   const eng12 = { id: 'issue-12', key: 'ENG-12' } as never
   const sent = (http: ReturnType<typeof writer>) => http.calls.map((c) => JSON.parse(c.body))
@@ -127,6 +130,20 @@ describe('linear writes', () => {
     await expect(
       linearSource(writer()).write?.(cfg, eng12, { op: 'move', to: 'QA' }, ctx),
     ).rejects.toThrow(`ENG-12's team has no state "QA", only "Todo", "In Review"`)
+  })
+
+  it('refuses an issue reassigned or unassigned since it was read', async () => {
+    for (const assignee of [{ isMe: false }, null]) {
+      const http = writer(assignee)
+      for (const write of [
+        { op: 'move', to: 'In Review' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(linearSource(http).write?.(cfg, eng12, write, ctx)).rejects.toThrow(
+          'ENG-12 is no longer yours: not assigned to you',
+        )
+      expect(sent(http).filter((b) => b.query.startsWith('mutation'))).toEqual([])
+    }
   })
 
   it('comments with the body as Markdown', async () => {

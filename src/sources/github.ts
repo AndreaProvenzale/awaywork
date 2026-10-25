@@ -103,6 +103,17 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
   }
 }`
 
+/** An issue or PR right before and after a write, and who you are. */
+const writeQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  viewer { login }
+  repository(owner: $owner, name: $name) {
+    issueOrPullRequest(number: $number) {
+      ... on Issue { updatedAt assignees(first: 10) { nodes { login } } }
+      ... on PullRequest { updatedAt }
+    }
+  }
+}`
+
 type Nodes<T> = { nodes: T[] }
 type Files = Nodes<{ path: string }> & { pageInfo: { hasNextPage: boolean; endCursor: string } }
 type Login = { login: string } | null
@@ -270,14 +281,28 @@ export function githubSource(base: Exec = exec): Source<Config> {
     /** Comments on the issue or PR, or moves it by adding the label `to`, which GitHub makes when the repo has none. */
     async write(_cfg, item, write) {
       const run = onHost(base, URL.canParse(item.url) ? new URL(item.url).host : undefined)
+      const repo = item.fields.repo as string
+      const [owner = '', name = ''] = repo.split('/')
+      const number = Number(item.key.split('#')[1])
+      const read = async () => {
+        const { viewer, repository } = await graphql<{
+          viewer: { login: string }
+          repository: {
+            issueOrPullRequest: { updatedAt: string; assignees?: Nodes<{ login: string }> }
+          }
+        }>(run, writeQuery, { owner, name, number })
+        return { viewer: viewer.login, ...repository.issueOrPullRequest }
+      }
+      const before = await read()
+      // Your PR stays yours, its author can't change; an issue is yours while it's assigned to you.
+      if (item.type !== 'pr' && !before.assignees?.nodes.some((a) => a.login === before.viewer))
+        throw new Error(`${item.key} is no longer yours: not assigned to you`)
       // A PR is an issue too: its labels and conversation comments go through the issues API.
-      const path = `repos/${item.fields.repo}/issues/${item.key.split('#')[1]}`
-      const updated = async () => (await run('gh', ['api', path, '--jq', '.updated_at'])).trim()
-      const before = await updated()
+      const path = `repos/${repo}/issues/${number}`
       if (write.op === 'comment')
         await run('gh', ['api', `${path}/comments`, '-f', `body=${write.body}`])
       else await run('gh', ['api', `${path}/labels`, '-f', `labels[]=${write.to}`])
-      return { before, after: await updated() }
+      return { before: before.updatedAt, after: (await read()).updatedAt }
     },
   }
 }

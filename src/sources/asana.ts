@@ -175,10 +175,18 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
       const task = `/tasks/${item.id}`
-      const updated = async () =>
-        (await request<{ data: { modified_at: string } }>(`${task}?opt_fields=modified_at`, token))
-          .data.modified_at
-      const before = await updated()
+      const read = async () =>
+        (
+          await request<{ data: { modified_at: string; assignee: { gid: string } | null } }>(
+            `${task}?opt_fields=modified_at,assignee`,
+            token,
+          )
+        ).data
+      const { modified_at: before, assignee } = await read()
+      // Read as assigned to you, so the plan's assignee is you.
+      const me = (item.raw as Task).assignee?.gid
+      if (!me || assignee?.gid !== me)
+        throw new Error(`${item.key} is no longer yours: not assigned to you`)
       if (write.op === 'comment') await request(`${task}/stories`, token, { text: write.body })
       else {
         const seen: string[] = []
@@ -202,7 +210,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           )
         await request(`/sections/${section.gid}/addTask`, token, { task: item.id })
       }
-      return { before, after: await updated() }
+      return { before, after: (await read()).modified_at }
     },
 
     /** Picks a workspace and projects from the account and lists their real section names. */
