@@ -135,9 +135,9 @@ describe('init', () => {
       [/^GitHub repo for issues in ENG/, 'acme/api'],
       [/^GitHub repo for issues in WEB/, ''],
       [/^Starting queue/, initial],
-      [/^Which state holds the items for fix/, initial],
-      [/^Which state holds the items for implement/, initial],
-      [/^Which state holds the items for plan/, ''],
+      [/^Which status holds the items for fix/, initial],
+      [/^Which status holds the items for implement/, initial],
+      [/^Which status holds the items for plan/, ''],
       [/^Window starts/, initial],
       [/^Window ends/, initial],
     ])
@@ -148,8 +148,8 @@ describe('init', () => {
       linear: { repo_map: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
     })
     expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['fix', { state: 'QA' }],
-      ['implement', { state: 'In Progress' }],
+      ['fix', { status: 'QA' }],
+      ['implement', { status: 'In Progress' }],
     ])
   })
 

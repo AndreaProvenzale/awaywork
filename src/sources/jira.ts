@@ -57,6 +57,7 @@ interface Issue {
     assignee: { displayName: string; accountId?: string } | null
     created: string
     updated: string
+    resolutiondate?: string | null
     issuelinks?: {
       type: { name: string }
       inwardIssue?: { fields: { status: { statusCategory: { key: string } } } }
@@ -143,15 +144,18 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     },
     secrets: (cfg) => [cfg.token_env],
 
-    /** My unresolved issues, narrowed by the configured JQL, with their comments. */
-    async items(cfg, ctx) {
+    /** My unresolved issues, and those resolved since `since`, narrowed by the configured JQL, with their comments. */
+    async items(cfg, ctx, since) {
       const token = tokenFrom(cfg, ctx)
       const custom = (await call<Field[]>(cfg, token, '/rest/api/3/field')).filter((f) => f.custom)
       const shared = (name: string) => custom.filter((f) => f.name === name).length > 1
       const names = new Map(
         custom.map((f) => [f.id, shared(f.name) ? `${f.name} (${f.id})` : f.name]),
       )
-      const jql = `assignee = currentUser() AND resolution = Unresolved${cfg.jql ? ` AND (${cfg.jql})` : ''} ORDER BY updated DESC`
+      const resolution = since
+        ? `(resolution = Unresolved OR resolved >= -${Math.ceil((Date.now() - since.getTime()) / 60_000)}m)`
+        : 'resolution = Unresolved'
+      const jql = `assignee = currentUser() AND ${resolution}${cfg.jql ? ` AND (${cfg.jql})` : ''} ORDER BY updated DESC`
       const issues: Issue[] = []
       const tokens = new Set<string>()
       let nextPageToken: string | undefined
@@ -336,6 +340,8 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
       ...(repo && { repo }),
       created: iso(f.created),
       updated: iso(f.updated),
+      state: f.resolutiondate ? 'closed' : 'open',
+      ...(f.resolutiondate && { closed: iso(f.resolutiondate) }),
       ...Object.fromEntries(custom),
     },
     raw: issue,

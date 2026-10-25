@@ -4,6 +4,7 @@ import {
   closestRule,
   defaultRules,
   failedIn,
+  lookback,
   matches,
   rank,
   ruleMatches,
@@ -105,6 +106,86 @@ describe('where', () => {
   })
 })
 
+describe('finished items', () => {
+  const day = 86_400_000
+  const ago = (days: number) => new Date(Date.now() - days * day).toISOString()
+  const merged = (n: number, days: number, fields: Rule['where'] = {}) => ({
+    ...githubPr(n, { state: 'merged', closed: ago(days), ...fields }),
+    linkedPrs: [],
+  })
+
+  it('take merged release PRs and open hotfix ones, not merged hotfix ones', () => {
+    const where: Rule['where'] = {
+      any: [{ state: 'merged', label: 'release' }, { label: 'hotfix' }],
+    }
+    expect(matches(rule(where), merged(1, 1, { label: ['release'] }))).toBe(true)
+    expect(matches(rule(where), merged(1, 1, { label: ['hotfix'] }))).toBe(false)
+    expect(matches(rule(where), githubPr(2, { state: 'open', label: ['hotfix'] }))).toBe(true)
+  })
+
+  it('match only a rule that names state, within its lookback', () => {
+    expect(matches(rule({ type: 'pr' }), merged(1, 1))).toBe(false)
+    expect(matches(rule({ type: 'pr' }), githubPr(2, { state: 'open' }))).toBe(true)
+    expect(matches(rule({ state: 'merged' }), merged(1, 1))).toBe(true)
+    expect(matches(rule({ state: 'open' }), merged(1, 1))).toBe(false)
+    expect(matches(rule({ state: 'merged' }), merged(1, 10))).toBe(false)
+    expect(matches(rule({ state: 'merged', closed: { newer_than: '14d' } }), merged(1, 10))).toBe(
+      true,
+    )
+  })
+
+  it('match through an entry of any only when that entry, or the level around it, names state', () => {
+    const acme = { repo: 'acme/api' }
+    expect(matches(rule({ any: [{ state: 'open' }, acme] }), merged(1, 1))).toBe(false)
+    expect(matches(rule({ any: [{ state: 'open' }, acme] }), githubPr(2, { state: 'open' }))).toBe(
+      true,
+    )
+    expect(matches(rule({ any: [{ state: 'merged' }, acme] }), merged(1, 1))).toBe(true)
+    expect(matches(rule({ state: 'merged', any: [{ label: 'x' }, acme] }), merged(1, 1))).toBe(true)
+    const wide: Rule['where'] = {
+      any: [{ state: 'merged', closed: { newer_than: '30d' } }, { state: 'closed' }],
+    }
+    expect(matches(rule(wide), merged(1, 20))).toBe(true)
+    expect(matches(rule(wide), merged(1, 20, { state: 'closed' }))).toBe(false)
+  })
+
+  it('say why a finished item misses a rule that never names state', () => {
+    expect(failedIn({ type: 'pr' }, merged(1, 1))).toEqual(['state'])
+    expect(failedIn({ state: 'merged' }, merged(1, 10))).toEqual(['closed'])
+    expect(failedIn({ any: [{ state: 'open' }, { repo: 'acme/api' }] }, merged(1, 1))).toEqual([
+      'any',
+    ])
+  })
+
+  it('leave a merged awaywork PR to any rule, as it no longer waits for review', () => {
+    expect(matches(rule({ state: 'merged' }), merged(1, 1, { ours: true }))).toBe(true)
+  })
+
+  it.each([
+    ['without state', { type: 'pr' }, undefined],
+    ['on open items', { state: 'open' }, undefined],
+    ['unbounded', { state: 'merged' }, 7],
+    ['through not', { state: { not: 'open' } }, 7],
+    ['bounded by closed', { state: 'merged', closed: { newer_than: '14d' } }, 14],
+    ['not by older_than', { state: 'closed', closed: { older_than: '3d' } }, 7],
+    [
+      'the widest entry of any',
+      { any: [{ state: 'merged', closed: { newer_than: '30d' } }, { state: 'closed' }] },
+      30,
+    ],
+    ['a bound above any', { closed: { newer_than: '30d' }, any: [{ state: 'merged' }] }, 30],
+    ['any of open entries only', { any: [{ state: 'open' }, { state: ['open'] }] }, undefined],
+    [
+      'no entry of any that never names state',
+      { any: [{ state: 'open' }, { label: 'x' }] },
+      undefined,
+    ],
+    ['entries of any under a state', { state: 'merged', any: [{ label: 'x' }] }, 7],
+  ] as const)('read back %s', (_, where, days) => {
+    expect(lookback(where as Rule['where'])).toBe(days && days * day)
+  })
+})
+
 describe('rank', () => {
   it('orders by first matching rule, then source order, and sets aside unmatched items', () => {
     const queue = [rule({ checks: 'failing' }), rule({ type: 'task' })]
@@ -125,9 +206,9 @@ describe('rank', () => {
 })
 
 describe('defaultRules', () => {
-  it('catch a state whose case differs from the guessed name', () => {
+  it('catch a status whose case differs from the guessed name', () => {
     const queue = defaultRules(['linear'])
-    const task = fakeItem({ source: 'linear', fields: { state: 'In progress' } })
+    const task = fakeItem({ source: 'linear', fields: { status: 'In progress' } })
     expect(queue.find((r) => matches(r, task))?.skill).toBe('implement')
   })
 })
