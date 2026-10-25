@@ -223,6 +223,17 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     waiting = true
   }
 
+  /** Prunes old runs under the run lock while none of the daemon's runs is in progress; false when it can't yet. */
+  const prune = (config: Config, now: Date) =>
+    inTurn(async () => {
+      if (running.size) return false
+      const taken = await takeRunLock(runLockPath, 'watch')
+      if (!('release' in taken)) return false
+      await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
+      await taken.release()
+      return true
+    })
+
   /** Polls the soon sources that are due and starts a soon run for the units due; reads no quota. */
   const poll = async (config: Config, now: Date) => {
     const every = soonSources(config)
@@ -284,10 +295,8 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
         if (reason(e) !== failed) event(`config not loaded: ${reason(e)}`)
         failed = reason(e)
       }
-      if (config && now.getTime() - pruned >= DAY) {
+      if (config && now.getTime() - pruned >= DAY && (await prune(config, now)))
         pruned = now.getTime()
-        await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
-      }
       const inWindow = state.runs.some((r) => r.trigger === 'window')
       const until = config && windowRun(config.windows, now, { running: inWindow, lastEnd })
       if (config && until) {

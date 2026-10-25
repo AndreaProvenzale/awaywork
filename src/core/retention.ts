@@ -1,6 +1,6 @@
-import { lstat, readdir, readFile, rm } from 'node:fs/promises'
+import { lstat, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { attemptsPath, runLockPath, runsDir } from '../config/paths.js'
+import { attemptsPath, runsDir } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadAttempts } from './attempts.js'
 import { spanMs } from './queue.js'
@@ -14,16 +14,15 @@ export interface Pruned {
 
 /**
  * Removes the run dirs that started longer than `keep_runs` before `now`, going by the run id, a
- * UTC start time. Keeps the run holding the run lock, any with a replay started within `keep_runs`,
- * every run attempts.json reads an item's latest report from, and anything not named like a run.
+ * UTC start time. Keeps any with a replay started within `keep_runs`, every run attempts.json reads
+ * an item's latest report from, and anything not named like a run. Call it holding the run lock with
+ * no run in progress.
  */
 export async function pruneRuns(config: Pick<Config, 'keep_runs'>, now: Date): Promise<Pruned> {
   const cutoff = now.getTime() - spanMs(config.keep_runs)
   const kept = new Set(
     Object.values(await loadAttempts(attemptsPath)).flatMap((a) => a.report?.runId ?? []),
   )
-  const locked = (await readFile(runLockPath, 'utf8').catch(() => '')).split(' ')[1]
-  if (locked) kept.add(locked)
   const pruned: Pruned = { removed: 0, bytes: 0, failures: [] }
   for (const id of await readdir(runsDir).catch(() => [])) {
     const started = runStart(id)

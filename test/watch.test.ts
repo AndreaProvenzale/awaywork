@@ -83,6 +83,16 @@ vi.mock('../src/core/run-lock.js', async (original) => {
     },
   }
 })
+// Shortens the daemon's wait for the next minute while `fast`.
+const clock = vi.hoisted(() => ({ fast: false }))
+vi.mock('node:timers/promises', async (original) => {
+  const timers = await original<typeof import('node:timers/promises')>()
+  return {
+    ...timers,
+    setTimeout: (ms?: number, value?: unknown, options?: object) =>
+      timers.setTimeout(clock.fast && (ms ?? 0) > 1000 ? 20 : ms, value, options),
+  }
+})
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
   holdAwake: async () => () => {},
@@ -290,6 +300,33 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
       await isolateFor('none', process.env)
     }
   })
+
+  it('prunes old runs only with no run in progress, its own included', async () => {
+    const path = await config()
+    await writeFile(
+      path,
+      `${(await readFile(path, 'utf8')).replace('exit 1', 'sleep 2; exit 1')}keep_runs: 1d\n`,
+    )
+    clock.fast = true
+    vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true })
+    try {
+      const stop = new AbortController()
+      const done = watch(path, stop.signal)
+      await vi.waitFor(async () => expect(await daemonLog()).toContain('window run'))
+      const runId = /window run (\d{8}-\d{6}) started/.exec(await daemonLog())?.[1] ?? ''
+      vi.setSystemTime(Date.now() + 25 * 3_600_000)
+      await vi.waitFor(async () => expect(await daemonLog()).toContain('older than 1d'), {
+        timeout: 10_000,
+      })
+      stop.abort()
+      await done
+      expect(await daemonLog()).toMatch(/Report: [\s\S]*older than 1d/)
+      expect(existsSync(join(runsDir, runId))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      clock.fast = false
+    }
+  }, 15_000)
 
   it('exits in one line while another copy runs, and takes over a dead one', async () => {
     await writeFile(watchLockPath, `${process.pid} watch`)

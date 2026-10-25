@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import { type Schedule, type Scheduler, SchedulerError, type Start } from './index.js'
+import { type Schedule, type Scheduler, SchedulerError } from './index.js'
 
 /** A user service started at login and restarted when it crashes. */
 export function systemd(home: string, run: Exec): Scheduler {
@@ -62,8 +62,6 @@ export function systemd(home: string, run: Exec): Scheduler {
   }
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
 const quote = (v: string) => `"${v.replace(/[\\"]/g, '\\$&').replace(/%/g, '%%')}"`
 
 export function parseService(text: string): Schedule {
@@ -98,13 +96,3 @@ StandardError=append:${s.log}
 WantedBy=default.target
 `
 }
-
-export const onCalendar = (starts: Start[]) =>
-  starts
-    .map(
-      (start) =>
-        `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
-    )
-    .join('\n')
-
-const pad = (n: number) => String(n).padStart(2, '0')

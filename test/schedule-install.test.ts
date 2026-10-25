@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { Cancelled } from '../src/cli/ask.js'
-import { type Io, installSchedule, whereToRun } from '../src/cli/schedule.js'
+import { type Io, installSchedule, removeSchedule, whereToRun } from '../src/cli/schedule.js'
 import type { Ask } from '../src/core/types.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
@@ -273,5 +273,37 @@ it('refuses inside the daemon it would stop, as a notify hook or a worker', asyn
   expect(out).toEqual([
     "awaywork watch started this, so it can't change the schedule; do it from a terminal",
   ])
+  expect(process.exitCode).toBe(1)
+})
+
+it('stops the daemon before removing the jobs, and refuses inside it', async () => {
+  const seen: number[] = []
+  const cron: Scheduler = {
+    id: 'cron',
+    install: async () => '',
+    remove: async () => {
+      seen.push(stops.length)
+      return true
+    },
+    read: async () => undefined,
+  }
+  // Outside a repo, so the repo's own workflow stays.
+  const cwd = process.cwd()
+  process.chdir(await mkdtemp(join(tmpdir(), 'awaywork-norepo-')))
+  try {
+    await removeSchedule({ cron })
+    expect(seen).toEqual([1])
+    expect(out[0]).toBe('Removed the cron job')
+    vi.stubEnv('AWAYWORK_WATCH', '4242')
+    await removeSchedule({ cron })
+  } finally {
+    vi.unstubAllEnvs()
+    process.chdir(cwd)
+  }
+  expect(seen).toEqual([1])
+  expect(stops).toEqual([0])
+  expect(out.at(-1)).toBe(
+    "awaywork watch started this, so it can't change the schedule; do it from a terminal",
+  )
   expect(process.exitCode).toBe(1)
 })

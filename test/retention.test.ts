@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { chmod, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attemptsPath, runLockPath, runsDir } from '../src/config/paths.js'
+import { attemptsPath, runsDir } from '../src/config/paths.js'
 import { pruneRuns } from '../src/core/retention.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
@@ -13,7 +13,6 @@ vi.mock('../src/config/paths.js', async (original) => {
     ...(await original<typeof import('../src/config/paths.js')>()),
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
-    runLockPath: `${state}/run.lock`,
   }
 })
 
@@ -28,7 +27,6 @@ describe('pruneRuns', () => {
   beforeEach(async () => {
     await rm(runsDir, { recursive: true, force: true })
     await rm(attemptsPath, { force: true })
-    await rm(runLockPath, { force: true })
   })
 
   it('removes runs older than keep_runs and keeps the young ones', async () => {
@@ -44,11 +42,10 @@ describe('pruneRuns', () => {
     expect((await readdir(runsDir)).sort()).toEqual(['20260925-120001', '20261025-110000'])
   })
 
-  it('keeps the runs attempts.json reads a report from and the one holding the run lock', async () => {
+  it('keeps the runs attempts.json reads a report from', async () => {
     await makeRun('20260101-000000')
     await makeRun('20260102-000000')
     await makeRun('20260103-000000')
-    await makeRun('20260104-000000')
     await writeFile(
       attemptsPath,
       JSON.stringify({
@@ -65,9 +62,8 @@ describe('pruneRuns', () => {
         },
       }),
     )
-    await writeFile(runLockPath, `${process.pid} 20260104-000000`)
     expect((await pruneRuns({ keep_runs: '1d' }, now)).removed).toBe(2)
-    expect((await readdir(runsDir)).sort()).toEqual(['20260103-000000', '20260104-000000'])
+    expect(await readdir(runsDir)).toEqual(['20260103-000000'])
   })
 
   it('keeps an old run whose replays dir changed within keep_runs', async () => {
