@@ -332,10 +332,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         stackedOn: undefined,
         rule: {
           ...unit.rule,
-          skill,
-          skills: [],
           instructions: [],
-          mcp: [],
           with: undefined,
           when: undefined,
         },
