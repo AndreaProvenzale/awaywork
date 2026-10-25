@@ -66,6 +66,7 @@ Quota shares; any provider can override them.
 | `reserve` | percent | `"10%"` | Never go past 1 - reserve of any window |
 | `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent | `"90%"` | Stop a worker past this share of the short window |
+| `present_session_max` | percent | `"40%"` | Stop a worker past this share of the short window in a run started outside every window |
 | `fallback` | object | `{"units":4,"turns":60}` | Caps when the provider's quota can't be read |
 
 ## `budget.fallback`
@@ -103,6 +104,7 @@ Overrides the top-level budget for this provider.
 | `reserve` | percent |  | Never go past 1 - reserve of any window |
 | `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent |  | Stop a worker past this share of the short window |
+| `present_session_max` | percent |  | Stop a worker past this share of the short window in a run started outside every window |
 | `fallback` | object |  | Caps when the provider's quota can't be read |
 
 ## `providers[].claude.budget.fallback`
@@ -137,7 +139,7 @@ Same keys as `providers[].claude.budget.fallback`.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
-| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
+| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
 | `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
 | `budget` | object |  | Overrides the top-level budget for this provider |

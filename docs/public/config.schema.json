@@ -107,6 +107,12 @@
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
         },
+        "present_session_max": {
+          "description": "Stop a worker past this share of the short window in a run started outside every window",
+          "default": "40%",
+          "type": "string",
+          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+        },
         "fallback": {
           "default": {
             "units": 4,
@@ -185,6 +191,11 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
+                      "present_session_max": {
+                        "description": "Stop a worker past this share of the short window in a run started outside every window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -252,6 +263,11 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
+                      "present_session_max": {
+                        "description": "Stop a worker past this share of the short window in a run started outside every window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -288,7 +304,7 @@
                   "description": "Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log"
                 },
                 "probe": {
-                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply",
+                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply",
                   "type": "string",
                   "minLength": 1
                 },
@@ -322,6 +338,11 @@
                     },
                     "session_max": {
                       "description": "Stop a worker past this share of the short window",
+                      "type": "string",
+                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                    },
+                    "present_session_max": {
+                      "description": "Stop a worker past this share of the short window in a run started outside every window",
                       "type": "string",
                       "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                     },

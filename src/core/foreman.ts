@@ -108,6 +108,8 @@ export interface RunPlan {
   units: PlannedUnit[]
   skipped: Skipped[]
   allowances: Record<string, Allowance>
+  /** Whether the run started outside every window; set once the quota is read. */
+  present?: boolean
 }
 
 /** Match, dedupe and route this run's items; no I/O. */

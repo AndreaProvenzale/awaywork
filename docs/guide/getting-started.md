@@ -71,9 +71,10 @@ Then the same screen is a view to browse, here with the `no_rule` skips unfolded
 ☾ >_ awaywork  You're away, your agents work
 
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): workers stop at present_session_max; providers without a quota reading sit out
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -100,9 +101,10 @@ Providers
 ```
 $ awaywork plan | cat
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): workers stop at present_session_max; providers without a quota reading sit out
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 Units 3
      item   rule  skill              provider  deliver   title

@@ -55,6 +55,7 @@ describe('init', () => {
       budget:                         # every provider; override one with - <id>: { budget: … }
         reserve: 10%                  # never go past 1 - reserve of any window
         session_max: 90%              # stop a worker past this share of the short window
+        present_session_max: 40%      # the same, in a run outside every window
         # per_run: 15%                # at most this share of the long window per run
       providers: [claude]             # order = routing preference
       sources:

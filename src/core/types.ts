@@ -111,8 +111,14 @@ export interface Written {
 }
 
 export interface Quota {
-  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds. */
-  windows: { name: string; span: 'short' | 'long'; used: number; resetsAt: number }[]
+  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds; `minutes` is the window's length. */
+  windows: {
+    name: string
+    span: 'short' | 'long'
+    used: number
+    resetsAt: number
+    minutes?: number
+  }[]
 }
 
 export type WorkerEvent =

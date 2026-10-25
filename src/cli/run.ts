@@ -110,7 +110,7 @@ export function runCommand(program: Command): void {
         const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
           config,
           skillsDirOf(path),
-          { retry: !!opts.unit, repo: opts.repo, rule: opts.rule },
+          { retry: !!opts.unit, repo: opts.repo, rule: opts.rule, at: now },
         )
         for (const warning of warnings)
           console.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)

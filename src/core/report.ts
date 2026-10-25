@@ -1,6 +1,6 @@
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
-import { type Allowance, pct } from './budget.js'
+import { type Allowance, pct, presenceLine } from './budget.js'
 import {
   bySlice,
   describeChain,
@@ -415,15 +415,17 @@ function result(u: UnitResult): string {
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 
-/** Each provider's long window before and after the run, against its ceiling. */
+/** Whether the run was away or present, then each provider's long window before and after the run, against its ceiling. */
 export function quotaLines(r: RunReport): string[] {
-  return Object.entries(r.plan.allowances).map(([id, a]) => {
+  const providers = Object.entries(r.plan.allowances).map(([id, a]) => {
     const units = r.results.filter((u) => u.provider === id)
     return `${id}: ${quotaLine(a, r.quotas[id], units)}`
   })
+  return r.plan.present === undefined ? providers : [presenceLine(r.plan.present), ...providers]
 }
 
 function quotaLine(a: Allowance, last: Quota | undefined, units: UnitResult[]): string {
+  if (a.kind === 'fallback' && a.present) return `sat out (${a.reason})`
   if (a.kind === 'fallback')
     return `fallback, ${units.length} of ${counted(a.units, 'unit')} (${a.reason})`
   const long = last?.windows.find((w) => w.name === a.window)?.used ?? a.used

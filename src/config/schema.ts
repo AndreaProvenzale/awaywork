@@ -45,11 +45,14 @@ const fallback = z
 const reserve = 'Never go past 1 - reserve of any window'
 const perRun = 'At most this share of the long window per run'
 const sessionMax = 'Stop a worker past this share of the short window'
+const presentSessionMax =
+  'Stop a worker past this share of the short window in a run started outside every window'
 const budget = z
   .strictObject({
     reserve: percent.prefault('10%').describe(reserve),
     per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
+    present_session_max: percent.prefault('40%').describe(presentSessionMax),
     fallback: fallback
       .extend({ units: fallbackUnits, turns: turns.default(60) })
       .describe(caps)
@@ -61,6 +64,7 @@ const budgetOverride = z
     reserve: percent.describe(reserve),
     per_run: percent.describe(perRun),
     session_max: percent.describe(sessionMax),
+    present_session_max: percent.describe(presentSessionMax),
     fallback,
   })
   .partial()

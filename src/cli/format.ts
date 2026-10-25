@@ -1,5 +1,5 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { type Allowance, pct } from '../core/budget.js'
+import { type Allowance, pct, presenceLine } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import {
   isNamed,
@@ -161,6 +161,7 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     ? [style('dim', 'Queue: the default, no queue in config; awaywork plan --rules lists it'), '']
     : []
   out.push(style('bold', 'Providers'))
+  if (plan.present !== undefined) out.push(style('dim', `  ${presenceLine(plan.present)}`))
   const allowances = Object.entries(plan.allowances)
   const providerHeader = [
     'provider',
@@ -471,7 +472,7 @@ function describeWhere(key: string, value: WhereValue): string {
 export function describeAllowance(id: string, a: Allowance): string {
   if (a.kind === 'fallback') return `fallback: ${describeFallback(id, a)}`
   const session = a.session
-    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
+    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)} (${a.session.limit})`
     : ''
   return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${runs(a.runs)})${session}`
 }
@@ -490,6 +491,7 @@ function allowanceNote(id: string, a: Allowance): string {
 }
 
 function describeFallback(id: string, a: FallbackAllowance): string {
+  if (a.present) return `sits out a present run (${a.reason})`
   // A command provider has no turn cap, so its fallback turns mean nothing.
   const turns = Object.hasOwn(providers, id) ? `, ${counted(a.turns, 'turn')} each` : ''
   return `${counted(a.units, 'unit')}${turns} (${a.reason})`

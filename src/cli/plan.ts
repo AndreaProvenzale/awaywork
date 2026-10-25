@@ -13,7 +13,7 @@ import { counted } from '../core/report.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
-import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
+import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -125,11 +125,17 @@ export function ruleNumber(text: string): number {
   return n
 }
 
-/** Collects items from every configured source, probes every provider and plans the run, masking secrets in warnings. */
+/** Collects items from every configured source, probes every provider and plans a run started `at`, masking secrets in warnings. */
 export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
-  opts: { retry?: boolean; repo?: string; rule?: number; onProgress?: OnProgress } = {},
+  opts: {
+    retry?: boolean
+    repo?: string
+    rule?: number
+    onProgress?: OnProgress
+    at?: Date
+  } = {},
 ): Promise<{
   plan: RunPlan
   warnings: string[]
@@ -153,6 +159,8 @@ export async function probeAndPlan(
     await loadApprovals(approvalsPath),
   )
 
+  const at = opts.at ?? new Date()
+  const present = !windowEnd(config.windows, at)
   const allowances: Record<string, Allowance> = {}
   for (const p of config.providers) {
     const provider = providerFor(p.id, p.config)
@@ -169,7 +177,7 @@ export async function probeAndPlan(
       reason = `probe failed: ${e.message}`
       return null
     })
-    const a = allowance(p.budget, quota ?? null, Date.now(), config.windows, reason)
+    const a = allowance(p.budget, quota ?? null, at.getTime(), config.windows, { present, reason })
     allowances[p.id] = a
     onProgress?.(
       a.kind === 'quota'
@@ -185,7 +193,10 @@ export async function probeAndPlan(
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providersOf(config), sources)
   return {
-    plan: planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
+    plan: {
+      ...planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
+      present,
+    },
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
     ctx,
     sources,
