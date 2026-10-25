@@ -104,9 +104,7 @@ export function isolation(turn: <T>(f: () => Promise<T>) => Promise<T>, log: (l:
   return (config: Config, alone: boolean): Promise<void> => {
     if (!alone) {
       if (config.isolation !== wanted && config.isolation !== kept)
-        log(
-          `isolation: ${config.isolation} waits for the runs in progress, a run starting meanwhile keeps ${wanted}`,
-        )
+        log(`isolation: ${config.isolation} waits for the runs in progress`)
       kept = config.isolation
       return switched
     }

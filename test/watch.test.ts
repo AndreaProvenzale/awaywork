@@ -285,9 +285,7 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
       await isolate(as('none'), false)
       await isolate(as('none'), false)
       expect(contained()).toBe(true)
-      expect(lines).toEqual([
-        'isolation: none waits for the runs in progress, a run starting meanwhile keeps container',
-      ])
+      expect(lines).toEqual(['isolation: none waits for the runs in progress'])
     } finally {
       await isolateFor('none', process.env)
     }

@@ -355,8 +355,7 @@ it('opens a deliver: pr PR as a draft when the chain ended before a step, but no
   const { report } = await run(gated, [issue(1)], worker({}))
   expect(report.results[1]).toMatchObject({ status: 'skipped', passedOver: true })
   expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', ready: true })
-  // Two chains' worth of git calls: past 5 s when the whole suite's workers share the CPU.
-}, 15_000)
+})
 
 it("leaves a deliver: pending_review chain's last report and its comments on the PR as a pending review", async () => {
   const comments = [

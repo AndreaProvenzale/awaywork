@@ -382,8 +382,7 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
     expect((await stat(join(dir, '.away/out/pr.md'))).nlink).toBe(1)
     expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
   }
-  // Eight clones' worth of git calls: past 5 s when the whole suite's workers share the CPU.
-}, 15_000)
+})
 
 it("fails closed: a judge that didn't run or finish fires, whatever it wrote", async () => {
   const { dir, from } = await slice()
