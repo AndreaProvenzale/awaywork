@@ -66,6 +66,53 @@ describe('command source', () => {
     expect(collected?.link).toBe('Refs AI 7 (https://t.example/7, #7)')
   })
 
+  it('tells the command how far back a rule reads finished items, only when one does', async () => {
+    const closed = new Date(Date.now() - 3_600_000).toISOString()
+    const items = [
+      { id: '1', key: 'AI-1', title: 'Open', url: 'https://t.example/1' },
+      { id: '2', key: 'AI-2', title: 'Done', url: 'https://t.example/2', state: 'closed', closed },
+    ]
+    // Prints the done item only when told the lookback.
+    const script = `const all = ${JSON.stringify(items)}; console.log(JSON.stringify(process.env.AWAYWORK_CLOSED_SINCE ? all : all.slice(0, 1)))`
+    const tracker = { command: `node -e '${script}'` }
+    const config = (where: string) =>
+      parseConfig(
+        `providers: [claude]\nsources: { tracker: ${JSON.stringify(tracker)} }\nqueue: [{ skill: plan, source: tracker, where: ${where} }]`,
+      )
+    const open = await collectItems(config('{}'), ctx())
+    expect(open.map((i) => [i.key, i.fields])).toEqual([['AI-1', { state: 'open' }]])
+    const both = await collectItems(config('{ state: closed }'), ctx())
+    expect(both.map((i) => [i.key, i.fields])).toEqual([
+      ['AI-1', { state: 'open' }],
+      ['AI-2', { state: 'closed', closed }],
+    ])
+  })
+
+  it('ignores a state or closed it cannot read, as commands printed them before, saying so once', async () => {
+    const items = [
+      { id: '1', key: 'GL-1', title: 'Open', url: 'https://t.example/1', state: 'opened' },
+      { id: '2', key: 'GL-2', title: 'Done', url: 'https://t.example/2', closed: true },
+    ]
+    const lines: string[] = []
+    const tracker = commandSource('tracker', cfg())
+    const found = await tracker.items(cfg({ command: `echo '${JSON.stringify(items)}'` }), {
+      env: process.env,
+      log: (line) => lines.push(line),
+    })
+    expect(found.map((i) => [i.key, i.fields])).toEqual([
+      ['GL-1', { state: 'open' }],
+      ['GL-2', { state: 'open' }],
+    ])
+    expect(lines).toEqual([
+      `tracker: ignoring GL-1's state "opened", and any like it: a top-level state is open or closed, and closed a datetime`,
+    ])
+  })
+
+  it('keeps state and closed out of its declared fields', () => {
+    expect(commandConfig.safeParse({ command: 'x', fields: ['state'] }).success).toBe(false)
+    expect(commandConfig.safeParse({ command: 'x', fields: ['closed'] }).success).toBe(false)
+  })
+
   it('warns about a crashing command in two capped lines: its first and its last error', async () => {
     const noise = `console.error('at frame\\n'.repeat(2000) + 'Error: ' + 'x'.repeat(500) + '\\n\\nNode.js v24.0.0\\n')`
     const tracker = { command: `node -e "${noise}; process.exit(1)"` }

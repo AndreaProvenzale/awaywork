@@ -12,10 +12,13 @@ import {
   describeComparison,
   failedIn,
   fieldValue,
+  implicitWhere,
   isAwayworkPr,
   isLoop,
   isMatch,
   rank,
+  TOP,
+  within,
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
 import { describeSkip, type Skip } from './skips.js'
@@ -422,15 +425,16 @@ function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   }
 }
 
-function describeFailed(where: Where, item: Item, keys: string[]): string[] {
+function describeFailed(where: Where, item: Item, keys: string[], outer = TOP): string[] {
+  const scope = within(where, outer)
   return keys.map((key) => {
     if (key === 'any') {
       const entries = (where[key] as Where[]).map((w) =>
-        describeFailed(w, item, failedIn(w, item)).join(', '),
+        describeFailed(w, item, failedIn(w, item, scope), scope).join(', '),
       )
       return `none of any matched: (${entries.join(') (')})`
     }
-    const want = where[key] as WhereValue
+    const want = (where[key] ?? implicitWhere[key]) as WhereValue
     // A text field can be a whole Markdown body; the plan keeps one line per item.
     if (typeof want === 'object' && !Array.isArray(want) && isMatch(want))
       return `${key} wants ${describeWant(want)}`

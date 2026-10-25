@@ -86,10 +86,51 @@ describe('config', () => {
     ])
   })
 
+  it('takes state and closed on every source, and points a Linear state at status', () => {
+    const where = '{ state: [merged, closed], closed: { newer_than: 14d } }'
+    expect(problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)).toEqual([])
+    const linear =
+      'providers: [claude]\nsources: { linear: {} }\nqueue: [{ skill: fix, where: { state: QA } }]'
+    expect(problems(linear)).toEqual([
+      `queue[0].where.state: invalid value "QA": state is open, merged or closed; Linear's workflow state is status`,
+    ])
+    expect(problems(`${minimal}queue: [{ skill: fix, where: { state: QA } }]`)).toEqual([
+      'queue[0].where.state: invalid value "QA": state is open, merged or closed',
+    ])
+  })
+
+  it('wants newer_than wherever closed has older_than, to bound how far back to read', () => {
+    const rule = (where: string) =>
+      problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)
+    expect(rule('{ state: merged, closed: { older_than: 30d } }')).toEqual([
+      'queue[0].where.closed: closed needs newer_than to bound how far back to read; without it, awaywork reads 7d back',
+    ])
+    expect(rule('{ state: merged, closed: { older_than: 3d, newer_than: 30d } }')).toEqual([])
+    expect(
+      rule('{ closed: { newer_than: 30d }, any: [{ state: merged, closed: { older_than: 3d } }] }'),
+    ).toEqual([])
+  })
+
+  it('rejects closed where no state can be merged or closed', () => {
+    const rule = (where: string) =>
+      problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)
+    const message = 'closed only matches merged or closed items; add state: [merged, closed]'
+    expect(rule('{ closed: { older_than: 3d, newer_than: 30d } }')).toEqual([
+      `queue[0].where.closed: ${message}`,
+    ])
+    expect(rule('{ state: open, closed: { newer_than: 3d } }')).toEqual([
+      `queue[0].where.closed: ${message}`,
+    ])
+    expect(rule('{ any: [{ label: x, closed: { newer_than: 3d } }] }')).toEqual([
+      `queue[0].where.any[0].closed: ${message}`,
+    ])
+    expect(rule('{ state: [merged, closed], closed: { newer_than: 3d } }')).toEqual([])
+  })
+
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved or .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved, state, closed or .*github: repo, label/,
       ),
     ])
   })

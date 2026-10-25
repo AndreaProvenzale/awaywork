@@ -139,7 +139,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 
 | Source | Keys |
 | --- | --- |
-| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false` (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to |
+| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false`, and with `is:closed` for [finished items](#finished-items) (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to |
 | `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
@@ -433,7 +433,7 @@ where:
 
 Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
 
-`title`, `description` and `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
+`title`, `description`, `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item), and `state` and `closed` (see [Finished items](#finished-items)) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
 
 A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
 
@@ -443,6 +443,29 @@ A PR awaywork opened only matches a rule whose top-level `where` names `ours` (i
 ```
 
 The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
+
+### Finished items
+
+Rules see open work only, until one names `state`: `open`, `merged` (a PR) or `closed` (a PR closed unmerged, an issue or task done or canceled). Its partner `closed` is when the item merged or closed, and takes `older_than` and `newer_than` like any date. A rule that never names `state` keeps matching open items only, so the rules you have don't change. The same goes for each entry of `any`: one that doesn't name `state`, under a level that doesn't either, matches open items only, so `any: [{ state: merged, label: release }, { label: hotfix }]` takes your merged `release` PRs and open `hotfix` ones, not merged `hotfix` ones. `closed` only means something next to a `state` that can be `merged` or `closed`, and is a config error without one.
+
+Once a rule can match `merged` or `closed` (inside `any` and `not` too), its source also reads what finished lately: as far back as the rule's `closed: { newer_than }`, or 7 days when it sets none; with several such rules, the widest wins. Without such a rule, no source asks for anything finished. `closed: { older_than }` needs a `newer_than` next to it (or above it), since without one the 7 days cut it off; leaving it out is a config error. Say you want a look back at what you merged in the last two weeks:
+
+```yaml
+- skill: review
+  where: { type: pr, mine: true, state: merged, closed: { newer_than: 14d } }
+  deliver: report
+```
+
+```text
+$ awaywork plan --rules
+Queue
+  #1  review  type=pr mine=true state=merged closed:newer_than=14d deliver=report
+       85 taken: acme/api#329, acme/api#328, acme/api#327, …
+```
+
+- **GitHub** reads the PRs you authored that merged or closed and the issues assigned to you that closed, plus your `search` qualifiers ANDed with `is:closed`, from the day the lookback starts. GitHub search stops at 1,000 results, and `plan` warns when a lookback reaches that far. Jira reads issues resolved since then, Linear issues completed or canceled (archived ones too), Asana tasks completed. A custom source prints what it likes, see [Custom sources](./custom-sources.md#finished-items).
+- **A finished item links no PR.** Its unit cuts a fresh branch from the default branch, like an issue without a PR, and never touches the head branch, which may be gone. So `deliver: push` and `pending_review` have nothing to land on: on a rule that can only match finished items they are a config error, and a rule that matches open ones too skips its finished items, as it does an issue without a PR.
+- **Attempts** work as for open items: an unchanged finished item runs once per skill, and a PR that merged since its last unit counts as changed.
 
 ### `order`
 

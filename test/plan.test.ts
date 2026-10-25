@@ -11,7 +11,7 @@ import {
   planJson,
   queueLines,
 } from '../src/cli/format.js'
-import { probeAndPlan, ruleNumber } from '../src/cli/plan.js'
+import { finishedSince, probeAndPlan, ruleNumber } from '../src/cli/plan.js'
 import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import {
@@ -26,7 +26,7 @@ import { type Allowance, allowance } from '../src/core/budget.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
-import type { Item, PrRef, Quota } from '../src/core/types.js'
+import type { Item, PrRef, Quota, Rule } from '../src/core/types.js'
 import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const example = await readFile(new URL('fixtures/example.yml', import.meta.url), 'utf8')
@@ -1310,6 +1310,77 @@ queue:
 
   it("doesn't count awaywork's mark someone else pasted", () => {
     expect(withComments(comment('Per user?\n\n— awaywork')).units).toHaveLength(1)
+  })
+})
+
+describe('finished items', () => {
+  const day = 86_400_000
+  const closed = new Date(Date.now() - 2 * day).toISOString()
+  // The GitHub source links no PR to a finished item.
+  const merged = { ...githubPr(8, { state: 'merged', closed, updated: closed }), linkedPrs: [] }
+  const yaml = (deliver: string) => `
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+queue: [{ skill: fix, where: { type: pr, state: merged }, deliver: ${deliver} }]
+`
+
+  it('reads a source back as far as its widest rule, and not at all when none names state', () => {
+    const queue = (wheres: Rule['where'][], source?: string) =>
+      wheres.map((where) => ({
+        skill: 'fix',
+        source,
+        where,
+        provider: [],
+        skills: [],
+        instructions: [],
+      }))
+    expect(finishedSince(queue([{ type: 'pr' }, { state: 'open' }]), 'github')).toBeUndefined()
+    const since = finishedSince(
+      queue([{ state: 'merged' }, { state: 'closed', closed: { newer_than: '14d' } }]),
+      'github',
+    )
+    expect(Date.now() - (since?.getTime() ?? 0)).toBeCloseTo(14 * day, -3)
+    expect(finishedSince(queue([{ state: 'merged' }], 'github'), 'asana')).toBeUndefined()
+  })
+
+  it('cuts a merged PR from the default branch, and refuses to push onto or review it', () => {
+    const report = plan(yaml('report'), [merged], {})
+    expect(report.units.map(({ unit }) => [unit.id, unit.base, unit.branch, unit.deliver])).toEqual(
+      [['acme-api-8', '', 'away/acme-api-8', 'report']],
+    )
+    expect(plan(yaml('draft_pr'), [merged], {}).units[0]?.unit.base).toBe('')
+    for (const deliver of ['push', 'pending_review'])
+      expect(() => parseConfig(yaml(deliver))).toThrow(
+        `queue[0].deliver: ${deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
+      )
+    const mixed = yaml('push').replace('state: merged', 'state: [open, merged]')
+    expect(plan(mixed, [merged], {}).skipped.map((s) => [s.kind, s.reason])).toEqual([
+      ['refused_delivery', 'deliver push: no PR of yours to push onto'],
+    ])
+  })
+
+  it('says a finished item misses a rule that never names state', () => {
+    const open = yaml('report').replace('state: merged', 'mine: true')
+    expect(plan(open, [merged], {}).skipped.map((s) => s.reason)).toEqual([
+      'matched no rule; closest #1 fix: state is merged, wants open',
+    ])
+  })
+
+  it('runs once per finished item, and again on a PR that merged since', () => {
+    const first = plan(yaml('report'), [merged], {})
+    const report = {
+      runId: 'r1',
+      startedAt: new Date(now),
+      plan: first,
+      results: [{ planned: first.units[0], status: 'done' }],
+    } as RunReport
+    const attempts = recordAttempts({}, report)
+    expect(attempts['github:acme/api#8']).toMatchObject({ updated: closed, state: 'merged' })
+    expect(plan(yaml('report'), [merged], {}, {}, attempts).skipped.map((s) => s.kind)).toEqual([
+      'unchanged',
+    ])
+    const open = { 'github:acme/api#8': { runId: 'r0', skill: 'fix', updated: closed } }
+    expect(unchangedSince(merged, 'fix', open)).toBeUndefined()
   })
 })
 

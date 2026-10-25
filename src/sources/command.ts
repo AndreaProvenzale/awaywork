@@ -40,7 +40,15 @@ export const commandConfig = z
         "Shell command printing the items as a JSON array; runs in the config file's folder",
       ),
     fields: z
-      .array(z.string().refine((name) => name !== 'any', '`any` is reserved in where'))
+      .array(
+        z
+          .string()
+          .refine((name) => name !== 'any', '`any` is reserved in where')
+          .refine(
+            (name) => name !== 'state' && name !== 'closed',
+            "state and closed are awaywork's own on every item: rename your tracker's field, or print state (open or closed) and closed (a datetime) at the item's top level",
+          ),
+      )
       .default([])
       .describe('Item fields rules may match on'),
     secrets: z
@@ -78,6 +86,9 @@ const entry = z.object({
   url: z.string(),
   description: z.string().default(''),
   status: z.string().default('open'),
+  // Commands printed these before awaywork read them, e.g. GitLab's `"state": "opened"`: unreadable ones are ignored.
+  state: z.unknown().optional(),
+  closed: z.unknown().optional(),
   assignee: z.string().optional(),
   reviewers: z.array(z.string()).default([]),
   labels: z.array(z.string()).default([]),
@@ -129,8 +140,9 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     fields,
     secrets: (c) => c.secrets,
 
-    async items(c, ctx) {
-      const { stdout } = await run(c.command, c, ctx)
+    async items(c, ctx, since) {
+      const env = since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env
+      const { stdout } = await run(c.command, c, { ...ctx, env })
       let json: unknown
       try {
         json = JSON.parse(stdout)
@@ -144,6 +156,11 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
           `items${issue?.path.map((p) => `[${String(p)}]`).join('')}: ${issue?.message}`,
         )
       }
+      const odd = parsed.data.find((e) => unreadable(e))
+      if (odd)
+        ctx.log(
+          `${id}: ignoring ${odd.key}'s ${unreadable(odd)}, and any like it: a top-level state is open or closed, and closed a datetime`,
+        )
       return parsed.data.map((e) => toItem(id, e, fields))
     },
 
@@ -178,16 +195,29 @@ function toItem(source: string, e: Entry, fields: Record<string, z.ZodType>): It
       if (!field.safeParse(v).success)
         throw new Error(`${e.key}: invalid ${key} ${JSON.stringify(v)}`)
   }
-  const { context: _, fields: itemFields, comments, ...rest } = e
+  const { context: _, fields: itemFields, comments, state, closed, ...rest } = e
   return {
     ...rest,
     source,
     comments: comments.map(({ mine, ...c }) => ({ ...c, ...(mine && { mine: true as const }) })),
-    fields: itemFields,
+    fields: {
+      ...itemFields,
+      state: state === 'closed' ? 'closed' : 'open',
+      ...(isTime(closed) && { closed }),
+    },
     linkedPrs: [],
     mine: true,
     raw: e,
   }
+}
+
+const isTime = (v: unknown): v is string => z.iso.datetime({ offset: true }).safeParse(v).success
+
+/** The top-level `state` or `closed` awaywork can't read, as it would print it. */
+function unreadable(e: Entry): string | undefined {
+  if (e.state !== undefined && e.state !== 'open' && e.state !== 'closed')
+    return `state ${JSON.stringify(e.state)}`
+  if (e.closed !== undefined && !isTime(e.closed)) return `closed ${JSON.stringify(e.closed)}`
 }
 
 function itemMarkdown(item: Item): string {

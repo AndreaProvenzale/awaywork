@@ -12,7 +12,7 @@ export function fakeSource(items: Item[] = [fakeItem()]): Source<z.infer<typeof 
     configSchema: config,
     fields: { mine: z.boolean(), checks: z.enum(['failing', 'pending', 'passing']) },
     secrets: (cfg) => [cfg.token_env],
-    items: async () => items,
+    items: async () => items.map((i) => ({ ...i, fields: { state: 'open', ...i.fields } })),
     prefetch: async (item, dir) => writeFile(join(dir, 'item.md'), item.description),
   }
 }

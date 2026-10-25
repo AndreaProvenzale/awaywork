@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { recordedFetch } from './asana.js'
 
-const linearFixture = (name: string) =>
+export const linearFixture = (name: string) =>
   readFileSync(new URL(`../fixtures/linear/${name}`, import.meta.url), 'utf8')
 
 type Route = Parameters<typeof recordedFetch>[0][number]

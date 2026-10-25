@@ -4444,6 +4444,24 @@ it('keeps the updated time the plan read when someone changed the item during th
   expect(unchangedSince(next, 'implement', attempts)).toBeUndefined()
 })
 
+it("keeps a closed item's state with the move's updated time, so only a new state re-runs it", async () => {
+  const closed = new Date(Date.now() - 86_400_000).toISOString()
+  const done = fakeItem({ ...yours(1), fields: { ...yours(1).fields, state: 'closed', closed } })
+  const { report } = await finishedRun(
+    '  - { skill: implement, where: { state: closed }, on_done: { move: QA } }',
+    [done],
+  )
+  const attempts = recordAttempts({}, report)
+  expect(attempts['github:acme/api#1']).toMatchObject({
+    updated: '2026-10-25T01:00:00Z',
+    state: 'closed',
+  })
+  const moved = { ...done, fields: { ...done.fields, updated: '2026-10-25T01:00:00Z' } }
+  expect(unchangedSince(moved, 'implement', attempts)).toBe('r1')
+  const reopened = { ...moved, fields: { ...moved.fields, state: 'open' } }
+  expect(unchangedSince(reopened, 'implement', attempts)).toBeUndefined()
+})
+
 /** Your PR and the tracker card it links, which dedupe into one unit. */
 function cardAndPr(): Item[] {
   const pr = githubPr(2, { mine: true })
