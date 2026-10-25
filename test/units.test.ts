@@ -4361,7 +4361,7 @@ async function finishedRun(
   queue: string,
   items: Item[],
   provider = looper({}),
-  write?: Source['write'],
+  write?: Source['write'] | null,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
   const { origin, forge } = await originForge(root)
@@ -4384,11 +4384,13 @@ ${queue}
     ...fakeSource(),
     secrets: () => ['SRC_TOKEN'],
     write:
-      write ??
-      (async (_cfg: unknown, item: Item, w: Write) => {
-        writes.push([item.key, w])
-        return '2026-10-25T01:00:00Z'
-      }),
+      write === null
+        ? undefined
+        : (write ??
+          (async (_cfg: unknown, item: Item, w: Write) => {
+            writes.push([item.key, w])
+            return '2026-10-25T01:00:00Z'
+          })),
   }
   const report = await runUnits({
     config,
@@ -4481,4 +4483,95 @@ it('reports a move that failed, its secrets masked, and leaves the unit done', a
   ])
   expect(lines).toContain(`on_done: couldn't move acme/api#1 to QA: 401 for ***`)
   expect(formatReport(report)).toContain(`on_done couldn't move acme/api#1 to "QA": 401 for ***`)
+})
+
+/** A provider whose step writes `questions.md`, and commits first when `commits`. */
+const asker = (questions: string, commits = false): Provider => ({
+  ...fakeProvider('claude'),
+  async *run(job) {
+    if (commits) {
+      await writeFile(join(job.dir, 'a.txt'), 'a')
+      await git(job.dir, 'add', '.')
+      await git(job.dir, 'commit', '-qm', 'Add a')
+      await writeFile(join(job.dir, '.away/out/pr.md'), 'Add a\n\nDone.')
+    }
+    await writeFile(join(job.dir, '.away/out/questions.md'), questions)
+    yield { type: 'done', ok: true, turns: 1 }
+  },
+})
+
+it("posts a step's questions once on your item, marked, and ends the chain without moving it", async () => {
+  const { report, writes, lines } = await finishedRun(
+    '  - { skill: implement, on_done: { move: QA }, then: [review] }',
+    [yours(1)],
+    asker('1. Per user or per key?\n'),
+  )
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      {
+        op: 'comment',
+        body: "1. Per user or per key?\n\nReply here to answer: awaywork's next run takes this up again with your reply.\n\n— awaywork",
+      },
+    ],
+  ])
+  const [head, review] = report.results
+  expect(head?.questions).toEqual({
+    step: 'acme-api-1',
+    text: '1. Per user or per key?',
+    item: 'github:acme/api#1',
+    url: 'https://example.com/1',
+  })
+  expect(head?.made).toBe('questions')
+  expect(review).toMatchObject({ status: 'skipped', reason: 'acme-api-1 asked questions' })
+  expect(lines).toContain('acme-api-1: questions posted on https://example.com/1')
+  const text = formatReport(report)
+  expect(text).toContain('- **api#1**: questions posted on https://example.com/1')
+  expect(text).toContain('## Questions\n\n### api#1: Fix the thing (acme-api-1)')
+  expect(summarize(report, 'report.md')).toContain('     questions posted on https://example.com/1')
+})
+
+it('keeps the questions in the report when the item is not yours or its source cannot write', async () => {
+  const someone = await finishedRun('  - skill: implement', [issue(3)], asker('Which?'))
+  expect(someone.writes).toEqual([])
+  expect(someone.report.results[0]?.questions).toEqual({
+    step: 'acme-api-3',
+    text: 'Which?',
+    unposted: 'acme/api#3 not yours',
+  })
+  expect(formatReport(someone.report)).toContain(
+    'questions not posted: acme/api#3 not yours\n\nWhich?',
+  )
+  const mute = await finishedRun('  - skill: implement', [yours(1)], asker('Which?'), null)
+  expect(mute.report.results[0]?.questions?.unposted).toBe(
+    "acme/api#1 github can't write to its items",
+  )
+})
+
+it("reports a post that failed, its secrets masked, and doesn't fail the unit", async () => {
+  const { report, lines } = await finishedRun(
+    '  - skill: implement',
+    [yours(1)],
+    asker('Which?'),
+    async () => {
+      throw new Error('403 for s3cret')
+    },
+  )
+  expect(report.results[0]?.status).toBe('done')
+  expect(report.results[0]?.questions).toMatchObject({
+    item: 'github:acme/api#1',
+    unposted: '403 for ***',
+  })
+  expect(lines).toContain(`acme-api-1: couldn't post its questions on acme/api#1: 403 for ***`)
+})
+
+it('asks nothing for a step that committed: its questions stay in its out folder', async () => {
+  const { report, writes } = await finishedRun(
+    '  - skill: implement',
+    [yours(1)],
+    asker('Which?', true),
+  )
+  expect(writes).toEqual([])
+  expect(report.results[0]?.questions).toBeUndefined()
+  expect(report.results[0]?.outcome?.kind).toBe('pr')
 })

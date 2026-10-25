@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { isOurs } from '../core/footer.js'
+import { commentMarkdown, isOurs } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
@@ -439,7 +439,7 @@ function checkState(state: string | undefined): string | undefined {
 }
 
 function itemMarkdown(item: Item): string {
-  const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  const comments = item.comments.map(commentMarkdown)
   const hidden = (item.raw as Node).comments.nodes.length - comments.length
   return [
     `# ${item.title}\n\n${item.url}\n\n${item.description}\n`,

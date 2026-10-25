@@ -9,7 +9,7 @@
 
 You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari". Your coding agent logs off with 60% of its weekly quota unused. Both are a waste.
 
-awaywork is a CLI that clocks in when you clock out. It pulls your leftovers from your forge and task tracker and runs your agents' stock CLIs on them headless, logged in as you. It paces itself so you still have quota left in the morning. You wake up to draft PRs and a report. Nothing gets merged or force-pushed, and nobody gets a comment "from you".
+awaywork is a CLI that clocks in when you clock out. It pulls your leftovers from your forge and task tracker and runs your agents' stock CLIs on them headless, logged in as you. It paces itself so you still have quota left in the morning. You wake up to draft PRs and a report. Nothing gets merged or force-pushed, and the only comment it leaves as you is a question on your own issue, signed `— awaywork`, when it's stuck.
 
 ## Quick start
 
@@ -128,7 +128,7 @@ Early in the week that's a small slice, and it gets greedier as the reset gets c
 ## The paranoid bit
 
 - **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
-- **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes, merges or comments, and it never touches anyone else's branch. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
+- **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes or merges, and it never touches anyone else's branch. The one comment it writes is a step's questions on your own item, signed `— awaywork`; your reply there runs it again. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.
 

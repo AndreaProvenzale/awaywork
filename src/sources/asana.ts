@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
+import { commentMarkdown } from '../core/footer.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 
 const config = z
@@ -339,7 +340,7 @@ export function taskMarkdown(item: Item): string {
   const facts = Object.entries(item.fields).map(
     ([k, v]) => `- ${k}: ${[v].flat().join(', ') || '(none)'}`,
   )
-  const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  const comments = item.comments.map(commentMarkdown)
   return [
     `# ${item.key}: ${item.title}\n\n${item.url}\n\n${facts.join('\n')}\n\n${item.description}\n`,
     ...(comments.length ? ['\n## Comments\n', ...comments] : []),

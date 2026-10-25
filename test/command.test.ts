@@ -192,4 +192,19 @@ sources:
     ])
     expect(item?.mine).toBe(true)
   })
+
+  it("shows awaywork's questions in item.md, then the reply", async () => {
+    const comments = [
+      { author: 'me', body: 'Per user?\n\n— awaywork', at: 't1', mine: true },
+      { author: 'qa', body: 'Per key.', at: 't2' },
+    ]
+    const json = JSON.stringify([{ id: '1', key: 'A-1', title: 't', url: 'u', comments }])
+    const c = cfg({ command: `printf '%s' '${json}'` })
+    const [item] = await source.items(c, ctx())
+    const out = await mkdtemp(join(tmpdir(), 'awaywork-'))
+    if (item) await source.prefetch(item, out, ctx())
+    expect(await readFile(join(out, 'item.md'), 'utf8')).toContain(
+      "### awaywork's questions (me), t1\n\nPer user?\n\n— awaywork\n\n### qa, t2\n\nPer key.",
+    )
+  })
 })

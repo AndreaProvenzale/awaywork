@@ -44,7 +44,22 @@ export interface UnitResult {
   files?: StepFiles
   /** On the chain's first step: where its rule's `on_done` moved the unit's items that are yours. */
   moved?: Moved[]
+  /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
+  questions?: Questions
 }
+
+/** A step's `questions.md`, the item (`source:key`) and URL awaywork posted it on, or why it didn't. */
+export interface Questions {
+  step: string
+  text: string
+  item?: string
+  url?: string
+  unposted?: string
+}
+
+/** `questions posted on <url>`, or why they weren't. */
+export const describeQuestions = (q: Questions): string =>
+  q.unposted ? `questions not posted: ${q.unposted}` : `questions posted on ${q.url}`
 
 /** An item (`source:key`) on_done moved, with its updated time after, or why the move failed. */
 export interface Moved {
@@ -162,6 +177,10 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
       (head.moved ?? []).map((m) => `- **${refOf(head)}**: on_done ${describeMoved(m)}`),
     )
     if (moved.length > 0) out.push('', ...moved)
+    const asked = listed.flatMap(({ head }) =>
+      head.questions ? [`- **${refOf(head)}**: ${describeQuestions(head.questions)}`] : [],
+    )
+    if (asked.length > 0) out.push('', ...asked)
   }
   const waiting = r.plan.skipped.filter(needsYouOn)
   if (waiting.length > 0) {
@@ -181,6 +200,17 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
   out.push('', '## Quota', '')
   if (Object.keys(r.plan.allowances).length === 0) out.push('None.')
   for (const line of quotaLines(r)) out.push(`- ${line}`)
+
+  const asked = r.results.filter((u) => u.questions)
+  if (asked.length > 0) {
+    out.push('', '## Questions')
+    for (const u of asked) {
+      const q = u.questions as Questions
+      const top = u.planned.unit.items[0]
+      out.push('', `### ${refOf(u)}: ${top?.title} (${q.step})`, '', describeQuestions(q), '')
+      out.push(demote(q.text, 4))
+    }
+  }
 
   const reports = r.results.filter((u) => u.outcome && 'text' in u.outcome)
   if (reports.length > 0) {

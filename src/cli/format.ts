@@ -16,6 +16,7 @@ import {
   chains,
   counted,
   describeMoved,
+  describeQuestions,
   localTime,
   needsYouOn,
   opened,
@@ -278,7 +279,8 @@ export function skippedRows(skipped: ReportedSkip[], style: Style, clipAt: numbe
 }
 
 /** A skip's reason without the URL its row, or `--why`, already shows. */
-const reasonOf = (s: ReportedSkip) => s.reason.replace(` ${s.url ?? s.item.url}`, '')
+const reasonOf = (s: ReportedSkip) =>
+  s.reason.replace(` ${s.url ?? s.item.url}`, '').replace(/ on$/, '')
 
 function itemRows<S extends ReportedSkip>(
   skipped: S[],
@@ -542,7 +544,7 @@ function brief(text: string, clipAt = CELL): string {
 export function reportUnitRows(
   r: RunReport,
   clipAt = TITLE,
-): { cells: string[]; summary?: string; moved: string[] }[] {
+): { cells: string[]; summary?: string; notes: string[] }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
     const why = (reason: string) => brief(reason, clipAt)
@@ -556,7 +558,10 @@ export function reportUnitRows(
         result,
       ],
       summary: chain.head.summary ?? (top && clip(top.title, clipAt)),
-      moved: (chain.head.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
+      notes: [
+        ...(chain.head.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
+        ...(chain.head.questions ? [describeQuestions(chain.head.questions)] : []),
+      ],
     }
   })
 }
@@ -583,7 +588,7 @@ export function reportUnitTable(
     units: rows.map((row, i) => [
       lines[i + 1] ?? '',
       ...(row.summary ? [styler(styled)('dim', `${under}${row.summary}`)] : []),
-      ...row.moved.map((line) => styler(styled)('dim', `${under}${line}`)),
+      ...row.notes.map((line) => styler(styled)('dim', `${under}${line}`)),
     ]),
   }
 }

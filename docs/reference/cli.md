@@ -124,8 +124,9 @@ Options:
                     from it, instead of the units; probes no provider
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
-                    "over_cap", "waiting_for_review", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "unstackable")
+                    "over_cap", "waiting_for_review", "waiting_for_answer",
+                    "gave_up", "no_repo", "invalid_branch", "refused_delivery",
+                    "unstackable")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -241,8 +242,9 @@ Options:
                     or item key
   --skipped [kind]  list the skipped items, or those of one kind (choices:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
-                    "waiting_for_review", "gave_up", "no_repo",
-                    "invalid_branch", "refused_delivery", "unstackable")
+                    "waiting_for_review", "waiting_for_answer", "gave_up",
+                    "no_repo", "invalid_branch", "refused_delivery",
+                    "unstackable")
   -h, --help        display help for command
 ```
 

@@ -5,6 +5,7 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
+import { questionsComment } from '../core/footer.js'
 import {
   bySlice,
   describeChain,
@@ -26,6 +27,7 @@ import {
 } from '../core/launch.js'
 import {
   type Moved,
+  type Questions,
   type RunReport,
   type StepFiles,
   summaryOf,
@@ -168,6 +170,9 @@ async function leftBy(
   return { files, ...(summary && { summary }) }
 }
 
+/** Under every tracker's comment limit: Jira's is 32,767 characters. */
+const MAX_QUESTIONS_BYTES = 30_000
+
 /** A slice's outcome that published: a PR, a push, a report or a pending review left. */
 const delivered = (o: Outcome | undefined) =>
   !!o && o.kind !== 'none' && !(o.kind === 'report' && o.unposted)
@@ -252,6 +257,38 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return moved
   }
 
+  /**
+   * Posts a step's questions as a comment on the first of the unit's items from its rule's source that is yours,
+   * through a source that writes; a post that fails is reported, never thrown. An item waiting for an answer made no unit.
+   */
+  const postQuestions = async (
+    p: PlannedUnit,
+    text: string,
+  ): Promise<Pick<Questions, 'item' | 'url' | 'unposted'>> => {
+    if (input.signal?.aborted) return { unposted: 'interrupted' }
+    if (Buffer.byteLength(text) > MAX_QUESTIONS_BYTES)
+      return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
+    const { items } = p.unit
+    const from = input.plan.queue[p.rule]?.source ?? items[0]?.source
+    const item = items.find((i) => i.source === from && !unwritable(i, input.sources[i.source]))
+    if (!item) {
+      const top = items[0] as Item
+      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
+    }
+    const ref = `${item.source}:${item.key}`
+    try {
+      const write = { op: 'comment', body: questionsComment(text) } as const
+      const cfg = input.config.sources[item.source]
+      await writeItem(input.sources[item.source], cfg, item, write, input.ctx)
+      input.ctx.log(`${p.unit.id}: questions posted on ${item.url}`)
+      return { item: ref, url: item.url }
+    } catch (e) {
+      const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+      input.ctx.log(`${p.unit.id}: couldn't post its questions on ${item.key}: ${failed}`)
+      return { item: ref, unposted: failed }
+    }
+  }
+
   /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
   const notifyUnits = async (chain: UnitResult[]) => {
     const hook = input.config.notify
@@ -334,6 +371,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let ended: { reason: string; passedOver?: true; when?: true } | undefined
     // A slice that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
     let unfinished = false
+    // The step that couldn't go on without answers, and its questions.
+    let asked: Pick<Questions, 'step' | 'text'> | undefined
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
@@ -755,7 +794,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         result.verdict = await readVerdict(dir)
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
-        result.made = made(commits, report)
+        const questions = (await readOutput(join(dir, WORK_DIR, 'out', 'questions.md'))).trim()
+        // A step that committed went on: its questions aren't the chain's to ask.
+        const asks = !!questions && (reportsOnly(unit.deliver) || commits === 0)
+        result.made = made(commits, report, asks ? questions : '')
         if (worker.status === 'failed' && saved && !input.signal?.aborted) {
           const out = join(unitDir, 'out')
           const keep = () => {
@@ -781,7 +823,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           interrupted = true
           ended = { reason: 'interrupted' }
         } else if (worker.status !== 'done') ended = { reason: `${unit.id} ${worker.status}` }
-        else if (!left) {
+        else if (asks) {
+          ended = { reason: `${unit.id} asked questions`, passedOver: true }
+          asked = { step: unit.id, text: questions }
+        } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
           if (loop && !(at > 0 && p === opening)) loop.ended = reason
@@ -841,8 +886,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     await endSlice(true)
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
-    // Every slice that ran published, and only a `when` ended the chain early.
-    const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
+    if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
+    // Every slice that ran published, only a `when` ended the chain early, and no step asked.
+    const finished =
+      !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0 && !asked
     if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
       lead.moved = await moveItems(first.unit.items, onDone.move)
     for (const r of done) {

@@ -25,6 +25,7 @@ The unit section below says which delivery this unit has.
 - **Report.** Write `.away/out/report.md` early and refine it as you go, so a run cut short still leaves one. Commit nothing.
 - **Review.** As for a report, `.away/out/report.md` is the review's body; line comments go in `.away/out/review.json`, `[{ "path": "src/a.ts", "line": 42, "body": "..." }]`, `line` on the PR's new side, one the PR's diff adds or shows as context. awaywork leaves both on the pull request as the developer's pending review. Commit nothing.
 - **Push.** Commit as for a PR; awaywork pushes your commits onto the developer's own pull request. Write `.away/out/pr.md` right after your first commit and keep it current: it says what you changed, and without it nothing is pushed.
+- **Questions.** When you can't go on without a person's answer, write the questions to `.away/out/questions.md` instead, in plain text, and commit nothing. awaywork posts them on the item, and the unit runs again once someone replies there: an earlier round's questions show up in the item's comments as awaywork's, with the replies after them. Ask only what blocks you; anything else, pick the most likely reading.
 - **Verdict.** When the skill defines verdicts, also write the one word that fits to `.away/out/verdict`. awaywork reads it, e.g. to end a loop.
 
 Either way, state only what you checked: the commands you ran and their result, and what you could not verify. Leave out rationale you did not confirm. Work that needs a device or a manual check is flagged, never blocked on.
