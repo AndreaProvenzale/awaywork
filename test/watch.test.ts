@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '../src/cli/schedule.js'
@@ -17,7 +17,8 @@ import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
-  const providers = { claude: fakeProvider('claude') }
+  // No quota reading: a present run's units sit out, so none clones.
+  const providers = { claude: { ...fakeProvider('claude'), probe: async () => null } }
   return {
     providers,
     providerFor: (id: string) => providers[id as 'claude'],
@@ -119,6 +120,39 @@ describe('awaywork watch', () => {
     expect(existsSync(runsDir) ? await readdir(runsDir) : []).toEqual(before)
   })
 
+  it('starts a present soon run for a due unit, notifying no run end, and backs off a failing source', async () => {
+    const path = await config('[]')
+    const dir = dirname(path)
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'Fix the typo',
+      url: 'https://example.com/1',
+      fields: { repo: 'acme/api', updated: '2026-10-25T10:00:00Z' },
+    }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: []
+sources: { chores: { command: cat items.json }, broken: { command: exit 1 } }
+queue: [{ skill: plan, run: soon }]
+notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
+`,
+    )
+    const log = await watchUntil(path, 'Report: ')
+    expect(log).toMatch(
+      /source broken: poll failed, next at \S+ \S+: Command failed with exit code 1: 'exit 1'$/m,
+    )
+    const runId = /soon run (\d{8}-\d{6}) started for ch-1\n/.exec(log)?.[1] ?? ''
+    expect(runId).not.toBe('')
+    const plan = await readFile(join(runsDir, runId, 'plan.txt'), 'utf8')
+    expect(plan).toContain('present run (outside the windows)')
+    expect(plan).toContain('claude sits out a present run')
+    expect(await readFile(join(dir, 'events.txt'), 'utf8')).toBe('unit\n')
+    expect(existsSync(runLockPath)).toBe(false)
+  })
+
   it('exits in one line while another copy runs, and takes over a dead one', async () => {
     await writeFile(watchLockPath, `${process.pid} watch`)
     await watch(await config(), new AbortController().signal)
@@ -186,7 +220,7 @@ describe('schedule status', () => {
     },
   })
 
-  it('shows the daemon down, then up with its run in progress and the next window', async () => {
+  it('shows the daemon down, then up with its runs in progress, next polls and the next window', async () => {
     const path = await config('[{ start: "01:00", end: "07:00" }]')
     const current = installed(job(['/node', '/awaywork', 'watch', '--config', path]))
     await printStatus(undefined, current)
@@ -201,13 +235,26 @@ describe('schedule status', () => {
 
     out = []
     await writeFile(watchLockPath, `${process.pid} watch`)
-    const run = { trigger: 'window', runId: '20261025-230000', until: '2026-10-26T05:00:00Z' }
+    const window = { trigger: 'window', runId: '20261025-230000', until: '2026-10-26T05:00:00Z' }
+    const runs = [window, { trigger: 'soon', runId: '20261025-231500' }]
+    const polls = {
+      github: { next: '2026-10-25T23:20:00Z' },
+      jira: { next: '2026-10-25T23:50:00Z', failures: 2 },
+    }
     const since = '2026-10-25T07:12:03Z'
-    await writeFile(watchStatePath, JSON.stringify({ pid: process.pid, since, config: path, run }))
+    const daemon = { pid: process.pid, since, config: path, runs, polls }
+    await writeFile(watchStatePath, JSON.stringify(daemon))
     await printStatus(undefined, current)
     const local = (iso: string) => new Date(iso).toLocaleString('sv-SE')
     expect(out).toContain(`Daemon: running, pid ${process.pid}, since ${local(since)}`)
-    expect(out).toContain(`Run in progress: window run 20261025-230000, until ${local(run.until)}`)
+    expect(out).toContain(
+      `Run in progress: window run 20261025-230000, until ${local(window.until)}`,
+    )
+    expect(out).toContain('Run in progress: soon run 20261025-231500')
+    expect(out).toContain(`Next poll of github: ${local(polls.github.next)}`)
+    expect(out).toContain(
+      `Next poll of jira: ${local(polls.jira.next)}, backing off after 2 failed polls`,
+    )
 
     out = []
     await writeFile(watchStatePath, '')

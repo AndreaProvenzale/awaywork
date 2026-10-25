@@ -4,6 +4,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { commentMarkdown, linkProblem } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
+import { spanPattern } from '../core/queue.js'
 import type { Ctx, Item, Source, Write } from '../core/types.js'
 
 export const linkTemplate = z
@@ -30,6 +31,14 @@ export const contextCommand = z
       .describe('Env vars the command needs; withheld from workers, listed in Actions'),
   })
   .describe("Fetches more context for an item, with secrets kept out of the agent's environment")
+
+export const pollEvery = z
+  .string()
+  .regex(spanPattern, 'expected a span like 15m: a number and m, h, d or w')
+  .optional()
+  .describe(
+    'How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every',
+  )
 
 export const commandConfig = z
   .strictObject({
@@ -60,6 +69,7 @@ export const commandConfig = z
       .optional()
       .describe("Runs in the config file's folder before awaywork on GitHub Actions"),
     link: linkTemplate.optional(),
+    every: pollEvery,
     write: z
       .string()
       .min(1)

@@ -16,6 +16,7 @@ import {
 import type { Config } from '../config/schema.js'
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
+import type { RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/launch.js'
 import {
   type Chain,
@@ -99,7 +100,7 @@ export function runCommand(program: Command): void {
           if (!('release' in lock)) {
             console.error(
               lock.pid === (await lockHolder(watchLockPath))
-                ? `awaywork watch is running run ${lock.runId} (pid ${lock.pid}); try again once it ends`
+                ? `awaywork watch has a run in progress (pid ${lock.pid}); try again once it ends, awaywork schedule status lists them`
                 : `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
             )
             process.exitCode = 1
@@ -201,22 +202,34 @@ export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | '
   log: RunLog
   /** The signal stopping the units, asked for as they start. */
   signal: () => AbortSignal
+  /** Whether you're around: else decided from `now` and the windows. */
+  present?: boolean
+  /** A `run: soon` run: its rules over these sources, these units, and no end-of-run notify. */
+  soon?: { sources: string[]; units: string[] }
+  /** Takes the planned units from the daemon's other runs, returning the plan this run runs. */
+  claim?: (plan: RunPlan) => RunPlan
 }
 
+// Two of the daemon's runs ending together would each overwrite the other's attempts.
+let saving: Promise<unknown> = Promise.resolve()
+
 /**
- * Plans and runs the units, writes the run's report, attempts and approvals, and notifies;
- * false when the options name no unit. The caller holds the run lock.
+ * Plans and runs the units, writes the run's report, attempts and approvals, and notifies, a soon
+ * run per unit only; false when the options name no unit. The caller holds the run lock.
  */
 export async function executeRun(a: RunArgs): Promise<boolean> {
   const { config, path, runId, log } = a
-  const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(config, skillsDirOf(path), {
+  const planned = await probeAndPlan(config, skillsDirOf(path), {
     retry: !!a.unit,
     repo: a.repo,
     rule: a.rule,
     at: a.now,
+    present: a.present,
+    soon: a.soon,
   })
+  const { warnings, ctx, sources, secrets } = planned
   for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
-  const named = a.unit ? namedChains(plan, a.unit) : []
+  const named = a.unit ? namedChains(planned.plan, a.unit) : []
   if (a.unit && named.length !== 1) {
     log.error(
       named.length
@@ -228,10 +241,11 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     )
     return false
   }
-  if (!plan.units.length && (a.repo !== undefined || a.rule !== undefined)) {
+  if (!planned.plan.units.length && (a.repo !== undefined || a.rule !== undefined)) {
     log.error('no unit matches --repo/--rule; awaywork plan lists them')
     return false
   }
+  const plan = a.claim ? a.claim(planned.plan) : planned.plan
   const runDir = join(runsDir, runId)
   await mkdir(runDir, { recursive: true, mode: 0o700 })
   if (process.env.GITHUB_OUTPUT)
@@ -264,10 +278,14 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   await writeFile(reportPath, formatReport(report, warnings))
   await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
   await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
-  await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
-  await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
+  const saved = saving.then(async () => {
+    await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
+    await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
+  })
+  saving = saved.catch(() => {})
+  await saved
   log.info(summarize(report, reportPath), true)
-  if (config.notify) {
+  if (config.notify && !a.soon) {
     const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
   }

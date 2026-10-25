@@ -28,7 +28,7 @@ awaywork schedule status                  # the job, the daemon and its log
 awaywork schedule remove
 ```
 
-The job is one long-running process, `awaywork watch`, that the scheduler keeps alive. It looks at the clock every minute and starts a run when a window opens, so it lands in the window even after the machine slept through the opening, and it reads the config each time: edit your windows and the next opening follows them, no reinstall.
+The job is one long-running process, `awaywork watch`, that the scheduler keeps alive. It looks at the clock every minute and starts a run when a window opens, so it lands in the window even after the machine slept through the opening, and it reads the config each time: edit your windows and the next opening follows them, no reinstall. It also runs your [`run: soon`](#soon-runs) rules within minutes, windows or not.
 
 | Scheduler | Writes | Keeps it alive |
 | --- | --- | --- |
@@ -45,13 +45,16 @@ Config: ~/.config/awaywork/config.yml
 Log: ~/.local/state/awaywork/schedule.log
 Daemon: running, pid 37770, since 2026-10-25 15:50:06
 Run in progress: window run 20261025-145300, until 2026-10-25 15:58:00
+Run in progress: soon run 20261025-145600
+Next poll of github: 2026-10-25 16:01:00
+Next poll of jira: 2026-10-25 16:16:00, backing off after 1 failed poll
 Next window: 2026-10-26 15:53:00
 Daemon log: ~/.local/state/awaywork/watch.log
 ```
 
 - One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
 - One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 37770)`. That's what makes cron's restart line harmless.
-- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch is running run 20261025-145300 (pid 37770); try again once it ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
+- Your manual run or the daemon's, not both: a manual `awaywork run` while the daemon has a run in progress exits 1 with `awaywork watch has a run in progress (pid 37770); try again once it ends, awaywork schedule status lists them`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log; a soon run waits for the next poll. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
 - The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
@@ -87,6 +90,40 @@ Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/2026
 A failed command gets two lines, its error and the last error line of its stderr, however much it printed. A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
 
 A job an older awaywork installed, one trigger per window starting `awaywork run --scheduled`, keeps working, but `schedule status` and `doctor` say it was installed by an older awaywork. Run `awaywork schedule install` once after upgrading.
+
+### Soon runs
+
+A rule with [`run: soon`](./configuration.md#run-soon) doesn't wait for a window. Every `watch.every`, 5 minutes by default, the daemon polls the sources its soon rules read, plans just those rules over what came back, and starts a run for the units that are due: a new item, or one changed since its last attempt, like your PR going red or your reply under awaywork's [questions](./how-it-works.md#questions). awaywork's own questions comment isn't a change. Neither is anything a run already took, until the item changes again: a unit that failed, or found no quota, waits for the next window instead of retrying every 5 minutes.
+
+Here a custom source's output changed between polls: a new item, then awaywork's questions on it at 16:19 (nothing), then a reply at 16:20. The second source was down for a bit:
+
+```
+2026-10-25 16:17:51 awaywork watch started, pid 27290, config ~/.config/awaywork/config.yml
+2026-10-25 16:17:51 source flaky: poll failed, next at 2026-10-25 16:21:51: Command failed with exit code 1: ./flaky.sh
+2026-10-25 16:17:51 soon run 20261025-151751 started for ch-1
+2026-10-25 16:17:51 Run 20261025-151751: 1 unit planned, state in ~/.local/state/awaywork/runs/20261025-151751
+2026-10-25 16:17:51 Run 20261025-151751: 0 draft PRs, 0 reports, 1 unit
+     item  skill  status   result
+  1  CH-1  plan   skipped  no provider left: stub sits out a present run (no quota rea…
+     Fix the typo in the README
+Report: ~/.local/state/awaywork/runs/20261025-151751/report.md
+2026-10-25 16:21:00 soon run 20261025-152100 started for ch-1
+2026-10-25 16:21:00 Run 20261025-152100: 1 unit planned, state in ~/.local/state/awaywork/runs/20261025-152100
+2026-10-25 16:21:00 Run 20261025-152100: 0 draft PRs, 0 reports, 1 unit
+     item  skill  status   result
+  1  CH-1  plan   skipped  no provider left: stub sits out a present run (no quota rea…
+     Fix the typo in the README
+Report: ~/.local/state/awaywork/runs/20261025-152100/report.md
+2026-10-25 16:22:00 source flaky: polled fine again, every 2m
+```
+
+- Every trigger is a run: the units one poll finds make one run, with its own run dir, plan, report and `per_run` share. A poll that finds nothing due writes nothing; with `watch: { debug: true }` it logs one line.
+- Outside a window a soon run is present, as above: workers stop at `present_session_max`, and a provider whose quota can't be read sits out. Inside a window it's away, like the window run.
+- A poll reads no quota and runs no model; the quota is read when a soon run starts. What a poll costs is source calls. The base GitHub poll is 3 searches (your PRs, PRs awaiting your review, issues assigned to you), plus one per `search` entry and two more when a rule reads [finished items](./configuration.md#finished-items): about 36 searches an hour at 5 minutes, well under GitHub's limits. A tracker poll is its list call, plus a PR search for each open task that links none yet. A slow tracker, or one with a tight rate limit, gets its own `every`.
+- Runs overlap now, a window run and a soon run say, but never on the same item. A unit another of the daemon's runs is working on is skipped as `running in run 20261025-010000` in the second run's plan and report, and no poll counts it due until that run ends. The daemon holds the run lock, and keeps the machine awake, while any of its runs is in progress.
+- A poll that fails backs off: as long as the source's `Retry-After` asks when it says (Jira and Asana do, on a 429), otherwise twice the interval per failure in a row up to an hour, back to normal on the first good poll. Each backoff and recovery is one line in the log. GitHub through `gh`, Linear and custom sources give awaywork no reset time, so they double.
+- `notify` gets a soon run's `unit` events, not the end-of-run one: one answered question shouldn't ping you twice.
+- After the daemon restarts, a unit that found no quota or was stopped gets one more soon run.
 
 ### Waking up for it
 
@@ -128,7 +165,7 @@ Before the first run:
 
 The runner is GitHub-hosted by default: a fresh VM each run, with no Codex. Self-hosted is a machine of yours, see [Running Codex](#running-codex). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
 
-This writes `.github/workflows/awaywork.yml`: a cron at each window's start (none with `windows: []`), plus `workflow_dispatch` for a manual run; `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
+This writes `.github/workflows/awaywork.yml`: a cron at each window's start (none with `windows: []`), plus `workflow_dispatch` for a manual run. There's no daemon there, so [`run: soon`](#soon-runs) rules run in the windows like the rest, which install says once. `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
 
 1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.

@@ -54,6 +54,12 @@
       "default": {},
       "type": "object",
       "properties": {
+        "every": {
+          "default": "5m",
+          "description": "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
+          "type": "string",
+          "pattern": "^\\d+[mhdw]$"
+        },
         "debug": {
           "default": false,
           "description": "Also write each run's full output to the daemon log",
@@ -442,6 +448,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$"
             }
           },
           "required": [
@@ -485,6 +496,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$"
             }
           },
           "required": [
@@ -547,6 +563,11 @@
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$"
+            },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
               "type": "string"
@@ -600,6 +621,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
@@ -669,6 +695,11 @@
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^\\d+[mhdw]$"
+            },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",
               "type": "string"
@@ -714,6 +745,11 @@
           "link": {
             "type": "string",
             "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
+          },
+          "every": {
+            "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+            "type": "string",
+            "pattern": "^\\d+[mhdw]$"
           },
           "write": {
             "description": "Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {\"op\":\"move\",\"item\":\"ENG-2101\",\"id\":\"10012\",\"to\":\"QA\"}, and may print the item's updated times as {\"before\":\"…\",\"after\":\"…\"}. Without it, on_done writes nothing to this source",
@@ -2418,6 +2454,14 @@
               "move"
             ],
             "additionalProperties": false
+          },
+          "run": {
+            "description": "When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every",
+            "type": "string",
+            "enum": [
+              "soon",
+              "window"
+            ]
           }
         },
         "required": [
