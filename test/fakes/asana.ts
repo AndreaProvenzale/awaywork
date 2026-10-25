@@ -24,7 +24,6 @@ export function recordedFetch(routes: [RegExp, Reply][]): typeof fetch & { calls
 
 export const asanaRoutes = (): [RegExp, Reply][] => [
   [/\/workspaces\?/, asanaFixture('workspaces.json')],
-  [/\/users\/me\?/, '{ "data": { "gid": "900" } }'],
   [/\/projects\?/, asanaFixture('projects.json')],
   [/\/projects\/300\/sections\?/, asanaFixture('sections-300.json')],
   [/\/tasks\?.*offset=eyJwYWdlIjoyfQ/, asanaFixture('tasks-2.json')],

@@ -76,17 +76,18 @@ export function sourceContract(
     )
 
     it.runIf(source.write)(
-      'moves its first item to `move`, returning its updated time or nothing',
+      'moves its first item to `move`, returning its updated times before and after, or none',
       async () => {
         expect(move, 'a source that writes needs a destination to move to').toBeDefined()
         const [item] = await source.items(cfg(), ctx)
-        const updated = await source.write?.(
+        const written = await source.write?.(
           cfg(),
           item as Item,
           { op: 'move', to: move as string },
           ctx,
         )
-        if (updated !== undefined) expect(z.iso.datetime().safeParse(updated).success).toBe(true)
+        for (const time of [written?.before, written?.after].filter((t) => t !== undefined))
+          expect(z.iso.datetime().safeParse(time).success, `not an ISO time: ${time}`).toBe(true)
       },
     )
   })

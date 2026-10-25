@@ -144,7 +144,6 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
         },
         token,
       )
-      const me = await request<{ data: Named }>('/users/me?opt_fields=gid', token)
       const inScope = (t: Task) =>
         !cfg.projects || t.memberships.some((m) => cfg.projects?.includes(m.project.gid))
       const items: Item[] = []
@@ -163,7 +162,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           ctx.log(`asana: couldn't read the dependencies of ${task.gid}: ${e.message}`)
           return undefined
         })
-        items.push(toItem(task, stories, dependencies, me.data.gid, cfg.repo_map))
+        items.push(toItem(task, stories, dependencies, cfg.repo_map))
       }
       return items
     },
@@ -173,15 +172,22 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
       await writeFile(join(dir, 'item.md'), taskMarkdown(item))
     },
 
-    /** Comments on the task as a story, or moves it to the section named `to` in the first of its projects that has one. */
+    /** Comments on the task as a story, or moves it to the section named `to` in the first of its configured projects that has one. */
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
       const task = `/tasks/${item.id}`
+      const updated = async () =>
+        (await request<{ data: { modified_at: string } }>(`${task}?opt_fields=modified_at`, token))
+          .data.modified_at
+      const before = await updated()
       if (write.op === 'comment') await request(`${task}/stories`, token, { text: write.body })
       else {
         const seen: string[] = []
         let section: Named | undefined
-        for (const { project } of (item.raw as Task).memberships) {
+        const projects = (item.raw as Task).memberships.filter(
+          (m) => !cfg.projects || cfg.projects.includes(m.project.gid),
+        )
+        for (const { project } of projects) {
           const sections = await getAll<Named>(
             `/projects/${project.gid}/sections`,
             { opt_fields: 'name' },
@@ -197,11 +203,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
           )
         await request(`/sections/${section.gid}/addTask`, token, { task: item.id })
       }
-      const { data } = await request<{ data: { modified_at: string } }>(
-        `${task}?opt_fields=modified_at`,
-        token,
-      )
-      return data.modified_at
+      return { before, after: await updated() }
     },
 
     /** Picks a workspace and projects from the account and lists their real section names. */
@@ -279,7 +281,6 @@ function toItem(
   task: Task,
   stories: Story[],
   dependencies: { completed: boolean }[] | undefined,
-  me: string,
   repoMap: Config['repo_map'] = {},
 ): Item {
   const sections = task.memberships.flatMap((m) => (m.section ? [m.section.name] : []))
@@ -307,7 +308,8 @@ function toItem(
       author: s.created_by?.name ?? 'unknown',
       body: s.text,
       at: s.created_at,
-      ...(s.created_by?.gid === me && { mine: true as const }),
+      // Tasks are read as assigned to you: your stories are the assignee's.
+      ...(!!task.assignee && s.created_by?.gid === task.assignee.gid && { mine: true as const }),
     })),
     linkedPrs: [],
     mine: true,

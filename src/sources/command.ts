@@ -57,7 +57,7 @@ export const commandConfig = z
       .min(1)
       .optional()
       .describe(
-        'Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item\'s updated time after it. Without it, on_done writes nothing to this source',
+        'Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item\'s updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source',
       ),
   })
   .describe('A custom source: any command that prints your open items as JSON')
@@ -68,6 +68,8 @@ export type CommandConfig = z.output<typeof commandConfig> & { dir?: string }
 const TIMEOUT_MS = 10 * 60_000
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
+const time = z.iso.datetime({ offset: true }).optional()
+const written = z.object({ before: time, after: time })
 const entry = z.object({
   id: z.string().min(1),
   key: z.string().min(1),
@@ -157,8 +159,12 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
           ctx,
           JSON.stringify({ op, item: item.key, id: item.id, ...write }),
         )
-        const updated = stdout.trim()
-        return z.iso.datetime({ offset: true }).safeParse(updated).success ? updated : undefined
+        let printed: unknown
+        try {
+          printed = JSON.parse(stdout)
+        } catch {}
+        // Times it didn't print, or printed wrong, are none: the move then reads as a change.
+        return written.safeParse(printed).data ?? {}
       },
     }),
   }

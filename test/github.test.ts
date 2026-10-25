@@ -88,10 +88,14 @@ describe('source writes', () => {
       ...githubSource(recorded([])),
       write: async (_cfg: unknown, _item: Item, write: Write) => {
         writes.push(write)
-        return 'later'
+        return { before: '2026-10-24T00:00:00Z', after: 'later' }
       },
     }
-    const yours = fakeItem({ source: 'github', mine: true })
+    const yours = fakeItem({
+      source: 'github',
+      mine: true,
+      fields: { updated: '2026-10-24T00:00:00Z' },
+    })
     await expect(writeItem(source, {}, fakeItem(), { op: 'move', to: 'QA' }, ctx)).rejects.toThrow(
       'not yours',
     )
@@ -100,6 +104,23 @@ describe('source writes', () => {
     ).rejects.toThrow("github can't write to its items")
     expect(await writeItem(source, {}, yours, { op: 'comment', body: 'Q?' }, ctx)).toBe('later')
     expect(writes).toEqual([{ op: 'comment', body: 'Q?\n\n— awaywork' }])
+  })
+
+  it('returns no updated time when someone changed the item after it was read', async () => {
+    const source = {
+      ...githubSource(recorded([])),
+      write: async () => ({ before: '2026-10-24T00:30:00Z', after: '2026-10-24T01:00:00Z' }),
+    }
+    const read = fakeItem({
+      source: 'github',
+      mine: true,
+      fields: { updated: '2026-10-24T00:00:00Z' },
+    })
+    expect(await writeItem(source, {}, read, { op: 'move', to: 'QA' }, ctx)).toBeUndefined()
+    const same = { ...read, fields: { updated: '2026-10-24T00:30:00.000Z' } }
+    expect(await writeItem(source, {}, same, { op: 'move', to: 'QA' }, ctx)).toBe(
+      '2026-10-24T01:00:00Z',
+    )
   })
 })
 
@@ -469,6 +490,24 @@ describe('github source', () => {
     ])
   })
 
+  it('takes your comment as yours only while nobody else edited it last', async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    assigned.data.search.nodes[0].comments.nodes = [
+      { ...yours, body: 'mine', editor: null },
+      { ...yours, body: 'edited by me', editor: { login: 'dev' } },
+      { ...yours, body: `edited by lead\n\n${markComment('')}`, editor: { login: 'lead' } },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => [c.body.split('\n')[0], c.mine])).toEqual([
+      ['mine', true],
+      ['edited by me', true],
+      ['edited by lead', undefined],
+    ])
+    expect(issue5?.comments.some(isAwayworkComment)).toBe(false)
+  })
+
   it('comments on an item and moves it by adding a label, through the issues API on its host', async () => {
     const seen: (string | undefined)[] = []
     const replay = recorded([
@@ -486,15 +525,19 @@ describe('github source', () => {
       fields: { repo: 'acme/api' },
     })
     const write = githubSource(run).write
-    expect(await write?.({ repos: ['acme/*'] }, item, { op: 'move', to: 'In QA' }, ctx)).toBe(
-      '2026-02-02T08:00:00Z',
-    )
+    expect(await write?.({ repos: ['acme/*'] }, item, { op: 'move', to: 'In QA' }, ctx)).toEqual({
+      before: '2026-02-02T08:00:00Z',
+      after: '2026-02-02T08:00:00Z',
+    })
     await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx)
+    const updated = ['api', 'repos/acme/api/issues/5', '--jq', '.updated_at']
     expect(replay.calls.map((c) => c.slice(1))).toEqual([
+      updated,
       ['api', 'repos/acme/api/issues/5/labels', '-f', 'labels[]=In QA'],
-      ['api', 'repos/acme/api/issues/5', '--jq', '.updated_at'],
+      updated,
+      updated,
       ['api', 'repos/acme/api/issues/5/comments', '-f', 'body=Why `@here`?'],
-      ['api', 'repos/acme/api/issues/5', '--jq', '.updated_at'],
+      updated,
     ])
     expect(new Set(seen)).toEqual(new Set(['git.acme.com']))
   })

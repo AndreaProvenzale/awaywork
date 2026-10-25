@@ -480,7 +480,7 @@ Moving the card is how the next person hears it's their turn. `on_done` does it 
   on_done: { move: In Review }
 ```
 
-`move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects that has one), a GitHub label, which it adds. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
+`move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
 
 ```text
   on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
@@ -488,7 +488,7 @@ Moving the card is how the next person hears it's their turn. `on_done` does it 
 
 It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
 
-It moves every item of the unit that is yours: your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. A unit with a GitHub issue and a Jira card on one PR moves both, each through its own source, to the same name. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
+It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 
 A move never fails the unit. It goes in the run's output and the morning report under the unit, masked like every other error:
 
@@ -498,7 +498,7 @@ A move never fails the unit. It goes in the run's output and the morning report 
      on_done moved ENG-12 to "In Review"
 ```
 
-Moving an item changes its updated time, and awaywork reads the new one back and records it, so the move alone never makes the item look changed next run and redo it on the same rule. Whatever a person changes after it still does. A custom source's `write` has to print that time for the same; without it, have the rule stop matching where the item moved to.
+Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 

@@ -257,8 +257,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return moved
   }
 
+  /** A unit's items in one tracker's words: from the rule's source, or the source of the item it matched first. */
+  const ownItems = (p: PlannedUnit): Item[] => {
+    const own = input.plan.queue[p.rule]?.source ?? p.unit.items[0]?.source
+    return p.unit.items.filter((i) => i.source === own)
+  }
+
   /**
-   * Posts a step's questions as a comment on the first of the unit's items from its rule's source that is yours,
+   * Posts a step's questions as a comment on the first of the unit's own items that is yours,
    * through a source that writes; a post that fails is reported, never thrown. An item waiting for an answer made no unit.
    */
   const postQuestions = async (
@@ -268,11 +274,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
     if (Buffer.byteLength(text) > MAX_QUESTIONS_BYTES)
       return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
-    const { items } = p.unit
-    const from = input.plan.queue[p.rule]?.source ?? items[0]?.source
-    const item = items.find((i) => i.source === from && !unwritable(i, input.sources[i.source]))
+    const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
-      const top = items[0] as Item
+      const top = p.unit.items[0] as Item
       return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
     }
     const ref = `${item.source}:${item.key}`
@@ -891,7 +895,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const finished =
       !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0 && !asked
     if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
-      lead.moved = await moveItems(first.unit.items, onDone.move)
+      lead.moved = await moveItems(ownItems(first), onDone.move)
     for (const r of done) {
       // A committing slice that committed nothing published its reports.
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver

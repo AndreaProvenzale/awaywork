@@ -16,7 +16,7 @@ import { expect, it, vi } from 'vitest'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { recordAttempts } from '../src/core/attempts.js'
+import { recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
@@ -4356,7 +4356,7 @@ it('retries a step without checking its when again, keeping its when.log', async
   ])
 })
 
-/** Runs `queue` on `items` with a GitHub source that records what on_done writes, or fails as `write` does. */
+/** Runs `queue` on `items` with GitHub and tracker sources that record what on_done writes, or fail as `write` does. */
 async function finishedRun(
   queue: string,
   items: Item[],
@@ -4368,7 +4368,7 @@ async function finishedRun(
   await git(origin, 'branch', 'feature-2')
   const config = parseConfig(`
 providers: [claude: {}]
-sources: { github: { repos: [acme/*] } }
+sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'true' } }
 queue:
 ${queue}
 `)
@@ -4389,7 +4389,7 @@ ${queue}
         : (write ??
           (async (_cfg: unknown, item: Item, w: Write) => {
             writes.push([item.key, w])
-            return '2026-10-25T01:00:00Z'
+            return { before: '2026-10-24T00:00:00Z', after: '2026-10-25T01:00:00Z' }
           })),
   }
   const report = await runUnits({
@@ -4400,7 +4400,7 @@ ${queue}
     runDir: join(root, 'run'),
     dryRun: false,
     providers: { claude: provider },
-    sources: { github: source as Source },
+    sources: { github: source as Source, tracker: source as Source },
     forge,
     ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
@@ -4428,6 +4428,48 @@ it("moves your items once the chain published, and counts the move as awaywork's
   expect(formatReport(report)).toContain('- **api#1**: on_done moved acme/api#1 to "QA"')
   expect(summarize(report, 'report.md')).toContain('     on_done moved acme/api#1 to "QA"')
   expect(recordAttempts({}, report)['github:acme/api#1']?.updated).toBe('2026-10-25T01:00:00Z')
+})
+
+it('keeps the updated time the plan read when someone changed the item during the run', async () => {
+  const { report } = await finishedRun(
+    '  - { skill: implement, on_done: { move: QA } }',
+    [yours(1)],
+    looper({}),
+    async () => ({ before: '2026-10-24T00:30:00Z', after: '2026-10-24T01:00:00Z' }),
+  )
+  expect(report.results[0]?.moved).toEqual([{ item: 'github:acme/api#1', to: 'QA' }])
+  const attempts = recordAttempts({}, report)
+  expect(attempts['github:acme/api#1']?.updated).toBe('2026-10-24T00:00:00Z')
+  const next = { ...yours(1), fields: { ...yours(1).fields, updated: '2026-10-24T01:00:00Z' } }
+  expect(unchangedSince(next, 'implement', attempts)).toBeUndefined()
+})
+
+it("moves only the items of the rule's own source, or of the item it matched without one", async () => {
+  const pr = githubPr(2, { mine: true })
+  const card = fakeItem({
+    source: 'tracker',
+    id: 'c1',
+    key: 'ENG-1',
+    type: 'task',
+    mine: true,
+    linkedPrs: pr.linkedPrs,
+    fields: { repo: 'acme/api' },
+  })
+  const yourPr = { ...pr, mine: true as const }
+  const named = await finishedRun(
+    '  - { skill: review, source: tracker, deliver: report, on_done: { move: QA } }\n  - { skill: review, deliver: report }',
+    [yourPr, card],
+  )
+  expect(named.report.results[0]?.planned.unit.items.map((i) => i.key)).toEqual([
+    'ENG-1',
+    'acme/api#2',
+  ])
+  expect(named.writes).toEqual([['ENG-1', { op: 'move', to: 'QA' }]])
+  const unnamed = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { move: QA } }',
+    [yourPr, card],
+  )
+  expect(unnamed.writes).toEqual([['acme/api#2', { op: 'move', to: 'QA' }]])
 })
 
 it('moves nothing when a step failed, committed nothing or a loop never held', async () => {

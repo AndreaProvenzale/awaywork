@@ -836,6 +836,18 @@ type Sources = Record<string, unknown>
 
 const fieldsOf = (configured: Sources, id: string) => sourceFor(id, configured[id])?.fields ?? {}
 
+/** Whether source `id`'s items can match `where`: it has fields, and so items, unlike bitbucket, and one for each key. */
+export function canMatch(configured: Sources, id: string, where: Where): boolean {
+  const fields = fieldsOf(configured, id)
+  const fits = (w: Where): boolean =>
+    Object.entries(w).every(([key, value]) =>
+      key === 'any'
+        ? (value as Where[]).some(fits)
+        : key in itemFields || !!sourceField(fields, key),
+    )
+  return Object.keys(fields).length > 0 && fits(where)
+}
+
 function fieldFor(configured: Sources, scope: string[], key: string): z.ZodType | undefined {
   const matches = scope.flatMap((id) => sourceField(fieldsOf(configured, id), key) ?? [])
   if (matches.length === 0) return undefined

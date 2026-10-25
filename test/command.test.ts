@@ -129,13 +129,13 @@ describe('command source', () => {
   it('pipes a write as JSON to its `write` command, in the config folder with its env', async () => {
     const out = join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'write.json')
     const write =
-      'cat > "$OUT"; pwd >> "$OUT.pwd"; echo "$TRACKER_TOKEN" >> "$OUT.pwd"; echo 2026-01-04T08:00:00Z'
+      'cat > "$OUT"; pwd >> "$OUT.pwd"; echo "$TRACKER_TOKEN" >> "$OUT.pwd"; echo \'{"before":"2026-01-03T08:00:00Z","after":"2026-01-04T08:00:00Z"}\''
     const c = cfg({ write })
     const writer = commandSource('tracker', c)
     const [item] = await writer.items(c, ctx())
     const env = ctx({ OUT: out, TRACKER_TOKEN: 'tok' })
     const moved = await writer.write?.(c, item as never, { op: 'move', to: 'QA' }, env)
-    expect(moved).toBe('2026-01-04T08:00:00Z')
+    expect(moved).toEqual({ before: '2026-01-03T08:00:00Z', after: '2026-01-04T08:00:00Z' })
     expect(JSON.parse(await readFile(out, 'utf8'))).toEqual({
       op: 'move',
       item: 'AI-42',
@@ -147,16 +147,18 @@ describe('command source', () => {
     expect(JSON.parse(await readFile(out, 'utf8'))).toMatchObject({ op: 'comment', body: 'Which?' })
   })
 
-  it('fails a write whose command fails, and returns no time it did not print', async () => {
+  it('fails a write whose command fails, and returns no times it did not print', async () => {
     const failing = cfg({ write: 'echo denied >&2; exit 2' })
     const item = { id: '1', key: 'AI-1' } as never
     await expect(
       commandSource('tracker', failing).write?.(failing, item, { op: 'move', to: 'QA' }, ctx()),
     ).rejects.toThrow(/denied/)
-    const quiet = cfg({ write: 'cat > /dev/null; echo moved' })
-    expect(
-      await commandSource('tracker', quiet).write?.(quiet, item, { op: 'move', to: 'QA' }, ctx()),
-    ).toBeUndefined()
+    for (const printed of ['moved', '{"after":"yesterday"}']) {
+      const quiet = cfg({ write: `cat > /dev/null; echo '${printed}'` })
+      expect(
+        await commandSource('tracker', quiet).write?.(quiet, item, { op: 'move', to: 'QA' }, ctx()),
+      ).toEqual({})
+    }
   })
 
   it("keeps the write command's secrets, besides the read command's, from workers", () => {

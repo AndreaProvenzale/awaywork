@@ -40,7 +40,7 @@ const common = `
   author { login } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
-  comments(last: 50) { nodes { ${BY} body createdAt } }`
+  comments(last: 50) { nodes { ${BY} body createdAt editor { login } } }`
 
 const searchQuery = `query($q: String!) {
   search(query: $q, type: ISSUE, first: ${PAGE}) {
@@ -111,7 +111,7 @@ type By = {
   authorAssociation: string
   viewerDidAuthor: boolean
 }
-type Comment = By & { body: string; createdAt: string }
+type Comment = By & { body: string; createdAt: string; editor?: { login: string } | null }
 type PrLink = {
   number: number
   url: string
@@ -272,10 +272,12 @@ export function githubSource(base: Exec = exec): Source<Config> {
       const run = onHost(base, URL.canParse(item.url) ? new URL(item.url).host : undefined)
       // A PR is an issue too: its labels and conversation comments go through the issues API.
       const path = `repos/${item.fields.repo}/issues/${item.key.split('#')[1]}`
+      const updated = async () => (await run('gh', ['api', path, '--jq', '.updated_at'])).trim()
+      const before = await updated()
       if (write.op === 'comment')
         await run('gh', ['api', `${path}/comments`, '-f', `body=${write.body}`])
       else await run('gh', ['api', `${path}/labels`, '-f', `labels[]=${write.to}`])
-      return (await run('gh', ['api', path, '--jq', '.updated_at'])).trim()
+      return { before, after: await updated() }
     },
   }
 }
@@ -429,7 +431,9 @@ const toComment = (c: Comment) => ({
   author: c.author?.login ?? 'ghost',
   body: c.body,
   at: c.createdAt,
-  ...(c.viewerDidAuthor && { mine: true as const }),
+  // A collaborator can edit your comment; then its text isn't yours.
+  ...(c.viewerDidAuthor &&
+    (!c.editor || c.editor.login === c.author?.login) && { mine: true as const }),
 })
 
 function checkState(state: string | undefined): string | undefined {

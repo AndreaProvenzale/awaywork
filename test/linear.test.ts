@@ -104,7 +104,12 @@ describe('linear writes', () => {
   }
   const writer = () =>
     recordedFetch([
-      [/query States/, JSON.stringify({ data: { issue: { team: { states } } } })],
+      [
+        /query States/,
+        JSON.stringify({
+          data: { issue: { updatedAt: '2026-01-03T08:00:00.000Z', team: { states } } },
+        }),
+      ],
       [/mutation (IssueMove|CommentCreate)/, '{ "data": { "x": { "success": true } } }'],
       [/query Updated/, '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z" } } }'],
     ])
@@ -114,7 +119,10 @@ describe('linear writes', () => {
   it("moves an issue to its team's workflow state with that name", async () => {
     const http = writer()
     const move = { op: 'move', to: 'in review' } as const
-    expect(await linearSource(http).write?.(cfg, eng12, move, ctx)).toBe('2026-01-04T08:00:00.000Z')
+    expect(await linearSource(http).write?.(cfg, eng12, move, ctx)).toEqual({
+      before: '2026-01-03T08:00:00.000Z',
+      after: '2026-01-04T08:00:00.000Z',
+    })
     expect(sent(http)[1]?.variables).toEqual({ id: 'issue-12', stateId: 's2' })
     await expect(
       linearSource(writer()).write?.(cfg, eng12, { op: 'move', to: 'QA' }, ctx),
@@ -124,8 +132,12 @@ describe('linear writes', () => {
   it('comments with the body as Markdown', async () => {
     const http = writer()
     await linearSource(http).write?.(cfg, eng12, { op: 'comment', body: 'Which?' }, ctx)
-    expect(sent(http)[0]?.query).toMatch(/^mutation CommentCreate/)
-    expect(sent(http)[0]?.variables).toEqual({ issueId: 'issue-12', body: 'Which?' })
+    expect(sent(http).map((b) => b.query.split('(')[0])).toEqual([
+      'query Updated',
+      'mutation CommentCreate',
+      'query Updated',
+    ])
+    expect(sent(http)[1]?.variables).toEqual({ issueId: 'issue-12', body: 'Which?' })
   })
 
   it('marks your own comments as yours and every issue as yours', async () => {

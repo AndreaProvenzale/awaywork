@@ -51,7 +51,7 @@ const commentMutation = `mutation CommentCreate($issueId: String!, $body: String
 }`
 
 const statesQuery = `query States($id: String!) {
-  issue(id: $id) { team { states(first: 100) { nodes { id name } } } }
+  issue(id: $id) { updatedAt team { states(first: 100) { nodes { id name } } } }
 }`
 
 const moveMutation = `mutation IssueMove($id: String!, $stateId: String!) {
@@ -175,12 +175,18 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
       const id = item.id
-      if (write.op === 'comment')
+      const updated = async () =>
+        (await graphql<{ issue: { updatedAt: string } }>(updatedQuery, { id }, token)).issue
+          .updatedAt
+      let before: string
+      if (write.op === 'comment') {
+        before = await updated()
         await graphql(commentMutation, { issueId: id, body: write.body }, token)
-      else {
+      } else {
         const { issue } = await graphql<{
-          issue: { team: { states: { nodes: { id: string; name: string }[] } } }
+          issue: { updatedAt: string; team: { states: { nodes: { id: string; name: string }[] } } }
         }>(statesQuery, { id }, token)
+        before = issue.updatedAt
         const states = issue.team.states.nodes
         const state = states.find((s) => s.name.toLowerCase() === write.to.toLowerCase())
         if (!state)
@@ -189,8 +195,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
           )
         await graphql(moveMutation, { id, stateId: state.id }, token)
       }
-      const { issue } = await graphql<{ issue: { updatedAt: string } }>(updatedQuery, { id }, token)
-      return issue.updatedAt
+      return { before, after: await updated() }
     },
 
     /** Maps teams to repos and lists the account's real team keys and workflow state names. */

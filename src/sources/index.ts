@@ -29,7 +29,11 @@ export function unwritable(item: Item, source: Source | undefined): string | und
   if (!source?.write) return `${item.source} can't write to its items`
 }
 
-/** Writes to one of your items through its source, a comment with awaywork's mark; returns the item's updated time after it. */
+/**
+ * Writes to one of your items through its source, a comment with awaywork's mark. Returns the
+ * item's updated time after it, unless someone changed the item since it was read: then nothing,
+ * so their change still counts as one.
+ */
 export async function writeItem(
   // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
   source: Source<any> | undefined,
@@ -41,5 +45,9 @@ export async function writeItem(
   const refused = unwritable(item, source)
   if (refused || !source?.write) throw new Error(refused)
   const marked = write.op === 'comment' ? { ...write, body: markComment(write.body) } : write
-  return source.write(cfg, item, marked, ctx)
+  const { before, after } = await source.write(cfg, item, marked, ctx)
+  const read = item.fields.updated
+  return before && typeof read === 'string' && Date.parse(before) === Date.parse(read)
+    ? after
+    : undefined
 }

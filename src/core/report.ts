@@ -61,7 +61,7 @@ export interface Questions {
 export const describeQuestions = (q: Questions): string =>
   q.unposted ? `questions not posted: ${q.unposted}` : `questions posted on ${q.url}`
 
-/** An item (`source:key`) on_done moved, with its updated time after, or why the move failed. */
+/** An item (`source:key`) on_done moved, with its updated time after when only the move changed it, or why the move failed. */
 export interface Moved {
   item: string
   to: string
