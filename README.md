@@ -22,7 +22,7 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 $ awaywork plan | cat
 Providers
-  present run (outside the windows): workers stop at present_session_max; providers without a quota reading sit out
+  present run (outside the windows): present_session_max
   provider  window     used  ceiling  set by  resets in  session / stop at
   claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
     other limits: reserve cap 90%
@@ -65,8 +65,8 @@ Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit,
 
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
-away run (inside a window): workers stop at session_max
-claude: seven_day 5% to 17%, ceiling 25.7%; session 2% to 31%, stop at 90%
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -125,7 +125,7 @@ Each run's ceiling on the weekly window is an even spend over the week:
 ceiling = (1 - reserve) × time since the last reset / week
 ```
 
-Day 3 of 7 with the default 10% reserve caps the week at 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
+A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run you start by hand reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
 
 ## The paranoid bit
 

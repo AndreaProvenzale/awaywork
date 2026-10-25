@@ -84,6 +84,15 @@ export function runsLeft(windows: Window[], now: number, until: number): number 
   return Math.max(1, left.length)
 }
 
+/** When the next window opens after `now` and before `until` (epoch ms), or undefined. */
+export function nextOpening(windows: Window[], now: number, until: number): number | undefined {
+  const days = Math.ceil((until - now) / DAY) + 1
+  const starts = occurrences(windows, new Date(now), days)
+    .map(([start]) => start.getTime())
+    .filter((start) => start > now && start < until)
+  return starts.length ? Math.min(...starts) : undefined
+}
+
 /** E.g. `01:00-07:00` or `sat,sun 10:00-18:00`. */
 export const describeWindow = (w: Window) =>
   `${w.days ? `${w.days.join(',')} ` : ''}${w.start}-${w.end}`
