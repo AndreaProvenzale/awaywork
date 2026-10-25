@@ -1302,6 +1302,12 @@ queue:
     expect(withComments(asked, comment('Per key.', true)).units).toHaveLength(1)
   })
 
+  it('keeps waiting when only a bot commented after the questions', () => {
+    const bot = { ...comment('Coverage 91.2%'), author: 'codecov', bot: true as const }
+    expect(withComments(asked, bot).skipped).toMatchObject([{ kind: 'waiting_for_answer' }])
+    expect(withComments(asked, bot, comment('Per key.')).units).toHaveLength(1)
+  })
+
   it("doesn't count awaywork's mark someone else pasted", () => {
     expect(withComments(comment('Per user?\n\n— awaywork')).units).toHaveLength(1)
   })

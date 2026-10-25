@@ -469,6 +469,7 @@ const toComment = (c: Comment) => ({
   // A collaborator can edit your comment; then its text isn't yours.
   ...(c.viewerDidAuthor &&
     (!c.editor || c.editor.login === c.author?.login) && { mine: true as const }),
+  ...(c.author?.__typename === 'Bot' && { bot: true as const }),
 })
 
 function checkState(state: string | undefined): string | undefined {

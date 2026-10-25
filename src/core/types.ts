@@ -36,7 +36,7 @@ export interface Item {
   reviewers: string[]
   labels: string[]
   /** `mine` when your own account wrote it and nobody else edited it since. */
-  comments: { author: string; body: string; at: string; mine?: true }[]
+  comments: { author: string; body: string; at: string; mine?: true; bot?: true }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   /** The line a PR body carries to link this item, rendered from its source's `link`. */

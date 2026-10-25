@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
-import { footer, footerItems, isAwayworkComment, isOurs, markComment } from '../src/core/footer.js'
+import {
+  awaitsAnswer,
+  footer,
+  footerItems,
+  isAwayworkComment,
+  isOurs,
+  markComment,
+} from '../src/core/footer.js'
 import type { Ctx, Item, Write } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
@@ -508,6 +515,23 @@ describe('github source', () => {
       ['edited by lead', undefined],
     ])
     expect(issue5?.comments.some(isAwayworkComment)).toBe(false)
+  })
+
+  it("keeps waiting for an answer when a bot comments after awaywork's questions", async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    const bot = { login: 'codecov', __typename: 'Bot' }
+    assigned.data.search.nodes[0].comments.nodes = [
+      { ...yours, body: markComment('Per user or per key?') },
+      { ...yours, author: bot, authorAssociation: 'NONE', viewerDidAuthor: false, body: '91.2%' },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => [c.author, c.bot])).toEqual([
+      ['dev', undefined],
+      ['codecov', true],
+    ])
+    expect(issue5 && awaitsAnswer(issue5)).toBe(true)
   })
 
   const read = (assignees?: string[]) =>

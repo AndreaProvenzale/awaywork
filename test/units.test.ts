@@ -4569,10 +4569,12 @@ it("posts a step's questions once on your item, marked, and ends the chain witho
     url: 'https://example.com/1',
   })
   expect(head?.made).toBe('questions')
+  expect(head?.outcome).toEqual({ kind: 'none', reason: 'asked questions' })
   expect(review).toMatchObject({ status: 'skipped', reason: 'acme-api-1 asked questions' })
   expect(lines).toContain('acme-api-1: questions posted on https://example.com/1')
   const text = formatReport(report)
   expect(text).toContain('- **api#1**: questions posted on https://example.com/1')
+  expect(text).toMatch(/\| done, 1 turn \| asked questions \|$/m)
   expect(text).toContain('## Questions\n\n### api#1: Fix the thing (acme-api-1)')
   expect(summarize(report, 'report.md')).toContain('     questions posted on https://example.com/1')
 })
@@ -4584,6 +4586,7 @@ it('asks on the item on_done would move, and links the comment when the source r
     asker('Which?'),
   )
   expect(named.writes.map(([key]) => key)).toEqual(['ENG-1'])
+  expect(named.report.results[0]?.outcome).toEqual({ kind: 'none', reason: 'asked questions' })
   const commented = async () => ({ url: 'https://example.com/2#issuecomment-9' })
   const unnamed = await finishedRun(
     '  - { skill: review, deliver: report }',

@@ -171,4 +171,22 @@ describe('linear writes', () => {
     expect(found?.comments[0]?.mine).toBe(true)
     expect(found?.mine).toBe(true)
   })
+
+  it('marks app users and integration bots as bots', async () => {
+    const at = '2026-01-01T10:00:00.000Z'
+    const comments = {
+      nodes: [
+        { body: 'Mine', createdAt: at, user: { name: 'Dev', isMe: true, app: false } },
+        { body: 'Agent', createdAt: at, user: { name: 'Cursor', isMe: false, app: true } },
+        { body: 'Synced', createdAt: at, user: null, botActor: { type: 'github' } },
+        { body: 'Gone', createdAt: at, user: null, botActor: null },
+      ],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    }
+    const http = linearFetch([
+      [/query Comments/, JSON.stringify({ data: { issue: { comments } } })],
+    ])
+    const [found] = await linearSource(http).items(cfg, ctx)
+    expect(found?.comments.map((c) => c.bot)).toEqual([undefined, true, true, undefined])
+  })
 })

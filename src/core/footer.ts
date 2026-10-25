@@ -56,9 +56,9 @@ export const isAwayworkComment = (c: Item['comments'][number]): boolean =>
 export const questionsComment = (questions: string): string =>
   `${questions.trim()}\n\nReply here to answer: awaywork's next run takes this up again with your reply.`
 
-/** Awaywork's questions are the item's newest comment: it waits for an answer, from you or anyone its source trusts. */
+/** Awaywork's questions are the item's newest comment but a bot's: it waits for an answer, from you or anyone its source trusts. */
 export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
-  const newest = item.comments.at(-1)
+  const newest = item.comments.filter((c) => !c.bot).at(-1)
   return !!newest && isAwayworkComment(newest)
 }
 

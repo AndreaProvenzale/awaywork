@@ -170,7 +170,7 @@ async function leftBy(
   return { files, ...(summary && { summary }) }
 }
 
-/** Under every tracker's comment limit: Jira's is 32,767 characters. */
+/** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
 const MAX_QUESTIONS_BYTES = 30_000
 
 /** A slice's outcome that published: a PR, a push, a report or a pending review left. */
@@ -276,8 +276,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
-      const top = p.unit.items[0] as Item
-      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
+      const top = ownItems(p)[0] ?? (p.unit.items[0] as Item)
+      const why = unwritable(top, input.sources[top.source]) ?? "isn't from the rule's source"
+      return { unposted: `${top.key} ${why}` }
     }
     const ref = `${item.source}:${item.key}`
     try {
@@ -517,6 +518,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 last && !first.capped && base === '',
                 failed && notReady(failed),
               )
+          if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
+            lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
           Object.assign(lead, { status: 'error', reason: (e as Error).message })
         } finally {

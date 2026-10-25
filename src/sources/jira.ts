@@ -30,6 +30,8 @@ const config = z
 type Config = z.infer<typeof config>
 
 const RETRIES = 3
+// Jira Cloud's comment limit, which counts the stored ADF rather than the text.
+const MAX_COMMENT = 32_767
 
 interface Adf {
   type: string
@@ -65,7 +67,7 @@ interface Issue {
   }
 }
 interface Comment {
-  author: { displayName: string; accountId?: string } | null
+  author: { displayName: string; accountId?: string; accountType?: string } | null
   updateAuthor?: { accountId?: string } | null
   body: Adf
   created: string
@@ -192,6 +194,9 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     /** Comments on the issue, or moves it through the transition whose target status is named `to`. */
     async write(cfg, item, write, ctx) {
       const token = tokenFrom(cfg, ctx)
+      const body = write.op === 'comment' ? textToAdf(write.body) : undefined
+      if (body && JSON.stringify(body).length > MAX_COMMENT)
+        throw new Error(`the comment is over Jira's ${MAX_COMMENT} characters as ADF`)
       const issue = `/rest/api/3/issue/${item.id}`
       const read = await call<{
         fields: { updated: string; assignee: { accountId?: string } | null }
@@ -205,8 +210,7 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       const me = (item.raw as Issue).fields.assignee?.accountId
       if (!me || read.fields.assignee?.accountId !== me)
         throw new Error(`${item.key} is no longer yours: not assigned to you`)
-      if (write.op === 'comment')
-        await call(cfg, token, `${issue}/comment`, { body: textToAdf(write.body) })
+      if (write.op === 'comment') await call(cfg, token, `${issue}/comment`, { body })
       else {
         const transitions = read.transitions ?? []
         const to = transitions.find((t) => t.to.name.toLowerCase() === write.to.toLowerCase())
@@ -316,6 +320,7 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
         ...(!!me &&
           c.author?.accountId === me &&
           (c.updateAuthor?.accountId ?? me) === me && { mine: true as const }),
+        ...(c.author?.accountType === 'app' && { bot: true as const }),
       }))
       .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],
