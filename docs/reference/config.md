@@ -302,7 +302,7 @@ First matching rule wins; top = highest priority.
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
 | `source` | string |  | Match only items from this source |
-| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only |
+| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
@@ -318,7 +318,7 @@ First matching rule wins; top = highest priority.
 
 ## `queue[].where`
 
-Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only.
+Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only.
 
 | Key | Type | Default | Description |
 |---|---|---|---|

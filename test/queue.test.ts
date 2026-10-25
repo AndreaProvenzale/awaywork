@@ -123,9 +123,29 @@ describe('finished items', () => {
     expect(matches(rule({ state: 'merged', closed: { newer_than: '14d' } }), merged(1, 10))).toBe(
       true,
     )
-    expect(matches(rule({ any: [{ state: 'closed' }, { repo: 'acme/api' }] }), merged(1, 1))).toBe(
+  })
+
+  it('match through an entry of any only when that entry, or the level around it, names state', () => {
+    const acme = { repo: 'acme/api' }
+    expect(matches(rule({ any: [{ state: 'open' }, acme] }), merged(1, 1))).toBe(false)
+    expect(matches(rule({ any: [{ state: 'open' }, acme] }), githubPr(2, { state: 'open' }))).toBe(
       true,
     )
+    expect(matches(rule({ any: [{ state: 'merged' }, acme] }), merged(1, 1))).toBe(true)
+    expect(matches(rule({ state: 'merged', any: [{ label: 'x' }, acme] }), merged(1, 1))).toBe(true)
+    const wide: Rule['where'] = {
+      any: [{ state: 'merged', closed: { newer_than: '30d' } }, { state: 'closed' }],
+    }
+    expect(matches(rule(wide), merged(1, 20))).toBe(true)
+    expect(matches(rule(wide), merged(1, 20, { state: 'closed' }))).toBe(false)
+  })
+
+  it('say why a finished item misses a rule that never names state', () => {
+    expect(failedIn({ type: 'pr' }, merged(1, 1))).toEqual(['state'])
+    expect(failedIn({ state: 'merged' }, merged(1, 10))).toEqual(['closed'])
+    expect(failedIn({ any: [{ state: 'open' }, { repo: 'acme/api' }] }, merged(1, 1))).toEqual([
+      'any',
+    ])
   })
 
   it('leave a merged awaywork PR to any rule, as it no longer waits for review', () => {
@@ -146,6 +166,12 @@ describe('finished items', () => {
     ],
     ['a bound above any', { closed: { newer_than: '30d' }, any: [{ state: 'merged' }] }, 30],
     ['any of open entries only', { any: [{ state: 'open' }, { state: ['open'] }] }, undefined],
+    [
+      'no entry of any that never names state',
+      { any: [{ state: 'open' }, { label: 'x' }] },
+      undefined,
+    ],
+    ['entries of any under a state', { state: 'merged', any: [{ label: 'x' }] }, 7],
   ] as const)('read back %s', (_, where, days) => {
     expect(lookback(where as Rule['where'])).toBe(days && days * day)
   })

@@ -30,7 +30,7 @@ describe('linear source', () => {
     expect(JSON.parse(second?.body ?? '{}').variables).toEqual({ filter: open, after: 'cursor-1' })
   })
 
-  it('also reads issues completed or canceled since the time asked, as closed', async () => {
+  it('also reads issues completed or canceled since the time asked, archived too, as closed', async () => {
     const done = JSON.parse(linearFixture('issues-2.json'))
     Object.assign(done.data.viewer.assignedIssues.nodes[0], {
       state: { name: 'Done', type: 'completed' },
@@ -41,12 +41,15 @@ describe('linear source', () => {
     const [, web7] = await linearSource(http).items(cfg, ctx, since)
     const [first] = http.calls.filter((c) => c.body.includes('query Issues'))
     const after = { gte: since.toISOString() }
-    expect(JSON.parse(first?.body ?? '{}').variables.filter).toEqual({
-      or: [
-        { state: { type: { nin: ['completed', 'canceled'] } } },
-        { completedAt: after },
-        { canceledAt: after },
-      ],
+    expect(JSON.parse(first?.body ?? '{}').variables).toMatchObject({
+      archived: true,
+      filter: {
+        or: [
+          { state: { type: { nin: ['completed', 'canceled'] } }, archivedAt: { null: true } },
+          { completedAt: after },
+          { canceledAt: after },
+        ],
+      },
     })
     expect(web7?.fields).toMatchObject({
       status: 'Done',

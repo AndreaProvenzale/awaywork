@@ -46,7 +46,7 @@ export const commandConfig = z
           .refine((name) => name !== 'any', '`any` is reserved in where')
           .refine(
             (name) => name !== 'state' && name !== 'closed',
-            "every item has it: print it at the item's top level",
+            "state and closed are awaywork's own on every item: rename your tracker's field, or print state (open or closed) and closed (a datetime) at the item's top level",
           ),
       )
       .default([])
@@ -77,8 +77,9 @@ const entry = z.object({
   url: z.string(),
   description: z.string().default(''),
   status: z.string().default('open'),
-  state: z.enum(['open', 'closed']).default('open'),
-  closed: z.iso.datetime({ offset: true }).optional(),
+  // Commands printed these before awaywork read them, e.g. GitLab's `"state": "opened"`: unreadable ones are ignored.
+  state: z.unknown().optional(),
+  closed: z.unknown().optional(),
   assignee: z.string().optional(),
   reviewers: z.array(z.string()).default([]),
   labels: z.array(z.string()).default([]),
@@ -131,6 +132,11 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
           `items${issue?.path.map((p) => `[${String(p)}]`).join('')}: ${issue?.message}`,
         )
       }
+      const odd = parsed.data.find((e) => unreadable(e))
+      if (odd)
+        ctx.log(
+          `${id}: ignoring ${odd.key}'s ${unreadable(odd)}, and any like it: a top-level state is open or closed, and closed a datetime`,
+        )
       return parsed.data.map((e) => toItem(id, e, fields))
     },
 
@@ -152,10 +158,23 @@ function toItem(source: string, e: Entry, fields: Record<string, z.ZodType>): It
   return {
     ...rest,
     source,
-    fields: { ...itemFields, state, ...(closed && { closed }) },
+    fields: {
+      ...itemFields,
+      state: state === 'closed' ? 'closed' : 'open',
+      ...(isTime(closed) && { closed }),
+    },
     linkedPrs: [],
     raw: e,
   }
+}
+
+const isTime = (v: unknown): v is string => z.iso.datetime({ offset: true }).safeParse(v).success
+
+/** The top-level `state` or `closed` awaywork can't read, as it would print it. */
+function unreadable(e: Entry): string | undefined {
+  if (e.state !== undefined && e.state !== 'open' && e.state !== 'closed')
+    return `state ${JSON.stringify(e.state)}`
+  if (e.closed !== undefined && !isTime(e.closed)) return `closed ${JSON.stringify(e.closed)}`
 }
 
 function itemMarkdown(item: Item): string {

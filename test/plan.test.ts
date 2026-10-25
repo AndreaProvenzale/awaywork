@@ -1302,13 +1302,21 @@ queue: [{ skill: fix, where: { type: pr, state: merged }, deliver: ${deliver} }]
       [['acme-api-8', '', 'away/acme-api-8', 'report']],
     )
     expect(plan(yaml('draft_pr'), [merged], {}).units[0]?.unit.base).toBe('')
-    for (const deliver of ['push', 'pending_review']) {
-      const refused = plan(yaml(deliver), [merged], {})
-      expect(refused.units).toEqual([])
-      expect(refused.skipped.map((s) => [s.kind, s.reason])).toEqual([
-        ['refused_delivery', `deliver ${deliver}: acme/api#8 is merged`],
-      ])
-    }
+    for (const deliver of ['push', 'pending_review'])
+      expect(() => parseConfig(yaml(deliver))).toThrow(
+        `queue[0].deliver: ${deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
+      )
+    const mixed = yaml('push').replace('state: merged', 'state: [open, merged]')
+    expect(plan(mixed, [merged], {}).skipped.map((s) => [s.kind, s.reason])).toEqual([
+      ['refused_delivery', 'deliver push: no PR of yours to push onto'],
+    ])
+  })
+
+  it('says a finished item misses a rule that never names state', () => {
+    const open = yaml('report').replace('state: merged', 'mine: true')
+    expect(plan(open, [merged], {}).skipped.map((s) => s.reason)).toEqual([
+      'matched no rule; closest #1 fix: state is merged, wants open',
+    ])
   })
 
   it('runs once per finished item, and again on a PR that merged since', () => {

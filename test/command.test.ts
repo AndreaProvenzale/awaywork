@@ -87,6 +87,26 @@ describe('command source', () => {
     ])
   })
 
+  it('ignores a state or closed it cannot read, as commands printed them before, saying so once', async () => {
+    const items = [
+      { id: '1', key: 'GL-1', title: 'Open', url: 'https://t.example/1', state: 'opened' },
+      { id: '2', key: 'GL-2', title: 'Done', url: 'https://t.example/2', closed: true },
+    ]
+    const lines: string[] = []
+    const tracker = commandSource('tracker', cfg())
+    const found = await tracker.items(cfg({ command: `echo '${JSON.stringify(items)}'` }), {
+      env: process.env,
+      log: (line) => lines.push(line),
+    })
+    expect(found.map((i) => [i.key, i.fields])).toEqual([
+      ['GL-1', { state: 'open' }],
+      ['GL-2', { state: 'open' }],
+    ])
+    expect(lines).toEqual([
+      `tracker: ignoring GL-1's state "opened", and any like it: a top-level state is open or closed, and closed a datetime`,
+    ])
+  })
+
   it('keeps state and closed out of its declared fields', () => {
     expect(commandConfig.safeParse({ command: 'x', fields: ['state'] }).success).toBe(false)
     expect(commandConfig.safeParse({ command: 'x', fields: ['closed'] }).success).toBe(false)

@@ -94,6 +94,21 @@ describe('config', () => {
     expect(problems(linear)).toEqual([
       `queue[0].where.state: invalid value "QA": state is open, merged or closed; Linear's workflow state is status`,
     ])
+    expect(problems(`${minimal}queue: [{ skill: fix, where: { state: QA } }]`)).toEqual([
+      'queue[0].where.state: invalid value "QA": state is open, merged or closed',
+    ])
+  })
+
+  it('wants newer_than wherever closed has older_than, to bound how far back to read', () => {
+    const rule = (where: string) =>
+      problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)
+    expect(rule('{ state: merged, closed: { older_than: 30d } }')).toEqual([
+      'queue[0].where.closed: closed needs newer_than to bound how far back to read; without it, awaywork reads 7d back',
+    ])
+    expect(rule('{ state: merged, closed: { older_than: 3d, newer_than: 30d } }')).toEqual([])
+    expect(
+      rule('{ closed: { newer_than: 30d }, any: [{ state: merged, closed: { older_than: 3d } }] }'),
+    ).toEqual([])
   })
 
   it('rejects a where key no source declares', () => {

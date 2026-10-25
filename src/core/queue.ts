@@ -82,14 +82,9 @@ export function matches(rule: Rule, item: Item): boolean {
   return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
-/** An awaywork PR waits for review unless a rule names `ours`; a finished item needs a rule that reads it back that far. */
+/** An awaywork PR waits for review unless a rule names `ours`. */
 function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
-  if (itemState(item) !== 'open') {
-    const back = lookback(rule.where)
-    // One without a `closed` time can't be too old.
-    return back !== undefined && !(Date.now() - timestamp(item.fields.closed) > back)
-  }
   return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
@@ -110,42 +105,75 @@ export function itemState(item: Item): ItemState {
 /** How far back a rule reads finished items when its `where` doesn't bound `closed`. */
 export const DEFAULT_LOOKBACK = '7d'
 
+/** What a finished item is held to where no level of a `where` says: open items only, read back {@link DEFAULT_LOOKBACK}. */
+export const implicitWhere: Where = { state: 'open', closed: { newer_than: DEFAULT_LOOKBACK } }
+
+/** Whether a level of a `where`, or one around it, names `state`, and the tightest `closed: { newer_than }` among them. */
+export type Scope = { named: boolean; bound: number }
+
+export const TOP: Scope = { named: false, bound: Number.POSITIVE_INFINITY }
+
+export function within(where: Where, outer: Scope): Scope {
+  const newer = newerThan(where.closed as WhereValue | undefined)
+  return {
+    named: outer.named || 'state' in where,
+    bound: Math.min(outer.bound, newer ? spanMs(newer) : Number.POSITIVE_INFINITY),
+  }
+}
+
+export function newerThan(value: WhereValue | undefined): string | undefined {
+  return typeof value === 'object' && !Array.isArray(value) && isAge(value)
+    ? value.newer_than
+    : undefined
+}
+
 /**
  * How far back, in milliseconds, a `where` reads finished (merged or closed) items: the widest
- * `closed: { newer_than }` among the ways it can match one, {@link DEFAULT_LOOKBACK} where one
- * sets none. Undefined when it matches open items only, as one that never names `state` does.
+ * `closed: { newer_than }` among the ways through its `any` that can match one, {@link DEFAULT_LOOKBACK}
+ * where one sets none. Undefined when it matches open items only: a way through that never names
+ * `state` does.
  */
-export function lookback(where: Where): number | undefined {
-  return namesState(where) ? reach(where, Number.POSITIVE_INFINITY) : undefined
-}
-
-function namesState(where: Where): boolean {
-  return Object.entries(where).some(
-    ([key, value]) => key === 'state' || (key === 'any' && (value as Where[]).some(namesState)),
-  )
-}
-
-function reach(where: Where, bound: number): number | undefined {
+export function lookback(where: Where, outer = TOP): number | undefined {
   const state = where.state as WhereValue | undefined
   if (state !== undefined && !['merged', 'closed'].some((s) => matchesValue(state, s)))
     return undefined
-  const closed = where.closed
-  const newer =
-    typeof closed === 'object' && !Array.isArray(closed) && isAge(closed) && closed.newer_than
-  const own = Math.min(bound, newer ? spanMs(newer) : Number.POSITIVE_INFINITY)
+  const scope = within(where, outer)
   const any = where.any as Where[] | undefined
-  if (!any) return Number.isFinite(own) ? own : spanMs(DEFAULT_LOOKBACK)
-  const reached = any.flatMap((w) => reach(w, own) ?? [])
-  return reached.length > 0 ? Math.max(...reached) : undefined
+  if (any) {
+    const reached = any.flatMap((w) => lookback(w, scope) ?? [])
+    return reached.length > 0 ? Math.max(...reached) : undefined
+  }
+  if (!scope.named) return undefined
+  return Number.isFinite(scope.bound) ? scope.bound : spanMs(DEFAULT_LOOKBACK)
 }
 
-/** The keys of `where` the item fails; `any` fails when every entry fails. */
-export function failedIn(where: Where, item: Item): string[] {
-  return Object.keys(where).filter((key) =>
+/** Whether some way through `where` can match an open item, which has no `closed`. */
+export function matchesOpen(where: Where): boolean {
+  if (where.state !== undefined && !matchesValue(where.state as WhereValue, 'open')) return false
+  if (where.closed !== undefined && !matchesValue(where.closed as WhereValue, undefined))
+    return false
+  return !where.any || (where.any as Where[]).some(matchesOpen)
+}
+
+/**
+ * The keys of `where` the item fails; `any` fails when every entry fails. A finished item also
+ * fails `state` on a way through that never names it, and `closed` past {@link DEFAULT_LOOKBACK}
+ * on one that never bounds it.
+ */
+export function failedIn(where: Where, item: Item, outer = TOP): string[] {
+  const scope = within(where, outer)
+  const failed = Object.keys(where).filter((key) =>
     key === 'any'
-      ? !(where[key] as Where[]).some((w) => failedIn(w, item).length === 0)
+      ? !(where[key] as Where[]).some((w) => failedIn(w, item, scope).length === 0)
       : !matchesValue(where[key] as WhereValue, fieldValue(item, key)),
   )
+  if ('any' in where || itemState(item) === 'open') return failed
+  if (!scope.named) return [...failed, 'state']
+  // One without a `closed` time can't be too old.
+  const tooOld = Date.now() - timestamp(item.fields.closed) > spanMs(DEFAULT_LOOKBACK)
+  return Number.isFinite(scope.bound) || !tooOld || failed.includes('closed')
+    ? failed
+    : [...failed, 'closed']
 }
 
 export function fieldValue(item: Item, key: string): unknown {

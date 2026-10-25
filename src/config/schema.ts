@@ -1,7 +1,18 @@
 import { z } from 'zod'
 import { defaultBranch, templateProblem } from '../core/branch.js'
 import { headerSecret } from '../core/mcp.js'
-import { bounds, isAge, isLoop, isMatch, ruleSteps, spanPattern } from '../core/queue.js'
+import {
+  bounds,
+  DEFAULT_LOOKBACK,
+  isAge,
+  isLoop,
+  isMatch,
+  lookback,
+  matchesOpen,
+  newerThan,
+  ruleSteps,
+  spanPattern,
+} from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
@@ -324,7 +335,7 @@ const rule: z.ZodType<Rule, unknown> = z
     where: where
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only',
       ),
     ...stepSettings,
     deliver: z
@@ -730,8 +741,19 @@ export const configSchema = z
           })
       })
       const scope = r.source ? [r.source] : sourceIds
-      checkWhere(r.where, [...at, 'where'])
-      function checkWhere(where: Where, path: (string | number)[]) {
+      if (
+        (r.deliver === 'push' || r.deliver === 'pending_review') &&
+        lookback(r.where) !== undefined &&
+        !matchesOpen(r.where)
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message: `${r.deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
+        })
+      checkWhere(r.where, [...at, 'where'], false)
+      function checkWhere(where: Where, path: (string | number)[], outerBounded: boolean) {
+        const bounded = outerBounded || newerThan(where.closed as WhereValue) !== undefined
         for (const [key, value] of Object.entries(where)) {
           if (key === 'any') {
             for (const [i, w] of (value as Where[]).entries())
@@ -741,7 +763,7 @@ export const configSchema = z
                   path: [...path, key, i],
                   message: 'an empty entry matches everything',
                 })
-              else checkWhere(w, [...path, key, i])
+              else checkWhere(w, [...path, key, i], bounded)
             continue
           }
           if (key === 'ours' && path.includes('any')) {
@@ -778,14 +800,21 @@ export const configSchema = z
                 path: [...path, key],
                 message: 'older_than and newer_than need a date field',
               })
+            else if (key === 'closed' && 'older_than' in v && !bounded)
+              ctx.addIssue({
+                code: 'custom',
+                path: [...path, key],
+                message: `closed needs newer_than to bound how far back to read; without it, awaywork reads ${DEFAULT_LOOKBACK} back`,
+              })
             continue
           }
+          const hint = scope.includes('linear') ? "; Linear's workflow state is status" : ''
           for (const scalar of whereValues(v))
             if (!field.safeParse(scalar).success)
               ctx.addIssue({
                 code: 'custom',
                 path: [...path, key],
-                message: `invalid value ${JSON.stringify(scalar)}${key === 'state' ? ": state is open, merged or closed; Linear's workflow state is status" : ''}`,
+                message: `invalid value ${JSON.stringify(scalar)}${key === 'state' ? `: state is open, merged or closed${hint}` : ''}`,
               })
         }
       }

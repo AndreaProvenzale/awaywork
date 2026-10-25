@@ -81,7 +81,7 @@ const items = cards
 console.log(JSON.stringify(items))
 ```
 
-`state` and `closed` are every item's own keys, so `fields` in the config can't list them.
+`state` and `closed` are every item's own keys, so `fields` in the config can't list them: if your tracker has a field called `state`, print it under another name. A top-level `state` other than `open` or `closed`, or a `closed` that isn't an ISO time, is ignored, with one warning naming the first such item, so a command that printed GitLab's `"state": "opened"` before keeps working.
 
 ## House rules
 
