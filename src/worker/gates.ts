@@ -43,7 +43,7 @@ export async function runGates(
         lines.push(`\`${swapped}\` changed, not run`)
         continue
       }
-      const ran = await check(command, unit, dir, () => {}, { from, gate: true })
+      const ran = await check(command, unit, dir, () => {}, { from, start })
       if (!ran.failed) continue
       const unchecked = ran.timedOut || ran.stopped || ran.refused
       lines.push(unchecked ? `\`${command}\` not checked: ${ran.failed}` : ran.stdout || ran.failed)

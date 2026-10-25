@@ -36,8 +36,8 @@ export interface CheckOptions {
   from?: string
   /** It decides what is published (`until`): files left uncommitted fail it. */
   published?: boolean
-  /** A gate's: runs even when this commit's result is known, keeps nothing, and its git reads attributes from the chain's start on a fresh global config. */
-  gate?: boolean
+  /** A gate's chain start: the check runs even when this commit's result is known, keeps nothing, and its git reads attributes from `start` on a fresh global config. */
+  start?: string
 }
 
 export interface ChecksInput {
@@ -54,13 +54,8 @@ export function createChecks(input: ChecksInput) {
   const baselines = new Map<string, Set<string>>()
   // Each clone's git config as cloned, put back after anything ran the worker's code in it.
   const gitConfigs = new Map<string, string>()
-  // Each clone's chain start, whose tree the gates' git reads attributes from.
-  const starts = new Map<string, string>()
   const restoreGit = (dir: string) => restoreGitConfig(dir, gitConfigs.get(dir) ?? '')
-  const rememberClone = (dir: string, config: string, start: string) => {
-    gitConfigs.set(dir, config)
-    starts.set(dir, start)
-  }
+  const rememberGitConfig = (dir: string, config: string) => gitConfigs.set(dir, config)
   const baseline = async (dir: string) => {
     baselines.set(dir, new Set(await uncommitted(dir)))
   }
@@ -74,7 +69,7 @@ export function createChecks(input: ChecksInput) {
     unit: Unit,
     dir: string,
     log: (line: string) => void,
-    { from, published, gate }: CheckOptions = {},
+    { from, published, start }: CheckOptions = {},
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     await restoreGit(dir)
@@ -84,10 +79,10 @@ export function createChecks(input: ChecksInput) {
     if (left.length && published)
       return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
     const key = `${dir} ${await head(dir)} ${from} ${command}`
-    const known = left.length || gate ? undefined : checks.get(key)
+    const known = left.length || start ? undefined : checks.get(key)
     if (known) return known
-    const env = gate
-      ? await gateEnv(input.env, dir, input.secrets, from, starts.get(dir))
+    const env = start
+      ? await gateEnv(input.env, dir, input.secrets, from, start)
       : checkEnv(input.env, dir, input.secrets, from)
     const result = await runCommand(command, dir, env, {
       secrets: [],
@@ -99,7 +94,7 @@ export function createChecks(input: ChecksInput) {
     // Only what the check itself left joins the baseline, never what a worker left before it.
     for (const line of await uncommitted(dir)) if (!before.includes(line)) alreadyDirty.add(line)
     baselines.set(dir, alreadyDirty)
-    if (!result.stopped && !left.length && !gate) checks.set(key, result)
+    if (!result.stopped && !left.length && !start) checks.set(key, result)
     return result
   }
 
@@ -129,7 +124,7 @@ export function createChecks(input: ChecksInput) {
     return { facts, check: ran }
   }
 
-  return { check, factsFor, restoreGit, rememberClone, baseline }
+  return { check, factsFor, restoreGit, rememberGitConfig, baseline }
 }
 
 export const git = async (dir: string, ...args: string[]) =>
