@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
@@ -178,9 +178,10 @@ describe('awaywork watch', () => {
     expect(log).not.toContain('window run')
   })
 
-  it('idles with no windows, and waits on a manual run holding the run lock, saying so once', async () => {
-    const before = existsSync(runsDir) ? await readdir(runsDir) : []
+  it('idles with no windows, and waits on a manual run holding the run lock, saying so once, pruning nothing', async () => {
     await watchUntil(await config('[]'), 'awaywork watch started')
+    await mkdir(join(runsDir, '20200101-000000'), { recursive: true })
+    const before = await readdir(runsDir)
     await writeFile(runLockPath, `${process.pid} 20261025-010000`)
     const log = await watchUntil(await config(), 'holds the run lock')
     expect(log).toContain(
@@ -188,7 +189,9 @@ describe('awaywork watch', () => {
         `${process.pid}) holds the run lock; trying again each minute`,
     )
     expect(log).not.toContain('window run')
-    expect(existsSync(runsDir) ? await readdir(runsDir) : []).toEqual(before)
+    expect(log).not.toContain('older than')
+    expect(await readdir(runsDir)).toEqual(before)
+    await rm(join(runsDir, '20200101-000000'), { recursive: true })
   })
 
   it('starts a present soon run for a due unit, notifying nothing for one that sat out, and backs off a failing source', async () => {
