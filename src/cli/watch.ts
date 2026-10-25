@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import type { Command } from 'commander'
@@ -28,7 +28,8 @@ export function watchCommand(program: Command): void {
     )
     .action(() => {
       const stop = new AbortController()
-      for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => stop.abort())
+      // `on`, not `once`: execa's signal-exit re-raises a signal it sees no other listener for.
+      for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => stop.abort())
       return watch(configPath(program.opts().config), stop.signal)
     })
 }
@@ -66,7 +67,11 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     return
   }
   const state: WatchState = { pid: process.pid, since: new Date().toISOString(), config: path }
-  const save = () => writeFile(watchStatePath, JSON.stringify(state))
+  // Renamed into place, so `schedule status` never reads it half-written.
+  const save = async () => {
+    await writeFile(`${watchStatePath}.tmp`, JSON.stringify(state))
+    await rename(`${watchStatePath}.tmp`, watchStatePath)
+  }
   const daemonLog: RunLog = { info: (line) => event(line), error: (line) => event(line) }
   let failed: string | undefined
   let lastEnd: Date | undefined
@@ -157,11 +162,27 @@ async function windowRunIn(r: {
   }
 }
 
+/** SIGTERMs the running daemon, whatever started it, and waits up to `waitMs` for it to exit; its pid when it hasn't. */
+export async function stopWatch(waitMs = 2 * MINUTE): Promise<number | undefined> {
+  const pid = await lockHolder(watchLockPath)
+  if (pid === undefined) return undefined
+  console.log(`Stopping awaywork watch (pid ${pid})`)
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ESRCH') return undefined
+    throw e
+  }
+  for (const end = Date.now() + waitMs; Date.now() < end; await setTimeout(200))
+    if ((await lockHolder(watchLockPath)) !== pid) return undefined
+  return pid
+}
+
 /** `schedule status`'s lines on the daemon, the next window read from `config` when it isn't running. */
 export async function watchStatus(config: string, now = new Date()): Promise<string[]> {
-  const state: WatchState | undefined = JSON.parse(
-    await readFile(watchStatePath, 'utf8').catch(() => 'null'),
-  )
+  const state: WatchState | undefined = await readFile(watchStatePath, 'utf8')
+    .then(JSON.parse)
+    .catch(() => undefined)
   const pid = await lockHolder(watchLockPath)
   const up = pid !== undefined && state?.pid === pid
   const lines = [

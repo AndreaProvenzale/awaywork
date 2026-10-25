@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
 import { type Schedule, type Scheduler, SchedulerError, type Start } from './index.js'
 
-/** A user service started at login and restarted whenever it exits. */
+/** A user service started at login and restarted when it crashes. */
 export function systemd(home: string, run: Exec): Scheduler {
   const dir = join(home, '.config', 'systemd', 'user')
   const file = join(dir, 'awaywork.service')
@@ -87,8 +87,10 @@ Description=awaywork watch
 [Service]
 Environment=${quote(`PATH=${s.path}`)}
 ExecStart=${s.command.map(quote).join(' ')}
-Restart=always
+Restart=on-failure
 RestartSec=10
+KillMode=mixed
+TimeoutStopSec=120
 StandardOutput=append:${s.log}
 StandardError=append:${s.log}
 

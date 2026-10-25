@@ -125,6 +125,7 @@ export function runCommand(program: Command): void {
           },
         })
         if (!ran) process.exitCode = 1
+        else if (interactive()) console.log(styleText('dim', 'awaywork report browses this run'))
       } catch (e) {
         reportConfigError(e)
       } finally {
@@ -266,7 +267,6 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
   await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
   await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
   log.info(summarize(report, reportPath), true)
-  if (interactive()) log.info(styleText('dim', 'awaywork report browses this run'))
   if (config.notify) {
     const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
     if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)

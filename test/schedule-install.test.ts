@@ -10,7 +10,8 @@ import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-const { installed, removed, woke, commands } = vi.hoisted(() => ({
+const { installed, removed, woke, commands, stops } = vi.hoisted(() => ({
+  stops: [] as number[],
   installed: [] as string[],
   removed: [] as string[],
   woke: [] as string[],
@@ -21,6 +22,15 @@ let failCron = false
 let failWake = false
 let wakeReason: string | undefined
 let wakeDefault = true
+let stuck: number | undefined
+
+vi.mock('../src/cli/watch.js', async (original) => ({
+  ...(await original<typeof import('../src/cli/watch.js')>()),
+  stopWatch: async () => {
+    stops.push(installed.length)
+    return stuck
+  },
+}))
 
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
@@ -63,6 +73,8 @@ beforeEach(() => {
   removed.length = 0
   woke.length = 0
   commands.length = 0
+  stops.length = 0
+  stuck = undefined
   failCron = false
   failWake = false
   wakeReason = undefined
@@ -131,6 +143,20 @@ it('installs a job keeping awaywork watch running, and offers no wake without wi
   await installSchedule(config, 'cron', io([], true))
   expect(out).toContain('Scheduled awaywork watch with cron, no windows yet: /fake/cron')
   expect(woke).toEqual(['wake'])
+})
+
+it('stops a running daemon before installing, and installs nothing while it keeps running', async () => {
+  const { config, io } = await setup()
+  await installSchedule(config, 'cron', io([], false))
+  expect(stops).toEqual([0])
+  expect(installed).toEqual(['cron'])
+  stuck = 4242
+  await installSchedule(config, 'cron', io([], false))
+  expect(installed).toEqual(['cron'])
+  expect(out.at(-1)).toBe(
+    "awaywork watch (pid 4242) hasn't exited after 2 minutes; run `awaywork schedule install` again once it has",
+  )
+  expect(process.exitCode).toBe(1)
 })
 
 it('says why it cannot wake without asking', async () => {

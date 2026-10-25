@@ -338,6 +338,7 @@ export async function isolateFor(
   isolation: Config['isolation'],
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
+  boxed = false
   isolate(await workerFor(isolation, env))
   if (isolation !== 'container' || worker) return
   await dockerVersion().catch((e: Error) => {

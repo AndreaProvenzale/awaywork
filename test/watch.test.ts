@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { printStatus } from '../src/cli/schedule.js'
-import { appendLog, watch } from '../src/cli/watch.js'
+import { appendLog, stopWatch, watch } from '../src/cli/watch.js'
 import {
   runLockPath,
   runsDir,
@@ -133,6 +133,34 @@ describe('awaywork watch', () => {
   })
 })
 
+describe('stopping the daemon', () => {
+  it('SIGTERMs the lock holder and waits for it to exit', async () => {
+    const daemon = execa('sleep', ['30'], { reject: false })
+    await writeFile(watchLockPath, `${daemon.pid} watch`)
+    expect(await stopWatch()).toBeUndefined()
+    expect((await daemon).signal).toBe('SIGTERM')
+    expect(out).toEqual([`Stopping awaywork watch (pid ${daemon.pid})`])
+    expect(await stopWatch()).toBeUndefined()
+    expect(out).toHaveLength(1)
+  })
+
+  it("gives up after the wait on one that doesn't exit, and says its pid", async () => {
+    const daemon = execa(
+      'node',
+      ['-e', "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000)"],
+      { reject: false },
+    )
+    await new Promise((ready) => daemon.stdout?.once('data', ready))
+    await writeFile(watchLockPath, `${daemon.pid} watch`)
+    try {
+      expect(await stopWatch(300)).toBe(daemon.pid)
+    } finally {
+      daemon.kill('SIGKILL')
+      await daemon
+    }
+  })
+})
+
 it('rotates a log past its size, keeping one previous generation', async () => {
   const file = join(await mkdtemp(join(tmpdir(), 'awaywork-log-')), 'watch.log')
   appendLog(file, 'one', 5)
@@ -180,6 +208,11 @@ describe('schedule status', () => {
     const local = (iso: string) => new Date(iso).toLocaleString('sv-SE')
     expect(out).toContain(`Daemon: running, pid ${process.pid}, since ${local(since)}`)
     expect(out).toContain(`Run in progress: window run 20261025-230000, until ${local(run.until)}`)
+
+    out = []
+    await writeFile(watchStatePath, '')
+    await printStatus(undefined, current)
+    expect(out).toContain('Daemon: not running')
   })
 
   it('tells an older per-window job to reinstall, without daemon lines', async () => {

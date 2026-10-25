@@ -8,7 +8,7 @@ import type { Schedule, Scheduler } from './index.js'
 
 const LABEL = 'awaywork'
 
-/** A user LaunchAgent, started at login and restarted whenever it exits. */
+/** A user LaunchAgent, started at login and restarted when it crashes. */
 export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs = 300): Scheduler {
   const file = join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`)
   const bootout = () => run('launchctl', ['bootout', `gui/${uid}/${LABEL}`]).catch(() => '')
@@ -71,7 +71,8 @@ ${s.command.map((arg) => `    ${str(arg)}`).join('\n')}
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key>${str(s.path)}</dict>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ExitTimeOut</key><integer>120</integer>
   <key>StandardOutPath</key>${str(s.log)}
   <key>StandardErrorPath</key>${str(s.log)}
 </dict>

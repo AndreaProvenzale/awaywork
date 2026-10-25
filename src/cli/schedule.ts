@@ -44,7 +44,7 @@ import { sourceFor } from '../sources/index.js'
 import { contextSecrets } from '../worker/context.js'
 import { Cancelled, printBrand, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
-import { watchStatus } from './watch.js'
+import { stopWatch, watchStatus } from './watch.js'
 
 const GITHUB_ACTIONS = 'github-actions'
 const GH_TOKEN_HELP =
@@ -74,6 +74,11 @@ export function scheduleCommand(program: Command): void {
     .command('remove')
     .description(`remove the scheduled job, and ${WORKFLOW} in the current repo`)
     .action(async () => {
+      const stuck = await stopWatch()
+      if (stuck)
+        console.log(
+          `awaywork watch (pid ${stuck}) hasn't exited after 2 minutes; it does once its run publishes`,
+        )
       const removed = []
       for (const scheduler of Object.values(localSchedulers()))
         if (await scheduler.remove()) removed.push(scheduler.id)
@@ -195,6 +200,14 @@ export async function installSchedule(
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
+    const stuck = await stopWatch()
+    if (stuck) {
+      console.error(
+        `awaywork watch (pid ${stuck}) hasn't exited after 2 minutes; run \`awaywork schedule install\` again once it has`,
+      )
+      process.exitCode = 1
+      return
+    }
     const where = await scheduler.install({
       command: [process.execPath, bin, 'watch', '--config', path],
       path: process.env.PATH ?? '',

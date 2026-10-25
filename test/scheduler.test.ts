@@ -55,7 +55,7 @@ function recorder(crontab = '') {
   return { run, calls, crontab: () => crontab }
 }
 
-it('writes a LaunchAgent kept running from login that logs to the state dir', async () => {
+it('writes a LaunchAgent started at login, restarted on a crash, that logs to the state dir', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   const scheduler = launchd(home, run, 501)
@@ -63,7 +63,10 @@ it('writes a LaunchAgent kept running from login that logs to the state dir', as
   expect(file).toBe(join(home, 'Library/LaunchAgents/awaywork.plist'))
   const text = await readFile(file, 'utf8')
   expect(text).toBe(plist(schedule))
-  expect(text).toContain('<key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>')
+  expect(text).toContain(
+    '<key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>',
+  )
+  expect(text).toContain('<key>ExitTimeOut</key><integer>120</integer>')
   expect(text).not.toContain('StartCalendarInterval')
   expect(text).toContain('<string>/opt/away work/index.js</string>')
   expect(calls).toEqual([
@@ -97,13 +100,14 @@ it('retries bootstrap while launchd still holds the old job', async () => {
   ])
 })
 
-it('writes a systemd user service restarted always and enabled at login', async () => {
+it('writes a systemd user service restarted on a crash and enabled at login', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   await systemd(home, run).install(schedule)
   expect(service(schedule)).toContain(
-    `ExecStart="/opt/node" "/opt/away work/index.js" "watch" "--config" "/h/it's.yml"\nRestart=always`,
+    `ExecStart="/opt/node" "/opt/away work/index.js" "watch" "--config" "/h/it's.yml"\nRestart=on-failure`,
   )
+  expect(service(schedule)).toContain('KillMode=mixed\nTimeoutStopSec=120')
   expect(service(schedule)).toContain('[Install]\nWantedBy=default.target')
   expect(calls).toEqual([
     'systemctl --user daemon-reload',
@@ -213,7 +217,7 @@ it("adds tagged crontab lines at boot and every 5 minutes, keeps the user's own 
   const scheduler = cron(cronTab.run)
   await scheduler.install(schedule)
   await scheduler.install(schedule)
-  const command = `PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'watch' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 & # awaywork`
+  const command = `PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'watch' '--config' '/h/it'\\''s.yml' > /dev/null 2>> '/h/state/schedule.log' & # awaywork`
   expect(cronLines(schedule)).toEqual([`@reboot ${command}`, `*/5 * * * * ${command}`])
   expect(cronTab.crontab()).toBe(
     `MAILTO=me\n\n0 9 * * * backup\n${cronLines(schedule).join('\n')}\n`,

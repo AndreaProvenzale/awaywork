@@ -26,11 +26,12 @@ export async function keepAwake(run: Exec, platform = process.platform): Promise
   )
 }
 
-/** Holds the machine awake until the returned function is called; on macOS, at most until this process exits. */
+/** Holds the machine awake until the returned function is called, at most until this process exits. */
 export async function holdAwake(run: Exec, platform = process.platform): Promise<() => void> {
   const [command, ...args] = await keepAwake(run, platform)
   if (!command) return () => {}
-  const until = platform === 'darwin' ? ['-w', String(process.pid)] : ['sleep', 'infinity']
+  const pid = String(process.pid)
+  const until = platform === 'darwin' ? ['-w', pid] : ['tail', `--pid=${pid}`, '-f', '/dev/null']
   const child = spawn(command, [...args, ...until], { stdio: 'ignore' })
   child.on('error', () => {})
   return () => void child.kill()

@@ -42,7 +42,7 @@ export function cron(run: Exec): Scheduler {
 
 export function cronLines(s: Schedule): string[] {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
-  const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} >> ${q(s.log)} 2>&1 &`
+  const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} > /dev/null 2>> ${q(s.log)} &`
   return ['@reboot', '*/5 * * * *'].map((when) => `${when} ${command} ${TAG}`)
 }
 

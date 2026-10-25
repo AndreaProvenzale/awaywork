@@ -32,8 +32,8 @@ The job is one long-running process, `awaywork watch`, that the scheduler keeps 
 
 | Scheduler | Writes | Keeps it alive |
 | --- | --- | --- |
-| launchd | `~/Library/LaunchAgents/awaywork.plist` | Started at login, restarted when it exits (`KeepAlive`) |
-| systemd | `~/.config/systemd/user/awaywork.service` | Enabled at login, `Restart=always` |
+| launchd | `~/Library/LaunchAgents/awaywork.plist` | Started at login, restarted after a crash (`KeepAlive`, `SuccessfulExit: false`) |
+| systemd | `~/.config/systemd/user/awaywork.service` | Enabled at login, `Restart=on-failure` |
 | cron | two tagged lines in your crontab | Started at boot (`@reboot`) and again every 5 minutes |
 
 `schedule status` shows what it's up to:
@@ -43,36 +43,37 @@ $ awaywork schedule status
 Scheduled with launchd, keeping awaywork watch running
 Config: ~/.config/awaywork/config.yml
 Log: ~/.local/state/awaywork/schedule.log
-Daemon: running, pid 4242, since 2026-10-25 09:12:03
-Run in progress: window run 20261025-230000, until 2026-10-26 07:00:00
-Next window: 2026-10-27 01:00:00
+Daemon: running, pid 37770, since 2026-10-25 15:50:06
+Run in progress: window run 20261025-145300, until 2026-10-25 15:58:00
+Next window: 2026-10-26 15:53:00
 Daemon log: ~/.local/state/awaywork/watch.log
 ```
 
 - One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
-- One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 4242)`. That's what makes cron's restart line harmless.
-- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch is running run 20261025-230000 (pid 4242); try again once it ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
+- One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 37770)`. That's what makes cron's restart line harmless.
+- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch is running run 20261025-145300 (pid 37770); try again once it ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
 - The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
+- The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
 - systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
 - `windows: []` is fine: the daemon idles, and install sets no wake.
-- Stopping it (`schedule remove`, a SIGTERM) stops a run in progress as Ctrl-C stops `awaywork run`: the running unit publishes what it has.
+- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes what it has, as in the log below. One still running after that makes install change nothing and say so; run it again once it's gone.
+- launchd and systemd bring it back only after a crash. One you stop with a SIGTERM of your own stays down until your next login or `schedule install`; under cron it's back within 5 minutes.
 
-The daemon's log, `~/.local/state/awaywork/watch.log`, has events only: start and stop, each run and unit starting and ending, and what went wrong, never a line per minute. Past 5 MB it moves to `watch.log.1`. Here a config edit broke it for a few minutes and moved the window:
+The daemon's log, `~/.local/state/awaywork/watch.log`, has events only: start and stop, each run and unit starting and ending, and what went wrong, never a line per minute. Past 5 MB it moves to `watch.log.1`. Here a SIGTERM stopped it a few seconds into a unit:
 
 ```
-2026-10-25 14:58:42 awaywork watch started, pid 42096, config ~/.config/awaywork/config.yml
-2026-10-25 15:00:00 window run 20261025-140000 started, until 2026-10-25 15:04:00
-2026-10-25 15:00:00 Run 20261025-140000: 0 units planned, state in ~/.local/state/awaywork/runs/20261025-140000
-2026-10-25 15:00:00 Run 20261025-140000: 0 draft PRs, 0 reports, 0 units
-  none
-Report: ~/.local/state/awaywork/runs/20261025-140000/report.md
-2026-10-25 15:03:00 config not loaded: ~/.config/awaywork/config.yml:
-  providers[0]: unknown provider "nope"
-  sources: Invalid input: expected object, received undefined
-2026-10-25 15:06:00 window run 20261025-140600 started, until 2026-10-25 15:09:00
-...
-2026-10-25 15:06:24 awaywork watch stopped
+2026-10-25 15:54:30 awaywork watch started, pid 40864, config ~/.config/awaywork/config.yml
+2026-10-25 15:54:30 window run 20261025-145430 started, until 2026-10-25 15:58:00
+2026-10-25 15:54:30 Run 20261025-145430: 1 unit planned, state in ~/.local/state/awaywork/runs/20261025-145430
+2026-10-25 15:54:30   ch-2: plan on mine
+2026-10-25 15:54:42   ch-2: stopped: aborted
+2026-10-25 15:54:42 Run 20261025-145430: 0 draft PRs, 0 reports, 1 unit
+     item  skill  status                      result
+  1  CH-2  plan   stopped: aborted (aborted)  interrupted
+     Fix the typo in the README
+Report: ~/.local/state/awaywork/runs/20261025-145430/report.md
+2026-10-25 15:54:42 awaywork watch stopped
 ```
 
 Each run's full output, what `awaywork run` prints in a terminal, goes to `run.log` in its run dir; with `watch: { debug: true }` in the config it lands in `watch.log` as well. `schedule.log` only catches a daemon that crashed. The morning report is `awaywork report`. Both list what went wrong before any unit started, like a source command that failed:
