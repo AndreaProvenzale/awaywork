@@ -75,6 +75,12 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
+/** What a chain's first step wrote to its items: on_done's moves, or its questions. */
+export const unitNotes = (u: UnitResult): string[] => [
+  ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
+  ...(u.questions ? [describeQuestions(u.questions)] : []),
+]
+
 export interface StepFiles {
   log?: string
   report?: string
@@ -173,14 +179,10 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     })
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
-    const moved = listed.flatMap(({ head }) =>
-      (head.moved ?? []).map((m) => `- **${refOf(head)}**: on_done ${describeMoved(m)}`),
+    const notes = listed.flatMap(({ head }) =>
+      unitNotes(head).map((note) => `- **${refOf(head)}**: ${note}`),
     )
-    if (moved.length > 0) out.push('', ...moved)
-    const asked = listed.flatMap(({ head }) =>
-      head.questions ? [`- **${refOf(head)}**: ${describeQuestions(head.questions)}`] : [],
-    )
-    if (asked.length > 0) out.push('', ...asked)
+    if (notes.length > 0) out.push('', ...notes)
   }
   const waiting = r.plan.skipped.filter(needsYouOn)
   if (waiting.length > 0) {
