@@ -66,6 +66,7 @@ The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source
 
 - `command` only reads. Writing is `write`'s, and only when awaywork pipes it a write.
 - Print only your items: assigned to you, or waiting on your review. awaywork takes every item you print as yours, so `write` may move any of them.
+- `write` refuses an item that's no longer yours, reassigned or unassigned since `command` printed it: awaywork can't tell, so exit non-zero and say so on stderr.
 - Read tokens from env vars and list them in `secrets`.
 
 ## Writing back

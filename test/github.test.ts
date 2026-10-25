@@ -510,6 +510,26 @@ describe('github source', () => {
     expect(issue5?.comments.some(isAwayworkComment)).toBe(false)
   })
 
+  const read = (assignees?: string[]) =>
+    JSON.stringify({
+      data: {
+        viewer: { login: 'dev' },
+        repository: {
+          issueOrPullRequest: {
+            updatedAt: '2026-02-02T08:00:00Z',
+            ...(assignees && { assignees: { nodes: assignees.map((login) => ({ login })) } }),
+          },
+        },
+      },
+    })
+  const issue5 = fakeItem({
+    source: 'github',
+    key: 'acme/api#5',
+    type: 'issue',
+    url: 'https://git.acme.com/acme/api/issues/5',
+    fields: { repo: 'acme/api' },
+  })
+
   it('comments on an item and moves it by adding a label, through the issues API on its host', async () => {
     const seen: (string | undefined)[] = []
     const replay = recorded([
@@ -518,18 +538,16 @@ describe('github source', () => {
         /^gh api repos\/acme\/api\/issues\/5\/comments -f /,
         'https://git.acme.com/acme/api/issues/5#issuecomment-9\n',
       ],
-      [/^gh api repos\/acme\/api\/issues\/5 --jq \.updated_at$/, '2026-02-02T08:00:00Z\n'],
+      [
+        /^gh api graphql -f owner=acme -f name=api -F number=5 .*issueOrPullRequest/s,
+        read(['dev']),
+      ],
     ])
     const run: Exec = (cmd, args, env) => {
       seen.push(env?.GH_HOST)
       return replay(cmd, args, env)
     }
-    const item = fakeItem({
-      source: 'github',
-      key: 'acme/api#5',
-      url: 'https://git.acme.com/acme/api/issues/5',
-      fields: { repo: 'acme/api' },
-    })
+    const item = issue5
     const write = githubSource(run).write
     expect(await write?.({ repos: ['acme/*'] }, item, { op: 'move', to: 'In QA' }, ctx)).toEqual({
       before: '2026-02-02T08:00:00Z',
@@ -538,8 +556,8 @@ describe('github source', () => {
     expect(
       await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx),
     ).toMatchObject({ url: 'https://git.acme.com/acme/api/issues/5#issuecomment-9' })
-    const updated = ['api', 'repos/acme/api/issues/5', '--jq', '.updated_at']
-    expect(replay.calls.map((c) => c.slice(1))).toEqual([
+    const updated = ['api', 'graphql', '-f', 'owner=acme', '-f', 'name=api', '-F', 'number=5']
+    expect(replay.calls.map((c) => (c[2] === 'graphql' ? c.slice(1, 9) : c.slice(1)))).toEqual([
       updated,
       ['api', 'repos/acme/api/issues/5/labels', '-f', 'labels[]=In QA'],
       updated,
@@ -548,6 +566,28 @@ describe('github source', () => {
       updated,
     ])
     expect(new Set(seen)).toEqual(new Set(['git.acme.com']))
+  })
+
+  it('refuses an issue no longer assigned to you, but not your PR, whose author is fixed', async () => {
+    for (const assignees of [['lead'], []]) {
+      const run = recorded([[/issueOrPullRequest/, read(assignees)]])
+      for (const write of [
+        { op: 'move', to: 'QA' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(
+          githubSource(run).write?.({ repos: ['acme/*'] }, issue5, write, ctx),
+        ).rejects.toThrow('acme/api#5 is no longer yours: not assigned to you')
+      expect(run.calls.filter((c) => c[2] !== 'graphql')).toEqual([])
+    }
+    const run = recorded([
+      [/issueOrPullRequest/, read()],
+      [/labels -f /, '{}'],
+    ])
+    const pr = { ...issue5, type: 'pr' as const }
+    expect(
+      await githubSource(run).write?.({ repos: ['acme/*'] }, pr, { op: 'move', to: 'QA' }, ctx),
+    ).toEqual({ before: '2026-02-02T08:00:00Z', after: '2026-02-02T08:00:00Z' })
   })
 })
 

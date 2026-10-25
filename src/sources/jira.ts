@@ -194,9 +194,17 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       const token = tokenFrom(cfg, ctx)
       const issue = `/rest/api/3/issue/${item.id}`
       const read = await call<{
-        fields: { updated: string }
+        fields: { updated: string; assignee: { accountId?: string } | null }
         transitions?: { id: string; to: { name: string } }[]
-      }>(cfg, token, `${issue}?fields=updated${write.op === 'move' ? '&expand=transitions' : ''}`)
+      }>(
+        cfg,
+        token,
+        `${issue}?fields=updated,assignee${write.op === 'move' ? '&expand=transitions' : ''}`,
+      )
+      // Read as assigned to you, so the plan's assignee is you.
+      const me = (item.raw as Issue).fields.assignee?.accountId
+      if (!me || read.fields.assignee?.accountId !== me)
+        throw new Error(`${item.key} is no longer yours: not assigned to you`)
       if (write.op === 'comment')
         await call(cfg, token, `${issue}/comment`, { body: textToAdf(write.body) })
       else {

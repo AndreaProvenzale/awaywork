@@ -187,15 +187,15 @@ describe('asana config and linking', () => {
 describe('asana writes', () => {
   const sections = (...names: string[]) =>
     JSON.stringify({ data: names.map((name, i) => ({ gid: `5${i}`, name })), next_page: null })
-  const writer = () =>
+  const writer = (assignee: { gid: string } | null = { gid: '900' }) =>
     recordedFetch([
       [/\/projects\/11\/sections\?/, sections('Ready', 'QA')],
       [/\/projects\/12\/sections\?/, sections('Ready', 'In review')],
       [/\/sections\/51\/addTask$/, '{ "data": {} }'],
       [/\/tasks\/1201\/stories$/, '{ "data": { "gid": "6001" } }'],
       [
-        /\/tasks\/1201\?opt_fields=modified_at$/,
-        '{ "data": { "modified_at": "2026-01-04T08:00:00.000Z" } }',
+        /\/tasks\/1201\?opt_fields=modified_at,assignee$/,
+        JSON.stringify({ data: { modified_at: '2026-01-04T08:00:00.000Z', assignee } }),
       ],
     ])
   const task = asanaTask(
@@ -203,7 +203,10 @@ describe('asana writes', () => {
     {},
     {
       id: '1201',
-      raw: { memberships: [{ project: { gid: '11' } }, { project: { gid: '12' } }] },
+      raw: {
+        assignee: { gid: '900' },
+        memberships: [{ project: { gid: '11' } }, { project: { gid: '12' } }],
+      },
     },
   )
 
@@ -214,7 +217,7 @@ describe('asana writes', () => {
       before: '2026-01-04T08:00:00.000Z',
       after: '2026-01-04T08:00:00.000Z',
     })
-    expect(http.calls[0]?.url).toMatch(/\/tasks\/1201\?opt_fields=modified_at$/)
+    expect(http.calls[0]?.url).toMatch(/\/tasks\/1201\?opt_fields=modified_at,assignee$/)
     const post = http.calls.find((c) => c.body)
     expect(post?.url).toBe('https://app.asana.com/api/1.0/sections/51/addTask')
     expect(JSON.parse(post?.body ?? '')).toEqual({ data: { task: '1201' } })
@@ -230,6 +233,20 @@ describe('asana writes', () => {
     await expect(
       asanaSource(writer()).write?.(scoped, task, { op: 'move', to: 'In review' }, ctx),
     ).rejects.toThrow(`T-1201's projects have no section "In review", only "Ready", "QA"`)
+  })
+
+  it('refuses a task reassigned or unassigned since it was read', async () => {
+    for (const assignee of [{ gid: '901' }, null]) {
+      const http = writer(assignee)
+      for (const write of [
+        { op: 'move', to: 'QA' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(asanaSource(http).write?.(cfg, task, write, ctx)).rejects.toThrow(
+          'T-1201 is no longer yours: not assigned to you',
+        )
+      expect(http.calls.filter((c) => c.body)).toEqual([])
+    }
   })
 
   it('comments as a story of plain text', async () => {

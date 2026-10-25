@@ -43,7 +43,10 @@ sourceContract(
       [/^gh api user --jq/, 'octo'],
       [/^gh api user\/orgs/, ''],
       [/^gh api repos\/acme\/api\/issues\/1\/labels /, '[]'],
-      [/^gh api repos\/acme\/api\/issues\/1 --jq/, '2026-02-02T08:00:00Z\n'],
+      [
+        /issueOrPullRequest/,
+        '{ "data": { "viewer": { "login": "dev" }, "repository": { "issueOrPullRequest": { "updatedAt": "2026-02-02T08:00:00Z" } } } }',
+      ],
       ...githubRoutes(),
     ]),
   ) as Source<unknown>,
@@ -61,8 +64,8 @@ sourceContract(
       ],
       [/\/sections\/21\/addTask$/, '{ "data": {} }'],
       [
-        /\/tasks\/1201\?opt_fields=modified_at$/,
-        '{ "data": { "modified_at": "2026-01-04T08:00:00.000Z" } }',
+        /\/tasks\/1201\?opt_fields=modified_at,assignee$/,
+        '{ "data": { "modified_at": "2026-01-04T08:00:00.000Z", "assignee": { "gid": "900" } } }',
       ],
       ...asanaRoutes(),
     ]),
@@ -82,10 +85,13 @@ sourceContract(
     linearFetch([
       [
         /query States/,
-        '{ "data": { "issue": { "updatedAt": "2026-01-03T08:00:00.000Z", "team": { "states": { "nodes": [{ "id": "s1", "name": "In Review" }] } } } } }',
+        '{ "data": { "issue": { "updatedAt": "2026-01-03T08:00:00.000Z", "assignee": { "isMe": true }, "team": { "states": { "nodes": [{ "id": "s1", "name": "In Review" }] } } } } }',
       ],
       [/mutation IssueMove/, '{ "data": { "issueUpdate": { "success": true } } }'],
-      [/query Updated/, '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z" } } }'],
+      [
+        /query Updated/,
+        '{ "data": { "issue": { "updatedAt": "2026-01-04T08:00:00.000Z", "assignee": { "isMe": true } } } }',
+      ],
     ]),
   ) as Source<unknown>,
   {},
@@ -101,8 +107,8 @@ sourceContract(
   jiraSource(
     jiraFetch([
       [
-        /\/issue\/10012\?fields=updated&expand=transitions$/,
-        '{ "fields": { "updated": "2026-01-03T08:00:00.000+0000" }, "transitions": [{ "id": "21", "to": { "name": "In Review" } }] }',
+        /\/issue\/10012\?fields=updated,assignee&expand=transitions$/,
+        '{ "fields": { "updated": "2026-01-03T08:00:00.000+0000", "assignee": { "accountId": "5b10" } }, "transitions": [{ "id": "21", "to": { "name": "In Review" } }] }',
       ],
       [/\/issue\/10012\/transitions$/, '{}'],
       [
