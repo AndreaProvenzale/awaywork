@@ -231,7 +231,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   // The worker user can't reach the run dir: its plugins and each clone get a folder of their own under /tmp.
   const root = isolated() ? await workerRoot() : input.runDir
 
-  const { check, factsFor, restoreGit, rememberClone, baseline } = createChecks({
+  const { check, factsFor, restoreGit, rememberGitConfig, baseline } = createChecks({
     env: input.ctx.env,
     secrets,
     signal: input.signal,
@@ -270,11 +270,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return moved
   }
 
-  /** A unit's items in one tracker's words: from the rule's source, or the source of the item it matched first. */
-  const ownItems = (p: PlannedUnit): Item[] => {
-    const own = input.plan.queue[p.rule]?.source ?? p.unit.items[0]?.source
-    return p.unit.items.filter((i) => i.source === own)
-  }
+  /** A unit's items in one tracker's words: from the source of the item its rule matched first. */
+  const ownItems = (p: PlannedUnit): Item[] =>
+    p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
   /**
    * Posts a step's questions as a comment on the first of the unit's own items that is yours,
@@ -289,9 +287,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
-      const top = ownItems(p)[0] ?? (p.unit.items[0] as Item)
-      const why = unwritable(top, input.sources[top.source]) ?? "isn't from the rule's source"
-      return { unposted: `${top.key} ${why}` }
+      const top = p.unit.items[0] as Item
+      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
     }
     const ref = `${item.source}:${item.key}`
     try {
@@ -434,10 +431,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         stackedOn: undefined,
         rule: {
           ...unit.rule,
-          skill,
-          skills: [],
           instructions: [],
-          mcp: [],
           with: undefined,
           when: undefined,
         },
@@ -706,7 +700,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             since = await git(dir, 'rev-parse', `origin/${pickedUp ? base : 'HEAD'}`)
           original =
             pickedUp && unit.gates ? await git(dir, 'merge-base', 'origin/HEAD', 'HEAD') : cloned
-          rememberClone(dir, await readFile(join(dir, '.git', 'config'), 'utf8'), original)
+          rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
           const state: ReplayState = { unit, provider: id, commit: cloned }
           await writeFile(join(unitDir, 'replay.json'), `${JSON.stringify(state, null, 2)}\n`)
         }
@@ -913,9 +907,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
-    // Every slice that ran published, only a `when` ended the chain early, and no step asked.
-    const finished =
-      !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0 && !asked
+    // Every slice that ran published, and only a `when` ended the chain early.
+    const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
     if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
       lead.moved = await moveItems(ownItems(first), onDone.move)
     for (const r of done) {

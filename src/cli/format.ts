@@ -15,8 +15,6 @@ import {
   chainCells,
   chains,
   counted,
-  describeMoved,
-  describeQuestions,
   localTime,
   needsYouOn,
   opened,
@@ -27,6 +25,7 @@ import {
   runHeadline,
   stepCells,
   type UnitResult,
+  unitNotes,
   unposted,
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
@@ -563,10 +562,7 @@ export function reportUnitRows(
         result,
       ],
       summary: chain.head.summary ?? (top && clip(top.title, clipAt)),
-      notes: [
-        ...(chain.head.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
-        ...(chain.head.questions ? [describeQuestions(chain.head.questions)] : []),
-      ],
+      notes: unitNotes(chain.head),
     }
   })
 }

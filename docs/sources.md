@@ -183,7 +183,7 @@ What `on_done` writes, in one place [I]:
 - Only items the rule matched as the developer's own (`Item.mine`): their PRs and issues assigned to them on GitHub, every Jira, Linear and Asana item (all read as assigned to them), every custom source item by its house rule. Never a review-requested PR, an item only an extra GitHub `search` found, or a new item. `mine` is the plan's, so each built-in source reads the assignee again in its read right before the write and refuses an item reassigned or unassigned since; a custom source's `write` must, by its house rule.
 - Every comment ends with a visible `— awaywork` line. It counts as awaywork's only when it also comes from the token's own user, so a pasted line doesn't hide a comment from awaywork.
 - The item's updated time after the write is recorded as the attempt's only when the one read right before it is still the plan's, so awaywork's own write doesn't read as a change next run, and someone else's change during the run still does.
-- `on_done` moves only items of the rule's own source (its `source`, else the source of the item the rule matched): a destination is one tracker's name.
+- `on_done` moves only items of the rule's own source (the source of the item the rule matched first): a destination is one tracker's name.
 
 ## Unverified, check before relying on it
 

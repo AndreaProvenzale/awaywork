@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +21,7 @@ import { commandProvider } from '../src/providers/command.js'
 import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
-import { checkEnv, commandEnv, workerEnv } from '../src/worker/workspace.js'
+import { commandEnv, gateEnv, workerEnv } from '../src/worker/workspace.js'
 import { escaped, escaping } from './fakes/escape.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -93,9 +93,8 @@ describe('the launcher', () => {
     const commit = ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty']
     await execa('git', ['-C', dir, ...commit, '-m', 'start'])
     expect(await runSetup('true', dir, env, () => {}, { secrets: [] })).toBeUndefined()
-    const { check, rememberClone } = createChecks({ env, secrets: [] })
-    const start = (await execa('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout
-    rememberClone(dir, await readFile(join(dir, '.git', 'config'), 'utf8'), start)
+    const { check, rememberGitConfig } = createChecks({ env, secrets: [] })
+    rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
     const unit = { untrusted: false } as Unit
     expect((await check('exit 0', unit, dir, () => {})).failed).toBeUndefined()
     expect(launched()).toEqual([
@@ -217,9 +216,10 @@ describe('the launcher', () => {
     await drain(claudeProvider(fake('claude')).run(phase, new AbortController().signal))
     const command = { command: 'true', secrets: [], skills_dir: '.agents/skills' }
     await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
+    await mkdir(join(dir, '.away'), { recursive: true })
     const envs = [
       commandEnv(base, dir, []),
-      checkEnv(base, dir, [], 'abc123', 'abc123'),
+      await gateEnv(base, dir, [], 'abc123', 'abc123'),
       ...vi.mocked(launch).mock.calls.map(([, , o]) => o.env),
     ]
     const set = envs.flatMap((env) => Object.keys(env ?? {})).filter((name) => !(name in base))
