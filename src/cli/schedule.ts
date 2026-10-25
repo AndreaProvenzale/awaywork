@@ -73,29 +73,34 @@ export function scheduleCommand(program: Command): void {
   schedule
     .command('remove')
     .description(`remove the scheduled job, and ${WORKFLOW} in the current repo`)
-    .action(async () => {
-      if (insideWatch()) return
-      const stuck = await stopWatch()
-      if (stuck)
-        console.log(
-          `awaywork watch (pid ${stuck}) hasn't exited after 2 minutes; it does once its run publishes`,
-        )
-      const removed = []
-      for (const scheduler of Object.values(localSchedulers()))
-        if (await scheduler.remove()) removed.push(scheduler.id)
-      const root = await gitRoot()
-      if (root && (await removeWorkflow(root))) removed.push(GITHUB_ACTIONS)
-      console.log(
-        removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
-      )
-      const undo = await wakeUndo(exec)
-      if (undo) console.log(undo)
-    })
+    .action(() => removeSchedule())
 
   schedule
     .command('status')
     .description('show the installed scheduled job and what awaywork watch is doing')
     .action(() => printStatus(program.opts().config))
+}
+
+/** Stops the daemon, then removes the scheduled jobs and the current repo's workflow. */
+export async function removeSchedule(
+  all: Record<string, Scheduler> = localSchedulers(),
+): Promise<void> {
+  if (insideWatch()) return
+  const stuck = await stopWatch()
+  if (stuck)
+    console.log(
+      `awaywork watch (pid ${stuck}) hasn't exited after 2 minutes; it does once its run publishes`,
+    )
+  const removed = []
+  for (const scheduler of Object.values(all))
+    if (await scheduler.remove()) removed.push(scheduler.id)
+  const root = await gitRoot()
+  if (root && (await removeWorkflow(root))) removed.push(GITHUB_ACTIONS)
+  console.log(
+    removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
+  )
+  const undo = await wakeUndo(exec)
+  if (undo) console.log(undo)
 }
 
 /** The installed jobs, and the daemon when a job keeps it running or it runs anyway. */
