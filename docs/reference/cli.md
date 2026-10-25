@@ -40,6 +40,8 @@ Commands:
                          and reports
   report [options] [id]  print a run's morning report, the latest by default;
                          browsable in a terminal
+  watch                  keep running and start a run when a window opens;
+                         `schedule install` keeps it running
   stats [options]        what each rule, skill and provider cost and delivered
                          across the runs kept
   replay <run> <unit>    re-run a past run's unit, its first step, on its base
@@ -248,6 +250,18 @@ Options:
   -h, --help        display help for command
 ```
 
+## awaywork watch
+
+```text
+Usage: awaywork watch [options]
+
+keep running and start a run when a window opens; `schedule install` keeps it
+running
+
+Options:
+  -h, --help  display help for command
+```
+
 ## awaywork stats
 
 ```text
@@ -283,11 +297,12 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  install [options]  start `awaywork run` when a window opens; it starts no unit
-                     after it closes
+  install [options]  keep `awaywork watch` running, which starts a run when a
+                     window opens
   remove             remove the scheduled job, and
                      .github/workflows/awaywork.yml in the current repo
-  status             show the installed scheduled job
+  status             show the installed scheduled job and what awaywork watch is
+                     doing
   help [command]     display help for command
 ```
 
@@ -296,7 +311,7 @@ Commands:
 ```text
 Usage: awaywork schedule install [options]
 
-start `awaywork run` when a window opens; it starts no unit after it closes
+keep `awaywork watch` running, which starts a run when a window opens
 
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
@@ -321,7 +336,7 @@ Options:
 ```text
 Usage: awaywork schedule status [options]
 
-show the installed scheduled job
+show the installed scheduled job and what awaywork watch is doing
 
 Options:
   -h, --help  display help for command

@@ -1,11 +1,13 @@
 import { expect, it } from 'vitest'
 import {
   hostedEnd,
+  nextOpening,
   runEnd,
   runsLeft,
   startsOf,
   tooLongForHosted,
   windowEnd,
+  windowRun,
 } from '../src/core/window.js'
 
 const at = (day: number, time: string) => new Date(`2026-09-${day}T${time}:00`)
@@ -77,6 +79,25 @@ it('counts the windows left before a reset', () => {
   expect(runsLeft(windows, ms(25, '12:00'), ms(28, '12:00'))).toBe(5)
   expect(runsLeft(windows, ms(26, '11:00'), ms(26, '11:30'))).toBe(1)
   expect(runsLeft(windows, ms(25, '12:00'), ms(25, '12:30'))).toBe(1)
+})
+
+it("starts one daemon run per window opening, ending at the window's end", () => {
+  const night = [{ start: '23:00', end: '06:00' }]
+  const idle = { running: false }
+  expect(windowRun(night, at(25, '22:59'), idle)).toBeUndefined()
+  expect(windowRun(night, at(25, '23:00'), idle)).toEqual(at(26, '06:00'))
+  expect(windowRun(night, at(26, '02:00'), idle)).toEqual(at(26, '06:00'))
+  expect(windowRun(night, at(26, '02:00'), { running: true })).toBeUndefined()
+  const ran = { running: false, lastEnd: at(26, '06:00') }
+  expect(windowRun(night, at(26, '05:00'), ran)).toBeUndefined()
+  expect(windowRun(night, at(26, '23:01'), ran)).toEqual(at(27, '06:00'))
+  expect(windowRun([], at(26, '02:00'), idle)).toBeUndefined()
+})
+
+it('finds the next window opening, none without windows', () => {
+  expect(nextOpening(windows, at(25, '12:00'))).toEqual(at(26, '01:00'))
+  expect(nextOpening([{ start: '01:00', end: '07:00' }], at(25, '01:00'))).toEqual(at(26, '01:00'))
+  expect(nextOpening([], at(25, '12:00'))).toBeUndefined()
 })
 
 it('merges windows opening at the same time into one start, as launchd reads them back', () => {

@@ -2,11 +2,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler, Start } from './index.js'
+import type { Schedule, Scheduler } from './index.js'
 
 const TAG = '# awaywork'
 
-/** One tagged line in the user's crontab; cron skips a run missed while the machine sleeps. */
+/** Tagged lines in the user's crontab starting the job at boot and every 5 minutes; the watch lock makes extra copies exit. */
 export function cron(run: Exec): Scheduler {
   const read = () => run('crontab', ['-l']).catch(() => '')
   const write = async (lines: string[]) => {
@@ -40,12 +40,10 @@ export function cron(run: Exec): Scheduler {
   }
 }
 
-export const cronLines = (s: Schedule) => s.starts.map((start) => cronLine(s, start))
-
-export function cronLine(s: Schedule, start: Start): string {
+export function cronLines(s: Schedule): string[] {
   const q = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`.replace(/%/g, '\\%')
-  const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} >> ${q(s.log)} 2>&1`
-  return `${start.minute} ${start.hour} * * ${start.days?.join(',') ?? '*'} ${command} ${TAG}`
+  const command = `PATH=${q(s.path)} ${s.command.map(q).join(' ')} >> ${q(s.log)} 2>&1 &`
+  return ['@reboot', '*/5 * * * *'].map((when) => `${when} ${command} ${TAG}`)
 }
 
 export function parseCronLines(ours: string[]): Schedule {
@@ -54,14 +52,6 @@ export function parseCronLines(ours: string[]): Schedule {
   )
   return {
     command: words.slice(1, -1),
-    starts: ours.map((line) => {
-      const [minute, hour, , , days] = line.split(' ')
-      return {
-        hour: Number(hour),
-        minute: Number(minute),
-        ...(days !== '*' && { days: (days ?? '').split(',').map(Number) }),
-      }
-    }),
     path: words[0] ?? '',
     log: words.at(-1) ?? '',
   }

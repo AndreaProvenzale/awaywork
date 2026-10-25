@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
@@ -23,6 +24,16 @@ export async function keepAwake(run: Exec, platform = process.platform): Promise
     () => ['systemd-inhibit', ...args],
     () => [],
   )
+}
+
+/** Holds the machine awake until the returned function is called; on macOS, at most until this process exits. */
+export async function holdAwake(run: Exec, platform = process.platform): Promise<() => void> {
+  const [command, ...args] = await keepAwake(run, platform)
+  if (!command) return () => {}
+  const until = platform === 'darwin' ? ['-w', String(process.pid)] : ['sleep', 'infinity']
+  const child = spawn(command, [...args, ...until], { stdio: 'ignore' })
+  child.on('error', () => {})
+  return () => void child.kill()
 }
 
 /** Wakes the machine from sleep when a window opens; root sets it, so it goes through sudo. */
@@ -58,6 +69,28 @@ export async function wakeUndo(
   if (existsSync(join(UNIT_DIR, `${UNIT}.timer`)))
     return `A repeating wake stays; \`sudo systemctl disable --now ${UNIT}.timer && sudo rm ${UNIT_DIR}/${UNIT}.{service,timer}\` removes it`
   return undefined
+}
+
+/** Says when the wake install set no longer lands on the windows' start, which only another install moves. */
+export async function staleWake(
+  starts: Start[],
+  run: Exec,
+  platform = process.platform,
+  unitDir = UNIT_DIR,
+): Promise<string | undefined> {
+  const fix = 'run `awaywork schedule install` to move the wake'
+  if (platform === 'darwin') {
+    const wanted = pmsetArgs(starts)?.[4]?.slice(0, 5)
+    const set = (await repeating(run))?.match(/(?:^|; )wake at (\d+):(\d\d)(AM|PM)/)
+    if (!wanted || !set) return undefined
+    const at = `${pad((Number(set[1]) % 12) + (set[3] === 'PM' ? 12 : 0))}:${set[2]}`
+    return at === wanted
+      ? undefined
+      : `this Mac wakes at ${at}, the windows start at ${wanted}; ${fix}`
+  }
+  const timer = await readFile(join(unitDir, `${UNIT}.timer`), 'utf8').catch(() => undefined)
+  if (!starts.length || timer === undefined || timer === wakeTimer(starts)) return undefined
+  return `${unitDir}/${UNIT}.timer doesn't wake at the windows' start (${describeStarts(starts)}); ${fix}`
 }
 
 /** `pmset repeat` args for the starts; undefined when they differ in time, as pmset repeats one. */

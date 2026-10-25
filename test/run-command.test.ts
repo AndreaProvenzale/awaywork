@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCommand } from '../src/cli/run.js'
-import { runsDir } from '../src/config/paths.js'
+import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
@@ -25,6 +25,7 @@ vi.mock('../src/config/paths.js', async (original) => {
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
     runLockPath: `${state}/run.lock`,
+    watchLockPath: `${state}/watch.lock`,
     skipsPath: `${state}/skips.json`,
   }
 })
@@ -88,6 +89,25 @@ describe('run command', () => {
     const { out } = await run([])
     expect(existsSync(old)).toBe(false)
     expect(out).toContain('Removed 1 run older than 30d, 0.0 MB freed')
+  })
+
+  it('refuses to start while another run holds the lock, naming the daemon when it does', async () => {
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    try {
+      const { err } = await run([])
+      expect(err.at(-1)).toBe(
+        `already running (pid ${process.pid}, run 20261025-010000); if that is stale, delete ${runLockPath}`,
+      )
+      await writeFile(watchLockPath, `${process.pid} watch`)
+      const daemon = await run([])
+      expect(daemon.err.at(-1)).toBe(
+        `awaywork watch is running run 20261025-010000 (pid ${process.pid}); try again once it ends`,
+      )
+      expect(process.exitCode).toBe(1)
+    } finally {
+      await rm(runLockPath, { force: true })
+      await rm(watchLockPath, { force: true })
+    }
   })
 
   it("hands the run's id and dir to the next steps of an Actions job", async () => {

@@ -23,7 +23,8 @@ with:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run |
+| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
+| `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
 | `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner |
 | `budget` | object | `{}` | Quota shares; any provider can override them |
@@ -37,7 +38,7 @@ with:
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
-| `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when a run starts, except those holding an item's latest report |
+| `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report |
 
 ## `windows[]`
 
@@ -46,6 +47,14 @@ with:
 | `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays the window opens on; every day when unset |
 | `start` (required) | time |  | When a scheduled run starts, local time |
 | `end` (required) | time |  | No unit starts after this |
+
+## `watch`
+
+awaywork watch, the daemon schedule install keeps running.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `debug` | boolean | `false` | Also write each run's full output to the daemon log |
 
 ## `limits`
 

@@ -24,7 +24,6 @@ let wakeDefault = true
 
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
-  keepAwake: async () => ['/usr/bin/caffeinate', '-i'],
   wakeFor: async () =>
     wakeReason ?? {
       question: 'Wake this machine when a window opens?',
@@ -120,10 +119,18 @@ it("takes the wake's default answer, no when it replaces power events", async ()
   expect(woke).toEqual([])
 })
 
-it('keeps the run awake by wrapping the scheduled command', async () => {
+it('installs a job keeping awaywork watch running, and offers no wake without windows', async () => {
   const { config, io } = await setup()
-  await installSchedule(config, 'cron', io([], false))
-  expect(commands[0]?.slice(0, 3)).toEqual(['/usr/bin/caffeinate', '-i', process.execPath])
+  await installSchedule(config, 'cron', io([[/^Wake this machine/, true]], true))
+  expect(commands[0]?.slice(2)).toEqual(['watch', '--config', config])
+  expect(out[0]).toBe('Scheduled awaywork watch with cron for 01:00-07:00: /fake/cron')
+  await writeFile(
+    config,
+    'windows: []\nproviders: [claude]\nsources: { github: { repos: [a/b] } }\n',
+  )
+  await installSchedule(config, 'cron', io([], true))
+  expect(out).toContain('Scheduled awaywork watch with cron, no windows yet: /fake/cron')
+  expect(woke).toEqual(['wake'])
 })
 
 it('says why it cannot wake without asking', async () => {

@@ -541,9 +541,19 @@ export const configSchema = z
           })
           .refine((w) => w.start !== w.end, 'start and end must differ'),
       )
-      .min(1)
       .default([{ start: '01:00', end: '07:00' }])
-      .describe('Local hours a scheduled run may start units in; each opening is one run'),
+      .describe(
+        'Local hours a scheduled run may start units in; each opening is one run; [] for none',
+      ),
+    watch: z
+      .strictObject({
+        debug: z
+          .boolean()
+          .default(false)
+          .describe("Also write each run's full output to the daemon log"),
+      })
+      .prefault({})
+      .describe('awaywork watch, the daemon schedule install keeps running'),
     limits: z
       .strictObject({
         units: units.optional().describe('At most this many units per run'),
@@ -615,7 +625,7 @@ export const configSchema = z
     keep_runs: span
       .default('30d')
       .describe(
-        "How long run dirs stay; older ones go when a run starts, except those holding an item's latest report",
+        "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
       ),
   })
   .superRefine((cfg, ctx) => {

@@ -547,7 +547,7 @@ describe('config', () => {
     ])
   })
 
-  it('takes a list of windows with optional weekdays, defaults to one, and rejects an empty one', () => {
+  it('takes a list of windows with optional weekdays, defaults to one, and takes none', () => {
     const cfg = parseConfig(
       `${minimal}windows: [{ start: "01:00", end: "07:00" }, { days: [sat, sun], start: "10:00", end: "18:00" }]`,
     )
@@ -559,7 +559,7 @@ describe('config', () => {
     expect(problems(`${minimal}windows: [{ start: "01:00", end: "01:00" }]`)).toEqual([
       'windows[0]: start and end must differ',
     ])
-    expect(problems(`${minimal}windows: []`)).toHaveLength(1)
+    expect(problems(`${minimal}windows: []`)).toEqual([])
   })
 
   it('takes limits for every provider, not per provider', () => {

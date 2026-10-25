@@ -1,0 +1,192 @@
+import { existsSync } from 'node:fs'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execa } from 'execa'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { printStatus } from '../src/cli/schedule.js'
+import { appendLog, watch } from '../src/cli/watch.js'
+import {
+  runLockPath,
+  runsDir,
+  watchLockPath,
+  watchLogPath,
+  watchStatePath,
+} from '../src/config/paths.js'
+import type { Schedule, Scheduler } from '../src/scheduler/index.js'
+
+vi.mock('../src/providers/index.js', async () => {
+  const { fakeProvider } = await import('./fakes/provider.js')
+  const providers = { claude: fakeProvider('claude') }
+  return {
+    providers,
+    providerFor: (id: string) => providers[id as 'claude'],
+    providersOf: () => providers,
+  }
+})
+vi.mock('../src/scheduler/wake.js', async (original) => ({
+  ...(await original<typeof import('../src/scheduler/wake.js')>()),
+  holdAwake: async () => () => {},
+}))
+vi.mock('../src/config/paths.js', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
+  return {
+    ...(await original<typeof import('../src/config/paths.js')>()),
+    runsDir: `${state}/runs`,
+    attemptsPath: `${state}/attempts.json`,
+    runLockPath: `${state}/run.lock`,
+    skipsPath: `${state}/skips.json`,
+    approvalsPath: `${state}/approvals.json`,
+    watchLockPath: `${state}/watch.lock`,
+    watchStatePath: `${state}/watch.json`,
+    watchLogPath: `${state}/watch.log`,
+  }
+})
+
+const hhmm = (offset: number) => new Date(Date.now() + offset * 60_000).toTimeString().slice(0, 5)
+
+/** A config whose one window is open now, or `windows` as given. */
+async function config(windows = `[{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]`) {
+  const path = join(await mkdtemp(join(tmpdir(), 'awaywork-watch-')), 'config.yml')
+  await writeFile(
+    path,
+    `providers: [claude]\nsources: { chores: { command: exit 1 } }\nwindows: ${windows}\n`,
+  )
+  return path
+}
+
+const daemonLog = () => readFile(watchLogPath, 'utf8').catch(() => '')
+
+/** Runs the daemon until its log shows `until`, then stops it. */
+async function watchUntil(path: string, until: string) {
+  const stop = new AbortController()
+  const done = watch(path, stop.signal)
+  await vi.waitFor(async () => expect(await daemonLog()).toContain(until), { timeout: 10_000 })
+  stop.abort()
+  await done
+  return daemonLog()
+}
+
+let out: string[]
+beforeEach(async () => {
+  out = []
+  vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
+  vi.stubEnv('GITHUB_OUTPUT', '')
+  vi.stubEnv('RUNNER_ENVIRONMENT', '')
+  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath])
+    await rm(file, { force: true })
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
+
+describe('awaywork watch', () => {
+  it('starts a window run in an open window, logging events and its output to the run dir', async () => {
+    const log = await watchUntil(await config(), 'Report: ')
+    const runId = /window run (\d{8}-\d{6}) started, until /.exec(log)?.[1] ?? ''
+    expect(log).toMatch(/^\S+ \S+ awaywork watch started, pid \d+, config /)
+    expect(log).toContain(`Run ${runId}: 0 units planned, state in ${join(runsDir, runId)}`)
+    expect(log).toContain('warning: source chores: Command failed with exit code 1')
+    expect(log.trimEnd()).toMatch(/awaywork watch stopped$/)
+    const runLog = await readFile(join(runsDir, runId, 'run.log'), 'utf8')
+    expect(runLog).toContain(`Run ${runId}: 0 units planned`)
+    expect(existsSync(join(runsDir, runId, 'report.md'))).toBe(true)
+    expect(existsSync(runLockPath)).toBe(false)
+    expect(existsSync(watchLockPath)).toBe(false)
+    expect(existsSync(watchStatePath)).toBe(false)
+  })
+
+  it('logs a config that fails to load and keeps going with nothing to do', async () => {
+    const path = await config()
+    await writeFile(path, 'providers: [nope]\n')
+    const log = await watchUntil(path, 'config not loaded: ')
+    expect(log).not.toContain('window run')
+  })
+
+  it('idles with no windows, and waits on a manual run holding the run lock, saying so once', async () => {
+    const before = existsSync(runsDir) ? await readdir(runsDir) : []
+    await watchUntil(await config('[]'), 'awaywork watch started')
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    const log = await watchUntil(await config(), 'holds the run lock')
+    expect(log).toContain(
+      'a window is open, but run 20261025-010000 (pid ' +
+        `${process.pid}) holds the run lock; trying again each minute`,
+    )
+    expect(log).not.toContain('window run')
+    expect(existsSync(runsDir) ? await readdir(runsDir) : []).toEqual(before)
+  })
+
+  it('exits in one line while another copy runs, and takes over a dead one', async () => {
+    await writeFile(watchLockPath, `${process.pid} watch`)
+    await watch(await config(), new AbortController().signal)
+    expect(out).toEqual([`awaywork watch is already running (pid ${process.pid})`])
+    expect(await daemonLog()).toBe('')
+
+    const dead = await execa('node', ['-e', 'console.log(process.pid)'])
+    await writeFile(watchLockPath, `${dead.stdout} watch`)
+    await watch(await config(), AbortSignal.abort())
+    expect(await daemonLog()).toContain('awaywork watch stopped')
+    expect(existsSync(watchLockPath)).toBe(false)
+  })
+})
+
+it('rotates a log past its size, keeping one previous generation', async () => {
+  const file = join(await mkdtemp(join(tmpdir(), 'awaywork-log-')), 'watch.log')
+  appendLog(file, 'one', 5)
+  appendLog(file, 'two', 5)
+  appendLog(file, 'three', 5)
+  appendLog(file, 'four', 5)
+  expect(await readFile(file, 'utf8')).toBe('four\n')
+  expect(await readFile(`${file}.1`, 'utf8')).toBe('three\n')
+})
+
+describe('schedule status', () => {
+  const job = (command: string[]): Schedule => ({
+    command,
+    path: '/usr/bin',
+    log: '/h/schedule.log',
+  })
+  const installed = (schedule?: Schedule): Record<string, Scheduler> => ({
+    launchd: {
+      id: 'launchd',
+      install: async () => '',
+      remove: async () => false,
+      read: async () => schedule,
+    },
+  })
+
+  it('shows the daemon down, then up with its run in progress and the next window', async () => {
+    const path = await config('[{ start: "01:00", end: "07:00" }]')
+    const current = installed(job(['/node', '/awaywork', 'watch', '--config', path]))
+    await printStatus(undefined, current)
+    expect(out.slice(0, 3)).toEqual([
+      'Scheduled with launchd, keeping awaywork watch running',
+      `Config: ${path}`,
+      'Log: /h/schedule.log',
+    ])
+    expect(out).toContain('Daemon: not running')
+    expect(out.find((l) => l.startsWith('Next window: '))).toMatch(/ 01:00:00$/)
+    expect(out.at(-1)).toBe(`Daemon log: ${watchLogPath}`)
+
+    out = []
+    await writeFile(watchLockPath, `${process.pid} watch`)
+    const run = { trigger: 'window', runId: '20261025-230000', until: '2026-10-26T05:00:00Z' }
+    const since = '2026-10-25T07:12:03Z'
+    await writeFile(watchStatePath, JSON.stringify({ pid: process.pid, since, config: path, run }))
+    await printStatus(undefined, current)
+    const local = (iso: string) => new Date(iso).toLocaleString('sv-SE')
+    expect(out).toContain(`Daemon: running, pid ${process.pid}, since ${local(since)}`)
+    expect(out).toContain(`Run in progress: window run 20261025-230000, until ${local(run.until)}`)
+  })
+
+  it('tells an older per-window job to reinstall, without daemon lines', async () => {
+    await printStatus(undefined, installed(job(['/node', '/awaywork', 'run', '--scheduled'])))
+    expect(out[0]).toBe(
+      'Scheduled with launchd, installed by an older awaywork; run `awaywork schedule install` again',
+    )
+    expect(out.some((l) => l.startsWith('Daemon'))).toBe(false)
+  })
+})

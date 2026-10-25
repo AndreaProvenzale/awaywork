@@ -4,11 +4,11 @@ import { userInfo } from 'node:os'
 import { dirname, join } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import type { Exec } from '../forge/gh.js'
-import type { Schedule, Scheduler, Start } from './index.js'
+import type { Schedule, Scheduler } from './index.js'
 
 const LABEL = 'awaywork'
 
-/** A user LaunchAgent; launchd starts a run missed during sleep at the next wake. */
+/** A user LaunchAgent, started at login and restarted whenever it exits. */
 export function launchd(home: string, run: Exec, uid = userInfo().uid, retryMs = 300): Scheduler {
   const file = join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`)
   const bootout = () => run('launchctl', ['bootout', `gui/${uid}/${LABEL}`]).catch(() => '')
@@ -49,24 +49,8 @@ export function parsePlist(text: string): Schedule {
     [...xml.matchAll(/<string>(.*?)<\/string>/g)].map((m) =>
       (m[1] ?? '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'),
     )
-  const integer = (xml: string, key: string) =>
-    xml.match(new RegExp(`<key>${key}</key><integer>(\\d+)`))?.[1]
-  const starts: Start[] = []
-  for (const [dict] of (after('StartCalendarInterval').split('</array>')[0] ?? '').matchAll(
-    /<dict>.*?<\/dict>/g,
-  )) {
-    const [hour, minute, weekday] = [
-      Number(integer(dict, 'Hour')),
-      Number(integer(dict, 'Minute')),
-      integer(dict, 'Weekday'),
-    ]
-    const same = starts.find((s) => s.hour === hour && s.minute === minute && !s.days === !weekday)
-    if (same?.days && weekday) same.days.push(Number(weekday))
-    else starts.push({ hour, minute, ...(weekday && { days: [Number(weekday)] }) })
-  }
   return {
     command: strings(after('ProgramArguments').split('</array>')[0] ?? ''),
-    starts,
     path: strings(after('PATH'))[0] ?? '',
     log: strings(after('StandardOutPath'))[0] ?? '',
   }
@@ -86,24 +70,11 @@ ${s.command.map((arg) => `    ${str(arg)}`).join('\n')}
   </array>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key>${str(s.path)}</dict>
-  <key>StartCalendarInterval</key>
-  <array>
-${intervals(s.starts)
-  .map((i) => `    ${i}`)
-  .join('\n')}
-  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
   <key>StandardOutPath</key>${str(s.log)}
   <key>StandardErrorPath</key>${str(s.log)}
 </dict>
 </plist>
 `
 }
-
-/** launchd takes one weekday per interval. */
-const intervals = (starts: Start[]) =>
-  starts.flatMap((s) =>
-    (s.days ?? [undefined]).map(
-      (day) =>
-        `<dict><key>Hour</key><integer>${s.hour}</integer><key>Minute</key><integer>${s.minute}</integer>${day === undefined ? '' : `<key>Weekday</key><integer>${day}</integer>`}</dict>`,
-    ),
-  )

@@ -20,6 +20,12 @@ export async function takeRunLock(file: string, runId: string): Promise<RunLock>
   }
 }
 
+/** The live process holding a lock file, if any. */
+export async function lockHolder(file: string): Promise<number | undefined> {
+  const pid = Number((await readFile(file, 'utf8').catch(() => '')).split(' ')[0])
+  return pid && alive(pid) ? pid : undefined
+}
+
 async function releaseIfOurs(file: string, content: string): Promise<void> {
   if ((await readFile(file, 'utf8').catch(() => '')) === content) await rm(file, { force: true })
 }

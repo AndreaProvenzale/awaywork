@@ -5,9 +5,17 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { ConfigError, configPath, loadConfig } from '../config/load.js'
-import { bin, packageVersion, skillsDirOf, stateDir } from '../config/paths.js'
+import {
+  bin,
+  packageVersion,
+  skillsDirOf,
+  stateDir,
+  watchLockPath,
+  watchLogPath,
+} from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { hasSkills } from '../config/skills.js'
+import { lockHolder } from '../core/run-lock.js'
 import type { Ask, Provider } from '../core/types.js'
 import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
@@ -23,19 +31,20 @@ import {
 } from '../scheduler/github-actions.js'
 import {
   defaultScheduler,
-  describeStarts,
+  olderJob,
   type Schedule,
   type Scheduler,
   SchedulerError,
   type Start,
   schedulers,
 } from '../scheduler/index.js'
-import { keepAwake, wakeFor, wakeUndo } from '../scheduler/wake.js'
+import { staleWake, wakeFor, wakeUndo } from '../scheduler/wake.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
 import { contextSecrets } from '../worker/context.js'
 import { Cancelled, printBrand, terminalAsk } from './ask.js'
 import { reportConfigError } from './config.js'
+import { watchStatus } from './watch.js'
 
 const GITHUB_ACTIONS = 'github-actions'
 const GH_TOKEN_HELP =
@@ -51,7 +60,7 @@ export function scheduleCommand(program: Command): void {
 
   schedule
     .command('install')
-    .description('start `awaywork run` when a window opens; it starts no unit after it closes')
+    .description('keep `awaywork watch` running, which starts a run when a window opens')
     .option(
       '--with <scheduler>',
       `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: asks in a terminal, else launchd on macOS, else systemd if it runs, else cron)`,
@@ -79,24 +88,38 @@ export function scheduleCommand(program: Command): void {
 
   schedule
     .command('status')
-    .description('show the installed scheduled job')
-    .action(async () => {
-      let found = false
-      for (const scheduler of Object.values(localSchedulers())) {
-        const job = await scheduler.read()
-        if (!job) continue
-        found = true
-        console.log(`Scheduled with ${scheduler.id} at ${describeStarts(job.starts)}`)
-        console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
-        console.log(`Log: ${job.log}`)
-      }
-      const root = await gitRoot()
-      if (root && existsSync(join(root, WORKFLOW))) {
-        found = true
-        console.log(`Scheduled with ${GITHUB_ACTIONS}: ${join(root, WORKFLOW)}`)
-      }
-      if (!found) console.log('No scheduled job installed')
-    })
+    .description('show the installed scheduled job and what awaywork watch is doing')
+    .action(() => printStatus(program.opts().config))
+}
+
+/** The installed jobs, and the daemon when a job keeps it running or it runs anyway. */
+export async function printStatus(
+  config: string | undefined,
+  all: Record<string, Scheduler> = localSchedulers(),
+): Promise<void> {
+  let found = false
+  let watched: string | undefined
+  for (const scheduler of Object.values(all)) {
+    const job = await scheduler.read()
+    if (!job) continue
+    found = true
+    console.log(
+      olderJob(job)
+        ? `Scheduled with ${scheduler.id}, installed by an older awaywork; run \`awaywork schedule install\` again`
+        : `Scheduled with ${scheduler.id}, keeping awaywork watch running`,
+    )
+    console.log(`Config: ${jobConfig(job) ?? 'the default'}`)
+    console.log(`Log: ${job.log}`)
+    if (!olderJob(job)) watched = jobConfig(job) ?? configPath(config)
+  }
+  const root = await gitRoot()
+  if (root && existsSync(join(root, WORKFLOW))) {
+    found = true
+    console.log(`Scheduled with ${GITHUB_ACTIONS}: ${join(root, WORKFLOW)}`)
+  }
+  if (!found) console.log('No scheduled job installed')
+  if (watched || (await lockHolder(watchLockPath)))
+    for (const line of await watchStatus(watched ?? configPath(config))) console.log(line)
 }
 
 const localSchedulers = () => schedulers(homedir(), exec)
@@ -106,29 +129,24 @@ function jobConfig(job: Schedule): string | undefined {
   return flag >= 0 ? job.command[flag + 1] : undefined
 }
 
-const startsKey = (starts: Start[]) =>
-  starts
-    .map((s) => describeStarts([s]))
-    .sort()
-    .join()
-
-/** Warns about each installed job for this config that no longer starts when its windows open. */
+/** Warns about an installed job for this config an older awaywork installed, or whose wake no longer lands on the windows' start. */
 export async function staleSchedules(
   config: string,
   windows: Window[],
   all: Record<string, Scheduler> = localSchedulers(),
+  run: Exec = exec,
 ): Promise<string[]> {
-  const warnings = []
   for (const scheduler of Object.values(all)) {
     const job = await scheduler.read()
     if (!job || jobConfig(job) !== resolve(config)) continue
-    const wanted = startsOf(windows)
-    if (startsKey(job.starts) !== startsKey(wanted))
-      warnings.push(
-        `the ${scheduler.id} job starts at ${describeStarts(job.starts)}, the config's windows start at ${describeStarts(wanted)}; run \`awaywork schedule install\``,
-      )
+    if (olderJob(job))
+      return [
+        `the ${scheduler.id} job was installed by an older awaywork; run \`awaywork schedule install\` again`,
+      ]
+    const wake = await staleWake(startsOf(windows), run)
+    return wake ? [wake] : []
   }
-  return warnings
+  return []
 }
 
 export const gitRoot = (run: Exec = exec) =>
@@ -177,25 +195,25 @@ export async function installSchedule(
     const bin = realpathSync(process.argv[1] ?? '')
     const log = join(stateDir, 'schedule.log')
     await mkdir(stateDir, { recursive: true })
-    const starts = startsOf(windows)
-    const awake = await keepAwake(io.run)
     const where = await scheduler.install({
-      command: [...awake, process.execPath, bin, 'run', '--scheduled', '--config', path],
-      starts,
+      command: [process.execPath, bin, 'watch', '--config', path],
       path: process.env.PATH ?? '',
       log,
     })
     for (const other of Object.values(all))
       if (other !== scheduler && (await other.remove())) console.log(`Removed the ${other.id} job`)
     console.log(
-      `Scheduled with ${scheduler.id} for ${windows.map(describeWindow).join(', ')}: ${where}`,
+      `Scheduled awaywork watch with ${scheduler.id}${windows.length ? ` for ${windows.map(describeWindow).join(', ')}` : ', no windows yet'}: ${where}`,
     )
-    console.log(`Log: ${log}. The job keeps this shell's PATH; secrets come from the env file.`)
+    console.log(
+      `Log: ${watchLogPath}, crashes in ${log}. The job keeps this shell's PATH; secrets come from the env file.`,
+    )
     if (scheduler.id === 'systemd')
       console.log(
-        'User timers run only while you are logged in; `loginctl enable-linger` lifts that.',
+        'User services run only while you are logged in; `loginctl enable-linger` lifts that.',
       )
-    await offerWake(starts, io)
+    const starts = startsOf(windows)
+    if (starts.length) await offerWake(starts, io)
   } catch (e) {
     if (!(e instanceof SchedulerError)) return reportConfigError(e)
     console.error(e.message)
