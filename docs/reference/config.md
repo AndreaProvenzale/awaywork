@@ -169,7 +169,7 @@ My PRs, PRs awaiting my review and issues assigned to me, plus any extra searche
 |---|---|---|---|
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
 | `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
-| `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
+| `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 
 ## `sources.github.context`
@@ -302,7 +302,7 @@ First matching rule wins; top = highest priority.
 |---|---|---|---|
 | `skill` (required) | string |  | The skill that does the work |
 | `source` | string |  | Match only items from this source |
-| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source |
+| `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
 | `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
@@ -318,7 +318,7 @@ First matching rule wins; top = highest priority.
 
 ## `queue[].where`
 
-Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source.
+Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only.
 
 | Key | Type | Default | Description |
 |---|---|---|---|

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 
-const asanaFixture = (name: string) =>
+export const asanaFixture = (name: string) =>
   readFileSync(new URL(`../fixtures/asana/${name}`, import.meta.url), 'utf8')
 
 type Reply = string | { status: number; body: string; headers?: Record<string, string> }

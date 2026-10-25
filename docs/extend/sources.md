@@ -4,7 +4,7 @@ description: How to add a work source such as a task tracker to awaywork, with t
 
 # Adding a source
 
-A source reads the developer's open work from a tracker. Adding one is a file in `src/sources/`, a line in the registry and a passing contract suite. [Sources](../sources.md) holds the research on which trackers can be read headless and how.
+A source reads the developer's open work from a tracker, and what they finished lately when a rule asks. Adding one is a file in `src/sources/`, a line in the registry and a passing contract suite. [Sources](../sources.md) holds the research on which trackers can be read headless and how.
 
 For a private tracker, or one you don't want to maintain in here, a [custom source](../guide/custom-sources.md) needs no code change: any command that prints your items as JSON.
 
@@ -26,13 +26,14 @@ interface Source {
   fields: Record<string, ZodType>          // what `where` may match; `prefix.*` declares prefix.<any>
   link?: string | false                    // default PR link line, e.g. `Part of {key}`; false: none to configure
   secrets(cfg): string[]                   // env var names it reads
-  items(cfg, ctx): Promise<Item[]>         // the user's open items
+  items(cfg, ctx, since?): Promise<Item[]> // the user's open items, plus those finished since `since`
   prefetch(item, dir, ctx): Promise<void>  // write the context files the worker reads
   init?(ask: Ask, ctx): Promise<SourceSetup>   // its own `awaywork init` questions
 }
 ```
 
 - **`Item`**: an opaque `id` and a human `key` (the tracker's own, like `ENG-12`), `type` `issue` or `task`, title, description, url, comments, and `fields` holding only keys declared in `fields`. Keep the raw payload in `raw`.
+- **`state` and `closed`** go in `fields` on every item, without being declared: `state` is `open`, `merged` (PRs only) or `closed` (closed unmerged, done, canceled), and `closed` is the ISO time a finished item merged or closed. `since` is a `Date`, set only when some rule for the source can match a finished item: its lookback, the widest `closed: { newer_than }` among those rules or 7 days. Read finished items only then, with the tracker's own date filter (Jira `resolved >= -Nm`, Linear `completedAt`, Asana `completed_since`), never by paging through history. Without `since`, return open items only.
 - **Fields** are what users write rules against, in the tracker's own names: `section: QA`, not a mapped status. Set `repo` when the tracker can say which repo an item's code lives in (Asana, Jira and Linear all read a `repo_map` option; reuse it); without a linked PR or a `repo` the item is skipped. Set `created` and `updated` (ISO timestamps) so a rule's `order` can sort the items.
 - **Linked PRs**: the forge finds the user's PRs that carry the item's key in their branch or title, or the source's `link` line in their body. Set `link` on the source when the tracker links PRs by a phrase in their description (Linear's `Part of {key}`, Asana's `{url}`).
 - **`prefetch`** writes `item.md` with the item and all its comments; it's all the worker will see.

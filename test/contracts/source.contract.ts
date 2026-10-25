@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Ask, Ctx, Source } from '../../src/core/types.js'
-import { sourceField } from '../../src/sources/index.js'
+import { itemFields, sourceField } from '../../src/sources/index.js'
 
 /**
  * Every source adapter must pass this suite; `rawConfig` is its config as a
@@ -21,19 +21,20 @@ export function sourceContract(
 
     it('declares a usable id, config and secrets', () => {
       expect(source.id).toMatch(/^[a-z][a-z0-9-]*$/)
-      expect('type' in source.fields).toBe(false)
+      for (const key of Object.keys(itemFields)) expect(key in source.fields, key).toBe(false)
       for (const name of source.secrets(cfg())) expect(name).toMatch(/^[A-Z_][A-Z0-9_]*$/)
     })
 
-    it('returns items that carry only declared, valid fields', async () => {
+    it('returns open items that carry only declared, valid fields', async () => {
       const items = await source.items(cfg(), ctx)
       expect(items.length).toBeGreaterThan(0)
       for (const item of items) {
         expect(item.source).toBe(source.id)
         expect(['pr', 'issue', 'task']).toContain(item.type)
         expect(item.id && item.key && item.url).toBeTruthy()
+        expect(item.fields.state).toBe('open')
         for (const [key, value] of Object.entries(item.fields)) {
-          const field = sourceField(source.fields, key)
+          const field = itemFields[key] ?? sourceField(source.fields, key)
           expect(field, `undeclared field "${key}"`).toBeDefined()
           for (const v of [value].flat()) expect(field?.safeParse(v).success).toBe(true)
         }

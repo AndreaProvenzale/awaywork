@@ -40,7 +40,15 @@ export const commandConfig = z
         "Shell command printing the items as a JSON array; runs in the config file's folder",
       ),
     fields: z
-      .array(z.string().refine((name) => name !== 'any', '`any` is reserved in where'))
+      .array(
+        z
+          .string()
+          .refine((name) => name !== 'any', '`any` is reserved in where')
+          .refine(
+            (name) => name !== 'state' && name !== 'closed',
+            "every item has it: print it at the item's top level",
+          ),
+      )
       .default([])
       .describe('Item fields rules may match on'),
     secrets: z
@@ -69,6 +77,8 @@ const entry = z.object({
   url: z.string(),
   description: z.string().default(''),
   status: z.string().default('open'),
+  state: z.enum(['open', 'closed']).default('open'),
+  closed: z.iso.datetime({ offset: true }).optional(),
   assignee: z.string().optional(),
   reviewers: z.array(z.string()).default([]),
   labels: z.array(z.string()).default([]),
@@ -97,11 +107,11 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     fields,
     secrets: (c) => c.secrets,
 
-    async items(c, ctx) {
+    async items(c, ctx, since) {
       const subprocess = execa(c.command, {
         shell: true,
         cwd: c.dir,
-        env: ctx.env,
+        env: since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env,
         extendEnv: false,
         timeout: TIMEOUT_MS,
         detached: true,
@@ -138,8 +148,14 @@ function toItem(source: string, e: Entry, fields: Record<string, z.ZodType>): It
       if (!field.safeParse(v).success)
         throw new Error(`${e.key}: invalid ${key} ${JSON.stringify(v)}`)
   }
-  const { context: _, fields: itemFields, ...rest } = e
-  return { ...rest, source, fields: itemFields, linkedPrs: [], raw: e }
+  const { context: _, fields: itemFields, state, closed, ...rest } = e
+  return {
+    ...rest,
+    source,
+    fields: { ...itemFields, state, ...(closed && { closed }) },
+    linkedPrs: [],
+    raw: e,
+  }
 }
 
 function itemMarkdown(item: Item): string {

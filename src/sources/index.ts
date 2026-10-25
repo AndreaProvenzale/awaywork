@@ -1,4 +1,5 @@
-import type { z } from 'zod'
+import { z } from 'zod'
+import { itemStates } from '../core/queue.js'
 import type { Source } from '../core/types.js'
 import { asana } from './asana.js'
 import { bitbucket } from './bitbucket.js'
@@ -9,6 +10,16 @@ import { linear } from './linear.js'
 
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
 export const sources: Record<string, Source<any>> = { github, bitbucket, asana, linear, jira }
+
+/** Keys every item has, whatever its source; a source sets `state`, and `closed` on a finished item. */
+export const itemFields: Record<string, z.ZodType> = {
+  type: z.enum(['pr', 'issue', 'task']),
+  title: z.string(),
+  description: z.string(),
+  approved: z.boolean(),
+  state: z.enum(itemStates),
+  closed: z.iso.datetime({ offset: true }),
+}
 
 /** The built-in source with this id, else the command source its config describes. */
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config

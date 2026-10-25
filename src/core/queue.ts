@@ -25,7 +25,7 @@ const rule = (skill: string, source: string, where: Where): Rule => ({
 export const defaultQueue: Rule[] = [
   rule('fix', 'github', { type: 'pr', mine: true, checks: 'failing' }),
   rule('fix', 'asana', { section: 'QA' }),
-  rule('fix', 'linear', { state: 'QA' }),
+  rule('fix', 'linear', { status: 'QA' }),
   rule('fix', 'jira', { status: 'QA' }),
   rule('fix', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
   rule('fix', 'github', {
@@ -36,10 +36,10 @@ export const defaultQueue: Rule[] = [
   }),
   rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('implement', 'asana', { section: 'In progress' }),
-  rule('implement', 'linear', { state: 'In Progress' }),
+  rule('implement', 'linear', { status: 'In Progress' }),
   rule('implement', 'jira', { status: 'In Progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
-  rule('plan', 'linear', { state: 'Todo' }),
+  rule('plan', 'linear', { status: 'Todo' }),
   rule('plan', 'jira', { status: 'To Do' }),
 ]
 
@@ -82,15 +82,61 @@ export function matches(rule: Rule, item: Item): boolean {
   return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
-/** An awaywork PR waits for review unless a rule names `ours`. */
+/** An awaywork PR waits for review unless a rule names `ours`; a finished item needs a rule that reads it back that far. */
 function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
+  if (itemState(item) !== 'open') {
+    const back = lookback(rule.where)
+    // One without a `closed` time can't be too old.
+    return back !== undefined && !(Date.now() - timestamp(item.fields.closed) > back)
+  }
   return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
-/** A PR awaywork opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
+/** An open PR awaywork opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
 export function isAwayworkPr(item: Item): boolean {
-  return item.source === 'github' && item.fields.ours === true
+  return item.source === 'github' && item.fields.ours === true && itemState(item) === 'open'
+}
+
+export const itemStates = ['open', 'merged', 'closed'] as const
+export type ItemState = (typeof itemStates)[number]
+
+/** Whether the item is open, or a PR merged, or closed unmerged, done or canceled; open unless its source says. */
+export function itemState(item: Item): ItemState {
+  const state = item.fields.state
+  return state === 'merged' || state === 'closed' ? state : 'open'
+}
+
+/** How far back a rule reads finished items when its `where` doesn't bound `closed`. */
+export const DEFAULT_LOOKBACK = '7d'
+
+/**
+ * How far back, in milliseconds, a `where` reads finished (merged or closed) items: the widest
+ * `closed: { newer_than }` among the ways it can match one, {@link DEFAULT_LOOKBACK} where one
+ * sets none. Undefined when it matches open items only, as one that never names `state` does.
+ */
+export function lookback(where: Where): number | undefined {
+  return namesState(where) ? reach(where, Number.POSITIVE_INFINITY) : undefined
+}
+
+function namesState(where: Where): boolean {
+  return Object.entries(where).some(
+    ([key, value]) => key === 'state' || (key === 'any' && (value as Where[]).some(namesState)),
+  )
+}
+
+function reach(where: Where, bound: number): number | undefined {
+  const state = where.state as WhereValue | undefined
+  if (state !== undefined && !['merged', 'closed'].some((s) => matchesValue(state, s)))
+    return undefined
+  const closed = where.closed
+  const newer =
+    typeof closed === 'object' && !Array.isArray(closed) && isAge(closed) && closed.newer_than
+  const own = Math.min(bound, newer ? spanMs(newer) : Number.POSITIVE_INFINITY)
+  const any = where.any as Where[] | undefined
+  if (!any) return Number.isFinite(own) ? own : spanMs(DEFAULT_LOOKBACK)
+  const reached = any.flatMap((w) => reach(w, own) ?? [])
+  return reached.length > 0 ? Math.max(...reached) : undefined
 }
 
 /** The keys of `where` the item fails; `any` fails when every entry fails. */

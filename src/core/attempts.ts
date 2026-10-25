@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { itemState } from './queue.js'
 import type { RunReport, UnitResult } from './report.js'
 import type { Item, PrRef } from './types.js'
 
@@ -9,9 +10,10 @@ const GAVE_UP_MS = (7 * 24 - 3) * 3600_000
 
 /**
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
- * then; `failed` counts the attempts in a row with this skill that didn't finish, however the item
- * changed, absent once one did, and `failedAt` is when the last of them started; `pushed` is the
- * head a `push` left on a PR branch; `report` is where the item's latest report is.
+ * and, once merged or closed, its `state` then; `failed` counts the attempts in a row with this
+ * skill that didn't finish, however the item changed, absent once one did, and `failedAt` is when
+ * the last of them started; `pushed` is the head a `push` left on a PR branch; `report` is where
+ * the item's latest report is.
  */
 export type Attempts = Record<
   string,
@@ -19,6 +21,7 @@ export type Attempts = Record<
     runId: string
     skill: string
     updated: string
+    state?: 'merged' | 'closed'
     failed?: number
     failedAt?: string
     pushed?: string
@@ -42,10 +45,13 @@ export async function saveAttempts(path: string, attempts: Attempts): Promise<vo
   await rename(`${path}.tmp`, path)
 }
 
-/** The run that last attempted the item with this skill, when the item hasn't been updated since. */
+/** The run that last attempted the item with this skill, when the item hasn't been updated, merged or closed since. */
 export function unchangedSince(item: Item, skill: string, attempts: Attempts): string | undefined {
   const last = attempts[attemptKey(item)]
-  return last?.skill === skill && item.fields.updated === last.updated && !last.failed
+  return last?.skill === skill &&
+    item.fields.updated === last.updated &&
+    itemState(item) === (last.state ?? 'open') &&
+    !last.failed
     ? last.runId
     : undefined
 }
@@ -122,11 +128,13 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
           ...(latest && { report: latest }),
           pushed,
         }
-      else
+      else {
+        const state = itemState(item)
         next[key] = {
           runId: report.runId,
           skill,
           updated: item.fields.updated,
+          ...(state !== 'open' && { state }),
           ...(!done && {
             failed: failedAttempts(item, skill, attempts) + 1,
             failedAt: report.startedAt.toISOString(),
@@ -134,6 +142,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
           ...(pushed && { pushed }),
           ...(latest && { report: latest }),
         }
+      }
     }
   }
   return next
