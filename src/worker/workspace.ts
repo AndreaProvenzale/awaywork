@@ -351,21 +351,16 @@ export function workerEnv(
   }
 }
 
-/**
- * The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs and, for a gate's, reading attributes
- * from the chain's `start` rather than the worktree, and the slice's base as `AWAYWORK_FROM`.
- */
+/** The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs, and the slice's base as `AWAYWORK_FROM`. */
 export function checkEnv(
   env: NodeJS.ProcessEnv,
   dir: string,
   withheld: string[],
   from?: string,
-  start?: string,
 ): NodeJS.ProcessEnv {
   return {
     ...workerEnv(env, dir, withheld),
     GIT_NO_REPLACE_OBJECTS: '1',
-    ...(start && { GIT_ATTR_SOURCE: start }),
     ...(from && { AWAYWORK_FROM: from }),
   }
 }
@@ -373,7 +368,7 @@ export function checkEnv(
 /**
  * The env of a gate's command and judge: a gate check's, on a global git config awaywork writes afresh from the steps'
  * identity and lfs filter, none of their edits, with no attributes file and no diff or textconv drivers, so the clone's
- * git shows it the slice as pushed.
+ * git shows it the slice as pushed, reading attributes from the chain's `start` rather than the worktree.
  */
 export async function gateEnv(
   env: NodeJS.ProcessEnv,
@@ -389,7 +384,11 @@ export async function gateEnv(
     ...(gitEntries.get(dir) ?? []),
     ['core.attributesFile', '/dev/null'],
   ])
-  return { ...checkEnv(env, dir, withheld, from, start), GIT_CONFIG_GLOBAL: file }
+  return {
+    ...checkEnv(env, dir, withheld, from),
+    ...(start && { GIT_ATTR_SOURCE: start }),
+    GIT_CONFIG_GLOBAL: file,
+  }
 }
 
 /** Every secret the config names, for `workerEnv` to withhold. */

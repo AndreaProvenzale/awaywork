@@ -1394,6 +1394,11 @@ queue: [{ skill: fix, where: { type: pr, state: merged }, deliver: ${deliver} }]
       expect(() => parseConfig(yaml(deliver))).toThrow(
         `queue[0].deliver: ${deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
       )
+    const recent = yaml('push').replace(
+      'state: merged',
+      'state: [open, merged], closed: { newer_than: 1d }',
+    )
+    expect(() => parseConfig(recent)).toThrow('queue[0].deliver: push needs an open PR')
     const mixed = yaml('push').replace('state: merged', 'state: [open, merged]')
     expect(plan(mixed, [merged], {}).skipped.map((s) => [s.kind, s.reason])).toEqual([
       ['refused_delivery', 'deliver push: no PR of yours to push onto'],
