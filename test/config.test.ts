@@ -111,6 +111,22 @@ describe('config', () => {
     ).toEqual([])
   })
 
+  it('rejects closed where no state can be merged or closed', () => {
+    const rule = (where: string) =>
+      problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)
+    const message = 'closed only matches merged or closed items; add state: [merged, closed]'
+    expect(rule('{ closed: { older_than: 3d, newer_than: 30d } }')).toEqual([
+      `queue[0].where.closed: ${message}`,
+    ])
+    expect(rule('{ state: open, closed: { newer_than: 3d } }')).toEqual([
+      `queue[0].where.closed: ${message}`,
+    ])
+    expect(rule('{ any: [{ label: x, closed: { newer_than: 3d } }] }')).toEqual([
+      `queue[0].where.any[0].closed: ${message}`,
+    ])
+    expect(rule('{ state: [merged, closed], closed: { newer_than: 3d } }')).toEqual([])
+  })
+
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(

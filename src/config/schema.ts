@@ -9,6 +9,7 @@ import {
   isMatch,
   lookback,
   matchesOpen,
+  matchesValue,
   newerThan,
   ruleSteps,
   spanPattern,
@@ -751,9 +752,22 @@ export const configSchema = z
           path: [...at, 'deliver'],
           message: `${r.deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
         })
-      checkWhere(r.where, [...at, 'where'], false)
-      function checkWhere(where: Where, path: (string | number)[], outerBounded: boolean) {
+      checkWhere(r.where, [...at, 'where'], false, undefined)
+      function canFinish(state: WhereValue | undefined, where: Where): boolean {
+        const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))
+        const entries = (where.any as Where[] | undefined) ?? []
+        return state === undefined
+          ? entries.some((w) => canFinish(w.state as WhereValue | undefined, w))
+          : finished(state)
+      }
+      function checkWhere(
+        where: Where,
+        path: (string | number)[],
+        outerBounded: boolean,
+        outerState: WhereValue | undefined,
+      ) {
         const bounded = outerBounded || newerThan(where.closed as WhereValue) !== undefined
+        const state = (where.state as WhereValue | undefined) ?? outerState
         for (const [key, value] of Object.entries(where)) {
           if (key === 'any') {
             for (const [i, w] of (value as Where[]).entries())
@@ -763,7 +777,7 @@ export const configSchema = z
                   path: [...path, key, i],
                   message: 'an empty entry matches everything',
                 })
-              else checkWhere(w, [...path, key, i], bounded)
+              else checkWhere(w, [...path, key, i], bounded, state)
             continue
           }
           if (key === 'ours' && path.includes('any')) {
@@ -799,6 +813,12 @@ export const configSchema = z
                 code: 'custom',
                 path: [...path, key],
                 message: 'older_than and newer_than need a date field',
+              })
+            else if (key === 'closed' && !canFinish(state, where))
+              ctx.addIssue({
+                code: 'custom',
+                path: [...path, key],
+                message: 'closed only matches merged or closed items; add state: [merged, closed]',
               })
             else if (key === 'closed' && 'older_than' in v && !bounded)
               ctx.addIssue({
