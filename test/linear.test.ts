@@ -36,9 +36,17 @@ describe('linear source', () => {
       state: { name: 'Done', type: 'completed' },
       completedAt: '2026-10-20T10:00:00.000Z',
     })
-    const http = linearFetch([[/query Issues.*"after":"cursor-1"/, JSON.stringify(done)]])
+    const canceled = JSON.parse(linearFixture('issues-1.json'))
+    Object.assign(canceled.data.viewer.assignedIssues.nodes[0], {
+      state: { name: 'Canceled', type: 'canceled' },
+      canceledAt: '2026-10-19T10:00:00.000Z',
+    })
+    const http = linearFetch([
+      [/query Issues.*"after":"cursor-1"/, JSON.stringify(done)],
+      [/query Issues/, JSON.stringify(canceled)],
+    ])
     const since = new Date('2026-10-11T00:00:00.000Z')
-    const [, web7] = await linearSource(http).items(cfg, ctx, since)
+    const [eng12, web7] = await linearSource(http).items(cfg, ctx, since)
     const [first] = http.calls.filter((c) => c.body.includes('query Issues'))
     const after = { gte: since.toISOString() }
     expect(JSON.parse(first?.body ?? '{}').variables).toMatchObject({
@@ -55,6 +63,11 @@ describe('linear source', () => {
       status: 'Done',
       state: 'closed',
       closed: '2026-10-20T10:00:00.000Z',
+    })
+    expect(eng12?.fields).toMatchObject({
+      status: 'Canceled',
+      state: 'closed',
+      closed: '2026-10-19T10:00:00.000Z',
     })
   })
 
