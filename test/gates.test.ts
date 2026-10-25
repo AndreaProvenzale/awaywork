@@ -10,7 +10,7 @@ import { planRun } from '../src/core/foreman.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Gate, Unit } from '../src/core/types.js'
 import type { Check } from '../src/worker/checks.js'
-import { gatesSection, runGates, runJudges } from '../src/worker/gates.js'
+import { describeFired, gatesSection, runGates, runJudges } from '../src/worker/gates.js'
 import { fakeItem } from './fakes/items.js'
 
 const git = async (dir: string, ...args: string[]) =>
@@ -287,6 +287,15 @@ it('puts the judges after the scripts, in a part of their own, and a card with o
   expect(gatesSection(['risk'], [judged])).toBe(
     '## Needs a decision\n\n### Judge\n\n- risk: VAT rounding moved to each line\n\n---',
   )
+})
+
+it('names a gate that fired from both its script and its judge once', () => {
+  const fired = [
+    { name: 'risk', line: 'a' },
+    { name: 'risk', line: 'b', judged: true as const },
+    { name: 'ids', line: 'c' },
+  ]
+  expect(describeFired(fired)).toBe('gates risk, ids fired')
 })
 
 /** A clone whose slice since `from` adds `src/app.ts`, with its PR body in `.away/out/`, which git ignores. */
