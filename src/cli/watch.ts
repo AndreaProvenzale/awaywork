@@ -93,9 +93,14 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
         if (reason(e) !== failed) event(`config not loaded: ${reason(e)}`)
         failed = reason(e)
       }
-      if (config && now.getTime() - pruned >= DAY) {
-        pruned = now.getTime()
-        await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
+      // Under the run lock with no run in progress, else at the next minute.
+      if (config && !running && now.getTime() - pruned >= DAY) {
+        const pruneLock = await takeRunLock(runLockPath, 'watch')
+        if ('release' in pruneLock) {
+          pruned = now.getTime()
+          await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
+          await pruneLock.release()
+        }
       }
       const until = config && windowRun(config.windows, now, { running: !!running, lastEnd })
       if (config && until) {
