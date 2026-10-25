@@ -16,13 +16,14 @@ import {
 import type { Job } from '../src/core/types.js'
 import type { Schedule, Scheduler } from '../src/scheduler/index.js'
 
-/** The units the fake worker ran, the most at a time, how long each takes, a first probe's delay, and the repo each clone is of. */
+/** The units the fake worker ran, the most at a time, how long each takes, what the next probe waits for, and the repo each clone is of. */
 const workers = vi.hoisted(() => ({
   ran: [] as string[],
   running: 0,
   most: 0,
   ms: 0,
-  slowProbe: 0,
+  gate: undefined as Promise<unknown> | undefined,
+  open: () => {},
   origin: '',
 }))
 
@@ -35,13 +36,14 @@ vi.mock('../src/providers/index.js', async () => {
       ...fake,
       // No quota reading: a present run's units sit out, so none clones.
       probe: async () => {
-        const ms = workers.slowProbe
-        workers.slowProbe = 0
-        await setTimeout(ms)
+        const gate = workers.gate
+        workers.gate = undefined
+        if (gate) await Promise.race([gate, setTimeout(10_000)])
         return null
       },
       async *run(job: Job, signal: AbortSignal) {
         workers.ran.push(job.unit.id)
+        workers.open()
         workers.most = Math.max(workers.most, ++workers.running)
         try {
           await setTimeout(workers.ms)
@@ -218,8 +220,9 @@ queue:
   - { skill: plan, source: chores, where: { kind: later } }
 `,
     )
-    // The window run plans slower, so the soon run takes ch-1 first and both have a unit.
-    Object.assign(workers, { ran: [], most: 0, ms: 1000, slowProbe: 1500 })
+    // The window run probes first and waits for the soon run's worker, so both have a unit.
+    const gate = new Promise((open) => Object.assign(workers, { open }))
+    Object.assign(workers, { ran: [], most: 0, ms: 1000, gate })
     const stop = new AbortController()
     const done = watch(path, stop.signal)
     await vi.waitFor(async () => expect((await daemonLog()).match(/Report: /g)).toHaveLength(2), {
