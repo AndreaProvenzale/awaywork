@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runCommand } from '../src/cli/run.js'
+import { abortOnSignals, runCommand } from '../src/cli/run.js'
 import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
@@ -157,4 +157,28 @@ describe('run command', () => {
     expect(err.at(-1)).toMatch(/^notify failed: .*\nposting with \*\*\*$/s)
     expect(err.join('\n')).not.toContain('s3cr3t-value')
   })
+})
+
+it('aborts on the first SIGTERM, exiting 143 once done, and quits at once on the second', () => {
+  const signals = ['SIGINT', 'SIGTERM'] as const
+  const others = signals.map((s) => process.listeners(s))
+  // Only abortOnSignals' own listeners, so none of the runner's sees the emitted signals.
+  for (const s of signals) process.removeAllListeners(s)
+  const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+  try {
+    const signal = abortOnSignals()
+    process.emit('SIGTERM')
+    expect(signal.aborted).toBe(true)
+    expect(process.exitCode).toBe(143)
+    expect(exit).not.toHaveBeenCalled()
+    process.emit('SIGTERM')
+    expect(exit).toHaveBeenCalledWith(143)
+  } finally {
+    exit.mockRestore()
+    process.exitCode = undefined
+    signals.forEach((s, i) => {
+      process.removeAllListeners(s)
+      for (const listener of others[i] ?? []) process.on(s, listener)
+    })
+  }
 })
