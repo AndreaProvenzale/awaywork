@@ -257,11 +257,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return moved
   }
 
-  /** A unit's items in one tracker's words: from the rule's source, or the source of the item it matched first. */
-  const ownItems = (p: PlannedUnit): Item[] => {
-    const own = input.plan.queue[p.rule]?.source ?? p.unit.items[0]?.source
-    return p.unit.items.filter((i) => i.source === own)
-  }
+  /** A unit's items in one tracker's words: from the source of the item its rule matched first. */
+  const ownItems = (p: PlannedUnit): Item[] =>
+    p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
   /**
    * Posts a step's questions as a comment on the first of the unit's own items that is yours,
@@ -276,9 +274,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
-      const top = ownItems(p)[0] ?? (p.unit.items[0] as Item)
-      const why = unwritable(top, input.sources[top.source]) ?? "isn't from the rule's source"
-      return { unposted: `${top.key} ${why}` }
+      const top = p.unit.items[0] as Item
+      return { unposted: `${top.key} ${unwritable(top, input.sources[top.source])}` }
     }
     const ref = `${item.source}:${item.key}`
     try {
