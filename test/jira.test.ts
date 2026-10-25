@@ -50,6 +50,19 @@ describe('jira source', () => {
     )
   })
 
+  it('also reads issues resolved since the time asked, as closed', async () => {
+    const page = JSON.parse(jiraFixture('search-1.json'))
+    page.issues[0].fields.resolutiondate = '2026-10-20T10:00:00.000+0000'
+    const http = jiraFetch([[/resolved >= /, JSON.stringify({ ...page, isLast: true })]])
+    const since = new Date(Date.now() - 2 * 3_600_000 + 30_000)
+    const [eng12] = await jiraSource(http).items(cfg, ctx, since)
+    const [search] = http.calls.filter((c) => c.url.endsWith('/search/jql'))
+    expect(JSON.parse(search?.body ?? '{}').jql).toBe(
+      'assignee = currentUser() AND (resolution = Unresolved OR resolved >= -120m) ORDER BY updated DESC',
+    )
+    expect(eng12?.fields).toMatchObject({ state: 'closed', closed: '2026-10-20T10:00:00.000Z' })
+  })
+
   it('states project, status, labels, priority, issue type, dates and custom fields', async () => {
     const [eng12, web7] = await items()
     expect(eng12?.fields).toEqual({
@@ -61,6 +74,7 @@ describe('jira source', () => {
       issuetype: 'Bug',
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:30:00.000Z',
+      state: 'open',
       'fields.Story point estimate': 3,
       'fields.Sprint': ['Sprint 7'],
       'fields.Team': 'Platform',
@@ -68,6 +82,7 @@ describe('jira source', () => {
     expect(web7?.fields).toEqual({
       project: 'WEB',
       status: 'To Do',
+      state: 'open',
       labels: [],
       blocked: false,
       issuetype: 'Story',

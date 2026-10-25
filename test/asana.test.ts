@@ -7,7 +7,7 @@ import type { Step } from '../src/cli/triage.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Ctx } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
-import { asanaRoutes, recordedFetch } from './fakes/asana.js'
+import { asanaFixture, asanaRoutes, recordedFetch } from './fakes/asana.js'
 import { fakeForge } from './fakes/forge.js'
 import { asanaTask, fakeItem } from './fakes/items.js'
 
@@ -37,6 +37,24 @@ describe('asana source', () => {
     expect(first?.headers.Authorization).toBe('Bearer pat')
   })
 
+  it('also reads tasks completed since the time asked, as closed', async () => {
+    const page = JSON.parse(asanaFixture('tasks-2.json'))
+    page.data[0].completed_at = '2026-10-20T10:00:00.000Z'
+    const http = recordedFetch([
+      [/\/tasks\?.*offset=eyJwYWdlIjoyfQ/, JSON.stringify(page)],
+      ...asanaRoutes(),
+    ])
+    const since = new Date('2026-10-11T00:00:00.000Z')
+    const found = await asanaSource(http).items(cfg, ctx, since)
+    const [first] = http.calls.filter((c) => /\/tasks\?/.test(c.url))
+    expect(new URL(first?.url ?? '').searchParams.get('completed_since')).toBe(since.toISOString())
+    expect(found.map((i) => [i.fields.state, i.fields.closed])).toEqual([
+      ['open', undefined],
+      ['open', undefined],
+      ['closed', '2026-10-20T10:00:00.000Z'],
+    ])
+  })
+
   it('states project, section, tags and custom fields', async () => {
     const [eng12, , eng14] = await items()
     expect(eng12?.fields).toEqual({
@@ -47,6 +65,7 @@ describe('asana source', () => {
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
       due: '2026-01-10',
+      state: 'open',
       'fields.ID': 'ENG-12',
       'fields.Priority': 'High',
       'fields.Estimate': 3,

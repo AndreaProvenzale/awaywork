@@ -26,6 +26,7 @@ const taskFields = [
   'permalink_url',
   'created_at',
   'modified_at',
+  'completed_at',
   'due_on',
   'due_at',
   'assignee.name',
@@ -55,6 +56,7 @@ interface Task {
   permalink_url: string
   created_at?: string
   modified_at?: string
+  completed_at?: string | null
   due_on?: string | null
   due_at?: string | null
   assignee: Named | null
@@ -118,15 +120,15 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     },
     secrets: (cfg) => [cfg.token_env],
 
-    /** My incomplete tasks in the workspace, optionally only those in the configured projects. */
-    async items(cfg, ctx) {
+    /** My incomplete tasks in the workspace, and those completed since `since`, optionally only those in the configured projects. */
+    async items(cfg, ctx, since) {
       const token = tokenFrom(cfg, ctx)
       const tasks = await getAll<Task>(
         '/tasks',
         {
           assignee: 'me',
           workspace: cfg.workspace,
-          completed_since: new Date().toISOString(),
+          completed_since: (since ?? new Date()).toISOString(),
           opt_fields: taskFields,
         },
         token,
@@ -272,6 +274,8 @@ function toItem(
       ...(task.created_at && { created: task.created_at }),
       ...(task.modified_at && { updated: task.modified_at }),
       ...((task.due_at || task.due_on) && { due: task.due_at || task.due_on }),
+      state: task.completed_at ? 'closed' : 'open',
+      ...(task.completed_at && { closed: task.completed_at }),
       ...Object.fromEntries(custom),
     },
     raw: task,

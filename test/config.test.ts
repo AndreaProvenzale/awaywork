@@ -86,10 +86,20 @@ describe('config', () => {
     ])
   })
 
+  it('takes state and closed on every source, and points a Linear state at status', () => {
+    const where = '{ state: [merged, closed], closed: { newer_than: 14d } }'
+    expect(problems(`${minimal}queue: [{ skill: review, where: ${where} }]`)).toEqual([])
+    const linear =
+      'providers: [claude]\nsources: { linear: {} }\nqueue: [{ skill: fix, where: { state: QA } }]'
+    expect(problems(linear)).toEqual([
+      `queue[0].where.state: invalid value "QA": state is open, merged or closed; Linear's workflow state is status`,
+    ])
+  })
+
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved or .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved, state, closed or .*github: repo, label/,
       ),
     ])
   })

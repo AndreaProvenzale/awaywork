@@ -14,6 +14,7 @@ import {
   isAwayworkPr,
   isLoop,
   isMatch,
+  itemState,
   rank,
 } from './queue.js'
 import { type Origin, resolveSkill, type SkillCatalog } from './skills.js'
@@ -190,6 +191,15 @@ export function planRun(input: {
       continue
     }
     if (onlyRepo && !onlyRepo.test(repo)) continue
+    // A finished PR links no PR, so its unit cuts from the default branch: there's nothing to push onto or review.
+    const finishedPr = items.find((i) => i.type === 'pr' && itemState(i) !== 'open')
+    if (finishedPr && (review || (committing && deliver === 'push'))) {
+      skip(
+        'refused_delivery',
+        `deliver ${rule.deliver}: ${finishedPr.key} is ${itemState(finishedPr)}`,
+      )
+      continue
+    }
     if (review && !pr) {
       skip('refused_delivery', 'deliver pending_review: no pull request to review')
       continue

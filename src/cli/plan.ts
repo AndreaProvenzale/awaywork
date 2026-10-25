@@ -8,11 +8,11 @@ import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
 import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
-import { defaultRules } from '../core/queue.js'
+import { defaultRules, itemState, lookback } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
-import type { Ctx, Forge, Item, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
@@ -224,12 +224,13 @@ export async function collectItems(
   onProgress?: OnProgress,
 ): Promise<Item[]> {
   const items: Item[] = []
+  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     if (!source) continue
     const link = (cfg as { link?: string }).link ?? source.link
     onProgress?.({ name: id, state: 'running' })
-    await source.items(cfg, ctx).then(
+    await source.items(cfg, ctx, finishedSince(queue, id)).then(
       (found) => {
         items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
         onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
@@ -246,6 +247,14 @@ export async function collectItems(
 
 const firstLine = (text: string) => text.split('\n')[0]
 
+/** How far back the source's rules read finished items, the widest wins; unset when none does. */
+export function finishedSince(queue: Rule[], source: string): Date | undefined {
+  const reach = queue
+    .filter((r) => !r.source || r.source === source)
+    .flatMap((r) => lookback(r.where) ?? [])
+  return reach.length > 0 ? new Date(Date.now() - Math.max(...reach)) : undefined
+}
+
 const FAILURE_LINE = 300
 
 /** An error's first line and its stderr's last error line, else its last: a crashing script's whole stderr would bury the warning. */
@@ -259,14 +268,16 @@ export function sourceFailure(e: Error & { stderr?: unknown }): string {
   return (last ? [first, last] : [first]).map((line) => clip(line, FAILURE_LINE)).join('\n')
 }
 
-/** Tracker tasks link no PR natively, so the forge finds my PRs that name the task. */
+/** Open tracker tasks link no PR natively, so the forge finds my PRs that name the task; a finished one links none. */
 export async function linkTasks(
   items: Item[],
   forge: Forge,
   ctx: Ctx,
   onProgress?: OnProgress,
 ): Promise<void> {
-  const tasks = items.filter((i) => i.type === 'task' && i.linkedPrs.length === 0)
+  const tasks = items.filter(
+    (i) => i.type === 'task' && itemState(i) === 'open' && i.linkedPrs.length === 0,
+  )
   for (const [i, item] of tasks.entries()) {
     onProgress?.({ name: 'linking PRs', state: 'running', detail: `${i}/${tasks.length}` })
     item.linkedPrs = await forge.prsFor(item).catch((e: Error) => {

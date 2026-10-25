@@ -6,7 +6,7 @@ import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
 import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
-import { sourceField, sourceFor, sources } from '../sources/index.js'
+import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
   .string()
@@ -324,7 +324,7 @@ const rule: z.ZodType<Rule, unknown> = z
     where: where
       .default({})
       .describe(
-        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source',
+        'Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where that never names state matches open items only',
       ),
     ...stepSettings,
     deliver: z
@@ -495,14 +495,6 @@ const repo = z.strictObject({
       "Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain",
     ),
 })
-
-const itemType = z.enum(['pr', 'issue', 'task'])
-const itemFields: Record<string, z.ZodType> = {
-  type: itemType,
-  title: z.string(),
-  description: z.string(),
-  approved: z.boolean(),
-}
 
 export const configSchema = z
   .strictObject({
@@ -793,7 +785,7 @@ export const configSchema = z
               ctx.addIssue({
                 code: 'custom',
                 path: [...path, key],
-                message: `invalid value ${JSON.stringify(scalar)}`,
+                message: `invalid value ${JSON.stringify(scalar)}${key === 'state' ? ": state is open, merged or closed; Linear's workflow state is status" : ''}`,
               })
         }
       }

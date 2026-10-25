@@ -84,7 +84,8 @@ export interface Source<C = unknown> {
    */
   link?: string | false
   secrets(cfg: C): string[]
-  items(cfg: C, ctx: Ctx): Promise<Item[]>
+  /** The open items, plus those finished (`state` merged or closed) since `since` when given. */
+  items(cfg: C, ctx: Ctx, since?: Date): Promise<Item[]>
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
   /** Asks what `awaywork init` needs to configure this source. */
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
