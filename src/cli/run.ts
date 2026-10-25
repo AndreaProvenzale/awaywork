@@ -100,7 +100,7 @@ export function runCommand(program: Command): void {
           if (!('release' in lock)) {
             console.error(
               lock.pid === (await lockHolder(watchLockPath))
-                ? `awaywork watch is running run ${lock.runId} (pid ${lock.pid}); try again once it ends`
+                ? `awaywork watch holds the run lock (pid ${lock.pid}); try again once its run ends`
                 : `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
             )
             process.exitCode = 1

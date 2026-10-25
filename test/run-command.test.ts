@@ -101,7 +101,7 @@ describe('run command', () => {
       await writeFile(watchLockPath, `${process.pid} watch`)
       const daemon = await run([])
       expect(daemon.err.at(-1)).toBe(
-        `awaywork watch is running run 20261025-010000 (pid ${process.pid}); try again once it ends`,
+        `awaywork watch holds the run lock (pid ${process.pid}); try again once its run ends`,
       )
       expect(process.exitCode).toBe(1)
     } finally {

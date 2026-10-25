@@ -51,7 +51,7 @@ Daemon log: ~/.local/state/awaywork/watch.log
 
 - One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
 - One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 37770)`. That's what makes cron's restart line harmless.
-- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch is running run 20261025-145300 (pid 37770); try again once it ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
+- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch holds the run lock (pid 37770); try again once its run ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
 - The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
