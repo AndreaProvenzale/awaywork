@@ -114,6 +114,15 @@ describe('finished items', () => {
     linkedPrs: [],
   })
 
+  it('take merged release PRs and open hotfix ones, not merged hotfix ones', () => {
+    const where: Rule['where'] = {
+      any: [{ state: 'merged', label: 'release' }, { label: 'hotfix' }],
+    }
+    expect(matches(rule(where), merged(1, 1, { label: ['release'] }))).toBe(true)
+    expect(matches(rule(where), merged(1, 1, { label: ['hotfix'] }))).toBe(false)
+    expect(matches(rule(where), githubPr(2, { state: 'open', label: ['hotfix'] }))).toBe(true)
+  })
+
   it('match only a rule that names state, within its lookback', () => {
     expect(matches(rule({ type: 'pr' }), merged(1, 1))).toBe(false)
     expect(matches(rule({ type: 'pr' }), githubPr(2, { state: 'open' }))).toBe(true)
