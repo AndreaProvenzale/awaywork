@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { chmod, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { attemptsPath, runLockPath, runsDir } from '../src/config/paths.js'
@@ -68,6 +68,20 @@ describe('pruneRuns', () => {
     await writeFile(runLockPath, `${process.pid} 20260104-000000`)
     expect((await pruneRuns({ keep_runs: '1d' }, now)).removed).toBe(2)
     expect((await readdir(runsDir)).sort()).toEqual(['20260103-000000', '20260104-000000'])
+  })
+
+  it('keeps an old run whose replays dir changed within keep_runs', async () => {
+    await makeRun('20260101-000000')
+    await makeRun('20260102-000000')
+    for (const [id, when] of [
+      ['20260101-000000', new Date('2026-10-25T11:00:00Z')],
+      ['20260102-000000', new Date('2026-02-01T00:00:00Z')],
+    ] as const) {
+      await mkdir(join(runsDir, id, 'replays'))
+      await utimes(join(runsDir, id, 'replays'), when, when)
+    }
+    expect((await pruneRuns({ keep_runs: '30d' }, now)).removed).toBe(1)
+    expect(await readdir(runsDir)).toEqual(['20260101-000000'])
   })
 
   it('leaves anything not named like a run, and tolerates a missing runs dir', async () => {

@@ -14,7 +14,7 @@ export interface Pruned {
 
 /**
  * Removes the run dirs that started longer than `keep_runs` before `now`, going by the run id, a
- * UTC start time. Keeps the run holding the run lock, every run attempts.json reads an item's
+ * UTC start time. Keeps the run holding the run lock, any with a replay started within `keep_runs`, every run attempts.json reads an item's
  * latest report from, and anything not named like a run.
  */
 export async function pruneRuns(config: Pick<Config, 'keep_runs'>, now: Date): Promise<Pruned> {
@@ -29,6 +29,7 @@ export async function pruneRuns(config: Pick<Config, 'keep_runs'>, now: Date): P
     const started = runStart(id)
     if (started === undefined || started >= cutoff || kept.has(id)) continue
     const dir = join(runsDir, id)
+    if (await touchedSince(join(dir, 'replays'), cutoff)) continue
     const bytes = await sizeOf(dir)
     try {
       await rm(dir, { recursive: true, force: true })
@@ -39,6 +40,11 @@ export async function pruneRuns(config: Pick<Config, 'keep_runs'>, now: Date): P
     }
   }
   return pruned
+}
+
+/** A replay creates its dir under `replays/` and doesn't hold the run lock. */
+async function touchedSince(path: string, cutoff: number): Promise<boolean> {
+  return ((await lstat(path).catch(() => undefined))?.mtimeMs ?? 0) >= cutoff
 }
 
 /** The start of a run named `YYYYMMDD-HHMMSS`, in UTC, or undefined for any other name. */

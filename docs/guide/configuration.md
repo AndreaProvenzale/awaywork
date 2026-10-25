@@ -691,7 +691,7 @@ The image is yours to build, and what's in it is all the units get:
 
 ## Old runs
 
-Run dirs pile up: each keeps its clones, logs and reports, and one clone of a big repo is easily 100 MB. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
 
 ```text
 Removed 3 runs older than 30d, 124.8 MB freed
