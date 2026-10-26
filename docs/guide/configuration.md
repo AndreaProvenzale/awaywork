@@ -36,10 +36,13 @@ limits:                         # per run, every provider; unset by default
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
   plan_tasks: 8                 # tasks in a deliver: plan plan; 8 by default
+keep_runs: 30d                  # default; older run dirs go when run or watch starts
+watch: { every: 5m, debug: false }  # defaults; how often run: soon rules poll, and true logs every run line in watch.log
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
+  present_session_max: 40%      # the same, in a run outside every window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
@@ -50,6 +53,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     repo_map: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+    every: 15m                  # poll it for run: soon rules at most this often
 branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
@@ -64,6 +68,7 @@ queue:                          # first matching rule wins; top = highest priori
   - skill: fix
     where: { type: pr, mine: true, checks: failing }
     branch: fix/{key}
+    run: soon                   # within minutes, not only in the windows
   - skill: implement
     source: github
     where: { type: issue, label: awaywork, repo: acme/api }
@@ -90,7 +95,7 @@ windows:
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-The scheduler gets one trigger per window, and pacing divides the headroom by the runs left before the reset. Windows should not overlap. Budgets count runs, not days: three windows a day can spend `per_run` three times, and `runs_until_reset` counts window openings.
+[`awaywork watch`](./scheduling.md#on-your-machine) reads them every minute, so editing them needs no reinstall, only moving the [wake](./scheduling.md#waking-up-for-it) does. `windows: []` means none: the daemon idles, and the GitHub Actions workflow only runs when you dispatch it. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
 
 A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once, and each of a plan's tasks is one: a cap can cut a card's [block](./how-it-works.md#the-feature-block), and the next run carries on. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
 
@@ -114,7 +119,7 @@ providers:
   - claude
   - opencode:
       command: opencode run --auto "$(cat "$AWAYWORK_PROMPT")"
-      probe: ./opencode-quota.sh # optional
+      probe: ./opencode-quota.sh # optional; without it, windows only
 limits:
   unit_minutes: 45
 ```
@@ -123,18 +128,18 @@ limits:
 
 The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
 
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run) and sits out every run outside the windows, a manual `awaywork run --unit` included; there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
 
 ```json
 {
   "windows": [
-    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
-    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152, "minutes": 300 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552, "minutes": 10080 }
   ]
 }
 ```
 
-`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+`used` is a share from 0 to 1, `resetsAt` is in unix seconds and `minutes`, optional, is the window's length; a `long` window without it counts as 7 days. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps, and no runs outside the windows. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
 
 ## Sources
 
@@ -149,7 +154,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs).
+Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
 
 Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
 
@@ -414,6 +419,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
 | `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published, or its plan was posted; see [`on_done`](#on-done) |
+| `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
 
@@ -536,6 +542,26 @@ A move never fails the unit. It goes in the run's output and the morning report 
 ```
 
 Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+
+### `run: soon`
+
+Some work shouldn't wait for 1 AM: your PR's checks just went red, or you answered awaywork's [questions](./how-it-works.md#questions) at 10:00. `run: soon` has [`awaywork watch`](./scheduling.md#soon-runs) start a rule's units as soon as it sees them due, a new item or one changed since its last attempt, instead of at the next window:
+
+```yaml
+watch: { every: 5m }            # the default
+sources:
+  github: { repos: [acme/*] }
+  jira: { site: acme.atlassian.net, email: me@acme.dev, every: 15m }   # a slow tracker
+queue:
+  - skill: fix
+    where: { type: pr, mine: true, checks: failing }
+    run: soon
+  - skill: implement
+    source: jira
+    where: { status: Ready }
+```
+
+The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing; either is 1m or more, as the daemon looks once a minute). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 
@@ -701,6 +727,16 @@ The image is yours to build, and what's in it is all the units get:
 - **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
 - **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
 - **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
+
+## Old runs
+
+Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. [`awaywork watch`](./scheduling.md#on-your-machine) does the same when it starts and once a day, logging the line. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+
+```text
+Removed 3 runs older than 30d, 124.8 MB freed
+```
+
+A dir it can't remove is a `warning:`, never a failed run. `report --list`, `stats` and `replay` only see the runs kept.
 
 ## Secrets
 

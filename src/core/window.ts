@@ -54,6 +54,20 @@ export function windowEnd(windows: Window[], now: Date): Date | undefined {
   return open.length ? new Date(Math.max(...open.map(([, end]) => end.getTime()))) : undefined
 }
 
+/**
+ * The end of the window run `awaywork watch` starts at `now`, or undefined: outside the windows,
+ * while a run is in progress, and once this opening had its run: `lastEnd` is the last window run's end.
+ */
+export function windowRun(
+  windows: Window[],
+  now: Date,
+  state: { running: boolean; lastEnd?: Date },
+): Date | undefined {
+  const end = windowEnd(windows, now)
+  if (state.running || !end || end.getTime() === state.lastEnd?.getTime()) return undefined
+  return end
+}
+
 /** When a run started at `now` must stop on a GitHub-hosted runner, or undefined elsewhere. */
 export const hostedEnd = (now: Date, env: NodeJS.ProcessEnv) =>
   env.RUNNER_ENVIRONMENT === 'github-hosted'
@@ -82,6 +96,22 @@ export function runsLeft(windows: Window[], now: number, until: number): number 
     ([start, end]) => end.getTime() > now && start.getTime() < until,
   )
   return Math.max(1, left.length)
+}
+
+/** The first window opening at or after `from` and before `until` (epoch ms), or undefined. */
+export function firstOpening(windows: Window[], from: number, until: number): number | undefined {
+  const days = Math.ceil((until - from) / DAY) + 1
+  const starts = occurrences(windows, new Date(from), days)
+    .map(([start]) => start.getTime())
+    .filter((start) => start >= from && start < until)
+  return starts.length ? Math.min(...starts) : undefined
+}
+
+/** The first opening before `until` (epoch ms) at or after the end of the window `now` is in, or of the next one to open: a run's next turn. */
+export function nextOpening(windows: Window[], now: number, until: number): number | undefined {
+  const start = windowEnd(windows, new Date(now)) ? now : firstOpening(windows, now, until)
+  const end = start === undefined ? undefined : windowEnd(windows, new Date(start))
+  return end && firstOpening(windows, end.getTime(), until)
 }
 
 /** E.g. `01:00-07:00` or `sat,sun 10:00-18:00`. */
