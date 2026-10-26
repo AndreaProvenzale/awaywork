@@ -2,16 +2,25 @@ import type { Config } from '../config/schema.js'
 import { defaultType, renderBranch } from './branch.js'
 import { commentKind, commentMarkdown, footerItems, waitingTasks } from './footer.js'
 import type { SkipKind, Skipped } from './foreman.js'
-import { cardTasks, type PlanLimits, planState, planThread, TASK_SKILL, type Task } from './plan.js'
+import {
+  cardTasks,
+  type PlanLimits,
+  planState,
+  planThread,
+  TASK_SKILL,
+  type Task,
+  taskPrUrls,
+} from './plan.js'
 import { isLoop, ruleFor } from './queue.js'
 import { resolveSkill, type SkillCatalog } from './skills.js'
+import type { Skip } from './skips.js'
 import type { BranchPr, Item, Rule, TaskPr, ThenStep } from './types.js'
 
 /** A card's repo: its first linked PR's, else its `repo` field. */
 export const cardRepo = (item: Item): string | undefined =>
   item.linkedPrs[0]?.repo ?? (typeof item.fields.repo === 'string' ? item.fields.repo : undefined)
 
-/** What a plan on the card is checked against. */
+/** What a plan on the card is checked against: every id whose PR closed unmerged is retired. */
 export const planLimits = (
   config: Config,
   queue: Rule[],
@@ -21,10 +30,11 @@ export const planLimits = (
   maxTasks: config.limits.plan_tasks,
   repo: cardRepo(card),
   ...taskSkills(queue, card.source, catalog),
+  retired: taskPrUrls(card, (pr) => pr.state === 'closed'),
 })
 
 /** The skills the queue's `planned` rules take for a card from `source`, and those whose rule, the first `planned` one for the skill, opens no PR. */
-export function taskSkills(
+function taskSkills(
   queue: Rule[],
   source: string,
   catalog: SkillCatalog,
@@ -166,6 +176,7 @@ export function expandPlans(
   config: Config,
   queue: Rule[],
   catalog: SkillCatalog,
+  skips: Record<string, Skip> = {},
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
   const skipped: Skipped[] = []
@@ -174,11 +185,12 @@ export function expandPlans(
   for (const card of items) {
     const state = planCard(card, queue, config, catalog)
     // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.
-    if (state && card.taskPrs === null) {
+    if ((state?.state === 'feedback' || state?.state === 'approved') && card.taskPrs === null) {
       skip(card, 'fanned_out', "its plan's tasks' PRs couldn't be read")
       continue
     }
-    if (state?.state !== 'approved') {
+    // A card you skipped goes down the queue as itself, to be skipped there, its tasks with it.
+    if (state?.state !== 'approved' || skips[`${card.source}:${card.key}`]) {
       out.push(card)
       continue
     }
@@ -194,11 +206,8 @@ export function expandPlans(
       )
       continue
     }
-    const prs = card.taskPrs
-    if (!prs) {
-      skip(card, 'fanned_out', "plan approved, but its tasks' PRs couldn't be read")
-      continue
-    }
+    // Unset only when no task had a rule or a repo to look its PR up by.
+    const prs = card.taskPrs ?? {}
     const { tasks } = state.plan
     const asked = waitingTasks(card)
     const states: string[] = []

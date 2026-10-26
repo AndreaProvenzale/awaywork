@@ -162,7 +162,10 @@ export function planState(
   if (thread.answer && !isApprove(thread.answer)) return { state: 'feedback' }
   // A PR closed before the plan was posted retired its id; one closed after it re-plans.
   const posted = Date.parse(thread.plan.at)
-  const retired = retiredTasks(item, (pr) => Date.parse(pr.closedAt ?? '') < posted)
+  const retired = taskPrUrls(
+    item,
+    (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
+  )
   const checked = checkPlan(planYaml(thread.plan.body), { ...limits, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   if (!thread.answer) return { state: 'waiting' }
@@ -171,24 +174,13 @@ export function planState(
   return { state: 'approved', plan: checked.plan, notes: approveNotes(thread.answer) }
 }
 
-/** The card's task ids whose PR was closed without merging, those `when` keeps, with the PR's URL. */
-export function retiredTasks(
+/** The card's task ids whose PR `keep` takes, with the PR's URL. */
+export const taskPrUrls = (
   item: Pick<Item, 'taskPrs'>,
-  when: (pr: TaskPr) => boolean = () => true,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(item.taskPrs ?? {}).flatMap(([id, pr]) =>
-      pr.state === 'closed' && when(pr) ? [[id, pr.url]] : [],
-    ),
-  )
-}
-
-/** The card's task ids whose PR is open or merged, with the PR's URL. */
-export const keptTasks = (item: Pick<Item, 'taskPrs'>): Record<string, string> =>
+  keep: (pr: TaskPr) => boolean,
+): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(item.taskPrs ?? {}).flatMap(([id, pr]) =>
-      pr.state === 'closed' ? [] : [[id, pr.url]],
-    ),
+    Object.entries(item.taskPrs ?? {}).flatMap(([id, pr]) => (keep(pr) ? [[id, pr.url]] : [])),
   )
 
 /** Every task any of awaywork's plans on the card names, the newest plan's first, each id once: their PRs say which ids are retired. */

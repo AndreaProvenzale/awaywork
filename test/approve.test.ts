@@ -132,6 +132,9 @@ queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }, {
     ).rejects.toThrow(
       'github:acme/api#5/api is a task of the plan on github:acme/api#5: a task takes no approval of its own, approving the plan on the card covers it',
     )
+    await expect(
+      approveItem('github:acme/api#5/nope', config, '', { path, sources, ctx }),
+    ).rejects.toThrow('the plan on github:acme/api#5 has no task nope')
     expect(writes).toEqual([])
     await expect(readFile(path, 'utf8')).rejects.toThrow()
   })

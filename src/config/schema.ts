@@ -811,6 +811,16 @@ export const configSchema = z
           path: [...at, 'branch'],
           message: `a plan's task keeps its PR by its branch, which ${moving} renders from the task's title or skill too: set branch on this rule from {key} alone, e.g. away/{key}`,
         })
+      const taskBranches = new Set(
+        cfg.queue?.filter((q) => 'planned' in q.where).map((q) => q.branch),
+      )
+      if ('planned' in r.where && taskBranches.size > 1)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'branch'],
+          message:
+            'a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule, or on none',
+        })
       checkWhere(r.where, [...at, 'where'], false, undefined)
       function canFinish(state: WhereValue | undefined, where: Where): boolean {
         const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))

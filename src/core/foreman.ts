@@ -4,7 +4,7 @@ import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
-import { branchName, committingStep, expandPlans, stepReports, taskSkills } from './fanout.js'
+import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import { planState } from './plan.js'
@@ -141,7 +141,7 @@ export function planRun(input: {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
-  const expanded = expandPlans(input.items, config, queue, input.skills)
+  const expanded = expandPlans(input.items, config, queue, input.skills, skips)
   const { ranked, unmatched } = rank(expanded.items, queue)
   const skipped: Skipped[] = [
     ...expanded.skipped,
@@ -191,12 +191,7 @@ export function planRun(input: {
       skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
-    // Every step of a plan rule reports, so its repo is the first linked PR's or the item's.
-    const limits = (item: Item) => ({
-      maxTasks: config.limits.plan_tasks,
-      repo: prs[0]?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string'),
-      ...taskSkills(queue, item.source, input.skills),
-    })
+    const limits = (item: Item) => planLimits(config, queue, item, input.skills)
     const card =
       rule.deliver === 'plan'
         ? items.flatMap((item) => {
@@ -318,7 +313,7 @@ export function planRun(input: {
           ...step.instructions,
         ],
         deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
-        ...(planned && { taskSkills: taskSkills(queue, (items[0] as Item).source, input.skills) }),
+        ...(planned && { planLimits: limits(items[0] as Item) }),
       }
       const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({

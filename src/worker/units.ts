@@ -26,7 +26,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { checkPlan, planYaml, retiredTasks } from '../core/plan.js'
+import { checkPlan, planYaml } from '../core/plan.js'
 import {
   type Moved,
   type PlanPost,
@@ -307,13 +307,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   /** Checks the chain's `plan.yml` and posts it with the report; a refused plan posts nothing. */
   const postPlan = async (p: PlannedUnit, report: string, yaml: string): Promise<PlanPost> => {
-    const card = p.unit.items[0] as Item
-    const limits = {
-      maxTasks: input.config.limits.plan_tasks,
-      repo: p.unit.repo,
-      ...p.unit.taskSkills,
-      retired: retiredTasks(card),
-    }
+    const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
     const body = planComment(report, yaml)

@@ -34,9 +34,11 @@ import { providers } from '../providers/index.js'
 const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 
 /** Drops an item's raw payload, and names a task's card by reference: the card is in the plan on its own. */
-function lean(this: Record<string, unknown>, key: string, value: unknown) {
+function lean(key: string, value: unknown) {
   if (key === 'raw') return undefined
-  return key === 'parent' && 'notes' in this ? itemRef(value as Item) : value
+  if (key !== 'task') return value
+  const task = value as NonNullable<Item['task']>
+  return { ...task, parent: itemRef(task.parent) }
 }
 
 /** The plan and warnings as JSON; items drop their raw source payload. */

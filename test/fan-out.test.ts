@@ -22,7 +22,7 @@ import {
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
-import { checkPlan, keptTasks, planContract, planState } from '../src/core/plan.js'
+import { checkPlan, planContract, planState, taskPrUrls } from '../src/core/plan.js'
 import { rank, ruleFor } from '../src/core/queue.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
@@ -136,7 +136,8 @@ describe('plan checks for tasks', () => {
   })
 
   it("tells the plan step the planned rules' skills, the retired ids and the ids with a PR", () => {
-    const kept = keptTasks({ taskPrs: { api: pr('api', 'merged'), web: pr('web', 'closed') } })
+    const taskPrs = { api: pr('api', 'merged'), web: pr('web', 'closed') }
+    const kept = taskPrUrls({ taskPrs }, (p) => p.state !== 'closed')
     expect(kept).toEqual({ api: 'https://github.com/acme/api/pull/api' })
     const text = planContract({ ...limits, retired: { web: 'https://x/9' } }, kept)
     expect(text).toContain('a `skill` (one of `implement`; `implement` when unset)')
@@ -218,10 +219,50 @@ describe('plan checks for tasks', () => {
       ],
     ])
     const [unit] = plan([card([])], reviewing).units.map((u) => u.unit)
-    expect(unit?.taskSkills).toEqual({ skills: ['implement'], noPr: ['review'] })
-    expect(planContract({ ...limits, ...unit?.taskSkills })).toContain(
+    expect(unit?.planLimits).toEqual({
+      maxTasks: 8,
+      repo: 'acme/api',
+      skills: ['implement'],
+      noPr: ['review'],
+      retired: {},
+    })
+    expect(planContract(unit?.planLimits ?? limits)).toContain(
       'a `skill` (one of `implement`; `implement` when unset)',
     )
+  })
+
+  it("puts the card's limits on its plan unit, every id whose PR closed unmerged retired", () => {
+    const closed = card([], { api: pr('api', 'merged'), web: pr('web', 'closed', at(3)) })
+    const [unit] = plan([closed]).units.map((u) => u.unit)
+    expect(unit?.planLimits).toMatchObject({
+      skills: ['implement'],
+      retired: { web: 'https://github.com/acme/api/pull/web' },
+    })
+  })
+
+  it('refuses two planned rules on different branches: a re-plan may move a task between them', () => {
+    const problems = (rules: string) => {
+      try {
+        configOf(`  - { skill: plan, deliver: plan }\n${rules}`)
+        return []
+      } catch (e) {
+        return (e as Error).message.split('\n').slice(1)
+      }
+    }
+    const refused = (i: number) =>
+      expect.stringContaining(
+        `queue[${i}].branch: a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule, or on none`,
+      )
+    expect(
+      problems(
+        '  - { skill: implement, where: { planned: true } }\n  - { skill: fix, branch: "fix/{key}", where: { planned: true } }\n',
+      ),
+    ).toEqual([refused(1), refused(2)])
+    expect(
+      problems(
+        '  - { skill: implement, branch: "t/{key}", where: { planned: true } }\n  - { skill: fix, branch: "t/{key}", where: { planned: true } }\n  - { skill: fix, branch: "fix/{key}" }\n',
+      ),
+    ).toEqual([])
   })
 })
 
@@ -356,9 +397,6 @@ describe('tasks as items', () => {
         "plan approved, but the card isn't yours: its tasks don't run",
       ],
     ])
-    expect(skips(plan([{ ...approved(), taskPrs: undefined }]))).toEqual([
-      ['acme/api#1', 'fanned_out', "plan approved, but its tasks' PRs couldn't be read"],
-    ])
     const failed = "its plan's tasks' PRs couldn't be read"
     expect(skips(plan([{ ...approved(), taskPrs: null }]))).toEqual([
       ['acme/api#1', 'fanned_out', failed],
@@ -366,6 +404,18 @@ describe('tasks as items', () => {
     const feedback = plan([{ ...card([planned(), theirs('Split web.', 2)]), taskPrs: null }])
     expect(feedback.units).toEqual([])
     expect(skips(feedback)).toEqual([['acme/api#1', 'fanned_out', failed]])
+    // A second plan waiting for you still needs you when its tasks' PRs went unread.
+    const waiting = {
+      ...card([planned(), theirs('Split web.', 2), planned(yaml, 3)]),
+      taskPrs: null,
+    }
+    expect(skips(plan([waiting]))).toEqual([
+      [
+        'acme/api#1',
+        'waiting_for_approval',
+        'waiting for your approval of the plan on https://example.com/1',
+      ],
+    ])
     const bitbucket = parseConfig(`
 providers: [claude: {}]
 sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', write: 'cat' } }
@@ -722,6 +772,98 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
       ['acme/api#1/docs', 'task_merged', 'merged in https://github.com/acme/api/pull/13'],
     ],
     ran: [],
+  })
+})
+
+describe('a card carrying a plan', () => {
+  const sticky = configOf(`  - { skill: plan, deliver: plan, where: { label: feature } }
+  - { skill: implement, where: { planned: true }, on_done: { move: building } }
+  - { skill: implement }
+`)
+  const moved = (item: Item): Item => ({ ...item, fields: { ...item.fields, label: ['building'] } })
+
+  it('stays with the plan rule out of its where, until reassigned or closed, and no other rule takes it whole', () => {
+    const q = sticky.queue ?? []
+    expect(ruleFor(q, moved(card([planned()])))).toBe(0)
+    expect(ruleFor(q, moved(card([])))).toBe(2)
+    expect(ruleFor(q, { ...moved(card([planned()])), mine: undefined })).toBe(2)
+    const closed = moved(card([planned()]))
+    expect(ruleFor(q, { ...closed, fields: { ...closed.fields, state: 'closed' } })).toBe(-1)
+    expect(skips(plan([moved(card([planned()]))], sticky))).toEqual([
+      [
+        'acme/api#1',
+        'waiting_for_approval',
+        'waiting for your approval of the plan on https://example.com/1',
+      ],
+    ])
+    expect(units(plan([moved(approved({ api: pr('api', 'merged') }))], sticky))).toEqual([
+      ['acme-api-1-web', 'away/acme-api-1-web'],
+    ])
+  })
+
+  it('runs none of its tasks while you skip the card', () => {
+    const skipped = planRun({
+      config,
+      items: [approved()],
+      allowances,
+      skills: { builtin: builtinSkills },
+      skips: { 'github:acme/api#1': { reason: 'not now' } },
+    })
+    expect(skipped.units).toEqual([])
+    expect(skipped.skipped.map((s) => [s.item.key, s.kind])).toEqual([
+      ['acme/api#1', 'skipped_by_you'],
+    ])
+  })
+
+  it("keeps running its tasks once a task's on_done moved it out of the plan rule's where", async () => {
+    const root = await mkdtemp(join(tmpdir(), 'awaywork-fanout-'))
+    const { forge, settle } = await originForge(root)
+    let item = approved()
+    const source = {
+      ...fakeSource(),
+      items: async () => [item],
+      write: async (_cfg: unknown, _item: Item, w: Write) => {
+        if (w.op === 'move') item = { ...item, fields: { ...item.fields, label: [w.to] } }
+        return {}
+      },
+    } as Source
+    const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+    const worker: Provider = {
+      ...fakeProvider('claude'),
+      async *run(job) {
+        await writeFile(join(job.dir, `${job.unit.id}.txt`), 'done')
+        await git(job.dir, 'add', '.')
+        await git(job.dir, 'commit', '-qm', `Implement ${job.unit.id}`)
+        await writeFile(join(job.dir, '.away/out/pr.md'), `Implement ${job.unit.id}\n\nDone.`)
+        yield { type: 'done', ok: true, turns: 1 }
+      },
+    }
+    const round = async (n: number) => {
+      const cardNow = { ...item }
+      await linkPlanTasks([cardNow], sticky, { builtin: builtinSkills }, forge, ctx)
+      const planned = plan([cardNow], sticky)
+      const report = await runUnits({
+        config: sticky,
+        configDir: root,
+        plan: planned,
+        runId: `r${n}`,
+        runDir: join(root, `run-${n}`),
+        dryRun: false,
+        providers: { claude: worker },
+        sources: { github: source },
+        forge,
+        ctx,
+        watch: () => ({ stop: async () => {} }),
+        shortage: async () => undefined,
+        skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+      })
+      return report.results.map((r) => [r.planned.unit.id, r.outcome?.kind])
+    }
+
+    expect(await round(1)).toEqual([['acme-api-1-api', 'pr']])
+    expect(item.fields.label).toEqual(['building'])
+    settle('away/acme-api-1-api', true, at(6))
+    expect(await round(2)).toEqual([['acme-api-1-web', 'pr']])
   })
 })
 
