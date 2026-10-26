@@ -200,7 +200,7 @@ describe('bitbucket forge', () => {
     expect(await bitbucketForge(['andrea89'], run).checks(sandbox, 5)).toEqual({})
     expect(run.calls[0]).toEqual([
       'twg',
-      ...['bb', 'prs', 'get', '5', '-r', sandbox, '--statuses'],
+      ...['bb', 'prs', 'get', '5', '-r', sandbox, '--statuses', '--strict'],
       ...json,
     ])
     // Shaped as Bitbucket's API documents a build status: the sandbox has none to record.
@@ -231,6 +231,18 @@ describe('bitbucket forge', () => {
       'Expo Preview': 'failing',
       Lint: 'failing',
     })
+  })
+
+  it('fails the read when twg reads the PR but not its statuses', async () => {
+    const pr = fixture('prs-get-statuses.json')
+    // Like twg: the PR without statuses, or with --strict an exit 1.
+    const run: Exec = async (_, args) => {
+      if (!args.includes('--strict')) return pr
+      throw Object.assign(new Error('exit 1'), { stderr: 'statuses: HTTP 502' })
+    }
+    await expect(bitbucketForge(['andrea89'], run).checks(sandbox, 5)).rejects.toThrow(
+      'twg bb prs get: statuses: HTTP 502',
+    )
   })
 
   it("reads the message of a branch's tip", async () => {

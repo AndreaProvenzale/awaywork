@@ -168,7 +168,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
 
     /** Build statuses on the PR's head: one that names another commit is left out. */
     async checks(repo, number) {
-      const args = ['bb', 'prs', 'get', String(number), '-r', repo, '--statuses']
+      // Without --strict, statuses twg failed to read may come back as none.
+      const args = ['bb', 'prs', 'get', String(number), '-r', repo, '--statuses', '--strict']
       const pr = await twg<Pr & { _statuses: Status[] }>(run, args)
       const onHead = (s: Status) =>
         s.links?.commit?.href?.split('/').at(-1)?.startsWith(pr.source.commit.hash) ?? true

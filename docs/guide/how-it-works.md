@@ -564,7 +564,7 @@ tracker ENG-2101/web  Export button
     check     api's check Vercel Preview (passed)
 ```
 
-In the same repo a check's name stacks like `opened`: `web` is cloned from `api`'s branch and its PR stacks on `api`'s, and it counts with the `opened` tasks toward the [one chain](#the-feature-block). In another repo it only waits, and gets what the task ships, as `opened` does there. awaywork reads a PR's checks only when some task names one of them, so a plan without check names costs no extra calls, and a read that fails skips the card, like a task PR it couldn't read. `plan --json` has them on the card, under `taskPrs.api.checks`.
+In the same repo a check's name stacks like `opened`: `web` is cloned from `api`'s branch and its PR stacks on `api`'s (`after api's check Vercel Preview (passed), stacks on #41`), and it counts with the `opened` tasks toward the [one chain](#the-feature-block). In another repo it only waits, and gets what the task ships, as `opened` does there. awaywork reads a PR's checks only when some task names one of them, so a plan without check names costs no extra calls, and a read that fails skips the card, like a task PR it couldn't read. `plan --json` has them on the card, under `taskPrs.api.checks`.
 
 The card, run by run:
 
@@ -575,7 +575,7 @@ The card, run by run:
 | The preview is up | `fanned out: api PR open, web no PR yet` | `web` runs, cut from `acme/web`'s default branch, with `api`'s `openapi.yaml` |
 | `api` merged first | `fanned out: api merged, web no PR yet` | `web` runs: a merged PR counts as passed |
 
-On Bitbucket, checks are the build statuses on the PR's head commit, by name, read with `twg bb prs get --statuses`; `SUCCESSFUL` passes, `INPROGRESS` is pending, `FAILED` and `STOPPED` are failing.
+On Bitbucket, checks are the build statuses on the PR's head commit, by name, read with `twg bb prs get --statuses`; `SUCCESSFUL` passes, `INPROGRESS` is pending, `FAILED` and `STOPPED` are failing. Check the status name is the same on every build before you put it in `after`: one that carries a build number never matches.
 
 ## The morning report
 

@@ -158,13 +158,16 @@ describe('a check name in after', () => {
       ['acme-backend-1-web', 'away/acme-backend-1-api', pr('open').url],
     ])
     expect(formatPlan(passed)).toContain(
-      "     after api, stacks on #41\n     after api's check Vercel Preview (passed)",
+      "     after api's check Vercel Preview (passed), stacks on #41\n\n",
     )
     const web = passed.units[0]?.unit.items[0] as Item
     expect(formatWhy(passed, web)).toContain(
       "  after api's check Vercel Preview (PR #41 open, passed)",
     )
-    expect(formatWhy(passed, web)).toContain("check     api's check Vercel Preview (passed)")
+    expect(formatWhy(passed, web)).toContain(
+      "stack     after api's check Vercel Preview (passed), stacks on #41",
+    )
+    expect(formatWhy(passed, web)).not.toContain('check     ')
     expect(planJson(passed)).toContain('"Vercel Preview": "passed"')
     const merged = plan([card(sameRepo, { api: pr('merged') })])
     expect(merged.units.map((u) => [u.unit.id, u.unit.base])).toEqual([['acme-backend-1-web', '']])

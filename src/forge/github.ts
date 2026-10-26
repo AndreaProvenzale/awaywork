@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { isOurs } from '../core/footer.js'
-import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
+import type { Forge, Item, PrRef } from '../core/types.js'
+import { type Check, checkContexts, checkResult } from './checks.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
@@ -73,31 +74,10 @@ const tipQuery = `query($owner: String!, $name: String!, $ref: String!) {
 const checksQuery = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      commits(last: 1) {
-        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-          __typename
-          ... on CheckRun { name status conclusion }
-          ... on StatusContext { context state }
-        } } } } }
-      }
+      commits(last: 1) { nodes { commit { ${checkContexts} } } }
     }
   }
 }`
-
-type Check =
-  | { __typename: 'CheckRun'; name: string; status: string; conclusion: string | null }
-  | { __typename: 'StatusContext'; context: string; state: string }
-
-/** A check run passes as GitHub's required checks do: success, neutral or skipped. */
-function checkState(c: Check): [string, CheckState] {
-  if (c.__typename === 'StatusContext') {
-    const pending = ['PENDING', 'EXPECTED'].includes(c.state)
-    return [c.context, c.state === 'SUCCESS' ? 'passed' : pending ? 'pending' : 'failing']
-  }
-  if (c.status !== 'COMPLETED') return [c.name, 'pending']
-  const passed = ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(c.conclusion ?? '')
-  return [c.name, passed ? 'passed' : 'failing']
-}
 
 type Stack = {
   number: number
@@ -224,7 +204,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
         }
       }>(run, checksQuery, { owner, name, number })
       const [head] = repository.pullRequest.commits.nodes
-      return byName((head?.commit.statusCheckRollup?.contexts.nodes ?? []).map(checkState))
+      return byName((head?.commit.statusCheckRollup?.contexts.nodes ?? []).map(checkResult))
     },
 
     async push(dir, branch, { repo }) {

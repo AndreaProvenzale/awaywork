@@ -455,29 +455,45 @@ function waitLine(p: PlannedUnit): string | undefined {
   return waits.length ? waits.join(', ') : undefined
 }
 
-/** The checks a task's chain starts after and where each stands, e.g. `api's check Vercel Preview (passed)`. */
+/** The checks a task's chain starts after and where each stands, but the one its stack line names. */
 function checkLines(p: PlannedUnit): string[] {
   const task = p.unit.items[0]?.task
-  const after = task?.plan.find((t) => t.id === task.id)?.after ?? {}
+  if (!task) return []
+  const after = task.plan.find((t) => t.id === task.id)?.after ?? {}
+  const stacked = stackOn(p)?.after
   return Object.entries(after)
-    .filter(([, when]) => isCheck(when))
-    .map(([id, name]) => {
-      const pr = task?.parent.taskPrs?.[id]
-      const state = pr?.state === 'merged' ? `${id} merged` : (unpassed(pr, name) ?? 'passed')
-      return `${id}'s check ${name} (${state})`
-    })
+    .filter(([id, when]) => isCheck(when) && id !== stacked)
+    .map(([id, name]) => checkText(task, id, name))
+}
+
+/** A check a task is after and where it stands, e.g. `api's check Vercel Preview (passed)`. */
+function checkText(task: NonNullable<Item['task']>, id: string, name: string): string {
+  const pr = task.parent.taskPrs?.[id]
+  const state = pr?.state === 'merged' ? `${id} merged` : (unpassed(pr, name) ?? 'passed')
+  return `${id}'s check ${name} (${state})`
+}
+
+/** The task an open PR's stack puts a task's chain after, and that PR's number. */
+function stackOn(p: PlannedUnit): { after: string; number: number } | undefined {
+  const task = p.unit.items[0]?.task
+  const onto = task?.onto
+  const pr = onto && task.parent.taskPrs?.[onto]
+  if (p.after || !pr || !p.unit.stackedOn) return undefined
+  const own = task.plan.find((t) => t.id === task.id)
+  return { after: (own && openedChain(own, task.plan)?.at(-1)) ?? onto, number: pr.number }
 }
 
 /** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */
 function stackLine(p: PlannedUnit): string | undefined {
   const task = p.unit.items[0]?.task
   const onto = task?.onto
-  const pr = onto && task.parent.taskPrs?.[onto]
   if (p.after) return `after ${onto}, stacks on its PR`
-  if (!pr || !p.unit.stackedOn) return undefined
-  const own = task.plan.find((t) => t.id === task.id)
-  const after = (own && openedChain(own, task.plan)?.at(-1)) ?? onto
-  return `after ${after}, stacks on ${after === onto ? '' : `${onto}'s `}#${pr.number}`
+  const stack = stackOn(p)
+  if (!task || !stack) return undefined
+  const { after, number } = stack
+  const when = task.plan.find((t) => t.id === task.id)?.after[after]
+  const what = when && isCheck(when) ? checkText(task, after, when) : after
+  return `after ${what}, stacks on ${after === onto ? '' : `${onto}'s `}#${number}`
 }
 
 /** The queue as numbered rules. */

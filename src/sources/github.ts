@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { commentMarkdown, isOurs } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
+import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
 
 const config = z
@@ -106,13 +107,7 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
           comments(first: 50) { nodes { ${BY} body createdAt url } }
         }
       }
-      commits(last: 1) {
-        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-          __typename
-          ... on CheckRun { name conclusion detailsUrl }
-          ... on StatusContext { context state targetUrl description }
-        } } } } }
-      }
+      commits(last: 1) { nodes { commit { ${checkContexts} } } }
     }
   }
 }`
@@ -179,15 +174,6 @@ interface Thread {
   line: number | null
   comments: Nodes<Comment & { url: string }>
 }
-type Check =
-  | { __typename: 'CheckRun'; name: string; conclusion: string | null; detailsUrl: string }
-  | {
-      __typename: 'StatusContext'
-      context: string
-      state: string
-      targetUrl: string | null
-      description: string | null
-    }
 interface PrDetails {
   reviews: Nodes<By & { state: string; body: string; submittedAt: string }>
   reviewThreads: Nodes<Thread>
@@ -622,11 +608,7 @@ function threadsMarkdown(threads: Thread[]): string {
 }
 
 async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {
-  const failed = checks.filter((c) =>
-    c.__typename === 'CheckRun'
-      ? ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(c.conclusion ?? '')
-      : ['FAILURE', 'ERROR'].includes(c.state),
-  )
+  const failed = checks.filter((c) => checkResult(c)[1] === 'failing')
   if (!failed.length) return 'No failing checks.\n'
   const sections = await Promise.all(
     failed.map(async (c) => {
