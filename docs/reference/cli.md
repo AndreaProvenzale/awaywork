@@ -123,8 +123,8 @@ Options:
   --json            print the plan and warnings as JSON
   --repo <glob>     only units in repos matching owner/name, * globs
   --rule <n>        only units of this queue rule, counted from 1
-  --rules           show what each rule takes now and what earlier rules take
-                    from it, instead of the units; probes no provider
+  --rules           show what each rule takes now and what other rules take from
+                    it, instead of the units; probes no provider
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",

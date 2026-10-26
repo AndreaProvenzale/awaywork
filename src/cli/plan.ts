@@ -47,7 +47,7 @@ export function planCommand(program: Command): void {
     .addOption(
       new Option(
         '--rules',
-        'show what each rule takes now and what earlier rules take from it, instead of the units; probes no provider',
+        'show what each rule takes now and what other rules take from it, instead of the units; probes no provider',
       ).conflicts('json'),
     )
     .addOption(
