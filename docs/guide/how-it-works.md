@@ -69,10 +69,11 @@ Items that share a key or a linked PR (repo and branch) are one unit, one piece 
 - A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
 - A unit whose item's newest comment is awaywork's [questions](#questions) is skipped as **waiting for your answer**, until someone replies on the item.
+- A unit a `deliver: plan` rule took waits on awaywork's [plan](#plans) on its item: skipped as **waiting for your approval** until someone replies, planned again on feedback, and skipped as **plan approved** once you approved it.
 - A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end) or may not have (a watchdog stop for low memory or disk): it tries again next run. `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
-- `awaywork approve <source:key>` marks an item approved, for items with no tracker section, state or label to say so (those already work through `where`). Rules read it as the key `approved`, like `title`: `skill: implement, where: { approved: true }` waits for it, so you can approve a `plan` report today and have `implement` take the item tonight. An item takes the first rule it matches, so that rule goes above the one that plans the item (or give the `plan` rule `approved: false`), as in the example below. The approval clears once the unit planned with it finishes, as an attempt counts it: a failed step or work left unpublished keeps it for the retry. An approval you give during a run stays. Approvals live in `~/.local/state/awaywork/approvals.json`.
+- `awaywork approve <source:key>` marks an item approved, for items with no tracker section, state or label to say so (those already work through `where`). Rules read it as the key `approved`, like `title`: `skill: implement, where: { approved: true }` waits for it, so you can approve a `plan` report today and have `implement` take the item tonight. An item takes the first rule it matches, so that rule goes above the one that plans the item (or give the `plan` rule `approved: false`), as in the example below. The approval clears once the unit planned with it finishes, as an attempt counts it: a failed step or work left unpublished keeps it for the retry. An approval you give during a run stays. Approvals live in `~/.local/state/awaywork/approvals.json`. On an item waiting on a [plan](#plans), it approves the plan instead, with a reply on the item.
 - A chain's first step on an item gets the item's latest report in `.away/context/previous/report.md` (the last one of the latest chain on it that left a report), and the prompt says it is from an earlier run. That is how an approved `implement` finds the plan, on a retry too: a failed `implement` that wrote no report doesn't replace the plan. Later steps get the step before, as always.
 - Units run one at a time, in queue order. A unit is a chain: the rule's skill, then its [`then`](./chains.md#then) steps, one after the other in one clone, publishing once when the chain ends, or once per slice when a step says [`stack`](./chains.md#stack). A [loop](./chains.md#loops) repeats steps, and a step with a [`when`](./chains.md#when) runs only when its condition holds.
 - A PR stacks only on the awaywork PR a rule took up, or on the slice before it in its own chain. Its body names the PR to merge first, and on a repo with GitHub's [stacked PRs](https://gh.io/stacks) awaywork links the two into a stack. Every other PR starts from the default branch or your PR's branch, so you can merge, park or close each one on its own.
@@ -123,11 +124,12 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 | `pr` | Opt-in per rule: the same as `draft_pr`, same bases and checks, but the PR opens ready for review, so it pings whoever a ready PR pings, code owners included. It still opens as a draft when one of the slice's steps failed or stopped or the run ended before one ran, its [`verify`](./configuration.md#repos-and-instructions) failed, one of its [loops](./chains.md#loops) ended before its `until` held, or one of its [gates](./configuration.md#gates) fired, and the report says why. |
 | `report` | No step commits. Each writes `.away/out/report.md`; nothing is pushed. A chain's reports, joined, go into the morning report. |
 | `pending_review` | Opt-in per rule, only on a unit whose base is a PR, anyone's or a fork's. A `report` that also lands on that PR: when the chain ends, the last report and the line comments its step wrote to `.away/out/review.json` become your pending review, at the commit the clone read. Nobody else sees it until you submit it. When GitHub refuses the line comments, say one is off the PR's diff, they all go in the review's body. When a step failed or stopped or the run ended before one ran, or GitHub refuses the review anyway (you already have a pending review there, say), the report is delivered alone with the reason. GitHub only. |
+| `plan` | Opt-in per rule. A `report` whose step also writes `.away/out/plan.yml`, the work split into tasks: when the chain ends, awaywork checks it and posts the report and the plan as one comment on your item, which waits for your approval there. See [Plans](#plans). |
 | `push` | Opt-in per rule, only on a unit whose base is your own open PR. The worker commits and writes `.away/out/pr.md`, as for a PR; awaywork adds the trailer and pushes the chain's commits onto your PR's branch as a fast-forward, only while the PR is yours, open, in the repo, without auto-merge, and its head is still the commit the clone started from, and its branch isn't the default branch, protected, or the branch of someone else's open PR in the repo. The PR body isn't touched; `pr.md` goes into the morning report. No `pr.md`, no push. |
 
 Either way, a skill that defines verdicts also writes one word to `.away/out/verdict`, such as `approve`. The report shows it next to the unit's result, and a [loop](./chains.md#loops) can end on it.
 
-A skill commits unless its metadata says it reports, as `review` and `plan` do; the rule's `deliver` says where the commits go, and a chain that committed nothing reports whatever its `deliver`. `pr`, `push` and `pending_review` are never a skill's default. A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines, and ends with a footer naming awaywork, the run and the unit's items, which is how the next plan recognises it and links it to them.
+A skill commits unless its metadata says it reports, as `review` and `plan` do; the rule's `deliver` says where the commits go, and a chain that committed nothing reports whatever its `deliver`. `pr`, `push`, `pending_review` and `plan` are never a skill's default. A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines, and ends with a footer naming awaywork, the run and the unit's items, which is how the next plan recognises it and links it to them.
 
 ## Questions
 
@@ -165,6 +167,76 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
   ```
 
 - A step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
+
+## Plans
+
+A feature that spans a few PRs doesn't fit in one unit, and a hand-written list of cards is the chore you wanted gone. Give the feature's card a rule with `deliver: plan`, and its step splits the work into tasks instead of starting on it:
+
+```yaml
+queue:
+  - skill: plan
+    where: { label: awaywork-feature }
+    deliver: plan
+    on_done: { move: Plan review }
+```
+
+Every step of the rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill`, a `repo` (the card's own, for now) and `after`, which maps other task ids to `opened` or `merged`. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique, under the cap, every `after` naming another task, no cycles, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
+
+````
+VAT export lands in two PRs: the endpoint first, then the button that calls it.
+
+- `api`: `GET /exports/vat` in `src/routes/exports.ts`, paged like `/exports/sales`, with a test next to `sales.test.ts`.
+- `web`: an Export button on the reports page, behind the `vat_export` flag; it waits for the endpoint's PR to open.
+
+Open question: should the export include voided invoices? I left them out.
+
+```yaml
+tasks:
+  - id: api
+    title: VAT export endpoint
+    description: Add GET /exports/vat to src/routes/exports.ts, paged like /exports/sales.
+  - id: web
+    title: Export button
+    description: Add an Export button to the reports page behind the vat_export flag.
+    after: { api: opened }
+````
+
+To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
+
+— awaywork
+
+````
+
+The run says where it went, and the rule's [`on_done`](./configuration.md#on-done) fires once it's posted:
+
+```text
+  1  ENG-2101  plan   done    report
+     VAT export lands in two PRs: the endpoint first, then the button that calls it.
+     plan posted on https://acme.atlassian.net/browse/ENG-2101, tasks api, web
+     on_done moved ENG-2101 to "Plan review"
+````
+
+- Until someone answers, the card is skipped as **waiting for your approval**, under Needs you:
+
+  ```
+  Needs you 1
+    ENG-2101  waiting for your approval of the plan
+              Export VAT report
+  ```
+
+- **Approve** with a reply from your own account whose first line is `approve`, in any case; the lines below it are notes for the tasks. `awaywork approve <source:key> [notes]`, or `a` in the report, posts that reply for you, marked like every comment awaywork writes, through the same ownership check, and refuses a plan someone already answered:
+
+  ```text
+  $ awaywork approve tracker:ENG-2101 Leave voided invoices out.
+  plan approved: replied approve, with your notes, on https://acme.atlassian.net/browse/ENG-2101
+  ```
+
+  For now that's where it stops: the card is skipped as `plan approved, tasks api, web`, which needs nothing from you, and nothing runs the tasks yet.
+
+- **Anything else is feedback:** your reply that doesn't start with a bare `approve` (`approve if web waits` included), a teammate's, a code owner's. Only you approve. The next run plans again with the whole thread in `item.md`, the plan headed `awaywork's plan`, even when nothing else about the card changed, and posts a new plan, which needs a fresh approval. A plan's answer is the first comment after it that isn't a bot's.
+- The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
+- A plan that fails its checks, a missing `plan.yml`, or a comment over 30 KB is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
+- A `deliver: plan` rule can't `stack`, and one that matches only merged or closed items, or names a `source` that can't write, is a config error.
 
 ## The morning report
 

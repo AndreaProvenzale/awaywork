@@ -268,11 +268,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
    * Posts a comment on the first of the unit's own items that is yours, through a source that writes;
    * a post that fails is reported, never thrown. An item waiting for an answer made no unit.
    */
-  const postComment = async (
-    p: PlannedUnit,
-    what: string,
-    body: string,
-  ): Promise<Posted> => {
+  const postComment = async (p: PlannedUnit, what: string, body: string): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {

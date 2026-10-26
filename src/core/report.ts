@@ -92,11 +92,11 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
-/** What a chain's first step wrote to its items: on_done's moves, its questions or its plan. */
+/** What a chain's first step wrote to its items, in order: its questions or its plan, then on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
-  ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
   ...(u.questions ? [describeQuestions(u.questions)] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
+  ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
 ]
 
 export interface StepFiles {

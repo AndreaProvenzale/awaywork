@@ -35,6 +35,7 @@ limits:                         # per run, every provider; unset by default
   units: 8
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
+  plan_tasks: 8                 # tasks in a deliver: plan plan; 8 by default
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
@@ -91,7 +92,7 @@ windows:
 
 The scheduler gets one trigger per window, and pacing divides the headroom by the runs left before the reset. Windows should not overlap. Budgets count runs, not days: three windows a day can spend `per_run` three times, and `runs_until_reset` counts window openings.
 
-A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it.
+A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
 
 Budgets are shares of each provider's quota windows; see [How it works](./how-it-works.md#budget) for how they combine. Start low: `per_run: 5%` for a week shows what a unit costs you before you raise it.
 
@@ -163,11 +164,11 @@ sources:
 
 Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). `extra/` belongs to this command. A custom source does this inside its own `command`.
 
-Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your tasks or a step posts its [questions](./how-it-works.md#questions), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
+Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your tasks or awaywork posts [questions](./how-it-works.md#questions) or a [plan](./how-it-works.md#plans), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
-Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your issues or a step posts its [questions](./how-it-works.md#questions), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only, or write access too for `on_done` and questions.
+Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your issues or awaywork posts [questions](./how-it-works.md#questions) or a [plan](./how-it-works.md#plans), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only, or write access too for `on_done`, questions and plans.
 
-Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done) and [questions](./how-it-works.md#questions): `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done` and questions aside. Tokens expire after at most a year.
+Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done), [questions](./how-it-works.md#questions) and [plans](./how-it-works.md#plans): `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done`, questions and plans aside. Tokens expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
 
@@ -405,13 +406,13 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)) |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval (see [Plans](./how-it-works.md#plans)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
-| `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published; see [`on_done`](#on-done) |
+| `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published, or its plan was posted; see [`on_done`](#on-done) |
 
 ### `where`
 
@@ -509,7 +510,7 @@ Moving the card is how the next person hears it's their turn. `on_done` does it 
   on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
 ```
 
-It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
+It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./how-it-works.md#plans) is posted, never when it was refused or couldn't be. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
 
 It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 
