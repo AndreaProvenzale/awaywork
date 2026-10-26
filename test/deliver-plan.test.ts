@@ -74,7 +74,7 @@ describe('plan.yml', () => {
     expect(problem(`tasks:\n${task('web', ', after: { db: merged }')}`)).toBe(
       'task web: after names no task "db"',
     )
-    expect(problem(`tasks:\n${task('web', ', after: { api: closed }')}${task('api')}`)).toMatch(
+    expect(problem(`tasks:\n${task('web', ', after: { api: 3 }')}${task('api')}`)).toMatch(
       /^tasks\.0\.after\.api: /,
     )
     expect(problem(`tasks:\n${task('api', ', after: { api: merged }')}`)).toBe(

@@ -6,6 +6,7 @@ import {
   type Contract,
   cardTasks,
   holdingTask,
+  isCheck,
   openedChain,
   type PlanLimits,
   planState,
@@ -149,27 +150,31 @@ function planCard(item: Item, queue: Rule[], config: Config, catalog: SkillCatal
 
 /**
  * The branch of each task any plan on a card names, for the cards a `deliver: plan` rule takes
- * that are yours: the forge looks up each task's PR by it. None on Bitbucket, whose fan-out waits.
+ * that are yours: the forge looks up each task's PR by it, and reads the checks other tasks name.
  */
 export function taskBranches(
   items: Item[],
   config: Config,
   queue: Rule[],
   skills: SkillCatalog,
-): { card: Item; id: string; key: string; repo: string; branch: string }[] {
-  if (config.sources.bitbucket) return []
+): { card: Item; id: string; key: string; repo: string; branch: string; checks: string[] }[] {
   return items.flatMap((card) => {
     if (!card.mine || queue[ruleFor(queue, card)]?.deliver !== 'plan') return []
     // The first plan, unanswered: no task ran yet.
     const plans = card.comments.filter((c) => commentKind(c) === 'plan').length
     if (plans === 1 && !planThread(card)?.answer) return []
-    return cardTasks(card).flatMap((t) => {
+    const tasks = cardTasks(card)
+    return tasks.flatMap((t) => {
       const item = taskItem(card, t)
       const rule = queue[ruleFor(queue, item)]
       const repo = item.fields.repo
       if (!rule || typeof repo !== 'string') return []
       const branch = branchName(config, rule, repo, item, committingStep(rule, skills), skills)
-      return [{ card, id: t.id, key: item.key, repo, branch }]
+      const checks = tasks.flatMap((o) => {
+        const when = o.after?.[t.id]
+        return when && isCheck(when) ? [when] : []
+      })
+      return [{ card, id: t.id, key: item.key, repo, branch, checks: [...new Set(checks)] }]
     })
   })
 }
@@ -230,14 +235,6 @@ export function expandPlans(
       skip(card, 'refused_delivery', "plan approved, but the card isn't yours: its tasks don't run")
       continue
     }
-    if (config.sources.bitbucket) {
-      skip(
-        card,
-        'refused_delivery',
-        "plan approved, but its tasks don't run on Bitbucket yet: awaywork can't read their merged and closed PRs there",
-      )
-      continue
-    }
     // Unset only when no task had a rule or a repo to look its PR up by.
     const prs = card.taskPrs ?? {}
     const home = cardRepo(card)
@@ -256,6 +253,11 @@ export function expandPlans(
           .filter((id) => t.after?.[id] === 'merged')
           .map((id) => [id, holdingTask(id, state.plan.tasks, merged, home)])
           .find(([, holder]) => holder) ?? []
+      const [checkedOn, check, checkState] =
+        Object.entries(t.after ?? {})
+          .filter(([, when]) => isCheck(when))
+          .map(([id, name]) => [id, name, unpassed(prs[id], name)])
+          .find(([, , state]) => state) ?? []
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
@@ -279,6 +281,14 @@ export function expandPlans(
           `waiting for task ${blocker}'s PR to merge${blocker === waitedOn ? '' : `, ${waitedOn}'s merged into it`}`,
           prs[blocker]?.url,
         )
+      } else if (checkedOn) {
+        states.push(`${t.id} waits for ${checkedOn}'s check ${check}`)
+        skip(
+          item,
+          'waiting_for_task',
+          `waiting for ${checkedOn}'s check ${check} (${checkState})`,
+          prs[checkedOn]?.url,
+        )
       } else {
         states.push(`${t.id} no PR yet`)
         out.push(item)
@@ -296,6 +306,14 @@ export function expandPlans(
   return { items: out, skipped }
 }
 
+/** Where check `name` on a task's PR stands while it doesn't count as passed; undefined once it passed or the PR merged. */
+export function unpassed(pr: TaskPr | undefined, name: string): string | undefined {
+  if (!pr) return 'no PR yet'
+  if (pr.state === 'merged') return undefined
+  const state = pr.checks?.[name] ?? 'not reported'
+  return state === 'passed' ? undefined : state
+}
+
 /** A task's `item.md`: the task, where it sits in the plan with your approve notes, the card, and the card's comments, its tasks' questions headed by task. */
 export function taskMarkdown(item: Item): string {
   const task = item.task
@@ -303,7 +321,9 @@ export function taskMarkdown(item: Item): string {
   const card = task.parent
   const home = cardRepo(card)
   const listed = task.plan.map((t) => {
-    const after = Object.entries(t.after).map(([id, when]) => `${id} ${when}`)
+    const after = Object.entries(t.after).map(([id, when]) =>
+      isCheck(when) ? `${id}'s check ${when}` : `${id} ${when}`,
+    )
     const repo = t.repo && t.repo !== home ? ` in ${t.repo}` : ''
     return `- \`${t.id}\`: ${t.title}${repo}${t.id === task.id ? ' (this task)' : ''}${after.length ? `, after ${after.join(', ')}` : ''}`
   })

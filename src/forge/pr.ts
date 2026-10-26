@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { footer, footerItems } from '../core/footer.js'
-import type { Item } from '../core/types.js'
+import type { CheckState, Item } from '../core/types.js'
 
 /**
  * Whether one of my PRs is for the item: one whose footer names items by those items, whatever its
@@ -37,6 +37,18 @@ export async function prText(
   const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
   const title = first.replace(/^#+\s*/, '').trim() || head
   return { title, body: `${rest.join('\n').trim()}\n\n${footer(runId, items)}` }
+}
+
+const WORSE: CheckState[] = ['passed', 'pending', 'failing']
+
+/** Checks by name; a name reported twice takes its worse state. */
+export function byName(checks: [string, CheckState][]): Record<string, CheckState> {
+  const out: Record<string, CheckState> = {}
+  for (const [name, state] of checks) {
+    const was = out[name]
+    out[name] = was && WORSE.indexOf(was) > WORSE.indexOf(state) ? was : state
+  }
+  return out
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

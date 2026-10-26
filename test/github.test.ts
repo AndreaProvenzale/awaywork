@@ -985,6 +985,38 @@ describe('github forge', () => {
     expect(await forge.fileAt('acme/api', 'abc123', 'gen')).toBeUndefined()
   })
 
+  it("reads the checks on a PR's head by name: runs and statuses, the worse of a name reported twice", async () => {
+    const recordedChecks = JSON.parse(fixture('pr-checks.json'))
+    const nodes =
+      recordedChecks.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts
+        .nodes
+    const run = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(run).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'passed',
+      isolation: 'passed',
+      container: 'passed',
+    })
+    nodes.push(
+      { __typename: 'CheckRun', name: 'Expo Preview', status: 'IN_PROGRESS', conclusion: null },
+      { __typename: 'CheckRun', name: 'docs', status: 'COMPLETED', conclusion: 'SKIPPED' },
+      { __typename: 'CheckRun', name: 'check', status: 'COMPLETED', conclusion: 'FAILURE' },
+      { __typename: 'StatusContext', context: 'Vercel Preview', state: 'PENDING' },
+      { __typename: 'StatusContext', context: 'Netlify', state: 'ERROR' },
+      { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS' },
+    )
+    const mixed = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(mixed).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'failing',
+      isolation: 'passed',
+      container: 'passed',
+      'Expo Preview': 'pending',
+      docs: 'passed',
+      'Vercel Preview': 'pending',
+      Netlify: 'failing',
+      'ci/legacy': 'passed',
+    })
+  })
+
   it('checks branch existence by exact name, not prefix', async () => {
     const run = recorded([
       [/heads\/away\/acme-api-1$/, fixture('matching-refs-prefix.json')],

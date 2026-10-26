@@ -1,0 +1,36 @@
+{
+  "type": "pullrequest",
+  "id": 5,
+  "title": "SANDBOX-8 Smoke test the Bitbucket forge",
+  "state": "OPEN",
+  "draft": true,
+  "updated_on": "2026-10-22T17:43:27.576040+00:00",
+  "source": {
+    "branch": {
+      "name": "away/SANDBOX-8"
+    },
+    "commit": {
+      "hash": "16fc60339a69"
+    },
+    "repository": {
+      "full_name": "andrea89/awaywork-sandbox"
+    }
+  },
+  "destination": {
+    "branch": {
+      "name": "main"
+    },
+    "commit": {
+      "hash": "44a1dfd4d436"
+    },
+    "repository": {
+      "full_name": "andrea89/awaywork-sandbox"
+    }
+  },
+  "links": {
+    "html": {
+      "href": "https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/5"
+    }
+  },
+  "_statuses": []
+}

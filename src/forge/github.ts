@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
 import { isOurs } from '../core/footer.js'
-import type { Forge, Item, PrRef } from '../core/types.js'
+import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
-import { linksItem, prText } from './pr.js'
+import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
 const myPrsQuery = `query {
@@ -69,6 +69,35 @@ const tipQuery = `query($owner: String!, $name: String!, $ref: String!) {
     ref(qualifiedName: $ref) { target { ... on Commit { message } } }
   }
 }`
+
+const checksQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      commits(last: 1) {
+        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion }
+          ... on StatusContext { context state }
+        } } } } }
+      }
+    }
+  }
+}`
+
+type Check =
+  | { __typename: 'CheckRun'; name: string; status: string; conclusion: string | null }
+  | { __typename: 'StatusContext'; context: string; state: string }
+
+/** A check run passes as GitHub's required checks do: success, neutral or skipped. */
+function checkState(c: Check): [string, CheckState] {
+  if (c.__typename === 'StatusContext') {
+    const pending = ['PENDING', 'EXPECTED'].includes(c.state)
+    return [c.context, c.state === 'SUCCESS' ? 'passed' : pending ? 'pending' : 'failing']
+  }
+  if (c.status !== 'COMPLETED') return [c.name, 'pending']
+  const passed = ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(c.conclusion ?? '')
+  return [c.name, passed ? 'passed' : 'failing']
+}
 
 type Stack = {
   number: number
@@ -181,6 +210,21 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       // The contents API leaves a file over 1 MB out.
       if (file.encoding !== 'base64') throw new Error(`${path} is over 1 MB`)
       return Buffer.from(file.content, 'base64').toString('utf8')
+    },
+
+    async checks(repo, number) {
+      const [owner = '', name = ''] = repo.split('/')
+      const { repository } = await graphql<{
+        repository: {
+          pullRequest: {
+            commits: {
+              nodes: { commit: { statusCheckRollup: { contexts: { nodes: Check[] } } | null } }[]
+            }
+          }
+        }
+      }>(run, checksQuery, { owner, name, number })
+      const [head] = repository.pullRequest.commits.nodes
+      return byName((head?.commit.statusCheckRollup?.contexts.nodes ?? []).map(checkState))
     },
 
     async push(dir, branch, { repo }) {

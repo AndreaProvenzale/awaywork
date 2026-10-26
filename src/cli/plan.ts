@@ -284,13 +284,19 @@ export async function linkPlanTasks(
   for (const [i, task] of tasks.entries()) {
     onProgress?.({ name: 'reading task PRs', state: 'running', detail: `${i}/${tasks.length}` })
     task.card.taskPrs ??= {}
-    const found = await forge.prsOn(task.repo, task.branch).then(
-      (prs) => taskPr(prs, task),
-      (e: Error) => {
+    const found = await forge
+      .prsOn(task.repo, task.branch)
+      .then(async (prs) => {
+        const pr = taskPr(prs, task)
+        if (pr?.state !== 'open' || !task.checks.length) return pr
+        const all = await forge.checks(task.repo, pr.number)
+        const named = task.checks.flatMap((name) => (all[name] ? [[name, all[name]]] : []))
+        return { ...pr, checks: Object.fromEntries(named) }
+      })
+      .catch((e: Error) => {
         ctx.log(`reading ${task.key}'s PR on ${task.branch}: ${e.message}`)
         failed.add(task.card)
-      },
-    )
+      })
     if (found) task.card.taskPrs[task.id] = found
   }
   // A card missing a task's PR can't tell which tasks still run, nor which ids are retired.

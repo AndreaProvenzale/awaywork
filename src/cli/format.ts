@@ -1,7 +1,7 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
 import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
-import { cardRepo } from '../core/fanout.js'
+import { cardRepo, unpassed } from '../core/fanout.js'
 import {
   isNamed,
   type PlannedUnit,
@@ -9,7 +9,7 @@ import {
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
-import { openedChain } from '../core/plan.js'
+import { isCheck, openedChain } from '../core/plan.js'
 import {
   bounds,
   comparisons,
@@ -242,6 +242,7 @@ export function planUnitTable(
     if (stacks) out.push(`   ${stacks}`)
     const waits = waitLine(p)
     if (waits) out.push(`   waits for ${waits}`)
+    for (const check of checkLines(p)) out.push(`   after ${check}`)
     if (p.passed.length > 0 || !p.provider)
       out.push(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
@@ -394,6 +395,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
       ...(stacks ? [['stack', stacks]] : []),
       ...(waits ? [['waits', `for ${waits}`]] : []),
+      ...checkLines(p).map((check) => ['check', check]),
     ]
     out.push(
       ...(out.length ? [''] : []),
@@ -424,7 +426,10 @@ function taskLines(item: Item): string[] {
     ([id, when]) => {
       const pr = task.parent.taskPrs?.[id]
       const away = repoOf(id) !== repoOf(task.id) ? ` in ${repoOf(id)}` : ''
-      return `${id} ${when}${away} (${pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'})`
+      const state = pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'
+      if (!isCheck(when)) return `${id} ${when}${away} (${state})`
+      const check = pr?.state === 'open' ? `, ${pr.checks?.[when] ?? 'not reported'}` : ''
+      return `${id}'s check ${when}${away} (${state}${check})`
     },
   )
   const repo = taskRepo(item)
@@ -448,6 +453,19 @@ function waitLine(p: PlannedUnit): string | undefined {
   const repoOf = (id: string) => task?.plan.find((t) => t.id === id)?.repo
   const waits = (p.waitsFor ?? []).map((id) => `${id}'s PR in ${repoOf(id)}`)
   return waits.length ? waits.join(', ') : undefined
+}
+
+/** The checks a task's chain starts after and where each stands, e.g. `api's check Vercel Preview (passed)`. */
+function checkLines(p: PlannedUnit): string[] {
+  const task = p.unit.items[0]?.task
+  const after = task?.plan.find((t) => t.id === task.id)?.after ?? {}
+  return Object.entries(after)
+    .filter(([, when]) => isCheck(when))
+    .map(([id, name]) => {
+      const pr = task?.parent.taskPrs?.[id]
+      const state = pr?.state === 'merged' ? `${id} merged` : (unpassed(pr, name) ?? 'passed')
+      return `${id}'s check ${name} (${state})`
+    })
 }
 
 /** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */

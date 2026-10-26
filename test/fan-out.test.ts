@@ -393,7 +393,7 @@ describe('tasks as items', () => {
     expect(needsYou.all_tasks_merged).toBe(true)
   })
 
-  it('runs nothing for a card no longer yours, on Bitbucket, or whose task PRs went unread', () => {
+  it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
     expect(skips(plan([{ ...approved(), mine: undefined }]))).toEqual([
       [
         'acme/api#1',
@@ -426,13 +426,9 @@ sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', writ
 queue:
 ${queue}`)
     const tracked = { ...approved(), source: 'tracker' }
-    expect(skips(plan([tracked], bitbucket))).toEqual([
-      [
-        'acme/api#1',
-        'refused_delivery',
-        "plan approved, but its tasks don't run on Bitbucket yet: awaywork can't read their merged and closed PRs there",
-      ],
-    ])
+    const onBitbucket = plan([tracked], bitbucket)
+    expect(onBitbucket.units.map((u) => u.unit.id)).toEqual(['acme-api-1-api'])
+    expect(skips(onBitbucket)[0]?.[1]).toBe('fanned_out')
   })
 
   it("holds every task while one's questions on the card wait, and one reply answers two", () => {

@@ -161,11 +161,76 @@ describe('bitbucket forge', () => {
       ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false],
     ])
     expect(prs[0]?.body).toContain('item=jira:SANDBOX-7')
+    expect(prs.map(({ head, closedAt }) => [head, closedAt])).toEqual([
+      ['58961c892aa5', undefined],
+      ['09db4a1b3c29', '2026-10-18T13:25:48.949282+00:00'],
+    ])
     expect(run.calls.map((c) => c.slice(4, 10).join(' '))).toEqual(
       ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED'].map(
         (s) => `-r ${sandbox} --source probe/awaywork-fixture --state ${s}`,
       ),
     )
+  })
+
+  it('reads a file at a ref, and nothing for a missing one', async () => {
+    const run = recorded([[/repo file notes\.txt /, fixture('repo-file.json')]])
+    const forge = bitbucketForge(['andrea89'], run)
+    expect(await forge.fileAt(sandbox, '16fc60339a69', 'notes.txt')).toBe(
+      "line one\nline two\nline three\nsmoke from awaywork's Bitbucket forge\n",
+    )
+    expect(run.calls[0]).toEqual([
+      'twg',
+      ...['bb', 'repo', 'file', 'notes.txt', '-r', sandbox, '--ref', '16fc60339a69'],
+      ...json,
+    ])
+    const missing: Exec = async () => {
+      throw Object.assign(new Error('exit 1'), { stdout: fixture('not-found.json') })
+    }
+    expect(await bitbucketForge(['andrea89'], missing).fileAt(sandbox, 'x', 'nope')).toBe(undefined)
+  })
+
+  it("reads build statuses on a PR's head by name", async () => {
+    const recordedPr = JSON.parse(fixture('prs-get-statuses.json'))
+    const forge = (statuses: unknown[]) =>
+      bitbucketForge(
+        ['andrea89'],
+        recorded([[/prs get 5 /, JSON.stringify({ ...recordedPr, _statuses: statuses })]]),
+      )
+    const run = recorded([[/prs get 5 /, fixture('prs-get-statuses.json')]])
+    expect(await bitbucketForge(['andrea89'], run).checks(sandbox, 5)).toEqual({})
+    expect(run.calls[0]).toEqual([
+      'twg',
+      ...['bb', 'prs', 'get', '5', '-r', sandbox, '--statuses'],
+      ...json,
+    ])
+    // Shaped as Bitbucket's API documents a build status: the sandbox has none to record.
+    const status = (
+      name: string,
+      state: string,
+      commit = '16fc60339a69dc87a10d517ab538573353126772',
+    ) => ({
+      type: 'build',
+      key: name.toLowerCase(),
+      name,
+      state,
+      links: {
+        commit: { href: `https://api.bitbucket.org/2.0/repositories/${sandbox}/commit/${commit}` },
+      },
+    })
+    expect(
+      await forge([
+        status('Pipeline', 'SUCCESSFUL'),
+        status('Vercel Preview', 'INPROGRESS'),
+        status('Expo Preview', 'FAILED'),
+        status('Lint', 'STOPPED'),
+        status('Old', 'SUCCESSFUL', '09db4a1b3c29'),
+      ]).checks(sandbox, 5),
+    ).toEqual({
+      Pipeline: 'passed',
+      'Vercel Preview': 'pending',
+      'Expo Preview': 'failing',
+      Lint: 'failing',
+    })
   })
 
   it("reads the message of a branch's tip", async () => {
