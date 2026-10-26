@@ -98,7 +98,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   waiting_for_approval: true,
   invalid_plan: true,
   fanned_out: false,
-  waiting_for_task: true,
+  waiting_for_task: false,
   task_merged: false,
   all_tasks_merged: true,
   gave_up: true,

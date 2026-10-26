@@ -268,7 +268,7 @@ describe('tasks as items', () => {
         'waiting for review: awaywork PR https://github.com/acme/api/pull/api is open',
       ],
     ])
-    expect(needsYou.waiting_for_task).toBe(true)
+    expect(needsYou.waiting_for_task).toBe(false)
     const merged = plan([approved({ api: pr('api', 'merged') })])
     expect(units(merged)).toEqual([['acme-api-1-web', 'away/acme-api-1-web']])
     expect(skips(merged)).toEqual([

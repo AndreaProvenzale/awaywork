@@ -128,7 +128,8 @@ Options:
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",
-                    "waiting_for_approval", "invalid_plan", "plan_approved",
+                    "waiting_for_approval", "invalid_plan", "fanned_out",
+                    "waiting_for_task", "task_merged", "all_tasks_merged",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
                     "unstackable")
   --why <key>       say why an item is planned or skipped, by key, source:key or
@@ -248,7 +249,8 @@ Options:
   --skipped [kind]  list the skipped items, or those of one kind (choices:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
                     "waiting_for_review", "waiting_for_answer",
-                    "waiting_for_approval", "invalid_plan", "plan_approved",
+                    "waiting_for_approval", "invalid_plan", "fanned_out",
+                    "waiting_for_task", "task_merged", "all_tasks_merged",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
                     "unstackable")
   -h, --help        display help for command

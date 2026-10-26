@@ -239,7 +239,7 @@ export function taskMarkdown(item: Item): string {
   return [
     `# ${item.key}: ${item.title}\n\n${item.url}\n\n${item.description}\n`,
     `\n## The plan\n\nThis is task \`${task.id}\` of the plan you approved on ${card.key}. Each task is its own item, with its own branch and PR. Its tasks:\n\n${listed.join('\n')}${notes}\n`,
-    `\n## The card: ${card.key}, ${card.title}\n\n${card.description}\n`,
+    `\n## The card: ${card.key}, ${card.title}\n${card.description ? `\n${card.description}\n` : ''}`,
     ...(comments.length ? ['\n## Comments\n', ...comments] : []),
   ].join('')
 }
