@@ -127,6 +127,18 @@ export function openedChain(task: Task, tasks: Task[]): string[] | undefined {
     : undefined
 }
 
+/** The task whose open PR holds task `id`'s work: `id` itself until its PR merges, then the first down its stack whose PR hasn't; undefined once all of it reached the default branch. */
+export function holdingTask(
+  id: string,
+  tasks: Task[],
+  merged: (id: string) => boolean,
+): string | undefined {
+  if (!merged(id)) return id
+  const task = tasks.find((t) => t.id === id)
+  const top = task && openedChain(task, tasks)?.at(-1)
+  return top && top !== id ? holdingTask(top, tasks, merged) : undefined
+}
+
 /** The plan's tasks in the order they run: each after those it waits on, else in the plan's order. */
 export function runOrder(tasks: Task[]): Task[] {
   const out: Task[] = []

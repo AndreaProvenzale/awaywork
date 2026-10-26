@@ -4,6 +4,7 @@ import { commentKind, commentMarkdown, footerItems, waitingTasks } from './foote
 import type { SkipKind, Skipped } from './foreman.js'
 import {
   cardTasks,
+  holdingTask,
   openedChain,
   type PlanLimits,
   planState,
@@ -81,7 +82,8 @@ export function branchName(
 
 /** A task of the plan on the card as an item: the card's source, URL, ownership, fields and comments, its own title and description. */
 export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = ''): Item {
-  const onto = openedChain(task, plan)?.findLast((id) => card.taskPrs?.[id]?.state !== 'merged')
+  const top = openedChain(task, plan)?.at(-1)
+  const onto = top && holdingTask(top, plan, (id) => card.taskPrs?.[id]?.state === 'merged')
   return {
     source: card.source,
     id: `${card.id}/${task.id}`,
@@ -213,6 +215,7 @@ export function expandPlans(
     // Unset only when no task had a rule or a repo to look its PR up by.
     const prs = card.taskPrs ?? {}
     const tasks = runOrder(state.plan.tasks)
+    const merged = (id: string) => prs[id]?.state === 'merged'
     const asked = waitingTasks(card)
     const states: string[] = []
     // The card's own skip goes first, its tasks' under it.
@@ -220,10 +223,12 @@ export function expandPlans(
     for (const t of tasks) {
       const item = taskItem(card, t, state.plan.tasks, state.notes)
       const pr = prs[t.id]
-      // An `opened` task holds only where this one starts: planRun stacks it.
-      const blocker = Object.keys(t.after ?? {}).find(
-        (id) => t.after?.[id] === 'merged' && prs[id]?.state !== 'merged',
-      )
+      // An `opened` task holds only where this one starts: planRun stacks it. A `merged` one holds until its whole stack merged.
+      const [waitedOn, blocker] =
+        Object.keys(t.after ?? {})
+          .filter((id) => t.after?.[id] === 'merged')
+          .map((id) => [id, holdingTask(id, state.plan.tasks, merged)])
+          .find(([, holder]) => holder) ?? []
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
@@ -244,7 +249,7 @@ export function expandPlans(
         skip(
           item,
           'waiting_for_task',
-          `waiting for task ${blocker}'s PR to merge`,
+          `waiting for task ${blocker}'s PR to merge${blocker === waitedOn ? '' : `, ${waitedOn}'s merged into it`}`,
           prs[blocker]?.url,
         )
       } else {

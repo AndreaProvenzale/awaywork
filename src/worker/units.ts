@@ -189,10 +189,10 @@ interface Retry {
   keep: () => void
 }
 
-/** A task's chain skipped, its loops' first rounds listed, because the chain `after` it stacks on opened no PR. */
-function noPrToStackOn(chain: PlannedUnit[], plan: RunPlan, after: string): UnitResult[] {
-  const below = plan.units.find((p) => p.unit.id === after)?.unit.items[0]
-  const reason = `${below?.task?.id ?? after} opened no PR`
+/** A task's chain skipped, its loops' first rounds listed, because the chain it stacks on opened no PR, or never got to run. */
+function noPrToStackOn(chain: PlannedUnit[], ran: boolean): UnitResult[] {
+  const below = (chain[0] as PlannedUnit).unit.items[0]?.task?.onto
+  const reason = `${below} ${ran ? 'opened no PR' : "didn't run"}`
   return chain
     .filter((p) => !p.loop || p.loop.round === 1)
     .map((planned) => ({ planned, status: 'skipped', reason }))
@@ -952,15 +952,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return done
   }
 
-  // The PR each chain opened first, by its id: a task's chain stacks on its dependency's.
+  // The PR each chain opened first, and the chains a step ran in, by id: a task's chain stacks on its dependency's.
   const opened: Record<string, { branch: string; url: string }> = {}
+  const ran = new Set<string>()
   try {
     for (const chain of chains) {
       const head = chain[0] as PlannedUnit
-      const onto = head.after && !input.dryRun ? opened[head.after] : undefined
+      const onto = head.after && opened[head.after]
+      if (head.after && input.dryRun)
+        input.ctx.log(
+          `${head.unit.id}: prepared from the default branch; a real run clones ${head.unit.items[0]?.task?.onto}'s branch`,
+        )
       const done =
         head.after && !input.dryRun && !onto
-          ? noPrToStackOn(chain, input.plan, head.after)
+          ? noPrToStackOn(chain, ran.has(head.after))
           : await runChain(
               onto
                 ? chain.map((p) => ({
@@ -969,6 +974,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                   }))
                 : chain,
             )
+      if (done.some((r) => r.status !== 'skipped')) ran.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
       if (lead?.outcome?.kind === 'pr')
         opened[head.unit.id] = { branch: lead.planned.unit.branch, url: lead.outcome.url }

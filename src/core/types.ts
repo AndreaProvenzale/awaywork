@@ -54,7 +54,7 @@ export interface Item {
     notes: string
     /** The plan's tasks, this one too, with what each waits on. */
     plan: { id: string; title: string; after: Record<string, 'opened' | 'merged'> }[]
-    /** The task whose PR this one stacks on: the last of its `opened` tasks whose PR isn't merged. */
+    /** The task whose PR this one stacks on: the first down its stack of `opened` tasks whose PR isn't merged. */
     onto?: string
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */

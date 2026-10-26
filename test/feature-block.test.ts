@@ -220,6 +220,49 @@ queue:
     ])
   })
 
+  it('follows the stack down past merged PRs, to the first one not merged', () => {
+    const tasks = `tasks:
+  - { id: schema, title: S }
+  - { id: api, title: A, after: { schema: opened } }
+  - { id: web, title: W, after: { api: opened } }
+`
+    const p = plan([
+      card(tasks, { schema: pr('schema', 'open', 10), api: pr('api', 'merged', 11) }),
+    ])
+    expect(shape(p)).toEqual([
+      ['acme-api-1-web', 'away/acme-api-1-schema', 'https://github.com/acme/api/pull/10', '-'],
+    ])
+    const own = plan([card(chain, { api: pr('api', 'open', 11), web: pr('web', 'merged', 12) })])
+    expect(shape(own)).toEqual([
+      ['acme-api-1-docs', 'away/acme-api-1-api', 'https://github.com/acme/api/pull/11', '-'],
+    ])
+    const landed = plan([
+      card(tasks, { schema: pr('schema', 'merged', 10), api: pr('api', 'merged', 11) }),
+    ])
+    expect(shape(landed)).toEqual([['acme-api-1-web', '', '-', '-']])
+  })
+
+  it('counts a merged task as merged only once the stack under it merged too', () => {
+    const tasks = `tasks:
+  - { id: schema, title: S }
+  - { id: api, title: A, after: { schema: opened } }
+  - { id: web, title: W, after: { api: merged } }
+`
+    const waits = plan([
+      card(tasks, { schema: pr('schema', 'open', 10), api: pr('api', 'merged', 11) }),
+    ])
+    expect(shape(waits)).toEqual([])
+    expect(skips(waits)).toContainEqual([
+      'acme/api#1/web',
+      'waiting_for_task',
+      "waiting for task schema's PR to merge, api's merged into it",
+    ])
+    const landed = plan([
+      card(tasks, { schema: pr('schema', 'merged', 10), api: pr('api', 'merged', 11) }),
+    ])
+    expect(shape(landed)).toEqual([['acme-api-1-web', '', '-', '-']])
+  })
+
   it('is cut by a cap, the tasks past it left for the next run', () => {
     const capped = plan([card(chain)], configOf('limits: { units: 2 }\n'))
     expect(shape(capped).map(([id]) => id)).toEqual(['acme-api-1-api', 'acme-api-1-web'])
@@ -281,7 +324,8 @@ describe('a feature block run by run', () => {
     const origin = await originForge(root)
     const item = card(chain)
     const source = { ...fakeSource(), items: async () => [item] } as Source
-    const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+    const logs: string[] = []
+    const ctx = { env: { PATH: process.env.PATH }, log: (line: string) => logs.push(line) }
     // What each task's clone held when its worker started.
     const found: Record<string, string[]> = {}
     const worker: Provider = {
@@ -299,7 +343,7 @@ describe('a feature block run by run', () => {
     }
     let attempts: Attempts = {}
     let runs = 0
-    const run = async () => {
+    const run = async (extra: Partial<Parameters<typeof runUnits>[0]> = {}) => {
       const n = ++runs
       const cardNow = { ...item }
       await linkPlanTasks([cardNow], cfg, { builtin: builtinSkills }, origin.forge, ctx)
@@ -318,6 +362,7 @@ describe('a feature block run by run', () => {
         watch: () => ({ stop: async () => {} }),
         shortage: async () => undefined,
         skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+        ...extra,
       })
       attempts = recordAttempts(attempts, report)
       return {
@@ -328,7 +373,7 @@ describe('a feature block run by run', () => {
         ]),
       }
     }
-    return { ...origin, found, run }
+    return { ...origin, found, logs, run }
   }
 
   it("stacks web on api's PR and docs on web's in one run, each cloned from the one before", async () => {
@@ -357,9 +402,25 @@ describe('a feature block run by run', () => {
     expect(ran).toEqual([
       ['api', 'failed: '],
       ['web', 'skipped: api opened no PR'],
-      ['docs', 'skipped: web opened no PR'],
+      ['docs', "skipped: web didn't run"],
     ])
     expect(formatRun(report)).toContain('api opened no PR')
+  })
+
+  it("says the dependency didn't run when it never got to, and a dry run where it would clone from", async () => {
+    const { run, logs } = await setup()
+    expect((await run({ only: 'acme-api-1-web' })).ran).toEqual([
+      ['web', "skipped: api didn't run"],
+    ])
+    const dry = await run({ dryRun: true })
+    expect(dry.ran).toEqual([
+      ['api', 'prepared: '],
+      ['web', 'prepared: '],
+      ['docs', 'prepared: '],
+    ])
+    expect(logs).toContain(
+      "acme-api-1-web: prepared from the default branch; a real run clones api's branch",
+    )
   })
 
   it('carries on next run past a cap, stacking on the PR left open, then from main once it merged', async () => {
