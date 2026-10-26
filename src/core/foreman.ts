@@ -4,10 +4,10 @@ import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
-import { branchName, committingStep, expandPlans, stepReports } from './fanout.js'
+import { branchName, committingStep, expandPlans, stepReports, taskSkills } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
-import { plannedSkills, planState } from './plan.js'
+import { planState } from './plan.js'
 import {
   closestRule,
   defaultRules,
@@ -141,7 +141,7 @@ export function planRun(input: {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
-  const expanded = expandPlans(input.items, config, queue)
+  const expanded = expandPlans(input.items, config, queue, input.skills)
   const { ranked, unmatched } = rank(expanded.items, queue)
   const skipped: Skipped[] = [
     ...expanded.skipped,
@@ -195,7 +195,7 @@ export function planRun(input: {
     const limits = (item: Item) => ({
       maxTasks: config.limits.plan_tasks,
       repo: prs[0]?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string'),
-      skills: plannedSkills(queue, item.source),
+      ...taskSkills(queue, item.source, input.skills),
     })
     const card =
       rule.deliver === 'plan'
@@ -318,6 +318,7 @@ export function planRun(input: {
           ...step.instructions,
         ],
         deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
+        ...(planned && { taskSkills: taskSkills(queue, (items[0] as Item).source, input.skills) }),
       }
       const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({

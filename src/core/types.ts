@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import type { PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
 export type Login = (
@@ -54,8 +55,8 @@ export interface Item {
     /** The plan's tasks, this one too, with the ids each waits on. */
     plan: { id: string; title: string; after: string[] }[]
   }
-  /** On a card: the PRs its plans' tasks have, by task id; unset until the forge was read. */
-  taskPrs?: Record<string, TaskPr>
+  /** On a card: the PRs its plans' tasks have, by task id; unset until the forge was read, null when reading failed. */
+  taskPrs?: Record<string, TaskPr> | null
   raw: unknown
 }
 
@@ -344,6 +345,8 @@ export interface Unit {
   providers: string[]
   instructions: string[]
   deliver: Deliver
+  /** A `deliver: plan` unit's: the skills its plan's tasks may take, and those whose planned rule opens no PR. */
+  taskSkills?: Pick<PlanLimits, 'skills' | 'noPr'>
 }
 
 /** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */

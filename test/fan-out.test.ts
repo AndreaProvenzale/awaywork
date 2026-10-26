@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
-import { formatWhy } from '../src/cli/format.js'
+import { formatWhy, planJson } from '../src/cli/format.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
@@ -22,7 +22,7 @@ import {
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
-import { checkPlan, planContract, planState } from '../src/core/plan.js'
+import { checkPlan, keptTasks, planContract, planState } from '../src/core/plan.js'
 import { rank, ruleFor } from '../src/core/queue.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
@@ -135,13 +135,19 @@ describe('plan checks for tasks', () => {
     expect(problem('tasks: [{ id: docs, title: D }]', { retired })).toBeUndefined()
   })
 
-  it("tells the plan step the planned rules' skills and the retired ids", () => {
-    const text = planContract({ ...limits, retired: { web: 'https://x/9' } })
+  it("tells the plan step the planned rules' skills, the retired ids and the ids with a PR", () => {
+    const kept = keptTasks({ taskPrs: { api: pr('api', 'merged'), web: pr('web', 'closed') } })
+    expect(kept).toEqual({ api: 'https://github.com/acme/api/pull/api' })
+    const text = planContract({ ...limits, retired: { web: 'https://x/9' } }, kept)
     expect(text).toContain('a `skill` (one of `implement`; `implement` when unset)')
     expect(text).toContain('`after`, a map from other task ids to `merged`')
     expect(text).toContain(
       "These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: `web` (https://x/9).",
     )
+    expect(text).toContain(
+      'These tasks already have a PR, open or merged: `api` (https://github.com/acme/api/pull/api). A task that keeps its id keeps its PR',
+    )
+    expect(planContract(limits)).not.toContain('These tasks')
   })
 
   it('takes plan rules only with a planned rule, which opens PRs, and planned only at the top', () => {
@@ -171,6 +177,51 @@ describe('plan checks for tasks', () => {
     expect(problems(`${queue}  - { skill: fix, where: { planned: false } }`)).toEqual([
       expect.stringContaining('queue[2].where.planned: invalid value false'),
     ])
+  })
+
+  it("refuses a planned rule's branch template that renders from more than the task's key", () => {
+    const problems = (extra: string, rule = '') => {
+      try {
+        configOf(
+          `  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true }${rule} }\n`,
+          extra,
+        )
+        return []
+      } catch (e) {
+        return (e as Error).message.split('\n').slice(1)
+      }
+    }
+    const refused = (template: string) =>
+      expect.stringContaining(
+        `queue[1].branch: a plan's task keeps its PR by its branch, which ${template} renders from the task's title or skill too: set branch on this rule from {key} alone`,
+      )
+    expect(problems('branch: "away/{title}"\n')).toEqual([refused('away/{title}')])
+    expect(problems('repos: { acme/web: { branch: "feat/{key}-{title}" } }\n')).toEqual([
+      refused('feat/{key}-{title}'),
+    ])
+    expect(problems('', ', branch: "{type}/{key}"')).toEqual([refused('{type}/{key}')])
+    expect(problems('branch: "away/{title}"\n', ', branch: "away/{key}"')).toEqual([])
+  })
+
+  it('takes no task for a skill whose planned rule opens no PR, and lists only the others', () => {
+    expect(problem('tasks: [{ id: qa, title: Q, skill: review }]', { noPr: ['review'] })).toBe(
+      'task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
+    )
+    const reviewing = configOf(`${queue}  - { skill: review, where: { planned: true } }\n`)
+    const qa = 'tasks: [{ id: api, title: A }, { id: qa, title: Q, skill: review }]'
+    const waiting = card([planned(qa)])
+    expect(skips(plan([waiting], reviewing))).toEqual([
+      [
+        'acme/api#1',
+        'invalid_plan',
+        'plan refused: task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
+      ],
+    ])
+    const [unit] = plan([card([])], reviewing).units.map((u) => u.unit)
+    expect(unit?.taskSkills).toEqual({ skills: ['implement'], noPr: ['review'] })
+    expect(planContract({ ...limits, ...unit?.taskSkills })).toContain(
+      'a `skill` (one of `implement`; `implement` when unset)',
+    )
   })
 })
 
@@ -212,6 +263,8 @@ describe('tasks as items', () => {
       task: { id: 'api', skill: 'implement', notes: 'Go.' },
     })
     expect(task.task?.parent).toBe(parent)
+    const approvedCard = { ...parent, fields: { ...parent.fields, approved: true } }
+    expect(taskItem(approvedCard, { id: 'api', title: 'A' }).fields.approved).toBe(false)
     const md = taskMarkdown(task)
     expect(md).toContain(
       '# acme/api#1/api: VAT export endpoint\n\nhttps://example.com/1\n\nAdd GET /exports/vat.\n',
@@ -246,16 +299,23 @@ describe('tasks as items', () => {
   it('fans out onto away/<card>-<id>, or the configured template, and names the card in --why', () => {
     const fanned = plan([approved()])
     expect(units(fanned)).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
-    const branchy = configOf(queue, 'branch: "feat/{key}-{title}"\n')
-    expect(units(plan([approved()], branchy))).toEqual([
-      ['acme-api-1-api', 'feat/acme-api-1-api-vat-export-endpoint'],
-    ])
+    const branchy = configOf(queue, 'branch: "feat/{key}"\n')
+    expect(units(plan([approved()], branchy))).toEqual([['acme-api-1-api', 'feat/acme-api-1-api']])
     const ruled = configOf(
-      `  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true }, branch: "{type}/{key}" }\n`,
+      `  - { skill: plan, deliver: plan }\n  - { skill: implement, where: { planned: true }, branch: "task/{key}" }\n`,
+      'branch: "feat/{title}"\n',
     )
-    expect(units(plan([approved()], ruled))).toEqual([['acme-api-1-api', 'feat/acme-api-1-api']])
+    expect(units(plan([approved()], ruled))).toEqual([['acme-api-1-api', 'task/acme-api-1-api']])
     const task = fanned.units[0]?.unit.items[0] as Item
     expect(formatWhy(fanned, task)).toContain('  task api of the plan on acme/api#1')
+    const json = JSON.parse(planJson(fanned))
+    expect(json.units[0].unit.items[0].task.parent).toEqual({
+      source: 'github',
+      key: 'acme/api#1',
+      title: 'VAT export',
+      url: 'https://example.com/1',
+    })
+    expect(json.units[0].unit.items[0].comments).toHaveLength(2)
   })
 
   it('waits for a task the other is after, and for review of an open task PR', () => {
@@ -299,6 +359,13 @@ describe('tasks as items', () => {
     expect(skips(plan([{ ...approved(), taskPrs: undefined }]))).toEqual([
       ['acme/api#1', 'fanned_out', "plan approved, but its tasks' PRs couldn't be read"],
     ])
+    const failed = "its plan's tasks' PRs couldn't be read"
+    expect(skips(plan([{ ...approved(), taskPrs: null }]))).toEqual([
+      ['acme/api#1', 'fanned_out', failed],
+    ])
+    const feedback = plan([{ ...card([planned(), theirs('Split web.', 2)]), taskPrs: null }])
+    expect(feedback.units).toEqual([])
+    expect(skips(feedback)).toEqual([['acme/api#1', 'fanned_out', failed]])
     const bitbucket = parseConfig(`
 providers: [claude: {}]
 sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', write: 'cat' } }
@@ -457,8 +524,26 @@ describe("a task's PR", () => {
       env: {},
       log: (l) => lines.push(l),
     })
-    expect(unread.taskPrs).toBeUndefined()
+    expect(unread.taskPrs).toBeNull()
     expect(lines).toContain("reading acme/api#1/api's PR on away/acme-api-1-api: 502")
+  })
+
+  it('is not read while the first plan waits for its answer, nothing having run yet', async () => {
+    const ctx = { env: {}, log: () => {} }
+    let calls = 0
+    const counting = {
+      ...fakeForge(),
+      prsOn: async () => {
+        calls++
+        return []
+      },
+    }
+    const first = { ...card([planned()]), taskPrs: undefined }
+    await linkPlanTasks([first], config, { builtin: builtinSkills }, counting, ctx)
+    expect([calls, first.taskPrs]).toEqual([0, undefined])
+    const answered = { ...card([planned(), theirs('Split web.', 2)]), taskPrs: undefined }
+    await linkPlanTasks([answered], config, { builtin: builtinSkills }, counting, ctx)
+    expect([calls, answered.taskPrs]).toEqual([2, {}])
   })
 })
 

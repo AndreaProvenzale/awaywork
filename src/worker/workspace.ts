@@ -18,10 +18,10 @@ import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
-import { planLimits, taskMarkdown } from '../core/fanout.js'
+import { taskMarkdown } from '../core/fanout.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { gitUnrestored, markGitRestored } from '../core/launch.js'
-import { planContract, retiredTasks } from '../core/plan.js'
+import { keptTasks, planContract, retiredTasks } from '../core/plan.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Item, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
@@ -518,7 +518,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
     pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
-    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract({ ...planLimits(w.config, w.config.queue ?? [], card), retired: retiredTasks(card) })}`,
+    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract({ maxTasks: w.config.limits.plan_tasks, ...unit.taskSkills, retired: retiredTasks(card) }, keptTasks(card))}`,
   }[unit.deliver]
   return [
     `## Your unit`,

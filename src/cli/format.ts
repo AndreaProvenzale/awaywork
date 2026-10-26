@@ -31,14 +31,18 @@ import {
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 
-const withoutRaw = (key: string, value: unknown) => (key === 'raw' ? undefined : value)
+const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+
+/** Drops an item's raw payload, and names a task's card by reference: the card is in the plan on its own. */
+function lean(this: Record<string, unknown>, key: string, value: unknown) {
+  if (key === 'raw') return undefined
+  return key === 'parent' && 'notes' in this ? itemRef(value as Item) : value
+}
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
-  return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
+  return JSON.stringify({ ...plan, warnings }, lean, 2)
 }
-
-const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 const withItemRefs = (p: PlannedUnit) => ({
   ...p,
   unit: { ...p.unit, items: p.unit.items.map(itemRef) },

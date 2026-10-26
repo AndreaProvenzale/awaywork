@@ -800,6 +800,17 @@ export const configSchema = z
           path: [...at, 'deliver'],
           message: `a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not ${r.deliver}`,
         })
+      // A task's PR is found by its branch, so the branch must stay put when a re-plan retitles the task.
+      const templates = r.branch
+        ? [r.branch]
+        : [cfg.branch, ...Object.values(cfg.repos).flatMap((p) => p.branch ?? [])]
+      const moving = 'planned' in r.where && templates.find((t) => /\{(title|type)\}/.test(t))
+      if (moving)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'branch'],
+          message: `a plan's task keeps its PR by its branch, which ${moving} renders from the task's title or skill too: set branch on this rule from {key} alone, e.g. away/{key}`,
+        })
       checkWhere(r.where, [...at, 'where'], false, undefined)
       function canFinish(state: WhereValue | undefined, where: Where): boolean {
         const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))

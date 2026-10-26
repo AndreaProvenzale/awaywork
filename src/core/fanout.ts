@@ -1,15 +1,8 @@
 import type { Config } from '../config/schema.js'
 import { defaultType, renderBranch } from './branch.js'
-import { commentMarkdown, footerItems, waitingTasks } from './footer.js'
+import { commentKind, commentMarkdown, footerItems, waitingTasks } from './footer.js'
 import type { SkipKind, Skipped } from './foreman.js'
-import {
-  cardTasks,
-  type PlanLimits,
-  plannedSkills,
-  planState,
-  TASK_SKILL,
-  type Task,
-} from './plan.js'
+import { cardTasks, type PlanLimits, planState, planThread, TASK_SKILL, type Task } from './plan.js'
 import { isLoop, ruleFor } from './queue.js'
 import { resolveSkill, type SkillCatalog } from './skills.js'
 import type { BranchPr, Item, Rule, TaskPr, ThenStep } from './types.js'
@@ -19,11 +12,31 @@ export const cardRepo = (item: Item): string | undefined =>
   item.linkedPrs[0]?.repo ?? (typeof item.fields.repo === 'string' ? item.fields.repo : undefined)
 
 /** What a plan on the card is checked against. */
-export const planLimits = (config: Config, queue: Rule[], card: Item): PlanLimits => ({
+export const planLimits = (
+  config: Config,
+  queue: Rule[],
+  card: Item,
+  catalog: SkillCatalog,
+): PlanLimits => ({
   maxTasks: config.limits.plan_tasks,
   repo: cardRepo(card),
-  skills: plannedSkills(queue, card.source),
+  ...taskSkills(queue, card.source, catalog),
 })
+
+/** The skills the queue's `planned` rules take for a card from `source`, and those whose rule, the first `planned` one for the skill, opens no PR. */
+export function taskSkills(
+  queue: Rule[],
+  source: string,
+  catalog: SkillCatalog,
+): Pick<PlanLimits, 'skills' | 'noPr'> {
+  const planned = queue.filter((r) => 'planned' in r.where && (!r.source || r.source === source))
+  const first = planned.filter((r, i) => planned.findIndex((q) => q.skill === r.skill) === i)
+  const opens = (r: Rule) => !!committingStep(r, catalog)
+  return {
+    skills: first.filter(opens).map((r) => r.skill),
+    noPr: first.filter((r) => !opens(r)).map((r) => r.skill),
+  }
+}
 
 /** Whether a rule's step reports instead of committing: every step of a `report`, `pending_review` or `plan` rule does, and one whose skill says so. */
 export const stepReports =
@@ -72,7 +85,8 @@ export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = 
     linkedPrs: [],
     // Never a closing line: the card outlives each of its tasks' PRs.
     link: `Part of ${card.url}`,
-    fields: { ...card.fields, repo: cardRepo(card) },
+    // A task takes no approval of its own: the card's plan approval covers it.
+    fields: { ...card.fields, approved: false, repo: cardRepo(card) },
     ...(card.mine && { mine: card.mine }),
     task: {
       parent: card,
@@ -86,9 +100,9 @@ export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = 
 }
 
 /** Where the plan stands on a card a `deliver: plan` rule takes. */
-function planCard(item: Item, queue: Rule[], config: Config) {
+function planCard(item: Item, queue: Rule[], config: Config, catalog: SkillCatalog) {
   return queue[ruleFor(queue, item)]?.deliver === 'plan'
-    ? planState(item, planLimits(config, queue, item))
+    ? planState(item, planLimits(config, queue, item, catalog))
     : undefined
 }
 
@@ -105,6 +119,9 @@ export function taskBranches(
   if (config.sources.bitbucket) return []
   return items.flatMap((card) => {
     if (!card.mine || queue[ruleFor(queue, card)]?.deliver !== 'plan') return []
+    // The first plan, unanswered: no task ran yet.
+    const plans = card.comments.filter((c) => commentKind(c) === 'plan').length
+    if (plans === 1 && !planThread(card)?.answer) return []
     return cardTasks(card).flatMap((t) => {
       const item = taskItem(card, t)
       const rule = queue[ruleFor(queue, item)]
@@ -148,13 +165,19 @@ export function expandPlans(
   items: Item[],
   config: Config,
   queue: Rule[],
+  catalog: SkillCatalog,
 ): { items: Item[]; skipped: Skipped[] } {
   const out: Item[] = []
   const skipped: Skipped[] = []
   const skip = (item: Item, kind: SkipKind, reason: string, url?: string) =>
     skipped.push({ item, kind, reason, ...(url && { url }) })
   for (const card of items) {
-    const state = planCard(card, queue, config)
+    const state = planCard(card, queue, config, catalog)
+    // Without its tasks' PRs a re-plan wouldn't know the retired ids, nor a fan-out what's done.
+    if (state && card.taskPrs === null) {
+      skip(card, 'fanned_out', "its plan's tasks' PRs couldn't be read")
+      continue
+    }
     if (state?.state !== 'approved') {
       out.push(card)
       continue

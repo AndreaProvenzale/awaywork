@@ -293,8 +293,8 @@ export async function linkPlanTasks(
     )
     if (found) task.card.taskPrs[task.id] = found
   }
-  // A card missing a task's PR can't tell which tasks still run.
-  for (const card of failed) delete card.taskPrs
+  // A card missing a task's PR can't tell which tasks still run, nor which ids are retired.
+  for (const card of failed) card.taskPrs = null
   if (tasks.length)
     onProgress?.({
       name: 'reading task PRs',

@@ -26,7 +26,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { checkPlan, plannedSkills, planYaml, retiredTasks } from '../core/plan.js'
+import { checkPlan, planYaml, retiredTasks } from '../core/plan.js'
 import {
   type Moved,
   type PlanPost,
@@ -311,7 +311,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const limits = {
       maxTasks: input.config.limits.plan_tasks,
       repo: p.unit.repo,
-      skills: plannedSkills(input.plan.queue, card.source),
+      ...p.unit.taskSkills,
       retired: retiredTasks(card),
     }
     const file = checkPlan(yaml, limits)

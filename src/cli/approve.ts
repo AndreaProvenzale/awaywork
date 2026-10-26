@@ -42,7 +42,13 @@ export async function approveItem(
   const cfg = config.sources[id]
   const planned = config.queue?.some((r) => r.deliver === 'plan' && (!r.source || r.source === id))
   const source = planned ? (sources[id] ?? sourceFor(id, cfg)) : undefined
-  const item = source && (await source.items(cfg, ctx)).find((i) => `${id}:${i.key}` === key)
+  const items = source ? await source.items(cfg, ctx) : []
+  const item = items.find((i) => `${id}:${i.key}` === key)
+  const card = !item && items.find((i) => key.startsWith(`${id}:${i.key}/`) && planThread(i))
+  if (card)
+    throw new Error(
+      `${key} is a task of the plan on ${id}:${card.key}: a task takes no approval of its own, approving the plan on the card covers it`,
+    )
   const thread = item && planThread(item)
   if (item && thread?.answer)
     throw new Error(

@@ -1,7 +1,7 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
 import { commentKind, isApprove, isAwayworkComment } from './footer.js'
-import type { Item, Rule, TaskPr } from './types.js'
+import type { Item, TaskPr } from './types.js'
 
 const task = z.strictObject({
   id: z.string(),
@@ -25,28 +25,32 @@ export interface PlanLimits {
   maxTasks: number
   repo?: string
   skills?: string[]
+  /** Skills whose `planned` rule opens no PR, so a task of theirs would never read as done. */
+  noPr?: string[]
   /** Task ids whose PR was closed without merging, with that PR's URL: no plan may reuse them. */
   retired?: Record<string, string>
 }
 
-/** The skills the queue's `planned` rules take for a card from `source`. */
-export const plannedSkills = (queue: Rule[], source: string): string[] => [
-  ...new Set(
-    queue
-      .filter((r) => 'planned' in r.where && (!r.source || r.source === source))
-      .map((r) => r.skill),
-  ),
-]
-
-/** What a `deliver: plan` step's prompt says about `plan.yml`. */
-export function planContract({ maxTasks, skills = [], retired = {} }: PlanLimits): string {
+/** What a `deliver: plan` step's prompt says about `plan.yml`; `kept` are the task ids with an open or merged PR. */
+export function planContract(
+  { maxTasks, skills = [], retired = {} }: PlanLimits,
+  kept: Record<string, string> = {},
+): string {
   const named = skills.map((s) => `\`${s}\``).join(', ') || 'none'
-  const closed = Object.entries(retired).map(([id, url]) => `\`${id}\` (${url})`)
+  const listed = (prs: Record<string, string>) =>
+    Object.entries(prs)
+      .map(([id, url]) => `\`${id}\` (${url})`)
+      .join(', ')
   return [
     `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (only this unit's) and \`after\`, a map from other task ids to \`merged\`, with no cycles; no other key. Each task becomes its own item with its own branch and PR once the plan is approved. awaywork checks it and posts your report, the narrative a person reads to approve the plan, and \`plan.yml\` as one comment on the item.`,
-    ...(closed.length
+    ...(Object.keys(retired).length
       ? [
-          `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${closed.join(', ')}. Plan the work again without them; a task that keeps its id keeps its open or merged PR.`,
+          `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${listed(retired)}. Plan the work again without them.`,
+        ]
+      : []),
+    ...(Object.keys(kept).length
+      ? [
+          `These tasks already have a PR, open or merged: ${listed(kept)}. A task that keeps its id keeps its PR, and a merged one runs no more, so keep an id only for the same work.`,
         ]
       : []),
   ].join(' ')
@@ -73,7 +77,7 @@ export function checkPlan(text: string, limits: PlanLimits): { plan: Plan } | { 
 
 function tasksProblem(
   tasks: Task[],
-  { maxTasks, repo, skills, retired = {} }: PlanLimits,
+  { maxTasks, repo, skills, noPr = [], retired = {} }: PlanLimits,
 ): string | undefined {
   if (tasks.length > maxTasks) return `${tasks.length} tasks, over limits.plan_tasks (${maxTasks})`
   const ids = tasks.map((t) => t.id)
@@ -87,6 +91,8 @@ function tasksProblem(
     if (t.repo !== undefined && t.repo !== repo)
       return `task ${t.id}: repo ${t.repo} isn't the card's (${repo ?? 'none'})`
     const skill = t.skill ?? TASK_SKILL
+    if (noPr.includes(skill))
+      return `task ${t.id}: the planned rule for skill ${skill} opens no PR, and a task is done when its PR merges`
     if (skills && !skills.includes(skill))
       return `task ${t.id}: no planned rule takes skill ${skill}`
     const unknown = Object.keys(t.after ?? {}).find((id) => !ids.includes(id))
@@ -176,6 +182,14 @@ export function retiredTasks(
     ),
   )
 }
+
+/** The card's task ids whose PR is open or merged, with the PR's URL. */
+export const keptTasks = (item: Pick<Item, 'taskPrs'>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(item.taskPrs ?? {}).flatMap(([id, pr]) =>
+      pr.state === 'closed' ? [] : [[id, pr.url]],
+    ),
+  )
 
 /** Every task any of awaywork's plans on the card names, the newest plan's first, each id once: their PRs say which ids are retired. */
 export function cardTasks(item: Pick<Item, 'comments'>): Task[] {

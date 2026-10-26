@@ -124,6 +124,18 @@ queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }, {
     expect(writes).toEqual([])
   })
 
+  it("refuses a plan's task, which the plan's approval covers", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'approvals.json')
+    const { sources, writes } = github([card()])
+    await expect(
+      approveItem('github:acme/api#5/api', config, '', { path, sources, ctx }),
+    ).rejects.toThrow(
+      'github:acme/api#5/api is a task of the plan on github:acme/api#5: a task takes no approval of its own, approving the plan on the card covers it',
+    )
+    expect(writes).toEqual([])
+    await expect(readFile(path, 'utf8')).rejects.toThrow()
+  })
+
   it('sets the `approved` field on approved items only', () => {
     const items = withApprovals([item('github', 'a#1'), item('github', 'a#2')], {
       'github:a#1': true,
