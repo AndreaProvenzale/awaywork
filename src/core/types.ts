@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import type { Status } from './footer.js'
 import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
@@ -237,7 +238,7 @@ export interface Forge {
     from: string,
     opts: { repo: string; pr: number },
   ): Promise<string | undefined>
-  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`. */
+  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`, its footer recording `status`. */
   openPr(
     repo: string,
     head: string,
@@ -246,6 +247,7 @@ export interface Forge {
     runId: string,
     items: Pick<Item, 'source' | 'key'>[],
     draft: boolean,
+    status?: Status,
   ): Promise<string>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>

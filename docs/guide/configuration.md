@@ -412,7 +412,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./how-it-works.md#plans)) |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, a step asked [questions](./how-it-works.md#questions) with `ask` in its status file, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./how-it-works.md#plans)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
@@ -523,9 +523,11 @@ Moving the card is how the next person hears it's their turn, and a comment on i
   on_done: { comment: result, move: In Review }
 ```
 
-`comment: result` posts the unit's result as awaywork's comment, before the move: a report rule's report, else a line for what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), with awaywork's status line under it:
+`comment: result` posts the unit's result as awaywork's comment, before the move: headed with the rule's skill, a report rule's report, else a line for what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), with awaywork's status line under it:
 
 ```text
+Result of implement
+
 Opened https://github.com/acme/api/pull/41
 
 Status: done
@@ -533,7 +535,7 @@ Status: done
 — awaywork
 ```
 
-A [plan's task](./how-it-works.md#tasks) posts its result on the card whether its rule asks or not. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a comment after it would read as your answer.
+A [report task](./how-it-works.md#report-tasks) posts its result on the card whether its rule asks or not; a task that opens a PR posts one only when it does. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a comment after it would read as your answer.
 
 `move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
 

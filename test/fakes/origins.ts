@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../../src/config/paths.js'
+import type { Status } from '../../src/core/footer.js'
 import type { Item } from '../../src/core/types.js'
 import { prText } from '../../src/forge/pr.js'
 import { fakeForge } from './forge.js'
@@ -46,8 +47,9 @@ export async function originsForge(root: string, repos: string[]) {
       runId: string,
       items: Pick<Item, 'source' | 'key'>[],
       draft: boolean,
+      status?: Status,
     ) => {
-      const { body } = await prText(bodyFile, head, runId, items)
+      const { body } = await prText(bodyFile, head, runId, items, status)
       const url = `https://github.com/${repo}/pull/${++n}`
       bases[`${repo}:${head}`] = base || 'main'
       drafts[`${repo}:${head}`] = draft

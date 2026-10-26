@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { footer, footerItems } from '../core/footer.js'
+import { footer, footerItems, type Status } from '../core/footer.js'
 import type { CheckState, Item } from '../core/types.js'
 
 /**
@@ -27,16 +27,17 @@ export function linksItem(
   }
 }
 
-/** The body file's first line is the title; the rest, plus the footer, is the body. */
+/** The body file's first line is the title; the rest, plus the footer recording `status`, is the body. */
 export async function prText(
   bodyFile: string,
   head: string,
   runId: string,
   items: Pick<Item, 'source' | 'key'>[],
+  status?: Status,
 ): Promise<{ title: string; body: string }> {
   const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
   const title = first.replace(/^#+\s*/, '').trim() || head
-  return { title, body: `${rest.join('\n').trim()}\n\n${footer(runId, items)}` }
+  return { title, body: `${rest.join('\n').trim()}\n\n${footer(runId, items, status)}` }
 }
 
 const WORSE: CheckState[] = ['passed', 'pending', 'failing']

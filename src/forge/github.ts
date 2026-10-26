@@ -245,8 +245,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft) {
-      const { title, body } = await prText(bodyFile, head, runId, items)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
+      const { title, body } = await prText(bodyFile, head, runId, items, status)
       const into = base ? ['--base', base] : []
       const asDraft = draft ? ['--draft'] : []
       const args = ['pr', 'create', '-R', repo, ...asDraft, '--head', head, ...into]

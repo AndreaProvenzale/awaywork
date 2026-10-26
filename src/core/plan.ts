@@ -270,13 +270,13 @@ export function contractText(comment: string, name: string): string {
 
 type Comment = Item['comments'][number]
 
-/** Awaywork's newest plan comment on the item, and its answer: the first comment after it but a bot's. */
+/** Awaywork's newest plan comment on the item, and its answer: the first comment after it but a bot's or awaywork's result. */
 export function planThread(
   item: Pick<Item, 'comments'>,
 ): { plan: Comment; answer?: Comment } | undefined {
   const at = item.comments.findLastIndex((c) => commentKind(c) === 'plan')
   if (at < 0) return undefined
-  const answer = item.comments.slice(at + 1).find((c) => !c.bot)
+  const answer = item.comments.slice(at + 1).find((c) => !c.bot && commentKind(c) !== 'result')
   return { plan: item.comments[at] as Comment, ...(answer && { answer }) }
 }
 

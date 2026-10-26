@@ -146,7 +146,7 @@ export interface RunReport {
 
 const SUMMARY_LENGTH = 200
 
-/** A PR body's or report's first paragraph on one line, past the body's title line, any heading or rule, and a gates section where none fired. */
+/** A PR body's or report's first paragraph on one line, past the body's title line, any heading or rule, a gates section where none fired and awaywork's status line. */
 export function summaryOf(text: string, titled = false): string | undefined {
   const body = text
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -164,7 +164,7 @@ export function summaryOf(text: string, titled = false): string | undefined {
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .find((p) => p && !p.startsWith('Gates: none fired'))
+    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: ask\b/.test(p))
   if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
   return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }

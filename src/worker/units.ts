@@ -274,13 +274,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   /** Posts a finished unit's result on each of its items that is yours; a write that fails is reported, never thrown. */
-  const postResult = async (items: Item[], text: string): Promise<Commented[]> => {
+  const postResult = async (p: PlannedUnit, text: string): Promise<Commented[]> => {
     const posted: Commented[] = []
-    for (const item of items) {
+    for (const item of ownItems(p)) {
       const source = input.sources[item.source]
       const refused = unwritable(item, source)
       if (refused) {
-        input.ctx.log(`on_done: ${item.key} got no result, ${refused}`)
+        input.ctx.log(`${item.key} got no result, ${refused}`)
         continue
       }
       const ref = { item: `${item.source}:${item.key}` }
@@ -289,7 +289,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       try {
-        const write = { op: 'comment', body: resultComment(text, 'done', item.task?.id) } as const
+        const write = {
+          op: 'comment',
+          body: resultComment(text, 'done', p.unit.skill, item.task?.id),
+        } as const
         const cfg = input.config.sources[item.source]
         const { updated, url = item.url } = await writeItem(source, cfg, item, write, input.ctx)
         input.ctx.log(`${item.key}: result posted on ${url}`)
@@ -491,6 +494,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let unfinished = false
     // The step that couldn't go on without answers, and its questions.
     let asked: Pick<Questions, 'step' | 'text'> | undefined
+    // Whether that step's status file said `ask`: only then do its commits publish as asking.
+    let saidAsk = false
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
@@ -607,6 +612,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
               : gitUnrestored(dir)
                 ? "the clone's .git was refused"
                 : undefined
+          const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -621,9 +627,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 // Only the whole chain, cut from the default branch, closes its issues.
                 last && !first.capped && base === '',
                 failed && notReady(failed),
-                asked && {
-                  url: ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))?.url,
-                },
+                saidAsk ? { url: askedOn?.url } : undefined,
               )
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
@@ -952,6 +956,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         else if (asks) {
           ended = { reason: `${unit.id} asked questions`, passedOver: true }
           asked = { step: unit.id, text: questions }
+          saidAsk = status === 'ask'
         } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
@@ -1019,10 +1024,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
-      // A task's result is how its card hears it's done, so it always posts one.
-      if (onDone?.comment === 'result' || first.unit.items[0]?.task) {
+      // A report task's result is how its card hears it's done, so it always posts one.
+      if (onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))) {
         const outcomes = [...leads].flatMap((r) => r.outcome ?? [])
-        lead.result = await postResult(ownItems(first), resultOf(outcomes))
+        lead.result = await postResult(first, resultOf(outcomes))
       }
       if (onDone?.move) lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
     }

@@ -7,28 +7,42 @@ const marker = '<!-- awaywork'
 
 /**
  * Appended to every PR body awaywork opens; it discloses the author, marks the PR as ours and
- * names its items, each part URI-encoded so no key can end the comment.
+ * names its items, each part URI-encoded so no key can end the comment, and the status its step said, if any.
  */
-export function footer(runId: string, items: Pick<Item, 'source' | 'key'>[]): string {
+export function footer(
+  runId: string,
+  items: Pick<Item, 'source' | 'key'>[],
+  status?: Status,
+): string {
   const named = items.map(
     (i) => ` item=${encodeURIComponent(i.source)}:${encodeURIComponent(i.key)}`,
   )
-  return `---\n${marker} run=${runId}${named.join('')} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.`
+  const said = status ? ` status=${status}` : ''
+  return `---\n${marker} run=${runId}${named.join('')}${said} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.`
 }
 
 export const isOurs = (body: string | null | undefined): boolean => !!body?.includes(marker)
 
-/** The items an awaywork PR's footer names, as `<source>:<key>`; a marker the body quotes above it doesn't count. */
+/** The last marker line's contents: the footer's, since a marker the body quotes above it doesn't count. */
+const footerLine = (body: string | null | undefined): string =>
+  [...(body ?? '').matchAll(/<!-- awaywork ([^<>]*)-->/g)].at(-1)?.[1] ?? ''
+
+/** The items an awaywork PR's footer names, as `<source>:<key>`. */
 export function footerItems(body: string | null | undefined): string[] {
-  const line = [...(body ?? '').matchAll(/<!-- awaywork ([^<>]*)-->/g)].at(-1)?.[1] ?? ''
-  return [...line.matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(([, source = '', key = '']) => {
-    try {
-      return [`${decodeURIComponent(source)}:${decodeURIComponent(key)}`]
-    } catch {
-      return []
-    }
-  })
+  return [...footerLine(body).matchAll(/\bitem=([^\s:]+):(\S+)/g)].flatMap(
+    ([, source = '', key = '']) => {
+      try {
+        return [`${decodeURIComponent(source)}:${decodeURIComponent(key)}`]
+      } catch {
+        return []
+      }
+    },
+  )
 }
+
+/** The status an awaywork PR's footer records, e.g. `ask`: the body's visible status line is for people, and the model could write one. */
+export const footerStatus = (body: string | null | undefined): string | undefined =>
+  /\bstatus=([a-z]+)/.exec(footerLine(body))?.[1]
 
 /** The line a PR body carries to link an item, e.g. `Part of {key}`; `{key}`, `{id}` and `{url}` are the item's. */
 export function renderLink(template: string, item: Pick<Item, 'key' | 'id' | 'url'>): string {
@@ -68,9 +82,14 @@ export type Status = 'done' | 'ask'
 
 const statusLine = /^Status: ([a-z]+)$/
 
-/** What awaywork posts on an item when its unit finished: the result, then its status; a task's is headed with it, on its card. */
-export const resultComment = (result: string, status: Status, task?: string): string =>
-  `${task ? `${taskHeadings.result}${task}\n\n` : ''}${result.trim()}\n\nStatus: ${status}`
+/** What awaywork posts on an item when its unit finished: headed with its task or else its skill, the result, then its status. */
+export const resultComment = (
+  result: string,
+  status: Status,
+  skill: string,
+  task?: string,
+): string =>
+  `${task ? `${taskHeadings.result}${task}` : `Result of ${skill}`}\n\n${result.trim()}\n\nStatus: ${status}`
 
 /** The status an awaywork result comment carries, e.g. `done`. */
 export const resultStatus = (c: Item['comments'][number]): string | undefined =>
@@ -78,7 +97,7 @@ export const resultStatus = (c: Item['comments'][number]): string | undefined =>
 
 const taskHeadings = { questions: 'Questions from task ', result: 'Result of task ' }
 
-/** The task whose questions or result awaywork posted in this comment on its card, if they are a task's. */
+/** The task whose questions or result awaywork posted in this comment on its card, if they are a task's: a result's heading is always awaywork's. */
 export function commentTask(c: Item['comments'][number]): string | undefined {
   const kind = commentKind(c)
   if (kind !== 'questions' && kind !== 'result') return undefined
@@ -125,19 +144,22 @@ const visibleLines = (c: Item['comments'][number]): string[] =>
     .map((line) => line.trim())
     .filter(Boolean)
 
-/** Which of awaywork's comments this is, told by its visible text: the line above the mark, or an approve reply's first line. */
+/**
+ * Which of awaywork's comments this is, told by its visible text: the line above the mark, or an approve reply's first line.
+ * An approve reply's notes may end in a status line, and a result never starts with `approve`: its heading is awaywork's.
+ */
 export function commentKind(c: Item['comments'][number]): CommentKind | undefined {
   if (!isAwayworkComment(c)) return undefined
   const above = visibleLines(c).at(-2) ?? ''
   if (above === planAnswer) return 'plan'
-  if (statusLine.test(above)) return 'result'
-  if (above !== questionsAnswer && isApprove(c)) return 'approve'
-  return 'questions'
+  if (above === questionsAnswer) return 'questions'
+  if (isApprove(c)) return 'approve'
+  return statusLine.test(above) ? 'result' : 'questions'
 }
 
-/** Awaywork's questions are the item's newest comment but a bot's: it waits for an answer, from you or anyone its source trusts. */
+/** Awaywork's questions are the item's newest comment but a bot's or awaywork's result: it waits for an answer, from you or anyone its source trusts. */
 export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
-  const newest = item.comments.filter((c) => !c.bot).at(-1)
+  const newest = item.comments.filter((c) => !c.bot && commentKind(c) !== 'result').at(-1)
   return !!newest && commentKind(newest) === 'questions'
 }
 

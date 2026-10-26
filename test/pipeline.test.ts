@@ -308,7 +308,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(card.comments.at(-1)?.body).toMatch(/^approve\nKeep the old route\.\n/)
   })
 
-  it('fans out in a soon run: api opens a gated draft after its review loop and posts its result, web says ask, app waits for the check', async () => {
+  it('fans out in a soon run: api opens a gated draft after its review loop, web says ask, app waits for the check', async () => {
     const run = await soonRun()
     expect(run.for).toBe('acme-api-1-api, acme-api-1-web')
     expect(run.steps).toEqual([
@@ -331,11 +331,8 @@ describe('a feature card through the whole pipeline', () => {
     expect(api?.body).not.toMatch(/closes/i)
 
     expect(prOf('acme/api', 'web')).toBeUndefined()
-    // api's result links its PR on the card; web's step said ask, so its questions follow.
-    expect(card.comments.map(commentKind)).toEqual(['plan', 'approve', 'result', 'questions'])
-    expect(card.comments[2]?.body).toBe(
-      `Result of task api\n\nOpened ${apiPr} as a draft\n\nStatus: done\n\n— awaywork`,
-    )
+    // api's PR is its result; web's step said ask, so its questions follow.
+    expect(card.comments.map(commentKind)).toEqual(['plan', 'approve', 'questions'])
     expect(card.comments.at(-1)?.body).toMatch(
       /^Questions from task web\n\nPer user or per key\?\n/,
     )
@@ -346,7 +343,6 @@ describe('a feature card through the whole pipeline', () => {
         `| 1 | [acme/api#1/api VAT export endpoint](${cardUrl}) | implement → loop(review ⇄ fix) | claude | done, 4 turns (loop: 2 rounds of review ⇄ fix; until held: verdict approve) | ${apiPr} (2 commits, draft: gate schema fired), verdict approve |`,
         `| 2 | [acme/api#1/web Export button](${cardUrl}) | implement → loop(review ⇄ fix) | claude | done, 1 turn (loop: 0 rounds of review ⇄ fix; nothing ran) | asked questions |`,
         '- **acme/api#1/api**: - schema: migrations/001.sql',
-        `- **acme/api#1/api**: result posted on ${cardUrl}`,
         `- **acme/api#1/web**: questions posted on ${cardUrl}`,
         "- api#1: fanned out: api no PR yet, web no PR yet, app waits for api's check CI, qa no result yet",
       ]),
@@ -389,9 +385,6 @@ describe('a feature card through the whole pipeline', () => {
     expect(web?.draft).toBe(false)
     expect(web?.body).toMatch(/^Gates: none fired \(schema\)\n\n---\n\nDone\.\n/)
     expect(web?.body).toContain(`Stacked on ${apiPr}: merge that first.`)
-    expect(card.comments.at(-1)?.body).toMatch(
-      /^Result of task web\n\nOpened \S+\n\nStatus: done\n/,
-    )
     expect(run.events).toEqual(['unit acme-api-1-web done', 'unit acme-api-1-web-review-1 done'])
   }, 30_000)
 
@@ -412,9 +405,12 @@ describe('a feature card through the whole pipeline', () => {
     expect(app?.body).toContain(`Part of ${cardUrl}`)
 
     // qa opens no PR: its report is its result on the card, and that result says it's done.
-    expect(card.comments.slice(-2).map((c) => c.body.split('\n')[0])).toEqual([
-      'Result of task app',
-      'Result of task qa',
+    expect(card.comments.map(commentKind)).toEqual([
+      'plan',
+      'approve',
+      'questions',
+      undefined,
+      'result',
     ])
     expect(card.comments.at(-1)?.body).toBe(
       'Result of task qa\n\nExport screen: CSV downloads, 3 screenshots attached.\n\nStatus: done\n\n— awaywork',

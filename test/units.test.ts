@@ -20,7 +20,7 @@ import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { commentKind, footer, markComment, planComment } from '../src/core/footer.js'
+import { commentKind, footer, markComment, planComment, type Status } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
@@ -842,7 +842,7 @@ async function originForge(root: string) {
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
-  const opened: { head: string; base: string; body: string }[] = []
+  const opened: { head: string; base: string; body: string; status?: Status }[] = []
   const fake = fakeForge()
   const forge = {
     ...fake,
@@ -858,8 +858,17 @@ async function originForge(root: string) {
       if (head.stdout !== from) return `${branch} moved`
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
-    openPr: async (repo: string, head: string, base: string, bodyFile: string) => {
-      opened.push({ head, base, body: await readFile(bodyFile, 'utf8') })
+    openPr: async (
+      repo: string,
+      head: string,
+      base: string,
+      bodyFile: string,
+      _runId: string,
+      _items: unknown,
+      _draft: boolean,
+      status?: Status,
+    ) => {
+      opened.push({ head, base, body: await readFile(bodyFile, 'utf8'), ...(status && { status }) })
       return `https://example.com/${repo}/pull/${head}`
     },
   }
@@ -4728,11 +4737,54 @@ it('asks for a step that committed when its status says ask: its commits open as
   expect(opened[0]?.body).toMatch(
     /^Add a\n\nStatus: ask, questions on https:\/\/example\.com\/1\n\n---\n\nDone\.\n/,
   )
+  expect(opened[0]?.status).toBe('ask')
+  expect(head?.summary).toBe('Done.')
   expect(head?.questions).toMatchObject({ text: 'Which?', url: 'https://example.com/1' })
   expect(head?.made).toBe('1 commit and questions')
   expect(review).toMatchObject({ status: 'skipped', reason: 'acme-api-1 asked questions' })
   // Asking isn't finishing: on_done doesn't run.
   expect(writes.map(([, w]) => w.op)).toEqual(['comment'])
+})
+
+it('pushes the commits of a step whose status says ask onto your PR, and asks', async () => {
+  const { report, writes } = await finishedRun(
+    '  - { skill: fix, deliver: push, on_done: { move: QA } }',
+    [{ ...githubPr(2), mine: true }],
+    asker('Which?', true, 'ask'),
+  )
+  const url = 'https://github.com/acme/api/pull/2'
+  expect(report.results[0]?.outcome).toMatchObject({
+    kind: 'pushed',
+    commits: 1,
+    text: `Status: ask, questions on ${url}\n\n---\n\nAdd a\n\nDone.`,
+  })
+  expect(report.results[0]?.summary).toBe('Add a')
+  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?', url })
+  expect(writes.map(([, w]) => w.op)).toEqual(['comment'])
+})
+
+it('opens a ready PR, untouched, when a later step asks without a status file', async () => {
+  const builtThenAsked: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      if (job.unit.skill === 'implement')
+        yield* asker('', true).run(job, new AbortController().signal)
+      else {
+        await writeFile(join(job.dir, '.away/out/questions.md'), 'Which?')
+        yield { type: 'done', ok: true, turns: 1 }
+      }
+    },
+  }
+  const { report, opened } = await finishedRun(
+    '  - { skill: implement, deliver: pr, then: [review] }',
+    [yours(1)],
+    builtThenAsked,
+  )
+  expect(report.results[0]?.outcome).toMatchObject({ kind: 'pr', ready: true })
+  expect(report.results[1]?.questions).toBeUndefined()
+  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?' })
+  expect(opened[0]?.body).toMatch(/^Add a\n\nDone\./)
+  expect(opened[0]?.status).toBeUndefined()
 })
 
 it('reads a status it does not know, or ask without questions, as no status file', async () => {
@@ -4767,7 +4819,10 @@ it("posts a report rule's result before moving, counting both as awaywork's own 
   expect(writes).toEqual([
     [
       'acme/api#1',
-      { op: 'comment', body: 'acme-api-1 says nothing.\n\nStatus: done\n\n— awaywork' },
+      {
+        op: 'comment',
+        body: 'Result of review\n\nacme-api-1 says nothing.\n\nStatus: done\n\n— awaywork',
+      },
     ],
     ['acme/api#1', { op: 'move', to: 'QA' }],
   ])
@@ -4794,7 +4849,7 @@ it("posts a PR rule's result as a link to its PR, and none on an item that isn't
       'acme/api#1',
       {
         op: 'comment',
-        body: 'Opened https://example.com/acme/api/pull/away/acme-api-1\n\nStatus: done\n\n— awaywork',
+        body: 'Result of implement\n\nOpened https://example.com/acme/api/pull/away/acme-api-1\n\nStatus: done\n\n— awaywork',
       },
     ],
   ])
@@ -4804,7 +4859,7 @@ it("posts a PR rule's result as a link to its PR, and none on an item that isn't
     [githubPr(2, { mine: false, review_requested: true })],
   )
   expect(theirs.writes).toEqual([])
-  expect(theirs.lines).toContain('on_done: acme/api#2 got no result, not yours')
+  expect(theirs.lines).toContain('acme/api#2 got no result, not yours')
 })
 
 it('reports a result that failed to post, its secrets masked, and still moves the item', async () => {

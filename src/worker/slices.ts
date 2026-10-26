@@ -165,7 +165,18 @@ export async function publishSlice(
     unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
   const gated = describeFired(fired)
   const notReady = failedStep ?? (asked && 'asked questions') ?? failed ?? why ?? gated
-  const outcome = await publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
+  const status = asked && 'ask'
+  const outcome = await publish(
+    unit,
+    dir,
+    deps.forge,
+    deps.runId,
+    from,
+    stack,
+    closes,
+    notReady,
+    status,
+  )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
 

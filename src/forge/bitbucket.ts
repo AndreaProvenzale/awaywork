@@ -186,8 +186,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return "Bitbucket can't push onto a PR: twg reads neither branch restrictions nor auto-merge"
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft) {
-      const { title, body } = await prText(bodyFile, head, runId, items)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
+      const { title, body } = await prText(bodyFile, head, runId, items, status)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
       try {
         const file = join(dir, 'description.md')

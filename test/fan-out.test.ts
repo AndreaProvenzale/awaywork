@@ -419,7 +419,7 @@ describe('tasks as items', () => {
       `${queue}  - { skill: qa, where: { planned: true }, deliver: report }\n`,
     )
     const qaPlan = `tasks:\n  - { id: api, title: A }\n  - { id: qa, title: Q, skill: qa, after: { api: opened } }\n`
-    const result = (task: string) => posted(resultComment('Done.', 'done', task), 3)
+    const result = (task: string) => posted(resultComment('Done.', 'done', 'qa', task), 3)
     const fanned = (...more: Item['comments']) =>
       card([planned(qaPlan), yours(approveReply('')), ...more], { api: pr('api', 'merged') })
     expect(units(plan([fanned()], qaRule))).toEqual([['acme-api-1-qa', 'away/acme-api-1-qa']])
@@ -792,16 +792,8 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   expect(prompts['acme-api-1']).toContain(
     "These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: `web` (https://github.com/acme/api/pull/12).",
   )
-  // Each task posted its result, its PR, on the card.
-  expect(item.comments.map((c) => commentKind(c) ?? c.author)).toEqual([
-    'plan',
-    'approve',
-    'result',
-    'result',
-  ])
-  expect(item.comments[2]?.body).toBe(
-    'Result of task api\n\nOpened https://github.com/acme/api/pull/11 as a draft\n\nStatus: done\n\n— awaywork',
-  )
+  // A task that opens a PR posts no result: its PR says it's done.
+  expect(item.comments.map((c) => commentKind(c) ?? c.author)).toEqual(['plan', 'approve'])
 
   comment('Drop web: put the button in the docs instead.')
   planYml =
