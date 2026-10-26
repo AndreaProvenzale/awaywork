@@ -1,6 +1,7 @@
 import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, posix } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
@@ -306,11 +307,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
     const body = planComment(report, yaml)
-    // Check what the next run reads back from the comment, not only the file.
+    // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
-    if ('problem' in read)
-      return { unposted: `plan.yml doesn't read back from its comment: ${read.problem}` }
-    const tasks = read.plan.tasks.map((t) => t.id)
+    if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))
+      return {
+        unposted: `plan.yml doesn't read back from its comment: ${'problem' in read ? read.problem : 'it reads as another plan'}`,
+      }
+    const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
     return { tasks, ...(await postComment(p, 'plan', body)) }

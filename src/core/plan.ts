@@ -86,8 +86,8 @@ function cycleIn(tasks: Task[]): string[] | undefined {
 export function planYaml(comment: string): string {
   // A comment edited on the web can come back with CRLF line endings.
   const lines = comment.replace(/\r\n/g, '\n').split('\n')
-  const start = lines.lastIndexOf('```yaml')
-  const end = start < 0 ? -1 : lines.indexOf('```', start + 1)
+  const start = lines.findLastIndex((l) => l.trimEnd() === '```yaml')
+  const end = start < 0 ? -1 : lines.findIndex((l, i) => i > start && l.trimEnd() === '```')
   return end < 0 ? '' : lines.slice(start + 1, end).join('\n')
 }
 

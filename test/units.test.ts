@@ -4774,6 +4774,11 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
       planner('{ tasks: [{ id: api, title: "A\n```\n" }] }'),
       "plan.yml doesn't read back from its comment: not YAML: ",
     ],
+    // Task a in the file, task b read back from the comment's last yaml fence.
+    [
+      planner('{ tasks: [{ id: a, title: "x\n```yaml\ntasks: [{id: b, title: y}]\n#" }] }'),
+      "plan.yml doesn't read back from its comment: it reads as another plan",
+    ],
   ]
   for (const [provider, reason] of refused) {
     const { report, writes } = await finishedRun(planRule, [yours(1)], provider)

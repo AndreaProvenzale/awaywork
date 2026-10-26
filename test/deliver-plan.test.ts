@@ -110,6 +110,13 @@ describe('the plan comment', () => {
     expect(planYaml('no fence')).toBe('')
   })
 
+  it('reads fence lines with trailing spaces, but only at line start', () => {
+    expect(planYaml('```yaml \ntasks: []\n```  ')).toBe('tasks: []')
+    expect(planYaml(' ```yaml\ntasks: []\n```')).toBe('')
+    const spaced = planComment('Two tasks.', yaml).replace('\n```\n', '\n``` \n')
+    expect(state(posted(spaced))).toEqual({ state: 'waiting' })
+  })
+
   it('reads back a plan whose task shows an indented yaml example, fences only at line start', () => {
     const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      limits: { plan_tasks: 8 }\n      \`\`\`\n`
     const body = planComment('One task.', example)
