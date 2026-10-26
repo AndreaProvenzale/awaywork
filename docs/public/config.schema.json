@@ -2456,11 +2456,13 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add"
+              },
+              "comment": {
+                "description": "result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published",
+                "type": "string",
+                "const": "result"
               }
             },
-            "required": [
-              "move"
-            ],
             "additionalProperties": false
           },
           "run": {

@@ -418,7 +418,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
-| `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published, or its plan was posted; see [`on_done`](#on-done) |
+| `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; see [`on_done`](#on-done) |
 | `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
@@ -460,7 +460,7 @@ A [plan's task](./how-it-works.md#tasks) only matches a rule whose top-level `wh
   where: { planned: true, labels: bug }   # a plan's `skill: fix` tasks, on bug cards only
 ```
 
-Every skill a plan's tasks name must be one a `planned` rule takes and opens a PR for, or the plan isn't posted: the first `planned` rule for a skill whose metadata reports (`review`, say), or whose chain only reports, takes no tasks. A `planned` rule delivers `draft_pr` or `pr`, since the task's PR is how awaywork knows it's done, and one a task after another's `opened` stacks on; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
+Every skill a plan's tasks name must be one a `planned` rule takes, or the plan isn't posted. A `planned` rule delivers `draft_pr`, `pr` or `report`: a task is done when its PR merges, or, when the first `planned` rule for its skill reports (its metadata says so, like `review`, or its chain only reports), once its result is on the card, a [report task](./how-it-works.md#report-tasks) nothing can wait on; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
 
 The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
 
@@ -514,14 +514,26 @@ Both attempts show in the report and count against the budget. Towards [giving u
 
 ### `on_done`
 
-Moving the card is how the next person hears it's their turn. `on_done` does it once the work is out:
+Moving the card is how the next person hears it's their turn, and a comment on it is how they hear what happened. `on_done` does either, or both, once the work is out:
 
 ```yaml
 - skill: implement
   source: jira
   where: { status: Ready }
-  on_done: { move: In Review }
+  on_done: { comment: result, move: In Review }
 ```
+
+`comment: result` posts the unit's result as awaywork's comment, before the move: a report rule's report, else a line for what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), with awaywork's status line under it:
+
+```text
+Opened https://github.com/acme/api/pull/41
+
+Status: done
+
+— awaywork
+```
+
+A [plan's task](./how-it-works.md#tasks) posts its result on the card whether its rule asks or not. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a comment after it would read as your answer.
 
 `move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
 
@@ -533,15 +545,16 @@ It runs once the chain finished and every slice published: a PR opened, a push l
 
 It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 
-A move never fails the unit. It goes in the run's output and the morning report under the unit, masked like every other error:
+The result goes to the same items, through the same check (`got no result, not yours` in the log), and a result over 30 KB isn't posted. Neither write ever fails the unit. Both go in the run's output and the morning report under the unit, masked like every other error:
 
 ```text
   1  ENG-12  implement  done, 7 turns  https://github.com/acme/api/pull/41 (2 commits)
      Rate limit the public API per key.
+     result posted on https://acme.atlassian.net/browse/ENG-12
      on_done moved ENG-12 to "In Review"
 ```
 
-Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+Posting the result and moving an item each change its updated time. awaywork reads it right before each write and right after: when it's still the one the plan read, or the one the result left, it records the new one, so awaywork's own writes never make the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
 
 ### `run: soon`
 

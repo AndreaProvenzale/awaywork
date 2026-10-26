@@ -172,7 +172,7 @@ describe('plan checks for tasks', () => {
     ])
     expect(
       problems(
-        '  - { skill: plan, deliver: plan, on_done: { comment: result } }\n' + queue.split('\n')[1],
+        `  - { skill: plan, deliver: plan, on_done: { comment: result } }\n${queue.split('\n')[1]}`,
       ),
     ).toEqual([
       expect.stringContaining(

@@ -526,7 +526,8 @@ Written to the unit's items that are yours once its chain finished and every sli
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `move` (required) | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
+| `move` | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
+| `comment` | string |  | result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published |
 
 ## `notify`
 
