@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
 import { commentMarkdown } from '../core/footer.js'
+import { httpError } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 
 const config = z
@@ -109,8 +110,9 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     }
     const body = await res.json().catch(() => ({}))
     if (!res.ok)
-      throw new Error(
+      throw httpError(
         `${data ? 'POST' : 'GET'} ${pathAndQuery.split('?')[0]}: ${res.status} ${body.errors?.[0]?.message ?? res.statusText}`,
+        res,
       )
     return body as T
   }
