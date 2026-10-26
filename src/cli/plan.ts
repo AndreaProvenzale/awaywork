@@ -13,7 +13,7 @@ import { counted } from '../core/report.js'
 import { builtinSkills } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
-import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
+import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
@@ -124,11 +124,25 @@ export function ruleNumber(text: string): number {
   return n
 }
 
-/** Collects items from every configured source, probes every provider and plans the run, masking secrets in warnings. */
+/**
+ * Collects items from every configured source, probes every provider and plans a run started `at`,
+ * masking secrets in warnings; `present` when it says, else when `at` is outside every window. `soon`
+ * plans only the `run: soon` rules over its sources, and its units when it names them; `probe: false` leaves the providers out.
+ */
 export async function probeAndPlan(
   config: Config,
   userSkillsDir: string,
-  opts: { retry?: boolean; repo?: string; rule?: number; onProgress?: OnProgress } = {},
+  opts: {
+    retry?: boolean
+    repo?: string
+    rule?: number
+    onProgress?: OnProgress
+    at?: Date
+    present?: boolean
+    soon?: { sources: string[]; units?: string[] }
+    probe?: boolean
+    failed?: SourceFailed
+  } = {},
 ): Promise<{
   plan: RunPlan
   warnings: string[]
@@ -146,14 +160,16 @@ export async function probeAndPlan(
       `GitHub-hosted runners end a job at 6 hours, so a run stops ${Math.floor(HOSTED_RUN_MINUTES / 60)}h${String(HOSTED_RUN_MINUTES % 60).padStart(2, '0')} after it starts, before ${long.map(describeWindow).join(', ')} ends`,
     )
 
-  const { onProgress } = opts
+  const { onProgress, soon, failed } = opts
   const items = withApprovals(
-    await collectItems(config, ctx, onProgress),
+    await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed }),
     await loadApprovals(approvalsPath),
   )
 
+  const at = opts.at ?? new Date()
+  const present = opts.present ?? !windowEnd(config.windows, at)
   const allowances: Record<string, Allowance> = {}
-  for (const p of config.providers) {
+  for (const p of opts.probe === false ? [] : config.providers) {
     const provider = providerFor(p.id, p.config)
     const name = `${p.id} quota`
     const unavailable = provider?.unavailable?.(ctx.env)
@@ -168,7 +184,7 @@ export async function probeAndPlan(
       reason = `probe failed: ${e.message}`
       return null
     })
-    const a = allowance(p.budget, quota ?? null, Date.now(), config.windows, reason)
+    const a = allowance(p.budget, quota ?? null, at.getTime(), config.windows, { present, reason })
     allowances[p.id] = a
     onProgress?.(
       a.kind === 'quota'
@@ -184,7 +200,18 @@ export async function probeAndPlan(
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providersOf(config), sources)
   return {
-    plan: planRun({ config, items, allowances, skills, attempts, skips, only: opts }),
+    plan: {
+      ...planRun({
+        config,
+        items,
+        allowances,
+        skills,
+        attempts,
+        skips,
+        only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
+      }),
+      present,
+    },
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
     ctx,
     sources,
@@ -216,17 +243,21 @@ function configuredSources(config: Config): Record<string, Source> {
   )
 }
 
-/** Items from every configured source with their link lines, tasks linked to their PRs; a failing source is logged. */
+/** Told of each source whose items couldn't be read. */
+export type SourceFailed = (source: string, e: Error & { retryAfter?: number }) => void
+
+/** Items from every configured source, or these `sources`, with their link lines, tasks linked to their PRs; a failing source is logged. */
 export async function collectItems(
   config: Config,
   ctx: Ctx,
-  onProgress?: OnProgress,
+  opts: { onProgress?: OnProgress; sources?: string[]; failed?: SourceFailed } = {},
 ): Promise<Item[]> {
+  const { onProgress } = opts
   const items: Item[] = []
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
-    if (!source) continue
+    if (!source || (opts.sources && !opts.sources.includes(id))) continue
     const link = (cfg as { link?: string }).link ?? source.link
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
@@ -236,6 +267,7 @@ export async function collectItems(
       },
       (e: Error) => {
         ctx.log(`source ${id}: ${sourceFailure(e)}`)
+        opts.failed?.(id, e)
         onProgress?.({ name: id, state: 'failed', detail: firstLine(e.message) })
       },
     )

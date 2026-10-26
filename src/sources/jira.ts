@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
+import { httpError } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 import { taskMarkdown } from './asana.js'
 
@@ -105,8 +106,9 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     }
     const json = await res.json().catch(() => ({}))
     if (!res.ok)
-      throw new Error(
+      throw httpError(
         `Jira ${path.split('?')[0]}: ${res.status} ${json.errorMessages?.[0] ?? res.statusText}`,
+        res,
       )
     return json as T
   }

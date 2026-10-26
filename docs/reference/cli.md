@@ -43,8 +43,10 @@ Commands:
                             PRs and reports
   report [options] [id]     print a run's morning report, the latest by default;
                             browsable in a terminal
+  watch                     keep running and start a run when a window opens;
+                            `schedule install` keeps it running
   stats [options]           what each rule, skill and provider cost and
-                            delivered across all runs
+                            delivered across the runs kept
   replay <run> <unit>       re-run a past run's unit, its first step, on its
                             base commit and saved context with today's skills
                             and instructions; nothing is pushed
@@ -130,7 +132,7 @@ Options:
                     "over_cap", "waiting_for_review", "waiting_for_answer",
                     "waiting_for_approval", "invalid_plan", "plan_approved",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
-                    "unstackable")
+                    "unstackable", "running")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -250,8 +252,20 @@ Options:
                     "waiting_for_review", "waiting_for_answer",
                     "waiting_for_approval", "invalid_plan", "plan_approved",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
-                    "unstackable")
+                    "unstackable", "running")
   -h, --help        display help for command
+```
+
+## awaywork watch
+
+```text
+Usage: awaywork watch [options]
+
+keep running and start a run when a window opens; `schedule install` keeps it
+running
+
+Options:
+  -h, --help  display help for command
 ```
 
 ## awaywork stats
@@ -259,7 +273,7 @@ Options:
 ```text
 Usage: awaywork stats [options]
 
-what each rule, skill and provider cost and delivered across all runs
+what each rule, skill and provider cost and delivered across the runs kept
 
 Options:
   --json      print the totals as JSON
@@ -289,11 +303,12 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  install [options]  start `awaywork run` when a window opens; it starts no unit
-                     after it closes
+  install [options]  keep `awaywork watch` running, which starts a run when a
+                     window opens
   remove             remove the scheduled job, and
                      .github/workflows/awaywork.yml in the current repo
-  status             show the installed scheduled job
+  status             show the installed scheduled job and what awaywork watch is
+                     doing
   help [command]     display help for command
 ```
 
@@ -302,7 +317,7 @@ Commands:
 ```text
 Usage: awaywork schedule install [options]
 
-start `awaywork run` when a window opens; it starts no unit after it closes
+keep `awaywork watch` running, which starts a run when a window opens
 
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
@@ -327,7 +342,7 @@ Options:
 ```text
 Usage: awaywork schedule status [options]
 
-show the installed scheduled job
+show the installed scheduled job and what awaywork watch is doing
 
 Options:
   -h, --help  display help for command

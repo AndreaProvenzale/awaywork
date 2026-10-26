@@ -218,7 +218,7 @@ export const spanPattern = /^\d+[mhdw]$/
 const spanUnits: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
 
 /** Milliseconds in a span like `3d`. */
-function spanMs(span: string): number {
+export function spanMs(span: string): number {
   return Number(span.slice(0, -1)) * (spanUnits[span.slice(-1)] ?? Number.NaN)
 }
 

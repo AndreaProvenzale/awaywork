@@ -79,9 +79,18 @@ export interface Box {
  */
 export function launch<O extends Options>(file: string, args: readonly string[], options: O) {
   const subprocess = start(file, args, options)
+  const { pid } = subprocess
+  if (pid) {
+    running.add(pid)
+    subprocess.nodeChildProcess.once('exit', () => running.delete(pid))
+  }
   closeOutputOnceStopped(subprocess.nodeChildProcess, options.cancelSignal)
   return subprocess
 }
+
+/** The launches still running, by pid. */
+const running = new Set<number>()
+export const launched = () => [...running]
 
 /** How long a stopped launch's output stays open after it exits: past it, only a process that left its group holds it. */
 const STOPPED_OUTPUT_MS = 1000
@@ -338,6 +347,7 @@ export async function isolateFor(
   isolation: Config['isolation'],
   env: NodeJS.ProcessEnv,
 ): Promise<void> {
+  boxed = false
   isolate(await workerFor(isolation, env))
   if (isolation !== 'container' || worker) return
   await dockerVersion().catch((e: Error) => {

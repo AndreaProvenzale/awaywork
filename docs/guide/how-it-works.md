@@ -98,9 +98,11 @@ Each provider gets a ceiling for the run on its long window (the week for Claude
 
 - `used + per_run`, when `per_run` is set;
 - `1 - reserve` (default reserve 10%);
-- pacing: `used + (1 - reserve - used) / runs to reset`, where runs to reset counts the window openings left before the reset, including the one under way when the run is in a window; so a run just before the reset may spend more than one just after.
+- pacing: `(1 - reserve) × elapsed / length`, an even spend from 0 at the window's start to `1 - reserve` at its reset. A run inside a window reads it at the next window's opening or at the reset, whichever comes first, since nobody else spends what piles up before then; a run outside every window reads it when it starts. Day 3 of 7 with a 10% reserve gives 38.6%. What a night leaves unused piles up for the next run.
 
-A worker stops once the provider reports its long window past the ceiling or its short (5 h) window past `session_max` (default 90%). Claude reports quota during the run, so it stops mid-run; Codex is read after each run, so it stops between units. A provider whose quota can't be read gets a fixed `fallback` of units and turns per run.
+A worker stops once the provider reports its long window past the ceiling or its short (5 h) window past the session limit. Claude reports quota during the run, so it stops mid-run; Codex is read after each run, so it stops between units. A provider whose quota can't be read gets a fixed `fallback` of units and turns per run.
+
+The session limit depends on where the run started. Inside a window you're away, and it's `session_max` (default 90%). Outside every window, say an `awaywork run` by hand during the day, you're present: it's `present_session_max` (default 40%), and a provider whose quota can't be read sits the run out, since its fallback caps count runs and not your usage. The session limit reads the whole 5-hour window, your own sessions included, so a present run backs off when you've been busy. `plan` works out which one a run started now would get and says so above the providers.
 
 ## Routing
 
@@ -156,7 +158,7 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
            Add rate limits
   ```
 
-- Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo; a tracker shows every comment on an item assigned to you. Bots don't count (GitHub's bots, Jira's apps, Linear's apps and integrations): a coverage report or an automation's comment after the questions shows in `item.md` but leaves the unit waiting. Asana and custom sources don't mark bots, so there an integration's comment ends the wait too. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. A step that still can't go on asks again.
+- Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo; a tracker shows every comment on an item assigned to you. Bots don't count (GitHub's bots, Jira's apps, Linear's apps and integrations): a coverage report or an automation's comment after the questions shows in `item.md` but leaves the unit waiting. Asana and custom sources don't mark bots, so there an integration's comment ends the wait too. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. On a rule with [`run: soon`](./configuration.md#run-soon) that's within minutes of your reply, not at the next window. A step that still can't go on asks again.
 - It counts as awaywork's only when its `— awaywork` line comes from your own account, so a stranger pasting one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
 - On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the unit's result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit, linking the comment itself on GitHub and the item elsewhere:
 
@@ -247,7 +249,8 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
-claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -310,7 +313,8 @@ Needs you 1
 Skipped 2: 1 no_rule, 1 over_cap
 
 Quota
-  claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+  away run (inside a window): session_max
+  claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
@@ -340,8 +344,8 @@ No code changes: the red check is the visual diff job, which fails on main too s
 
 An item key that is all digits, like an Asana gid, wins over a row number. A name that fits two units, `api#1` under two owners say, is refused with each one's `source:key`, here and in `run --unit` and `plan --why`. `report --skipped [kind]` lists the skipped items with the reason, as `plan --skipped` does. A long reason, like a failed setup's output, gets its first line in the row and all of it under `--unit`. A unit with `then` steps is one row, its chain in the skill column and each [stacked slice](./chains.md#stack)'s result in turn.
 
-The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain and a line per unit that wrote a summary, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, PRs and reports; `awaywork report <id>` prints one of them. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
+The run dir also keeps `report.md`, the same run as markdown: the units table with every step under its chain and a line per unit that wrote a summary, Needs you, the skipped items folded by kind, and each report folded under its unit. That's the one GitHub Actions puts in the job summary and [`notify`](./configuration.md#notify) gets. A run from before `report.json` prints its `report.md`. `awaywork report --json` prints the run's results as [JSON](./agents.md). `awaywork report --list` lists recent runs with their units, PRs and reports; `awaywork report <id>` prints one of them. Both see only the runs [`keep_runs`](./configuration.md#old-runs) kept. Inside a control repo both also show the runs GitHub Actions [uploaded](./scheduling.md#reports-from-the-runner).
 
 While a run is going there is no report yet: `awaywork report` then lists the steps done so far, the one working and the path to its `worker.log`, which you can `tail -f`.
 
-`awaywork stats` adds up every run since this feature, kept in each run's `units.json`: per rule (by its position in the queue in that run), skill and provider, the units, how many were done, failed or stopped, the share of the long quota window their workers used, and the PRs opened. `--json` prints the same totals. The quota share is an estimate: it starts at the quota read before the unit (the plan's probe, then the previous unit's last reading on that provider), includes any other use of the account meanwhile, and is `-` when the window reset mid-unit or the worker read no quota. It counts a chain's steps one by one, and only each slice's first step carries its PR, so the rows of the skills after it show no PRs. `units.json` is written when the run ends, so a run that is killed leaves none. Runs from before have no `units.json` and are left out.
+`awaywork stats` adds up every run since this feature, kept in each run's `units.json`: per rule (by its position in the queue in that run), skill and provider, the units, how many were done, failed or stopped, the share of the long quota window their workers used, and the PRs opened. `--json` prints the same totals. The quota share is an estimate: it starts at the quota read before the unit (the plan's probe, then the previous unit's last reading on that provider), includes any other use of the account meanwhile, and is `-` when the window reset mid-unit or the worker read no quota. It counts a chain's steps one by one, and only each slice's first step carries its PR, so the rows of the skills after it show no PRs. `units.json` is written when the run ends, so a run that is killed leaves none. Runs from before have no `units.json` and are left out, as are the runs [`keep_runs`](./configuration.md#old-runs) removed.

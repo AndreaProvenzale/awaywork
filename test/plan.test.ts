@@ -102,7 +102,7 @@ describe('plan', () => {
       "Providers
         provider  window     used  ceiling  set by   resets in  session / stop at
         claude    seven_day  36%   51%      per_run  3 runs     2% / 90%
-          other limits: reserve cap 90%, pacing 54%
+          other limits: reserve cap 90%, pacing 70.7%
         codex     fallback
           4 units, 60 turns each (no quota reading)
 
@@ -251,17 +251,47 @@ queue:
     const result = plan(yaml, items, { claude: week(0.95), codex: null })
     expect(rows(result).map((r) => r[3])).toEqual(['codex', '-', '-'])
     expect(result.units[1]?.passed).toEqual([
-      'claude at its ceiling (95% of 90%)',
+      'claude at its ceiling (95% of 70.7%)',
       'codex used its 1 fallback unit',
     ])
     expect(formatPlan(result)).toContain(
-      'provider: claude at its ceiling (95% of 90%); codex used its 1 fallback unit; none left',
+      'provider: claude at its ceiling (95% of 70.7%); codex used its 1 fallback unit; none left',
+    )
+  })
+
+  it('says a present run skips providers it cannot read and stops at present_session_max', () => {
+    const config = parseConfig(`
+providers: [codex, claude]
+sources: { github: { repos: [acme/api] } }
+`)
+    const quotas: Record<string, Quota | null> = { claude: week(0.36), codex: null }
+    const allowances = Object.fromEntries(
+      config.providers.map((p) => [
+        p.id,
+        allowance(p.budget, quotas[p.id] ?? null, now, config.windows, { present: true }),
+      ]),
+    )
+    const items = [githubPr(1, { checks: 'failing' })]
+    const result = {
+      ...planRun({ config, items, allowances, skills: { builtin: builtinSkills } }),
+      present: true,
+    }
+    expect(result.units[0]?.passed).toEqual(['codex sits out a present run (no quota reading)'])
+    expect(formatPlan(result)).toContain(
+      [
+        'Providers',
+        '  present run (outside the windows): present_session_max',
+        '  provider  window     used  ceiling  set by  resets in  session / stop at',
+        '  codex     fallback',
+        '    sits out a present run (no quota reading)',
+        '  claude    seven_day  36%   57.9%    pacing  3 runs     2% / 40%',
+      ].join('\n'),
     )
   })
 
   it('routes between claude and codex on their own windows', () => {
     const yaml = `
-providers: [claude: {}, codex: { budget: { per_run: 5% } }]
+providers: [claude: {}, codex: { budget: { per_run: 10% } }]
 sources: { github: { repos: [acme/api] } }
 queue:
   - { skill: fix, where: { checks: failing } }
@@ -269,23 +299,34 @@ queue:
 `
     const items = [githubPr(1, { checks: 'failing' }), githubPr(2, { review_requested: true })]
     const month: Quota = {
-      windows: [{ name: '30d', span: 'long', used: 0.04, resetsAt: now / 1000 + 30 * 86400 }],
+      windows: [
+        {
+          name: '30d',
+          span: 'long',
+          used: 0.04,
+          resetsAt: now / 1000 + 28 * 86400,
+          minutes: 43200,
+        },
+      ],
     }
     const result = plan(yaml, items, { claude: week(0.36), codex: month })
     expect(rows(result).map((r) => r[3])).toEqual(['claude', 'codex'])
     expect(formatPlan(result)).toContain(
       [
-        '  codex     30d        4%    6.9%     pacing  30 runs    -',
-        '    other limits: per_run 9%, reserve cap 90%',
+        '  codex     30d        4%    9%       pacing  28 runs    -',
+        '    other limits: per_run 14%, reserve cap 90%',
       ].join('\n'),
     )
-    expect(describeAllowance('codex', result.allowances.codex as Allowance)).toBe(
-      '30d 4% used, ceiling 6.9% set by pacing (per_run 9%, reserve cap 90%; resets in 30 runs)',
+    expect(describeAllowance('codex', result.allowances.codex as Allowance, 0.4)).toBe(
+      '30d 4% used, ceiling 9% set by pacing (per_run 14%, reserve cap 90%; resets in 28 runs)',
+    )
+    expect(describeAllowance('claude', result.allowances.claude as Allowance, 0.4)).toBe(
+      'seven_day 36% used, ceiling 70.7% set by pacing (reserve cap 90%; resets in 3 runs); session 2%, workers stop at 90% in windows, 40% outside',
     )
 
     const full = plan(yaml, items, { claude: week(0.95), codex: month })
     expect(rows(full).map((r) => r[3])).toEqual(['codex', 'codex'])
-    expect(full.units[0]?.passed).toEqual(['claude at its ceiling (95% of 90%)'])
+    expect(full.units[0]?.passed).toEqual(['claude at its ceiling (95% of 70.7%)'])
   })
 
   it('resolves skills and delivery: a skill commits unless it reports, whatever the rule says', () => {
@@ -346,7 +387,7 @@ queue:
     expect(units('when: { runs_until_reset: 1 }', week(0.36))).toEqual([unmet, undefined])
     expect(units('when: { runs_until_reset: 3 }', week(0.36))).toEqual([undefined, undefined])
     expect(units('when: { headroom: 10% }', week(0.36))).toEqual([undefined, undefined])
-    expect(units('when: { headroom: 20% }', week(0.36))).toEqual([unmet, undefined])
+    expect(units('when: { headroom: 40% }', week(0.36))).toEqual([unmet, undefined])
     expect(units('when: { headroom: 1% }', null)[0]).toBe('no quota reading')
     expect(units('when: { headroom: 1% }', week(0.95))).toEqual([undefined, undefined])
   })

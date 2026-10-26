@@ -17,7 +17,13 @@ import {
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
+import {
+  commandConfig,
+  contextCommand,
+  linkTemplate,
+  pollEvery,
+  pollSpan,
+} from '../sources/command.js'
 import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -45,11 +51,14 @@ const fallback = z
 const reserve = 'Never go past 1 - reserve of any window'
 const perRun = 'At most this share of the long window per run'
 const sessionMax = 'Stop a worker past this share of the short window'
+const presentSessionMax =
+  'Stop a worker past this share of the short window in a run started outside every window'
 const budget = z
   .strictObject({
     reserve: percent.prefault('10%').describe(reserve),
     per_run: percent.optional().describe(perRun),
     session_max: percent.prefault('90%').describe(sessionMax),
+    present_session_max: percent.prefault('40%').describe(presentSessionMax),
     fallback: fallback
       .extend({ units: fallbackUnits, turns: turns.default(60) })
       .describe(caps)
@@ -61,6 +70,7 @@ const budgetOverride = z
     reserve: percent.describe(reserve),
     per_run: percent.describe(perRun),
     session_max: percent.describe(sessionMax),
+    present_session_max: percent.describe(presentSessionMax),
     fallback,
   })
   .partial()
@@ -117,7 +127,11 @@ function builtinConfig(s: Source): z.ZodObject {
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
   return s.configSchema
-    .extend({ context: contextCommand.optional(), ...(s.link === false ? {} : { link }) })
+    .extend({
+      context: contextCommand.optional(),
+      every: pollEvery,
+      ...(s.link === false ? {} : { link }),
+    })
     .describe(s.configSchema.description ?? '')
 }
 
@@ -379,6 +393,12 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
       ),
+    run: z
+      .enum(['soon', 'window'])
+      .optional()
+      .describe(
+        'When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every',
+      ),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -537,9 +557,24 @@ export const configSchema = z
           })
           .refine((w) => w.start !== w.end, 'start and end must differ'),
       )
-      .min(1)
       .default([{ start: '01:00', end: '07:00' }])
-      .describe('Local hours a scheduled run may start units in; each opening is one run'),
+      .describe(
+        'Local hours a scheduled run may start units in; each opening is one run; [] for none',
+      ),
+    watch: z
+      .strictObject({
+        every: pollSpan
+          .default('5m')
+          .describe(
+            "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
+          ),
+        debug: z
+          .boolean()
+          .default(false)
+          .describe("Also write each run's full output to the daemon log"),
+      })
+      .prefault({})
+      .describe('awaywork watch, the daemon schedule install keeps running'),
     limits: z
       .strictObject({
         units: units.optional().describe('At most this many units per run'),
@@ -612,6 +647,11 @@ export const configSchema = z
       .optional()
       .describe(
         'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
+      ),
+    keep_runs: span
+      .default('30d')
+      .describe(
+        "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
       ),
   })
   .superRefine((cfg, ctx) => {

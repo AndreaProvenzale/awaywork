@@ -184,7 +184,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     '| 3 | [api#2 PR 2](https://github.com/acme/api/pull/2) | review | claude | done, 5 turns | report below, verdict approve |',
   )
   expect(text).toContain(
-    '- claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
+    '- claude: seven_day 36% to 45%, ceiling 63.2%; session 10% to 10%, stop at 90%',
   )
   expect(text).toContain(
     '### api#2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.\n\n<details><summary>Full report</summary>\n\nApprove.\n\n</details>',
@@ -201,7 +201,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
       '     Approve.',
       '',
       'Quota',
-      '  claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
+      '  claude: seven_day 36% to 45%, ceiling 63.2%; session 10% to 10%, stop at 90%',
       '',
       'awaywork report 20260925-010000 --unit <n|key>  shows one',
     ].join('\n'),
@@ -3456,6 +3456,27 @@ it('runs no notify unit event on a dry run, nor once interrupted, past those of 
   expect(await readFile(out, 'utf8')).toMatch(
     /^unit acme-api-1 done \|[^\n]+\nunit acme-api-1-implement done \|[^\n]+\n$/,
   )
+})
+
+it('runs no notify unit event in a soon run for a step its when passed over, but does for one whose setup failed', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-soon-')), 'out.txt')
+  const hook = `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_STATUS" >> ${out}' }`
+  const passed = await loopRun(
+    `queue: [{ skill: plan, when: { runs_until_reset: 1 } }]\n${hook}`,
+    [issue(1)],
+    pusher,
+    { soon: true },
+  )
+  const broken = await loopRun(
+    `repos: { acme/api: { setup: 'exit 3' } }\nqueue: [{ skill: plan }]\n${hook}`,
+    [issue(2)],
+    pusher,
+    { soon: true },
+  )
+
+  expect(passed.report.results[0]).toMatchObject({ status: 'skipped', passedOver: true })
+  expect(broken.report.results[0]?.reason).toMatch(/^setup failed: /)
+  expect(await readFile(out, 'utf8')).toBe('acme-api-2 skipped\n')
 })
 
 it("runs a chain's notify unit events once it published, with its PR and each step's own output, before the next chain runs", async () => {

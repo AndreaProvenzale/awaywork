@@ -31,6 +31,17 @@ export const contextCommand = z
   })
   .describe("Fetches more context for an item, with secrets kept out of the agent's environment")
 
+/** A poll interval: a span of a minute or more, the daemon's tick. */
+export const pollSpan = z
+  .string()
+  .regex(/^[1-9]\d*[mhdw]$/, 'expected a span of 1m or more, like 15m: a number and m, h, d or w')
+
+export const pollEvery = pollSpan
+  .optional()
+  .describe(
+    'How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every',
+  )
+
 export const commandConfig = z
   .strictObject({
     command: z
@@ -60,6 +71,7 @@ export const commandConfig = z
       .optional()
       .describe("Runs in the config file's folder before awaywork on GitHub Actions"),
     link: linkTemplate.optional(),
+    every: pollEvery,
     write: z
       .string()
       .min(1)
