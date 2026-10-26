@@ -6,11 +6,12 @@ import { loadSkills } from '../config/skills.js'
 import { loadApprovals, withApprovals } from '../core/approvals.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
+import { taskBranches, taskPr } from '../core/fanout.js'
 import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { defaultRules, itemState, lookback } from '../core/queue.js'
 import { counted } from '../core/report.js'
-import { builtinSkills } from '../core/skills.js'
+import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted } from '../core/window.js'
@@ -178,6 +179,7 @@ export async function probeAndPlan(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
+  await linkPlanTasks(items, config, skills, forgeFor(config), ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   const sources = configuredSources(config)
@@ -265,6 +267,40 @@ export function sourceFailure(e: Error & { stderr?: unknown }): string {
     lines.findLast((line) => /^(\w*(error|exception)\b|fatal:)/i.test(line)) ??
     lines.findLast(Boolean)
   return (last ? [first, last] : [first]).map((line) => clip(line, FAILURE_LINE)).join('\n')
+}
+
+/** Each task an awaywork plan on a card names gets its PR, open, merged or closed: the one on its branch whose footer names it. */
+export async function linkPlanTasks(
+  items: Item[],
+  config: Config,
+  skills: SkillCatalog,
+  forge: Forge,
+  ctx: Ctx,
+  onProgress?: OnProgress,
+): Promise<void> {
+  const queue = config.queue ?? defaultRules(Object.keys(config.sources))
+  const tasks = taskBranches(items, config, queue, skills)
+  const failed = new Set<Item>()
+  for (const [i, task] of tasks.entries()) {
+    onProgress?.({ name: 'reading task PRs', state: 'running', detail: `${i}/${tasks.length}` })
+    task.card.taskPrs ??= {}
+    const found = await forge.prsOn(task.repo, task.branch).then(
+      (prs) => taskPr(prs, task),
+      (e: Error) => {
+        ctx.log(`reading ${task.key}'s PR on ${task.branch}: ${e.message}`)
+        failed.add(task.card)
+      },
+    )
+    if (found) task.card.taskPrs[task.id] = found
+  }
+  // A card missing a task's PR can't tell which tasks still run.
+  for (const card of failed) delete card.taskPrs
+  if (tasks.length)
+    onProgress?.({
+      name: 'reading task PRs',
+      state: 'done',
+      detail: `${tasks.length}/${tasks.length}`,
+    })
 }
 
 /** Open tracker tasks link no PR natively, so the forge finds my PRs that name the task; a finished one links none. */

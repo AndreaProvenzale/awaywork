@@ -44,7 +44,25 @@ export interface Item {
   fields: Record<string, unknown>
   /** Yours: your PR, or an item assigned to you; awaywork writes only to these. */
   mine?: true
+  /** A task of the plan approved on the card `parent`: awaywork makes it, and writes to the card for it. */
+  task?: {
+    parent: Item
+    id: string
+    skill: string
+    /** The lines under your `approve`. */
+    notes: string
+    /** The plan's tasks, this one too, with the ids each waits on. */
+    plan: { id: string; title: string; after: string[] }[]
+  }
+  /** On a card: the PRs its plans' tasks have, by task id; unset until the forge was read. */
+  taskPrs?: Record<string, TaskPr>
   raw: unknown
+}
+
+/** A task's PR, found by the task's branch and its footer: open, merged, or closed unmerged at `closedAt`. */
+export interface TaskPr extends PrRef {
+  state: 'open' | 'merged' | 'closed'
+  closedAt?: string
 }
 
 export interface Ctx {
@@ -177,7 +195,7 @@ export interface Forge {
   prsFor(item: Item): Promise<PrRef[]>
   branchExists(repo: string, name: string): Promise<boolean>
   /** PRs whose head is `branch` in the repo, not a fork, open, closed or merged. */
-  prsOn(repo: string, branch: string): Promise<{ url: string; body: string; merged: boolean }[]>
+  prsOn(repo: string, branch: string): Promise<BranchPr[]>
   /** The message of the commit at the tip of `branch` in the repo. */
   tipMessage(repo: string, branch: string): Promise<string>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
@@ -209,6 +227,16 @@ export interface Forge {
    * one else; returns its URL. Throws why it didn't, e.g. a pending review of yours already there.
    */
   pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
+}
+
+/** A PR on a branch; `closedAt` when the forge says. */
+export interface BranchPr {
+  url: string
+  number: number
+  body: string
+  open: boolean
+  merged: boolean
+  closedAt?: string
 }
 
 /** A review's body and its comments on lines of the PR's new side. */

@@ -19,7 +19,7 @@ const ctx = { env: {}, log: () => {} }
 const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
-queue: [{ skill: plan, deliver: plan }]
+queue: [{ skill: plan, deliver: plan }, { skill: implement, where: { planned: true } }]
 `)
 
 /** A GitHub source of `items` that records its writes. */
@@ -65,7 +65,7 @@ describe('approve', () => {
     const elsewhere = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'cat' } }
-queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }]
+queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }, { skill: implement, where: { planned: true } }]
 `)
     expect(
       await approveItem('github:acme/api#5', elsewhere, '', {

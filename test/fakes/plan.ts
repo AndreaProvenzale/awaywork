@@ -13,7 +13,7 @@ export const roundTripYaml = `tasks:
       Keep <b>old</b> # routes and _names_.
   - id: web
     title: Export button # on the reports page
-    after: { api: opened }
+    after: { api: merged }
 `
 
 /** The plan comment awaywork writes, mark included, as a source's write gets it. */

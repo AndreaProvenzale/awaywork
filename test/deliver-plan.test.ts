@@ -28,7 +28,7 @@ const yaml = `tasks:
   - id: web
     title: Export button
     skill: implement
-    after: { api: opened }
+    after: { api: merged }
 `
 
 describe('plan.yml', () => {
@@ -42,7 +42,7 @@ describe('plan.yml', () => {
             description: 'Add GET /exports/vat.\n\nPaged like /exports/sales.\n',
             repo: 'acme/api',
           },
-          { id: 'web', title: 'Export button', skill: 'implement', after: { api: 'opened' } },
+          { id: 'web', title: 'Export button', skill: 'implement', after: { api: 'merged' } },
         ],
       },
     })
@@ -77,10 +77,10 @@ describe('plan.yml', () => {
     expect(problem(`tasks:\n${task('web', ', after: { api: closed }')}${task('api')}`)).toMatch(
       /^tasks\.0\.after\.api: /,
     )
-    expect(problem(`tasks:\n${task('api', ', after: { api: opened }')}`)).toBe(
+    expect(problem(`tasks:\n${task('api', ', after: { api: merged }')}`)).toBe(
       'tasks wait on each other: api → api',
     )
-    const cycle = `tasks:\n${task('a', ', after: { c: opened }')}${task('b', ', after: { a: merged }')}${task('c', ', after: { b: opened }')}`
+    const cycle = `tasks:\n${task('a', ', after: { c: merged }')}${task('b', ', after: { a: merged }')}${task('c', ', after: { b: merged }')}`
     expect(problem(cycle)).toBe('tasks wait on each other: a → c → b → a')
   })
 })

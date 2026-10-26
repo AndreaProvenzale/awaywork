@@ -784,6 +784,22 @@ export const configSchema = z
           path: [...at, 'deliver'],
           message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
         })
+      const takers = cfg.queue?.filter(
+        (q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source),
+      )
+      if (r.deliver === 'plan' && !takers?.length)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message:
+            "plan's tasks need a rule to take them: add one whose where names planned, e.g. { skill: implement, where: { planned: true } }",
+        })
+      if ('planned' in r.where && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message: `a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not ${r.deliver}`,
+        })
       checkWhere(r.where, [...at, 'where'], false, undefined)
       function canFinish(state: WhereValue | undefined, where: Where): boolean {
         const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))
@@ -817,6 +833,14 @@ export const configSchema = z
               code: 'custom',
               path: [...path, key],
               message: 'ours only lifts the awaywork PR wait at the top of where',
+            })
+            continue
+          }
+          if (key === 'planned' && path.includes('any')) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...path, key],
+              message: "planned only takes a plan's tasks at the top of where",
             })
             continue
           }

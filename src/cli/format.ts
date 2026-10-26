@@ -349,7 +349,11 @@ export function ambiguous(name: string, items: Item[]): string {
 export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const units = listedUnits(plan)
   const out: string[] = []
-  const heading = (item: Item) => [`${item.source} ${item.key}  ${item.title}`, `  ${item.url}`]
+  const heading = (item: Item) => [
+    `${item.source} ${item.key}  ${item.title}`,
+    `  ${item.url}`,
+    ...(item.task ? [`  task ${item.task.id} of the plan on ${item.task.parent.key}`] : []),
+  ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
     const item = p.unit.items.find(isIt)

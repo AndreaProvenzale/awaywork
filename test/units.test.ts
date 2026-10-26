@@ -15,6 +15,7 @@ import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
+import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts, unchangedSince } from '../src/core/attempts.js'
@@ -4705,7 +4706,7 @@ it('posts no questions over the comment limit, and keeps them in the report', as
 })
 
 const tasks =
-  'tasks:\n  - { id: api, title: VAT export endpoint }\n  - { id: web, title: Export button, after: { api: opened } }\n'
+  'tasks:\n  - { id: api, title: VAT export endpoint }\n  - { id: web, title: Export button, after: { api: merged } }\n'
 
 /** A provider whose step writes a report and, unless empty, `plan.yml`; it keeps the prompts it got. */
 const planner = (
@@ -4722,7 +4723,8 @@ const planner = (
   },
 })
 
-const planRule = '  - { skill: plan, deliver: plan, on_done: { move: Plan review } }'
+const planRule =
+  '  - { skill: plan, deliver: plan, on_done: { move: Plan review } }\n  - { skill: implement, where: { planned: true } }'
 
 it("posts a plan rule's plan once on your card with its report, and fires on_done on posting", async () => {
   const prompts: string[] = []
@@ -4835,6 +4837,7 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: plan, deliver: plan }
+  - { skill: implement, where: { planned: true } }
 `)
   let card = yours(1)
   let at = 0
@@ -4861,6 +4864,7 @@ queue:
   const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
   let attempts: Attempts = {}
   const round = async (yaml: string, n: number) => {
+    await linkPlanTasks([card], config, { builtin: builtinSkills }, forge, ctx)
     const plan = planRun({
       config,
       items: [card],
@@ -4917,7 +4921,7 @@ queue:
   ).toBe('plan approved: replied approve, with your notes, on https://example.com/1')
   expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan', 'approve'])
   expect(await round(tasks, 7)).toEqual({
-    skipped: [['plan_approved', 'plan approved, tasks api']],
+    skipped: [['fanned_out', 'fanned out: api no PR yet']],
     posted: undefined,
   })
   await expect(

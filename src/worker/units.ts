@@ -26,7 +26,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { checkPlan, planYaml } from '../core/plan.js'
+import { checkPlan, plannedSkills, planYaml, retiredTasks } from '../core/plan.js'
 import {
   type Moved,
   type PlanPost,
@@ -269,7 +269,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
    * Posts a comment on the first of the unit's own items that is yours, through a source that writes;
    * a post that fails is reported, never thrown. An item waiting for an answer made no unit.
    */
-  const postComment = async (p: PlannedUnit, what: string, body: string): Promise<Posted> => {
+  const postComment = async (
+    p: PlannedUnit,
+    what: string,
+    body: (item: Item) => string,
+  ): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
@@ -278,7 +282,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     const ref = `${item.source}:${item.key}`
     try {
-      const write = { op: 'comment', body } as const
+      const write = { op: 'comment', body: body(item) } as const
       const cfg = input.config.sources[item.source]
       const { url = item.url } = await writeItem(
         input.sources[item.source],
@@ -299,11 +303,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const postQuestions = async (p: PlannedUnit, text: string) =>
     Buffer.byteLength(text) > MAX_COMMENT_BYTES
       ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
-      : postComment(p, 'questions', questionsComment(text))
+      : postComment(p, 'questions', (item) => questionsComment(text, item.task?.id))
 
   /** Checks the chain's `plan.yml` and posts it with the report; a refused plan posts nothing. */
   const postPlan = async (p: PlannedUnit, report: string, yaml: string): Promise<PlanPost> => {
-    const limits = { maxTasks: input.config.limits.plan_tasks, repo: p.unit.repo }
+    const card = p.unit.items[0] as Item
+    const limits = {
+      maxTasks: input.config.limits.plan_tasks,
+      repo: p.unit.repo,
+      skills: plannedSkills(input.plan.queue, card.source),
+      retired: retiredTasks(card),
+    }
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
     const body = planComment(report, yaml)
@@ -316,7 +326,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
-    return { tasks, ...(await postComment(p, 'plan', body)) }
+    return { tasks, ...(await postComment(p, 'plan', () => body)) }
   }
 
   /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */

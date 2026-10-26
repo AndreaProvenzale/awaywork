@@ -57,7 +57,7 @@ export function rank(items: Item[], queue: Rule[]): { ranked: Ranked[]; unmatche
   const ranked: Ranked[] = []
   const unmatched: Item[] = []
   for (const item of items) {
-    const index = queue.findIndex((r) => matches(r, item))
+    const index = ruleFor(queue, item)
     if (index === -1) unmatched.push(item)
     else ranked.push({ item, rule: index })
   }
@@ -82,9 +82,18 @@ export function matches(rule: Rule, item: Item): boolean {
   return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
-/** An awaywork PR waits for review unless a rule names `ours`. */
+/** The index of the rule that takes the item, -1 for none: the first it matches; a task's is the first `planned` rule for its skill, if it matches. */
+export function ruleFor(queue: Rule[], item: Item): number {
+  if (!item.task) return queue.findIndex((r) => matches(r, item))
+  const index = queue.findIndex((r) => eligible(r, item))
+  return index >= 0 && matches(queue[index] as Rule, item) ? index : -1
+}
+
+/** An awaywork PR waits for review unless a rule names `ours`; a plan's task goes only to a rule naming `planned` with its skill, and only a task does. */
 function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
+  if (item.task || 'planned' in rule.where)
+    return !!item.task && 'planned' in rule.where && rule.skill === item.task.skill
   return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
@@ -178,6 +187,7 @@ export function failedIn(where: Where, item: Item, outer = TOP): string[] {
 
 export function fieldValue(item: Item, key: string): unknown {
   if (key === 'type' || key === 'title' || key === 'description') return item[key]
+  if (key === 'planned') return !!item.task
   return item.fields[key]
 }
 
@@ -306,10 +316,12 @@ interface RuleMatches {
 export function ruleMatches(items: Item[], queue: Rule[]): RuleMatches[] {
   const result: RuleMatches[] = queue.map(() => ({ taken: [], shadowed: [] }))
   for (const item of items) {
-    const [first, ...rest] = queue.flatMap((r, i) => (matches(r, item) ? [i] : []))
-    if (first === undefined) continue
+    const first = ruleFor(queue, item)
+    if (first < 0) continue
     result[first]?.taken.push(item)
-    for (const i of rest) result[i]?.shadowed.push({ item, by: first })
+    queue.forEach((r, i) => {
+      if (i > first && matches(r, item)) result[i]?.shadowed.push({ item, by: first })
+    })
   }
   result.forEach((m, i) => {
     m.taken.sort(byOrder(queue[i]?.order))

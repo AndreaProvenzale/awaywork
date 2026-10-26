@@ -127,7 +127,9 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
         .filter((pr) => pr.source.repository.full_name === repo)
         .map((pr) => ({
           url: pr.links.html.href,
+          number: pr.id,
           body: pr.description ?? '',
+          open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
         }))
     },
