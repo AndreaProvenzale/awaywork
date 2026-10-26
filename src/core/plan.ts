@@ -42,7 +42,7 @@ export function planContract(
       .map(([id, url]) => `\`${id}\` (${url})`)
       .join(', ')
   return [
-    `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (only this unit's) and \`after\`, a map from other task ids to \`merged\`, with no cycles; no other key. Each task becomes its own item with its own branch and PR once the plan is approved. awaywork checks it and posts your report, the narrative a person reads to approve the plan, and \`plan.yml\` as one comment on the item.`,
+    `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (only this unit's) and \`after\`, a map from other task ids to \`merged\` or \`opened\`, with no cycles; no other key. \`merged\` waits, across runs, until that task's PR merges, then cuts the task from the default branch. \`opened\` waits only until that task's PR opens, which can be in the same run, right before it: the task's branch is cut from that task's and its PR stacks on that task's PR. A task's \`opened\` tasks must lie on one chain, each after the one before, and it stacks on the last: web after \`api: opened\` and \`schema: opened\` needs api after \`schema: opened\`. Each task becomes its own item with its own branch and PR once the plan is approved. awaywork checks it and posts your report, the narrative a person reads to approve the plan, and \`plan.yml\` as one comment on the item.`,
     ...(Object.keys(retired).length
       ? [
           `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${listed(retired)}. Plan the work again without them.`,
@@ -97,11 +97,45 @@ function tasksProblem(
       return `task ${t.id}: no planned rule takes skill ${skill}`
     const unknown = Object.keys(t.after ?? {}).find((id) => !ids.includes(id))
     if (unknown) return `task ${t.id}: after names no task "${unknown}"`
-    const opened = Object.entries(t.after ?? {}).find(([, when]) => when === 'opened')
-    if (opened) return `task ${t.id}: after ${opened[0]}: opened isn't supported yet, only merged`
   }
   const cycle = cycleIn(tasks)
   if (cycle) return `tasks wait on each other: ${cycle.join(' → ')}`
+  for (const t of tasks) {
+    const opened = Object.keys(t.after ?? {}).filter((id) => t.after?.[id] === 'opened')
+    if (opened.length > 1 && !openedChain(t, tasks)) {
+      const [a, b] = opened
+      return `task ${t.id}: its opened tasks ${opened.join(', ')} aren't on one chain: make each after the one before, e.g. ${b} after ${a}: opened`
+    }
+  }
+}
+
+/** A task's `opened` tasks in the order they run, each after the one before, or undefined when they aren't on one chain. */
+export function openedChain(task: Task, tasks: Task[]): string[] | undefined {
+  const opened = Object.keys(task.after ?? {}).filter((id) => task.after?.[id] === 'opened')
+  // Every task `id` waits on, through any `after`: a later task on the chain waits on more.
+  const below = (id: string, seen = new Set<string>()): Set<string> => {
+    for (const next of Object.keys(tasks.find((t) => t.id === id)?.after ?? {})) {
+      if (seen.has(next)) continue
+      seen.add(next)
+      below(next, seen)
+    }
+    return seen
+  }
+  const chain = [...opened].sort((a, b) => below(a).size - below(b).size)
+  return chain.every((id, i) => i === 0 || below(id).has(chain[i - 1] as string))
+    ? chain
+    : undefined
+}
+
+/** The plan's tasks in the order they run: each after those it waits on, else in the plan's order. */
+export function runOrder(tasks: Task[]): Task[] {
+  const out: Task[] = []
+  const placed = (id: string) => out.some((t) => t.id === id)
+  for (;;) {
+    const next = tasks.find((t) => !out.includes(t) && Object.keys(t.after ?? {}).every(placed))
+    if (!next) return out
+    out.push(next)
+  }
 }
 
 /** A path of `after` that comes back to where it started, e.g. `[api, web, api]`. */

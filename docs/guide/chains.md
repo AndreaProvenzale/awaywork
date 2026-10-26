@@ -164,6 +164,7 @@ That publishes `away/acme-api-12` with the implement, review and fix rounds, the
 - `stack` needs `deliver: draft_pr`, the default, or `pr`. With `pr`, each slice opens ready for review or as a draft on its own. `plan` skips a chain where it's on a step whose skill reports, or after steps that all report: there would be nothing to put in the PR, or nothing to stack on.
 - A stacked slice whose first step commits nothing ends the chain; the slices before it stay published. So does a stacked step whose [`when`](#when) doesn't hold: the rest of the chain is passed over. A failing step or the window's end ends the chain too, and the open slice publishes what it has. Ctrl-C drops the open slice, and the ones that already ended stay published.
 - `when: { changed }` still diffs from where the chain started, so it sees the earlier slices' commits too.
+- A plan's tasks stack the same way with [`after: { api: opened }`](./how-it-works.md#the-feature-block), but each task is a unit of its own, with its own clone, `setup` and branch, cloned from the task before's branch.
 - Each slice counts once against the [caps](./configuration.md#windows-limits-and-budget), as soon as its first step has a provider. A chain keeps the slices that fit and leaves out the rest, naming the cap under it in `plan` and on its row in the report.
 - `plan` starts a slice with `stack` where the other steps say `then`:
 

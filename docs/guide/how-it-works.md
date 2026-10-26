@@ -183,7 +183,7 @@ queue:
     deliver: pr
 ```
 
-The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's own, for now) and `after`, which maps other task ids to `merged` (`opened` is refused for now). The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every `after` naming another task, no cycles, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
+The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's own, for now) and `after`, which maps other task ids to `merged` or `opened` (see [The feature block](#the-feature-block)), the `opened` ones of a task on one chain. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every `after` naming another task, no cycles, a task's `opened` tasks on one chain, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
 
 ````
 VAT export lands in two PRs: the endpoint first, then the button that calls it.
@@ -243,7 +243,7 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 
 ### Tasks
 
-Approve the plan and it fans out. The card makes no unit of its own anymore: each task becomes a child item keyed `ENG-2101/api`, which goes down the queue like any item, on its own branch, `away/ENG-2101-api`, and opens its own PR. A task only matches rules whose top-level `where` names `planned`, and only the first of them whose `skill` is the task's; a rule naming `planned` takes nothing else. So caps, attempts, `skip`, gates and chains work on tasks as on anything else. Tasks run in parallel, as far as `after` and the caps let them.
+Approve the plan and it fans out. The card makes no unit of its own anymore: each task becomes a child item keyed `ENG-2101/api`, which goes down the queue like any item, on its own branch, `away/ENG-2101-api`, and opens its own PR. A task only matches rules whose top-level `where` names `planned`, and only the first of them whose `skill` is the task's; a rule naming `planned` takes nothing else. So caps, attempts, `skip`, gates and chains work on tasks as on anything else. Tasks without `after` run in parallel; `after` orders them, and a card's tasks run back to back, as one [block](#the-feature-block).
 
 A task carries the card's source, URL, repo, owner and fields, so `where: { planned: true, labels: backend }` works, and the card's whole thread. Its `item.md` is awaywork's own, the task first:
 
@@ -323,6 +323,82 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 - A task branch awaywork pushed whose PR then failed to open still reads `no PR yet` on the card and in `awaywork plan`, since the PR is the task's state. The run skips it, `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`, in each morning report; delete the branch and the next run starts the task over.
 - A task takes no approval of its own: the plan's covers it, so its `approved` is always false, and `awaywork approve tracker:ENG-2101/api` is refused.
 - Bitbucket can't list a task's merged and closed PRs through twg yet, so a card there stops at its approved plan: `plan approved, but its tasks don't run on Bitbucket yet`.
+
+### The feature block
+
+`after` says what a task waits for:
+
+- **`merged`**: run after run, until that task's PR merges. Then the task is cut from the default branch, which has it. One PR lands before the next one starts, each reviewed on its own.
+- **`opened`**: only until that task's PR opens, which happens in the same run. The task's clone starts from that task's branch and its PR stacks on that task's PR, so the whole feature is up for review in the morning, as a stack.
+
+The run that sees a card runs its tasks back to back, as one block: those that can run, in the order they wait on each other, before the next unit starts, wherever the first of them ranks in the queue. A task joins the block when every `merged` task it names has merged and every `opened` one has an open or merged PR, or runs earlier in the block. So a block stops only at `merged`, which needs you to merge something.
+
+```yaml
+tasks:
+  - id: api
+    title: VAT export endpoint
+    description: Add GET /exports/vat to src/routes/exports.ts, paged like /exports/sales.
+  - id: web
+    title: Export button
+    description: Add an Export button to the reports page behind the vat_export flag.
+    after: { api: opened }
+```
+
+The run after `approve`, from `awaywork plan`:
+
+```text
+Units 2
+     item          rule  skill                 provider  deliver  title
+  1  ENG-2101/api  #2    implement (built-in)  fake      pr       VAT export endpoint
+  2  ENG-2101/web  #2    implement (built-in)  fake      pr       Export button
+     after api, stacks on its PR
+
+Skipped 1: 1 fanned_out
+```
+
+`api` opens `away/ENG-2101-api`, then `web` is cloned from it, and its PR goes into `away/ENG-2101-api`, its body ending with `Stacked on <api's PR>: merge that first.` Once `api`'s PR is open, a later run stacks on it the same way, and `--why` names what the task waits on and where each stands:
+
+```text
+$ awaywork plan --why ENG-2101/web
+tracker ENG-2101/web  Export button
+  https://acme.atlassian.net/browse/ENG-2101
+  task web of the plan on ENG-2101
+  after api opened (PR #41 open)
+  planned
+    unit      1, eng-2101-web
+    rule      #2 planned=true deliver=pr
+    skill     implement (built-in)
+    provider  fake
+    deliver   pr
+    branch    away/ENG-2101-web
+    stack     after api, stacks on #41
+```
+
+When the task before opens no PR, because it failed, asked questions, committed nothing or ran out of window, the tasks stacked on it are skipped, naming it, and so are theirs:
+
+```text
+Units 2
+     item          skill      status           result
+  1  ENG-2101/api  implement  failed, 3 turns  nothing
+     VAT export endpoint
+  2  ENG-2101/web  implement  skipped          api opened no PR
+     Export button
+```
+
+The card, run by run:
+
+| What happened | The card | Its tasks |
+| --- | --- | --- |
+| You approved | `fanned out: api no PR yet, web no PR yet` | `api` opens its PR, then `web` runs on `api`'s branch and opens its PR, stacked on `api`'s |
+| `api` failed | `fanned out: api no PR yet, web no PR yet` | `web` is skipped as `api opened no PR`; both run again next run |
+| A cap cut the block after `api` | `fanned out: api PR open, web no PR yet` | the next run stacks `web` on `api`'s open PR: `after api, stacks on #41` |
+| `api` merged before `web` ran | `fanned out: api merged, web no PR yet` | `web` is cut from the default branch |
+| Both PRs are open | `fanned out: api PR open, web PR open` | both wait for your review |
+
+- A task's `opened` tasks lie on one chain, each after the one before, and it stacks on the last of them whose PR hasn't merged. With `api` after `{ schema: opened }`, `web` after `{ api: opened, schema: opened }` stacks on `api`, which holds `schema`. Two that aren't on one chain leave nowhere to stack, so the plan isn't posted: `task web: its opened tasks api, schema aren't on one chain: make each after the one before, e.g. schema after api: opened`.
+- `merged` and `opened` mix on one task: `merged` says when it can start, `opened` where. `web` after `{ schema: merged, api: opened }` waits as `waiting for task schema's PR to merge`, and once it merged, stacks on `api`.
+- A task waiting on an `opened` task that doesn't run this run (it's waiting for an answer, unchanged, gave up, left out by a cap) is skipped as `waiting for task api's PR to open`. Caps and the window's end can cut a block; the next run carries on from the task with no PR.
+- A stacked task is a unit like any other, with its own clone, `setup` and branch. That clone starts on a branch a worker wrote, so `setup` gets none of the repo's `secrets`, as on any awaywork PR a rule takes up again ([Safety](./safety.md#what-the-agent-can-reach)). Merge the stack bottom-up: once `api`'s PR merges and its branch is deleted, GitHub retargets `web`'s to the default branch, as with any [stack](./chains.md#stack); awaywork does nothing there.
 
 ## The morning report
 

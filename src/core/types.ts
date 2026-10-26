@@ -52,8 +52,10 @@ export interface Item {
     skill: string
     /** The lines under your `approve`. */
     notes: string
-    /** The plan's tasks, this one too, with the ids each waits on. */
-    plan: { id: string; title: string; after: string[] }[]
+    /** The plan's tasks, this one too, with what each waits on. */
+    plan: { id: string; title: string; after: Record<string, 'opened' | 'merged'> }[]
+    /** The task whose PR this one stacks on: the last of its `opened` tasks whose PR isn't merged. */
+    onto?: string
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null

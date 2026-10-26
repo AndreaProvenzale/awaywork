@@ -234,6 +234,8 @@ export function planUnitTable(
       const rule = p.itemRules[j + 1] ?? p.rule
       out.push(`   + ${shortRef(item)}: same feature, matched #${rule + 1}`)
     })
+    const stacks = stackLine(p)
+    if (stacks) out.push(`   ${stacks}`)
     if (p.passed.length > 0 || !p.provider)
       out.push(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
@@ -367,7 +369,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const heading = (item: Item) => [
     `${item.source} ${item.key}  ${item.title}`,
     `  ${item.url}`,
-    ...(item.task ? [`  task ${item.task.id} of the plan on ${item.task.parent.key}`] : []),
+    ...(item.task ? taskLines(item.task) : []),
   ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
@@ -375,6 +377,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (!item) return
     const passed = p.passed.length > 0 ? ` (${p.passed.join('; ')})` : ''
     const rule = plan.queue[p.rule]
+    const stacks = stackLine(p)
     const rows = [
       ['unit', `${i + 1}, ${p.unit.id}`],
       ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
@@ -382,6 +385,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['provider', `${p.provider ?? 'none left'}${passed}`],
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
+      ...(stacks ? [['stack', stacks]] : []),
     ]
     out.push(
       ...(out.length ? [''] : []),
@@ -402,6 +406,28 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
   return out.join('\n')
+}
+
+/** A task's place in its card's plan: what it waits on, and where each of those stands. */
+function taskLines(task: NonNullable<Item['task']>): string[] {
+  const after = Object.entries(task.plan.find((t) => t.id === task.id)?.after ?? {}).map(
+    ([id, when]) => {
+      const pr = task.parent.taskPrs?.[id]
+      return `${id} ${when} (${pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'})`
+    },
+  )
+  return [
+    `  task ${task.id} of the plan on ${task.parent.key}`,
+    ...(after.length ? [`  after ${after.join(', ')}`] : []),
+  ]
+}
+
+/** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */
+function stackLine(p: PlannedUnit): string | undefined {
+  const onto = p.unit.items[0]?.task?.onto
+  const pr = onto && p.unit.items[0]?.task?.parent.taskPrs?.[onto]
+  if (p.after) return `after ${onto}, stacks on its PR`
+  if (pr && p.unit.stackedOn) return `after ${onto}, stacks on #${pr.number}`
 }
 
 /** The queue as numbered rules. */

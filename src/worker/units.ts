@@ -189,6 +189,15 @@ interface Retry {
   keep: () => void
 }
 
+/** A task's chain skipped, its loops' first rounds listed, because the chain `after` it stacks on opened no PR. */
+function noPrToStackOn(chain: PlannedUnit[], plan: RunPlan, after: string): UnitResult[] {
+  const below = plan.units.find((p) => p.unit.id === after)?.unit.items[0]
+  const reason = `${below?.task?.id ?? after} opened no PR`
+  return chain
+    .filter((p) => !p.loop || p.loop.round === 1)
+    .map((planned) => ({ planned, status: 'skipped', reason }))
+}
+
 /** The chains `name` names by a unit id or an item, in any case: each chain's first step. */
 export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
   const heads = plan.units
@@ -364,15 +373,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const { repo, base } = first.unit
     const deliver = chain.find((p) => p.unit.deliver !== 'report')?.unit.deliver ?? 'report'
     const opensPr = deliver === 'draft_pr' || deliver === 'pr'
-    // An awaywork PR a rule took up, when the chain works on its branch.
-    const pickedUp = first.unit.items
-      .flatMap((i) => i.linkedPrs)
-      .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)
-    // The open slice's base, branch and the PR it stacks on: the awaywork PR a rule took up, or the slice before's.
+    // The awaywork PR whose branch the chain works on: one a rule took up, or the one a task stacks on.
+    const pickedUp =
+      first.unit.items
+        .flatMap((i) => i.linkedPrs)
+        .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)?.url ??
+      first.unit.stackedOn
+    // The open slice's base, branch and the PR it stacks on: the awaywork PR the chain started on, or the slice before's.
     const shape = {
       base,
       branch: first.unit.branch,
-      stackedOn: opensPr ? pickedUp?.url : undefined,
+      stackedOn: opensPr ? pickedUp : undefined,
     }
     // `changed` diffs from where the chain started, the awaywork PR it took up, else the default branch, as cloned.
     let since = ''
@@ -941,9 +952,26 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return done
   }
 
+  // The PR each chain opened first, by its id: a task's chain stacks on its dependency's.
+  const opened: Record<string, { branch: string; url: string }> = {}
   try {
     for (const chain of chains) {
-      const done = await runChain(chain)
+      const head = chain[0] as PlannedUnit
+      const onto = head.after && !input.dryRun ? opened[head.after] : undefined
+      const done =
+        head.after && !input.dryRun && !onto
+          ? noPrToStackOn(chain, input.plan, head.after)
+          : await runChain(
+              onto
+                ? chain.map((p) => ({
+                    ...p,
+                    unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
+                  }))
+                : chain,
+            )
+      const lead = done.find((r) => !r.planned.chain && !r.retried)
+      if (lead?.outcome?.kind === 'pr')
+        opened[head.unit.id] = { branch: lead.planned.unit.branch, url: lead.outcome.url }
       results.push(...done)
       await notifyUnits(done.filter((r) => !r.retried))
     }

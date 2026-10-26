@@ -18,6 +18,7 @@ import {
   isAwayworkPr,
   isLoop,
   isMatch,
+  type Ranked,
   rank,
   TOP,
   within,
@@ -32,6 +33,7 @@ import type {
   Loop,
   Rule,
   Step,
+  TaskPr,
   ThenStep,
   Unit,
   Where,
@@ -54,6 +56,8 @@ export interface PlannedUnit {
   loop?: LoopRound
   /** On a chain's first step: the slice a cap left out, and the cap. */
   capped?: string
+  /** On a task's first step: the chain, by id, earlier in this run whose PR it stacks on. */
+  after?: string
 }
 
 export interface LoopRound {
@@ -153,7 +157,7 @@ export function planRun(input: {
   const perRule: Record<number, number> = {}
   let counted = 0
 
-  for (const found of dedupe(ranked)) {
+  for (const found of inBlocks(dedupe(ranked), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -191,6 +195,13 @@ export function planRun(input: {
       skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
+    const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
+    if (stack && !stack.pr && !stack.after) {
+      skip('waiting_for_task', `waiting for task ${stack.onto}'s PR to open`)
+      continue
+    }
+    const ontoPr = stack?.pr
+    const after = stack?.after
     const limits = (item: Item) => planLimits(config, queue, item, input.skills)
     const card =
       rule.deliver === 'plan'
@@ -251,7 +262,7 @@ export function planRun(input: {
       skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
-    const base = pr?.branch ?? ''
+    const base = pr?.branch ?? ontoPr?.branch ?? ''
     const foreign = pr ? !pr.mine : false
     const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
     const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
@@ -286,7 +297,14 @@ export function planRun(input: {
     }
 
     const id = slug(items[0]?.key ?? '')
-    const at = { base, foreign, untrusted: pr ? !pr.trusted : false, fork, branch }
+    const at = {
+      base,
+      foreign,
+      untrusted: pr ? !pr.trusted : false,
+      fork,
+      branch,
+      ...(ontoPr && { stackedOn: ontoPr.url }),
+    }
     let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
       const step = written === rule ? rule : inherit(rule, written)
@@ -327,6 +345,7 @@ export function planRun(input: {
         ...(written !== rule && { chain: id }),
         ...(slice > 0 && { slice }),
         ...(loop && { loop }),
+        ...(written === rule && after && { after: after.unit.id }),
       })
       return provider
     }
@@ -370,6 +389,37 @@ export function planRun(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
+function stackTarget(
+  item: Item,
+  units: PlannedUnit[],
+): { onto: string; pr?: TaskPr; after?: PlannedUnit } | undefined {
+  const { task } = item
+  if (!task?.onto) return undefined
+  const pr = task.parent.taskPrs?.[task.onto]
+  if (pr) return { onto: task.onto, pr }
+  const key = `${task.parent.key}/${task.onto}`
+  const after = units.find(
+    (u) => !u.chain && u.unit.items.some((i) => i.source === item.source && i.key === key),
+  )
+  return { onto: task.onto, ...(after && { after }) }
+}
+
+/** Each card's tasks back to back, where the first of them ranks, in the order `order` lists them: a task runs right after the one whose PR it stacks on. */
+function inBlocks(groups: Ranked[][], order: Item[]): Ranked[][] {
+  const taskIn = (g: Ranked[]) => g.find((e) => e.item.task)?.item
+  const cardOf = (g: Ranked[]) => taskIn(g)?.task?.parent
+  const at = (g: Ranked[]) => order.indexOf(taskIn(g) as Item)
+  const out: Ranked[][] = []
+  for (const g of groups) {
+    const card = cardOf(g)
+    if (!card) out.push(g)
+    else if (!out.some((o) => cardOf(o) === card))
+      out.push(...groups.filter((o) => cardOf(o) === card).sort((a, b) => at(a) - at(b)))
+  }
+  return out
 }
 
 /** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs, command and skill join the top-level ones. */
