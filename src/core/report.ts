@@ -46,20 +46,37 @@ export interface UnitResult {
   moved?: Moved[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
+  /** On a plan rule's chain's first step: the plan it posted, or why not. */
+  plan?: PlanPost
 }
 
-/** A step's `questions.md`, the item (`source:key`) and URL awaywork posted it on, or why it didn't. */
-export interface Questions {
-  step: string
-  text: string
+/** The item (`source:key`) and URL awaywork posted a comment on, or why it didn't. */
+export interface Posted {
   item?: string
   url?: string
   unposted?: string
 }
 
+/** A step's `questions.md`, and where it went. */
+export interface Questions extends Posted {
+  step: string
+  text: string
+}
+
+/** A plan rule's plan, and where it went: its task ids once it passed its checks. */
+export interface PlanPost extends Posted {
+  tasks?: string[]
+}
+
 /** `questions posted on <url>`, or why they weren't. */
 export const describeQuestions = (q: Questions): string =>
   q.unposted ? `questions not posted: ${q.unposted}` : `questions posted on ${q.url}`
+
+/** `plan posted on <url>, tasks api, web`, or why it wasn't. */
+export const describePlan = (p: PlanPost): string =>
+  p.unposted
+    ? `plan not posted: ${p.unposted}`
+    : `plan posted on ${p.url}, tasks ${p.tasks?.join(', ')}`
 
 /** An item (`source:key`) on_done moved, with its updated time after when only the move changed it, or why the move failed. */
 export interface Moved {
@@ -75,10 +92,11 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
-/** What a chain's first step wrote to its items: on_done's moves, or its questions. */
+/** What a chain's first step wrote to its items: on_done's moves, its questions or its plan. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
   ...(u.questions ? [describeQuestions(u.questions)] : []),
+  ...(u.plan ? [describePlan(u.plan)] : []),
 ]
 
 export interface StepFiles {

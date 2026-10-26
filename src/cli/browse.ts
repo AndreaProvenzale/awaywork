@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { emitKeypressEvents, type Key } from 'node:readline'
+import type { Config } from '../config/schema.js'
 import { approveItem } from './approve.js'
 import { terminalBrand } from './ask.js'
 import { skipItem } from './skip.js'
@@ -28,10 +29,13 @@ export interface ItemCommands {
   approve(key: string): Promise<string>
 }
 
-export const itemCommands = (sources: () => Promise<string[]>): ItemCommands => ({
-  skip: async (key) => skipItem(key, {}, await sources()),
-  approve: async (key) => approveItem(key, await sources()),
+export const itemCommands = (config: () => Promise<Config>): ItemCommands => ({
+  skip: async (key) => skipItem(key, {}, Object.keys((await config()).sources)),
+  approve: async (key) => approveItem(key, await config(), '', { ctx: quiet }),
 })
+
+// A source's warnings would print over the screen.
+const quiet = { env: process.env, log: () => {} }
 
 /** `$PAGER` unless it's unset or `cat`, as git does; the default `less` repaints from the top and stays open on short texts whatever `$LESS` says. */
 export const pagerCommand = (pager = process.env.PAGER) =>

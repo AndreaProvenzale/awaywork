@@ -23,6 +23,7 @@ import {
 } from '../src/core/attempts.js'
 import { renderBranch, templateProblem } from '../src/core/branch.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
+import { approveReply, markComment, planComment } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
 import type { RunReport } from '../src/core/report.js'
 import { builtinSkills, type SkillCatalog } from '../src/core/skills.js'
@@ -1310,6 +1311,96 @@ queue:
 
   it("doesn't count awaywork's mark someone else pasted", () => {
     expect(withComments(comment('Per user?\n\n— awaywork')).units).toHaveLength(1)
+  })
+})
+
+describe('a plan on the card', () => {
+  const yaml = (deliver = 'plan') => `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: plan, deliver: ${deliver} }
+`
+  const tasks =
+    'tasks:\n  - { id: api, title: API }\n  - { id: web, title: Web, after: { api: opened } }'
+  const at = (n: number) => `2026-01-0${n}T00:00:00Z`
+  const posted = {
+    author: 'me',
+    body: markComment(planComment('Two tasks.', tasks)),
+    at: at(1),
+    mine: true as const,
+  }
+  const reply = (body: string, mine?: true) => ({
+    author: mine ? 'me' : 'sam',
+    body,
+    at: at(2),
+    ...(mine && { mine }),
+  })
+  const card = (...comments: Item['comments']) => ({ ...issue, mine: true as const, comments })
+  // Unchanged since the run that posted the plan, as far as attempts tell.
+  const attempts: Attempts = {
+    'github:acme/api#5': { runId: 'r1', skill: 'plan', updated: '2026-01-01T00:00:00Z' },
+  }
+  const unchanged = (item: Item) => ({
+    ...item,
+    fields: { ...item.fields, updated: '2026-01-01T00:00:00Z' },
+  })
+
+  it('plans a card with no plan, every step reporting a plan', () => {
+    expect(rows(plan(yaml(), [card()], {}))).toEqual([['acme-api-5', 1, 'plan', 'claude', 'plan']])
+  })
+
+  it('waits for your approval of a plan nobody answered', () => {
+    const waiting = plan(yaml(), [card(posted)], {}, {}, attempts)
+    expect(waiting.units).toEqual([])
+    expect(waiting.skipped).toMatchObject([
+      {
+        kind: 'waiting_for_approval',
+        reason: 'waiting for your approval of the plan on https://example.com/1',
+        url: 'https://example.com/1',
+      },
+    ])
+    expect(needsYou.waiting_for_approval).toBe(true)
+    expect(formatPlan(waiting)).toContain('api#5  waiting for your approval of the plan\n')
+  })
+
+  it('skips an approved plan, naming its tasks, as nothing for you to do', () => {
+    const approved = plan(yaml(), [card(posted, reply(approveReply('Go.'), true))], {})
+    expect(approved.skipped).toMatchObject([
+      { kind: 'plan_approved', reason: 'plan approved, tasks api, web' },
+    ])
+    expect(needsYou.plan_approved).toBe(false)
+  })
+
+  it('needs you for a plan you edited into one that fails its checks', () => {
+    const edited = { ...posted, body: posted.body.replace('id: web', 'id: api') }
+    const refused = plan(yaml(), [card(edited)], {})
+    expect(refused.skipped).toMatchObject([
+      {
+        kind: 'invalid_plan',
+        reason: 'plan refused: task id "api" is used twice',
+        url: 'https://example.com/1',
+      },
+    ])
+    expect(needsYou.invalid_plan).toBe(true)
+  })
+
+  it('plans again on feedback, even when attempts read the card as unchanged', () => {
+    for (const feedback of [reply('approve if web waits'), reply('Split web.', true)]) {
+      const again = plan(yaml(), [unchanged(card(posted, feedback))], {}, {}, attempts)
+      expect(rows(again)).toEqual([['acme-api-5', 1, 'plan', 'claude', 'plan']])
+    }
+    expect(plan(yaml(), [unchanged(card())], {}, {}, attempts).skipped).toMatchObject([
+      { kind: 'unchanged' },
+    ])
+  })
+
+  it("reads a plan only for a plan rule: another rule's questions wait as before", () => {
+    expect(rows(plan(yaml('report'), [card(posted)], {}))).toEqual([
+      ['acme-api-5', 1, 'plan', 'claude', 'report'],
+    ])
+    const asked = { ...posted, body: markComment('Per user?') }
+    expect(plan(yaml(), [card(asked)], {}).skipped).toMatchObject([{ kind: 'waiting_for_answer' }])
   })
 })
 

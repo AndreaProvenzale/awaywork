@@ -19,6 +19,7 @@ import { githubSource } from '../src/sources/github.js'
 import { writeItem } from '../src/sources/index.js'
 import { fixture, githubRoutes, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
+import { expectPlanBack, roundTripComment } from './fakes/plan.js'
 
 const log: string[] = []
 const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
@@ -536,6 +537,44 @@ describe('github source', () => {
     expect(issue5 && awaitsAnswer(issue5)).toBe(true)
   })
 
+  it('reads a long thread back past its last 50 comments, keeping what it read when a page fails', async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    const page = (bodies: string[], before?: string) => ({
+      pageInfo: { hasPreviousPage: !!before, startCursor: before ?? null },
+      nodes: bodies.map((body) => ({ ...yours, body })),
+    })
+    assigned.data.search.nodes[0].comments = page(['newest'], 'c2')
+    const older = (bodies: string[], before?: string) =>
+      JSON.stringify({ data: { node: { comments: page(bodies, before) } } })
+    const routes: [RegExp, string][] = [
+      [/assignee:@me/, JSON.stringify(assigned)],
+      [/-f id=I_kwDOAAAAAc4AAAA5 -f before=c2 /, older([roundTripComment, 'middle'], 'c1')],
+      ...githubRoutes(),
+    ]
+    const whole = recorded([[/-f before=c1 /, older(['oldest'])], ...routes])
+    const [, , , issue5] = await githubSource(whole).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => c.body.split('\n')[0])).toEqual([
+      'oldest',
+      'Two tasks: the **API** first, then the button.',
+      'middle',
+      'newest',
+    ])
+    expect(whole.calls.filter((c) => c.join(' ').includes(' before=')).length).toBe(2)
+    log.length = 0
+    const [, , , cut] = await githubSource(recorded(routes)).items({ repos: ['acme/*'] }, ctx)
+    expect(cut?.comments.map((c) => c.body.split('\n')[0])).toEqual([
+      'Two tasks: the **API** first, then the button.',
+      'middle',
+      'newest',
+    ])
+    expect(log).toEqual([
+      expect.stringMatching(
+        /^github: couldn't read every comment of acme\/api#5: no recorded output/,
+      ),
+    ])
+  })
+
   const read = (assignees?: string[]) =>
     JSON.stringify({
       data: {
@@ -592,6 +631,24 @@ describe('github source', () => {
       updated,
     ])
     expect(new Set(seen)).toEqual(new Set(['git.acme.com']))
+  })
+
+  it('reads the plan comment it wrote back as the same plan', async () => {
+    const replay = recorded([
+      [/issueOrPullRequest/, read(['dev'])],
+      [/issues\/5\/comments -f /, 'https://github.com/acme/api/issues/5#issuecomment-9\n'],
+    ])
+    const write = { op: 'comment', body: roundTripComment } as const
+    await githubSource(replay).write?.({ repos: ['acme/*'] }, issue5, write, ctx)
+    const sent = replay.calls.find((c) => c[1] === 'api' && c[2]?.endsWith('/comments'))
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    assigned.data.search.nodes[0].comments.nodes = [
+      { ...yours, body: sent?.[4]?.slice('body='.length) },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expectPlanBack(issue)
   })
 
   it('refuses an issue no longer assigned to you, but not your PR, whose author is fixed', async () => {

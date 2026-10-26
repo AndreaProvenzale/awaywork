@@ -92,11 +92,10 @@ export function planCommand(program: Command): void {
           return
         }
         if (screen) {
-          const sources = Object.keys(config.sources)
           const state = planTriage(plan, warnings, process.stdout.rows)
           return await screen.browse(
             { ...state, status: none },
-            itemCommands(async () => sources),
+            itemCommands(async () => config),
           )
         }
         console.log(opts.json ? planJson(plan, warnings) : formatPlan(plan, warnings, true))

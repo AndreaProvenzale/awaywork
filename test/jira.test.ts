@@ -9,6 +9,7 @@ import { adfToMarkdown, jiraSource, textToAdf } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
 import { scriptedAsk } from './fakes/ask.js'
 import { jiraFetch, jiraFixture } from './fakes/jira.js'
+import { expectPlanBack, roundTripComment, roundTripYaml } from './fakes/plan.js'
 
 const ctx: Ctx = { env: { JIRA_API_TOKEN: 'atl-token' }, log: () => {} }
 const cfg = { site: 'acme.atlassian.net', email: 'dev@acme.test', token_env: 'JIRA_API_TOKEN' }
@@ -378,6 +379,36 @@ describe('jira writes', () => {
     expect(http.calls[1]?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/comment')
     expect(sent.body).toEqual(textToAdf(body))
     expect(adfToMarkdown(sent.body)).toBe(body)
+  })
+
+  it('reads the plan comment it wrote back as the same plan, in ADF or once edited into a code block', async () => {
+    const http = writer()
+    await jiraSource(http).write?.(cfg, eng12, { op: 'comment', body: roundTripComment }, ctx)
+    const sent = JSON.parse(http.calls[1]?.body ?? '').body
+    const dev = { displayName: 'Dev', accountId: '5b10' }
+    const readBack = async (body: Adf) => {
+      const comments = JSON.stringify({
+        total: 1,
+        comments: [{ author: dev, body, created: '2026-01-01T10:00:00.000+0000' }],
+      })
+      const [found] = await jiraSource(jiraFetch([[/\/issue\/10012\/comment/, comments]])).items(
+        cfg,
+        ctx,
+      )
+      return found
+    }
+    expectPlanBack(await readBack(sent))
+    const [narrative = '', rest = ''] = roundTripComment.split('```yaml\n')
+    const [, after = ''] = rest.split('\n```')
+    const edited: Adf = {
+      type: 'doc',
+      content: [
+        ...(textToAdf(narrative).content ?? []),
+        { type: 'codeBlock', attrs: { language: 'yaml' }, content: [text(roundTripYaml.trim())] },
+        ...(textToAdf(after).content ?? []),
+      ],
+    }
+    expectPlanBack(await readBack(edited))
   })
 
   it("refuses a comment whose ADF is over Jira's 32,767 characters, before any call", async () => {

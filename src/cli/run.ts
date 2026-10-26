@@ -50,7 +50,6 @@ import {
 } from './format.js'
 import { probeAndPlan, ruleNumber, skipKinds } from './plan.js'
 import { gitRoot } from './schedule.js'
-import { configuredSources } from './skip.js'
 import { unitsFile } from './stats.js'
 import { type OnProgress, runTriage, type UnitFiles } from './triage.js'
 
@@ -201,7 +200,10 @@ export function runCommand(program: Command): void {
       try {
         await printReport(id, !!opts.list, exec, !!opts.json, {
           ...opts,
-          browse: screen && { screen, commands: itemCommands(() => configuredSources(program)) },
+          browse: screen && {
+            screen,
+            commands: itemCommands(() => loadConfig(configPath(program.opts().config))),
+          },
         })
       } finally {
         screen?.close()

@@ -20,6 +20,7 @@ import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { gitUnrestored, markGitRestored } from '../core/launch.js'
+import { planContract } from '../core/plan.js'
 import { assemblePrompt } from '../core/prompt.js'
 import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
@@ -32,11 +33,12 @@ export const outputFile: Record<Deliver, string> = {
   report: 'report.md',
   push: 'pr.md',
   pending_review: 'report.md',
+  plan: 'report.md',
 }
 
-/** Whether a unit only reports: a `pending_review` one's report is left as a review. */
+/** Whether a unit only reports: a `pending_review` one's report is left as a review, a `plan` one's posted with its plan. */
 export const reportsOnly = (deliver: Deliver) =>
-  deliver === 'report' || deliver === 'pending_review'
+  deliver === 'report' || deliver === 'pending_review' || deliver === 'plan'
 
 /** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
 const repoSkillDirs = ['.claude/skills', '.agents/skills']
@@ -512,6 +514,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
     pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
+    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract({ maxTasks: w.config.limits.plan_tasks })}`,
   }[unit.deliver]
   return [
     `## Your unit`,

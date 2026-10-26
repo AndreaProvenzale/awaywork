@@ -5,7 +5,7 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
-import { questionsComment } from '../core/footer.js'
+import { planComment, questionsComment } from '../core/footer.js'
 import {
   bySlice,
   describeChain,
@@ -25,8 +25,11 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
+import { checkPlan } from '../core/plan.js'
 import {
   type Moved,
+  type PlanPost,
+  type Posted,
   type Questions,
   type RunReport,
   type StepFiles,
@@ -171,7 +174,7 @@ async function leftBy(
 }
 
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
-const MAX_QUESTIONS_BYTES = 30_000
+const MAX_COMMENT_BYTES = 30_000
 
 /** A slice's outcome that published: a PR, a push, a report or a pending review left. */
 const delivered = (o: Outcome | undefined) =>
@@ -262,16 +265,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
   /**
-   * Posts a step's questions as a comment on the first of the unit's own items that is yours,
-   * through a source that writes; a post that fails is reported, never thrown. An item waiting for an answer made no unit.
+   * Posts a comment on the first of the unit's own items that is yours, through a source that writes;
+   * a post that fails is reported, never thrown. An item waiting for an answer made no unit.
    */
-  const postQuestions = async (
+  const postComment = async (
     p: PlannedUnit,
-    text: string,
-  ): Promise<Pick<Questions, 'item' | 'url' | 'unposted'>> => {
+    what: string,
+    body: string,
+  ): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
-    if (Buffer.byteLength(text) > MAX_QUESTIONS_BYTES)
-      return { unposted: `questions.md is over ${MAX_QUESTIONS_BYTES} bytes` }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
     if (!item) {
       const top = p.unit.items[0] as Item
@@ -279,7 +281,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
     const ref = `${item.source}:${item.key}`
     try {
-      const write = { op: 'comment', body: questionsComment(text) } as const
+      const write = { op: 'comment', body } as const
       const cfg = input.config.sources[item.source]
       const { url = item.url } = await writeItem(
         input.sources[item.source],
@@ -288,13 +290,29 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         write,
         input.ctx,
       )
-      input.ctx.log(`${p.unit.id}: questions posted on ${url}`)
+      input.ctx.log(`${p.unit.id}: ${what} posted on ${url}`)
       return { item: ref, url }
     } catch (e) {
       const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
-      input.ctx.log(`${p.unit.id}: couldn't post its questions on ${item.key}: ${failed}`)
+      input.ctx.log(`${p.unit.id}: couldn't post its ${what} on ${item.key}: ${failed}`)
       return { item: ref, unposted: failed }
     }
+  }
+
+  const postQuestions = async (p: PlannedUnit, text: string) =>
+    Buffer.byteLength(text) > MAX_COMMENT_BYTES
+      ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
+      : postComment(p, 'questions', questionsComment(text))
+
+  /** Checks the chain's `plan.yml` and posts it with the report; a refused plan posts nothing. */
+  const postPlan = async (p: PlannedUnit, report: string, yaml: string): Promise<PlanPost> => {
+    const checked = checkPlan(yaml, { maxTasks: input.config.limits.plan_tasks, repo: p.unit.repo })
+    if ('problem' in checked) return { unposted: `plan.yml: ${checked.problem}` }
+    const tasks = checked.plan.tasks.map((t) => t.id)
+    const body = planComment(report, yaml)
+    if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
+      return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
+    return { tasks, ...(await postComment(p, 'plan', body)) }
   }
 
   /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
@@ -894,9 +912,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
-    // Every slice that ran published, and only a `when` ended the chain early.
+    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report') {
+      const yaml = await readOutput(join(chainDir, sliceOut(0), 'plan.yml'))
+      lead.plan = await postPlan(first, lead.outcome.text, yaml)
+    }
+    // Every slice that ran published, and only a `when` ended the chain early; a plan rule's plan was posted.
     const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
-    if (onDone && lead && finished && !input.dryRun && !input.signal?.aborted)
+    const posted = deliver !== 'plan' || !!lead?.plan?.url
+    if (onDone && lead && finished && posted && !input.dryRun && !input.signal?.aborted)
       lead.moved = await moveItems(ownItems(first), onDone.move)
     for (const r of done) {
       // A committing slice that committed nothing published its reports.

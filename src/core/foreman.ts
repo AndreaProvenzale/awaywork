@@ -6,6 +6,7 @@ import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
+import { planState } from './plan.js'
 import {
   closestRule,
   defaultRules,
@@ -73,6 +74,9 @@ export type SkipKind =
   | 'over_cap'
   | 'waiting_for_review'
   | 'waiting_for_answer'
+  | 'waiting_for_approval'
+  | 'invalid_plan'
+  | 'plan_approved'
   | 'gave_up'
   | 'no_repo'
   | 'invalid_branch'
@@ -87,6 +91,9 @@ export const needsYou: Record<SkipKind, boolean> = {
   over_cap: false,
   waiting_for_review: true,
   waiting_for_answer: true,
+  waiting_for_approval: true,
+  invalid_plan: true,
+  plan_approved: false,
   gave_up: true,
   no_repo: true,
   invalid_branch: true,
@@ -98,7 +105,7 @@ export interface Skipped {
   item: Item
   kind: SkipKind
   reason: string
-  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions on. */
+  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions or posted its plan on. */
   url?: string
 }
 
@@ -173,8 +180,37 @@ export function planRun(input: {
       skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
+    // Every step of a plan rule reports, so its repo is the first linked PR's or the item's.
+    const limits = {
+      maxTasks: config.limits.plan_tasks,
+      repo: prs[0]?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string'),
+    }
+    const card =
+      rule.deliver === 'plan'
+        ? items.flatMap((item) => {
+            const state = planState(item, limits)
+            return state ? [{ item, ...state }] : []
+          })[0]
+        : undefined
+    if (card?.state === 'waiting') {
+      skip(
+        'waiting_for_approval',
+        `waiting for your approval of the plan on ${card.item.url}`,
+        card.item.url,
+      )
+      continue
+    }
+    if (card?.state === 'invalid') {
+      skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
+      continue
+    }
+    if (card?.state === 'approved') {
+      skip('plan_approved', `plan approved, tasks ${card.plan.tasks.map((t) => t.id).join(', ')}`)
+      continue
+    }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean)) {
+    // A reply to the plan is feedback, a change even where a comment doesn't update the item.
+    if (card?.state !== 'feedback' && since.every(Boolean)) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -187,11 +223,13 @@ export function planRun(input: {
       )
       continue
     }
-    // A skill commits unless it reports; `deliver: report` and `pending_review` make every step report.
+    // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
     const review = rule.deliver === 'pending_review'
+    const planned = rule.deliver === 'plan'
     const reports = (step: ThenStep) =>
       rule.deliver === 'report' ||
       review ||
+      planned ||
       resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
     const committing = [rule, ...(rule.then ?? []).flatMap(stepsOf)].find((s) => !reports(s))
     const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
@@ -280,7 +318,7 @@ export function planRun(input: {
           ...(repoInstructions ? [repoInstructions] : []),
           ...step.instructions,
         ],
-        deliver: review ? 'pending_review' : reports(step) ? 'report' : deliver,
+        deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
       }
       const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({
@@ -398,7 +436,7 @@ function stackRefusal(rule: Rule, reports: (step: ThenStep) => boolean): string 
 
 /** Why a chain can't publish commits onto its base: only onto the developer's own PR in the repo. */
 function deliveryRefusal(
-  deliver: Exclude<Deliver, 'report' | 'pending_review'>,
+  deliver: Exclude<Deliver, 'report' | 'pending_review' | 'plan'>,
   base: string,
   foreign: boolean,
   fork: boolean,
