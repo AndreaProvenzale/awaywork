@@ -111,7 +111,7 @@ export interface Publisher {
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
  * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
- * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step asked questions (`asked`, whose status line then tops the body), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
  * With gates, the PR body, or a push's summary, which goes only in the report, opens with their section: the decision card with each fired gate's line, else the gates that ran.
  * `start` is the commit gates check their scripts against: the clone's before the chain's setup and workers, or where an awaywork PR it took up left the default branch.
  */
@@ -126,6 +126,7 @@ export async function publishSlice(
   stack?: Stack,
   closes = false,
   failedStep?: string,
+  asked?: { url?: string },
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
@@ -153,12 +154,17 @@ export async function publishSlice(
     const section = gatesSection(Object.keys(unit.gates), fired)
     await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
   }
+  if (asked) {
+    const line = `Status: ask${asked.url ? `, questions on ${asked.url}` : ''}`
+    const section = unit.gates ? line : `${line}\n\n---`
+    await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
+  }
   const unmet = Object.values(loops).find((l) => !l.held)
   // `runLine` splits a chain's cell at `; `.
   const why =
     unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
   const gated = describeFired(fired)
-  const notReady = failedStep ?? failed ?? why ?? gated
+  const notReady = failedStep ?? (asked && 'asked questions') ?? failed ?? why ?? gated
   const outcome = await publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }

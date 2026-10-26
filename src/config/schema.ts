@@ -387,8 +387,16 @@ const rule: z.ZodType<Rule, unknown> = z
           .min(1)
           .describe(
             "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add",
+          )
+          .optional(),
+        comment: z
+          .literal('result')
+          .optional()
+          .describe(
+            "result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published",
           ),
       })
+      .refine((d) => Object.keys(d).length > 0, 'expected move or comment')
       .optional()
       .describe(
         "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
@@ -834,11 +842,19 @@ export const configSchema = z
           message:
             "plan's tasks need a rule to take them: add one whose where names planned, e.g. { skill: implement, where: { planned: true } }",
         })
-      if ('planned' in r.where && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
+      const taskDelivers = ['draft_pr', 'pr', 'report']
+      if ('planned' in r.where && r.deliver && !taskDelivers.includes(r.deliver))
         ctx.addIssue({
           code: 'custom',
           path: [...at, 'deliver'],
-          message: `a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not ${r.deliver}`,
+          message: `a plan's task opens its own PR, or reports on the card, and that's how awaywork knows it's done: deliver draft_pr, pr or report, not ${r.deliver}`,
+        })
+      if (r.deliver === 'plan' && r.on_done?.comment)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'on_done', 'comment'],
+          message:
+            "the plan comment is a plan rule's result, and a comment after it would read as your answer: use move alone",
         })
       // A task's PR is found by its branch, so the branch must stay put when a re-plan retitles the task.
       const templates = r.branch

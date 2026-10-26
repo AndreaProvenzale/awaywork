@@ -4413,7 +4413,7 @@ async function finishedRun(
   write?: Source['write'] | null,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
-  const { origin, forge } = await originForge(root)
+  const { origin, forge, opened } = await originForge(root)
   await git(origin, 'branch', 'feature-2')
   const config = parseConfig(`
 providers: [claude: {}]
@@ -4456,7 +4456,7 @@ ${queue}
     shortage: async () => undefined,
     skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
   })
-  return { report, writes, lines }
+  return { report, writes, lines, opened }
 }
 
 const yours = (n: number) =>
@@ -4598,8 +4598,8 @@ it('reports a move that failed, its secrets masked, and leaves the unit done', a
   expect(formatReport(report)).toContain(`on_done couldn't move acme/api#1 to "QA": 401 for ***`)
 })
 
-/** A provider whose step writes `questions.md`, and commits first when `commits`. */
-const asker = (questions: string, commits = false): Provider => ({
+/** A provider whose step writes `questions.md` unless empty and `status` when given, and commits first when `commits`. */
+const asker = (questions: string, commits = false, status?: string): Provider => ({
   ...fakeProvider('claude'),
   async *run(job) {
     if (commits) {
@@ -4608,7 +4608,8 @@ const asker = (questions: string, commits = false): Provider => ({
       await git(job.dir, 'commit', '-qm', 'Add a')
       await writeFile(join(job.dir, '.away/out/pr.md'), 'Add a\n\nDone.')
     }
-    await writeFile(join(job.dir, '.away/out/questions.md'), questions)
+    if (questions) await writeFile(join(job.dir, '.away/out/questions.md'), questions)
+    if (status) await writeFile(join(job.dir, '.away/out/status'), status)
     yield { type: 'done', ok: true, turns: 1 }
   },
 })
@@ -4713,6 +4714,113 @@ it('asks nothing for a step that committed: its questions stay in its out folder
   expect(writes).toEqual([])
   expect(report.results[0]?.questions).toBeUndefined()
   expect(report.results[0]?.outcome?.kind).toBe('pr')
+})
+
+it('asks for a step that committed when its status says ask: its commits open as a draft that records it', async () => {
+  const { report, writes, opened } = await finishedRun(
+    '  - { skill: implement, deliver: pr, on_done: { move: QA }, then: [review] }',
+    [yours(1)],
+    asker('Which?', true, 'ask\n'),
+  )
+  const [head, review] = report.results
+  expect(head?.outcome).toMatchObject({ kind: 'pr', commits: 1, draft: 'asked questions' })
+  expect(head?.outcome).not.toHaveProperty('ready')
+  expect(opened[0]?.body).toMatch(
+    /^Add a\n\nStatus: ask, questions on https:\/\/example\.com\/1\n\n---\n\nDone\.\n/,
+  )
+  expect(head?.questions).toMatchObject({ text: 'Which?', url: 'https://example.com/1' })
+  expect(head?.made).toBe('1 commit and questions')
+  expect(review).toMatchObject({ status: 'skipped', reason: 'acme-api-1 asked questions' })
+  // Asking isn't finishing: on_done doesn't run.
+  expect(writes.map(([, w]) => w.op)).toEqual(['comment'])
+})
+
+it('reads a status it does not know, or ask without questions, as no status file', async () => {
+  const unknown = await finishedRun(
+    '  - skill: implement',
+    [yours(1)],
+    asker('Which?', true, 'Continue\nmore'),
+  )
+  expect(unknown.report.results[0]?.questions).toBeUndefined()
+  expect(unknown.lines).toContain('acme-api-1: status "continue" isn\'t done or ask, read as none')
+  const empty = await finishedRun('  - skill: implement', [yours(1)], asker('', true, 'ask'))
+  expect(empty.report.results[0]?.outcome).toMatchObject({ kind: 'pr', commits: 1 })
+  expect(empty.report.results[0]?.questions).toBeUndefined()
+  expect(empty.lines).toContain('acme-api-1: status ask without questions.md, read as none')
+  const done = await finishedRun('  - skill: implement', [yours(1)], asker('Which?', false, 'done'))
+  expect(done.report.results[0]?.questions).toMatchObject({ text: 'Which?' })
+})
+
+it("posts a report rule's result before moving, counting both as awaywork's own changes", async () => {
+  let at = 0
+  const times = ['2026-10-24T00:00:00Z', '2026-10-25T01:00:00Z', '2026-10-25T02:00:00Z']
+  const writes: [string, Write][] = []
+  const { report } = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { comment: result, move: QA } }',
+    [yours(1)],
+    looper({}),
+    async (_cfg, item, w) => {
+      writes.push([item.key, w])
+      return { before: times[at] as string, after: times[++at] as string }
+    },
+  )
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: 'acme-api-1 says nothing.\n\nStatus: done\n\n— awaywork' },
+    ],
+    ['acme/api#1', { op: 'move', to: 'QA' }],
+  ])
+  expect(report.results[0]?.result).toEqual([
+    {
+      item: 'github:acme/api#1',
+      url: 'https://example.com/1',
+      updated: '2026-10-25T01:00:00Z',
+    },
+  ])
+  const text = formatReport(report)
+  expect(text).toContain('- **api#1**: result posted on https://example.com/1')
+  expect(text).toContain('- **api#1**: on_done moved acme/api#1 to "QA"')
+  expect(recordAttempts({}, report)['github:acme/api#1']?.updated).toBe('2026-10-25T02:00:00Z')
+})
+
+it("posts a PR rule's result as a link to its PR, and none on an item that isn't yours", async () => {
+  const { report, writes } = await finishedRun(
+    '  - { skill: implement, deliver: pr, on_done: { comment: result } }',
+    [yours(1)],
+  )
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      {
+        op: 'comment',
+        body: 'Opened https://example.com/acme/api/pull/away/acme-api-1\n\nStatus: done\n\n— awaywork',
+      },
+    ],
+  ])
+  expect(recordAttempts({}, report)['github:acme/api#1']?.updated).toBe('2026-10-25T01:00:00Z')
+  const theirs = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { comment: result } }',
+    [githubPr(2, { mine: false, review_requested: true })],
+  )
+  expect(theirs.writes).toEqual([])
+  expect(theirs.lines).toContain('on_done: acme/api#2 got no result, not yours')
+})
+
+it('reports a result that failed to post, its secrets masked, and still moves the item', async () => {
+  const { report, lines } = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { comment: result, move: QA } }',
+    [yours(1)],
+    looper({}),
+    async (_cfg, _item, w) => {
+      if (w.op === 'comment') throw new Error('401 for s3cret')
+      return {}
+    },
+  )
+  expect(report.results[0]?.result).toEqual([{ item: 'github:acme/api#1', failed: '401 for ***' }])
+  expect(report.results[0]?.moved).toEqual([{ item: 'github:acme/api#1', to: 'QA' }])
+  expect(lines).toContain(`couldn't post the result on acme/api#1: 401 for ***`)
+  expect(formatReport(report)).toContain(`couldn't post its result on acme/api#1: 401 for ***`)
 })
 
 it('posts no questions over the comment limit, and keeps them in the report', async () => {

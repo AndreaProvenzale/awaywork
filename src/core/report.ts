@@ -44,6 +44,8 @@ export interface UnitResult {
   files?: StepFiles
   /** On the chain's first step: where its rule's `on_done` moved the unit's items that are yours. */
   moved?: Moved[]
+  /** On the chain's first step: the items that are yours its result was posted on, by `on_done` or as a task's. */
+  result?: Commented[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
@@ -92,10 +94,25 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
-/** What a chain's first step wrote to its items, in order: its questions or its plan, then on_done's moves. */
+/** An item (`source:key`) the unit's result was posted on, with the comment's URL and the item's updated time after when only the post changed it, or why the post failed. */
+export interface Commented {
+  item: string
+  url?: string
+  updated?: string
+  failed?: string
+}
+
+/** `result posted on <url>`, or why it couldn't. */
+export function describeResult(c: Commented): string {
+  const key = c.item.slice(c.item.indexOf(':') + 1)
+  return c.failed ? `couldn't post its result on ${key}: ${c.failed}` : `result posted on ${c.url}`
+}
+
+/** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.questions ? [describeQuestions(u.questions)] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
+  ...(u.result ?? []).map(describeResult),
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
 ]
 

@@ -341,8 +341,8 @@ export interface Rule extends Step {
   units?: number
   /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
-  /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted. */
-  on_done?: { move: string }
+  /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */
+  on_done?: { move?: string; comment?: 'result' }
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
 }

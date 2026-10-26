@@ -4,11 +4,15 @@ import {
   awaitsAnswer,
   commentKind,
   commentMarkdown,
+  commentTask,
   markComment,
   planComment,
   questionsComment,
+  resultComment,
+  resultStatus,
+  waitingTasks,
 } from '../src/core/footer.js'
-import { checkPlan, planState, planYaml } from '../src/core/plan.js'
+import { checkPlan, doneTasks, planState, planYaml } from '../src/core/plan.js'
 import type { Item } from '../src/core/types.js'
 
 const limits = { maxTasks: 3, repo: 'acme/api' }
@@ -131,6 +135,23 @@ describe('the plan comment', () => {
     expect(commentKind(posted(approveReply('Keep the route.')))).toBe('approve')
     expect(commentKind(yours('approve'))).toBeUndefined()
     expect(commentKind({ ...plan, mine: undefined })).toBeUndefined()
+    expect(commentKind(posted(resultComment('All green.', 'done')))).toBe('result')
+    expect(commentKind(yours(resultComment('All green.', 'done')))).toBeUndefined()
+  })
+
+  it("carries a result's status above the mark, and a task's result is headed with it", () => {
+    const result = posted(resultComment('Evidence: 3 screenshots.\n', 'done', 'qa'))
+    expect(result.body).toBe(
+      'Result of task qa\n\nEvidence: 3 screenshots.\n\nStatus: done\n\n— awaywork',
+    )
+    expect(resultStatus(result)).toBe('done')
+    expect(commentTask(result)).toBe('qa')
+    expect(commentTask(posted(resultComment('Done.', 'done')))).toBeUndefined()
+    expect(commentTask(posted(questionsComment('Per user?', 'web')))).toBe('web')
+    expect(resultStatus(posted(questionsComment('Status: done')))).toBeUndefined()
+    // awaywork's result answers no question: the task's questions still wait.
+    const asked = posted(questionsComment('Per user?', 'web'))
+    expect(waitingTasks({ comments: [asked, result] })).toEqual(['web'])
   })
 
   it("waits for an answer only on awaywork's questions, not its plan or approve reply", () => {
@@ -145,6 +166,34 @@ describe('the plan comment', () => {
       /^\n### awaywork's questions \(me\), /,
     )
     expect(commentMarkdown(posted(approveReply('')))).toMatch(/^\n### me, /)
+    expect(commentMarkdown(posted(resultComment('Done.', 'done')))).toMatch(
+      /^\n### awaywork's result \(me\), /,
+    )
+    expect(commentMarkdown(posted(resultComment('Done.', 'done', 'qa')))).toMatch(
+      /^\n### awaywork's result of task qa \(me\), /,
+    )
+    expect(commentMarkdown(posted(questionsComment('Which?', 'web')))).toMatch(
+      /^\n### awaywork's questions from task web \(me\), /,
+    )
+  })
+})
+
+describe('a task done by its result', () => {
+  const result = (task: string, n: number) => posted(resultComment('Done.', 'done', task), n)
+  it("counts a task's done result only after the plan's approval, so a re-plan's leaves older ones behind", () => {
+    const approve = posted(approveReply(''), 2)
+    expect(doneTasks({ comments: [plan, result('qa', 2)] })).toEqual([])
+    expect(doneTasks({ comments: [plan, approve, result('qa', 3), result('api', 4)] })).toEqual([
+      'qa',
+      'api',
+    ])
+    const replanned = posted(planComment('Again.', yaml), 5)
+    expect(doneTasks({ comments: [plan, approve, result('qa', 3), replanned] })).toEqual([])
+    expect(
+      doneTasks({
+        comments: [plan, approve, result('qa', 3), replanned, posted(approveReply(''), 6)],
+      }),
+    ).toEqual([])
   })
 })
 

@@ -6,7 +6,7 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
-import { planComment, questionsComment } from '../core/footer.js'
+import { planComment, questionsComment, resultComment } from '../core/footer.js'
 import {
   bySlice,
   describeChain,
@@ -29,6 +29,7 @@ import {
 } from '../core/launch.js'
 import { checkPlan, contractName, contractText, elsewhere, planYaml } from '../core/plan.js'
 import {
+  type Commented,
   type Moved,
   type PlanPost,
   type Posted,
@@ -72,6 +73,7 @@ import {
   isLast,
   made,
   maxReached,
+  readStatus,
   readVerdict,
   type Snapshot,
   setupEnv,
@@ -195,6 +197,20 @@ const MAX_COMMENT_BYTES = 30_000
 const delivered = (o: Outcome | undefined) =>
   !!o && o.kind !== 'none' && !(o.kind === 'report' && o.unposted)
 
+/** A finished chain's result: each slice's report, or a line linking what it published. */
+const resultOf = (outcomes: Outcome[]): string =>
+  outcomes
+    .map((o) => {
+      if (o.kind === 'report') return o.text
+      if (o.kind === 'pr') return `Opened ${o.url}${o.ready ? '' : ' as a draft'}`
+      if (o.kind === 'pushed')
+        return `Pushed ${o.commits} ${o.commits === 1 ? 'commit' : 'commits'} onto ${o.url}`
+      if (o.kind === 'review') return `Left your pending review on ${o.url}`
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n\n')
+
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
 interface Retry {
   result: UnitResult
@@ -257,8 +273,42 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     check,
   }
 
-  /** Moves each of a finished unit's items that is yours to `to`; a write that fails is reported, never thrown. */
-  const moveItems = async (items: Item[], to: string): Promise<Moved[]> => {
+  /** Posts a finished unit's result on each of its items that is yours; a write that fails is reported, never thrown. */
+  const postResult = async (items: Item[], text: string): Promise<Commented[]> => {
+    const posted: Commented[] = []
+    for (const item of items) {
+      const source = input.sources[item.source]
+      const refused = unwritable(item, source)
+      if (refused) {
+        input.ctx.log(`on_done: ${item.key} got no result, ${refused}`)
+        continue
+      }
+      const ref = { item: `${item.source}:${item.key}` }
+      if (Buffer.byteLength(text) > MAX_COMMENT_BYTES) {
+        posted.push({ ...ref, failed: `the result is over ${MAX_COMMENT_BYTES} bytes` })
+        continue
+      }
+      try {
+        const write = { op: 'comment', body: resultComment(text, 'done', item.task?.id) } as const
+        const cfg = input.config.sources[item.source]
+        const { updated, url = item.url } = await writeItem(source, cfg, item, write, input.ctx)
+        input.ctx.log(`${item.key}: result posted on ${url}`)
+        posted.push({ ...ref, url, ...(updated && { updated }) })
+      } catch (e) {
+        const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
+        event(`couldn't post the result on ${item.key}: ${failed}`)
+        posted.push({ ...ref, failed })
+      }
+    }
+    return posted
+  }
+
+  /** Moves each of a finished unit's items that is yours to `to`, after its result was `posted`; a write that fails is reported, never thrown. */
+  const moveItems = async (
+    items: Item[],
+    to: string,
+    posted: Commented[] = [],
+  ): Promise<Moved[]> => {
     const moved: Moved[] = []
     for (const item of items) {
       const source = input.sources[item.source]
@@ -268,10 +318,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       const ref = { item: `${item.source}:${item.key}`, to }
+      // The result's post is awaywork's own change: the move compares with the item as it left it.
+      const after = posted.find((c) => c.item === ref.item)?.updated
+      const read = after ? { ...item, fields: { ...item.fields, updated: after } } : item
       try {
         const write = { op: 'move', to } as const
         const cfg = input.config.sources[item.source]
-        const { updated } = await writeItem(source, cfg, item, write, input.ctx)
+        const { updated } = await writeItem(source, cfg, read, write, input.ctx)
         input.ctx.log(`on_done: moved ${item.key} to ${to}`)
         moved.push({ ...ref, ...(updated && { updated }) })
       } catch (e) {
@@ -568,6 +621,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 // Only the whole chain, cut from the default branch, closes its issues.
                 last && !first.capped && base === '',
                 failed && notReady(failed),
+                asked && {
+                  url: ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))?.url,
+                },
               )
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
@@ -860,8 +916,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         const commits = await commitsSince(dir, start)
         const report = (await readOutput(join(dir, WORK_DIR, 'out', outputFile.report))).trim()
         const questions = (await readOutput(join(dir, WORK_DIR, 'out', 'questions.md'))).trim()
-        // A step that committed went on: its questions aren't the chain's to ask.
-        const asks = !!questions && (reportsOnly(unit.deliver) || commits === 0)
+        const status = await readStatus(dir)
+        if (status && status !== 'done' && status !== 'ask')
+          input.ctx.log(`${unit.id}: status "${status}" isn't done or ask, read as none`)
+        if (status === 'ask' && !questions)
+          input.ctx.log(`${unit.id}: status ask without questions.md, read as none`)
+        // Unless it says it asks, a step that committed went on: its questions aren't the chain's to ask.
+        const asks = !!questions && (status === 'ask' || reportsOnly(unit.deliver) || commits === 0)
         result.made = made(commits, report, asks ? questions : '')
         if (worker.status === 'failed' && saved && !input.signal?.aborted) {
           const out = join(unitDir, 'out')
@@ -957,8 +1018,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // Every slice that ran published, and only a `when` ended the chain early; a plan rule's plan was posted.
     const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
     const posted = deliver !== 'plan' || !!lead?.plan?.url
-    if (onDone && lead && finished && posted && !input.dryRun && !input.signal?.aborted)
-      lead.moved = await moveItems(ownItems(first), onDone.move)
+    if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
+      // A task's result is how its card hears it's done, so it always posts one.
+      if (onDone?.comment === 'result' || first.unit.items[0]?.task) {
+        const outcomes = [...leads].flatMap((r) => r.outcome ?? [])
+        lead.result = await postResult(ownItems(first), resultOf(outcomes))
+      }
+      if (onDone?.move) lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
+    }
     for (const r of done) {
       // A committing slice that committed nothing published its reports.
       const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver

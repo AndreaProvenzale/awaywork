@@ -114,8 +114,11 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     for (const item of head.unit.items) {
       if (typeof item.fields.updated !== 'string') continue
       const key = attemptKey(item)
-      // A move of on_done's is awaywork's own change: the item is unchanged since it.
-      const updated = chain[0]?.moved?.find((m) => m.item === key)?.updated ?? item.fields.updated
+      // A result posted or a move of on_done's is awaywork's own change: the item is unchanged since the last of them.
+      const wrote = (writes?: { item: string; updated?: string; failed?: string }[]) =>
+        writes?.find((w) => w.item === key && !w.failed)
+      const last = wrote(chain[0]?.moved) ?? wrote(chain[0]?.result)
+      const updated = last?.updated ?? item.fields.updated
       // A chain that left no report keeps the item's earlier one.
       const latest = reported?.step
         ? { runId: report.runId, unit: id, step: reported.step, skill: reported.planned.unit.skill }

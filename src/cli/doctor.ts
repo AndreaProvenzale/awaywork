@@ -162,8 +162,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     const scope = rule.source
       ? [rule.source]
       : Object.keys(config.sources).filter((id) => canMatch(config.sources, id, rule.where))
+    const { comment, move } = rule.on_done
+    const lost = [comment && 'no result is posted', move && 'they stay put'].filter(Boolean)
     for (const id of scope.filter((id) => !sourceFor(id, config.sources[id])?.write))
-      report('warn', `rule #${i + 1} on_done`, `${id} can't write to its items: they stay put`)
+      report('warn', `rule #${i + 1} on_done`, `${id} can't write to its items: ${lost.join(', ')}`)
   })
   for (const [name, server] of Object.entries(config.mcp)) {
     const unset = server.secrets.filter((s) => !process.env[s])

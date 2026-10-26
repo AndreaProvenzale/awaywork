@@ -61,21 +61,39 @@ const planAnswer =
 
 /** What awaywork posts on an item when a step can't go on without answers: the step's questions, and how to answer; a task's are headed with it, on its card. */
 export const questionsComment = (questions: string, task?: string): string =>
-  `${task ? `${taskHeading}${task}\n\n` : ''}${questions.trim()}\n\n${questionsAnswer}`
+  `${task ? `${taskHeadings.questions}${task}\n\n` : ''}${questions.trim()}\n\n${questionsAnswer}`
 
-const taskHeading = 'Questions from task '
+/** The words awaywork reads from a step's `.away/out/status`. */
+export type Status = 'done' | 'ask'
 
-/** The task whose questions awaywork posted in this comment on its card, if they are a task's. */
-export function questionsTask(c: Item['comments'][number]): string | undefined {
-  if (commentKind(c) !== 'questions') return undefined
+const statusLine = /^Status: ([a-z]+)$/
+
+/** What awaywork posts on an item when its unit finished: the result, then its status; a task's is headed with it, on its card. */
+export const resultComment = (result: string, status: Status, task?: string): string =>
+  `${task ? `${taskHeadings.result}${task}\n\n` : ''}${result.trim()}\n\nStatus: ${status}`
+
+/** The status an awaywork result comment carries, e.g. `done`. */
+export const resultStatus = (c: Item['comments'][number]): string | undefined =>
+  commentKind(c) === 'result' ? statusLine.exec(visibleLines(c).at(-2) ?? '')?.[1] : undefined
+
+const taskHeadings = { questions: 'Questions from task ', result: 'Result of task ' }
+
+/** The task whose questions or result awaywork posted in this comment on its card, if they are a task's. */
+export function commentTask(c: Item['comments'][number]): string | undefined {
+  const kind = commentKind(c)
+  if (kind !== 'questions' && kind !== 'result') return undefined
   const first = c.body.trim().split('\n')[0]?.trim() ?? ''
-  return first.startsWith(taskHeading) ? first.slice(taskHeading.length).trim() : undefined
+  const heading = taskHeadings[kind]
+  return first.startsWith(heading) ? first.slice(heading.length).trim() : undefined
 }
 
 /** The tasks whose questions on the card wait: those after its last comment that's neither a bot's nor awaywork's, which answers every one above it. */
 export function waitingTasks(item: Pick<Item, 'comments'>): string[] {
   const answered = item.comments.findLastIndex((c) => !c.bot && !isAwayworkComment(c))
-  return [...new Set(item.comments.slice(answered + 1).flatMap((c) => questionsTask(c) ?? []))]
+  const asked = item.comments
+    .slice(answered + 1)
+    .flatMap((c) => (commentKind(c) === 'questions' && commentTask(c)) || [])
+  return [...new Set(asked)]
 }
 
 /** What awaywork posts on an item for a `deliver: plan` rule: the report, the contract and `plan.yml` in fences, and how to answer. */
@@ -99,17 +117,21 @@ export const approveReply = (notes: string): string =>
 export const isApprove = (c: Item['comments'][number]): boolean =>
   !!c.mine && c.body.trim().split('\n')[0]?.trim().toLowerCase() === 'approve'
 
-export type CommentKind = 'plan' | 'questions' | 'approve'
+export type CommentKind = 'plan' | 'questions' | 'approve' | 'result'
+
+const visibleLines = (c: Item['comments'][number]): string[] =>
+  c.body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
 
 /** Which of awaywork's comments this is, told by its visible text: the line above the mark, or an approve reply's first line. */
 export function commentKind(c: Item['comments'][number]): CommentKind | undefined {
   if (!isAwayworkComment(c)) return undefined
-  const lines = c.body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  if (lines.at(-2) === planAnswer) return 'plan'
-  if (lines.at(-2) !== questionsAnswer && isApprove(c)) return 'approve'
+  const above = visibleLines(c).at(-2) ?? ''
+  if (above === planAnswer) return 'plan'
+  if (statusLine.test(above)) return 'result'
+  if (above !== questionsAnswer && isApprove(c)) return 'approve'
   return 'questions'
 }
 
@@ -119,14 +141,19 @@ export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
   return !!newest && commentKind(newest) === 'questions'
 }
 
-const headings = { plan: "awaywork's plan", questions: "awaywork's questions" }
+const headings = {
+  plan: "awaywork's plan",
+  questions: "awaywork's questions",
+  result: "awaywork's result",
+}
 
-/** A comment as `item.md` shows it, awaywork's plan and questions headed as such, a task's by the task, its approve reply as yours. */
+/** A comment as `item.md` shows it, awaywork's plan, questions and result headed as such, a task's by the task, its approve reply as yours. */
 export function commentMarkdown(c: Item['comments'][number]): string {
   const kind = commentKind(c)
-  const task = questionsTask(c)
+  const task = commentTask(c)
+  const of = kind === 'result' ? 'of' : 'from'
   const heading =
-    kind && kind !== 'approve' && `${headings[kind]}${task ? ` from task ${task}` : ''}`
+    kind && kind !== 'approve' && `${headings[kind]}${task ? ` ${of} task ${task}` : ''}`
   const who = heading ? `${heading} (${c.author})` : c.author
   return `\n### ${who}, ${c.at}\n\n${c.body}\n`
 }
