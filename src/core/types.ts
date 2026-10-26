@@ -146,8 +146,14 @@ export interface Written {
 }
 
 export interface Quota {
-  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds. */
-  windows: { name: string; span: 'short' | 'long'; used: number; resetsAt: number }[]
+  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds; `minutes` is the window's length. */
+  windows: {
+    name: string
+    span: 'short' | 'long'
+    used: number
+    resetsAt: number
+    minutes?: number
+  }[]
 }
 
 export type WorkerEvent =
@@ -337,6 +343,8 @@ export interface Rule extends Step {
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted. */
   on_done?: { move: string }
+  /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
+  run?: 'soon' | 'window'
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */

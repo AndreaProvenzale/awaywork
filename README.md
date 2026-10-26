@@ -22,9 +22,10 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 $ awaywork plan | cat
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 Units 3
      item   rule  skill              provider  deliver   title
@@ -64,7 +65,8 @@ Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit,
 
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
-claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -117,13 +119,13 @@ The label isn't enough on its own: awaywork reads only the issues assigned to yo
 
 ## How much quota it burns
 
-Each run's ceiling on the weekly window:
+Each run's ceiling on the weekly window is an even spend over the week:
 
 ```
-ceiling = used + (1 - reserve - used) / runs_until_reset
+ceiling = (1 - reserve) × time since the last reset / week
 ```
 
-Early in the week that's a small slice, and it gets greedier as the reset gets closer. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%. There's no token estimation and no guessing.
+A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run outside your windows reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
 
 ## The paranoid bit
 

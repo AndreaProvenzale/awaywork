@@ -13,7 +13,7 @@ export const REPO_SKILLS = skillsDirOf(REPO_CONFIG)
 const ACTION_REPO = 'AndreaProvenzale/awaywork'
 
 export interface Workflow {
-  /** Local to `timezone`; the cron gets them in UTC. */
+  /** Local to `timezone`; the cron gets them in UTC, and none leaves only dispatch. */
   starts: Start[]
   /** IANA name the starts are in and the run's windows use. */
   timezone: string
@@ -41,13 +41,12 @@ export function workflow(w: Workflow): string {
   )
   const runsOn = w.runsOn ?? 'ubuntu-latest'
   const timeout = runsOn === 'ubuntu-latest' ? HOSTED_JOB_MINUTES : SELF_HOSTED_JOB_MINUTES
+  const crons = utcStarts(w.starts, w.timezone).map(
+    (s) => `\n    - cron: "${s.minute} ${s.hour} * * ${s.days?.join(',') ?? '*'}"`,
+  )
   return `name: awaywork
 
-on:
-  schedule:
-${utcStarts(w.starts, w.timezone)
-  .map((s) => `    - cron: "${s.minute} ${s.hour} * * ${s.days?.join(',') ?? '*'}"`)
-  .join('\n')}
+on:${crons.length ? `\n  schedule:${crons.join('')}` : ''}
   workflow_dispatch:
     inputs:
       unit:
