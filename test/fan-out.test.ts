@@ -176,7 +176,7 @@ describe('plan checks for tasks', () => {
       ),
     ).toEqual([
       expect.stringContaining(
-        "queue[0].on_done.comment: the plan comment is a plan rule's result, and a comment after it would read as your answer: use move alone",
+        "queue[0].on_done.comment: the plan comment is a plan rule's result, so a second comment would repeat it: use move alone",
       ),
     ])
     expect(problems(`${queue}  - { skill: fix, on_done: {} }`)).toEqual([

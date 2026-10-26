@@ -854,7 +854,7 @@ export const configSchema = z
           code: 'custom',
           path: [...at, 'on_done', 'comment'],
           message:
-            "the plan comment is a plan rule's result, and a comment after it would read as your answer: use move alone",
+            "the plan comment is a plan rule's result, so a second comment would repeat it: use move alone",
         })
       // A task's PR is found by its branch, so the branch must stay put when a re-plan retitles the task.
       const templates = r.branch

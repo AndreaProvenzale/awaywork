@@ -535,7 +535,7 @@ Status: done
 — awaywork
 ```
 
-A [report task](./how-it-works.md#report-tasks) posts its result on the card whether its rule asks or not; a task that opens a PR posts one only when it does. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a comment after it would read as your answer.
+A [report task](./how-it-works.md#report-tasks) posts its result on the card whether its rule asks or not; a task that opens a PR posts one only when it does. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a second comment would repeat it.
 
 `move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
 
