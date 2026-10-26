@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
-import { formatWhy, planJson } from '../src/cli/format.js'
+import { formatRules, formatWhy, planJson } from '../src/cli/format.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
@@ -240,7 +240,7 @@ describe('plan checks for tasks', () => {
     })
   })
 
-  it('refuses two planned rules on different branches: a re-plan may move a task between them', () => {
+  it('refuses two planned rules for one source on different branches: a re-plan may move a task between them', () => {
     const problems = (rules: string) => {
       try {
         configOf(`  - { skill: plan, deliver: plan }\n${rules}`)
@@ -251,7 +251,7 @@ describe('plan checks for tasks', () => {
     }
     const refused = (i: number) =>
       expect.stringContaining(
-        `queue[${i}].branch: a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule, or on none`,
+        `queue[${i}].branch: a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule for its source, or on none`,
       )
     expect(
       problems(
@@ -263,6 +263,15 @@ describe('plan checks for tasks', () => {
         '  - { skill: implement, branch: "t/{key}", where: { planned: true } }\n  - { skill: fix, branch: "t/{key}", where: { planned: true } }\n  - { skill: fix, branch: "fix/{key}" }\n',
       ),
     ).toEqual([])
+    expect(() =>
+      parseConfig(`providers: [claude: {}]
+sources: { github: { repos: [acme/*] }, jira: { site: a.atlassian.net, email: d@a.test } }
+queue:
+  - { skill: plan, deliver: plan }
+  - { skill: implement, source: github, where: { planned: true } }
+  - { skill: implement, source: jira, branch: "jira/{key}", where: { planned: true } }
+`),
+    ).not.toThrow()
   })
 })
 
@@ -798,6 +807,31 @@ describe('a card carrying a plan', () => {
     ])
     expect(units(plan([moved(approved({ api: pr('api', 'merged') }))], sticky))).toEqual([
       ['acme-api-1-web', 'away/acme-api-1-web'],
+    ])
+  })
+
+  it('stays with the plan rule it still matches when its source has two, else the first', () => {
+    const q =
+      configOf(`  - { skill: plan, deliver: plan, where: { label: feature } }
+  - { skill: review, deliver: plan, where: { label: big } }
+  - { skill: implement, where: { planned: true } }
+`).queue ?? []
+    const big = (item: Item): Item => ({ ...item, fields: { ...item.fields, label: ['big'] } })
+    expect(ruleFor(q, big(card([planned()])))).toBe(1)
+    expect(ruleFor(q, card([planned()]))).toBe(0)
+    expect(ruleFor(q, moved(card([planned()])))).toBe(0)
+  })
+
+  it('shows under plan --rules by the plan rule, marked when its where no longer holds it', () => {
+    expect(formatRules(sticky.queue ?? [], [moved(card([planned()])), card([])])).toEqual([
+      '#1  plan       label=feature deliver=plan',
+      '     2 taken: acme/api#1 (plan), acme/api#1',
+      '#2  implement  planned=true',
+      '     0 taken',
+      '#3  implement  every item',
+      '     0 taken',
+      '     2 taken by #1: acme/api#1, acme/api#1',
+      '0 unmatched',
     ])
   })
 

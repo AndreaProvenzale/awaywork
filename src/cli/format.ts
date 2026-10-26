@@ -8,7 +8,16 @@ import {
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
-import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import {
+  bounds,
+  comparisons,
+  isAge,
+  isLoop,
+  isMatch,
+  matches as matchesRule,
+  ruleMatches,
+  spans,
+} from '../core/queue.js'
 import {
   byKind,
   type Chain,
@@ -407,18 +416,18 @@ export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): strin
 /** What each rule takes now and what earlier rules take from it, then the unmatched items. */
 export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matches = ruleMatches(items, rules)
-  const keys = (list: Item[]) =>
+  const keys = (list: Item[], rule?: Rule) =>
     list.length === 0
       ? ''
       : `: ${list
           .slice(0, 3)
-          .map((i) => i.key)
+          .map((i) => (rule && !matchesRule(rule, i) ? `${i.key} (plan)` : i.key))
           .join(', ')}${list.length > 3 ? ', …' : ''}`
   const width = Math.max(...rules.map((r) => r.skill.length))
   const lines = rules.flatMap((rule, i) => {
     const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
     const block = [`#${i + 1}  ${rule.skill.padEnd(width)}  ${describeRule(rule)}`]
-    block.push(`     ${taken.length} taken${keys(taken)}`)
+    block.push(`     ${taken.length} taken${keys(taken, rule)}`)
     for (const by of new Set(shadowed.map((s) => s.by))) {
       const list = shadowed.filter((s) => s.by === by).map((s) => s.item)
       block.push(`     ${list.length} taken by #${by + 1}${keys(list)}`)

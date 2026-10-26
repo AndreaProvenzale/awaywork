@@ -86,8 +86,8 @@ export function matches(rule: Rule, item: Item): boolean {
 /**
  * The index of the rule that takes the item, -1 for none: the first it matches. A task's is the
  * first `planned` rule for its skill, if it matches. An open card of yours carrying awaywork's plan
- * sticks to the first `deliver: plan` rule for its source, whatever its `where` says now, so a move
- * of the card doesn't strand its tasks nor hand it whole to another rule.
+ * sticks to the `deliver: plan` rule it matches, else the first one for its source whatever its
+ * `where` says now, so a move of the card doesn't strand its tasks nor hand it whole to another rule.
  */
 export function ruleFor(queue: Rule[], item: Item): number {
   if (item.task) {
@@ -95,8 +95,11 @@ export function ruleFor(queue: Rule[], item: Item): number {
     return index >= 0 && matches(queue[index] as Rule, item) ? index : -1
   }
   const planned = item.mine && itemState(item) === 'open' && planThread(item)
-  const plan = planned ? queue.findIndex((r) => r.deliver === 'plan' && eligible(r, item)) : -1
-  return plan >= 0 ? plan : queue.findIndex((r) => matches(r, item))
+  const plans = planned
+    ? queue.flatMap((r, i) => (r.deliver === 'plan' && eligible(r, item) ? [i] : []))
+    : []
+  const plan = plans.find((i) => matches(queue[i] as Rule, item)) ?? plans[0]
+  return plan ?? queue.findIndex((r) => matches(r, item))
 }
 
 /** An awaywork PR waits for review unless a rule names `ours`; a plan's task goes only to a rule naming `planned` with its skill, and only a task does. */
@@ -318,7 +321,7 @@ export function ruleSteps(rule: Rule): { step: ThenStep; at: (string | number)[]
 
 interface RuleMatches {
   taken: Item[]
-  /** Items this rule matches that an earlier rule took, with that rule's index. */
+  /** Items this rule matches that another rule took, with that rule's index: an earlier one, or a plan rule holding its card. */
   shadowed: { item: Item; by: number }[]
 }
 
@@ -330,7 +333,7 @@ export function ruleMatches(items: Item[], queue: Rule[]): RuleMatches[] {
     if (first < 0) continue
     result[first]?.taken.push(item)
     queue.forEach((r, i) => {
-      if (i > first && matches(r, item)) result[i]?.shadowed.push({ item, by: first })
+      if (i !== first && matches(r, item)) result[i]?.shadowed.push({ item, by: first })
     })
   }
   result.forEach((m, i) => {
