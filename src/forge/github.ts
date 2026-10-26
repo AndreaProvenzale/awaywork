@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
+import { isOurs, leftIn } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from './checks.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
@@ -128,6 +128,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           mine: true,
           trusted: true,
           fork: pr.isCrossRepository,
+          ...leftIn(pr.body),
         }))
     },
 
@@ -245,13 +246,19 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
-      const { title, body } = await prText(bodyFile, head, runId, items, status)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left)
       const into = base ? ['--base', base] : []
       const asDraft = draft ? ['--draft'] : []
       const args = ['pr', 'create', '-R', repo, ...asDraft, '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
       return out.trim().split('\n').at(-1) ?? ''
+    },
+
+    async updatePr(repo, pr, bodyFile, runId, items, ready, left) {
+      const { title, body } = await prText(bodyFile, '', runId, items, left)
+      await run('gh', ['pr', 'edit', String(pr), '-R', repo, '--title', title, '--body', body])
+      if (ready) await run('gh', ['pr', 'ready', String(pr), '-R', repo])
     },
 
     /** Starts a stack of the two, or adds `pr` to `below`'s while `below` is its top; a stack can't fork. */

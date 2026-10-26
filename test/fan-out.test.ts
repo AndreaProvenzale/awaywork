@@ -540,6 +540,130 @@ ${queue}`)
   })
 })
 
+describe('a task that goes on in a later run', () => {
+  const draftOf = (status: 'ask' | 'continue', continued = 1, head = 'h1'): TaskPr => ({
+    ...pr('api', 'open'),
+    head,
+    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'] },
+  })
+  // Nothing changed since the last run took the tasks.
+  const unchanged: Attempts = Object.fromEntries(
+    ['api', 'qa'].map((t) => [
+      `github:acme/api#1/${t}`,
+      { runId: 'r1', skill: 'implement', updated: at(5) },
+    ]),
+  )
+  const opened = `tasks:
+  - { id: api, title: A }
+  - { id: web, title: W, after: { api: opened } }
+  - { id: app, title: P, after: { api: CI } }
+`
+  const stacked = (taskPrs: Record<string, TaskPr>) =>
+    card([planned(opened), yours(approveReply(''))], taskPrs)
+
+  it('goes on with its own draft, unchanged as it is, on its branch, and holds its dependents', () => {
+    const p = plan([approved({ api: draftOf('continue') })], config, unchanged)
+    expect(units(p)).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
+    expect(p.units[0]?.unit).toMatchObject({
+      base: 'away/acme-api-1-api',
+      continued: 1,
+      resume: {
+        url: 'https://github.com/acme/api/pull/api',
+        number: 3,
+        from: 'f0',
+        status: 'continue',
+      },
+    })
+    expect(skips(p)[0]).toEqual([
+      'acme/api#1',
+      'fanned_out',
+      'fanned out: api draft says continue, web waits for api',
+    ])
+    // A dependent stacks on it only after it, in the same run; a check on it waits.
+    const both = plan([stacked({ api: draftOf('continue') })], configOf(queue), unchanged)
+    expect(both.units.filter((u) => !u.chain).map((u) => [u.unit.id, u.after])).toEqual([
+      ['acme-api-1-api', undefined],
+      ['acme-api-1-web', 'acme-api-1-api'],
+    ])
+    expect(skips(both)).toContainEqual([
+      'acme/api#1/app',
+      'waiting_for_task',
+      "waiting for api's check CI (its draft says continue)",
+    ])
+  })
+
+  it('stops at the cap, or once its head moved, and needs you', () => {
+    const capped = plan([approved({ api: draftOf('continue', 3) })], config, unchanged)
+    expect(capped.units).toEqual([])
+    expect(skips(capped)).toContainEqual([
+      'acme/api#1/api',
+      'continue_cap',
+      'continued 3 times on https://github.com/acme/api/pull/api: needs you',
+    ])
+    const moved = plan([approved({ api: draftOf('continue', 1, 'h2') })], config, unchanged)
+    expect(skips(moved)).toContainEqual([
+      'acme/api#1/api',
+      'draft_moved',
+      "awaywork's draft https://github.com/acme/api/pull/api moved from h1, where it left it: needs you",
+    ])
+    expect([needsYou.continue_cap, needsYou.draft_moved, needsYou.continues_later]).toEqual([
+      true,
+      true,
+      false,
+    ])
+    // Its dependents wait for it with the reason.
+    const held = plan([stacked({ api: draftOf('continue', 3) })], configOf(queue), unchanged)
+    expect(skips(held)).toContainEqual([
+      'acme/api#1/web',
+      'waiting_for_task',
+      "waiting for task api's draft, which says continue",
+    ])
+  })
+
+  it('goes on only in a window run, but on an answered ask in a soon one too', () => {
+    const soon = configOf(`  - { skill: plan, deliver: plan }
+  - { skill: implement, where: { planned: true }, run: soon }
+`)
+    const run = (taskPrs: Record<string, TaskPr>) =>
+      planRun({
+        config: soon,
+        items: [approved(taskPrs)],
+        allowances,
+        skills: { builtin: builtinSkills },
+        only: { soon: true },
+      })
+    expect(skips(run({ api: draftOf('continue') }))).toContainEqual([
+      'acme/api#1/api',
+      'continues_later',
+      'goes on from https://github.com/acme/api/pull/api in the next window run',
+    ])
+    expect(units(run({ api: draftOf('ask', 0) }))).toEqual([
+      ['acme-api-1-api', 'away/acme-api-1-api'],
+    ])
+  })
+
+  it('runs a report task again while its result says continue, up to the cap', () => {
+    const qaRule = configOf(`${queue}  - { skill: qa, where: { planned: true }, deliver: report }
+`)
+    const qaPlan = `tasks:
+  - { id: qa, title: Q, skill: qa }
+`
+    const result = (continued: number) =>
+      posted(resultComment('Half the screens.', 'continue', 'qa', 'qa', continued), 3)
+    const fanned = (continued: number) =>
+      card([planned(qaPlan), yours(approveReply('')), result(continued)])
+    const again = plan([fanned(1)], qaRule, unchanged)
+    expect(units(again)).toEqual([['acme-api-1-qa', 'away/acme-api-1-qa']])
+    expect(again.units[0]?.unit.continued).toBe(1)
+    expect(skips(again)[0]).toEqual(['acme/api#1', 'fanned_out', 'fanned out: qa no result yet'])
+    expect(skips(plan([fanned(3)], qaRule, unchanged))).toContainEqual([
+      'acme/api#1/qa',
+      'continue_cap',
+      'continued 3 times on https://example.com/1: needs you',
+    ])
+  })
+})
+
 describe("a task's PR", () => {
   const task = {
     card: card([]),

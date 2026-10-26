@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { Status } from './footer.js'
+import type { Left } from './footer.js'
 import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
@@ -23,6 +23,8 @@ export interface PrRef {
   trusted: boolean
   /** Its branch lives on a fork, not in `repo`. */
   fork: boolean
+  /** On an awaywork draft for a later run: what its footer says it left. */
+  left?: Left & { items: string[] }
 }
 
 export interface Item {
@@ -238,7 +240,7 @@ export interface Forge {
     from: string,
     opts: { repo: string; pr: number },
   ): Promise<string | undefined>
-  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`, its footer recording `status`. */
+  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`, its footer recording what it `left`. */
   openPr(
     repo: string,
     head: string,
@@ -247,8 +249,18 @@ export interface Forge {
     runId: string,
     items: Pick<Item, 'source' | 'key'>[],
     draft: boolean,
-    status?: Status,
+    left?: Left,
   ): Promise<string>
+  /** Rewrites PR `pr`'s title and body as `openPr` writes them, and marks it ready for review when `ready`. */
+  updatePr(
+    repo: string,
+    pr: number,
+    bodyFile: string,
+    runId: string,
+    items: Pick<Item, 'source' | 'key'>[],
+    ready: boolean,
+    left?: Left,
+  ): Promise<void>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
   /**
@@ -370,6 +382,10 @@ export interface Unit {
   gates?: Record<string, Gate>
   /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
   stackedOn?: string
+  /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
+  resume?: { url: string; number: number; from: string; status: 'ask' | 'continue' }
+  /** The times the unit said `continue` so far, on its draft or in its result. */
+  continued?: number
   branch: string
   rule: Step
   skill: string

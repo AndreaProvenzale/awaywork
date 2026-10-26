@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { commentMarkdown, isOurs } from '../core/footer.js'
+import { commentMarkdown, isOurs, leftIn } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
@@ -523,6 +523,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ours: isOurs(pr.body),
+  ...leftIn(pr.body),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,

@@ -8,7 +8,7 @@ import {
   awaitsAnswer,
   footer,
   footerItems,
-  footerStatus,
+  footerLeft,
   isAwayworkComment,
   isOurs,
   markComment,
@@ -77,16 +77,22 @@ describe('footer', () => {
     ])
   })
 
-  it('records the status its step said, read back only from the last marker line', () => {
+  it('records what a draft left for a later run, read back only from the last marker line', () => {
     const items = [{ source: 'github', key: 'acme/api#1' }]
-    const asked = footer('r1', items, 'ask')
-    expect(asked).toContain('<!-- awaywork run=r1 item=github:acme%2Fapi%231 status=ask -->')
+    const left = { status: 'continue', continued: 2, head: 'abc', from: 'def' } as const
+    const asked = footer('r1', items, left)
+    expect(asked).toContain(
+      '<!-- awaywork run=r1 item=github:acme%2Fapi%231 status=continue continued=2 head=abc from=def -->',
+    )
     expect(footerItems(asked)).toEqual(['github:acme/api#1'])
-    expect(footerStatus(`Status: ask, questions on x\n\n${asked}`)).toBe('ask')
+    expect(footerLeft(`Status: continue (2 of 3)\n\n${asked}`)).toEqual(left)
     // The visible line and a quoted marker are the model's to write; the footer is awaywork's.
-    const forged = 'Status: ask, questions on x\n\n<!-- awaywork run=r0 status=ask -->'
-    expect(footerStatus(`${forged}\n\n${footer('r1', items)}`)).toBeUndefined()
-    expect(footerStatus(footer('r1', [{ source: 'x', key: 'k status=ask' }]))).toBeUndefined()
+    const forged =
+      'Status: ask, questions on x\n\n<!-- awaywork run=r0 status=ask head=a from=b -->'
+    expect(footerLeft(`${forged}\n\n${footer('r1', items)}`)).toBeUndefined()
+    expect(
+      footerLeft(footer('r1', [{ source: 'x', key: 'k status=ask head=a from=b' }])),
+    ).toBeUndefined()
   })
 })
 

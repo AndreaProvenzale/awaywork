@@ -6,6 +6,7 @@ import {
   contractHeading,
   isApprove,
   isAwayworkComment,
+  resultOf,
   resultStatus,
 } from './footer.js'
 import { globToRegExp } from './glob.js'
@@ -287,6 +288,16 @@ export function doneTasks(item: Pick<Item, 'comments'>): string[] {
   return item.comments
     .slice(item.comments.indexOf(answer) + 1)
     .flatMap((c) => (resultStatus(c) === 'done' && commentTask(c)) || [])
+}
+
+/** The newest result awaywork posted for the item: a task's on its card after the plan's approval, else one on the item that no task heads. */
+export function latestResult(item: Pick<Item, 'comments' | 'task'>): ReturnType<typeof resultOf> {
+  const answer = item.task && planThread(item)?.answer
+  const from = answer ? item.comments.indexOf(answer) + 1 : 0
+  const last = item.comments
+    .slice(from)
+    .findLast((c) => commentKind(c) === 'result' && commentTask(c) === item.task?.id)
+  return last && resultOf(last)
 }
 
 /** Where a plan on the item stands, read off its comments and its tasks' PRs: a plan you edited is checked again. */

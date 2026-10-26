@@ -1,4 +1,5 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
+import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { type Allowance, pct, presenceLine } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import { cardRepo, unpassed } from '../core/fanout.js'
@@ -239,6 +240,8 @@ export function planUnitTable(
     })
     const repo = taskRepo(p.unit.items[0])
     if (repo) out.push(`   in ${repo}`)
+    const goes = goesOnLine(p)
+    if (goes) out.push(`   ${goes}`)
     const stacks = stackLine(p)
     if (stacks) out.push(`   ${stacks}`)
     const waits = waitLine(p)
@@ -385,6 +388,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (!item) return
     const passed = p.passed.length > 0 ? ` (${p.passed.join('; ')})` : ''
     const rule = plan.queue[p.rule]
+    const goes = goesOnLine(p)
     const stacks = stackLine(p)
     const waits = waitLine(p)
     const rows = [
@@ -394,6 +398,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['provider', `${p.provider ?? 'none left'}${passed}`],
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
+      ...(goes ? [['goes on', goes]] : []),
       ...(stacks ? [['stack', stacks]] : []),
       ...(waits ? [['waits', `for ${waits}`]] : []),
       ...checkLines(p).map((check) => ['check', check]),
@@ -472,6 +477,14 @@ function checkText(task: NonNullable<Item['task']>, id: string, name: string): s
   const pr = task.parent.taskPrs?.[id]
   const state = pr?.state === 'merged' ? `${id} merged` : (unpassed(pr, name) ?? 'passed')
   return `${id}'s check ${name} (${state})`
+}
+
+/** How a unit goes on from an earlier run: on awaywork's own draft, or after its `continue` result. */
+function goesOnLine({ unit }: PlannedUnit): string | undefined {
+  const count = `continue (${unit.continued} of ${MAX_ATTEMPTS})`
+  if (unit.resume)
+    return `goes on with its draft ${unit.resume.url}, which ${unit.resume.status === 'ask' ? 'asked questions' : `said ${count}`}`
+  if (unit.continued) return `goes on from its result, which said ${count}`
 }
 
 /** The task an open PR's stack puts a task's chain after, and that PR's number. */

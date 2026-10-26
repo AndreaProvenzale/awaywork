@@ -164,7 +164,7 @@ export function summaryOf(text: string, titled = false): string | undefined {
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: ask\b/.test(p))
+    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: (ask|continue)\b/.test(p))
   if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
   return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }

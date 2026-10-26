@@ -1,6 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { footerItems, hasTrailer } from '../core/footer.js'
+import { MAX_ATTEMPTS } from '../core/attempts.js'
+import { footerItems, hasTrailer, type Left } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import {
   type Check,
@@ -36,6 +37,9 @@ export interface OpenLoop {
   /** Its `until` held. */
   held?: true
 }
+
+/** Why a slice's draft waits for a later run: its step asked, its questions on `url`, or said `continue`; and the times its unit said `continue` so far. */
+export type Held = Pick<Left, 'status' | 'continued'> & { url?: string }
 
 /** A step's report, and its `out/` as copied to the run dir. */
 export type StepReport = { id: string; skill: string; text: string; out: string }
@@ -111,7 +115,8 @@ export interface Publisher {
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
  * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
- * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step asked questions (`asked`, whose status line then tops the body), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step's status file said `ask` or `continue` (`held`, whose status line then tops the body), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
+ * On a unit that resumes awaywork's own draft, verify and gates read all of the draft's commits, and it publishes without new ones too.
  * With gates, the PR body, or a push's summary, which goes only in the report, opens with their section: the decision card with each fired gate's line, else the gates that ran.
  * `start` is the commit gates check their scripts against: the clone's before the chain's setup and workers, or where an awaywork PR it took up left the default branch.
  */
@@ -126,11 +131,11 @@ export async function publishSlice(
   stack?: Stack,
   closes = false,
   failedStep?: string,
-  asked?: { url?: string },
+  held?: Held,
 ): Promise<Outcome> {
   const { deliver } = unit
   const out = join(dir, WORK_DIR, 'out')
-  if (reportsOnly(deliver) || (await commitsSince(dir, from)) === 0) {
+  if (reportsOnly(deliver) || (!unit.resume && (await commitsSince(dir, from)) === 0)) {
     const text = reports.length === 1 ? (reports[0]?.text ?? '') : joinReports(reports)
     if (!text)
       return { kind: 'none', reason: reportsOnly(deliver) ? 'no report written' : 'nothing' }
@@ -145,17 +150,21 @@ export async function publishSlice(
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
-  const failed = await verify(deps, unit, dir, from)
-  const fired = await runGates(deps.check, unit, dir, from, start)
-  fired.push(...(await runJudges(deps.judge, unit, dir, from)))
+  const checked = unit.resume?.from ?? from
+  const failed = await verify(deps, unit, dir, checked)
+  const fired = await runGates(deps.check, unit, dir, checked, start)
+  fired.push(...(await runJudges(deps.judge, unit, dir, checked)))
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {
     const section = gatesSection(Object.keys(unit.gates), fired)
     await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
   }
-  if (asked) {
-    const line = `Status: ask${asked.url ? `, questions on ${asked.url}` : ''}`
+  if (held) {
+    const line =
+      held.status === 'ask'
+        ? `Status: ask${held.url ? `, questions on ${held.url}` : ''}`
+        : `Status: continue (${held.continued} of ${MAX_ATTEMPTS}): awaywork's next window run goes on here`
     const section = unit.gates ? line : `${line}\n\n---`
     await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
   }
@@ -164,8 +173,8 @@ export async function publishSlice(
   const why =
     unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
   const gated = describeFired(fired)
-  const notReady = failedStep ?? (asked && 'asked questions') ?? failed ?? why ?? gated
-  const status = asked && 'ask'
+  const said = held && (held.status === 'ask' ? 'asked questions' : 'the agent will continue')
+  const notReady = failedStep ?? said ?? failed ?? why ?? gated
   const outcome = await publish(
     unit,
     dir,
@@ -175,7 +184,7 @@ export async function publishSlice(
     stack,
     closes,
     notReady,
-    status,
+    held && { status: held.status, continued: held.continued },
   )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
-import { type Status, trailerKey } from '../core/footer.js'
+import { type Left, trailerKey } from '../core/footer.js'
 import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
@@ -18,6 +18,8 @@ export type Outcome =
       ready?: true
       /** Why a `deliver: pr` PR opened as a draft. */
       draft?: string
+      /** The draft waits for a later run: its step asked questions or said `continue`. */
+      held?: Left['status']
     }
   | {
       kind: 'report'
@@ -57,8 +59,10 @@ const git = async (dir: string, ...args: string[]) =>
 
 /**
  * Delivers a finished unit: a PR only with commits, a PR body and a branch new to the remote, a draft
- * unless it's `deliver: pr` and nothing left it `notReady`, its footer recording the `status` its step said;
- * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch.
+ * unless it's `deliver: pr` and nothing left it `notReady`, its footer recording what it left a later run when `held`;
+ * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch;
+ * on a unit that resumes awaywork's own draft, a fast-forward onto its branch, with or without commits, its body
+ * rewritten from `pr.md` and the draft marked ready once nothing holds it, as a new PR would open.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
@@ -73,7 +77,7 @@ export async function publish(
   stack?: Stack,
   closes = false,
   notReady?: string,
-  status?: Status,
+  held?: Pick<Left, 'status' | 'continued'>,
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -99,7 +103,7 @@ export async function publish(
       stack?.onto,
       closes,
       notReady,
-      status,
+      held,
     )
   } finally {
     if (!stack) await rm(repo, { recursive: true, force: true })
@@ -117,9 +121,10 @@ async function deliver(
   onto?: string,
   closes = false,
   notReady?: string,
-  status?: Status,
+  held?: Pick<Left, 'status' | 'continued'>,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
+  const { resume } = unit
   // The harness forbids rebasing: a branch that dropped `start` holds work that isn't the unit's alone.
   const holds = await git(repo, 'merge-base', '--is-ancestor', start, 'work').then(
     () => true,
@@ -134,7 +139,7 @@ async function deliver(
   const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
-  if (!oldest) return { kind: 'none', reason: 'nothing' }
+  if (!oldest && !resume) return { kind: 'none', reason: 'nothing' }
   if (!text)
     return {
       kind: 'none',
@@ -157,23 +162,25 @@ async function deliver(
       reason: `${counted(commits.length, 'commit')} include a merge, not pushed`,
       unpublished: true,
     }
-  if (!push && (await forge.branchExists(unit.repo, unit.branch)))
+  if (!push && !resume && (await forge.branchExists(unit.repo, unit.branch)))
     return {
       kind: 'none',
       reason: `${unit.branch} already exists on ${unit.repo}, not pushed`,
       unpublished: true,
     }
 
-  const head = await withTrailer(
-    repo,
-    commits,
-    `${trailerKey}: ${runId}`,
-    new Map(onto ? [[start, onto]] : []),
-  )
+  const head = oldest
+    ? await withTrailer(
+        repo,
+        commits,
+        `${trailerKey}: ${runId}`,
+        new Map(onto ? [[start, onto]] : []),
+      )
+    : start
   await git(repo, 'update-ref', 'HEAD', head)
   await writeOutput(
     join(dirname(file), 'diff.patch'),
-    `${await git(repo, 'diff', '--no-ext-diff', '--no-textconv', `${oldest}^`, head)}\n`,
+    `${await git(repo, 'diff', '--no-ext-diff', '--no-textconv', oldest ? `${oldest}^` : start, head)}\n`,
   )
   if (push && pr) {
     // The forge refuses unless the PR's head is still `start`.
@@ -184,7 +191,14 @@ async function deliver(
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
     return { kind: 'pushed', branch: unit.base, url: pr.url, commits: commits.length, text, head }
   }
-  await forge.push(repo, unit.branch, { repo: unit.repo })
+  if (resume && oldest) {
+    // The forge refuses unless the draft's head is still `start`, the one awaywork left.
+    const refused = await forge.fastForward(repo, unit.base, start, {
+      repo: unit.repo,
+      pr: resume.number,
+    })
+    if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
+  } else if (!resume) await forge.push(repo, unit.branch, { repo: unit.repo })
   // The items' link lines let their trackers link the PR, whatever its branch is called.
   const notes = [...new Set(unit.items.flatMap((i) => i.link ?? []))]
   // GitHub closes an issue when the last slice merges into the default branch, after the retarget.
@@ -194,6 +208,16 @@ async function deliver(
   if (unit.stackedOn) notes.push(`Stacked on ${unit.stackedOn}: merge that first.`)
   if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
   const ready = unit.deliver === 'pr' && !notReady
+  // A later run goes on from the head this one leaves; gates and verify read the draft's commits from `from` on.
+  const left = held && { ...held, head, from: resume?.from ?? onto ?? start }
+  const opened = {
+    ...(ready ? { ready } : unit.deliver === 'pr' && { draft: notReady }),
+    ...(held && { held: held.status }),
+  }
+  if (resume) {
+    await forge.updatePr(unit.repo, resume.number, file, runId, unit.items, ready, left)
+    return { kind: 'pr', url: resume.url, commits: commits.length, head, ...opened }
+  }
   const url = await forge.openPr(
     unit.repo,
     unit.branch,
@@ -202,11 +226,10 @@ async function deliver(
     runId,
     unit.items,
     !ready,
-    status,
+    left,
   )
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
-  const opened = ready ? { ready } : unit.deliver === 'pr' ? { draft: notReady } : {}
   return { kind: 'pr', url, commits: commits.length, head, ...opened }
 }
 

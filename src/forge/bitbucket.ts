@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
+import { isOurs, leftIn } from '../core/footer.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
@@ -123,6 +123,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
+          ...leftIn(pr.description),
         }))
     },
 
@@ -186,8 +187,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return "Bitbucket can't push onto a PR: twg reads neither branch restrictions nor auto-merge"
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
-      const { title, body } = await prText(bodyFile, head, runId, items, status)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
       try {
         const file = join(dir, 'description.md')
@@ -197,6 +198,20 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
         const args = ['bb', 'prs', 'create', '-r', repo, ...asDraft, '--source', head, ...into]
         const pr = await twg<Pr>(run, [...args, '--title', title, '--description-file', file])
         return pr.links.html.href
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+
+    async updatePr(repo, pr, bodyFile, runId, items, ready, left) {
+      const { title, body } = await prText(bodyFile, '', runId, items, left)
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
+      try {
+        const file = join(dir, 'description.md')
+        await writeFile(file, body)
+        const args = ['bb', 'prs', 'update', '--pull-request', String(pr), '-r', repo]
+        const asReady = ready ? ['--ready'] : []
+        await twg(run, [...args, ...asReady, '--title', title, '--description-file', file])
       } finally {
         await rm(dir, { recursive: true, force: true })
       }
