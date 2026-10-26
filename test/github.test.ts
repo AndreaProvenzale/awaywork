@@ -430,6 +430,7 @@ describe('github source', () => {
     expect(checks).not.toContain('line 51\n')
     expect(checks).toContain('line 52\n')
     expect(checks).toContain('## sonar: FAILURE\n\nhttps://sonar.example.com/acme-api/1')
+    expect(checks).toContain('## deploy: CANCELLED\n\nhttps://deploy.example.com/acme-api/1')
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
   })

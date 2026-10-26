@@ -164,6 +164,13 @@
                         "detailsUrl": "https://sonar.example.com/acme-api/1"
                       },
                       {
+                        "__typename": "CheckRun",
+                        "status": "COMPLETED",
+                        "name": "deploy",
+                        "conclusion": "CANCELLED",
+                        "detailsUrl": "https://deploy.example.com/acme-api/1"
+                      },
+                      {
                         "__typename": "StatusContext",
                         "context": "ci/legacy",
                         "state": "ERROR",
