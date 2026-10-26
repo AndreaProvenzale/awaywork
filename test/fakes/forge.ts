@@ -7,6 +7,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   reviews: ({ repo: string; pr: number; head: string } & Review)[]
   heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]>
   tips: Record<string, string>
+  files: Record<string, string>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
@@ -14,6 +15,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   const reviews: ({ repo: string; pr: number; head: string } & Review)[] = []
   const heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]> = {}
   const tips: Record<string, string> = {}
+  const files: Record<string, string> = {}
   return {
     branches,
     fastForwards,
@@ -21,6 +23,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     reviews,
     heads,
     tips,
+    files,
     clone: async () => {},
     prsFor: async (item: Item) => prs.filter((pr) => pr.branch.includes(item.key)),
     branchExists: async (repo, name) => branches.has(`${repo}:${name}`),
@@ -32,6 +35,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
         ...pr,
       })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',
+    fileAt: async (repo, ref, path) => files[`${repo}@${ref}:${path}`],
     push: async (_dir, branch, { repo }) => {
       if (branches.has(`${repo}:${branch}`)) throw new Error(`${branch} already exists`)
       branches.add(`${repo}:${branch}`)

@@ -118,7 +118,7 @@ describe('after: opened in a plan', () => {
     const text = planContract(limits)
     expect(text).toContain('a map from other task ids to `merged` or `opened`')
     expect(text).toContain("its PR stacks on that task's PR")
-    expect(text).toContain("A task's `opened` tasks must lie on one chain")
+    expect(text).toContain("A task's `opened` tasks in its own repo must lie on one chain")
   })
 })
 

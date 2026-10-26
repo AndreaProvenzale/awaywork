@@ -962,6 +962,29 @@ describe('github forge', () => {
     expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/away/eng-12']))
   })
 
+  it('reads a file at a ref, and nothing for a missing path or a folder', async () => {
+    const calls: string[][] = []
+    const run = async (cmd: string, args: string[]) => {
+      calls.push([cmd, ...args])
+      const path = args[1] ?? ''
+      if (path.includes('missing')) throw new Error('gh: Not Found (HTTP 404)')
+      if (path.includes('gen?')) return JSON.stringify([{ type: 'file' }])
+      const content = Buffer.from('openapi: 3.1.0\n').toString('base64')
+      return JSON.stringify({ type: 'file', encoding: 'base64', content })
+    }
+    const forge = githubForge(run)
+    expect(await forge.fileAt('acme/api', 'away/eng 12', 'api/openapi.yaml')).toBe(
+      'openapi: 3.1.0\n',
+    )
+    expect(calls[0]).toEqual([
+      'gh',
+      'api',
+      'repos/acme/api/contents/api/openapi.yaml?ref=away%2Feng%2012',
+    ])
+    expect(await forge.fileAt('acme/api', 'abc123', 'missing.yaml')).toBeUndefined()
+    expect(await forge.fileAt('acme/api', 'abc123', 'gen')).toBeUndefined()
+  })
+
   it('checks branch existence by exact name, not prefix', async () => {
     const run = recorded([
       [/heads\/away\/acme-api-1$/, fixture('matching-refs-prefix.json')],

@@ -59,7 +59,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { number url body state closedAt isCrossRepository }
+      nodes { number url body state closedAt headRefOid isCrossRepository }
     }
   }
 }`
@@ -140,6 +140,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
               body: string
               state: 'OPEN' | 'CLOSED' | 'MERGED'
               closedAt: string | null
+              headRefOid: string
               isCrossRepository: boolean
             }[]
           }
@@ -147,10 +148,11 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
         .filter((pr) => !pr.isCrossRepository)
-        .map(({ number, url, body, state, closedAt }) => ({
+        .map(({ number, url, body, state, closedAt, headRefOid }) => ({
           url,
           number,
           body,
+          head: headRefOid,
           open: state === 'OPEN',
           merged: state === 'MERGED',
           ...(closedAt && { closedAt }),
@@ -163,6 +165,22 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
         repository: { ref: { target: { message?: string } } | null }
       }>(run, tipQuery, { owner, name, ref: `refs/heads/${branch}` })
       return repository.ref?.target.message ?? ''
+    },
+
+    async fileAt(repo, ref, path) {
+      const at = path.split('/').map(encodeURIComponent).join('/')
+      const out = await run('gh', [
+        'api',
+        `repos/${repo}/contents/${at}?ref=${encodeURIComponent(ref)}`,
+      ]).catch((e: Error) => {
+        if (/HTTP 404/.test(e.message)) return undefined
+        throw e
+      })
+      const file = out === undefined ? undefined : JSON.parse(out)
+      if (file?.type !== 'file') return undefined
+      // The contents API leaves a file over 1 MB out.
+      if (file.encoding !== 'base64') throw new Error(`${path} is over 1 MB`)
+      return Buffer.from(file.content, 'base64').toString('utf8')
     },
 
     async push(dir, branch, { repo }) {

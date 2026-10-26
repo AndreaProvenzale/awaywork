@@ -216,6 +216,7 @@ describe('plan checks for tasks', () => {
     expect(unit?.planLimits).toEqual({
       maxTasks: 8,
       repo: 'acme/api',
+      repos: ['acme/*'],
       skills: ['implement'],
       noPr: ['review'],
       retired: {},
@@ -897,7 +898,7 @@ describe('a card carrying a plan', () => {
 
 /** The example plan's tasks, checked. */
 function checkPlanTasks() {
-  const checked = checkPlan(yaml, { maxTasks: 8 })
+  const checked = checkPlan(yaml, { maxTasks: 8, repo: 'acme/api' })
   return 'plan' in checked ? checked.plan.tasks : []
 }
 

@@ -69,7 +69,7 @@ describe('plan.yml', () => {
     expect(problem(`tasks:\n${task('-api')}`)).toMatch(/^task id "-api" isn't/)
     expect(problem(`tasks:\n${task('api')}${task('api')}`)).toBe('task id "api" is used twice')
     expect(problem(`tasks:\n${task('api', ', repo: acme/web')}`)).toBe(
-      "task api: repo acme/web isn't the card's (acme/api)",
+      "task api: repo acme/web isn't the card's (acme/api) or one the config names",
     )
     expect(problem(`tasks:\n${task('web', ', after: { db: merged }')}`)).toBe(
       'task web: after names no task "db"',
