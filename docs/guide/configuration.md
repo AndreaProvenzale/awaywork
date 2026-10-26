@@ -210,7 +210,7 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
      Appends one line to notes.txt, from a stub provider.
 ```
 
-`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. What Bitbucket doesn't do yet:
+`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. A [plan](./how-it-works.md#plans) fans out there too: twg looks up each task's PR, reads the files a task in another repo [ships](./how-it-works.md#across-repos), and the build statuses a task [waits on](./how-it-works.md#waiting-on-a-check) by name. What Bitbucket doesn't do yet:
 
 - **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
 - **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.

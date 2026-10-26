@@ -183,7 +183,7 @@ queue:
     deliver: pr
 ```
 
-The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's when unset, or another the config names, see [Across repos](#across-repos)), `ships`, the files its PR will hold that tasks in other repos need, and `after`, which maps other task ids to `merged` or `opened` (see [The feature block](#the-feature-block)), the `opened` ones of a task in its repo on one chain. Next to `tasks:`, an optional `contract:` names one file the step wrote under `.away/out/`, an OpenAPI diff or a schema the tasks share, which awaywork posts with the plan. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every repo one the config names, `ships` paths inside the repo, every `after` naming another task, no cycles, a task's `opened` tasks in its repo on one chain, a `contract` under `.away/out/`, no key it doesn't know), then posts the report, the contract and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence, a [contract](#across-repos)'s heading and fence when there's one, and the last two paragraphs:
+The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's when unset, or another the config names, see [Across repos](#across-repos)), `ships`, the files its PR will hold that tasks in other repos need, and `after`, which maps other task ids to `merged`, `opened` (see [The feature block](#the-feature-block)) or the name of a check on that task's PR (see [Waiting on a check](#waiting-on-a-check)), the `opened` and check ones of a task in its repo on one chain. Next to `tasks:`, an optional `contract:` names one file the step wrote under `.away/out/`, an OpenAPI diff or a schema the tasks share, which awaywork posts with the plan. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every repo one the config names, `ships` paths inside the repo, every `after` naming another task, no cycles, a task's `opened` and check tasks in its repo on one chain, a `contract` under `.away/out/`, no key it doesn't know), then posts the report, the contract and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence, a [contract](#across-repos)'s heading and fence when there's one, and the last two paragraphs:
 
 ````
 VAT export lands in two PRs: the endpoint first, then the button that calls it.
@@ -322,7 +322,7 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 - A task's branch is its name for good: when something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task` rather than taking `-2`, which its PR lookup wouldn't find. A configured [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in the template a `planned` rule uses, its own or the one it inherits, is a config error. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does.
 - A task branch awaywork pushed whose PR then failed to open still reads `no PR yet` on the card and in `awaywork plan`, since the PR is the task's state. The run skips it, `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`, in each morning report; delete the branch and the next run starts the task over.
 - A task takes no approval of its own: the plan's covers it, so its `approved` is always false, and `awaywork approve tracker:ENG-2101/api` is refused.
-- Bitbucket can't list a task's merged and closed PRs through twg yet, so a card there stops at its approved plan: `plan approved, but its tasks don't run on Bitbucket yet`.
+- On [Bitbucket](./configuration.md#bitbucket-and-jira) it all works the same, through twg: a declined or superseded PR counts as closed unmerged, when it was last updated, and a stacked task's PR goes into the branch of the one below, since Bitbucket has no stacks.
 
 ### The feature block
 
@@ -330,6 +330,7 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 
 - **`merged`**: run after run, until that task's PR merges. Then the task is cut from the default branch, which has it. One PR lands before the next one starts, each reviewed on its own.
 - **`opened`**: only until that task's PR opens, which happens in the same run. The task's clone starts from that task's branch and its PR stacks on that task's PR, so the whole feature is up for review in the morning, as a stack. A task in [another repo](#across-repos) only waits.
+- **a check's name**, like `Vercel Preview`: `opened`, plus that check passing on the PR, which takes a later run. See [Waiting on a check](#waiting-on-a-check).
 
 The run that sees a card runs its tasks back to back, as one block: those that can run, in the order they wait on each other, before the next unit starts, wherever the first of them ranks in the queue. A task joins the block when every `merged` task it names has merged and every `opened` one has an open or merged PR, or runs earlier in the block. So a block stops only at `merged`, which needs you to merge something.
 
@@ -395,7 +396,7 @@ The card, run by run:
 | `api` merged before `web` ran | `fanned out: api merged, web no PR yet` | `web` is cut from the default branch |
 | Both PRs are open | `fanned out: api PR open, web PR open` | both wait for your review |
 
-- A task's `opened` tasks lie on one chain, each after the one before, and it stacks on the last of them. With `api` after `{ schema: opened }`, `web` after `{ api: opened, schema: opened }` stacks on `api`, which holds `schema`. Once that PR merged, the task stacks on the first PR down the stack that hasn't: with `api`'s PR merged into `schema`'s branch, `web` after `{ api: opened }` stacks on `schema`, as `after api, stacks on schema's #10`, and it's cut from the default branch only once the whole stack merged. Two that aren't on one chain leave nowhere to stack, so the plan isn't posted: `task web: its opened tasks api, schema aren't on one chain: make each after the one before, e.g. schema after api: opened`.
+- A task's `opened` tasks, its check ones too, lie on one chain, each after the one before, and it stacks on the last of them. With `api` after `{ schema: opened }`, `web` after `{ api: opened, schema: opened }` stacks on `api`, which holds `schema`. Once that PR merged, the task stacks on the first PR down the stack that hasn't: with `api`'s PR merged into `schema`'s branch, `web` after `{ api: opened }` stacks on `schema`, as `after api, stacks on schema's #10`, and it's cut from the default branch only once the whole stack merged. Two that aren't on one chain leave nowhere to stack, so the plan isn't posted: `task web: its opened tasks api, schema aren't on one chain: make each after the one before, e.g. schema after api: opened`.
 - `merged` and `opened` mix on one task: `merged` says when it can start, `opened` where. `web` after `{ schema: merged, api: opened }` waits as `waiting for task schema's PR to merge`, and once it merged, stacks on `api`. `merged` means on the default branch: when `api` stacks on `schema` and merges into `schema`'s branch first, `web` after `{ api: merged }` waits as `waiting for task schema's PR to merge, api's merged into it`.
 - A task waiting on an `opened` task that doesn't run this run (it's waiting for an answer, unchanged, gave up, left out by a cap) is skipped as `waiting for task api's PR to open`. Caps and the window's end can cut a block; the next run carries on from the task with no PR.
 - A stacked task is a unit like any other, with its own clone, `setup` and branch. That clone starts on a branch a worker wrote, so `setup` gets none of the repo's `secrets`, as on any awaywork PR a rule takes up again ([Safety](./safety.md#what-the-agent-can-reach)). So a repo whose `setup` needs a secret, a private registry token for `pnpm install` say, can't use `opened`: every stacked task fails setup, run after run. Use `merged` there.
@@ -507,7 +508,74 @@ The card, run by run:
 | `api` merged before `web` ran | `fanned out: api merged, web no PR yet` | `web` runs, with `openapi.yaml` as `api`'s merged PR left it |
 | Both PRs are open | `fanned out: api PR open, web PR open` | both wait for your review, each in its repo |
 
-Bitbucket stays where [Tasks](#tasks) left it: a card there stops at its approved plan.
+On Bitbucket a shipped file is read through twg (`twg bb repo file`), at the PR's branch or, once merged, its head commit.
+
+### Waiting on a check
+
+Some work needs more than an open PR: the button wants the endpoint deployed to try against. Vercel, Netlify and Expo report their previews as checks on the PR, so name the check in `after`, exactly as the PR shows it:
+
+```yaml
+tasks:
+  - id: api
+    title: VAT export endpoint
+    description: Add GET /exports/vat to src/routes/exports.ts.
+    ships: [openapi.yaml]
+  - id: web
+    title: Export button
+    description: Add an Export button to the reports page, tried against api's preview.
+    repo: acme/web
+    after: { api: Vercel Preview }
+```
+
+Anything in `after` but `merged` and `opened` is a check's name, matched letter for letter. It means `opened`, plus that check passing: its latest run or status on the PR's head commit succeeded (on GitHub, a check run that's neutral or skipped passes too, as for a required check). A merged PR counts as passed. Until then the task waits, run after run, saying where the check stands:
+
+```text
+$ awaywork plan --skipped
+Needs you 1
+  ENG-2101/api: waiting for review: awaywork PR https://github.com/acme/backend/pull/41 is open
+Skipped 2: 1 fanned_out, 1 waiting_for_task
+  ENG-2101: fanned out: api PR open, web waits for api's check Vercel Preview
+  ENG-2101/web: waiting for api's check Vercel Preview (pending)
+```
+
+`pending`, `failing` or `not reported` (no check by that name on the head, check the spelling), or `no PR yet`. A failing check keeps waiting, since a [`fix`](./configuration.md#queue-rules) rule may fix it, or you re-plan. A check never passes in the run that opened the PR, so a task after one never joins that run's [block](#the-feature-block): `api` opens its PR tonight, and `web` runs the first run after its preview is up. Once it passed, `awaywork plan` says so:
+
+```text
+Units 1
+     item          rule  skill                 provider  deliver  title
+  1  ENG-2101/web  #2    implement (built-in)  fake      pr       Export button
+     in acme/web
+     after api's check Vercel Preview (passed)
+```
+
+```text
+$ awaywork plan --why ENG-2101/web
+tracker ENG-2101/web  Export button
+  https://acme.atlassian.net/browse/ENG-2101
+  task web of the plan on ENG-2101, in acme/web
+  after api's check Vercel Preview in acme/backend (PR #41 open, passed)
+  planned
+    unit      1, eng-2101-web
+    rule      #2 planned=true deliver=pr
+    skill     implement (built-in)
+    provider  fake
+    deliver   pr
+    branch    away/ENG-2101-web
+    check     api's check Vercel Preview (passed)
+```
+
+In the same repo a check's name stacks like `opened`: `web` is cloned from `api`'s branch and its PR stacks on `api`'s, and it counts with the `opened` tasks toward the [one chain](#the-feature-block). In another repo it only waits, and gets what the task ships, as `opened` does there. awaywork reads a PR's checks only when some task names one of them, so a plan without check names costs no extra calls, and a read that fails skips the card, like a task PR it couldn't read. `plan --json` has them on the card, under `taskPrs.api.checks`.
+
+The card, run by run:
+
+| What happened | The card | Its tasks |
+| --- | --- | --- |
+| You approved | `fanned out: api no PR yet, web waits for api's check Vercel Preview` | `api` opens its PR; `web` is skipped as `waiting for api's check Vercel Preview (no PR yet)` |
+| The preview is building, or failed | `fanned out: api PR open, web waits for api's check Vercel Preview` | `web` is skipped as `(pending)` or `(failing)` |
+| The preview is up | `fanned out: api PR open, web no PR yet` | `web` runs, cut from `acme/web`'s default branch, with `api`'s `openapi.yaml` |
+| `api` merged first | `fanned out: api merged, web no PR yet` | `web` runs: a merged PR counts as passed |
+
+On Bitbucket, checks are the build statuses on the PR's head commit, by name, read with `twg bb prs get --statuses`; `SUCCESSFUL` passes, `INPROGRESS` is pending, `FAILED` and `STOPPED` are failing.
 
 ## The morning report
 
