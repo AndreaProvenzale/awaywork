@@ -1255,6 +1255,32 @@ describe('github forge', () => {
     expect(run.calls[1]).not.toContain('--draft')
   })
 
+  it("rewrites a draft's title and body with the footer it left, and marks it ready only when asked", async () => {
+    const dir = await tmp()
+    const body = join(dir, 'PR_BODY.md')
+    await writeFile(body, 'Export screen\n\nDone.\n')
+    const run = recorded([[/^gh pr (edit|ready)/, '']])
+    const items = [fakeItem({ source: 'github', key: 'acme/web#3' })]
+    const left = { status: 'continue', continued: 2, head: 'abc', from: 'def' } as const
+    await githubForge(run).updatePr('acme/web', 13, body, 'r2', items, false, left)
+    expect(run.calls).toEqual([
+      [
+        'gh',
+        'pr',
+        'edit',
+        '13',
+        '-R',
+        'acme/web',
+        '--title',
+        'Export screen',
+        '--body',
+        `Done.\n\n${footer('r2', items, left)}`,
+      ],
+    ])
+    await githubForge(run).updatePr('acme/web', 13, body, 'r3', items, true)
+    expect(run.calls.at(-1)).toEqual(['gh', 'pr', 'ready', '13', '-R', 'acme/web'])
+  })
+
   it('stacks a PR on the one below it: a new stack, the top of its stack, never mid-stack', async () => {
     const stack = (prs: number[]) =>
       JSON.stringify([{ number: 7, pull_requests: prs.map((number) => ({ number })) }])

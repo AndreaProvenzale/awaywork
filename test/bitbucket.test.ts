@@ -346,6 +346,40 @@ describe('bitbucket forge', () => {
     expect(run.calls[1]).not.toContain('--draft')
   })
 
+  it("rewrites a draft's title and description, and marks it ready only when asked", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
+    const bodyFile = join(dir, 'PR_BODY.md')
+    await writeFile(bodyFile, 'SANDBOX-7 Probe twg output\n\nDone.\n')
+    let description = ''
+    const run: Exec & { calls: string[][] } = Object.assign(
+      async (cmd: string, args: string[]) => {
+        run.calls.push([cmd, ...args])
+        description = readFileSync(args[args.indexOf('--description-file') + 1] ?? '', 'utf8')
+        return '{}'
+      },
+      { calls: [] as string[][] },
+    )
+    const items = [{ source: 'jira', key: 'SANDBOX-7' }]
+    await bitbucketForge(['andrea89'], run).updatePr(sandbox, 4, bodyFile, 'r2', items, true)
+    expect(run.calls[0]).toEqual([
+      'twg',
+      'bb',
+      'prs',
+      'update',
+      '--pull-request',
+      '4',
+      '-r',
+      sandbox,
+      '--ready',
+      '--title',
+      'SANDBOX-7 Probe twg output',
+      '--description-file',
+      expect.stringMatching(/awaywork-pr-.*description\.md$/),
+      ...json,
+    ])
+    expect(description).toBe(`Done.\n\n${footer('r2', items)}`)
+  })
+
   it("throws twg's own message, wherever it prints it", async () => {
     const failing =
       (out: { stdout?: string; stderr?: string }): Exec =>

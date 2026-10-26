@@ -121,8 +121,8 @@ export const resultStatus = (c: Item['comments'][number]): string | undefined =>
 export function resultOf(
   c: Item['comments'][number],
 ): { status: string; continued: number; text: string } | undefined {
-  const said = commentKind(c) === 'result' && statusLine.exec(visibleLines(c).at(-2) ?? '')
-  if (!said || !said[1]) return undefined
+  const said = commentKind(c) === 'result' ? statusLine.exec(visibleLines(c).at(-2) ?? '') : null
+  if (!said?.[1]) return undefined
   const lines = c.body.trim().split('\n')
   const text = lines.slice(
     1,

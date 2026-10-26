@@ -133,7 +133,8 @@ Options:
                     "waiting_for_approval", "invalid_plan", "fanned_out",
                     "waiting_for_task", "task_merged", "task_done",
                     "all_tasks_done", "gave_up", "no_repo", "invalid_branch",
-                    "refused_delivery", "unstackable", "running")
+                    "refused_delivery", "unstackable", "draft_moved",
+                    "continue_cap", "continues_later", "running")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -254,7 +255,8 @@ Options:
                     "waiting_for_approval", "invalid_plan", "fanned_out",
                     "waiting_for_task", "task_merged", "task_done",
                     "all_tasks_done", "gave_up", "no_repo", "invalid_branch",
-                    "refused_delivery", "unstackable", "running")
+                    "refused_delivery", "unstackable", "draft_moved",
+                    "continue_cap", "continues_later", "running")
   -h, --help        display help for command
 ```
 
