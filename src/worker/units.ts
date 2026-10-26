@@ -954,7 +954,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   // The PR each chain opened first, and the chains a step ran in, by id: a task's chain stacks on its dependency's.
   const opened: Record<string, { branch: string; url: string }> = {}
-  const ran = new Set<string>()
+  const started = new Set<string>()
   try {
     for (const chain of chains) {
       const head = chain[0] as PlannedUnit
@@ -965,7 +965,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         )
       const done =
         head.after && !input.dryRun && !onto
-          ? noPrToStackOn(chain, ran.has(head.after))
+          ? noPrToStackOn(chain, started.has(head.after))
           : await runChain(
               onto
                 ? chain.map((p) => ({
@@ -974,7 +974,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                   }))
                 : chain,
             )
-      if (done.some((r) => r.status !== 'skipped')) ran.add(head.unit.id)
+      if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
       if (lead?.outcome?.kind === 'pr')
         opened[head.unit.id] = { branch: lead.planned.unit.branch, url: lead.outcome.url }

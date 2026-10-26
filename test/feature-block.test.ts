@@ -232,6 +232,7 @@ queue:
     expect(shape(p)).toEqual([
       ['acme-api-1-web', 'away/acme-api-1-schema', 'https://github.com/acme/api/pull/10', '-'],
     ])
+    expect(formatPlan(p)).toContain("   after api, stacks on schema's #10")
     const own = plan([card(chain, { api: pr('api', 'open', 11), web: pr('web', 'merged', 12) })])
     expect(shape(own)).toEqual([
       ['acme-api-1-docs', 'away/acme-api-1-api', 'https://github.com/acme/api/pull/11', '-'],

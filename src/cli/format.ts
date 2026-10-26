@@ -8,6 +8,7 @@ import {
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
+import { openedChain } from '../core/plan.js'
 import {
   bounds,
   comparisons,
@@ -424,10 +425,14 @@ function taskLines(task: NonNullable<Item['task']>): string[] {
 
 /** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */
 function stackLine(p: PlannedUnit): string | undefined {
-  const onto = p.unit.items[0]?.task?.onto
-  const pr = onto && p.unit.items[0]?.task?.parent.taskPrs?.[onto]
+  const task = p.unit.items[0]?.task
+  const onto = task?.onto
+  const pr = onto && task.parent.taskPrs?.[onto]
   if (p.after) return `after ${onto}, stacks on its PR`
-  if (pr && p.unit.stackedOn) return `after ${onto}, stacks on #${pr.number}`
+  if (!pr || !p.unit.stackedOn) return undefined
+  const own = task.plan.find((t) => t.id === task.id)
+  const after = (own && openedChain(own, task.plan)?.at(-1)) ?? onto
+  return `after ${after}, stacks on ${after === onto ? '' : `${onto}'s `}#${pr.number}`
 }
 
 /** The queue as numbered rules. */
