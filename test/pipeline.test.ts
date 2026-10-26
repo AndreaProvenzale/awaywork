@@ -266,6 +266,7 @@ describe('a feature card through the whole pipeline', () => {
   it('plans in a window run, posting the plan with its contract and moving the card, then waits for your approval', async () => {
     const run = await windowRun()
     expect(run.steps).toEqual(['card plan'])
+    expect(run.events.at(-1)).toMatch(/^run\b/)
     expect(run.report).toEqual(
       expect.arrayContaining([
         `- **api#1**: plan posted on ${cardUrl}, tasks api, web, app`,
@@ -355,15 +356,13 @@ describe('a feature card through the whole pipeline', () => {
     )
   })
 
-  it('resumes on your answer once CI passed: web stacks on api with it, app runs in acme/web with what api ships', async () => {
+  it("resumes web on your answer, while app waits for api's unreported check", async () => {
     reply('Per key.')
-    origins.forge.states['acme/api#11'] = { CI: 'passed' }
     const run = await soonRun()
-    expect(run.for).toBe('acme-api-1-web, acme-api-1-app')
-    expect(run.steps).toEqual(['web implement', 'web review', 'app implement', 'app review'])
+    expect(run.for).toBe('acme-api-1-web')
+    expect(run.steps).toEqual(['web implement', 'web review'])
     expect(run.plan).toContain('     after api, stacks on #11\n')
-    expect(run.plan).toContain("     after api's check CI (passed)\n")
-
+    expect(run.plan).toContain("  acme/api#1/app: waiting for api's check CI (not reported)\n")
     expect(context.web?.['item.md']).toMatch(/\n### me, \S+\n\nPer key\.\n$/)
     const web = prOf('acme/api', 'web')
     expect(origins.bases['acme/api:away/acme-api-1-web']).toBe('away/acme-api-1-api')
@@ -371,6 +370,15 @@ describe('a feature card through the whole pipeline', () => {
     expect(web?.draft).toBe(false)
     expect(web?.body).toMatch(/^Gates: none fired \(schema\)\n\n---\n\nDone\.\n/)
     expect(web?.body).toContain(`Stacked on ${apiPr}: merge that first.`)
+    expect(run.events).toEqual(['unit acme-api-1-web done', 'unit acme-api-1-web-review-1 done'])
+  }, 30_000)
+
+  it('runs app once CI passed: in acme/web with what api ships', async () => {
+    origins.forge.states['acme/api#11'] = { CI: 'passed' }
+    const run = await soonRun()
+    expect(run.for).toBe('acme-api-1-app')
+    expect(run.steps).toEqual(['app implement', 'app review'])
+    expect(run.plan).toContain("     after api's check CI (passed)\n")
 
     expect(context.app).toMatchObject({
       'contract/openapi.yaml': contract,
@@ -380,12 +388,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(origins.bases['acme/web:away/acme-api-1-app']).toBe('main')
     expect(app?.draft).toBe(false)
     expect(app?.body).toContain(`Part of ${cardUrl}`)
-    expect(run.events).toEqual([
-      'unit acme-api-1-web done',
-      'unit acme-api-1-web-review-1 done',
-      'unit acme-api-1-app done',
-      'unit acme-api-1-app-review-1 done',
-    ])
+    expect(run.events).toEqual(['unit acme-api-1-app done', 'unit acme-api-1-app-review-1 done'])
   }, 30_000)
 
   it('needs you once every PR merged, api first, then the stack, then app', async () => {
