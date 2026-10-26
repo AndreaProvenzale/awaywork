@@ -186,7 +186,7 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
   Opened by awaywork (run `20261026-220012`): a coding agent worked on this unattended. Review it like any other contribution.
   ```
 
-  The footer is what awaywork reads back: the agent could write a `Status:` line of its own, but not after the footer.
+  The footer is where awaywork keeps the status: the agent could write a `Status:` line of its own, but not after the footer.
 
   Under `push` they're pushed onto your PR, and it asks the same. For now the next run treats that draft like any awaywork PR: it waits for your review.
 
