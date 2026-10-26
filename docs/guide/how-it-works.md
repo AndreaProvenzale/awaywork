@@ -403,7 +403,7 @@ The card, run by run:
 
 ### Across repos
 
-A feature rarely stays in one repo: the endpoint goes in `acme/backend`, the button that calls it in `acme/web`. A task's `repo` can be any repo the forge source's `repos` globs cover (`sources.github.repos`), or one named under [`repos`](./configuration.md#repos-and-instructions); unset, it's the card's. Anything else isn't posted: `task x: repo evil/x isn't the card's (acme/backend) or one the config names`. A card with no repo of its own needs a `repo` on every task.
+A feature rarely stays in one repo: the endpoint goes in `acme/backend`, the button that calls it in `acme/web`. A task's `repo` can be any repo the forge source's `repos` globs cover (`sources.github.repos`), or one named under [`repos`](./configuration.md#repos-and-instructions); unset, it's the card's. Anything else isn't posted: `task x: repo evil/x isn't the card's (acme/backend) or one the config names`. Case counts, since the repo's settings and caps go by its exact name: `task web: repo Acme/Web isn't acme/* as configured`. A card with no repo of its own needs a `repo` on every task.
 
 The plan step can also write a contract, the interface the tasks agree on, and name it in `plan.yml`. A task can list the files its PR will hold that tasks in other repos need, like the spec a client is generated from:
 

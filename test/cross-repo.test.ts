@@ -126,6 +126,15 @@ describe('repos in a plan', () => {
     expect(problem('  - { id: x, title: X, repo: evil/x }\n')).toBe(
       "task x: repo evil/x isn't the card's (acme/backend) or one the config names",
     )
+    expect(problem('  - { id: web, title: W, repo: Acme/Web }\n')).toBe(
+      "task web: repo Acme/Web isn't acme/* as configured",
+    )
+    expect(problem('  - { id: docs, title: D, repo: Other/Docs }\n')).toBe(
+      "task docs: repo Other/Docs isn't other/docs as configured",
+    )
+    expect(
+      problem('  - { id: api, title: A, repo: ACME/BACKEND }\n', { ...limits, repos: [] }),
+    ).toBe("task api: repo ACME/BACKEND isn't acme/backend as configured")
     const noRepo = { ...limits, repo: undefined }
     expect(problem('  - { id: web, title: W, repo: acme/web }\n', noRepo)).toBeUndefined()
     expect(
@@ -151,6 +160,16 @@ describe('repos in a plan', () => {
     const checked = checkPlan(`tasks:\n${tasks}`, limits)
     const all = 'plan' in checked ? checked.plan.tasks : []
     expect(openedChain(all[2] as (typeof all)[number], all, 'acme/backend')).toEqual(['ui'])
+    // ui reaches schema only through api in another repo, so its branch lacks schema's work.
+    expect(
+      problem(`  - { id: schema, title: S }
+  - { id: api, title: A, repo: acme/web, after: { schema: opened } }
+  - { id: ui, title: U, after: { api: opened } }
+  - { id: web, title: W, after: { schema: opened, ui: opened } }
+`),
+    ).toBe(
+      "task web: its opened tasks schema, ui aren't on one chain: make each after the one before, e.g. ui after schema: opened",
+    )
   })
 
   it('takes only relative paths without .. in ships', () => {
@@ -337,7 +356,7 @@ describe('the contract', () => {
     return { writes, posted: report.results[0]?.plan }
   }
 
-  it('posts the file the plan names with it, and refuses one missing or over the size guard', async () => {
+  it('posts the file the plan names with it, CRLF folded, and refuses one missing or over the size guard', async () => {
     const ok = await postRun(planner({ 'plan.yml': crossRepo, 'openapi.yaml': `${contract}\n` }))
     expect(ok.writes).toEqual([{ op: 'comment', body: markComment(posted(contract)) }])
     const missing = await postRun(planner({ 'plan.yml': crossRepo }))
@@ -345,6 +364,10 @@ describe('the contract', () => {
     expect(missing.posted?.unposted).toBe(
       'plan.yml: contract .away/out/openapi.yaml is missing or empty',
     )
+    const crlf = await postRun(
+      planner({ 'plan.yml': crossRepo, 'openapi.yaml': `${contract.replace(/\n/g, '\r\n')}\r\n` }),
+    )
+    expect(crlf.writes).toEqual([{ op: 'comment', body: markComment(posted(contract)) }])
     const big = await postRun(
       planner({ 'plan.yml': crossRepo, 'openapi.yaml': 'x'.repeat(30_001) }),
     )

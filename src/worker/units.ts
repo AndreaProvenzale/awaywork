@@ -321,7 +321,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
     const name = file.plan.contract && contractName(file.plan.contract)
-    const text = name ? (await readOutput(join(out, name))).trimEnd() : ''
+    const text = name ? (await readOutput(join(out, name))).replace(/\r\n/g, '\n').trimEnd() : ''
     if (name && !text.trim())
       return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
     const body = planComment(report, yaml, name ? { name, text } : undefined)

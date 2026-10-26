@@ -109,6 +109,8 @@ function tasksProblem(
 ): string | undefined {
   if (tasks.length > maxTasks) return `${tasks.length} tasks, over limits.plan_tasks (${maxTasks})`
   const ids = tasks.map((t) => t.id)
+  const known = [...(repo ? [repo] : []), ...repos]
+  const exactly = (glob: string) => new RegExp(globToRegExp(glob).source)
   for (const t of tasks) {
     // It names a child item, `ENG-2101/api`, and its branch, `away/ENG-2101-api`.
     if (!/^[a-z0-9][a-z0-9-]*$/.test(t.id))
@@ -118,12 +120,13 @@ function tasksProblem(
       return `task id "${t.id}" is retired: its PR ${retired[t.id]} was closed without merging`
     if (t.repo === undefined && !repo)
       return `task ${t.id}: no repo, and the card has none: name one on every task`
-    if (
-      t.repo !== undefined &&
-      t.repo !== repo &&
-      !repos.some((r) => globToRegExp(r).test(t.repo ?? ''))
-    )
-      return `task ${t.id}: repo ${t.repo} isn't the card's (${repo ?? 'none'}) or one the config names`
+    if (t.repo !== undefined && !known.some((r) => exactly(r).test(t.repo ?? ''))) {
+      // The repo's settings, caps and stacking all compare names exactly.
+      const spelled = known.find((r) => globToRegExp(r).test(t.repo ?? ''))
+      return spelled
+        ? `task ${t.id}: repo ${t.repo} isn't ${spelled} as configured`
+        : `task ${t.id}: repo ${t.repo} isn't the card's (${repo ?? 'none'}) or one the config names`
+    }
     const outside = t.ships?.find((path) => !inside(path))
     if (outside !== undefined)
       return `task ${t.id}: ships ${outside}, which isn't a relative path without ..`
@@ -164,10 +167,12 @@ const openedHere = (task: Planned, tasks: Planned[], home?: string): string[] =>
 /** A task's `opened` tasks in its own repo in the order they run, each after the one before, or undefined when they aren't on one chain. */
 export function openedChain(task: Planned, tasks: Planned[], home?: string): string[] | undefined {
   const opened = openedHere(task, tasks, home)
-  // Every task `id` waits on, through any `after`: a later task on the chain waits on more.
+  const here = (id: string) =>
+    (tasks.find((t) => t.id === id)?.repo ?? home) === (task.repo ?? home)
+  // Every task in its repo `id` waits on, through any `after`: a later task on the chain waits on more.
   const below = (id: string, seen = new Set<string>()): Set<string> => {
     for (const next of Object.keys(tasks.find((t) => t.id === id)?.after ?? {})) {
-      if (seen.has(next)) continue
+      if (seen.has(next) || !here(next)) continue
       seen.add(next)
       below(next, seen)
     }
