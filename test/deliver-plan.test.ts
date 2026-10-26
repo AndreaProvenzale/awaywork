@@ -110,6 +110,13 @@ describe('the plan comment', () => {
     expect(planYaml('no fence')).toBe('')
   })
 
+  it('reads back a plan whose task shows an indented yaml example, fences only at line start', () => {
+    const example = `tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      Document it like this:\n      \`\`\`yaml\n      limits: { plan_tasks: 8 }\n      \`\`\`\n`
+    const body = planComment('One task.', example)
+    expect(planYaml(body)).toBe(example.trim())
+    expect(state(posted(body))).toEqual({ state: 'waiting' })
+  })
+
   it('tells awaywork comments apart by their visible text', () => {
     expect(commentKind(plan)).toBe('plan')
     expect(commentKind(posted(questionsComment('Per user?')))).toBe('questions')

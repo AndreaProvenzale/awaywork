@@ -82,14 +82,13 @@ function cycleIn(tasks: Task[]): string[] | undefined {
   }
 }
 
-/** The `plan.yml` a plan comment carries: its last fenced yaml block. */
+/** The `plan.yml` a plan comment carries: its last fenced yaml block, fences only at the start of a line. */
 export function planYaml(comment: string): string {
   // A comment edited on the web can come back with CRLF line endings.
-  const body = comment.replace(/\r\n/g, '\n')
-  const open = '```yaml\n'
-  const start = body.lastIndexOf(open)
-  const end = start < 0 ? -1 : body.indexOf('\n```', start + open.length - 1)
-  return end < 0 ? '' : body.slice(start + open.length, end)
+  const lines = comment.replace(/\r\n/g, '\n').split('\n')
+  const start = lines.lastIndexOf('```yaml')
+  const end = start < 0 ? -1 : lines.indexOf('```', start + 1)
+  return end < 0 ? '' : lines.slice(start + 1, end).join('\n')
 }
 
 type Comment = Item['comments'][number]

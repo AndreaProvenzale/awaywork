@@ -25,7 +25,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { checkPlan } from '../core/plan.js'
+import { checkPlan, planYaml } from '../core/plan.js'
 import {
   type Moved,
   type PlanPost,
@@ -302,10 +302,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
   /** Checks the chain's `plan.yml` and posts it with the report; a refused plan posts nothing. */
   const postPlan = async (p: PlannedUnit, report: string, yaml: string): Promise<PlanPost> => {
-    const checked = checkPlan(yaml, { maxTasks: input.config.limits.plan_tasks, repo: p.unit.repo })
-    if ('problem' in checked) return { unposted: `plan.yml: ${checked.problem}` }
-    const tasks = checked.plan.tasks.map((t) => t.id)
+    const limits = { maxTasks: input.config.limits.plan_tasks, repo: p.unit.repo }
+    const file = checkPlan(yaml, limits)
+    if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
     const body = planComment(report, yaml)
+    // Check what the next run reads back from the comment, not only the file.
+    const read = checkPlan(planYaml(body), limits)
+    if ('problem' in read)
+      return { unposted: `plan.yml doesn't read back from its comment: ${read.problem}` }
+    const tasks = read.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
     return { tasks, ...(await postComment(p, 'plan', body)) }

@@ -17,7 +17,7 @@ import { approveItem } from '../src/cli/approve.js'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { recordAttempts, unchangedSince } from '../src/core/attempts.js'
+import { type Attempts, recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { commentKind, footer, markComment, planComment } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
@@ -4769,6 +4769,11 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
     [planner('tasks: ['), 'plan.yml: not YAML: '],
     [planner(many), 'plan.yml: 9 tasks, over limits.plan_tasks (8)'],
     [planner(tasks, 'x'.repeat(30_001)), 'the plan comment is over 30000 bytes'],
+    // Valid YAML, but its line-start fence ends the comment's yaml block early.
+    [
+      planner('{ tasks: [{ id: api, title: "A\n```\n" }] }'),
+      "plan.yml doesn't read back from its comment: not YAML: ",
+    ],
   ]
   for (const [provider, reason] of refused) {
     const { report, writes } = await finishedRun(planRule, [yours(1)], provider)
@@ -4783,6 +4788,17 @@ it('posts no refused plan, keeps the reason in the report and fires no on_done',
     tasks: ['api', 'web'],
     unposted: 'acme/api#3 not yours',
   })
+})
+
+it('posts a plan whose task shows an indented yaml example', async () => {
+  const example =
+    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      limits: { plan_tasks: 8 }\n      ```\n'
+  const { report, writes } = await finishedRun(planRule, [yours(1)], planner(example))
+  expect(report.results[0]?.plan).toMatchObject({ tasks: ['cfg'], url: 'https://example.com/1' })
+  expect(writes[0]).toEqual([
+    'acme/api#1',
+    { op: 'comment', body: markComment(planComment('Two tasks: the API first.', example)) },
+  ])
 })
 
 it("reports a plan whose post failed, its secrets masked, and doesn't move the card", async () => {
@@ -4817,18 +4833,15 @@ queue:
 `)
   let card = yours(1)
   let at = 0
+  // Every comment bumps `updated`, awaywork's own too, as on GitHub.
   const comment = (body: string, mine?: true) => {
-    at++
+    const time = `2026-10-25T0${++at}:00:00Z`
     card = {
       ...card,
+      fields: { ...card.fields, updated: time },
       comments: [
         ...card.comments,
-        {
-          author: mine ? 'me' : 'sam',
-          body,
-          at: `2026-10-2${at}T00:00:00Z`,
-          ...(mine && { mine }),
-        },
+        { author: mine ? 'me' : 'sam', body, at: time, ...(mine && { mine }) },
       ],
     }
   }
@@ -4841,12 +4854,14 @@ queue:
     },
   } as Source
   const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+  let attempts: Attempts = {}
   const round = async (yaml: string, n: number) => {
     const plan = planRun({
       config,
       items: [card],
       allowances: { claude: allowance(config.budget, null, 0, config.windows) },
       skills: { builtin: builtinSkills },
+      attempts,
     })
     const report = await runUnits({
       config,
@@ -4863,6 +4878,7 @@ queue:
       shortage: async () => undefined,
       skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
     })
+    attempts = recordAttempts(attempts, report)
     return { skipped: plan.skipped.map((s) => [s.kind, s.reason]), posted: report.results[0]?.plan }
   }
   const kinds = () => card.comments.map((c) => commentKind(c) ?? c.author)
@@ -4873,20 +4889,29 @@ queue:
   ]
   expect(await round(tasks, 2)).toEqual({ skipped: waiting, posted: undefined })
   comment('approve if web waits for the API to merge')
-  expect(await round('tasks:\n  - { id: api, title: VAT export endpoint }\n', 3)).toMatchObject({
+  expect(await round('tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }\n', 3)).toEqual({
+    skipped: [],
+    posted: { unposted: 'plan.yml: task id "api" is used twice' },
+  })
+  expect(await round(tasks, 4)).toEqual({
+    skipped: [['unchanged', 'unchanged since run r3']],
+    posted: undefined,
+  })
+  comment('Split web in two.')
+  expect(await round('tasks:\n  - { id: api, title: VAT export endpoint }\n', 5)).toMatchObject({
     skipped: [],
     posted: { tasks: ['api'] },
   })
-  expect(kinds()).toEqual(['plan', 'sam', 'plan'])
-  expect(await round(tasks, 4)).toEqual({ skipped: waiting, posted: undefined })
+  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan'])
+  expect(await round(tasks, 6)).toEqual({ skipped: waiting, posted: undefined })
   expect(
     await approveItem('github:acme/api#1', config, 'Keep the old route.', {
       sources: { github: source },
       ctx,
     }),
   ).toBe('plan approved: replied approve, with your notes, on https://example.com/1')
-  expect(kinds()).toEqual(['plan', 'sam', 'plan', 'approve'])
-  expect(await round(tasks, 5)).toEqual({
+  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan', 'approve'])
+  expect(await round(tasks, 7)).toEqual({
     skipped: [['plan_approved', 'plan approved, tasks api']],
     posted: undefined,
   })
