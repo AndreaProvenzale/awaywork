@@ -71,9 +71,10 @@ Then the same screen is a view to browse, here with the `no_rule` skips unfolded
 ☾ >_ awaywork  You're away, your agents work
 
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -100,9 +101,10 @@ Providers
 ```
 $ awaywork plan | cat
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 Units 3
      item   rule  skill              provider  deliver   title
@@ -170,9 +172,11 @@ awaywork report --unit 2       # one unit in full: its files, PR body or report
 
 `--unit` takes an item as `plan` shows it (`api#1`), its key (`acme/api#1`, or `github:acme/api#1`) or the unit id (`acme-api-1`), in any case. A step of a rule's `then` runs its whole chain, from the first step.
 
+Outside your windows that's a present run: workers stop at 40% of the 5-hour window, and a provider whose quota awaywork can't read, like a command provider without a `probe`, sits it out. Run it inside a window or add a probe.
+
 `--repo <glob>` and `--rule <n>` (rules count from 1, as `plan` shows them) work on `plan` and `run`, and together they both have to hold. The caps and ceilings stay the full run's, but only matching units count against them: with `limits.units: 3`, `--repo acme/api` plans up to three acme/api units.
 
-The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC.
+The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the worker's log, its context files and the report. The id is the run's start time in UTC. Run dirs stay 30 days, then a run removes them; [`keep_runs`](./configuration.md#old-runs) changes that.
 
 ## On a schedule
 
@@ -180,4 +184,4 @@ The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the wor
 awaywork schedule install      # asks where; this machine is launchd, systemd or cron
 ```
 
-The job starts when a window opens (default `01:00`) and stops when it ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or pass `--with github-actions`; see [Scheduling](./scheduling.md).
+The job keeps `awaywork watch` running, which starts a run when a window opens (default `01:00`) and stops it when the window ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or pass `--with github-actions`; see [Scheduling](./scheduling.md).

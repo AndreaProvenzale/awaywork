@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runCommand } from '../src/cli/run.js'
-import { runsDir } from '../src/config/paths.js'
+import { abortOnSignals, executeRun, type RunArgs, runCommand } from '../src/cli/run.js'
+import { loadConfig } from '../src/config/load.js'
+import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
@@ -25,6 +26,7 @@ vi.mock('../src/config/paths.js', async (original) => {
     runsDir: `${state}/runs`,
     attemptsPath: `${state}/attempts.json`,
     runLockPath: `${state}/run.lock`,
+    watchLockPath: `${state}/watch.lock`,
     skipsPath: `${state}/skips.json`,
   }
 })
@@ -80,6 +82,35 @@ describe('run command', () => {
     expect((await stat(join(runsDir, id))).mode & 0o777).toBe(0o700)
   })
 
+  it('prunes runs older than keep_runs when it starts, not on a dry run', async () => {
+    const old = join(runsDir, '20200101-000000')
+    await mkdir(old, { recursive: true })
+    await run(['--dry-run'])
+    expect(existsSync(old)).toBe(true)
+    const { out } = await run([])
+    expect(existsSync(old)).toBe(false)
+    expect(out).toContain('Removed 1 run older than 30d, 0.0 MB freed')
+  })
+
+  it('refuses to start while another run holds the lock, naming the daemon when it does', async () => {
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    try {
+      const { err } = await run([])
+      expect(err.at(-1)).toBe(
+        `already running (pid ${process.pid}, run 20261025-010000); if that is stale, delete ${runLockPath}`,
+      )
+      await writeFile(watchLockPath, `${process.pid} watch`)
+      const daemon = await run([])
+      expect(daemon.err.at(-1)).toBe(
+        `awaywork watch holds the run lock (pid ${process.pid}); try again once its runs end, awaywork schedule status lists them`,
+      )
+      expect(process.exitCode).toBe(1)
+    } finally {
+      await rm(runLockPath, { force: true })
+      await rm(watchLockPath, { force: true })
+    }
+  })
+
   it("hands the run's id and dir to the next steps of an Actions job", async () => {
     const outputs = join(await mkdtemp(join(tmpdir(), 'awaywork-out-')), 'output')
     vi.stubEnv('GITHUB_OUTPUT', outputs)
@@ -117,6 +148,29 @@ describe('run command', () => {
     expect(await readFile(out, 'utf8')).toBe(`run ${id} ${join(runsDir, id, 'report.md')}\n`)
   })
 
+  it('takes presence as given, and a soon run notifies no run end', async () => {
+    const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')
+    const path = join(dirname(out), 'config.yml')
+    const notify = `notify: { command: ${JSON.stringify(`echo "$AWAYWORK_EVENT" >> '${out}'`)} }`
+    await writeFile(
+      path,
+      `providers: [claude]\nsources: { chores: { command: 'echo []' } }\nwindows: []\n${notify}\n`,
+    )
+    const config = await loadConfig(path)
+    const log = { info: () => {}, error: () => {} }
+    const signal = () => new AbortController().signal
+    const at = (runId: string, extra: Partial<RunArgs>) =>
+      executeRun({ path, config, runId, now: new Date(), log, signal, ...extra })
+    await at('20261025-120000', { present: false, soon: { sources: ['chores'], units: [] } })
+    const plan = await readFile(join(runsDir, '20261025-120000', 'plan.txt'), 'utf8')
+    expect(plan).toContain('away run (inside a window)')
+    expect(await readFile(out, 'utf8').catch(() => '')).toBe('')
+    await at('20261025-120100', {})
+    const present = await readFile(join(runsDir, '20261025-120100', 'plan.txt'), 'utf8')
+    expect(present).toContain('present run (outside the windows)')
+    expect(await readFile(out, 'utf8')).toBe('run\n')
+  })
+
   it("masks the notify command's secret in its failure", async () => {
     vi.stubEnv('NOTIFY_TOKEN', 's3cr3t-value')
     const { err } = await run(
@@ -127,4 +181,28 @@ describe('run command', () => {
     expect(err.at(-1)).toMatch(/^notify failed: .*\nposting with \*\*\*$/s)
     expect(err.join('\n')).not.toContain('s3cr3t-value')
   })
+})
+
+it('aborts on the first SIGTERM, exiting 143 once done, and quits at once on the second', () => {
+  const signals = ['SIGINT', 'SIGTERM'] as const
+  const others = signals.map((s) => process.listeners(s))
+  // Only abortOnSignals' own listeners, so none of the runner's sees the emitted signals.
+  for (const s of signals) process.removeAllListeners(s)
+  const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+  try {
+    const signal = abortOnSignals()
+    process.emit('SIGTERM')
+    expect(signal.aborted).toBe(true)
+    expect(process.exitCode).toBe(143)
+    expect(exit).not.toHaveBeenCalled()
+    process.emit('SIGTERM')
+    expect(exit).toHaveBeenCalledWith(143)
+  } finally {
+    exit.mockRestore()
+    process.exitCode = undefined
+    signals.forEach((s, i) => {
+      process.removeAllListeners(s)
+      for (const listener of others[i] ?? []) process.on(s, listener)
+    })
+  }
 })

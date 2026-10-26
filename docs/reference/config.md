@@ -23,7 +23,8 @@ with:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run |
+| `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
+| `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
 | `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner |
 | `budget` | object | `{}` | Quota shares; any provider can override them |
@@ -37,6 +38,7 @@ with:
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
+| `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report |
 
 ## `windows[]`
 
@@ -45,6 +47,15 @@ with:
 | `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays the window opens on; every day when unset |
 | `start` (required) | time |  | When a scheduled run starts, local time |
 | `end` (required) | time |  | No unit starts after this |
+
+## `watch`
+
+awaywork watch, the daemon schedule install keeps running.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `every` | string | `"5m"` | How often the daemon polls the sources of run: soon rules; a source's own every can make it less often |
+| `debug` | boolean | `false` | Also write each run's full output to the daemon log |
 
 ## `limits`
 
@@ -66,6 +77,7 @@ Quota shares; any provider can override them.
 | `reserve` | percent | `"10%"` | Never go past 1 - reserve of any window |
 | `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent | `"90%"` | Stop a worker past this share of the short window |
+| `present_session_max` | percent | `"40%"` | Stop a worker past this share of the short window in a run started outside every window |
 | `fallback` | object | `{"units":4,"turns":60}` | Caps when the provider's quota can't be read |
 
 ## `budget.fallback`
@@ -103,6 +115,7 @@ Overrides the top-level budget for this provider.
 | `reserve` | percent |  | Never go past 1 - reserve of any window |
 | `per_run` | percent |  | At most this share of the long window per run |
 | `session_max` | percent |  | Stop a worker past this share of the short window |
+| `present_session_max` | percent |  | Stop a worker past this share of the short window in a run started outside every window |
 | `fallback` | object |  | Caps when the provider's quota can't be read |
 
 ## `providers[].claude.budget.fallback`
@@ -137,7 +150,7 @@ Same keys as `providers[].claude.budget.fallback`.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `command` (required) | string |  | Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log |
-| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
+| `probe` | string |  | Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply |
 | `secrets` | string[] | `[]` | Env vars the command reads; withheld from other workers, listed in Actions |
 | `skills_dir` | string | `".agents/skills"` | Where the CLI finds skills in the clone |
 | `budget` | object |  | Overrides the top-level budget for this provider |
@@ -172,6 +185,7 @@ My PRs, PRs awaiting my review and issues assigned to me, plus any extra searche
 | `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
 | `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 
 ## `sources.github.context`
 
@@ -190,6 +204,7 @@ The forge for Bitbucket Cloud repos, through twg; no items of its own yet, so pa
 |---|---|---|---|
 | `repos` (required) | string[] |  | Bitbucket Cloud repos, workspace/name; * globs the name, e.g. acme/* |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 
 ## `sources.bitbucket.context`
 
@@ -206,6 +221,7 @@ My incomplete Asana tasks.
 | `repo_map` | map |  | Project gid -> owner/repo where its tasks' code lives |
 | `token_env` | string | `"ASANA_TOKEN"` | Env var holding the Asana token |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}` |
 
 ## `sources.asana.context`
@@ -221,6 +237,7 @@ My open Linear issues.
 | `repo_map` | map |  | Team key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"LINEAR_API_KEY"` | Env var holding the Linear personal API key |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}` |
 
 ## `sources.linear.context`
@@ -240,6 +257,7 @@ My unresolved Jira Cloud issues.
 | `repo_map` | map |  | Project key -> owner/repo where its issues' code lives |
 | `token_env` | string | `"JIRA_API_TOKEN"` | Env var holding the Atlassian API token |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none |
 
 ## `sources.jira.context`
@@ -257,6 +275,7 @@ A custom source: any command that prints your open items as JSON.
 | `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
 | `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |
 
 ## `repos.<key>`
@@ -318,6 +337,7 @@ First matching rule wins; top = highest priority.
 | `units` | integer |  | At most this many units per run from this rule; each of a chain's slices counts once |
 | `then` | string \| object \| (string \| object)[] |  | Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps |
 | `on_done` | object |  | Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported |
+| `run` | "soon" \| "window" |  | When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every |
 
 ## `queue[].where`
 
