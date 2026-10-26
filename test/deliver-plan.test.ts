@@ -166,6 +166,14 @@ describe('a plan read back from the card', () => {
     expect(state(plan, theirs('Looks off.'), yours('approve', 3))).toEqual({ state: 'feedback' })
   })
 
+  it('reads a plan and its approve notes with CRLF line endings, as a web edit leaves them', () => {
+    const crlf = (c: Item['comments'][number]) => ({ ...c, body: c.body.replace(/\n/g, '\r\n') })
+    expect(state(crlf(plan))).toEqual({ state: 'waiting' })
+    expect(
+      state(crlf(plan), crlf(yours('approve\nKeep the old route.\nNo new deps.'))),
+    ).toMatchObject({ state: 'approved', notes: 'Keep the old route.\nNo new deps.' })
+  })
+
   it('reads the newest plan: a re-plan waits for a fresh approval', () => {
     const replan = posted(planComment('One task now.', 'tasks:\n  - { id: api, title: API }'), 3)
     expect(state(plan, yours('Merge them.'), replan)).toEqual({ state: 'waiting' })

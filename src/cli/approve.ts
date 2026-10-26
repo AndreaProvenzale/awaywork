@@ -24,11 +24,12 @@ export function approveCommand(program: Command): void {
 
 /**
  * Replies `approve` on the item when it waits on a plan, through its source as any write; refuses
- * once the plan was answered. Any other item it approves locally.
+ * once the plan was answered. Any other item it approves locally, reading no source unless a
+ * `deliver: plan` rule can take its items.
  */
 export async function approveItem(
   key: string,
-  config: Pick<Config, 'sources'>,
+  config: Pick<Config, 'sources' | 'queue'>,
   notes = '',
   {
     path = approvalsPath,
@@ -39,7 +40,8 @@ export async function approveItem(
   checkKey(key, Object.keys(config.sources))
   const id = key.slice(0, key.indexOf(':'))
   const cfg = config.sources[id]
-  const source = sources[id] ?? sourceFor(id, cfg)
+  const planned = config.queue?.some((r) => r.deliver === 'plan' && (!r.source || r.source === id))
+  const source = planned ? (sources[id] ?? sourceFor(id, cfg)) : undefined
   const item = source && (await source.items(cfg, ctx)).find((i) => `${id}:${i.key}` === key)
   const thread = item && planThread(item)
   if (item && thread?.answer)

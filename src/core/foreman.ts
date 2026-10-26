@@ -209,8 +209,7 @@ export function planRun(input: {
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    // A reply to the plan is feedback, a change even where a comment doesn't update the item.
-    if (card?.state !== 'feedback' && since.every(Boolean)) {
+    if (since.every(Boolean)) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }

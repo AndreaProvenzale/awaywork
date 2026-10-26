@@ -1341,10 +1341,6 @@ queue:
   const attempts: Attempts = {
     'github:acme/api#5': { runId: 'r1', skill: 'plan', updated: '2026-01-01T00:00:00Z' },
   }
-  const unchanged = (item: Item) => ({
-    ...item,
-    fields: { ...item.fields, updated: '2026-01-01T00:00:00Z' },
-  })
 
   it('plans a card with no plan, every step reporting a plan', () => {
     expect(rows(plan(yaml(), [card()], {}))).toEqual([['acme-api-5', 1, 'plan', 'claude', 'plan']])
@@ -1385,14 +1381,19 @@ queue:
     expect(needsYou.invalid_plan).toBe(true)
   })
 
-  it('plans again on feedback, even when attempts read the card as unchanged', () => {
+  it('plans again on feedback, and skips a refused re-plan as unchanged until the card changes', () => {
     for (const feedback of [reply('approve if web waits'), reply('Split web.', true)]) {
-      const again = plan(yaml(), [unchanged(card(posted, feedback))], {}, {}, attempts)
-      expect(rows(again)).toEqual([['acme-api-5', 1, 'plan', 'claude', 'plan']])
+      const replied = { ...card(posted, feedback), fields: { ...issue.fields, updated: at(2) } }
+      expect(rows(plan(yaml(), [replied], {}, {}, attempts))).toEqual([
+        ['acme-api-5', 1, 'plan', 'claude', 'plan'],
+      ])
+      const refused: Attempts = {
+        'github:acme/api#5': { runId: 'r2', skill: 'plan', updated: at(2) },
+      }
+      expect(plan(yaml(), [replied], {}, {}, refused).skipped).toMatchObject([
+        { kind: 'unchanged', reason: 'unchanged since run r2' },
+      ])
     }
-    expect(plan(yaml(), [unchanged(card())], {}, {}, attempts).skipped).toMatchObject([
-      { kind: 'unchanged' },
-    ])
   })
 
   it("reads a plan only for a plan rule: another rule's questions wait as before", () => {

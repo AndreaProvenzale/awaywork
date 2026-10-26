@@ -4880,7 +4880,7 @@ queue:
   expect(kinds()).toEqual(['plan', 'sam', 'plan'])
   expect(await round(tasks, 4)).toEqual({ skipped: waiting, posted: undefined })
   expect(
-    await approveItem('github:acme/api#1', { sources: { github: {} } }, 'Keep the old route.', {
+    await approveItem('github:acme/api#1', config, 'Keep the old route.', {
       sources: { github: source },
       ctx,
     }),
@@ -4891,7 +4891,7 @@ queue:
     posted: undefined,
   })
   await expect(
-    approveItem('github:acme/api#1', { sources: { github: {} } }, '', {
+    approveItem('github:acme/api#1', config, '', {
       sources: { github: source },
       ctx,
     }),

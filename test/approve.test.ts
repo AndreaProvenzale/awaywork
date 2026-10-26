@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
+import { parseConfig } from '../src/config/load.js'
 import { clearApprovals, withApprovals } from '../src/core/approvals.js'
 import { planComment } from '../src/core/footer.js'
 import { fieldValue } from '../src/core/queue.js'
@@ -15,7 +16,11 @@ const item = (source: string, key: string, approved = false) =>
   ({ source, key, fields: { approved } }) as unknown as Item
 
 const ctx = { env: {}, log: () => {} }
-const config = { sources: { github: {} } }
+const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: plan, deliver: plan }]
+`)
 
 /** A GitHub source of `items` that records its writes. */
 function github(items: Item[] = []) {
@@ -46,6 +51,32 @@ describe('approve', () => {
     await expect(approveItem('jira:X-1', config, '', { path, sources })).rejects.toThrow(
       'not configured',
     )
+  })
+
+  it('reads no source without a plan rule that can take its items', async () => {
+    const path = join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'approvals.json')
+    const down: Source = {
+      ...fakeSource(),
+      id: 'github',
+      items: async () => {
+        throw new Error('github is down')
+      },
+    }
+    const elsewhere = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'cat' } }
+queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }]
+`)
+    expect(
+      await approveItem('github:acme/api#5', elsewhere, '', {
+        path,
+        sources: { github: down },
+        ctx,
+      }),
+    ).toBe('github:acme/api#5 is approved until a unit on it finishes')
+    await expect(
+      approveItem('github:acme/api#5', config, '', { path, sources: { github: down }, ctx }),
+    ).rejects.toThrow('github is down')
   })
 
   const plan = {

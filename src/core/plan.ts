@@ -83,7 +83,9 @@ function cycleIn(tasks: Task[]): string[] | undefined {
 }
 
 /** The `plan.yml` a plan comment carries: its last fenced yaml block. */
-export function planYaml(body: string): string {
+export function planYaml(comment: string): string {
+  // A comment edited on the web can come back with CRLF line endings.
+  const body = comment.replace(/\r\n/g, '\n')
   const open = '```yaml\n'
   const start = body.lastIndexOf(open)
   const end = start < 0 ? -1 : body.indexOf('\n```', start + open.length - 1)
@@ -121,6 +123,6 @@ export function planState(item: Pick<Item, 'comments'>, limits: PlanLimits): Pla
 
 /** An approve reply's lines below `approve`, without awaywork's mark. */
 function approveNotes(c: Comment): string {
-  const lines = c.body.trimEnd().split('\n').slice(1)
+  const lines = c.body.trimEnd().split(/\r?\n/).slice(1)
   return (isAwayworkComment(c) ? lines.slice(0, -1) : lines).join('\n').trim()
 }
