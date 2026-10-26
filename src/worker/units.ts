@@ -533,6 +533,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let saidAsk = false
     // A step said `continue`: the chain stops, publishes what it has and runs again later.
     let continues = false
+    // A later slice said `ask` or `continue`: only the first slice can go on, so its draft is yours to finish.
+    let byHand: string | undefined
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
@@ -650,11 +652,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? "the clone's .git was refused"
                 : undefined
           const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
-          const held: Held | undefined = saidAsk
-            ? { status: 'ask', continued: before, url: askedOn?.url }
-            : continues
-              ? { status: 'continue', continued: before + 1 }
-              : undefined
+          const stacked = at > 0 && (saidAsk || continues)
+          const held: Held | undefined = stacked
+            ? undefined
+            : saidAsk
+              ? { status: 'ask', continued: before, url: askedOn?.url }
+              : continues
+                ? { status: 'continue', continued: before + 1 }
+                : undefined
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -668,9 +673,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 stack,
                 // Only the whole chain, cut from the default branch as the draft it resumes was, closes its issues.
                 last && !first.capped && (base === '' || (!!shape.resume && !shape.stackedOn)),
-                failed && notReady(failed),
+                (failed && notReady(failed)) ||
+                  (stacked ? "a stacked slice can't go on" : undefined),
                 held,
               )
+          if (stacked && lead.outcome.kind === 'pr')
+            byHand = `a stacked slice can't go on: finish ${lead.outcome.url} by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
@@ -1004,7 +1012,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           asked = { step: unit.id, text: questions }
           saidAsk = status === 'ask'
         } else if (status === 'continue' && kept) {
-          ended = { reason: `${unit.id} will continue`, passedOver: true }
+          const why = at > 0 ? 'said continue in a stacked slice' : 'will continue'
+          ended = { reason: `${unit.id} ${why}`, passedOver: true }
           continues = true
         } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
@@ -1066,12 +1075,21 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     await endSlice(true)
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
-    if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
+    // A stacked slice's answers would reach no later run.
+    if (asked && lead)
+      lead.questions = {
+        ...asked,
+        ...(byHand ? { unposted: byHand } : await postQuestions(first, asked.text)),
+      }
+    else if (byHand && lead) lead.byHand = byHand
     if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
       lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, sliceOut(0)))
     // Every slice that ran published, and only a `when` or a `continue` ended the chain early; a plan rule's plan was posted.
     const finished =
-      !interrupted && !unfinished && (!ended || ended.when || continues) && leads.size > 0
+      !interrupted &&
+      !unfinished &&
+      (!ended || ended.when || (continues && !byHand)) &&
+      leads.size > 0
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
       // A report task's result is how its card hears it's done, so it always posts one.

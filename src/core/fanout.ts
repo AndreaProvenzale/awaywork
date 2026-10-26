@@ -197,7 +197,7 @@ export function taskPr(
     trusted: true,
     fork: false,
     ...(pr.head && { head: pr.head }),
-    ...(pr.open && leftIn(pr.body)),
+    ...(pr.open && leftIn(pr.body, pr.draft)),
     state: pr.open ? 'open' : pr.merged ? 'merged' : 'closed',
     ...(pr.closedAt && { closedAt: pr.closedAt }),
   }

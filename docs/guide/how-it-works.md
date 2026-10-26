@@ -227,14 +227,17 @@ The footer is where awaywork reads it back, never the state dir, so a fresh runn
   ```
 
 - **Which runs go on.** A `continue` re-queues the unit though its items didn't change, in a window run, a scheduled run and a manual `awaywork run`. A `run: soon` run skips it as `goes on from <PR> in the next window run`: it reacts to items changing, and a `continue` isn't a change. A draft whose step asked goes on once someone answers, like any item change, `run: soon` included.
-- **Only while the draft is as awaywork left it.** Its head must still be the commit in the footer: a commit of yours on it, or a force-push, and the unit is skipped as `awaywork's draft <PR> moved from <sha>, where it left it: needs you`. It's yours to finish then. A draft without a status in its footer, `done` or one opened before, waits for your review as always.
+- **Only while the draft is as awaywork left it.** Its head must still be the commit in the footer: a commit of yours on it, or a force-push, and the unit is skipped as `awaywork's draft <PR> moved from <sha>, where it left it: needs you`. It's yours to finish then. A draft without a status in its footer, `done` or one opened before, waits for your review as always, and so does one you marked ready for review, whatever its footer says.
+- **Mark it ready to take it over.** That's the way out of a draft that moved or hit the cap: it then waits for your review like any awaywork PR.
+- **Only the chain's first slice goes on.** A [stacked slice](./chains.md#stack) that says `continue`, or asks, still ends the chain and opens as a draft, but no later run goes on with it: the report says `a stacked slice can't go on: finish <PR> by hand`, and its questions aren't posted.
+- **Only where awaywork can push onto a PR.** On Bitbucket it can't, so a draft that says `continue`, or whose questions got an answer, is skipped as `awaywork's draft <PR> says continue, and awaywork can't push onto a PR on this forge: finish it by hand`.
 - **Ready takes both sides.** Once the agent says `done`, or writes no status file, and `verify` passed, no gate fired and no loop ran out, both on every commit of the draft, a `deliver: pr` draft is marked ready for review; under `draft_pr` it stays a draft, its status line gone. Anything else keeps it a draft that waits for your review. The agent's word can only hold a PR back. The status line goes once it's done:
 
   ```text
   | 1 | [acme/api#1/app Export screen](https://github.com/acme/api/issues/1) | implement → loop(review ⇄ fix) | claude | done, 2 turns (loop: 1 round of review ⇄ fix; until held: verdict approve) | https://github.com/acme/web/pull/13 (1 commit, ready for review), verdict approve |
   ```
 
-- **The cap.** Every `continue` counts, and the third is the last: the next run skips the unit as `continued 3 times on <PR>: needs you`, with the agent's last report in the draft. Close the draft, or finish it.
+- **The cap.** Every `continue` counts, and the third is the last: the next run skips the unit as `continued 3 times on <PR>: needs you`, with the agent's last report in the draft. Close the draft, mark it ready, or finish it. A report's count sits in its result comments, so `awaywork skip` the item, or delete awaywork's `continue` results on it to clear the count.
 - **A report** that says `continue` posts its result where a result goes, a [report task](#report-tasks)'s or `on_done: { comment: result }`'s, with `Status: continue (1 of 3)`, and runs again from it: the result is its count, and its report reaches the next run as `previous/report.md`. Otherwise it only reports. A `continue` that has nowhere to keep its count, a committing step with no commits on a new branch or a `push`, `pending_review` or `plan` rule, reads as no status file, with a line in the run's log.
 - A chain that says `continue` doesn't run its rule's `on_done` move: the unit isn't done.
 

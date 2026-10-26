@@ -18,6 +18,7 @@ type Pr = {
   title: string
   description: string | null
   state: string
+  draft: boolean
   updated_on: string
   source: Side
   destination: Side
@@ -94,6 +95,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
   let myPrs: Promise<Pr[]> | undefined
 
   const forge: Forge = {
+    canFastForward: false,
+
     async clone(repo, branch, dir, fork) {
       if (fork)
         throw new Error(
@@ -123,7 +126,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
-          ...leftIn(pr.description),
+          ...leftIn(pr.description, pr.draft),
         }))
     },
 
@@ -147,6 +150,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           head: pr.source.commit.hash,
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
+          draft: pr.draft,
           // A declined or superseded PR changes no more: its last update is when it closed.
           ...(pr.state !== 'OPEN' && pr.state !== 'MERGED' && { closedAt: pr.updated_on }),
         }))

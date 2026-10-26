@@ -11,7 +11,7 @@ import { pushHead } from './push.js'
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body isDraft headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
   }
 }`
 
@@ -20,6 +20,7 @@ type PrNode = {
   url: string
   title: string
   body: string
+  isDraft: boolean
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
@@ -60,7 +61,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { number url body state closedAt headRefOid isCrossRepository }
+      nodes { number url body state isDraft closedAt headRefOid isCrossRepository }
     }
   }
 }`
@@ -93,6 +94,8 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   let myPrs: Promise<PrNode[]> | undefined
 
   const forge: Forge = {
+    canFastForward: true,
+
     async clone(repo, branch, dir, fork) {
       const pick = fork ? ['--no-checkout'] : branch ? ['--branch', branch] : []
       // An origin rewritten to a local path would hardlink its objects, and the chown hand them to the worker.
@@ -128,7 +131,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           mine: true,
           trusted: true,
           fork: pr.isCrossRepository,
-          ...leftIn(pr.body),
+          ...leftIn(pr.body, pr.isDraft),
         }))
     },
 
@@ -149,6 +152,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
               url: string
               body: string
               state: 'OPEN' | 'CLOSED' | 'MERGED'
+              isDraft: boolean
               closedAt: string | null
               headRefOid: string
               isCrossRepository: boolean
@@ -158,13 +162,14 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
         .filter((pr) => !pr.isCrossRepository)
-        .map(({ number, url, body, state, closedAt, headRefOid }) => ({
+        .map(({ number, url, body, state, isDraft, closedAt, headRefOid }) => ({
           url,
           number,
           body,
           head: headRefOid,
           open: state === 'OPEN',
           merged: state === 'MERGED',
+          draft: isDraft,
           ...(closedAt && { closedAt }),
         }))
     },

@@ -56,7 +56,7 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName headRefOid isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
@@ -138,6 +138,7 @@ type Comments = Nodes<Comment> & {
 type PrLink = {
   number: number
   url: string
+  isDraft: boolean
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
@@ -160,7 +161,6 @@ interface Node extends PrLink {
   labels: Nodes<{ name: string }>
   comments: Comments
   closedByPullRequestsReferences?: Nodes<PrLink>
-  isDraft?: boolean
   additions?: number
   deletions?: number
   files?: Files
@@ -523,7 +523,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ours: isOurs(pr.body),
-  ...leftIn(pr.body),
+  ...leftIn(pr.body, pr.isDraft),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,

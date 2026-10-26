@@ -4859,6 +4859,39 @@ it('stops the chain on continue, its commits opening as a draft whose footer cou
   expect(formatReport(report)).toContain('(1 commit, draft: the agent will continue)')
 })
 
+it('leaves a stacked slice that says continue or ask to you: a draft no later run goes on with', async () => {
+  const slices = (status: 'continue' | 'ask'): Provider => ({
+    ...fakeProvider('claude'),
+    async *run(job, signal) {
+      const said = asker(status === 'ask' ? 'Which?' : '', true, status)
+      yield* (job.unit.skill === 'fix' ? said : committer).run(job, signal)
+    },
+  })
+  for (const status of ['continue', 'ask'] as const) {
+    const { report, writes, opened } = await finishedRun(
+      '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [{ skill: fix, stack: true }] }',
+      [yours(1)],
+      slices(status),
+    )
+    const [head, fix] = report.results
+    expect(opened.map((o) => [o.head, o.left])).toEqual([
+      ['away/acme-api-1', undefined],
+      ['away/acme-api-1-2', undefined],
+    ])
+    expect(opened[1]?.body).toMatch(/^Add a\n\nDone\.\n/)
+    expect(fix?.outcome).toMatchObject({ kind: 'pr', draft: "a stacked slice can't go on" })
+    const byHand = `a stacked slice can't go on: finish https://example.com/acme/api/pull/away/acme-api-1-2 by hand`
+    if (status === 'ask')
+      expect(head?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
+    else expect(head?.byHand).toBe(byHand)
+    expect(formatReport(report)).toContain(
+      `- **api#1**: ${status === 'ask' ? 'questions not posted: ' : ''}${byHand}`,
+    )
+    // It isn't done: no result, no move.
+    expect(writes).toEqual([])
+  }
+})
+
 it("posts a report's continue as its result, counted on from the last, with that result as its report", async () => {
   const seen: string[] = []
   const reporter: Provider = {
@@ -4898,8 +4931,12 @@ it("posts a report's continue as its result, counted on from the last, with that
   expect(report.results[0]?.moved).toBeUndefined()
 })
 
-/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status`, answered when it asked. */
-async function resumed(status: 'ask' | 'continue', provider: Provider) {
+/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status`, answered when it asked; `meanwhile` runs between plan and run. */
+async function resumed(
+  status: 'ask' | 'continue',
+  provider: Provider,
+  meanwhile?: (origin: string) => Promise<unknown>,
+) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-resume-'))
   const { origin, opened, updated, forge } = await originForge(root)
   const from = (await git(origin, 'rev-parse', 'main')).stdout
@@ -4948,6 +4985,7 @@ queue:
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
+  await meanwhile?.(origin)
   const runDir = join(root, 'run')
   const report = await runUnits({
     config,
@@ -4984,6 +5022,29 @@ it('goes on with its own draft once its questions are answered, fast-forwarding 
   expect(prompt).toContain(
     `You are on \`away/acme-api-1\`, the branch of awaywork's own draft ${url} for this unit, which an earlier run left because it asked questions, answered since in the item's comments.`,
   )
+})
+
+it('leaves a draft whose head moved since the plan untouched, though the run committed nothing', async () => {
+  const answered: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, '.away/out/pr.md'), 'Add a\n\nNothing more to do.')
+      await writeFile(join(job.dir, '.away/out/status'), 'done')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const commitYours = (origin: string) =>
+    git(origin, 'commit-tree', '-p', 'away/acme-api-1', '-m', 'Mine', 'main^{tree}').then(
+      ({ stdout }) => git(origin, 'update-ref', 'refs/heads/away/acme-api-1', stdout),
+    )
+  const { report, updated, log } = await resumed('ask', answered, commitYours)
+  expect(report.results[0]?.outcome).toEqual({
+    kind: 'none',
+    reason: 'away/acme-api-1 moved, not pushed',
+    unpublished: true,
+  })
+  expect(updated).toEqual([])
+  expect(log).toEqual(['Mine', 'Add a', 'init'])
 })
 
 it('goes on with its own draft on continue, counting it on, and leaves it a draft while it says continue', async () => {

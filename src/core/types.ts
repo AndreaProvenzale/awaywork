@@ -216,6 +216,8 @@ export interface Provider {
 }
 
 export interface Forge {
+  /** Whether `fastForward` can push onto a PR at all, awaywork's own draft included. */
+  canFastForward: boolean
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
   clone(repo: string, branch: string, dir: string, fork?: Unit['fork']): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
@@ -279,6 +281,7 @@ export interface BranchPr {
   head?: string
   open: boolean
   merged: boolean
+  draft: boolean
   closedAt?: string
 }
 
@@ -383,7 +386,7 @@ export interface Unit {
   /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
   stackedOn?: string
   /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
-  resume?: { url: string; number: number; from: string; status: 'ask' | 'continue' }
+  resume?: { url: string; number: number; from: string; head: string; status: 'ask' | 'continue' }
   /** The times the unit said `continue` so far, on its draft or in its result. */
   continued?: number
   branch: string

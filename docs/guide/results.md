@@ -20,7 +20,7 @@ The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule
 
 ## Built in
 
-- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong, a step asked questions or said `continue`, or a [gate](./configuration.md#gates) fired. A draft left for a later run turns ready once that run finishes it. See [Continue](./how-it-works.md#continue). See [Delivery](./how-it-works.md#delivery).
+- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong, a step asked questions or said `continue`, or a [gate](./configuration.md#gates) fired. A draft left for a later run turns ready once that run finishes it. See [Delivery](./how-it-works.md#delivery) and [Continue](./how-it-works.md#continue).
 - **Decision cards:** a gate that fires puts a "Needs a decision" card on top of the PR body, on any delivery that commits; with gates and none fired, a `Gates: none fired (…)` line sits there instead. On a `push` onto your own PR, the PR body isn't awaywork's, so it tops the summary in the morning report instead, and the push still happens. See [Gates](./configuration.md#gates).
 - **Review comments:** `deliver: pending_review` leaves the report and its line comments as your pending review, unseen until you submit it. See [Delivery](./how-it-works.md#delivery).
 - **Questions:** a step that can't go on without answers writes them to `questions.md` and `ask` to `status`, and awaywork posts them as a comment on your own item; your reply there is the answer, and the next run takes it up. Commits it made first open as a draft that says so. On an item that isn't yours they stay in the morning report. See [Questions](./how-it-works.md#questions).

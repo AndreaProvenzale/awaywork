@@ -55,7 +55,7 @@ export async function originsForge(root: string, repos: string[]) {
       bases[`${repo}:${head}`] = base || 'main'
       drafts[`${repo}:${head}`] = draft
       const sha = (await git(origins[repo] as string, 'rev-parse', head)).stdout
-      fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, head: sha }]
+      fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, draft, head: sha }]
       return url
     },
     /** Refuses unless the PR's branch is still at `from`, as GitHub's does. */
@@ -88,7 +88,7 @@ export async function originsForge(root: string, repos: string[]) {
       const branch = head.slice(repo.length + 1)
       found.body = (await prText(bodyFile, branch, runId, items, left)).body
       found.head = (await git(origins[repo] as string, 'rev-parse', branch)).stdout
-      if (ready) drafts[head] = false
+      if (ready) drafts[head] = found.draft = false
       updated.push(`${repo}#${pr}${ready ? ' ready' : ''}`)
     },
     fileAt: async (repo: string, ref: string, path: string) => {

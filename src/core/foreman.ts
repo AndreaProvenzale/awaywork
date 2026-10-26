@@ -94,6 +94,7 @@ export type SkipKind =
   | 'refused_delivery'
   | 'unstackable'
   | 'draft_moved'
+  | 'draft_by_hand'
   | 'continue_cap'
   | 'continues_later'
   | 'running'
@@ -119,6 +120,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   refused_delivery: true,
   unstackable: true,
   draft_moved: true,
+  draft_by_hand: true,
   continue_cap: true,
   continues_later: false,
   running: false,
@@ -155,6 +157,8 @@ export function planRun(input: {
   now?: number
   /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps. */
   only?: { repo?: string; rule?: number; soon?: boolean; units?: string[] }
+  /** Whether the forge can push onto a PR, awaywork's own draft included; defaults to true. */
+  canFastForward?: boolean
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
@@ -194,10 +198,18 @@ export function planRun(input: {
     const prs = items.flatMap((i) => i.linkedPrs)
     // awaywork's own draft for these items, left for a later run while its head is the one it pushed.
     const keys = items.map((i) => `${i.source}:${i.key}`)
-    const left = !pickup && ours?.head ? ours.left : undefined
+    const left = !pickup ? ours?.left : undefined
     const draft = left?.items.some((k) => keys.includes(k)) ? left : undefined
     if (ours && !pickup && !draft) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
+      continue
+    }
+    if (ours && draft && input.canFastForward === false) {
+      skip(
+        'draft_by_hand',
+        `awaywork's draft ${ours.url} says ${draft.status}, and awaywork can't push onto a PR on this forge: finish it by hand`,
+        ours.url,
+      )
       continue
     }
     if (ours && draft && ours.head !== draft.head) {
@@ -362,7 +374,13 @@ export function planRun(input: {
       ...(stackedOn && { stackedOn }),
       ...(draft &&
         pr && {
-          resume: { url: pr.url, number: pr.number, from: draft.from, status: draft.status },
+          resume: {
+            url: pr.url,
+            number: pr.number,
+            from: draft.from,
+            head: draft.head,
+            status: draft.status,
+          },
         }),
       ...(said && { continued: said.continued }),
     }

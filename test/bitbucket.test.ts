@@ -156,9 +156,9 @@ describe('bitbucket forge', () => {
       [/--state (MERGED|SUPERSEDED) /, empty],
     ])
     const prs = await bitbucketForge(['andrea89'], run).prsOn(sandbox, 'probe/awaywork-fixture')
-    expect(prs.map(({ url, merged }) => [url, merged])).toEqual([
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false],
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false],
+    expect(prs.map(({ url, merged, draft }) => [url, merged, draft])).toEqual([
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false, true],
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false, false],
     ])
     expect(prs[0]?.body).toContain('item=jira:SANDBOX-7')
     expect(prs.map(({ head, closedAt }) => [head, closedAt])).toEqual([

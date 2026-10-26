@@ -27,7 +27,7 @@ const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
 const tmp = () => mkdtemp(join(tmpdir(), 'awaywork-'))
 
 /** A search for my PRs on acme/api, numbered from 1. */
-const authored = (...prs: Record<string, string>[]) =>
+const authored = (...prs: Record<string, unknown>[]) =>
   JSON.stringify({
     data: {
       search: {
@@ -36,6 +36,7 @@ const authored = (...prs: Record<string, string>[]) =>
           url: `https://github.com/acme/api/pull/${i + 1}`,
           title: 'Some change',
           body: '',
+          isDraft: false,
           headRefName: `change-${i + 1}`,
           headRefOid: 'abc1234',
           isCrossRepository: false,
@@ -325,6 +326,22 @@ describe('github source', () => {
     )
     expect(pr1?.fields.ours).toBe(true)
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
+  })
+
+  it("reads what awaywork's draft closing an issue left for a later run, and nothing once it's ready", async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const linked = async (isDraft: boolean) => {
+      const assigned = JSON.parse(fixture('search-assigned.json'))
+      Object.assign(assigned.data.search.nodes[0].closedByPullRequestsReferences.nodes[0], {
+        isDraft,
+        body: `Half.\n\n${footer('r1', [{ source: 'github', key: 'acme/api#5' }], left)}`,
+      })
+      const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+      const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+      return issue5?.linkedPrs[0]
+    }
+    expect((await linked(true))?.left).toEqual({ ...left, items: ['github:acme/api#5'] })
+    expect((await linked(false))?.left).toBeUndefined()
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
@@ -924,12 +941,23 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
+  it("reads what awaywork's draft left only while it's a draft", async () => {
+    const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
+    const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
+    const run = recorded([
+      [/author:@me/, authored({ body, isDraft: true }, { body, isDraft: false })],
+    ])
+    const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
+    expect(prs.map((pr) => pr.left)).toEqual([{ ...left, items: ['linear:ENG-12'] }, undefined])
+  })
+
   it('reads PRs on a branch in any state, not the ones from forks', async () => {
     const pr = (number: number, state: string, closedAt: string | null, fork = false) => ({
       number,
       url: `https://github.com/acme/api/pull/${number}`,
       body: `${state}.`,
       state,
+      isDraft: state === 'OPEN',
       closedAt,
       isCrossRepository: fork,
     })
@@ -953,6 +981,7 @@ describe('github forge', () => {
         body: 'MERGED.',
         open: false,
         merged: true,
+        draft: false,
         closedAt: '2026-10-20T10:00:00Z',
       },
       {
@@ -961,9 +990,10 @@ describe('github forge', () => {
         body: 'CLOSED.',
         open: false,
         merged: false,
+        draft: false,
         closedAt: '2026-10-21T10:00:00Z',
       },
-      { number: 10, url: url(10), body: 'OPEN.', open: true, merged: false },
+      { number: 10, url: url(10), body: 'OPEN.', open: true, merged: false, draft: true },
     ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=away/eng-12']),

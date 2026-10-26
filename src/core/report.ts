@@ -48,6 +48,8 @@ export interface UnitResult {
   result?: Commented[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
+  /** On the chain's first step: why a stacked slice's draft, which said `continue`, is yours to finish. */
+  byHand?: string
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
   plan?: PlanPost
 }
@@ -111,6 +113,7 @@ export function describeResult(c: Commented): string {
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.questions ? [describeQuestions(u.questions)] : []),
+  ...(u.byHand ? [u.byHand] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
   ...(u.result ?? []).map(describeResult),
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),

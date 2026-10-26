@@ -191,14 +191,14 @@ async function deliver(
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
     return { kind: 'pushed', branch: unit.base, url: pr.url, commits: commits.length, text, head }
   }
-  if (resume && oldest) {
-    // The forge refuses unless the draft's head is still `start`, the one awaywork left.
-    const refused = await forge.fastForward(repo, unit.base, start, {
+  if (resume) {
+    // Even without new commits: the forge reads the draft again and refuses unless its head is still the one awaywork left, where the clone started.
+    const refused = await forge.fastForward(repo, unit.base, resume.head, {
       repo: unit.repo,
       pr: resume.number,
     })
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
-  } else if (!resume) await forge.push(repo, unit.branch, { repo: unit.repo })
+  } else await forge.push(repo, unit.branch, { repo: unit.repo })
   // The items' link lines let their trackers link the PR, whatever its branch is called.
   const notes = [...new Set(unit.items.flatMap((i) => i.link ?? []))]
   // GitHub closes an issue when the last slice merges into the default branch, after the retarget.

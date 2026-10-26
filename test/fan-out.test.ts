@@ -611,6 +611,24 @@ describe('a task that goes on in a later run', () => {
       true,
       false,
     ])
+    // A forge that can't push onto a PR leaves the draft to you, its head unread: Bitbucket's is abbreviated.
+    for (const status of ['continue', 'ask'] as const) {
+      const byHand = planRun({
+        config,
+        items: [approved({ api: draftOf(status, 1, 'h1abbrev') })],
+        allowances,
+        skills: { builtin: builtinSkills },
+        attempts: unchanged,
+        canFastForward: false,
+      })
+      expect(byHand.units).toEqual([])
+      expect(skips(byHand)).toContainEqual([
+        'acme/api#1/api',
+        'draft_by_hand',
+        `awaywork's draft https://github.com/acme/api/pull/api says ${status}, and awaywork can't push onto a PR on this forge: finish it by hand`,
+      ])
+    }
+    expect(needsYou.draft_by_hand).toBe(true)
     // Its dependents wait for it with the reason.
     const held = plan([stacked({ api: draftOf('continue', 3) })], configOf(queue), unchanged)
     expect(skips(held)).toContainEqual([
@@ -678,7 +696,25 @@ describe("a task's PR", () => {
     body: body(key),
     open: state === 'open',
     merged: state === 'merged',
+    draft: false,
     ...(state !== 'open' && { closedAt: at(3) }),
+  })
+
+  it('goes on only while it is a draft: one you marked ready waits for review', () => {
+    const left = { status: 'continue', continued: 1, head: 'h1', from: 'f0' } as const
+    const said = (draft: boolean) => ({
+      ...on(4, 'open'),
+      draft,
+      body: `Half.\n\n${footer('r1', [{ source: 'github', key: task.key }], left)}`,
+    })
+    expect(taskPr([said(true)], task)?.left).toEqual({ ...left, items: ['github:acme/api#1/api'] })
+    expect(taskPr([said(false)], task)?.left).toBeUndefined()
+    const ready = plan([approved({ api: taskPr([said(false)], task) as TaskPr })])
+    expect(skips(ready)).toContainEqual([
+      'acme/api#1/api',
+      'waiting_for_review',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/4 is open',
+    ])
   })
 
   it('is the one on its branch whose footer names the task, open or merged first', () => {

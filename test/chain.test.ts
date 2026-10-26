@@ -89,6 +89,7 @@ async function originForge(root: string) {
               body: footers[branch],
               open: true,
               merged: false,
+              draft: false,
             },
           ]
         : [],
