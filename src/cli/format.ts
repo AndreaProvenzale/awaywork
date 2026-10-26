@@ -413,7 +413,7 @@ export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): strin
   ]
 }
 
-/** What each rule takes now and what earlier rules take from it, then the unmatched items. */
+/** What each rule takes now and what other rules take from it, then the unmatched items. */
 export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matches = ruleMatches(items, rules)
   const keys = (list: Item[], rule?: Rule) =>

@@ -325,7 +325,7 @@ interface RuleMatches {
   shadowed: { item: Item; by: number }[]
 }
 
-/** What each rule takes in this run, and what earlier rules take from it. */
+/** What each rule takes in this run, and what other rules take from it. */
 export function ruleMatches(items: Item[], queue: Rule[]): RuleMatches[] {
   const result: RuleMatches[] = queue.map(() => ({ taken: [], shadowed: [] }))
   for (const item of items) {
