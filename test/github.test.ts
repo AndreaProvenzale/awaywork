@@ -1151,6 +1151,7 @@ describe('github forge', () => {
             defaultBranchRef: { name: 'main' },
             pullRequest: {
               state: 'OPEN',
+              isDraft: false,
               viewerDidAuthor: true,
               isCrossRepository: false,
               headRefName: 'feature-1',
@@ -1171,6 +1172,7 @@ describe('github forge', () => {
       [/number=7 /, state({ viewerDidAuthor: false })],
       [/number=8 /, state({}, [theirs])],
       [/number=9 /, state({ headRefName: 'release/9' })],
+      [/number=10 /, state({})],
       [/number=1 /, state({})],
       [/branches\/release\/9$/, '{ "protected": true }'],
       [/branches\/feature-1$/, '{ "protected": false }'],
@@ -1191,6 +1193,10 @@ describe('github forge', () => {
       "feature-1 is also the branch of #12, which isn't yours",
     )
     expect(await push('release/9', 9)).toBe('release/9 is protected')
+    const resume = { repo: 'acme/api', pr: 10, draft: true }
+    expect(await forge.fastForward('/work/u1', 'feature-1', 'abc1234', resume)).toBe(
+      '#10 was marked ready',
+    )
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
     expect(await push('feature-1', 1)).toBeUndefined()
     expect(run.calls.at(-1)).toEqual([

@@ -852,6 +852,7 @@ async function originForge(root: string) {
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const opened: { head: string; base: string; body: string; left?: Left }[] = []
   const updated: { pr: number; body: string; ready: boolean; left?: Left }[] = []
+  const readied = new Set<number>()
   const fake = fakeForge()
   const forge = {
     ...fake,
@@ -862,7 +863,13 @@ async function originForge(root: string) {
       await fake.push(dir, branch, opts)
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
     },
-    fastForward: async (dir: string, branch: string, from: string) => {
+    fastForward: async (
+      dir: string,
+      branch: string,
+      from: string,
+      to: { pr: number; draft?: boolean },
+    ) => {
+      if (to.draft && readied.has(to.pr)) return `#${to.pr} was marked ready`
       const head = await git(origin, 'rev-parse', `refs/heads/${branch}`)
       if (head.stdout !== from) return `${branch} moved`
       await git(dir, 'push', '-q', origin, `HEAD:refs/heads/${branch}`)
@@ -892,7 +899,7 @@ async function originForge(root: string) {
       updated.push({ pr, body: await readFile(bodyFile, 'utf8'), ready, ...(left && { left }) })
     },
   }
-  return { origin, opened, updated, forge }
+  return { origin, opened, updated, readied, forge }
 }
 
 /** Commits `<unit id>.txt` and writes a PR body, or writes a report. */
@@ -4991,14 +4998,14 @@ it("posts a report's continue as its result, counted on from the last, with that
   expect(report.results[0]?.moved).toBeUndefined()
 })
 
-/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status`, answered when it asked; `meanwhile` runs between plan and run. */
+/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status`, answered when it asked; `meanwhile` runs between plan and run, given the PRs marked ready. */
 async function resumed(
   status: 'ask' | 'continue',
   provider: Provider,
-  meanwhile?: (origin: string) => Promise<unknown>,
+  meanwhile?: (origin: string, readied: Set<number>) => Promise<unknown>,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-resume-'))
-  const { origin, opened, updated, forge } = await originForge(root)
+  const { origin, opened, updated, readied, forge } = await originForge(root)
   const from = (await git(origin, 'rev-parse', 'main')).stdout
   const left = (await git(origin, 'commit-tree', '-p', 'main', '-m', 'Add a', 'main^{tree}')).stdout
   await git(origin, 'update-ref', 'refs/heads/away/acme-api-1', left)
@@ -5045,7 +5052,7 @@ queue:
     allowances: { claude: allowance(config.budget, null, 0, config.windows) },
     skills: { builtin: builtinSkills },
   })
-  await meanwhile?.(origin)
+  await meanwhile?.(origin, readied)
   const runDir = join(root, 'run')
   const report = await runUnits({
     config,
@@ -5105,6 +5112,18 @@ it('leaves a draft whose head moved since the plan untouched, though the run com
   })
   expect(updated).toEqual([])
   expect(log).toEqual(['Mine', 'Add a', 'init'])
+})
+
+it('leaves a draft you marked ready during the run to you: nothing pushed, its body untouched', async () => {
+  const markReady = async (_origin: string, readied: Set<number>) => readied.add(7)
+  const { report, updated, log } = await resumed('continue', committer, markReady)
+  expect(report.results[0]?.outcome).toEqual({
+    kind: 'none',
+    reason: '#7 was marked ready, not pushed',
+    unpublished: true,
+  })
+  expect(updated).toEqual([])
+  expect(log).toEqual(['Add a', 'init'])
 })
 
 it('goes on with its own draft on continue, counting it on, and leaves it a draft while it says continue', async () => {

@@ -46,7 +46,7 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     pullRequest(number: $number) {
-      state viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+      state isDraft viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
     }
     pullRequests(headRefName: $branch, states: OPEN, first: 100) {
       nodes { number isCrossRepository viewerDidAuthor }
@@ -58,6 +58,7 @@ type PrState = {
   defaultBranchRef: { name: string } | null
   pullRequest: {
     state: string
+    isDraft: boolean
     viewerDidAuthor: boolean
     isCrossRepository: boolean
     headRefName: string
@@ -233,7 +234,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
     },
 
     /** Reads the PR live: hours may have passed since planning. */
-    async fastForward(dir, branch, from, { repo, pr }) {
+    async fastForward(dir, branch, from, { repo, pr, draft }) {
       const [owner = '', name = ''] = repo.split('/')
       const { repository: r } = await graphql<{ repository: PrState }>(run, prStateQuery, {
         owner,
@@ -246,6 +247,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`
       const checks: [boolean, string][] = [
         [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
+        [!!draft && !p.isDraft, `#${pr} was marked ready`],
         [!p.viewerDidAuthor, `#${pr} isn't yours`],
         [p.isCrossRepository, `#${pr}'s branch is on a fork`],
         [p.headRefName !== branch, `#${pr}'s branch is ${p.headRefName}`],

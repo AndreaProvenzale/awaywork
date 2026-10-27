@@ -204,7 +204,7 @@ export function planRun(input: {
     if (ours && draft && !draft.yours) {
       const why = config.sources.bitbucket
         ? 'awaywork goes on with its own draft on GitHub only: finish it by hand'
-        : 'someone else edited it last: finish it'
+        : 'someone else opened or edited it last: finish it'
       skip(
         'waiting_for_review',
         `awaywork's draft ${ours.url} says ${draft.status}, but ${why}, or mark it ready`,

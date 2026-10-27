@@ -58,13 +58,14 @@ export async function originsForge(root: string, repos: string[]) {
       fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, draft, head: sha }]
       return url
     },
-    /** Refuses unless the PR's branch is still at `from`, as GitHub's does. */
+    /** Refuses unless the PR's branch is still at `from`, and a draft with `draft`, as GitHub's does. */
     fastForward: async (
       dir: string,
       branch: string,
       from: string,
-      to: { repo: string; pr: number },
+      to: { repo: string; pr: number; draft?: boolean },
     ) => {
+      if (to.draft && drafts[`${to.repo}:${branch}`] === false) return `#${to.pr} was marked ready`
       const at = (await git(origins[to.repo] as string, 'rev-parse', branch)).stdout
       if (at !== from)
         return `${branch} is at ${at.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`

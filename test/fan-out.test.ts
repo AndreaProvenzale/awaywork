@@ -634,7 +634,7 @@ describe('a task that goes on in a later run', () => {
         [
           'acme/api#1/api',
           'waiting_for_review',
-          "awaywork's draft https://github.com/acme/api/pull/api says continue, but someone else edited it last: finish it, or mark it ready",
+          "awaywork's draft https://github.com/acme/api/pull/api says continue, but someone else opened or edited it last: finish it, or mark it ready",
         ],
         ['acme/api#1/web', 'waiting_for_task', "waiting for task api's draft, which says continue"],
         [
@@ -743,7 +743,7 @@ describe("a task's PR", () => {
     expect(waits(said(true, false))).toContainEqual([
       'acme/api#1/api',
       'waiting_for_review',
-      "awaywork's draft https://github.com/acme/api/pull/4 says continue, but someone else edited it last: finish it, or mark it ready",
+      "awaywork's draft https://github.com/acme/api/pull/4 says continue, but someone else opened or edited it last: finish it, or mark it ready",
     ])
   })
 

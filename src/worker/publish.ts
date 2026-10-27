@@ -196,6 +196,7 @@ async function deliver(
     const refused = await forge.fastForward(repo, unit.base, resume.head, {
       repo: unit.repo,
       pr: resume.number,
+      draft: true,
     })
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
   } else await forge.push(repo, unit.branch, { repo: unit.repo })
