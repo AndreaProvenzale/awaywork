@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../../src/config/paths.js'
-import type { Left } from '../../src/core/footer.js'
+import { type Left, leftIn } from '../../src/core/footer.js'
 import type { Item } from '../../src/core/types.js'
 import { prText } from '../../src/forge/pr.js'
 import { fakeForge } from './forge.js'
@@ -55,9 +55,14 @@ export async function originsForge(root: string, repos: string[]) {
       bases[`${repo}:${head}`] = base || 'main'
       drafts[`${repo}:${head}`] = draft
       const sha = (await git(origins[repo] as string, 'rev-parse', head)).stdout
-      fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, draft, head: sha }]
+      fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, head: sha }]
       return url
     },
+    prsOn: async (repo: string, branch: string) =>
+      (await fake.prsOn(repo, branch)).map((pr) => ({
+        ...pr,
+        ...leftIn(pr.body, pr.open && drafts[`${repo}:${branch}`] === true),
+      })),
     /** Refuses unless the PR's branch is still at `from`, and a draft with `draft`, as GitHub's does. */
     fastForward: async (
       dir: string,
@@ -89,7 +94,7 @@ export async function originsForge(root: string, repos: string[]) {
       const branch = head.slice(repo.length + 1)
       found.body = (await prText(bodyFile, branch, runId, items, left)).body
       found.head = (await git(origins[repo] as string, 'rev-parse', branch)).stdout
-      if (ready) drafts[head] = found.draft = false
+      if (ready) drafts[head] = false
       updated.push(`${repo}#${pr}${ready ? ' ready' : ''}`)
     },
     fileAt: async (repo: string, ref: string, path: string) => {

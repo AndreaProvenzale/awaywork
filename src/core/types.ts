@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { Left } from './footer.js'
+import type { DraftLeft, Left } from './footer.js'
 import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
@@ -24,7 +24,7 @@ export interface PrRef {
   /** Its branch lives on a fork, not in `repo`. */
   fork: boolean
   /** On an awaywork draft for a later run: what its footer says it left. */
-  left?: Left & { items: string[]; yours: boolean }
+  left?: DraftLeft
 }
 
 export interface Item {
@@ -281,9 +281,8 @@ export interface BranchPr {
   head?: string
   open: boolean
   merged: boolean
-  draft: boolean
-  /** You opened it, and you, or awaywork as you, edited its body last. */
-  bodyYours: boolean
+  /** On an open awaywork draft for a later run: what its footer says it left. */
+  left?: DraftLeft
   closedAt?: string
 }
 

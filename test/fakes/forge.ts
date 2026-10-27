@@ -37,8 +37,6 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
         number: Number(pr.url.split('/').at(-1)) || 0,
         open: !pr.merged,
         merged: false,
-        draft: false,
-        bodyYours: true,
         ...pr,
       })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',

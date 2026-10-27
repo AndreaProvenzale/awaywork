@@ -1,6 +1,6 @@
 import type { Config } from '../config/schema.js'
 import { defaultType, renderBranch } from './branch.js'
-import { commentKind, commentMarkdown, footerItems, leftIn, waitingTasks } from './footer.js'
+import { commentKind, commentMarkdown, footerItems, waitingTasks } from './footer.js'
 import type { SkipKind, Skipped } from './foreman.js'
 import {
   type Contract,
@@ -197,7 +197,7 @@ export function taskPr(
     trusted: true,
     fork: false,
     ...(pr.head && { head: pr.head }),
-    ...(pr.open && leftIn(pr.body, pr.draft, pr.bodyYours)),
+    ...(pr.left && { left: pr.left }),
     state: pr.open ? 'open' : pr.merged ? 'merged' : 'closed',
     ...(pr.closedAt && { closedAt: pr.closedAt }),
   }

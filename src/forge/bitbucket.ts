@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
+import { GITHUB_ONLY } from '../core/continue.js'
 import { isOurs, leftIn } from '../core/footer.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
@@ -126,8 +127,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
-          // twg doesn't say who last edited a description: a draft's footer holds dependents back, never resumes.
-          ...leftIn(pr.description, pr.draft, false),
+          ...leftIn(pr.description, pr.draft, GITHUB_ONLY),
         }))
     },
 
@@ -151,9 +151,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           head: pr.source.commit.hash,
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
-          draft: pr.draft,
-          // twg doesn't say who last edited a description.
-          bodyYours: false,
+          ...leftIn(pr.description, pr.state === 'OPEN' && pr.draft, GITHUB_ONLY),
           // A declined or superseded PR changes no more: its last update is when it closed.
           ...(pr.state !== 'OPEN' && pr.state !== 'MERGED' && { closedAt: pr.updated_on }),
         }))
@@ -211,7 +209,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
     },
 
     async updatePr() {
-      throw new Error('awaywork goes on with its own draft on GitHub only')
+      throw new Error(GITHUB_ONLY)
     },
 
     /** Bitbucket has no stacked PRs; the upper PR's base is already the lower one's branch. */

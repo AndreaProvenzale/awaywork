@@ -3,6 +3,7 @@ import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } 
 import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
+import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
@@ -192,44 +193,25 @@ export function planRun(input: {
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
-    // awaywork's own draft for these items, left for a later run while its head is the one it pushed.
+    // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
-    const left = !pickup ? ours?.left : undefined
-    const draft = left?.items.some((k) => keys.includes(k)) ? left : undefined
+    const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
     if (ours && !pickup && !draft) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
-    // A footer that isn't yours still holds dependents back, but awaywork pushes onto it only from yours.
-    if (ours && draft && !draft.yours) {
-      const why = config.sources.bitbucket
-        ? 'awaywork goes on with its own draft on GitHub only: finish it by hand'
-        : 'someone else opened or edited it last: finish it'
-      skip(
-        'waiting_for_review',
-        `awaywork's draft ${ours.url} says ${draft.status}, but ${why}, or mark it ready`,
-        ours.url,
-      )
-      continue
-    }
-    if (ours && draft && ours.head !== draft.head) {
-      const at = draft.head.slice(0, 7)
-      skip(
-        'draft_moved',
-        `awaywork's draft ${ours.url} moved from ${at}, where it left it: needs you`,
-        ours.url,
-      )
-      continue
-    }
-    // A unit that said `continue` goes on, though its items didn't change, up to the cap; a report counts in its result.
+    // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
     const result = draft ? undefined : latestResult(items[0] as Item)
-    const said = draft ?? (result?.status === 'continue' ? result : undefined)
-    const goesOn = said?.status === 'continue'
+    const left = draft ?? (result?.status === 'continue' ? result : undefined)
     const where = (draft && ours?.url) || (items[0] as Item).url
-    if (goesOn && said.continued >= MAX_ATTEMPTS) {
-      skip('continue_cap', `continued ${said.continued} times on ${where}: needs you`, where)
+    const stop = left && byHand(left, { head: ours?.head })
+    if (left && stop) {
+      const what = draft ? `awaywork's draft ${where}` : "awaywork's result"
+      const or = draft ? ', or mark it ready' : ''
+      skip(stop.kind, `${what} says ${left.status}, but ${stop.why}: finish it by hand${or}`, where)
       continue
     }
+    const goesOn = left?.status === 'continue'
     // A soon run reacts to an item changing, and a `continue` isn't one.
     if (goesOn && only.soon) {
       skip('continues_later', `goes on from ${where} in the next window run`, where)
@@ -382,7 +364,7 @@ export function planRun(input: {
             status: draft.status,
           },
         }),
-      ...(said && { continued: said.continued }),
+      ...(left && { continued: left.continued }),
     }
     let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {

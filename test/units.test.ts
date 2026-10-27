@@ -4898,10 +4898,8 @@ it('leaves a stacked slice that says continue or ask to you: a draft no later ru
     // It isn't done: no result, no move.
     expect(writes).toEqual([])
   }
-})
-
-it('holds back the questions of a stacked slice that asks without committing: no later run reads the answer', async () => {
-  const provider: Provider = {
+  // Asked without committing, its questions stay in the report too: no later run reads the answer.
+  const idle: Provider = {
     ...fakeProvider('claude'),
     async *run(job, signal) {
       yield* (job.unit.skill === 'fix' ? asker('Which?', false, 'ask') : committer).run(job, signal)
@@ -4910,7 +4908,7 @@ it('holds back the questions of a stacked slice that asks without committing: no
   const { report, writes, opened } = await finishedRun(
     '  - { skill: implement, deliver: pr, on_done: { comment: result }, then: [{ skill: fix, stack: true }] }',
     [yours(1)],
-    provider,
+    idle,
   )
   expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
   const byHand = `a stacked slice can't go on: finish it on https://example.com/acme/api/pull/away/acme-api-1 by hand`
@@ -4998,11 +4996,12 @@ it("posts a report's continue as its result, counted on from the last, with that
   expect(report.results[0]?.moved).toBeUndefined()
 })
 
-/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status`, answered when it asked; `meanwhile` runs between plan and run, given the PRs marked ready. */
+/** Runs `implement` on your issue whose open draft, on `away/acme-api-1`, awaywork left saying `status` after `continued` continues, answered when it asked; `meanwhile` runs between plan and run, given the PRs marked ready. */
 async function resumed(
   status: 'ask' | 'continue',
   provider: Provider,
   meanwhile?: (origin: string, readied: Set<number>) => Promise<unknown>,
+  continued = 1,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-resume-'))
   const { origin, opened, updated, readied, forge } = await originForge(root)
@@ -5036,7 +5035,7 @@ async function resumed(
         mine: true,
         trusted: true,
         fork: false,
-        left: { status, continued: 1, head: left, from, items: ['github:acme/api#1'], yours: true },
+        left: { status, continued, head: left, from, items: ['github:acme/api#1'] },
       },
     ],
   }
@@ -5126,7 +5125,7 @@ it('leaves a draft you marked ready during the run to you: nothing pushed, its b
   expect(log).toEqual(['Add a', 'init'])
 })
 
-it('goes on with its own draft on continue, counting it on, and leaves it a draft while it says continue', async () => {
+it('goes on with its own draft on continue, counting it on, a draft while it says continue, and yours at the cap', async () => {
   const again = asker('', true, 'continue')
   const { report, updated, log, from } = await resumed('continue', again)
   expect(report.results[0]?.outcome).toMatchObject({
@@ -5144,6 +5143,13 @@ it('goes on with its own draft on continue, counting it on, and leaves it a draf
       left: { status: 'continue', continued: 2, head, from },
     },
   ])
+  // The third continue reaches the cap: no later run goes on, so the draft is yours, its footer still holding dependents.
+  const capped = await resumed('continue', again, undefined, 2)
+  const byHand = 'it continued 3 times'
+  expect(capped.report.results[0]?.outcome).toMatchObject({ draft: byHand, held: 'continue' })
+  expect(capped.report.results[0]?.byHand).toBe(`${byHand}: finish ${capped.url} by hand`)
+  expect(capped.updated[0]?.body).toMatch(/^Add a\n\nDone\./)
+  expect(capped.updated[0]?.left).toMatchObject({ status: 'continue', continued: 3 })
 })
 
 it("posts a report rule's result before moving, counting both as awaywork's own changes", async () => {

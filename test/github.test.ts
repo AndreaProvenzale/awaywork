@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
+import { NOT_YOURS } from '../src/core/continue.js'
 import {
   awaitsAnswer,
   footer,
@@ -345,12 +346,12 @@ describe('github source', () => {
       return issue5?.linkedPrs[0]
     }
     const items = ['github:acme/api#5']
-    expect((await linked(true))?.left).toEqual({ ...left, items, yours: true })
+    expect((await linked(true))?.left).toEqual({ ...left, items })
     expect((await linked(false))?.left).toBeUndefined()
     expect((await linked(true, { login: 'teammate' }))?.left).toEqual({
       ...left,
       items,
-      yours: false,
+      refused: NOT_YOURS,
     })
   })
 
@@ -966,17 +967,24 @@ describe('github forge', () => {
       ],
     ])
     const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
-    const kept = { ...left, items: ['linear:ENG-12'], yours: true }
-    expect(prs.map((pr) => pr.left)).toEqual([kept, undefined, kept, { ...kept, yours: false }])
+    const kept = { ...left, items: ['linear:ENG-12'] }
+    expect(prs.map((pr) => pr.left)).toEqual([
+      kept,
+      undefined,
+      kept,
+      { ...kept, refused: NOT_YOURS },
+    ])
   })
 
-  it('reads PRs on a branch in any state, not the ones from forks, and whether their body is yours', async () => {
+  it('reads PRs on a branch in any state, not the ones from forks, and what an open draft left', async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
     const pr = (number: number, state: string, closedAt: string | null, fork = false) => ({
       number,
       url: `https://github.com/acme/api/pull/${number}`,
-      body: `${state}.`,
+      body,
       state,
-      isDraft: state === 'OPEN',
+      isDraft: true,
       viewerDidAuthor: true,
       author: { login: 'dev' },
       editor: null as { login: string } | null,
@@ -986,8 +994,9 @@ describe('github forge', () => {
     const nodes = [
       pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
       pr(8, 'OPEN', null, true),
-      { ...pr(9, 'CLOSED', '2026-10-21T10:00:00Z'), editor: { login: 'teammate' } },
+      pr(9, 'CLOSED', '2026-10-21T10:00:00Z'),
       { ...pr(10, 'OPEN', null), editor: { login: 'dev' } },
+      { ...pr(11, 'OPEN', null), editor: { login: 'teammate' } },
     ]
     const run = recorded([
       [
@@ -996,35 +1005,25 @@ describe('github forge', () => {
       ],
     ])
     const url = (n: number) => `https://github.com/acme/api/pull/${n}`
+    const kept = { ...left, items: ['linear:ENG-12'] }
     expect(await githubForge(run).prsOn('acme/api', 'away/eng-12')).toEqual([
-      {
-        number: 7,
-        url: url(7),
-        body: 'MERGED.',
-        open: false,
-        merged: true,
-        draft: false,
-        bodyYours: true,
-        closedAt: '2026-10-20T10:00:00Z',
-      },
+      { number: 7, url: url(7), body, open: false, merged: true, closedAt: '2026-10-20T10:00:00Z' },
       {
         number: 9,
         url: url(9),
-        body: 'CLOSED.',
+        body,
         open: false,
         merged: false,
-        draft: false,
-        bodyYours: false,
         closedAt: '2026-10-21T10:00:00Z',
       },
+      { number: 10, url: url(10), body, open: true, merged: false, left: kept },
       {
-        number: 10,
-        url: url(10),
-        body: 'OPEN.',
+        number: 11,
+        url: url(11),
+        body,
         open: true,
         merged: false,
-        draft: true,
-        bodyYours: true,
+        left: { ...kept, refused: NOT_YOURS },
       },
     ])
     expect(run.calls[0]).toEqual(
