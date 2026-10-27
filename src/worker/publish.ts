@@ -6,6 +6,7 @@ import { bin } from '../config/paths.js'
 import { type Left, trailerKey } from '../core/footer.js'
 import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
+import type { Held } from './slices.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
 
 export type Outcome =
@@ -77,7 +78,7 @@ export async function publish(
   stack?: Stack,
   closes = false,
   notReady?: string,
-  held?: Pick<Left, 'status' | 'continued'>,
+  held?: Held,
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -121,7 +122,7 @@ async function deliver(
   onto?: string,
   closes = false,
   notReady?: string,
-  held?: Pick<Left, 'status' | 'continued'>,
+  held?: Held,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   const { resume } = unit
@@ -196,7 +197,7 @@ async function deliver(
     const refused = await forge.fastForward(repo, unit.base, resume.head, {
       repo: unit.repo,
       pr: resume.number,
-      draft: true,
+      draft: unit.items,
     })
     if (refused) return { kind: 'none', reason: `${refused}, not pushed`, unpublished: true }
   } else await forge.push(repo, unit.branch, { repo: unit.repo })

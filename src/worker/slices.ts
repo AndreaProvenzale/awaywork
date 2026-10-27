@@ -185,7 +185,7 @@ export async function publishSlice(
     stack,
     closes,
     notReady,
-    held && { status: held.status, continued: held.continued },
+    held,
   )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }

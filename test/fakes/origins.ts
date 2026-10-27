@@ -68,7 +68,7 @@ export async function originsForge(root: string, repos: string[]) {
       dir: string,
       branch: string,
       from: string,
-      to: { repo: string; pr: number; draft?: boolean },
+      to: { repo: string; pr: number; draft?: Pick<Item, 'source' | 'key'>[] },
     ) => {
       if (to.draft && drafts[`${to.repo}:${branch}`] === false) return `#${to.pr} was marked ready`
       const at = (await git(origins[to.repo] as string, 'rev-parse', branch)).stdout

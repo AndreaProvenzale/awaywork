@@ -234,7 +234,7 @@ Once the agent says `done`, or writes no status file, and `verify`, the gates an
 | 1 | [acme/api#1/app Export screen](https://github.com/acme/api/issues/1) | implement → loop(review ⇄ fix) | claude | done, 2 turns (loop: 1 round of review ⇄ fix; until held: verdict approve) | https://github.com/acme/web/pull/13 (1 commit, ready for review), verdict approve |
 ```
 
-When awaywork won't go on, the run's report says `<why>: finish <PR> by hand`, the draft opens without the status line, and questions it asked stay in the report. The next plan skips the unit with the same why:
+When awaywork won't go on, the run's report says `<why>: finish <PR> by hand`, the draft opens without the status line, and questions it asked stay in the report, a stacked slice's even without commits (`finish it on <PR below> by hand`). A first slice that committed nothing has no draft, so its questions are posted. The next plan skips the unit with the same why:
 
 ```text
 Needs you 1
