@@ -6,7 +6,7 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
-import { byHand, GITHUB_ONLY } from '../core/continue.js'
+import { byHand } from '../core/continue.js'
 import { planComment, questionsComment, resultComment, type Status } from '../core/footer.js'
 import {
   bySlice,
@@ -533,8 +533,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // What a step's status file left for a later run, `ask` or `continue`, and why no later run goes on with its draft, if none will.
     const leave = (status: Held['status']): Held & { byHand?: string } => {
       const continued = status === 'continue' ? before + 1 : before
-      const refused = input.forge.canFastForward ? undefined : GITHUB_ONLY
-      const stop = opensPr ? byHand({ continued, refused }, { slice: at }) : undefined
+      const refused = input.forge.ownDraftsRefused
+      const stop = opensPr && byHand({ continued, refused }, { slice: at })
       return { status, continued, ...(stop && { byHand: stop.why }) }
     }
     let leaves: ReturnType<typeof leave> | undefined

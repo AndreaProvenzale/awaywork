@@ -47,7 +47,7 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     pullRequest(number: $number) {
-      state isDraft viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+      state isDraft body ${EDITED} isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
     }
     pullRequests(headRefName: $branch, states: OPEN, first: 100) {
       nodes { number isCrossRepository viewerDidAuthor }
@@ -57,10 +57,10 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
 
 type PrState = {
   defaultBranchRef: { name: string } | null
-  pullRequest: {
+  pullRequest: Edited & {
     state: string
     isDraft: boolean
-    viewerDidAuthor: boolean
+    body: string
     isCrossRepository: boolean
     headRefName: string
     headRefOid: string
@@ -108,8 +108,6 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
   let myPrs: Promise<PrNode[]> | undefined
 
   const forge: Forge = {
-    canFastForward: true,
-
     async clone(repo, branch, dir, fork) {
       const pick = fork ? ['--no-checkout'] : branch ? ['--branch', branch] : []
       // An origin rewritten to a local path would hardlink its objects, and the chown hand them to the worker.
@@ -245,10 +243,16 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const p = r.pullRequest
       const shared = r.pullRequests.nodes.find((o) => !o.isCrossRepository && !o.viewerDidAuthor)
       const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`
+      const named = leftIn(p.body, p.isDraft).left?.items ?? []
       const checks: [boolean, string][] = [
         [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
         [!!draft && !p.isDraft, `#${pr} was marked ready`],
         [!p.viewerDidAuthor, `#${pr} isn't yours`],
+        [!!draft && !!notYours(p), `someone else edited #${pr}'s body last`],
+        [
+          !!draft && !draft.some((i) => named.includes(`${i.source}:${i.key}`)),
+          `#${pr}'s footer no longer says awaywork left it for this unit`,
+        ],
         [p.isCrossRepository, `#${pr}'s branch is on a fork`],
         [p.headRefName !== branch, `#${pr}'s branch is ${p.headRefName}`],
         [branch === r.defaultBranchRef?.name, `${branch} is the default branch`],

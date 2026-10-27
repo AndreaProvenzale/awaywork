@@ -216,8 +216,8 @@ export interface Provider {
 }
 
 export interface Forge {
-  /** Whether `fastForward` can push onto a PR at all, awaywork's own draft included. */
-  canFastForward: boolean
+  /** Why awaywork won't go on with its own drafts here, if it won't. */
+  ownDraftsRefused?: string
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
   clone(repo: string, branch: string, dir: string, fork?: Unit['fork']): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
@@ -233,14 +233,15 @@ export interface Forge {
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
-   * auto-merge, and still at `from`, a draft with `draft`, and the branch is unprotected and backs
-   * no one else's PR; never forced. Returns why it refused, or nothing once pushed.
+   * auto-merge, and still at `from`, and the branch is unprotected and backs no one else's PR; never
+   * forced. With `draft`, the PR is also awaywork's draft for those items, as planning read it: still a
+   * draft, its body last edited by you, its footer naming one of them. Returns why it refused, or nothing once pushed.
    */
   fastForward(
     dir: string,
     branch: string,
     from: string,
-    opts: { repo: string; pr: number; draft?: boolean },
+    opts: { repo: string; pr: number; draft?: Pick<Item, 'source' | 'key'>[] },
   ): Promise<string | undefined>
   /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`, its footer recording what it `left`. */
   openPr(

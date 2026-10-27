@@ -1143,6 +1143,11 @@ describe('github forge', () => {
   it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
     const theirs = { number: 12, isCrossRepository: false, viewerDidAuthor: false }
     const fork = { number: 13, isCrossRepository: true, viewerDidAuthor: false }
+    const item = { source: 'github', key: 'acme/api#1' }
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'f00' } as const
+    const body = footer('r0', [item], left)
+    const me = { login: 'me' }
+    const draft = { isDraft: true, body, author: me, editor: me }
     const state = (pr: Record<string, unknown>, others = [fork]) =>
       JSON.stringify({
         data: {
@@ -1172,7 +1177,9 @@ describe('github forge', () => {
       [/number=8 /, state({}, [theirs])],
       [/number=9 /, state({ headRefName: 'release/9' })],
       [/number=10 /, state({})],
-      [/number=1 /, state({})],
+      [/number=11 /, state({ ...draft, editor: { login: 'sam' } })],
+      [/number=14 /, state({ ...draft, body: body.replace('acme%2Fapi%231', 'acme%2Fapi%232') })],
+      [/number=1 /, state(draft)],
       [/branches\/release\/9$/, '{ "protected": true }'],
       [/branches\/feature-1$/, '{ "protected": false }'],
       [/rev-parse/, 'f00d000\n'],
@@ -1192,11 +1199,13 @@ describe('github forge', () => {
       "feature-1 is also the branch of #12, which isn't yours",
     )
     expect(await push('release/9', 9)).toBe('release/9 is protected')
-    const resume = { repo: 'acme/api', pr: 10, draft: true }
-    expect(await forge.fastForward('/work/u1', 'feature-1', 'abc1234', resume)).toBe(
-      '#10 was marked ready',
-    )
+    const resume = (pr: number) =>
+      forge.fastForward('/work/u1', 'feature-1', 'abc1234', { repo: 'acme/api', pr, draft: [item] })
+    expect(await resume(10)).toBe('#10 was marked ready')
+    expect(await resume(11)).toBe("someone else edited #11's body last")
+    expect(await resume(14)).toBe("#14's footer no longer says awaywork left it for this unit")
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
+    expect(await resume(1)).toBeUndefined()
     expect(await push('feature-1', 1)).toBeUndefined()
     expect(run.calls.at(-1)).toEqual([
       'git',

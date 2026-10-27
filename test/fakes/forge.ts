@@ -28,7 +28,6 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     tips,
     files,
     states,
-    canFastForward: true,
     clone: async () => {},
     prsFor: async (item: Item) => prs.filter((pr) => pr.branch.includes(item.key)),
     branchExists: async (repo, name) => branches.has(`${repo}:${name}`),

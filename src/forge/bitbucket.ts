@@ -96,7 +96,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
   let myPrs: Promise<Pr[]> | undefined
 
   const forge: Forge = {
-    canFastForward: false,
+    ownDraftsRefused: GITHUB_ONLY,
 
     async clone(repo, branch, dir, fork) {
       if (fork)
