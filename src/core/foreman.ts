@@ -1,9 +1,10 @@
 import type { Config } from '../config/schema.js'
 import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } from './attempts.js'
-import { defaultType, isValidRef, renderBranch } from './branch.js'
+import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
+import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import { planState } from './plan.js'
@@ -76,7 +77,10 @@ export type SkipKind =
   | 'waiting_for_answer'
   | 'waiting_for_approval'
   | 'invalid_plan'
-  | 'plan_approved'
+  | 'fanned_out'
+  | 'waiting_for_task'
+  | 'task_merged'
+  | 'all_tasks_merged'
   | 'gave_up'
   | 'no_repo'
   | 'invalid_branch'
@@ -94,7 +98,10 @@ export const needsYou: Record<SkipKind, boolean> = {
   waiting_for_answer: true,
   waiting_for_approval: true,
   invalid_plan: true,
-  plan_approved: false,
+  fanned_out: false,
+  waiting_for_task: false,
+  task_merged: false,
+  all_tasks_merged: true,
   gave_up: true,
   no_repo: true,
   invalid_branch: true,
@@ -138,8 +145,12 @@ export function planRun(input: {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
-  const { ranked, unmatched } = rank(input.items, queue)
-  const skipped: Skipped[] = unmatched.map((item) => ({ item, ...noRuleReason(item, queue) }))
+  const expanded = expandPlans(input.items, config, queue, input.skills, skips)
+  const { ranked, unmatched } = rank(expanded.items, queue)
+  const skipped: Skipped[] = [
+    ...expanded.skipped,
+    ...unmatched.map((item) => ({ item, ...noRuleReason(item, queue) })),
+  ]
   const units: PlannedUnit[] = []
   const routed: Record<string, number> = {}
   const perRepo: Record<string, number> = {}
@@ -180,21 +191,17 @@ export function planRun(input: {
       )
       continue
     }
-    // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change.
-    const asked = items.find(awaitsAnswer)
+    // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
+    const asked = items.find((i) => !i.task && awaitsAnswer(i))
     if (asked) {
       skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
-    // Every step of a plan rule reports, so its repo is the first linked PR's or the item's.
-    const limits = {
-      maxTasks: config.limits.plan_tasks,
-      repo: prs[0]?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string'),
-    }
+    const limits = (item: Item) => planLimits(config, queue, item, input.skills)
     const card =
       rule.deliver === 'plan'
         ? items.flatMap((item) => {
-            const state = planState(item, limits)
+            const state = planState(item, limits(item))
             return state ? [{ item, ...state }] : []
           })[0]
         : undefined
@@ -208,10 +215,6 @@ export function planRun(input: {
     }
     if (card?.state === 'invalid') {
       skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
-      continue
-    }
-    if (card?.state === 'approved') {
-      skip('plan_approved', `plan approved, tasks ${card.plan.tasks.map((t) => t.id).join(', ')}`)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
@@ -231,12 +234,8 @@ export function planRun(input: {
     // A skill commits unless it reports; `deliver: report`, `pending_review` and `plan` make every step report.
     const review = rule.deliver === 'pending_review'
     const planned = rule.deliver === 'plan'
-    const reports = (step: ThenStep) =>
-      rule.deliver === 'report' ||
-      review ||
-      planned ||
-      resolveSkill(step.skill, input.skills)?.meta.deliver === 'report'
-    const committing = [rule, ...(rule.then ?? []).flatMap(stepsOf)].find((s) => !reports(s))
+    const reports = stepReports(rule, input.skills)
+    const committing = committingStep(rule, input.skills)
     const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
     const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
@@ -252,11 +251,7 @@ export function planRun(input: {
     const template = rule.branch ?? config.repos[repo]?.branch ?? config.branch
     // A slice's name takes the type of its first committing step; the list's words keep it a valid ref.
     const branchOf = (step: ThenStep | undefined) =>
-      renderBranch(
-        template,
-        items[0] as Item,
-        (step && resolveSkill(step.skill, input.skills)?.meta.type) || defaultType,
-      )
+      branchName(config, rule, repo, items[0] as Item, step, input.skills)
     const branch = branchOf(committing)
     if (!isValidRef(branch)) {
       skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
@@ -324,6 +319,7 @@ export function planRun(input: {
           ...step.instructions,
         ],
         deliver: review ? 'pending_review' : planned ? 'plan' : reports(step) ? 'report' : deliver,
+        ...(planned && { planLimits: limits(items[0] as Item) }),
       }
       const unmet = provider && written === rule && quotaUnmet(rule.when, allowances[provider])
       units.push({

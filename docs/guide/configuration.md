@@ -235,6 +235,7 @@ One forge per config: `github` and `bitbucket` together is an error.
 | Asana task with custom ID `ENG-12` | `ENG-12`      |
 | Linear issue `ENG-12`              | `ENG-12`      |
 | Jira issue `ENG-12`                | `ENG-12`      |
+| Task `api` of a plan on `ENG-12`   | `ENG-12-api`  |
 
 Per-rule templates follow your repo's conventions:
 
@@ -246,7 +247,7 @@ queue:
 
 The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix.
+The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./how-it-works.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
 
 ## Linking PRs
 
@@ -411,7 +412,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval (see [Plans](./how-it-works.md#plans)) |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./how-it-works.md#plans)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
@@ -440,7 +441,7 @@ where:
 
 Strings compare ignoring case, like `matches`, so `section: In progress` catches a section called `In Progress`. Numbers and booleans compare exactly, and fixed values like `type` and `checks` stay lowercase.
 
-`title`, `description`, `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item), and `state` and `closed` (see [Finished items](#finished-items)) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
+`title`, `description`, `approved` (whether you ran [`awaywork approve`](./how-it-works.md#units) on the item), `state` and `closed` (see [Finished items](#finished-items)), and `planned` (see below) are keys on every source. An invalid regex is a config error, and `plan` names the match an item failed; for `any`, it names what each entry failed. An empty `any` entry is a config error, since it matches everything. A missing field equals nothing, and is neither older nor newer than anything; spans count back from when the plan runs. An unknown key is a config error that lists the keys each source offers. The [field table](./how-it-works.md#items) lists them too.
 
 A PR awaywork opened only matches a rule whose top-level `where` names `ours` (inside `any` it is a config error), so rules written for your own PRs leave it waiting for your review. To act on it once you've reviewed it:
 
@@ -448,6 +449,18 @@ A PR awaywork opened only matches a rule whose top-level `where` names `ours` (i
 - skill: fix
   where: { type: pr, mine: true, ours: true, my_unresolved_threads: { not: 0 } }
 ```
+
+A [plan's task](./how-it-works.md#tasks) only matches a rule whose top-level `where` names `planned: true`, the first of them whose `skill` is the task's (`implement` when it names none), and such a rule takes nothing but tasks. A task carries its card's fields, so the rest of `where` filters as usual:
+
+```yaml
+- skill: implement
+  where: { planned: true }
+  deliver: pr
+- skill: fix
+  where: { planned: true, labels: bug }   # a plan's `skill: fix` tasks, on bug cards only
+```
+
+Every skill a plan's tasks name must be one a `planned` rule takes and opens a PR for, or the plan isn't posted: the first `planned` rule for a skill whose metadata reports (`review`, say), or whose chain only reports, takes no tasks. A `planned` rule delivers `draft_pr` or `pr`, since the task's PR is how awaywork knows it's done; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
 
 The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
 
@@ -516,7 +529,7 @@ Moving the card is how the next person hears it's their turn. `on_done` does it 
   on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
 ```
 
-It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./how-it-works.md#plans) is posted, never when it was refused or couldn't be. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
+It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain or asked [questions](./how-it-works.md#questions) instead. On a `deliver: plan` rule it runs once the [plan](./how-it-works.md#plans) is posted, never when it was refused or couldn't be. On a `planned` rule it moves the task's card, the only item a task writes to; the card [stays with its plan rule](./how-it-works.md#tasks) wherever it moves. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
 
 It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 

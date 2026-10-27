@@ -1,18 +1,18 @@
-import type { Forge, Item, PrRef, Review } from '../../src/core/types.js'
+import type { BranchPr, Forge, Item, PrRef, Review } from '../../src/core/types.js'
 
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>
   fastForwards: string[]
   stacked: string[][]
   reviews: ({ repo: string; pr: number; head: string } & Review)[]
-  heads: Record<string, { url: string; body: string; merged?: boolean }[]>
+  heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]>
   tips: Record<string, string>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
   const stacked: string[][] = []
   const reviews: ({ repo: string; pr: number; head: string } & Review)[] = []
-  const heads: Record<string, { url: string; body: string; merged?: boolean }[]> = {}
+  const heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]> = {}
   const tips: Record<string, string> = {}
   return {
     branches,
@@ -25,7 +25,12 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     prsFor: async (item: Item) => prs.filter((pr) => pr.branch.includes(item.key)),
     branchExists: async (repo, name) => branches.has(`${repo}:${name}`),
     prsOn: async (repo, branch) =>
-      (heads[`${repo}:${branch}`] ?? []).map((pr) => ({ ...pr, merged: pr.merged ?? false })),
+      (heads[`${repo}:${branch}`] ?? []).map((pr) => ({
+        number: Number(pr.url.split('/').at(-1)) || 0,
+        open: !pr.merged,
+        merged: false,
+        ...pr,
+      })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',
     push: async (_dir, branch, { repo }) => {
       if (branches.has(`${repo}:${branch}`)) throw new Error(`${branch} already exists`)

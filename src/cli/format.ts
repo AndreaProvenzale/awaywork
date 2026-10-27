@@ -8,7 +8,16 @@ import {
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
-import { bounds, comparisons, isAge, isLoop, isMatch, ruleMatches, spans } from '../core/queue.js'
+import {
+  bounds,
+  comparisons,
+  isAge,
+  isLoop,
+  isMatch,
+  matches as matchesRule,
+  ruleMatches,
+  spans,
+} from '../core/queue.js'
 import {
   byKind,
   type Chain,
@@ -31,14 +40,20 @@ import {
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
 
-const withoutRaw = (key: string, value: unknown) => (key === 'raw' ? undefined : value)
+const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
+
+/** Drops an item's raw payload, and names a task's card by reference: the card is in the plan on its own. */
+function lean(key: string, value: unknown) {
+  if (key === 'raw') return undefined
+  if (key !== 'task') return value
+  const task = value as NonNullable<Item['task']>
+  return { ...task, parent: itemRef(task.parent) }
+}
 
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
-  return JSON.stringify({ ...plan, warnings }, withoutRaw, 2)
+  return JSON.stringify({ ...plan, warnings }, lean, 2)
 }
-
-const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 const withItemRefs = (p: PlannedUnit) => ({
   ...p,
   unit: { ...p.unit, items: p.unit.items.map(itemRef) },
@@ -350,7 +365,11 @@ export function ambiguous(name: string, items: Item[]): string {
 export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const units = listedUnits(plan)
   const out: string[] = []
-  const heading = (item: Item) => [`${item.source} ${item.key}  ${item.title}`, `  ${item.url}`]
+  const heading = (item: Item) => [
+    `${item.source} ${item.key}  ${item.title}`,
+    `  ${item.url}`,
+    ...(item.task ? [`  task ${item.task.id} of the plan on ${item.task.parent.key}`] : []),
+  ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
     const item = p.unit.items.find(isIt)
@@ -395,21 +414,21 @@ export function queueLines(plan: Pick<RunPlan, 'queue' | 'defaultQueue'>): strin
   ]
 }
 
-/** What each rule takes now and what earlier rules take from it, then the unmatched items. */
+/** What each rule takes now and what other rules take from it, then the unmatched items. */
 export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matches = ruleMatches(items, rules)
-  const keys = (list: Item[]) =>
+  const keys = (list: Item[], rule?: Rule) =>
     list.length === 0
       ? ''
       : `: ${list
           .slice(0, 3)
-          .map((i) => i.key)
+          .map((i) => (rule && !matchesRule(rule, i) ? `${i.key} (plan)` : i.key))
           .join(', ')}${list.length > 3 ? ', …' : ''}`
   const width = Math.max(...rules.map((r) => r.skill.length))
   const lines = rules.flatMap((rule, i) => {
     const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
     const block = [`#${i + 1}  ${rule.skill.padEnd(width)}  ${describeRule(rule)}`]
-    block.push(`     ${taken.length} taken${keys(taken)}`)
+    block.push(`     ${taken.length} taken${keys(taken, rule)}`)
     for (const by of new Set(shadowed.map((s) => s.by))) {
       const list = shadowed.filter((s) => s.by === by).map((s) => s.item)
       block.push(`     ${list.length} taken by #${by + 1}${keys(list)}`)

@@ -4,7 +4,7 @@ import { approvalsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadApprovals, saveApprovals } from '../core/approvals.js'
 import { approveReply } from '../core/footer.js'
-import { planThread } from '../core/plan.js'
+import { cardTasks, planThread } from '../core/plan.js'
 import type { Ctx, Source } from '../core/types.js'
 import { sourceFor, writeItem } from '../sources/index.js'
 import { checkKey, printOutcome } from './skip.js'
@@ -42,7 +42,16 @@ export async function approveItem(
   const cfg = config.sources[id]
   const planned = config.queue?.some((r) => r.deliver === 'plan' && (!r.source || r.source === id))
   const source = planned ? (sources[id] ?? sourceFor(id, cfg)) : undefined
-  const item = source && (await source.items(cfg, ctx)).find((i) => `${id}:${i.key}` === key)
+  const items = source ? await source.items(cfg, ctx) : []
+  const item = items.find((i) => `${id}:${i.key}` === key)
+  const card = !item && items.find((i) => key.startsWith(`${id}:${i.key}/`) && planThread(i))
+  const task = card && key.slice(`${id}:${card.key}/`.length)
+  if (card && !cardTasks(card).some((t) => t.id === task))
+    throw new Error(`the plan on ${id}:${card.key} has no task ${task}`)
+  if (card)
+    throw new Error(
+      `${key} is a task of the plan on ${id}:${card.key}: a task takes no approval of its own, approving the plan on the card covers it`,
+    )
   const thread = item && planThread(item)
   if (item && thread?.answer)
     throw new Error(

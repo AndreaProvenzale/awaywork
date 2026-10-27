@@ -824,6 +824,45 @@ export const configSchema = z
           path: [...at, 'deliver'],
           message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
         })
+      const takers = cfg.queue?.filter(
+        (q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source),
+      )
+      if (r.deliver === 'plan' && !takers?.length)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message:
+            "plan's tasks need a rule to take them: add one whose where names planned, e.g. { skill: implement, where: { planned: true } }",
+        })
+      if ('planned' in r.where && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message: `a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not ${r.deliver}`,
+        })
+      // A task's PR is found by its branch, so the branch must stay put when a re-plan retitles the task.
+      const templates = r.branch
+        ? [r.branch]
+        : [cfg.branch, ...Object.values(cfg.repos).flatMap((p) => p.branch ?? [])]
+      const moving = 'planned' in r.where && templates.find((t) => /\{(title|type)\}/.test(t))
+      if (moving)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'branch'],
+          message: `a plan's task keeps its PR by its branch, which ${moving} renders from the task's title or skill too: set branch on this rule from {key} alone, e.g. away/{key}`,
+        })
+      const taskBranches = new Set(
+        cfg.queue
+          ?.filter((q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source))
+          .map((q) => q.branch),
+      )
+      if ('planned' in r.where && taskBranches.size > 1)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'branch'],
+          message:
+            'a re-plan may hand a task another skill, and so another planned rule, which must find its PR on the same branch: set the same branch on every planned rule for its source, or on none',
+        })
       checkWhere(r.where, [...at, 'where'], false, undefined)
       function canFinish(state: WhereValue | undefined, where: Where): boolean {
         const finished = (s: WhereValue) => ['merged', 'closed'].some((f) => matchesValue(s, f))
@@ -857,6 +896,14 @@ export const configSchema = z
               code: 'custom',
               path: [...path, key],
               message: 'ours only lifts the awaywork PR wait at the top of where',
+            })
+            continue
+          }
+          if (key === 'planned' && path.includes('any')) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...path, key],
+              message: "planned only takes a plan's tasks at the top of where",
             })
             continue
           }

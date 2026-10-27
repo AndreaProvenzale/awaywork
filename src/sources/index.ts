@@ -20,6 +20,8 @@ export const itemFields: Record<string, z.ZodType> = {
   approved: z.boolean(),
   state: z.enum(itemStates),
   closed: z.iso.datetime({ offset: true }),
+  /** A task of an approved plan, which only a rule naming it takes. */
+  planned: z.literal(true),
 }
 
 /** The built-in source with this id, else the command source its config describes. */
@@ -41,9 +43,10 @@ export function unwritable(item: Item, source: Source | undefined): string | und
 }
 
 /**
- * Writes to one of your items through its source, a comment with awaywork's mark. Returns the
- * item's updated time after it, unless someone changed the item since it was read: then none,
- * so their change still counts as one; and a comment's link when the source returns it.
+ * Writes to one of your items through its source, a comment with awaywork's mark; a plan's task
+ * writes to its card, the only item there is. Returns the item's updated time after it, unless
+ * someone changed the item since it was read: then none, so their change still counts as one;
+ * and a comment's link when the source returns it.
  */
 export async function writeItem(
   // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
@@ -56,7 +59,7 @@ export async function writeItem(
   const refused = unwritable(item, source)
   if (refused || !source?.write) throw new Error(refused)
   const marked = write.op === 'comment' ? { ...write, body: markComment(write.body) } : write
-  const { before, after, url } = await source.write(cfg, item, marked, ctx)
+  const { before, after, url } = await source.write(cfg, item.task?.parent ?? item, marked, ctx)
   const read = item.fields.updated
   const unchanged = before && typeof read === 'string' && Date.parse(before) === Date.parse(read)
   return { ...(unchanged && after && { updated: after }), ...(url && { url }) }

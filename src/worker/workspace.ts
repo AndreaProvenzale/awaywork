@@ -18,11 +18,12 @@ import { execa } from 'execa'
 import { bin, builtinSkillsDir, harnessPath, skillsDirIn } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { describeCondition } from '../core/condition.js'
+import { taskMarkdown } from '../core/fanout.js'
 import { type LoopRound, slug } from '../core/foreman.js'
 import { gitUnrestored, markGitRestored } from '../core/launch.js'
-import { planContract } from '../core/plan.js'
+import { planContract, taskPrUrls } from '../core/plan.js'
 import { assemblePrompt } from '../core/prompt.js'
-import type { Ctx, Deliver, Forge, Provider, Source, Unit } from '../core/types.js'
+import type { Ctx, Deliver, Forge, Item, Provider, Source, Unit } from '../core/types.js'
 import { contextSecrets } from './context.js'
 
 /** Context, output and prompt live here inside the clone; git ignores it. */
@@ -161,7 +162,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     const context = join(WORK_DIR, 'context', slug(item.key))
     if (!w.reuse && source) {
       await mkdir(join(dir, context), { recursive: true })
-      await source.prefetch(item, join(dir, context), w.ctx)
+      // A task isn't the tracker's: its item.md is awaywork's, with the card's thread.
+      if (item.task) await writeFile(join(dir, context, 'item.md'), taskMarkdown(item))
+      else await source.prefetch(item, join(dir, context), w.ctx)
     }
     items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
   }
@@ -505,6 +508,7 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
       ? `\`${unit.base}\``
       : 'the default branch'
   const output = `${WORK_DIR}/out/${outputFile[unit.deliver]}`
+  const card = unit.items[0] as Item
   // Later steps of the chain find the body an earlier one wrote in the clone.
   const keep = !reportsOnly(unit.deliver) && existsSync(join(dir, output))
   const commit = `Commit on this branch and ${keep ? 'keep' : 'write'} \`${output}\`${keep ? ' current: it holds what the chain did so far' : ''}`
@@ -514,7 +518,10 @@ function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput
     report: `a report. Write \`${output}\` and commit nothing.`,
     push: `commits pushed onto ${base}, the developer's own pull request. ${commit}, a summary for the developer.`,
     pending_review: `a review of ${base}. Write \`${output}\`, the review's body, and any line comments in \`${WORK_DIR}/out/review.json\`, and commit nothing: awaywork leaves them on the pull request as the developer's pending review, which only they see until they submit it.`,
-    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract({ maxTasks: w.config.limits.plan_tasks })}`,
+    plan: `a plan. Write \`${output}\` and \`${WORK_DIR}/out/plan.yml\`, and commit nothing. ${planContract(
+      unit.planLimits ?? { maxTasks: w.config.limits.plan_tasks },
+      taskPrUrls(card, (pr) => pr.state !== 'closed'),
+    )}`,
   }[unit.deliver]
   return [
     `## Your unit`,

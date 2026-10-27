@@ -132,7 +132,7 @@ describe('config', () => {
   it('rejects a where key no source declares', () => {
     expect(problems(`${minimal}queue: [{ skill: fix, where: { colour: red } }]`)).toEqual([
       expect.stringMatching(
-        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved, state, closed or .*github: repo, label/,
+        /^queue\[0\]\.where\.colour: unknown key "colour"; use type, title, description, approved, state, closed, planned or .*github: repo, label/,
       ),
     ])
   })
@@ -477,9 +477,9 @@ describe('config', () => {
     expect(chain('deliver: pending_review, then: { skill: review, stack: true }')).toEqual([
       'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not pending_review: a stacked slice opens a PR',
     ])
-    expect(chain('deliver: plan, then: { skill: review, stack: true }')).toEqual([
+    expect(chain('deliver: plan, then: { skill: review, stack: true }')).toContain(
       'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not plan: a stacked slice opens a PR',
-    ])
+    )
     expect(
       chain(
         'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',
@@ -582,14 +582,16 @@ describe('config', () => {
   })
 
   it('takes deliver: plan only where it can post and wait for your reply', () => {
-    const rule = (r: string) => problems(`${minimal}queue: [{ skill: plan, deliver: plan, ${r} }]`)
+    const takes = '{ skill: implement, where: { planned: true } }'
+    const rule = (r: string) =>
+      problems(`${minimal}queue: [{ skill: plan, deliver: plan, ${r} }, ${takes}]`)
     expect(rule('where: { type: issue }')).toEqual([])
     expect(rule('where: { state: closed, closed: { newer_than: 7d } }')).toEqual([
       'queue[0].deliver: plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
     ])
     const bitbucket = minimal.replace('github', 'bitbucket')
     expect(
-      problems(`${bitbucket}queue: [{ skill: plan, deliver: plan, source: bitbucket }]`),
+      problems(`${bitbucket}queue: [{ skill: plan, deliver: plan, source: bitbucket }, ${takes}]`),
     ).toEqual([
       "queue[0].deliver: plan posts on the item, and bitbucket can't write to its items; use report",
     ])

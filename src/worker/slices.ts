@@ -67,6 +67,9 @@ export async function freeBranch(
     )
     if (tried)
       return { skip: `awaywork tried this in ${tried.url}; delete ${branch} to run it again` }
+    // A task's PR is found by its branch, so it takes no other name.
+    if (unit.items.some((i) => i.task))
+      return { skip: `${branch} exists on ${unit.repo}; delete it to run this task` }
     taken ??= branch
   }
   return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }

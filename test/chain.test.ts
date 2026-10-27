@@ -85,7 +85,9 @@ async function originForge(root: string) {
         ? [
             {
               url: `https://example.com/${repo}/pull/${branch}`,
+              number: 1,
               body: footers[branch],
+              open: true,
               merged: false,
             },
           ]

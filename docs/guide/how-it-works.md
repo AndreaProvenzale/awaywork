@@ -16,7 +16,7 @@ Only the workers call a model. Everything else is plain code you can inspect wit
 
 ## Items
 
-A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, `approved` (whether you ran [`awaywork approve`](#units) on it), `state` (`open`, or `merged` or `closed` for the [finished items](./configuration.md#finished-items) a rule asks for) and `closed` (when it finished), and source fields.
+A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, `approved` (whether you ran [`awaywork approve`](#units) on it), `state` (`open`, or `merged` or `closed` for the [finished items](./configuration.md#finished-items) a rule asks for), `closed` (when it finished) and `planned` (a [task](#tasks) of a plan you approved), and source fields.
 
 | Source | Items | Fields a rule can match |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Items that share a key or a linked PR (repo and branch) are one unit, one piece 
 - A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
 - A unit whose item's newest comment is awaywork's [questions](#questions) is skipped as **waiting for your answer**, until someone replies on the item.
-- A unit a `deliver: plan` rule took waits on awaywork's [plan](#plans) on its item: skipped as **waiting for your approval** until someone replies, planned again on feedback, and skipped as **plan approved** once you approved it.
+- A unit a `deliver: plan` rule took waits on awaywork's [plan](#plans) on its item: skipped as **waiting for your approval** until someone replies, planned again on feedback, and [fanned out](#tasks) into its tasks once you approved it.
 - A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end) or may not have (a watchdog stop for low memory or disk): it tries again next run. `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
@@ -180,15 +180,18 @@ queue:
     where: { label: awaywork-feature }
     deliver: plan
     on_done: { move: Plan review }
+  - skill: implement
+    where: { planned: true }
+    deliver: pr
 ```
 
-Every step of the rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill`, a `repo` (the card's own, for now) and `after`, which maps other task ids to `opened` or `merged`. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique, under the cap, every `after` naming another task, no cycles, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
+The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's own, for now) and `after`, which maps other task ids to `merged` (`opened` is refused for now). The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every `after` naming another task, no cycles, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
 
 ````
 VAT export lands in two PRs: the endpoint first, then the button that calls it.
 
 - `api`: `GET /exports/vat` in `src/routes/exports.ts`, paged like `/exports/sales`, with a test next to `sales.test.ts`.
-- `web`: an Export button on the reports page, behind the `vat_export` flag; it waits for the endpoint's PR to open.
+- `web`: an Export button on the reports page, behind the `vat_export` flag; it waits for the endpoint to merge.
 
 Open question: should the export include voided invoices? I left them out.
 
@@ -200,7 +203,7 @@ tasks:
   - id: web
     title: Export button
     description: Add an Export button to the reports page behind the vat_export flag.
-    after: { api: opened }
+    after: { api: merged }
 ```
 
 To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
@@ -233,12 +236,95 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
   plan approved: replied approve, with your notes, on https://acme.atlassian.net/browse/ENG-2101
   ```
 
-  For now that's where it stops: the card is skipped as `plan approved, tasks api, web`, which needs nothing from you, and nothing runs the tasks yet.
+  The next run [fans it out](#tasks).
 
 - **Anything else is feedback:** your reply that doesn't start with a bare `approve` (`approve if web waits` included), a teammate's, a code owner's. Only you approve. Your reply changed the card, so the next run plans again with the whole thread in `item.md`, the plan headed `awaywork's plan`, and posts a new plan, which needs a fresh approval. A re-plan that isn't posted is skipped as unchanged until the card changes again. A plan's answer is the first comment after it that isn't a bot's.
 - The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
 - A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml`, or a comment over 30 KB is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
-- A `deliver: plan` rule can't `stack`, and one that matches only merged or closed items, or names a `source` that can't write, is a config error.
+- A `deliver: plan` rule can't `stack`, and one that matches only merged or closed items, names a `source` that can't write, or has no rule whose `where` names `planned` to take its tasks, is a config error.
+
+### Tasks
+
+Approve the plan and it fans out. The card makes no unit of its own anymore: each task becomes a child item keyed `ENG-2101/api`, which goes down the queue like any item, on its own branch, `away/ENG-2101-api`, and opens its own PR. A task only matches rules whose top-level `where` names `planned`, and only the first of them whose `skill` is the task's; a rule naming `planned` takes nothing else. So caps, attempts, `skip`, gates and chains work on tasks as on anything else. Tasks run in parallel, as far as `after` and the caps let them.
+
+A task carries the card's source, URL, repo, owner and fields, so `where: { planned: true, labels: backend }` works, and the card's whole thread. Its `item.md` is awaywork's own, the task first:
+
+```markdown
+# ENG-2101/api: VAT export endpoint
+
+https://acme.atlassian.net/browse/ENG-2101
+
+Add GET /exports/vat to src/routes/exports.ts, paged like /exports/sales.
+
+## The plan
+
+This is task `api` of the plan you approved on ENG-2101. Each task is its own item, with its own branch and PR. Its tasks:
+
+- `api`: VAT export endpoint (this task)
+- `web`: Export button, after api merged
+
+Your notes on approving it:
+
+Leave voided invoices out.
+
+## The card: ENG-2101, Export VAT report
+
+## Comments
+
+### awaywork's plan (me), 2026-10-26T08:30:43.973Z
+…
+```
+
+The run after `approve`, from `awaywork plan`:
+
+```text
+Units 1
+     item          rule  skill                 provider  deliver  title
+  1  ENG-2101/api  #2    implement (built-in)  fake      pr       VAT export endpoint
+
+Skipped 2: 1 fanned_out, 1 waiting_for_task
+```
+
+```text
+$ awaywork plan --skipped
+Skipped 2: 1 fanned_out, 1 waiting_for_task
+  ENG-2101: fanned out: api no PR yet, web waits for api
+  ENG-2101/web: waiting for task api's PR to merge
+```
+
+Nothing about the feature lives in the state dir. Every run reads the plan off the card and each task's PR off the forge: the PR on the task's branch whose footer names the task, open, merged or closed. The card, run by run:
+
+| What happened | The card | Its tasks |
+| --- | --- | --- |
+| You approved | `fanned out: api no PR yet, web waits for api` | `api` runs and opens its PR; `web` is skipped as `waiting for task api's PR to merge` |
+| `api`'s PR is open | `fanned out: api PR open, web waits for api` | `api` waits for your review, under Needs you, like any awaywork PR |
+| `api` merged | `fanned out: api merged, web no PR yet` | `web` runs, cut from the default branch, which has `api` in it |
+| `web`'s PR closed unmerged | plans again | none run until you approve the new plan |
+| Every task merged | `all tasks merged: close or move the card`, under Needs you | none |
+
+The plan sticks to the card. Once awaywork's plan comment is on an open card of yours, the card goes to the `deliver: plan` rule it matches, else to the first one for its source whatever that rule's `where` says now, and no other rule takes it whole. `awaywork plan --rules` lists it under that rule, with `(plan)` after its key when the rule's `where` no longer holds it. So a `planned` rule's `on_done: { move: In Progress }` can move the card out of a plan rule on `status: To Do` and the remaining tasks still run, where a catch-all `implement` rule further down would otherwise pick the card up as one unit. It leaves the plan flow when it's closed or reassigned (who owns it is read every run), and `awaywork skip` on the card holds it and all its tasks. Someone else's edit to the card's only plan comment makes that comment not awaywork's, so the card goes back to ordinary matching. And with no `deliver: plan` rule left for its source, the card is matched like any other, so a catch-all may take it whole next to its open task PRs.
+
+A task's PR links back to the card but never closes it, and its footer names only the task, so the card never links its tasks' PRs and isn't folded into one of them:
+
+```markdown
+VAT export endpoint
+
+Adds `GET /exports/vat`, paged like `/exports/sales`, with a test.
+
+Part of https://acme.atlassian.net/browse/ENG-2101
+
+---
+<!-- awaywork run=20261026-220012 item=tracker:ENG-2101%2Fapi -->
+Opened by awaywork (run `20261026-220012`): a coding agent worked on this unattended. Review it like any other contribution.
+```
+
+- **Questions from a task** go on the card, headed `Questions from task api`, through the same ownership check as any write; `item.md` heads them `awaywork's questions from task api`. While any task's questions wait, the whole feature does: every task of the card is skipped as `waiting for your answer to task api's questions`. The first comment after them that's neither a bot's nor awaywork's answers them, so one reply under two tasks' questions answers both.
+- **Writes go to the card.** A `planned` rule's `on_done` moves the card, and a task never writes anywhere else. Whether the card is yours is read off it every run: reassign it and nothing fans out or writes (`plan approved, but the card isn't yours: its tasks don't run`).
+- **A task PR closed without merging** after the plan was posted makes the card plan again. Its id is retired: the prompt names it and its PR, along with the tasks whose PR is open or merged, and a plan reusing a retired id isn't posted (`plan not posted: plan.yml: task id "web" is retired: its PR https://github.com/acme/api/pull/42 was closed without merging`). The new plan needs a fresh approval, and no task runs until then; a task that keeps its id keeps its PR, merged or open.
+- A task's branch is its name for good: when something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task` rather than taking `-2`, which its PR lookup wouldn't find. A configured [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in the template a `planned` rule uses, its own or the one it inherits, is a config error. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does.
+- A task branch awaywork pushed whose PR then failed to open still reads `no PR yet` on the card and in `awaywork plan`, since the PR is the task's state. The run skips it, `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`, in each morning report; delete the branch and the next run starts the task over.
+- A task takes no approval of its own: the plan's covers it, so its `approved` is always false, and `awaywork approve tracker:ENG-2101/api` is refused.
+- Bitbucket can't list a task's merged and closed PRs through twg yet, so a card there stops at its approved plan: `plan approved, but its tasks don't run on Bitbucket yet`.
 
 ## The morning report
 

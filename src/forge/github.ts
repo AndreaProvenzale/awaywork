@@ -59,7 +59,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { url body merged isCrossRepository }
+      nodes { number url body state closedAt isCrossRepository }
     }
   }
 }`
@@ -134,13 +134,27 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const { repository } = await graphql<{
         repository: {
           pullRequests: {
-            nodes: { url: string; body: string; merged: boolean; isCrossRepository: boolean }[]
+            nodes: {
+              number: number
+              url: string
+              body: string
+              state: 'OPEN' | 'CLOSED' | 'MERGED'
+              closedAt: string | null
+              isCrossRepository: boolean
+            }[]
           }
         }
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
         .filter((pr) => !pr.isCrossRepository)
-        .map(({ url, body, merged }) => ({ url, body, merged }))
+        .map(({ number, url, body, state, closedAt }) => ({
+          url,
+          number,
+          body,
+          open: state === 'OPEN',
+          merged: state === 'MERGED',
+          ...(closedAt && { closedAt }),
+        }))
     },
 
     async tipMessage(repo, branch) {

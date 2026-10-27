@@ -905,14 +905,19 @@ describe('github forge', () => {
   })
 
   it('reads PRs on a branch in any state, not the ones from forks', async () => {
+    const pr = (number: number, state: string, closedAt: string | null, fork = false) => ({
+      number,
+      url: `https://github.com/acme/api/pull/${number}`,
+      body: `${state}.`,
+      state,
+      closedAt,
+      isCrossRepository: fork,
+    })
     const nodes = [
-      {
-        url: 'https://github.com/acme/api/pull/7',
-        body: 'Closed.',
-        merged: true,
-        isCrossRepository: false,
-      },
-      { url: 'https://github.com/acme/api/pull/8', body: 'Fork.', isCrossRepository: true },
+      pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
+      pr(8, 'OPEN', null, true),
+      pr(9, 'CLOSED', '2026-10-21T10:00:00Z'),
+      pr(10, 'OPEN', null),
     ]
     const run = recorded([
       [
@@ -920,8 +925,25 @@ describe('github forge', () => {
         JSON.stringify({ data: { repository: { pullRequests: { nodes } } } }),
       ],
     ])
+    const url = (n: number) => `https://github.com/acme/api/pull/${n}`
     expect(await githubForge(run).prsOn('acme/api', 'away/eng-12')).toEqual([
-      { url: 'https://github.com/acme/api/pull/7', body: 'Closed.', merged: true },
+      {
+        number: 7,
+        url: url(7),
+        body: 'MERGED.',
+        open: false,
+        merged: true,
+        closedAt: '2026-10-20T10:00:00Z',
+      },
+      {
+        number: 9,
+        url: url(9),
+        body: 'CLOSED.',
+        open: false,
+        merged: false,
+        closedAt: '2026-10-21T10:00:00Z',
+      },
+      { number: 10, url: url(10), body: 'OPEN.', open: true, merged: false },
     ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=away/eng-12']),

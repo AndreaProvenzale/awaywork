@@ -25,6 +25,7 @@ The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule
 - **Review comments:** `deliver: pending_review` leaves the report and its line comments as your pending review, unseen until you submit it. See [Delivery](./how-it-works.md#delivery).
 - **Questions:** a step that can't go on without answers writes them to `questions.md`, and awaywork posts them as a comment on your own item; your reply there is the answer, and the next run takes it up. On an item that isn't yours they stay in the morning report. See [Questions](./how-it-works.md#questions).
 - **Plans:** `deliver: plan` posts the tasks its step wrote to `plan.yml`, under its report, as a comment on your own card, and waits: your reply whose first line is `approve` approves it, any other reply plans again. See [Plans](./how-it-works.md#plans).
+- **Task PRs:** an approved plan's tasks each open their own PR, as the `planned` rule's `deliver` says, with a `Part of <card>` line instead of `Closes`. A task's questions land on the card, headed `Questions from task api`, and a `planned` rule's `on_done` moves the card: a task has no item of its own to write to. See [Tasks](./how-it-works.md#tasks).
 - **Moving the card:** `on_done: { move: In Review }` on the rule moves your own tracker items once the chain published, to a status, state, section or label you name, so whoever watches that column picks it up. Never someone else's PR. See [`on_done`](./configuration.md#on-done).
 
 ## Recipes

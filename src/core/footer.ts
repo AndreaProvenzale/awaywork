@@ -57,9 +57,24 @@ const questionsAnswer =
 const planAnswer =
   'To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.'
 
-/** What awaywork posts on an item when a step can't go on without answers: the step's questions, and how to answer. */
-export const questionsComment = (questions: string): string =>
-  `${questions.trim()}\n\n${questionsAnswer}`
+/** What awaywork posts on an item when a step can't go on without answers: the step's questions, and how to answer; a task's are headed with it, on its card. */
+export const questionsComment = (questions: string, task?: string): string =>
+  `${task ? `${taskHeading}${task}\n\n` : ''}${questions.trim()}\n\n${questionsAnswer}`
+
+const taskHeading = 'Questions from task '
+
+/** The task whose questions awaywork posted in this comment on its card, if they are a task's. */
+export function questionsTask(c: Item['comments'][number]): string | undefined {
+  if (commentKind(c) !== 'questions') return undefined
+  const first = c.body.trim().split('\n')[0]?.trim() ?? ''
+  return first.startsWith(taskHeading) ? first.slice(taskHeading.length).trim() : undefined
+}
+
+/** The tasks whose questions on the card wait: those after its last comment that's neither a bot's nor awaywork's, which answers every one above it. */
+export function waitingTasks(item: Pick<Item, 'comments'>): string[] {
+  const answered = item.comments.findLastIndex((c) => !c.bot && !isAwayworkComment(c))
+  return [...new Set(item.comments.slice(answered + 1).flatMap((c) => questionsTask(c) ?? []))]
+}
 
 /** What awaywork posts on an item for a `deliver: plan` rule: the report, `plan.yml` in a fence, and how to answer. */
 export const planComment = (report: string, plan: string): string =>
@@ -95,9 +110,12 @@ export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
 
 const headings = { plan: "awaywork's plan", questions: "awaywork's questions" }
 
-/** A comment as `item.md` shows it, awaywork's plan and questions headed as such, its approve reply as yours. */
+/** A comment as `item.md` shows it, awaywork's plan and questions headed as such, a task's by the task, its approve reply as yours. */
 export function commentMarkdown(c: Item['comments'][number]): string {
   const kind = commentKind(c)
-  const who = kind && kind !== 'approve' ? `${headings[kind]} (${c.author})` : c.author
+  const task = questionsTask(c)
+  const heading =
+    kind && kind !== 'approve' && `${headings[kind]}${task ? ` from task ${task}` : ''}`
+  const who = heading ? `${heading} (${c.author})` : c.author
   return `\n### ${who}, ${c.at}\n\n${c.body}\n`
 }

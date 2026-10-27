@@ -1,7 +1,7 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
 import { commentKind, isApprove, isAwayworkComment } from './footer.js'
-import type { Item } from './types.js'
+import type { Item, TaskPr } from './types.js'
 
 const task = z.strictObject({
   id: z.string(),
@@ -15,17 +15,46 @@ const task = z.strictObject({
 const planFile = z.strictObject({ tasks: z.array(task).min(1) })
 
 export type Plan = z.output<typeof planFile>
-type Task = Plan['tasks'][number]
+export type Task = Plan['tasks'][number]
 
-/** What a plan is checked against: `limits.plan_tasks` and the card's repo. */
+/** The skill a task runs when it names none. */
+export const TASK_SKILL = 'implement'
+
+/** What a plan is checked against: `limits.plan_tasks`, the card's repo, and, when given, the skills `planned` rules take and the retired task ids. */
 export interface PlanLimits {
   maxTasks: number
   repo?: string
+  skills?: string[]
+  /** Skills whose `planned` rule opens no PR, so a task of theirs would never read as done. */
+  noPr?: string[]
+  /** Task ids whose PR was closed without merging, with that PR's URL: no plan may reuse them. */
+  retired?: Record<string, string>
 }
 
-/** What a `deliver: plan` step's prompt says about `plan.yml`. */
-export const planContract = ({ maxTasks }: PlanLimits): string =>
-  `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\`, a \`repo\` (only this unit's) and \`after\`, a map from other task ids to \`opened\` or \`merged\`, with no cycles; no other key. awaywork checks it and posts your report, the narrative a person reads to approve the plan, and \`plan.yml\` as one comment on the item.`
+/** What a `deliver: plan` step's prompt says about `plan.yml`; `kept` are the task ids with an open or merged PR. */
+export function planContract(
+  { maxTasks, skills = [], retired = {} }: PlanLimits,
+  kept: Record<string, string> = {},
+): string {
+  const named = skills.map((s) => `\`${s}\``).join(', ') || 'none'
+  const listed = (prs: Record<string, string>) =>
+    Object.entries(prs)
+      .map(([id, url]) => `\`${id}\` (${url})`)
+      .join(', ')
+  return [
+    `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (only this unit's) and \`after\`, a map from other task ids to \`merged\`, with no cycles; no other key. Each task becomes its own item with its own branch and PR once the plan is approved. awaywork checks it and posts your report, the narrative a person reads to approve the plan, and \`plan.yml\` as one comment on the item.`,
+    ...(Object.keys(retired).length
+      ? [
+          `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${listed(retired)}. Plan the work again without them.`,
+        ]
+      : []),
+    ...(Object.keys(kept).length
+      ? [
+          `These tasks already have a PR, open or merged: ${listed(kept)}. A task that keeps its id keeps its PR, and a merged one runs no more, so keep an id only for the same work.`,
+        ]
+      : []),
+  ].join(' ')
+}
 
 /** The plan in `text`, or why awaywork refuses it, e.g. `task id "web" is used twice`. */
 export function checkPlan(text: string, limits: PlanLimits): { plan: Plan } | { problem: string } {
@@ -46,7 +75,10 @@ export function checkPlan(text: string, limits: PlanLimits): { plan: Plan } | { 
   return problem ? { problem } : { plan: parsed.data }
 }
 
-function tasksProblem(tasks: Task[], { maxTasks, repo }: PlanLimits): string | undefined {
+function tasksProblem(
+  tasks: Task[],
+  { maxTasks, repo, skills, noPr = [], retired = {} }: PlanLimits,
+): string | undefined {
   if (tasks.length > maxTasks) return `${tasks.length} tasks, over limits.plan_tasks (${maxTasks})`
   const ids = tasks.map((t) => t.id)
   for (const t of tasks) {
@@ -54,10 +86,19 @@ function tasksProblem(tasks: Task[], { maxTasks, repo }: PlanLimits): string | u
     if (!/^[a-z0-9][a-z0-9-]*$/.test(t.id))
       return `task id "${t.id}" isn't lowercase letters, digits and dashes`
     if (ids.indexOf(t.id) !== ids.lastIndexOf(t.id)) return `task id "${t.id}" is used twice`
+    if (retired[t.id])
+      return `task id "${t.id}" is retired: its PR ${retired[t.id]} was closed without merging`
     if (t.repo !== undefined && t.repo !== repo)
       return `task ${t.id}: repo ${t.repo} isn't the card's (${repo ?? 'none'})`
+    const skill = t.skill ?? TASK_SKILL
+    if (noPr.includes(skill))
+      return `task ${t.id}: the planned rule for skill ${skill} opens no PR, and a task is done when its PR merges`
+    if (skills && !skills.includes(skill))
+      return `task ${t.id}: no planned rule takes skill ${skill}`
     const unknown = Object.keys(t.after ?? {}).find((id) => !ids.includes(id))
     if (unknown) return `task ${t.id}: after names no task "${unknown}"`
+    const opened = Object.entries(t.after ?? {}).find(([, when]) => when === 'opened')
+    if (opened) return `task ${t.id}: after ${opened[0]}: opened isn't supported yet, only merged`
   }
   const cycle = cycleIn(tasks)
   if (cycle) return `tasks wait on each other: ${cycle.join(' → ')}`
@@ -103,21 +144,58 @@ export function planThread(
   return { plan: item.comments[at] as Comment, ...(answer && { answer }) }
 }
 
-/** Where a plan on the item stands, read off its comments: a plan you edited is checked again. */
+/** Where a plan on the item stands, read off its comments and its tasks' PRs: a plan you edited is checked again. */
 export type PlanState =
   | { state: 'waiting' }
   | { state: 'feedback' }
   | { state: 'invalid'; problem: string }
   | { state: 'approved'; plan: Plan; notes: string }
+  /** Approved, and these tasks' PRs were closed without merging since: the plan rule plans again. */
+  | { state: 'replan'; closed: string[] }
 
-export function planState(item: Pick<Item, 'comments'>, limits: PlanLimits): PlanState | undefined {
+export function planState(
+  item: Pick<Item, 'comments' | 'taskPrs'>,
+  limits: PlanLimits,
+): PlanState | undefined {
   const thread = planThread(item)
   if (!thread) return undefined
   if (thread.answer && !isApprove(thread.answer)) return { state: 'feedback' }
-  const checked = checkPlan(planYaml(thread.plan.body), limits)
+  // A PR closed before the plan was posted retired its id; one closed after it re-plans.
+  const posted = Date.parse(thread.plan.at)
+  const retired = taskPrUrls(
+    item,
+    (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
+  )
+  const checked = checkPlan(planYaml(thread.plan.body), { ...limits, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   if (!thread.answer) return { state: 'waiting' }
+  const closed = checked.plan.tasks.filter((t) => item.taskPrs?.[t.id]?.state === 'closed')
+  if (closed.length) return { state: 'replan', closed: closed.map((t) => t.id) }
   return { state: 'approved', plan: checked.plan, notes: approveNotes(thread.answer) }
+}
+
+/** The card's task ids whose PR `keep` takes, with the PR's URL. */
+export const taskPrUrls = (
+  item: Pick<Item, 'taskPrs'>,
+  keep: (pr: TaskPr) => boolean,
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(item.taskPrs ?? {}).flatMap(([id, pr]) => (keep(pr) ? [[id, pr.url]] : [])),
+  )
+
+/** Every task any of awaywork's plans on the card names, the newest plan's first, each id once: their PRs say which ids are retired. */
+export function cardTasks(item: Pick<Item, 'comments'>): Task[] {
+  const tasks = item.comments
+    .filter((c) => commentKind(c) === 'plan')
+    .reverse()
+    .flatMap((c) => {
+      try {
+        return planFile.safeParse(parse(planYaml(c.body))).data?.tasks ?? []
+      } catch {
+        return []
+      }
+    })
+  return tasks.filter((t, i) => tasks.findIndex((u) => u.id === t.id) === i)
 }
 
 /** An approve reply's lines below `approve`, without awaywork's mark. */

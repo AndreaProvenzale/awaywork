@@ -1361,9 +1361,10 @@ providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
   - { skill: plan, deliver: ${deliver} }
+  - { skill: implement, where: { planned: true } }
 `
   const tasks =
-    'tasks:\n  - { id: api, title: API }\n  - { id: web, title: Web, after: { api: opened } }'
+    'tasks:\n  - { id: api, title: API }\n  - { id: web, title: Web, after: { api: merged } }'
   const at = (n: number) => `2026-01-0${n}T00:00:00Z`
   const posted = {
     author: 'me',
@@ -1401,12 +1402,17 @@ queue:
     expect(formatPlan(waiting)).toContain('api#5  waiting for your approval of the plan\n')
   })
 
-  it('skips an approved plan, naming its tasks, as nothing for you to do', () => {
-    const approved = plan(yaml(), [card(posted, reply(approveReply('Go.'), true))], {})
-    expect(approved.skipped).toMatchObject([
-      { kind: 'plan_approved', reason: 'plan approved, tasks api, web' },
+  it('fans an approved plan out into tasks, the card skipped with their states', () => {
+    const approved = { ...card(posted, reply(approveReply('Go.'), true)), taskPrs: {} }
+    const fanned = plan(yaml(), [approved], {})
+    expect(rows(fanned)).toEqual([['acme-api-5-api', 2, 'implement', 'claude', 'draft_pr']])
+    expect(fanned.units[0]?.unit.branch).toBe('away/acme-api-5-api')
+    expect(fanned.skipped.map((s) => [s.item.key, s.kind, s.reason])).toEqual([
+      ['acme/api#5', 'fanned_out', 'fanned out: api no PR yet, web waits for api'],
+      ['acme/api#5/web', 'waiting_for_task', "waiting for task api's PR to merge"],
     ])
-    expect(needsYou.plan_approved).toBe(false)
+    expect(needsYou.fanned_out).toBe(false)
+    expect(why(fanned, 'acme/api#5')).toContain('skipped: fanned_out')
   })
 
   it('needs you for a plan you edited into one that fails its checks', () => {

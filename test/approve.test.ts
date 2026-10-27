@@ -19,7 +19,7 @@ const ctx = { env: {}, log: () => {} }
 const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
-queue: [{ skill: plan, deliver: plan }]
+queue: [{ skill: plan, deliver: plan }, { skill: implement, where: { planned: true } }]
 `)
 
 /** A GitHub source of `items` that records its writes. */
@@ -65,7 +65,7 @@ describe('approve', () => {
     const elsewhere = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'cat' } }
-queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }]
+queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }, { skill: implement, where: { planned: true } }]
 `)
     expect(
       await approveItem('github:acme/api#5', elsewhere, '', {
@@ -122,6 +122,21 @@ queue: [{ skill: implement }, { skill: plan, deliver: plan, source: tracker }]
       approveItem('github:acme/api#6', config, 'Notes.', { sources, ctx }),
     ).rejects.toThrow("github:acme/api#6 waits on no plan: notes go only with a plan's approval")
     expect(writes).toEqual([])
+  })
+
+  it("refuses a plan's task, which the plan's approval covers", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), 'awaywork-')), 'approvals.json')
+    const { sources, writes } = github([card()])
+    await expect(
+      approveItem('github:acme/api#5/api', config, '', { path, sources, ctx }),
+    ).rejects.toThrow(
+      'github:acme/api#5/api is a task of the plan on github:acme/api#5: a task takes no approval of its own, approving the plan on the card covers it',
+    )
+    await expect(
+      approveItem('github:acme/api#5/nope', config, '', { path, sources, ctx }),
+    ).rejects.toThrow('the plan on github:acme/api#5 has no task nope')
+    expect(writes).toEqual([])
+    await expect(readFile(path, 'utf8')).rejects.toThrow()
   })
 
   it('sets the `approved` field on approved items only', () => {

@@ -1,3 +1,4 @@
+import { planThread } from './plan.js'
 import type {
   Age,
   Comparison,
@@ -57,7 +58,7 @@ export function rank(items: Item[], queue: Rule[]): { ranked: Ranked[]; unmatche
   const ranked: Ranked[] = []
   const unmatched: Item[] = []
   for (const item of items) {
-    const index = queue.findIndex((r) => matches(r, item))
+    const index = ruleFor(queue, item)
     if (index === -1) unmatched.push(item)
     else ranked.push({ item, rule: index })
   }
@@ -82,9 +83,30 @@ export function matches(rule: Rule, item: Item): boolean {
   return eligible(rule, item) && failedIn(rule.where, item).length === 0
 }
 
-/** An awaywork PR waits for review unless a rule names `ours`. */
+/**
+ * The index of the rule that takes the item, -1 for none: the first it matches. A task's is the
+ * first `planned` rule for its skill, if it matches. An open card of yours carrying awaywork's plan
+ * sticks to the `deliver: plan` rule it matches, else the first one for its source whatever its
+ * `where` says now, so a move of the card doesn't strand its tasks nor hand it whole to another rule.
+ */
+export function ruleFor(queue: Rule[], item: Item): number {
+  if (item.task) {
+    const index = queue.findIndex((r) => eligible(r, item))
+    return index >= 0 && matches(queue[index] as Rule, item) ? index : -1
+  }
+  const planned = item.mine && itemState(item) === 'open' && planThread(item)
+  const plans = planned
+    ? queue.flatMap((r, i) => (r.deliver === 'plan' && eligible(r, item) ? [i] : []))
+    : []
+  const plan = plans.find((i) => matches(queue[i] as Rule, item)) ?? plans[0]
+  return plan ?? queue.findIndex((r) => matches(r, item))
+}
+
+/** An awaywork PR waits for review unless a rule names `ours`; a plan's task goes only to a rule naming `planned` with its skill, and only a task does. */
 function eligible(rule: Rule, item: Item): boolean {
   if (rule.source && rule.source !== item.source) return false
+  if (item.task || 'planned' in rule.where)
+    return !!item.task && 'planned' in rule.where && rule.skill === item.task.skill
   return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
@@ -178,6 +200,7 @@ export function failedIn(where: Where, item: Item, outer = TOP): string[] {
 
 export function fieldValue(item: Item, key: string): unknown {
   if (key === 'type' || key === 'title' || key === 'description') return item[key]
+  if (key === 'planned') return !!item.task
   return item.fields[key]
 }
 
@@ -298,18 +321,20 @@ export function ruleSteps(rule: Rule): { step: ThenStep; at: (string | number)[]
 
 interface RuleMatches {
   taken: Item[]
-  /** Items this rule matches that an earlier rule took, with that rule's index. */
+  /** Items this rule matches that another rule took, with that rule's index: an earlier one, or a plan rule holding its card. */
   shadowed: { item: Item; by: number }[]
 }
 
-/** What each rule takes in this run, and what earlier rules take from it. */
+/** What each rule takes in this run, and what other rules take from it. */
 export function ruleMatches(items: Item[], queue: Rule[]): RuleMatches[] {
   const result: RuleMatches[] = queue.map(() => ({ taken: [], shadowed: [] }))
   for (const item of items) {
-    const [first, ...rest] = queue.flatMap((r, i) => (matches(r, item) ? [i] : []))
-    if (first === undefined) continue
+    const first = ruleFor(queue, item)
+    if (first < 0) continue
     result[first]?.taken.push(item)
-    for (const i of rest) result[i]?.shadowed.push({ item, by: first })
+    queue.forEach((r, i) => {
+      if (i !== first && matches(r, item)) result[i]?.shadowed.push({ item, by: first })
+    })
   }
   result.forEach((m, i) => {
     m.taken.sort(byOrder(queue[i]?.order))
