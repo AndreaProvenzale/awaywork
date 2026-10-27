@@ -41,7 +41,7 @@ Commands:
   report [options] [id]  print a run's morning report, the latest by default;
                          browsable in a terminal
   stats [options]        what each rule, skill and provider cost and delivered
-                         across all runs
+                         across the runs kept
   replay <run> <unit>    re-run a past run's unit, its first step, on its base
                          commit and saved context with today's skills and
                          instructions; nothing is pushed
@@ -253,7 +253,7 @@ Options:
 ```text
 Usage: awaywork stats [options]
 
-what each rule, skill and provider cost and delivered across all runs
+what each rule, skill and provider cost and delivered across the runs kept
 
 Options:
   --json      print the totals as JSON

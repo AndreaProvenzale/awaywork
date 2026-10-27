@@ -37,6 +37,7 @@ with:
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
+| `keep_runs` | string | `"30d"` | How long run dirs stay; older ones go when a run starts, except those holding an item's latest report |
 
 ## `windows[]`
 
