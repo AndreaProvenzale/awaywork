@@ -228,6 +228,7 @@ export function renderConfig(c: {
     'budget:                         # every provider; override one with - <id>: { budget: … }',
     commented('  reserve: 10%', 'never go past 1 - reserve of any window'),
     commented('  session_max: 90%', 'stop a worker past this share of the short window'),
+    commented('  present_session_max: 40%', 'the same, in a run outside every window'),
     commented('  # per_run: 15%', 'at most this share of the long window per run'),
     commented(`providers: ${flow(c.providers)}`, 'order = routing preference'),
     'sources:',

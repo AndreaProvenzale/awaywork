@@ -39,6 +39,7 @@ budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
+  present_session_max: 40%      # the same, in a run outside every window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
@@ -89,7 +90,7 @@ windows:
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-The scheduler gets one trigger per window, and pacing divides the headroom by the runs left before the reset. Windows should not overlap. Budgets count runs, not days: three windows a day can spend `per_run` three times, and `runs_until_reset` counts window openings.
+The scheduler gets one trigger per window. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
 
 A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it.
 
@@ -113,7 +114,7 @@ providers:
   - claude
   - opencode:
       command: opencode run --auto "$(cat "$AWAYWORK_PROMPT")"
-      probe: ./opencode-quota.sh # optional
+      probe: ./opencode-quota.sh # optional; without it, windows only
 limits:
   unit_minutes: 45
 ```
@@ -122,18 +123,18 @@ limits:
 
 The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
 
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run) and sits out every run outside the windows, a manual `awaywork run --unit` included; there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
 
 ```json
 {
   "windows": [
-    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
-    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152, "minutes": 300 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552, "minutes": 10080 }
   ]
 }
 ```
 
-`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+`used` is a share from 0 to 1, `resetsAt` is in unix seconds and `minutes`, optional, is the window's length; a `long` window without it counts as 7 days. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps, and no runs outside the windows. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
 
 ## Sources
 

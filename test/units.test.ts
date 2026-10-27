@@ -183,7 +183,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
     '| 3 | [api#2 PR 2](https://github.com/acme/api/pull/2) | review | claude | done, 5 turns | report below, verdict approve |',
   )
   expect(text).toContain(
-    '- claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
+    '- claude: seven_day 36% to 45%, ceiling 63.2%; session 10% to 10%, stop at 90%',
   )
   expect(text).toContain(
     '### api#2: PR 2 (review)\n\nhttps://github.com/acme/api/pull/2\n\nApprove.\n\n<details><summary>Full report</summary>\n\nApprove.\n\n</details>',
@@ -200,7 +200,7 @@ notify: { command: 'true', secrets: [NTFY_TOPIC] }
       '     Approve.',
       '',
       'Quota',
-      '  claude: seven_day 36% to 45%, ceiling 49.5%; session 10% to 10%, stop at 90%',
+      '  claude: seven_day 36% to 45%, ceiling 63.2%; session 10% to 10%, stop at 90%',
       '',
       'awaywork report 20260925-010000 --unit <n|key>  shows one',
     ].join('\n'),

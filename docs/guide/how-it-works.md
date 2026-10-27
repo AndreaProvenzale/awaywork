@@ -97,9 +97,11 @@ Each provider gets a ceiling for the run on its long window (the week for Claude
 
 - `used + per_run`, when `per_run` is set;
 - `1 - reserve` (default reserve 10%);
-- pacing: `used + (1 - reserve - used) / runs to reset`, where runs to reset counts the window openings left before the reset, including the one under way when the run is in a window; so a run just before the reset may spend more than one just after.
+- pacing: `(1 - reserve) × elapsed / length`, an even spend from 0 at the window's start to `1 - reserve` at its reset. A run inside a window reads it at the next window's opening or at the reset, whichever comes first, since nobody else spends what piles up before then; a run outside every window reads it when it starts. Day 3 of 7 with a 10% reserve gives 38.6%. What a night leaves unused piles up for the next run.
 
-A worker stops once the provider reports its long window past the ceiling or its short (5 h) window past `session_max` (default 90%). Claude reports quota during the run, so it stops mid-run; Codex is read after each run, so it stops between units. A provider whose quota can't be read gets a fixed `fallback` of units and turns per run.
+A worker stops once the provider reports its long window past the ceiling or its short (5 h) window past the session limit. Claude reports quota during the run, so it stops mid-run; Codex is read after each run, so it stops between units. A provider whose quota can't be read gets a fixed `fallback` of units and turns per run.
+
+The session limit depends on where the run started. Inside a window you're away, and it's `session_max` (default 90%). Outside every window, say an `awaywork run` by hand during the day, you're present: it's `present_session_max` (default 40%), and a provider whose quota can't be read sits the run out, since its fallback caps count runs and not your usage. The session limit reads the whole 5-hour window, your own sessions included, so a present run backs off when you've been busy. `plan` works out which one a run started now would get and says so above the providers.
 
 ## Routing
 
@@ -175,7 +177,8 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
-claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -238,7 +241,8 @@ Needs you 1
 Skipped 2: 1 no_rule, 1 over_cap
 
 Quota
-  claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+  away run (inside a window): session_max
+  claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 awaywork report 20261019-220012 --unit <n|key>    shows one
 awaywork report 20261019-220012 --skipped [kind]  lists the skipped items
