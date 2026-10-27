@@ -54,6 +54,20 @@ export function windowEnd(windows: Window[], now: Date): Date | undefined {
   return open.length ? new Date(Math.max(...open.map(([, end]) => end.getTime()))) : undefined
 }
 
+/**
+ * The end of the window run `awaywork watch` starts at `now`, or undefined: outside the windows,
+ * while a run is in progress, and once this opening had its run: `lastEnd` is the last window run's end.
+ */
+export function windowRun(
+  windows: Window[],
+  now: Date,
+  state: { running: boolean; lastEnd?: Date },
+): Date | undefined {
+  const end = windowEnd(windows, now)
+  if (state.running || !end || end.getTime() === state.lastEnd?.getTime()) return undefined
+  return end
+}
+
 /** When a run started at `now` must stop on a GitHub-hosted runner, or undefined elsewhere. */
 export const hostedEnd = (now: Date, env: NodeJS.ProcessEnv) =>
   env.RUNNER_ENVIRONMENT === 'github-hosted'
@@ -85,7 +99,7 @@ export function runsLeft(windows: Window[], now: number, until: number): number 
 }
 
 /** The first window opening at or after `from` and before `until` (epoch ms), or undefined. */
-function firstOpening(windows: Window[], from: number, until: number): number | undefined {
+export function firstOpening(windows: Window[], from: number, until: number): number | undefined {
   const days = Math.ceil((until - from) / DAY) + 1
   const starts = occurrences(windows, new Date(from), days)
     .map(([start]) => start.getTime())

@@ -9,8 +9,7 @@
           "end": "07:00"
         }
       ],
-      "description": "Local hours a scheduled run may start units in; each opening is one run",
-      "minItems": 1,
+      "description": "Local hours a scheduled run may start units in; each opening is one run; [] for none",
       "type": "array",
       "items": {
         "type": "object",
@@ -49,6 +48,19 @@
         ],
         "additionalProperties": false
       }
+    },
+    "watch": {
+      "description": "awaywork watch, the daemon schedule install keeps running",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "debug": {
+          "default": false,
+          "description": "Also write each run's full output to the daemon log",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "limits": {
       "description": "Unit counts and time per run, for every provider",
@@ -2441,7 +2453,7 @@
     },
     "keep_runs": {
       "default": "30d",
-      "description": "How long run dirs stay; older ones go when a run starts, except those holding an item's latest report",
+      "description": "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
       "type": "string",
       "pattern": "^\\d+[mhdw]$"
     }

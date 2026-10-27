@@ -184,4 +184,4 @@ The run directory, `~/.local/state/awaywork/runs/<id>/`, keeps the plan, the wor
 awaywork schedule install      # asks where; this machine is launchd, systemd or cron
 ```
 
-The job starts when a window opens (default `01:00`) and stops when it ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or pass `--with github-actions`; see [Scheduling](./scheduling.md).
+The job keeps `awaywork watch` running, which starts a run when a window opens (default `01:00`) and stops it when the window ends (`07:00`). To run in GitHub Actions instead, pick it when asked, or pass `--with github-actions`; see [Scheduling](./scheduling.md).

@@ -4,7 +4,7 @@ description: Run awaywork in its windows on your machine with launchd, systemd o
 
 # Scheduling
 
-A scheduled run is `awaywork run --scheduled`: it does nothing outside the [`windows`](./configuration.md#windows-limits-and-budget) and starts no unit after the one it is in ends. A unit still running at the window's end stops there with status `stopped: window ended`, and what it left is published as for a quota stop.
+A scheduled run is one [window](./configuration.md#windows-limits-and-budget) opening: it starts when the window opens and starts no unit after it ends. A unit still running at the window's end stops there with status `stopped: window ended`, and what it left is published as for a quota stop. On your machine, `awaywork watch` starts those runs; in GitHub Actions, a cron calls `awaywork run --scheduled` at each window's start.
 
 In a terminal, `awaywork schedule install` asks where it runs:
 
@@ -22,38 +22,75 @@ In a terminal, `awaywork schedule install` asks where it runs:
 
 ```sh
 awaywork schedule install                 # macOS: launchd
-awaywork schedule install --with systemd  # Linux: a user timer
+awaywork schedule install --with systemd  # Linux: a user service
 awaywork schedule install --with cron
-awaywork schedule status                  # scheduler, time, config and log
+awaywork schedule status                  # the job, the daemon and its log
 awaywork schedule remove
 ```
 
-| Scheduler | Writes | Missed while asleep or off |
-| --- | --- | --- |
-| launchd | `~/Library/LaunchAgents/awaywork.plist` | Runs at the next wake |
-| systemd | `~/.config/systemd/user/awaywork.{service,timer}` | Runs at the next boot (`Persistent=true`) |
-| cron | a tagged line in your crontab | Skipped |
+The job is one long-running process, `awaywork watch`, that the scheduler keeps alive. It looks at the clock every minute and starts a run when a window opens, so it lands in the window even after the machine slept through the opening, and it reads the config each time: edit your windows and the next opening follows them, no reinstall.
 
+| Scheduler | Writes | Keeps it alive |
+| --- | --- | --- |
+| launchd | `~/Library/LaunchAgents/awaywork.plist` | Started at login, restarted after a crash (`KeepAlive`, `SuccessfulExit: false`) |
+| systemd | `~/.config/systemd/user/awaywork.service` | Enabled at login, `Restart=on-failure` |
+| cron | two tagged lines in your crontab | Started at boot (`@reboot`) and again every 5 minutes |
+
+`schedule status` shows what it's up to:
+
+```
+$ awaywork schedule status
+Scheduled with launchd, keeping awaywork watch running
+Config: ~/.config/awaywork/config.yml
+Log: ~/.local/state/awaywork/schedule.log
+Daemon: running, pid 37770, since 2026-10-25 15:50:06
+Run in progress: window run 20261025-145300, until 2026-10-25 15:58:00
+Next window: 2026-10-26 15:53:00
+Daemon log: ~/.local/state/awaywork/watch.log
+```
+
+- One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
+- One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 37770)`. That's what makes cron's restart line harmless.
+- One run at a time: a manual `awaywork run` during the daemon's run exits 1 with `awaywork watch holds the run lock (pid 37770); try again once its run ends`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
 - The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
-- One `awaywork run` at a time: a manual run during the scheduled one exits 1 with `already running (pid 4242, run 20261012-203418)` and the lock path. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
-- systemd user timers run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the timer and report no schedule.
-- Output goes to `~/.local/state/awaywork/schedule.log`, each run starting with a line dated in local time; the morning report is `awaywork report`. Both list what went wrong before any unit started, like a source command that failed:
+- The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
+- systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
+- `windows: []` is fine: the daemon idles, and install sets no wake.
+- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes what it has, as in the log below. One still running after that makes install change nothing and say so; run it again once it's gone. Run from inside the daemon, by a notify hook or a worker, they refuse instead of stopping it.
+- launchd and systemd bring it back only after a crash. One you stop with a SIGTERM of your own stays down until your next login or `schedule install`; under cron it's back within 5 minutes.
 
-  ```
-  awaywork run at 2026-10-12 22:34:18
-  warning: source chores: Command failed with exit code 1: ./chores.sh
-    Error: CHORES_TOKEN is not set
-  Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/20261012-203418
-  ```
+The daemon's log, `~/.local/state/awaywork/watch.log`, has events only: start and stop, each run and unit starting and ending, and what went wrong, never a line per minute. Past 5 MB it moves to `watch.log.1`. Here a SIGTERM stopped it a few seconds into a unit:
 
-  A failed command gets two lines, its error and the last error line of its stderr, however much it printed. A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
+```
+2026-10-25 15:54:30 awaywork watch started, pid 40864, config ~/.config/awaywork/config.yml
+2026-10-25 15:54:30 window run 20261025-145430 started, until 2026-10-25 15:58:00
+2026-10-25 15:54:30 Run 20261025-145430: 1 unit planned, state in ~/.local/state/awaywork/runs/20261025-145430
+2026-10-25 15:54:30   ch-2: plan on mine
+2026-10-25 15:54:42   ch-2: stopped: aborted
+2026-10-25 15:54:42 Run 20261025-145430: 0 draft PRs, 0 reports, 1 unit
+     item  skill  status                      result
+  1  CH-2  plan   stopped: aborted (aborted)  interrupted
+     Fix the typo in the README
+Report: ~/.local/state/awaywork/runs/20261025-145430/report.md
+2026-10-25 15:54:42 awaywork watch stopped
+```
 
-- The job bakes in the window starts, one trigger each. When you change them, `config edit` and `doctor` warn until `schedule install` runs again.
+Each run's full output, what `awaywork run` prints in a terminal, goes to `run.log` in its run dir; with `watch: { debug: true }` in the config it lands in `watch.log` as well. `schedule.log` only catches a daemon that crashed. The morning report is `awaywork report`. Both list what went wrong before any unit started, like a source command that failed:
+
+```
+warning: source chores: Command failed with exit code 1: ./chores.sh
+  Error: CHORES_TOKEN is not set
+Run 20261012-203418: 0 units planned, state in ~/.local/state/awaywork/runs/20261012-203418
+```
+
+A failed command gets two lines, its error and the last error line of its stderr, however much it printed. A secret the config names shows up as `***` there, so the report is safe to hand to `notify`. Run ids are the start time in UTC, so they sort the same across daylight saving and travel.
+
+A job an older awaywork installed, one trigger per window starting `awaywork run --scheduled`, keeps working, but `schedule status` and `doctor` say it was installed by an older awaywork. Run `awaywork schedule install` once after upgrading.
 
 ### Waking up for it
 
-A sleeping machine runs nothing. Once a run starts it keeps the machine from idling back to sleep (`caffeinate -i` on macOS, `systemd-inhibit --what=idle` on Linux when it works there), so the missing piece is the wake itself. In a terminal, `schedule install` offers one after the job:
+A sleeping machine runs nothing. The daemon holds nothing while idle; while a run is in progress it keeps the machine from idling back to sleep (`caffeinate -i` on macOS, `systemd-inhibit --what=idle` on Linux when it works there), so the missing piece is the wake itself. In a terminal, `schedule install` offers one after the job:
 
 ```
 ◆  Wake this Mac when the window opens (sudo pmset repeat wake MTWRFSU 01:00:00)?
@@ -64,6 +101,7 @@ A sleeping machine runs nothing. Once a run starts it keeps the machine from idl
 - macOS: `pmset` keeps a single repeating wake, so this needs every window to start at the same time, and it replaces the repeating power events you already had, a scheduled sleep or shutdown too. The question lists them and then defaults to No, unless all it replaces is a wake. Keep a laptop on the charger; with the lid closed on battery it may not wake fully.
 - Linux: a root timer, `/etc/systemd/system/awaywork-wake.timer` with `WakeSystem=true`, resumes from suspend at each window start. A background job may block idle but not sleep, so a desktop that suspends on its own timer (GNOME's automatic suspend, say) can still put it down mid-run; turn that off on AC power.
 - sudo wants a password, so without a terminal install only says how. `schedule remove` leaves the wake and prints the command that removes it.
+- The wake is set for the windows' start at install, so moving that start needs `schedule install` again to move the wake too; `config edit` and `doctor` warn until then.
 
 ## In GitHub Actions
 
@@ -90,7 +128,7 @@ Before the first run:
 
 The runner is GitHub-hosted by default: a fresh VM each run, with no Codex. Self-hosted is a machine of yours, see [Running Codex](#running-codex). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
 
-This writes `.github/workflows/awaywork.yml`: a cron at each window's start, plus `workflow_dispatch` for a manual run; `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
+This writes `.github/workflows/awaywork.yml`: a cron at each window's start (none with `windows: []`), plus `workflow_dispatch` for a manual run; `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
 
 1. Commit the files it lists.
 2. Add the repository secrets it lists as unset, e.g. `GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `ASANA_TOKEN`, your `notify.secrets`, your repos' `secrets`, your MCP servers' `secrets` and your custom sources' `secrets`.

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { styleText } from 'node:util'
 import { type Command, Option } from 'commander'
@@ -11,7 +12,9 @@ import {
   runLockPath,
   runsDir,
   skillsDirOf,
+  watchLockPath,
 } from '../config/paths.js'
+import type { Config } from '../config/schema.js'
 import { clearApprovals, loadApprovals, saveApprovals } from '../core/approvals.js'
 import { loadAttempts, recordAttempts, saveAttempts } from '../core/attempts.js'
 import { isolateFor } from '../core/launch.js'
@@ -25,7 +28,7 @@ import {
   runLine,
 } from '../core/report.js'
 import { pruneRuns } from '../core/retention.js'
-import { takeRunLock } from '../core/run-lock.js'
+import { lockHolder, takeRunLock } from '../core/run-lock.js'
 import { unitStats } from '../core/stats.js'
 import { describeWindow, hostedEnd, runEnd } from '../core/window.js'
 import { fetchRun, type UploadedRun, uploadedRuns } from '../forge/artifacts.js'
@@ -85,98 +88,39 @@ export function runCommand(program: Command): void {
           : hostedEnd(now, process.env)
         if (opts.scheduled && !until) {
           console.log(
-            `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`,
+            config.windows.length
+              ? `Outside the windows (${config.windows.map(describeWindow).join(', ')}), nothing to do`
+              : 'No windows, nothing to do',
           )
           return
         }
-        const runId = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+        const runId = newRunId()
         if (!opts.dryRun) {
           const lock = await takeRunLock(runLockPath, runId)
           if (!('release' in lock)) {
             console.error(
-              `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
+              lock.pid === (await lockHolder(watchLockPath))
+                ? `awaywork watch holds the run lock (pid ${lock.pid}); try again once its run ends`
+                : `already running (pid ${lock.pid}, run ${lock.runId}); if that is stale, delete ${runLockPath}`,
             )
             process.exitCode = 1
             return
           }
           release = lock.release
-          const pruned = await pruneRuns(config, now)
-          for (const failure of pruned.failures) console.error(`warning: ${failure}`)
-          if (pruned.removed)
-            console.log(
-              `Removed ${counted(pruned.removed, 'run')} older than ${config.keep_runs}, ${(pruned.bytes / 2 ** 20).toFixed(1)} MB freed`,
-            )
+          await pruneOld(config, now, consoleLog)
         }
-        const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(
+        const ran = await executeRun({
+          ...opts,
+          path,
           config,
-          skillsDirOf(path),
-          { retry: !!opts.unit, repo: opts.repo, rule: opts.rule, at: now },
-        )
-        for (const warning of warnings)
-          console.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
-        const named = opts.unit ? namedChains(plan, opts.unit) : []
-        if (opts.unit && named.length !== 1) {
-          console.error(
-            named.length
-              ? ambiguous(
-                  opts.unit,
-                  named.flatMap((p) => p.unit.items.slice(0, 1)),
-                )
-              : `no unit "${opts.unit}" in this run's plan; awaywork plan lists them`,
-          )
-          process.exitCode = 1
-          return
-        }
-        if (!plan.units.length && (opts.repo !== undefined || opts.rule !== undefined)) {
-          console.error('no unit matches --repo/--rule; awaywork plan lists them')
-          process.exitCode = 1
-          return
-        }
-        const runDir = join(runsDir, runId)
-        await mkdir(runDir, { recursive: true, mode: 0o700 })
-        if (process.env.GITHUB_OUTPUT)
-          await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
-        const skipped = plan.skipped.length > 0 ? `\n${formatSkipped(plan.skipped)}\n` : ''
-        await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n${skipped}`)
-        console.log(
-          `Run ${runId}: ${counted(listedUnits(plan).length, 'unit')} planned, state in ${runDir}`,
-        )
-
-        const abort = new AbortController()
-        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-          process.once(signal, () => abort.abort())
-        }
-        const report = await runUnits({
-          config,
-          configDir: dirname(path),
-          plan,
           runId,
-          runDir,
-          dryRun: !!opts.dryRun,
-          only: opts.unit,
+          now,
           until,
-          providers: providersOf(config),
-          sources,
-          forge: forgeFor(config),
-          ctx: { ...ctx, log: (line) => console.log(`  ${line}`) },
-          signal: abort.signal,
-          attempts: await loadAttempts(attemptsPath),
+          log: consoleLog,
+          browseHint: interactive(),
+          signal: abortOnSignals,
         })
-        const reportPath = join(runDir, 'report.md')
-        await writeFile(reportPath, formatReport(report, warnings))
-        await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
-        await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
-        await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
-        await saveApprovals(
-          approvalsPath,
-          clearApprovals(await loadApprovals(approvalsPath), report),
-        )
-        console.log(summarize(report, reportPath))
-        if (interactive()) console.log(styleText('dim', 'awaywork report browses this run'))
-        if (config.notify) {
-          const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
-          if (failure) console.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
-        }
+        if (!ran) process.exitCode = 1
       } catch (e) {
         reportConfigError(e)
       } finally {
@@ -214,6 +158,131 @@ export function runCommand(program: Command): void {
         screen?.close()
       }
     })
+}
+
+/** Where a run's lines go: the terminal for `awaywork run`, log files for `awaywork watch`. */
+export interface RunLog {
+  /** A line `awaywork run` prints; `event` marks the run's and each unit's start and end. */
+  info(line: string, event?: boolean): void
+  error(line: string): void
+}
+
+const consoleLog: RunLog = {
+  info: (line) => console.log(line),
+  error: (line) => console.error(line),
+}
+
+/** A signal aborted by the first SIGINT or SIGTERM, which still exits 128+n once done; a second one quits at once. */
+export function abortOnSignals(): AbortSignal {
+  const abort = new AbortController()
+  // `on`, not `once`: execa's signal-exit re-raises a signal it sees no other listener for.
+  for (const signal of ['SIGINT', 'SIGTERM'] as const)
+    process.on(signal, () => {
+      if (abort.signal.aborted) process.exit(128 + constants.signals[signal])
+      process.exitCode = 128 + constants.signals[signal]
+      abort.abort()
+    })
+  return abort.signal
+}
+
+/** A run's id: its start in UTC, as `YYYYMMDD-HHMMSS`. */
+export const newRunId = () =>
+  new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+
+/** Removes the run dirs older than `keep_runs`, saying how many went. */
+export async function pruneOld(config: Config, now: Date, log: RunLog): Promise<void> {
+  const pruned = await pruneRuns(config, now)
+  for (const failure of pruned.failures) log.error(`warning: ${failure}`)
+  if (pruned.removed)
+    log.info(
+      `Removed ${counted(pruned.removed, 'run')} older than ${config.keep_runs}, ${(pruned.bytes / 2 ** 20).toFixed(1)} MB freed`,
+      true,
+    )
+}
+
+export interface RunArgs extends Pick<RunOptions, 'dryRun' | 'unit' | 'repo' | 'rule'> {
+  path: string
+  config: Config
+  runId: string
+  now: Date
+  until?: Date
+  log: RunLog
+  /** Says `awaywork report` browses the run, after its summary. */
+  browseHint?: boolean
+  /** The signal stopping the units, asked for as they start. */
+  signal: () => AbortSignal
+}
+
+/**
+ * Plans and runs the units, writes the run's report, attempts and approvals, and notifies;
+ * false when the options name no unit. The caller holds the run lock.
+ */
+export async function executeRun(a: RunArgs): Promise<boolean> {
+  const { config, path, runId, log } = a
+  const { plan, warnings, ctx, sources, secrets } = await probeAndPlan(config, skillsDirOf(path), {
+    retry: !!a.unit,
+    repo: a.repo,
+    rule: a.rule,
+    at: a.now,
+  })
+  for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)
+  const named = a.unit ? namedChains(plan, a.unit) : []
+  if (a.unit && named.length !== 1) {
+    log.error(
+      named.length
+        ? ambiguous(
+            a.unit,
+            named.flatMap((p) => p.unit.items.slice(0, 1)),
+          )
+        : `no unit "${a.unit}" in this run's plan; awaywork plan lists them`,
+    )
+    return false
+  }
+  if (!plan.units.length && (a.repo !== undefined || a.rule !== undefined)) {
+    log.error('no unit matches --repo/--rule; awaywork plan lists them')
+    return false
+  }
+  const runDir = join(runsDir, runId)
+  await mkdir(runDir, { recursive: true, mode: 0o700 })
+  if (process.env.GITHUB_OUTPUT)
+    await appendFile(process.env.GITHUB_OUTPUT, `run-id=${runId}\nrun-dir=${runDir}\n`)
+  const skipped = plan.skipped.length > 0 ? `\n${formatSkipped(plan.skipped)}\n` : ''
+  await writeFile(join(runDir, 'plan.txt'), `${formatPlan(plan, warnings)}\n${skipped}`)
+  log.info(
+    `Run ${runId}: ${counted(listedUnits(plan).length, 'unit')} planned, state in ${runDir}`,
+    true,
+  )
+
+  const report = await runUnits({
+    config,
+    configDir: dirname(path),
+    plan,
+    runId,
+    runDir,
+    dryRun: !!a.dryRun,
+    only: a.unit,
+    until: a.until,
+    providers: providersOf(config),
+    sources,
+    forge: forgeFor(config),
+    ctx: { ...ctx, log: (line) => log.info(`  ${line}`) },
+    event: (line) => log.info(`  ${line}`, true),
+    signal: a.signal(),
+    attempts: await loadAttempts(attemptsPath),
+  })
+  const reportPath = join(runDir, 'report.md')
+  await writeFile(reportPath, formatReport(report, warnings))
+  await writeFile(join(runDir, reportJsonFile), reportJson(report, warnings))
+  await writeFile(join(runDir, unitsFile), JSON.stringify(unitStats(report.results)))
+  await saveAttempts(attemptsPath, recordAttempts(await loadAttempts(attemptsPath), report))
+  await saveApprovals(approvalsPath, clearApprovals(await loadApprovals(approvalsPath), report))
+  log.info(summarize(report, reportPath), true)
+  if (a.browseHint) log.info(styleText('dim', 'awaywork report browses this run'))
+  if (config.notify) {
+    const failure = await notifyRun(config.notify.command, { path: reportPath, runId })
+    if (failure) log.error(`notify failed: ${maskSecrets(failure, secrets, ctx.env)}`)
+  }
+  return true
 }
 
 type ReportOptions = {

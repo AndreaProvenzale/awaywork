@@ -35,7 +35,8 @@ limits:                         # per run, every provider; unset by default
   units: 8
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
-keep_runs: 30d                  # default; older run dirs go when a run starts
+keep_runs: 30d                  # default; older run dirs go when run or watch starts
+watch: { debug: false }         # default; true also logs every run line in watch.log
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
@@ -91,7 +92,7 @@ windows:
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-The scheduler gets one trigger per window. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
+[`awaywork watch`](./scheduling.md#on-your-machine) reads them every minute, so editing them needs no reinstall, only moving the [wake](./scheduling.md#waking-up-for-it) does. `windows: []` means none: the daemon idles, and the GitHub Actions workflow only runs when you dispatch it. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
 
 A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it.
 
@@ -692,7 +693,7 @@ The image is yours to build, and what's in it is all the units get:
 
 ## Old runs
 
-Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. [`awaywork watch`](./scheduling.md#on-your-machine) does the same when it starts and once a day, logging the line. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
 
 ```text
 Removed 3 runs older than 30d, 124.8 MB freed
