@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,6 +58,7 @@ describe.skipIf(!repo)('the pipeline story, live on the sandbox', () => {
   - { id: docs, title: Export docs }
 ${otherToken ? '  - { id: notes, title: Release notes }\n' : ''}`
   const env: NodeJS.ProcessEnv = {}
+  let home = ''
   let config = ''
   let owner = ''
   let issue = 0
@@ -109,7 +110,7 @@ ${otherToken ? '  - { id: notes, title: Release notes }\n' : ''}`
     JSON.parse(await api(`issues/${issue}/comments`, {}, '--jq', '[.[].body]'))
 
   beforeAll(async () => {
-    const home = await mkdtemp(join(tmpdir(), 'awaywork-story-'))
+    home = await mkdtemp(join(tmpdir(), 'awaywork-story-'))
     const fakes = join(home, 'bin')
     await mkdir(fakes)
     await symlink(join(root, 'test', 'fakes', 'story-claude.mjs'), join(fakes, 'claude'))
@@ -193,17 +194,30 @@ queue:
   afterAll(async () => {
     const left: Error[] = []
     const undo = (what: string, step: () => Promise<unknown>) =>
-      step().catch((cause) => left.push(new Error(`${what} left in ${repo}`, { cause })))
+      step().then(
+        () => true,
+        (cause) => {
+          left.push(new Error(`${what} left in ${repo}`, { cause }))
+          return false
+        },
+      )
     if (issue) {
       // Only names this run made: its card's task branches and the PRs from them.
-      for (const task of tasks)
-        for (const pr of await prsOf(task).catch(() => []))
-          if (pr.state === 'open')
-            await undo(`PR #${pr.number}`, () =>
-              api(`pulls/${pr.number}`, { state: 'closed' }, '-X', 'PATCH'),
-            )
+      const unclosed = new Set<string>()
+      for (const task of tasks) {
+        const closed = await undo(`PRs from ${branchOf(task)}`, async () => {
+          for (const pr of await prsOf(task))
+            if (pr.state === 'open')
+              await api(`pulls/${pr.number}`, { state: 'closed' }, '-X', 'PATCH')
+        })
+        if (!closed) unclosed.add(task)
+      }
       for (const task of tasks) {
         const branch = branchOf(task)
+        if (unclosed.has(task)) {
+          left.push(new Error(`branch ${branch} left in ${repo}: its PRs may still be open`))
+          continue
+        }
         const pushed = await api(`branches/${encodeURIComponent(branch)}`).then(
           () => true,
           () => false,
@@ -215,7 +229,12 @@ queue:
       await undo(`issue #${issue}`, () => gh('issue', 'delete', String(issue), '-R', repo, '--yes'))
     }
     for (const name of [label, moved])
-      await undo(`label ${name}`, () => gh('label', 'delete', name, '-R', repo, '--yes'))
+      await undo(`label ${name}`, () =>
+        gh('label', 'delete', name, '-R', repo, '--yes').catch((e) => {
+          if (!String(e.stderr).startsWith('HTTP 404')) throw e
+        }),
+      )
+    if (home) await rm(home, { recursive: true, force: true })
     if (left.length) throw new AggregateError(left, 'cleanup left seeded items behind')
   }, 600_000)
 
@@ -326,6 +345,7 @@ queue:
     if (otherToken) {
       const notes = await prOf('notes')
       expect(notes).toMatchObject({ draft: true, head: { sha: before.notes?.head.sha } })
+      expect(notes?.body).toMatch(/Edited by a teammate\.$/)
     }
   }, 300_000)
 
@@ -347,8 +367,7 @@ queue:
       }
       if (Date.now() > deadline) throw new Error(`check never completed on ${head}`)
     }
-    const plan = await planJson()
-    expect(unitOf(plan, taskKey('fix'))).toBeDefined()
+    await settled((p) => unitOf(p, taskKey('fix')))
     await awaywork('run')
     const fix = await prOf('fix')
     expect(fix).toMatchObject({ state: 'open', draft: false, base: { ref: branchOf('api') } })

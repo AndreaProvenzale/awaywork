@@ -9,8 +9,9 @@ if (args.includes('--version')) {
   console.log('2.1.282 (Claude Code)')
   process.exit(0)
 }
+const probe = readFileSync(new URL('../fixtures/claude/probe.jsonl', import.meta.url), 'utf8')
 if (args.includes('claude-haiku-4-5-20251001')) {
-  process.stdout.write(readFileSync(new URL('../fixtures/claude/probe.jsonl', import.meta.url)))
+  process.stdout.write(probe)
   process.exit(0)
 }
 
@@ -42,4 +43,6 @@ if (skill === 'plan') {
   out('pr.md', `Story ${task}\n\nDone.`)
   out('status', goesOn && !resumed ? 'continue\n' : 'done\n')
 }
+// A real run reports its quota mid-stream, before the result.
+console.log(probe.split('\n').find((line) => line.includes('"rate_limit_event"')))
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: 1 }))
