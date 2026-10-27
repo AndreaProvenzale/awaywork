@@ -8,7 +8,7 @@ import { fakeForge } from './forge.js'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
-/** Forges on local origins, one per repo, that take pushes, open PRs on the base they name and read files at a ref. */
+/** Forges on local origins, one per repo, that take pushes, open PRs on the base they name, as drafts or not, and read files at a ref. */
 export async function originsForge(root: string, repos: string[]) {
   const origins: Record<string, string> = {}
   for (const repo of repos) {
@@ -19,6 +19,7 @@ export async function originsForge(root: string, repos: string[]) {
   }
   const fake = fakeForge()
   const bases: Record<string, string> = {}
+  const drafts: Record<string, boolean> = {}
   const clones: Record<string, string> = {}
   let n = 10
   const forge = {
@@ -44,10 +45,12 @@ export async function originsForge(root: string, repos: string[]) {
       bodyFile: string,
       runId: string,
       items: Pick<Item, 'source' | 'key'>[],
+      draft: boolean,
     ) => {
       const { body } = await prText(bodyFile, head, runId, items)
       const url = `https://github.com/${repo}/pull/${++n}`
       bases[`${repo}:${head}`] = base || 'main'
+      drafts[`${repo}:${head}`] = draft
       const sha = (await git(origins[repo] as string, 'rev-parse', head)).stdout
       fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, head: sha }]
       return url
@@ -70,5 +73,5 @@ export async function originsForge(root: string, repos: string[]) {
     if (found) Object.assign(found, { open: false, merged: true, closedAt: '2026-10-29T00:00:00Z' })
     await git(origins[repo] as string, 'branch', '-D', branch)
   }
-  return { forge, bases, clones, merge, stacked: fake.stacked }
+  return { forge, bases, drafts, clones, merge, stacked: fake.stacked }
 }
