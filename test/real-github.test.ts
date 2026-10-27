@@ -226,9 +226,16 @@ jobs:
     const item = await settled((items) => items.find((i) => i.key === key))
     moved = `${label}-moved-${run}`
     const cfg = { repos: [repo] }
-    const updated = await writeItem(github, cfg, item, { op: 'move', to: moved }, ctx)
+    const { updated } = await writeItem(github, cfg, item, { op: 'move', to: moved }, ctx)
     expect(updated).toMatch(/^\d{4}-\d\d-\d\dT[\d:]+Z$/)
-    await writeItem(github, cfg, item, { op: 'comment', body: `e2e question ${run}` }, ctx)
+    const { url } = await writeItem(
+      github,
+      cfg,
+      item,
+      { op: 'comment', body: `e2e question ${run}` },
+      ctx,
+    )
+    expect(url).toMatch(new RegExp(`/issues/${issue}#issuecomment-\\d+$`))
     const back = await settled((items) => {
       const found = items.find((i) => i.key === key)
       return found?.labels.includes(moved) && found.comments.some(isAwayworkComment)

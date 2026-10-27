@@ -1,4 +1,4 @@
-import { mkdtemp, readdir } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -49,6 +49,20 @@ export function sourceContract(
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
       if (item) await source.prefetch(item, dir, ctx)
       expect((await readdir(dir)).length).toBeGreaterThan(0)
+    })
+
+    it.runIf(source.write)("shows awaywork's questions in item.md, then the reply", async () => {
+      const [item] = await source.items(cfg(), ctx)
+      const comments = [
+        { author: 'dev', body: 'Per user?\n\n— awaywork', at: '2026-01-05T08:00:00Z', mine: true },
+        { author: 'sam', body: 'Per key.', at: '2026-01-05T09:00:00Z' },
+      ] as const
+      const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
+      await source.prefetch({ ...(item as Item), comments: [...comments] }, dir, ctx)
+      const text = await readFile(join(dir, 'item.md'), 'utf8')
+      expect(text).toContain(
+        "### awaywork's questions (dev), 2026-01-05T08:00:00Z\n\nPer user?\n\n— awaywork\n\n### sam, 2026-01-05T09:00:00Z\n\nPer key.",
+      )
     })
 
     it.runIf(source.init)(

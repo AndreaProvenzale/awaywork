@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { isOurs } from '../core/footer.js'
+import { commentMarkdown, isOurs } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
@@ -319,10 +319,20 @@ export function githubSource(base: Exec = exec): Source<Config> {
         throw new Error(`${item.key} is no longer yours: not assigned to you`)
       // A PR is an issue too: its labels and conversation comments go through the issues API.
       const path = `repos/${repo}/issues/${number}`
+      let url = ''
       if (write.op === 'comment')
-        await run('gh', ['api', `${path}/comments`, '-f', `body=${write.body}`])
+        url = (
+          await run('gh', [
+            'api',
+            `${path}/comments`,
+            '-f',
+            `body=${write.body}`,
+            '--jq',
+            '.html_url',
+          ])
+        ).trim()
       else await run('gh', ['api', `${path}/labels`, '-f', `labels[]=${write.to}`])
-      return { before: before.updatedAt, after: (await read()).updatedAt }
+      return { before: before.updatedAt, after: (await read()).updatedAt, ...(url && { url }) }
     },
   }
 }
@@ -517,6 +527,7 @@ const toComment = (c: Comment) => ({
   // A collaborator can edit your comment; then its text isn't yours.
   ...(c.viewerDidAuthor &&
     (!c.editor || c.editor.login === c.author?.login) && { mine: true as const }),
+  ...(c.author?.__typename === 'Bot' && { bot: true as const }),
 })
 
 function checkState(state: string | undefined): string | undefined {
@@ -526,7 +537,7 @@ function checkState(state: string | undefined): string | undefined {
 }
 
 function itemMarkdown(item: Item): string {
-  const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  const comments = item.comments.map(commentMarkdown)
   const hidden = (item.raw as Node).comments.nodes.length - comments.length
   return [
     `# ${item.title}\n\n${item.url}\n\n${item.description}\n`,

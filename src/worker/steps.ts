@@ -26,10 +26,11 @@ export async function readVerdict(dir: string): Promise<string | undefined> {
 }
 
 /** What a step left for the chain, e.g. `2 commits and a report`. */
-export function made(commits: number, report: string): string {
+export function made(commits: number, report: string, questions = ''): string {
   const parts = [
     commits > 0 && `${commits} ${commits === 1 ? 'commit' : 'commits'}`,
     report && 'a report',
+    questions && 'questions',
   ].filter(Boolean)
   return parts.length ? parts.join(' and ') : 'nothing'
 }
@@ -43,7 +44,7 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
   await Promise.all(
-    ['report.md', 'review.json', 'verdict', 'check.log'].map((f) =>
+    ['report.md', 'review.json', 'verdict', 'check.log', 'questions.md'].map((f) =>
       rm(join(out, f), { force: true }),
     ),
   )

@@ -1266,6 +1266,53 @@ describe('attempts', () => {
   })
 })
 
+describe('waiting for an answer', () => {
+  const yaml = `
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: implement
+`
+  const comment = (body: string, mine?: true) => ({
+    author: mine ? 'me' : 'sam',
+    body,
+    at: '2026-01-01T00:00:00Z',
+    ...(mine && { mine }),
+  })
+  const asked = comment('Per user or per key?\n\n— awaywork', true)
+  const withComments = (...comments: Item['comments']) =>
+    plan(yaml, [{ ...issue, comments }], {}, {}, {})
+
+  it("waits on an item whose newest comment is awaywork's questions, with no attempts kept", () => {
+    const waiting = withComments(comment('Please add limits.'), asked)
+    expect(waiting.units).toEqual([])
+    expect(waiting.skipped).toMatchObject([
+      {
+        kind: 'waiting_for_answer',
+        reason: 'waiting for your answer on https://example.com/1',
+        url: 'https://example.com/1',
+      },
+    ])
+    expect(needsYou.waiting_for_answer).toBe(true)
+    expect(formatPlan(waiting)).toContain('api#5  waiting for your answer\n')
+  })
+
+  it('runs again once a trusted comment replies after the questions', () => {
+    expect(withComments(asked, comment('Per key.')).units).toHaveLength(1)
+    expect(withComments(asked, comment('Per key.', true)).units).toHaveLength(1)
+  })
+
+  it('keeps waiting when only a bot commented after the questions', () => {
+    const bot = { ...comment('Coverage 91.2%'), author: 'codecov', bot: true as const }
+    expect(withComments(asked, bot).skipped).toMatchObject([{ kind: 'waiting_for_answer' }])
+    expect(withComments(asked, bot, comment('Per key.')).units).toHaveLength(1)
+  })
+
+  it("doesn't count awaywork's mark someone else pasted", () => {
+    expect(withComments(comment('Per user?\n\n— awaywork')).units).toHaveLength(1)
+  })
+})
+
 describe('finished items', () => {
   const day = 86_400_000
   const closed = new Date(Date.now() - 2 * day).toISOString()

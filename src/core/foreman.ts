@@ -4,6 +4,7 @@ import { defaultType, isValidRef, renderBranch } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
 import { dedupe } from './dedupe.js'
+import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import {
   closestRule,
@@ -71,6 +72,7 @@ export type SkipKind =
   | 'unchanged'
   | 'over_cap'
   | 'waiting_for_review'
+  | 'waiting_for_answer'
   | 'gave_up'
   | 'no_repo'
   | 'invalid_branch'
@@ -84,6 +86,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   unchanged: false,
   over_cap: false,
   waiting_for_review: true,
+  waiting_for_answer: true,
   gave_up: true,
   no_repo: true,
   invalid_branch: true,
@@ -95,7 +98,7 @@ export interface Skipped {
   item: Item
   kind: SkipKind
   reason: string
-  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself. */
+  /** The PR it waits on for review: one the item links, the PR awaywork pushed onto, or the item itself; or the item awaywork asked its questions on. */
   url?: string
 }
 
@@ -162,6 +165,12 @@ export function planRun(input: {
         `waiting for review: awaywork pushed onto your PR ${held.url}`,
         held.url,
       )
+      continue
+    }
+    // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change.
+    const asked = items.find(awaitsAnswer)
+    if (asked) {
+      skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))

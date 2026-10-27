@@ -43,7 +43,7 @@ const issuesQuery = `query Issues($after: String, $filter: IssueFilter, $archive
 const commentsQuery = `query Comments($id: String!, $after: String) {
   issue(id: $id) {
     comments(first: 100, after: $after) {
-      nodes { body createdAt user { name isMe } }
+      nodes { body createdAt user { name isMe app } botActor { type } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -91,7 +91,8 @@ interface Issue {
 interface Comment {
   body: string
   createdAt: string
-  user: { name: string; isMe: boolean } | null
+  user: { name: string; isMe: boolean; app?: boolean } | null
+  botActor?: { type: string } | null
 }
 /** An issue as read right before a write. */
 type Read = { updatedAt: string; assignee: { isMe: boolean } | null }
@@ -281,6 +282,8 @@ function toItem(issue: Issue, comments: Comment[], repoMap: Config['repo_map'] =
         body: c.body,
         at: c.createdAt,
         ...(c.user?.isMe && { mine: true as const }),
+        // An app user, or an integration's bot with no user behind it.
+        ...((c.user ? c.user.app : c.botActor) && { bot: true as const }),
       }))
       .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],

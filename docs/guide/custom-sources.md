@@ -115,10 +115,10 @@ awaywork runs it once per write with the write as JSON on stdin: `op`, the item'
 
 ```json
 { "op": "move", "item": "AI-42", "id": "8812", "to": "Review" }
-{ "op": "comment", "item": "AI-42", "id": "8812", "body": "Which header row?\n\n— awaywork" }
+{ "op": "comment", "item": "AI-42", "id": "8812", "body": "Which header row?\n\nReply here to answer: awaywork's next run takes this up again with your reply.\n\n— awaywork" }
 ```
 
-No rule writes comments yet; when one does, the body ends with awaywork's `— awaywork` line, and the command posts it as is. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) right before and after the write as `{"before": "…", "after": "…"}`: when `before` is still what `command` printed, awaywork records `after`, so its own move doesn't make the item look changed next run, while someone else's change during the run still does.
+A comment is a step's [questions](./how-it-works.md#questions): the body ends with awaywork's `— awaywork` line, and the command posts it as is. List it back in `comments`, oldest comment first and `mine` set as below, and the item waits for an answer until a later comment replies. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) right before and after the write as `{"before": "…", "after": "…"}`: when `before` is still what `command` printed, awaywork records `after`, so its own move doesn't make the item look changed next run, while someone else's change during the run still does.
 
 ```js
 // board-write.mjs: moves a card or comments on it, as you

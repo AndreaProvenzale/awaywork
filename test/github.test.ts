@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
-import { footer, footerItems, isAwayworkComment, isOurs, markComment } from '../src/core/footer.js'
+import {
+  awaitsAnswer,
+  footer,
+  footerItems,
+  isAwayworkComment,
+  isOurs,
+  markComment,
+} from '../src/core/footer.js'
 import type { Ctx, Item, Write } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
@@ -102,7 +109,9 @@ describe('source writes', () => {
     await expect(
       writeItem({ ...source, write: undefined }, {}, yours, { op: 'move', to: 'QA' }, ctx),
     ).rejects.toThrow("github can't write to its items")
-    expect(await writeItem(source, {}, yours, { op: 'comment', body: 'Q?' }, ctx)).toBe('later')
+    expect(await writeItem(source, {}, yours, { op: 'comment', body: 'Q?' }, ctx)).toEqual({
+      updated: 'later',
+    })
     expect(writes).toEqual([{ op: 'comment', body: 'Q?\n\n— awaywork' }])
   })
 
@@ -116,11 +125,11 @@ describe('source writes', () => {
       mine: true,
       fields: { updated: '2026-10-24T00:00:00Z' },
     })
-    expect(await writeItem(source, {}, read, { op: 'move', to: 'QA' }, ctx)).toBeUndefined()
+    expect(await writeItem(source, {}, read, { op: 'move', to: 'QA' }, ctx)).toEqual({})
     const same = { ...read, fields: { updated: '2026-10-24T00:30:00.000Z' } }
-    expect(await writeItem(source, {}, same, { op: 'move', to: 'QA' }, ctx)).toBe(
-      '2026-10-24T01:00:00Z',
-    )
+    expect(await writeItem(source, {}, same, { op: 'move', to: 'QA' }, ctx)).toEqual({
+      updated: '2026-10-24T01:00:00Z',
+    })
   })
 })
 
@@ -510,6 +519,23 @@ describe('github source', () => {
     expect(issue5?.comments.some(isAwayworkComment)).toBe(false)
   })
 
+  it("keeps waiting for an answer when a bot comments after awaywork's questions", async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    const bot = { login: 'codecov', __typename: 'Bot' }
+    assigned.data.search.nodes[0].comments.nodes = [
+      { ...yours, body: markComment('Per user or per key?') },
+      { ...yours, author: bot, authorAssociation: 'NONE', viewerDidAuthor: false, body: '91.2%' },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => [c.author, c.bot])).toEqual([
+      ['dev', undefined],
+      ['codecov', true],
+    ])
+    expect(issue5 && awaitsAnswer(issue5)).toBe(true)
+  })
+
   const read = (assignees?: string[]) =>
     JSON.stringify({
       data: {
@@ -533,7 +559,11 @@ describe('github source', () => {
   it('comments on an item and moves it by adding a label, through the issues API on its host', async () => {
     const seen: (string | undefined)[] = []
     const replay = recorded([
-      [/^gh api repos\/acme\/api\/issues\/5\/(comments|labels) -f /, '{}'],
+      [/^gh api repos\/acme\/api\/issues\/5\/labels -f /, '{}'],
+      [
+        /^gh api repos\/acme\/api\/issues\/5\/comments -f /,
+        'https://git.acme.com/acme/api/issues/5#issuecomment-9\n',
+      ],
       [
         /^gh api graphql -f owner=acme -f name=api -F number=5 .*issueOrPullRequest/s,
         read(['dev']),
@@ -549,14 +579,16 @@ describe('github source', () => {
       before: '2026-02-02T08:00:00Z',
       after: '2026-02-02T08:00:00Z',
     })
-    await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx)
+    expect(
+      await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx),
+    ).toMatchObject({ url: 'https://git.acme.com/acme/api/issues/5#issuecomment-9' })
     const updated = ['api', 'graphql', '-f', 'owner=acme', '-f', 'name=api', '-F', 'number=5']
     expect(replay.calls.map((c) => (c[2] === 'graphql' ? c.slice(1, 9) : c.slice(1)))).toEqual([
       updated,
       ['api', 'repos/acme/api/issues/5/labels', '-f', 'labels[]=In QA'],
       updated,
       updated,
-      ['api', 'repos/acme/api/issues/5/comments', '-f', 'body=Why `@here`?'],
+      ['api', 'repos/acme/api/issues/5/comments', '-f', 'body=Why `@here`?', '--jq', '.html_url'],
       updated,
     ])
     expect(new Set(seen)).toEqual(new Set(['git.acme.com']))

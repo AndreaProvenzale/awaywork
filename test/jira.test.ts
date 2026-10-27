@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
-import { isAwayworkComment, markComment } from '../src/core/footer.js'
+import { awaitsAnswer, isAwayworkComment, markComment } from '../src/core/footer.js'
 import type { Ctx } from '../src/core/types.js'
 import { adfToMarkdown, jiraSource, textToAdf } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
@@ -380,6 +380,19 @@ describe('jira writes', () => {
     expect(adfToMarkdown(sent.body)).toBe(body)
   })
 
+  it("refuses a comment whose ADF is over Jira's 32,767 characters, before any call", async () => {
+    const overhead = JSON.stringify(textToAdf('x')).length - 1
+    const fits = writer()
+    const body = 'x'.repeat(32_767 - overhead)
+    await jiraSource(fits).write?.(cfg, eng12, { op: 'comment', body }, ctx)
+    expect(fits.calls).toHaveLength(3)
+    const over = writer()
+    await expect(
+      jiraSource(over).write?.(cfg, eng12, { op: 'comment', body: `${body}x` }, ctx),
+    ).rejects.toThrow("the comment is over Jira's 32767 characters as ADF")
+    expect(over.calls).toEqual([])
+  })
+
   it("marks the assignee's own comments as yours, so only those count as awaywork's", async () => {
     const dev = { displayName: 'Dev', accountId: '5b10' }
     const qa = { displayName: 'QA', accountId: '5b20' }
@@ -402,5 +415,27 @@ describe('jira writes', () => {
     ])
     expect(found?.mine).toBe(true)
     expect(http.calls.some((c) => c.url.includes('/myself'))).toBe(false)
+  })
+
+  it("keeps waiting for an answer when an app comments after awaywork's questions", async () => {
+    const dev = { displayName: 'Dev', accountId: '5b10' }
+    const automation = { displayName: 'Automation for Jira', accountId: '5b99', accountType: 'app' }
+    const comments = JSON.stringify({
+      total: 2,
+      comments: [
+        {
+          author: dev,
+          body: textToAdf(markComment('Q?')),
+          created: '2026-01-01T10:00:00.000+0000',
+        },
+        { author: automation, body: textToAdf('Moved.'), created: '2026-01-01T11:00:00.000+0000' },
+      ],
+    })
+    const [found] = await jiraSource(jiraFetch([[/\/issue\/10012\/comment/, comments]])).items(
+      cfg,
+      ctx,
+    )
+    expect(found?.comments.map((c) => c.bot)).toEqual([undefined, true])
+    expect(found && awaitsAnswer(found)).toBe(true)
   })
 })

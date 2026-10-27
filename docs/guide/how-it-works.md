@@ -68,6 +68,7 @@ Items that share a key or a linked PR (repo and branch) are one unit, one piece 
 - The unit works in its linked PR's repo, else the item's `repo` field; with neither it is skipped.
 - A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
+- A unit whose item's newest comment is awaywork's [questions](#questions) is skipped as **waiting for your answer**, until someone replies on the item.
 - A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end) or may not have (a watchdog stop for low memory or disk): it tries again next run. `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
@@ -127,6 +128,43 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 Either way, a skill that defines verdicts also writes one word to `.away/out/verdict`, such as `approve`. The report shows it next to the unit's result, and a [loop](./chains.md#loops) can end on it.
 
 A skill commits unless its metadata says it reports, as `review` and `plan` do; the rule's `deliver` says where the commits go, and a chain that committed nothing reports whatever its `deliver`. `pr`, `push` and `pending_review` are never a skill's default. A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines, and ends with a footer naming awaywork, the run and the unit's items, which is how the next plan recognises it and links it to them.
+
+## Questions
+
+A step that can't go on without a person's answer writes its questions to `.away/out/questions.md` and commits nothing, like `implement` on an issue too vague to build. The chain ends there, and awaywork posts them as one comment on the unit's item from the rule's own tracker, the one [`on_done`](./configuration.md#on-done) would move, when that item is yours: your PR, an issue assigned to you, a tracker item. The model writes the questions; awaywork adds the last two paragraphs. On GitHub it shows up as you:
+
+```
+andrea commented
+
+Before I write code for "Add rate limits":
+
+1. Per user or per API key? The issue says "per client", and src/auth.ts has both.
+2. Should a burst over the limit get a 429, or wait for the bucket to refill?
+
+Reply here to answer: awaywork's next run takes this up again with your reply.
+
+— awaywork
+```
+
+- While that comment is the item's newest, the unit is skipped as **waiting for your answer**, under Needs you in `awaywork plan`. awaywork reads that off the item, not the state dir, so a fresh runner waits too, and its own comment bumping the item's `updated` time doesn't count as a change.
+
+  ```
+  Needs you 1
+    api#5  waiting for your answer
+           Add rate limits
+  ```
+
+- Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo; a tracker shows every comment on an item assigned to you. Bots don't count (GitHub's bots, Jira's apps, Linear's apps and integrations): a coverage report or an automation's comment after the questions shows in `item.md` but leaves the unit waiting. Asana and custom sources don't mark bots, so there an integration's comment ends the wait too. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. A step that still can't go on asks again.
+- It counts as awaywork's only when its `— awaywork` line comes from your own account, so a stranger pasting one doesn't hold your item ([Safety](./safety.md#what-awaywork-publishes)).
+- On an item that isn't yours, a source that can't write (Bitbucket, a custom source without `write`), or a post that fails, the questions stay in the morning report with the reason, and the unit is still done. Either way the unit's result reads `asked questions`, the report lists them under Questions, and `awaywork run` prints `questions posted on <url>` under the unit, linking the comment itself on GitHub and the item elsewhere:
+
+  ```text
+    1  api#5  implement  done, 3 turns  asked questions
+       Add rate limits
+       questions posted on https://github.com/acme/api/issues/5#issuecomment-2417736801
+  ```
+
+- A step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
 
 ## The morning report
 

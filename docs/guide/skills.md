@@ -11,9 +11,9 @@ A skill tells the worker what to do with a unit. Every skill is an [Agent Skills
 | Skill | For | Delivers |
 | --- | --- | --- |
 | `fix` | Problems listed on an item: your PR's failing checks or unresolved review threads, threads you started on an awaywork PR, a task back from QA, an error report from a [custom source](./custom-sources.md#recipe-sentry-errors), or this run's review in a [loop](./chains.md#loops) | draft PR |
-| `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps | draft PR |
+| `implement` | An issue or task with no PR yet, or one in progress with your PR: it takes the unambiguous next steps, or asks [questions](./how-it-works.md#questions) when it's too vague to build | draft PR |
 | `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted, unless a rule's `deliver: pending_review` leaves it as your pending review. Writes a verdict: `approve`, `comments` or `changes`, and under `pending_review` its line comments to `review.json` | report |
-| `plan` | A task with no PR: an implementation plan, no code | report |
+| `plan` | A task with no PR: an implementation plan, no code, or [questions](./how-it-works.md#questions) when none of its readings is likely enough to plan on | report |
 | `judge` | A slice about to be published, as a [gate's judge](./configuration.md#judges): writes the verdict `fires` when it holds a change a human must decide on, one line per decision in its report | report |
 
 ```sh
@@ -114,6 +114,7 @@ queue:
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.
 - A skill that reviews a PR can write its line comments to `.away/out/review.json`, as `review` does: `[{ "path": "src/limit.ts", "line": 42, "body": "Burst should come from config." }]`, `line` on the PR's new side, at most 100 comments and 100 KB. Under [`deliver: pending_review`](./how-it-works.md#delivery) they land on those lines, which must be ones the PR's diff adds or shows as context, with `report.md` as the review's body; when GitHub refuses one, they all go in the body, and an invalid file is left out, the result saying why. Under any other delivery nobody reads it.
+- A skill that can't go on without a person's answer writes the questions to `.away/out/questions.md`, in plain text since Jira and Asana show no Markdown, at most 30 KB, and commits nothing, as `implement` and `plan` do on an item too vague to work on. awaywork posts them on your item and waits for a reply there ([Questions](./how-it-works.md#questions)); the next run's `item.md` shows them headed `awaywork's questions`, the replies after them. A step that committed went on, and nobody reads it.
 - Any other file a skill writes in `.away/out/` is kept with the run and reaches the [notify](./configuration.md#notify) hook as `$AWAYWORK_OUT_DIR`; awaywork doesn't read it. A hook should treat those files as untrusted input: the model wrote them after reading other people's items. The folder also holds what earlier steps of its [slice](./chains.md#stack) left, so a hook acting on an extra file should check `$AWAYWORK_SKILL` first.
 - Say what the output must state, as the built-ins do: what was checked, how, and what couldn't be.
 - Context is in `.away/context/<item>/`: `item.md` for every item, plus `diff.patch`, `threads.md` and `checks.md` for a PR.

@@ -36,7 +36,7 @@ export interface Item {
   reviewers: string[]
   labels: string[]
   /** `mine` when your own account wrote it and nobody else edited it since. */
-  comments: { author: string; body: string; at: string; mine?: true }[]
+  comments: { author: string; body: string; at: string; mine?: true; bot?: true }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   /** The line a PR body carries to link this item, rendered from its source's `link`. */
@@ -94,7 +94,8 @@ export interface Source<C = unknown> {
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
   /**
    * Writes to one of its items as you: a comment, or a move to the status, state, section or
-   * label named `to`. Returns the item's updated time just before and after it, when the tracker says.
+   * label named `to`. Returns the item's updated time just before and after it, when the tracker says,
+   * and a comment's own link when it returns one.
    */
   write?(cfg: C, item: Item, write: Write, ctx: Ctx): Promise<Written>
 }
@@ -102,10 +103,11 @@ export interface Source<C = unknown> {
 /** What awaywork writes to a tracker item. */
 export type Write = { op: 'comment'; body: string } | { op: 'move'; to: string }
 
-/** The item's updated time just before and after a write. */
+/** The item's updated time just before and after a write, and a comment's own link. */
 export interface Written {
   before?: string
   after?: string
+  url?: string
 }
 
 export interface Quota {

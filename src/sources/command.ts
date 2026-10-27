@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { linkProblem } from '../core/footer.js'
+import { commentMarkdown, linkProblem } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
 import type { Ctx, Item, Source, Write } from '../core/types.js'
 
@@ -222,7 +222,7 @@ function unreadable(e: Entry): string | undefined {
 
 function itemMarkdown(item: Item): string {
   const body = (item.raw as Entry).context ?? item.description
-  const comments = item.comments.map((c) => `\n### ${c.author}, ${c.at}\n\n${c.body}\n`)
+  const comments = item.comments.map(commentMarkdown)
   return [
     `# ${item.key}: ${item.title}\n\n${item.url}\n\n${body}\n`,
     ...(comments.length ? ['\n## Comments\n', ...comments] : []),

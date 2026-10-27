@@ -51,3 +51,17 @@ export const markComment = (body: string): string => `${body.trimEnd()}\n\n${com
 /** A comment awaywork wrote: its mark as the last line, from your own account, so a mark someone else pastes doesn't count. */
 export const isAwayworkComment = (c: Item['comments'][number]): boolean =>
   !!c.mine && c.body.trimEnd().split('\n').at(-1)?.trim() === commentMark
+
+/** What awaywork posts on an item when a step can't go on without answers: the step's questions, and how to answer. */
+export const questionsComment = (questions: string): string =>
+  `${questions.trim()}\n\nReply here to answer: awaywork's next run takes this up again with your reply.`
+
+/** Awaywork's questions are the item's newest comment but a bot's: it waits for an answer, from you or anyone its source trusts. */
+export const awaitsAnswer = (item: Pick<Item, 'comments'>): boolean => {
+  const newest = item.comments.filter((c) => !c.bot).at(-1)
+  return !!newest && isAwayworkComment(newest)
+}
+
+/** A comment as `item.md` shows it, awaywork's own headed as its questions. */
+export const commentMarkdown = (c: Item['comments'][number]): string =>
+  `\n### ${isAwayworkComment(c) ? `awaywork's questions (${c.author})` : c.author}, ${c.at}\n\n${c.body}\n`
