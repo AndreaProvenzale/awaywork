@@ -5,6 +5,7 @@ import type { SkipKind, Skipped } from './foreman.js'
 import {
   type Contract,
   cardTasks,
+  doneTasks,
   holdingTask,
   isCheck,
   openedChain,
@@ -47,18 +48,17 @@ export const planLimits = (
   retired: taskPrUrls(card, (pr) => pr.state === 'closed'),
 })
 
-/** The skills the queue's `planned` rules take for a card from `source`, and those whose rule, the first `planned` one for the skill, opens no PR. */
+/** The skills the queue's `planned` rules take for a card from `source`, and those whose rule, the first `planned` one for the skill, reports. */
 function taskSkills(
   queue: Rule[],
   source: string,
   catalog: SkillCatalog,
-): Pick<PlanLimits, 'skills' | 'noPr'> {
+): Pick<PlanLimits, 'skills' | 'reports'> {
   const planned = queue.filter((r) => 'planned' in r.where && (!r.source || r.source === source))
   const first = planned.filter((r, i) => planned.findIndex((q) => q.skill === r.skill) === i)
-  const opens = (r: Rule) => !!committingStep(r, catalog)
   return {
-    skills: first.filter(opens).map((r) => r.skill),
-    noPr: first.filter((r) => !opens(r)).map((r) => r.skill),
+    skills: first.map((r) => r.skill),
+    reports: first.filter((r) => !committingStep(r, catalog)).map((r) => r.skill),
   }
 }
 
@@ -240,6 +240,11 @@ export function expandPlans(
     const home = cardRepo(card)
     const tasks = runOrder(state.plan.tasks)
     const merged = (id: string) => prs[id]?.state === 'merged'
+    const { reports = [] } = planLimits(config, queue, card, catalog)
+    const reportsOnly = (t: Task) => reports.includes(t.skill ?? TASK_SKILL)
+    // A task that reports is done by its result on the card, as one that opens a PR is by its merge.
+    const results = doneTasks(card)
+    const reported = (t: Task) => reportsOnly(t) && results.includes(t.id)
     const asked = waitingTasks(card)
     const states: string[] = []
     // The card's own skip goes first, its tasks' under it.
@@ -261,6 +266,9 @@ export function expandPlans(
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
+      } else if (reported(t)) {
+        states.push(`${t.id} done`)
+        skip(item, 'task_done', `done: its result is on ${card.url}`, card.url)
       } else if (asked.length) {
         states.push(`${t.id} waits for your answer`)
         const named = asked.map((id) => `task ${id}'s`).join(' and ')
@@ -290,15 +298,15 @@ export function expandPlans(
           prs[checkedOn]?.url,
         )
       } else {
-        states.push(`${t.id} no PR yet`)
+        states.push(`${t.id} ${reportsOnly(t) ? 'no result' : 'no PR'} yet`)
         out.push(item)
       }
     }
-    const done = tasks.every((t) => prs[t.id]?.state === 'merged')
+    const done = tasks.every((t) => merged(t.id) || reported(t))
     skipped.splice(at, 0, {
       item: card,
       ...(done
-        ? { kind: 'all_tasks_merged', reason: 'all tasks merged: close or move the card' }
+        ? { kind: 'all_tasks_done', reason: 'all tasks done: close or move the card' }
         : { kind: 'fanned_out', reason: `fanned out: ${states.join(', ')}` }),
       url: card.url,
     })

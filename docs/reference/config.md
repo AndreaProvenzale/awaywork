@@ -330,7 +330,7 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
+| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" \| "plan" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |
@@ -526,7 +526,8 @@ Written to the unit's items that are yours once its chain finished and every sli
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `move` (required) | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
+| `move` | string |  | Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add |
+| `comment` | string |  | result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published |
 
 ## `notify`
 

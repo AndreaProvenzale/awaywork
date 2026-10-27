@@ -86,7 +86,8 @@ export type SkipKind =
   | 'fanned_out'
   | 'waiting_for_task'
   | 'task_merged'
-  | 'all_tasks_merged'
+  | 'task_done'
+  | 'all_tasks_done'
   | 'gave_up'
   | 'no_repo'
   | 'invalid_branch'
@@ -107,7 +108,8 @@ export const needsYou: Record<SkipKind, boolean> = {
   fanned_out: false,
   waiting_for_task: false,
   task_merged: false,
-  all_tasks_merged: true,
+  task_done: false,
+  all_tasks_done: true,
   gave_up: true,
   no_repo: true,
   invalid_branch: true,

@@ -1,6 +1,13 @@
 import { parse } from 'yaml'
 import { z } from 'zod'
-import { commentKind, contractHeading, isApprove, isAwayworkComment } from './footer.js'
+import {
+  commentKind,
+  commentTask,
+  contractHeading,
+  isApprove,
+  isAwayworkComment,
+  resultStatus,
+} from './footer.js'
 import { globToRegExp } from './glob.js'
 import type { Item, TaskPr } from './types.js'
 
@@ -38,18 +45,19 @@ export interface PlanLimits {
   /** The repos a task may name besides the card's: the forge source's globs and the config's `repos`. */
   repos?: string[]
   skills?: string[]
-  /** Skills whose `planned` rule opens no PR, so a task of theirs would never read as done. */
-  noPr?: string[]
+  /** Skills whose `planned` rule reports instead of opening a PR: a task of theirs is done by its result on the card. */
+  reports?: string[]
   /** Task ids whose PR was closed without merging, with that PR's URL: no plan may reuse them. */
   retired?: Record<string, string>
 }
 
 /** What a `deliver: plan` step's prompt says about `plan.yml`; `kept` are the task ids with an open or merged PR. */
 export function planContract(
-  { maxTasks, repo, repos = [], skills = [], retired = {} }: PlanLimits,
+  { maxTasks, repo, repos = [], skills = [], reports = [], retired = {} }: PlanLimits,
   kept: Record<string, string> = {},
 ): string {
-  const named = skills.map((s) => `\`${s}\``).join(', ') || 'none'
+  const named =
+    skills.map((s) => `\`${s}\`${reports.includes(s) ? ' (reports)' : ''}`).join(', ') || 'none'
   const others = repos.map((r) => `\`${r}\``).join(', ') || 'none'
   const repoText = repo
     ? `this item's, \`${repo}\`, when unset${repos.length ? `, else one of ${others}` : ''}`
@@ -60,6 +68,11 @@ export function planContract(
       .join(', ')
   return [
     `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (${repoText}), \`ships\`, a list of repo-relative paths of files its PR will contain that tasks in other repos need, and \`after\`, a map from other task ids to \`merged\`, \`opened\` or the name of a check on that task's PR, with no cycles; and optionally \`contract:\`, the path of one file you wrote under \`.away/out/\`, e.g. \`.away/out/openapi.yaml\` with an OpenAPI diff or a schema the tasks share; no other key. \`merged\` waits, across runs, until that task's PR merges, then cuts the task from the default branch. \`opened\` waits only until that task's PR opens, which can be in the same run, right before it: in the same repo, the task's branch is cut from that task's and its PR stacks on that task's PR; in another repo, it only waits, and the task is cut from its own repo's default branch. A check's name, e.g. \`Vercel Preview\`, is \`opened\` plus that check passing on that task's PR head, across runs; a merged PR counts as passed. Write it as the forge shows it, letter for letter: anything but \`merged\` and \`opened\` is a check's name. A task's \`opened\` and check tasks in its own repo must lie on one chain, each after the one before, and it stacks on the last: web after \`api: opened\` and \`schema: opened\` needs api after \`schema: opened\`. A task in another repo than a task it names in \`after\` gets the files that task \`ships\`, read from its PR. Each task becomes its own item with its own branch and PR once the plan is approved, and every task gets the contract. awaywork checks it and posts your report, the narrative a person reads to approve the plan, the contract and \`plan.yml\` as one comment on the item.`,
+    ...(reports.some((s) => skills.includes(s))
+      ? [
+          'A task whose skill reports opens no PR: awaywork posts its report on the item as its result, and no task may name it in `after`.',
+        ]
+      : []),
     ...(Object.keys(retired).length
       ? [
           `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${listed(retired)}. Plan the work again without them.`,
@@ -108,7 +121,7 @@ export const contractName = (path: string): string | undefined => {
 
 function tasksProblem(
   tasks: Task[],
-  { maxTasks, repo, repos = [], skills, noPr = [], retired = {} }: PlanLimits,
+  { maxTasks, repo, repos = [], skills, reports = [], retired = {} }: PlanLimits,
 ): string | undefined {
   if (tasks.length > maxTasks) return `${tasks.length} tasks, over limits.plan_tasks (${maxTasks})`
   const ids = tasks.map((t) => t.id)
@@ -134,12 +147,15 @@ function tasksProblem(
     if (outside !== undefined)
       return `task ${t.id}: ships ${outside}, which isn't a relative path without ..`
     const skill = t.skill ?? TASK_SKILL
-    if (noPr.includes(skill))
-      return `task ${t.id}: the planned rule for skill ${skill} opens no PR, and a task is done when its PR merges`
     if (skills && !skills.includes(skill))
       return `task ${t.id}: no planned rule takes skill ${skill}`
     const unknown = Object.keys(t.after ?? {}).find((id) => !ids.includes(id))
     if (unknown) return `task ${t.id}: after names no task "${unknown}"`
+  }
+  for (const t of tasks) {
+    const report = tasks.find((o) => t.after?.[o.id] && reports.includes(o.skill ?? TASK_SKILL))
+    if (report)
+      return `task ${t.id}: after names ${report.id}, which reports: it opens no PR to stack on, check or merge`
   }
   const cycle = cycleIn(tasks)
   if (cycle) return `tasks wait on each other: ${cycle.join(' → ')}`
@@ -254,14 +270,23 @@ export function contractText(comment: string, name: string): string {
 
 type Comment = Item['comments'][number]
 
-/** Awaywork's newest plan comment on the item, and its answer: the first comment after it but a bot's. */
+/** Awaywork's newest plan comment on the item, and its answer: the first comment after it but a bot's or awaywork's result. */
 export function planThread(
   item: Pick<Item, 'comments'>,
 ): { plan: Comment; answer?: Comment } | undefined {
   const at = item.comments.findLastIndex((c) => commentKind(c) === 'plan')
   if (at < 0) return undefined
-  const answer = item.comments.slice(at + 1).find((c) => !c.bot)
+  const answer = item.comments.slice(at + 1).find((c) => !c.bot && commentKind(c) !== 'result')
   return { plan: item.comments[at] as Comment, ...(answer && { answer }) }
+}
+
+/** The tasks whose `done` result is on the card after its plan's approval: a re-plan's approval leaves older results behind. */
+export function doneTasks(item: Pick<Item, 'comments'>): string[] {
+  const answer = planThread(item)?.answer
+  if (!answer) return []
+  return item.comments
+    .slice(item.comments.indexOf(answer) + 1)
+    .flatMap((c) => (resultStatus(c) === 'done' && commentTask(c)) || [])
 }
 
 /** Where a plan on the item stands, read off its comments and its tasks' PRs: a plan you edited is checked again. */

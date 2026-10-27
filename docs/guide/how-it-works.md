@@ -123,7 +123,7 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 | `deliver` | What happens |
 | --- | --- |
 | `draft_pr` | The default. The worker commits and writes `.away/out/pr.md` (first line the title), which a chain's later steps keep current. awaywork adds an `Awaywork: <run id>` trailer, pushes the new branch and opens one draft PR into that base. No `pr.md`, no publish. Never into someone else's PR or a PR from a fork: there a chain that could commit is skipped with the reason; a report still works. |
-| `pr` | Opt-in per rule: the same as `draft_pr`, same bases and checks, but the PR opens ready for review, so it pings whoever a ready PR pings, code owners included. It still opens as a draft when one of the slice's steps failed or stopped or the run ended before one ran, its [`verify`](./configuration.md#repos-and-instructions) failed, one of its [loops](./chains.md#loops) ended before its `until` held, or one of its [gates](./configuration.md#gates) fired, and the report says why. |
+| `pr` | Opt-in per rule: the same as `draft_pr`, same bases and checks, but the PR opens ready for review, so it pings whoever a ready PR pings, code owners included. It still opens as a draft when one of the slice's steps failed or stopped or the run ended before one ran, or [asked questions](#questions) with `ask` in its status file, its [`verify`](./configuration.md#repos-and-instructions) failed, one of its [loops](./chains.md#loops) ended before its `until` held, or one of its [gates](./configuration.md#gates) fired, and the report says why. |
 | `report` | No step commits. Each writes `.away/out/report.md`; nothing is pushed. A chain's reports, joined, go into the morning report. |
 | `pending_review` | Opt-in per rule, only on a unit whose base is a PR, anyone's or a fork's. A `report` that also lands on that PR: when the chain ends, the last report and the line comments its step wrote to `.away/out/review.json` become your pending review, at the commit the clone read. Nobody else sees it until you submit it. When GitHub refuses the line comments, say one is off the PR's diff, they all go in the review's body. When a step failed or stopped or the run ended before one ran, or GitHub refuses the review anyway (you already have a pending review there, say), the report is delivered alone with the reason. GitHub only. |
 | `plan` | Opt-in per rule. A `report` whose step also writes `.away/out/plan.yml`, the work split into tasks: when the chain ends, awaywork checks it and posts the report and the plan as one comment on your item, which waits for your approval there. See [Plans](#plans). |
@@ -131,11 +131,13 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 
 Either way, a skill that defines verdicts also writes one word to `.away/out/verdict`, such as `approve`. The report shows it next to the unit's result, and a [loop](./chains.md#loops) can end on it.
 
+The harness also asks every step for one word in `.away/out/status` when it stops: `done` when it finished, `ask` when it wrote [questions](#questions). `ask` is the one awaywork acts on; a step that writes no status file is read as it always was, from what it left.
+
 A skill commits unless its metadata says it reports, as `review` and `plan` do; the rule's `deliver` says where the commits go, and a chain that committed nothing reports whatever its `deliver`. `pr`, `push`, `pending_review` and `plan` are never a skill's default. A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines, and ends with a footer naming awaywork, the run and the unit's items, which is how the next plan recognises it and links it to them.
 
 ## Questions
 
-A step that can't go on without a person's answer writes its questions to `.away/out/questions.md` and commits nothing, like `implement` on an issue too vague to build. The chain ends there, and awaywork posts them as one comment on the unit's item from the rule's own tracker, the one [`on_done`](./configuration.md#on-done) would move, when that item is yours: your PR, an issue assigned to you, a tracker item. The model writes the questions; awaywork adds the last two paragraphs. On GitHub it shows up as you:
+A step that can't go on without a person's answer writes its questions to `.away/out/questions.md` and `ask` to `.away/out/status`, like `implement` on an issue too vague to build. The chain ends there, and awaywork posts them as one comment on the unit's item from the rule's own tracker, the one [`on_done`](./configuration.md#on-done) would move, when that item is yours: your PR, an issue assigned to you, a tracker item. The model writes the questions; awaywork adds the last two paragraphs. On GitHub it shows up as you:
 
 ```
 andrea commented
@@ -168,7 +170,27 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
        questions posted on https://github.com/acme/api/issues/5#issuecomment-2417736801
   ```
 
-- A step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
+- A step that committed and wrote `ask` asks too. Its commits open as a draft (`draft: asked questions` in the report), headed by a status line for you, with `status=ask` in the footer:
+
+  ```text
+  Add rate limits
+
+  Status: ask, questions on https://github.com/acme/api/issues/5
+
+  ---
+
+  Token bucket per API key, in src/auth.ts. …
+
+  ---
+  <!-- awaywork run=20261026-220012 item=github:acme%2Fapi%235 status=ask -->
+  Opened by awaywork (run `20261026-220012`): a coding agent worked on this unattended. Review it like any other contribution.
+  ```
+
+  The footer is where awaywork keeps the status: the agent could write a `Status:` line of its own, but not after the footer.
+
+  Under `push` they're pushed onto your PR, and it asks the same. For now the next run treats that draft like any awaywork PR: it waits for your review.
+
+- Without a status file, awaywork guesses as it always did: a step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A word other than `done` or `ask`, or `ask` without `questions.md`, reads as no file, with a line in the run's log saying so. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
 
 ## Plans
 
@@ -185,7 +207,7 @@ queue:
     deliver: pr
 ```
 
-The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's when unset, or another the config names, see [Across repos](#across-repos)), `ships`, the files its PR will hold that tasks in other repos need, and `after`, which maps other task ids to `merged`, `opened` (see [The feature block](#the-feature-block)) or the name of a check on that task's PR (see [Waiting on a check](#waiting-on-a-check)), the `opened` and check ones of a task in its repo on one chain. Next to `tasks:`, an optional `contract:` names one file the step wrote under `.away/out/`, an OpenAPI diff or a schema the tasks share, which awaywork posts with the plan. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every repo one the config names, `ships` paths inside the repo, every `after` naming another task, no cycles, a task's `opened` and check tasks in its repo on one chain, a `contract` under `.away/out/`, no key it doesn't know), then posts the report, the contract and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence, a [contract](#across-repos)'s heading and fence when there's one, and the last two paragraphs:
+The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes, `implement` when unset), a `repo` (the card's when unset, or another the config names, see [Across repos](#across-repos)), `ships`, the files its PR will hold that tasks in other repos need, and `after`, which maps other task ids to `merged`, `opened` (see [The feature block](#the-feature-block)) or the name of a check on that task's PR (see [Waiting on a check](#waiting-on-a-check)), the `opened` and check ones of a task in its repo on one chain. Next to `tasks:`, an optional `contract:` names one file the step wrote under `.away/out/`, an OpenAPI diff or a schema the tasks share, which awaywork posts with the plan. The prompt lists the skills the `planned` rules take, marking `(reports)` the ones whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report. Those make [report tasks](#report-tasks), which nothing can wait on. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule, no `after` naming a report task, every repo one the config names, `ships` paths inside the repo, every `after` naming another task, no cycles, a task's `opened` and check tasks in its repo on one chain, a `contract` under `.away/out/`, no key it doesn't know), then posts the report, the contract and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence, a [contract](#across-repos)'s heading and fence when there's one, and the last two paragraphs:
 
 ````
 VAT export lands in two PRs: the endpoint first, then the button that calls it.
@@ -300,7 +322,7 @@ Nothing about the feature lives in the state dir. Every run reads the plan off t
 | `api`'s PR is open | `fanned out: api PR open, web waits for api` | `api` waits for your review, under Needs you, like any awaywork PR |
 | `api` merged | `fanned out: api merged, web no PR yet` | `web` runs, cut from the default branch, which has `api` in it |
 | `web`'s PR closed unmerged | plans again | none run until you approve the new plan |
-| Every task merged | `all tasks merged: close or move the card`, under Needs you | none |
+| Every task done | `all tasks done: close or move the card`, under Needs you | none: each merged, or a [report task](#report-tasks) posted its `done` result |
 
 The plan sticks to the card. Once awaywork's plan comment is on an open card of yours, the card goes to the `deliver: plan` rule it matches, else to the first one for its source whatever that rule's `where` says now, and no other rule takes it whole. `awaywork plan --rules` lists it under that rule, with `(plan)` after its key when the rule's `where` no longer holds it. So a `planned` rule's `on_done: { move: In Progress }` can move the card out of a plan rule on `status: To Do` and the remaining tasks still run, where a catch-all `implement` rule further down would otherwise pick the card up as one unit. It leaves the plan flow when it's closed or reassigned (who owns it is read every run), and `awaywork skip` on the card holds it and all its tasks. Someone else's edit to the card's only plan comment makes that comment not awaywork's, so the card goes back to ordinary matching. And with no `deliver: plan` rule left for its source, the card is matched like any other, so a catch-all may take it whole next to its open task PRs.
 
@@ -319,12 +341,52 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 ```
 
 - **Questions from a task** go on the card, headed `Questions from task api`, through the same ownership check as any write; `item.md` heads them `awaywork's questions from task api`. While any task's questions wait, the whole feature does: every task of the card is skipped as `waiting for your answer to task api's questions`. The first comment after them that's neither a bot's nor awaywork's answers them, so one reply under two tasks' questions answers both.
+- **A task's PR is its result**: a task that opens one posts nothing else on the card. A [report task](#report-tasks) posts its report there instead.
 - **Writes go to the card.** A `planned` rule's `on_done` moves the card, and a task never writes anywhere else. Whether the card is yours is read off it every run: reassign it and nothing fans out or writes (`plan approved, but the card isn't yours: its tasks don't run`).
 - **A task PR closed without merging** after the plan was posted makes the card plan again. Its id is retired: the prompt names it and its PR, along with the tasks whose PR is open or merged, and a plan reusing a retired id isn't posted (`plan not posted: plan.yml: task id "web" is retired: its PR https://github.com/acme/api/pull/42 was closed without merging`). The new plan needs a fresh approval, and no task runs until then; a task that keeps its id keeps its PR, merged or open.
 - A task's branch is its name for good: when something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task` rather than taking `-2`, which its PR lookup wouldn't find. A configured [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in the template a `planned` rule uses, its own or the one it inherits, is a config error. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does.
 - A task branch awaywork pushed whose PR then failed to open still reads `no PR yet` on the card and in `awaywork plan`, since the PR is the task's state. The run skips it, `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`, in each morning report; delete the branch and the next run starts the task over.
 - A task takes no approval of its own: the plan's covers it, so its `approved` is always false, and `awaywork approve tracker:ENG-2101/api` is refused.
 - On [Bitbucket](./configuration.md#bitbucket-and-jira) it all works the same, through twg: a declined or superseded PR counts as closed unmerged, when it was last updated, and a stacked task's PR goes into the branch of the one below, since Bitbucket has no stacks.
+
+### Report tasks
+
+Not every task ends in a PR. QA evidence, a write-up, a prototype link: give the skill a `planned` rule that reports, and the plan can hand it a task.
+
+```yaml
+queue:
+  - skill: plan
+    where: { label: awaywork-feature }
+    deliver: plan
+  - skill: implement
+    where: { planned: true }
+    deliver: pr
+  - skill: qa-evidence
+    where: { planned: true }
+    deliver: report
+```
+
+```yaml
+tasks:
+  - { id: app, title: Export screen }
+  - { id: qa, title: QA evidence, skill: qa-evidence, after: { app: opened } }
+```
+
+The task runs like any other, `after` included, and its result is its report, posted on the card once its chain finished, the way [`on_done: { comment: result }`](./configuration.md#on-done) would, without being asked. `item.md` heads it `awaywork's result of task qa`. Like any comment of awaywork's it's no answer to anyone's questions, a plan's included, and it doesn't count as a change to the card:
+
+```text
+Result of task qa
+
+Export screen: CSV downloads, 3 screenshots attached.
+
+Status: done
+
+— awaywork
+```
+
+- It's **done** once a `done` result for it is on the card, newer than your approval of the plan: `awaywork plan` skips it as `done: its result is on <card>`, and the card reads `qa done`. Until then it runs, a failed attempt counting like any unit's. A re-plan's new approval leaves older results behind, so its tasks report again.
+- **Nothing can wait on it**: no PR to stack on, no check, no merge. A plan whose `after` names a report task isn't posted (`plan not posted: plan.yml: task web: after names qa, which reports: it opens no PR to stack on, check or merge`). It can wait on others, as `qa` waits for `app` to open above.
+- A `planned` rule delivers `draft_pr`, `pr` or `report`; anything else is a config error.
 
 ### The feature block
 

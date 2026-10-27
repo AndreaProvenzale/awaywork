@@ -76,6 +76,10 @@ queue:
     deliver: pr
     run: soon
     then: [{ loop: [review, fix], until: { verdict: approve }, max: 2 }]
+  - skill: qa-evidence
+    where: { planned: true }
+    deliver: report
+    run: soon
 `
 
 const contract = `openapi: 3.1.0
@@ -88,6 +92,7 @@ tasks:
   - { id: api, title: VAT export endpoint, ships: [openapi.yaml] }
   - { id: web, title: Export button, after: { api: opened } }
   - { id: app, title: Export screen, repo: acme/web, after: { api: CI } }
+  - { id: qa, title: QA evidence, skill: qa-evidence, repo: acme/web, after: { app: opened } }
 `
 const cardUrl = 'https://github.com/acme/api/issues/1'
 const apiPr = 'https://github.com/acme/api/pull/11'
@@ -141,11 +146,11 @@ const context: Record<string, Record<string, string>> = {}
 const asked = new Set<string>()
 const reviewed = new Set<string>()
 
-/** The agent, scripted per skill: web asks before it builds, and api's first review wants changes. */
+/** The agent, scripted per skill: web asks before it builds, api's first review wants changes, and qa reports its evidence. */
 the.agent = {
   ...fakeProvider('claude'),
   async *run(job) {
-    const task = /^acme-api-1-(api|web|app)/.exec(job.unit.id)?.[1] ?? 'card'
+    const task = /^acme-api-1-(api|web|app|qa)/.exec(job.unit.id)?.[1] ?? 'card'
     const { skill } = job.unit
     steps.push(`${task} ${skill}`)
     const out = (file: string, text: string) => writeFile(join(job.dir, '.away/out', file), text)
@@ -171,6 +176,7 @@ the.agent = {
       if (task === 'web' && !asked.has(task)) {
         asked.add(task)
         await out('questions.md', 'Per user or per key?')
+        await out('status', 'ask\n')
       } else if (task === 'api')
         await commit({
           'migrations/001.sql': 'create table vat_exports ();\n',
@@ -182,6 +188,9 @@ the.agent = {
       reviewed.add(task)
       await out('verdict', changes ? 'changes\n' : 'approve\n')
       await out('report.md', changes ? 'Page the export.' : 'Looks good.')
+    } else if (skill === 'qa-evidence') {
+      await out('report.md', 'Export screen: CSV downloads, 3 screenshots attached.')
+      await out('status', 'done\n')
     } else await commit({ [`${task}-paged.txt`]: 'paged\n' })
     yield { type: 'done', ok: true, turns: 1 }
   },
@@ -258,6 +267,11 @@ beforeAll(async () => {
   the.forge = origins.forge
   path = join(root, 'config.yml')
   await writeFile(path, configYaml(eventsFile()))
+  await mkdir(join(root, 'skills/qa-evidence'), { recursive: true })
+  await writeFile(
+    join(root, 'skills/qa-evidence/SKILL.md'),
+    '---\nname: qa-evidence\ndescription: Collect QA evidence for a task. Use when a task needs checking by hand.\n---\n\nCheck the task and report the evidence.\n',
+  )
   await writeFile(eventsFile(), '')
 })
 
@@ -269,7 +283,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.events.at(-1)).toMatch(/^run\b/)
     expect(run.report).toEqual(
       expect.arrayContaining([
-        `- **api#1**: plan posted on ${cardUrl}, tasks api, web, app`,
+        `- **api#1**: plan posted on ${cardUrl}, tasks api, web, app, qa`,
         '- **api#1**: on_done moved acme/api#1 to "plan-review"',
       ]),
     )
@@ -294,7 +308,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(card.comments.at(-1)?.body).toMatch(/^approve\nKeep the old route\.\n/)
   })
 
-  it('fans out in a soon run: api opens a gated draft after its review loop, web asks, app waits for the check', async () => {
+  it('fans out in a soon run: api opens a gated draft after its review loop, web says ask, app waits for the check', async () => {
     const run = await soonRun()
     expect(run.for).toBe('acme-api-1-api, acme-api-1-web')
     expect(run.steps).toEqual([
@@ -317,6 +331,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(api?.body).not.toMatch(/closes/i)
 
     expect(prOf('acme/api', 'web')).toBeUndefined()
+    // api's PR is its result; web's step said ask, so its questions follow.
     expect(card.comments.map(commentKind)).toEqual(['plan', 'approve', 'questions'])
     expect(card.comments.at(-1)?.body).toMatch(
       /^Questions from task web\n\nPer user or per key\?\n/,
@@ -329,7 +344,7 @@ describe('a feature card through the whole pipeline', () => {
         `| 2 | [acme/api#1/web Export button](${cardUrl}) | implement → loop(review ⇄ fix) | claude | done, 1 turn (loop: 0 rounds of review ⇄ fix; nothing ran) | asked questions |`,
         '- **acme/api#1/api**: - schema: migrations/001.sql',
         `- **acme/api#1/web**: questions posted on ${cardUrl}`,
-        "- api#1: fanned out: api no PR yet, web no PR yet, app waits for api's check CI",
+        "- api#1: fanned out: api no PR yet, web no PR yet, app waits for api's check CI, qa no result yet",
       ]),
     )
     // A soon run notifies each step, never the run's end.
@@ -347,12 +362,12 @@ describe('a feature card through the whole pipeline', () => {
   it("holds the whole feature while web's questions wait", async () => {
     const run = await windowRun()
     expect(run.steps).toEqual([])
-    for (const task of ['api', 'web', 'app'])
+    for (const task of ['api', 'web', 'app', 'qa'])
       expect(run.plan).toContain(
         `  acme/api#1/${task}: waiting for your answer to task web's questions on ${cardUrl}\n`,
       )
     expect(run.plan).toContain(
-      '  api#1: fanned out: api waits for your answer, web waits for your answer, app waits for your answer\n',
+      '  api#1: fanned out: api waits for your answer, web waits for your answer, app waits for your answer, qa waits for your answer\n',
     )
   })
 
@@ -373,11 +388,11 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.events).toEqual(['unit acme-api-1-web done', 'unit acme-api-1-web-review-1 done'])
   }, 30_000)
 
-  it('runs app once CI passed: in acme/web with what api ships', async () => {
+  it('runs app once CI passed: in acme/web with what api ships, then qa reports on it', async () => {
     origins.forge.states['acme/api#11'] = { CI: 'passed' }
     const run = await soonRun()
-    expect(run.for).toBe('acme-api-1-app')
-    expect(run.steps).toEqual(['app implement', 'app review'])
+    expect(run.for).toBe('acme-api-1-app, acme-api-1-qa')
+    expect(run.steps).toEqual(['app implement', 'app review', 'qa qa-evidence'])
     expect(run.plan).toContain("     after api's check CI (passed)\n")
 
     expect(context.app).toMatchObject({
@@ -388,16 +403,39 @@ describe('a feature card through the whole pipeline', () => {
     expect(origins.bases['acme/web:away/acme-api-1-app']).toBe('main')
     expect(app?.draft).toBe(false)
     expect(app?.body).toContain(`Part of ${cardUrl}`)
-    expect(run.events).toEqual(['unit acme-api-1-app done', 'unit acme-api-1-app-review-1 done'])
+
+    // qa opens no PR: its report is its result on the card, and that result says it's done.
+    expect(card.comments.map(commentKind)).toEqual([
+      'plan',
+      'approve',
+      'questions',
+      undefined,
+      'result',
+    ])
+    expect(card.comments.at(-1)?.body).toBe(
+      'Result of task qa\n\nExport screen: CSV downloads, 3 screenshots attached.\n\nStatus: done\n\n— awaywork',
+    )
+    expect(run.report).toContain(`- **acme/api#1/qa**: result posted on ${cardUrl}`)
+    expect(run.events).toEqual([
+      'unit acme-api-1-app done',
+      'unit acme-api-1-app-review-1 done',
+      'unit acme-api-1-qa done',
+    ])
   }, 30_000)
 
-  it('needs you once every PR merged, api first, then the stack, then app', async () => {
+  it('needs you once every PR merged, api first, then the stack, then app, and qa reported done', async () => {
+    const waiting = await windowRun()
+    expect(waiting.plan).toContain(`  acme/api#1/qa: done: its result is on ${cardUrl}\n`)
+    expect(waiting.plan).toContain(
+      '  api#1: fanned out: api PR open, web PR open, app PR open, qa done\n',
+    )
     await origins.merge('acme/api', 'away/acme-api-1-api')
     await origins.merge('acme/api', 'away/acme-api-1-web')
     await origins.merge('acme/web', 'away/acme-api-1-app')
     const run = await windowRun()
     expect(run.steps).toEqual([])
-    expect(run.plan).toContain('  api#1: all tasks merged: close or move the card\n')
+    expect(run.plan).toContain('  api#1: all tasks done: close or move the card\n')
     expect(run.plan).toContain('  acme/api#1/app: merged in https://github.com/acme/web/pull/13\n')
+    expect(run.plan).toContain(`  acme/api#1/qa: done: its result is on ${cardUrl}\n`)
   })
 })

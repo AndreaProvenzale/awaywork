@@ -19,6 +19,7 @@ import {
   markComment,
   planComment,
   questionsComment,
+  resultComment,
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
@@ -161,10 +162,25 @@ describe('plan checks for tasks', () => {
     ])
     expect(
       problems(`${queue}  - { skill: fix, where: { planned: true }, deliver: report }`),
+    ).toEqual([])
+    expect(
+      problems(`${queue}  - { skill: fix, where: { planned: true }, deliver: pending_review }`),
     ).toEqual([
       expect.stringContaining(
-        "queue[2].deliver: a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not report",
+        "queue[2].deliver: a plan's task opens its own PR, or reports on the card, and that's how awaywork knows it's done: deliver draft_pr, pr or report, not pending_review",
       ),
+    ])
+    expect(
+      problems(
+        `  - { skill: plan, deliver: plan, on_done: { comment: result } }\n${queue.split('\n')[1]}`,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "queue[0].on_done.comment: the plan comment is a plan rule's result, so a second comment would repeat it: use move alone",
+      ),
+    ])
+    expect(problems(`${queue}  - { skill: fix, on_done: {} }`)).toEqual([
+      expect.stringContaining('queue[2].on_done: expected move or comment'),
     ])
     expect(problems(`${queue}  - { skill: fix, where: { any: [{ planned: true }] } }`)).toEqual([
       expect.stringContaining("queue[2].where.any[0].planned: planned only takes a plan's tasks"),
@@ -198,31 +214,36 @@ describe('plan checks for tasks', () => {
     expect(problems('branch: "away/{title}"\n', ', branch: "away/{key}"')).toEqual([])
   })
 
-  it('takes no task for a skill whose planned rule opens no PR, and lists only the others', () => {
-    expect(problem('tasks: [{ id: qa, title: Q, skill: review }]', { noPr: ['review'] })).toBe(
-      'task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
-    )
+  it('takes a task for a skill whose planned rule reports, but no task may wait on it', () => {
+    const reports = { skills: ['implement', 'review'], reports: ['review'] }
+    expect(problem('tasks: [{ id: qa, title: Q, skill: review }]', reports)).toBeUndefined()
+    expect(
+      problem(
+        'tasks: [{ id: qa, title: Q, skill: review }, { id: api, title: A, after: { qa: merged } }]',
+        reports,
+      ),
+    ).toBe('task api: after names qa, which reports: it opens no PR to stack on, check or merge')
+    expect(
+      problem(
+        'tasks: [{ id: api, title: A }, { id: qa, title: Q, skill: review, after: { api: opened } }]',
+        reports,
+      ),
+    ).toBeUndefined()
     const reviewing = configOf(`${queue}  - { skill: review, where: { planned: true } }\n`)
-    const qa = 'tasks: [{ id: api, title: A }, { id: qa, title: Q, skill: review }]'
-    const waiting = card([planned(qa)])
-    expect(skips(plan([waiting], reviewing))).toEqual([
-      [
-        'acme/api#1',
-        'invalid_plan',
-        'plan refused: task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
-      ],
-    ])
     const [unit] = plan([card([])], reviewing).units.map((u) => u.unit)
     expect(unit?.planLimits).toEqual({
       maxTasks: 8,
       repo: 'acme/api',
       repos: ['acme/*'],
-      skills: ['implement'],
-      noPr: ['review'],
+      ...reports,
       retired: {},
     })
-    expect(planContract(unit?.planLimits ?? limits)).toContain(
-      'a `skill` (one of `implement`; `implement` when unset)',
+    const text = planContract(unit?.planLimits ?? limits)
+    expect(text).toContain(
+      'a `skill` (one of `implement`, `review` (reports); `implement` when unset)',
+    )
+    expect(text).toContain(
+      'A task whose skill reports opens no PR: awaywork posts its report on the item as its result, and no task may name it in `after`.',
     )
   })
 
@@ -387,10 +408,35 @@ describe('tasks as items', () => {
     expect(done.units).toEqual([])
     expect(skips(done)[0]).toEqual([
       'acme/api#1',
-      'all_tasks_merged',
-      'all tasks merged: close or move the card',
+      'all_tasks_done',
+      'all tasks done: close or move the card',
     ])
-    expect(needsYou.all_tasks_merged).toBe(true)
+    expect(needsYou.all_tasks_done).toBe(true)
+  })
+
+  it('runs a report task until its done result is on the card, and only a report task is done by one', () => {
+    const qaRule = configOf(
+      `${queue}  - { skill: qa, where: { planned: true }, deliver: report }\n`,
+    )
+    const qaPlan = `tasks:\n  - { id: api, title: A }\n  - { id: qa, title: Q, skill: qa, after: { api: opened } }\n`
+    const result = (task: string) => posted(resultComment('Done.', 'done', 'qa', task), 3)
+    const fanned = (...more: Item['comments']) =>
+      card([planned(qaPlan), yours(approveReply('')), ...more], { api: pr('api', 'merged') })
+    expect(units(plan([fanned()], qaRule))).toEqual([['acme-api-1-qa', 'away/acme-api-1-qa']])
+    const done = plan([fanned(result('qa'))], qaRule)
+    expect(done.units).toEqual([])
+    expect(skips(done)).toEqual([
+      ['acme/api#1', 'all_tasks_done', 'all tasks done: close or move the card'],
+      ['acme/api#1/api', 'task_merged', 'merged in https://github.com/acme/api/pull/api'],
+      ['acme/api#1/qa', 'task_done', 'done: its result is on https://example.com/1'],
+    ])
+    expect(needsYou.task_done).toBe(false)
+    const open = plan([approved({ api: pr('api', 'open') }, result('api'))])
+    expect(skips(open)[0]).toEqual([
+      'acme/api#1',
+      'fanned_out',
+      'fanned out: api PR open, web waits for api',
+    ])
   })
 
   it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
@@ -746,6 +792,7 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   expect(prompts['acme-api-1']).toContain(
     "These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: `web` (https://github.com/acme/api/pull/12).",
   )
+  // A task that opens a PR posts no result: its PR says it's done.
   expect(item.comments.map((c) => commentKind(c) ?? c.author)).toEqual(['plan', 'approve'])
 
   comment('Drop web: put the button in the docs instead.')
@@ -767,7 +814,7 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   settle('away/acme-api-1-docs', true, tick())
   expect(await round(8)).toEqual({
     skipped: [
-      ['acme/api#1', 'all_tasks_merged', 'all tasks merged: close or move the card'],
+      ['acme/api#1', 'all_tasks_done', 'all tasks done: close or move the card'],
       ['acme/api#1/api', 'task_merged', 'merged in https://github.com/acme/api/pull/11'],
       ['acme/api#1/docs', 'task_merged', 'merged in https://github.com/acme/api/pull/13'],
     ],

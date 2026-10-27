@@ -44,6 +44,8 @@ export interface UnitResult {
   files?: StepFiles
   /** On the chain's first step: where its rule's `on_done` moved the unit's items that are yours. */
   moved?: Moved[]
+  /** On the chain's first step: the items that are yours its result was posted on, by `on_done` or as a task's. */
+  result?: Commented[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
@@ -92,10 +94,25 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
-/** What a chain's first step wrote to its items, in order: its questions or its plan, then on_done's moves. */
+/** An item (`source:key`) the unit's result was posted on, with the comment's URL and the item's updated time after when only the post changed it, or why the post failed. */
+export interface Commented {
+  item: string
+  url?: string
+  updated?: string
+  failed?: string
+}
+
+/** `result posted on <url>`, or why it couldn't. */
+export function describeResult(c: Commented): string {
+  const key = c.item.slice(c.item.indexOf(':') + 1)
+  return c.failed ? `couldn't post its result on ${key}: ${c.failed}` : `result posted on ${c.url}`
+}
+
+/** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.questions ? [describeQuestions(u.questions)] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
+  ...(u.result ?? []).map(describeResult),
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
 ]
 
@@ -129,7 +146,7 @@ export interface RunReport {
 
 const SUMMARY_LENGTH = 200
 
-/** A PR body's or report's first paragraph on one line, past the body's title line, any heading or rule, and a gates section where none fired. */
+/** A PR body's or report's first paragraph on one line, past the body's title line, any heading or rule, a gates section where none fired and awaywork's status line. */
 export function summaryOf(text: string, titled = false): string | undefined {
   const body = text
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -147,7 +164,7 @@ export function summaryOf(text: string, titled = false): string | undefined {
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .find((p) => p && !p.startsWith('Gates: none fired'))
+    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: ask\b/.test(p))
   if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
   return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }

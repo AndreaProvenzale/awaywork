@@ -100,18 +100,20 @@ queue:
   - { skill: fix, where: { column: Ready }, on_done: { move: QA } }
   - { skill: fix, source: github, on_done: { move: QA } }
   - { skill: fix, on_done: { move: QA } }
+  - { skill: fix, source: notes, on_done: { comment: result, move: QA } }
 `,
     )
     const checks = await runChecks(path, () => {})
-    const warn = (rule: number, id: string) => ({
+    const warn = (rule: number, id: string, lost = 'they stay put') => ({
       status: 'warn',
       what: `rule #${rule} on_done`,
-      detail: `${id} can't write to its items: they stay put`,
+      detail: `${id} can't write to its items: ${lost}`,
     })
     expect(checks.filter((c) => c.what.includes('on_done'))).toEqual([
       warn(1, 'tracker'),
       warn(3, 'tracker'),
       warn(3, 'notes'),
+      warn(4, 'notes', 'no result is posted, they stay put'),
     ])
   })
 

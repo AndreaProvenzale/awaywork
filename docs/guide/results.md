@@ -20,13 +20,14 @@ The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule
 
 ## Built in
 
-- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong or a [gate](./configuration.md#gates) fired. See [Delivery](./how-it-works.md#delivery).
+- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong, a step asked questions or a [gate](./configuration.md#gates) fired. See [Delivery](./how-it-works.md#delivery).
 - **Decision cards:** a gate that fires puts a "Needs a decision" card on top of the PR body, on any delivery that commits; with gates and none fired, a `Gates: none fired (…)` line sits there instead. On a `push` onto your own PR, the PR body isn't awaywork's, so it tops the summary in the morning report instead, and the push still happens. See [Gates](./configuration.md#gates).
 - **Review comments:** `deliver: pending_review` leaves the report and its line comments as your pending review, unseen until you submit it. See [Delivery](./how-it-works.md#delivery).
-- **Questions:** a step that can't go on without answers writes them to `questions.md`, and awaywork posts them as a comment on your own item; your reply there is the answer, and the next run takes it up. On an item that isn't yours they stay in the morning report. See [Questions](./how-it-works.md#questions).
+- **Questions:** a step that can't go on without answers writes them to `questions.md` and `ask` to `status`, and awaywork posts them as a comment on your own item; your reply there is the answer, and the next run takes it up. Commits it made first open as a draft that says so. On an item that isn't yours they stay in the morning report. See [Questions](./how-it-works.md#questions).
 - **Plans:** `deliver: plan` posts the tasks its step wrote to `plan.yml`, under its report and the contract it names, as a comment on your own card, and waits: your reply whose first line is `approve` approves it, any other reply plans again. See [Plans](./how-it-works.md#plans).
-- **Task PRs:** an approved plan's tasks each open their own PR, as the `planned` rule's `deliver` says, in the task's repo, the card's or [another](./how-it-works.md#across-repos) the config names, with a `Part of <card>` line instead of `Closes`. A task's questions land on the card, headed `Questions from task api`, and a `planned` rule's `on_done` moves the card: a task has no item of its own to write to. See [Tasks](./how-it-works.md#tasks).
+- **Task PRs:** an approved plan's tasks each open their own PR, as the `planned` rule's `deliver` says, in the task's repo, the card's or [another](./how-it-works.md#across-repos) the config names, with a `Part of <card>` line instead of `Closes`. A task's questions land on the card, headed `Questions from task api`; a `planned` rule's `on_done` moves the card: a task has no item of its own to write to. A task whose rule reports posts its report there instead of opening a PR, headed `Result of task qa`. See [Tasks](./how-it-works.md#tasks).
 - **Moving the card:** `on_done: { move: In Review }` on the rule moves your own tracker items once the chain published, to a status, state, section or label you name, so whoever watches that column picks it up. Never someone else's PR. See [`on_done`](./configuration.md#on-done).
+- **Result comments:** `on_done: { comment: result }` posts the unit's result on the same items first: a report rule's report, or a link to the PR it opened, with a `Status: done` line. See [`on_done`](./configuration.md#on-done).
 
 ## Recipes
 

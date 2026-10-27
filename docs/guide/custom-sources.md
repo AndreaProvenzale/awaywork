@@ -94,7 +94,7 @@ The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source
 
 ## Writing back
 
-A rule's [`on_done`](./configuration.md#on-done) moves your item once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are.
+A rule's [`on_done`](./configuration.md#on-done) posts its result on your item and moves it once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are, with no result.
 
 ```yaml
 sources:

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
-import { trailerKey } from '../core/footer.js'
+import { type Status, trailerKey } from '../core/footer.js'
 import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
 import { outputFile, readOutput, refuseSymlinks, WORK_DIR, writeOutput } from './workspace.js'
@@ -57,7 +57,7 @@ const git = async (dir: string, ...args: string[]) =>
 
 /**
  * Delivers a finished unit: a PR only with commits, a PR body and a branch new to the remote, a draft
- * unless it's `deliver: pr` and nothing left it `notReady`;
+ * unless it's `deliver: pr` and nothing left it `notReady`, its footer recording the `status` its step said;
  * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
@@ -73,6 +73,7 @@ export async function publish(
   stack?: Stack,
   closes = false,
   notReady?: string,
+  status?: Status,
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -87,7 +88,19 @@ export async function publish(
     // From the clone's own `.git` only, like `inClone`.
     const strict = '--upload-pack=git-upload-pack --strict'
     await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text, stack?.onto, closes, notReady)
+    return await deliver(
+      unit,
+      repo,
+      forge,
+      runId,
+      start,
+      file,
+      text,
+      stack?.onto,
+      closes,
+      notReady,
+      status,
+    )
   } finally {
     if (!stack) await rm(repo, { recursive: true, force: true })
   }
@@ -104,6 +117,7 @@ async function deliver(
   onto?: string,
   closes = false,
   notReady?: string,
+  status?: Status,
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   // The harness forbids rebasing: a branch that dropped `start` holds work that isn't the unit's alone.
@@ -180,7 +194,16 @@ async function deliver(
   if (unit.stackedOn) notes.push(`Stacked on ${unit.stackedOn}: merge that first.`)
   if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
   const ready = unit.deliver === 'pr' && !notReady
-  const url = await forge.openPr(unit.repo, unit.branch, unit.base, file, runId, unit.items, !ready)
+  const url = await forge.openPr(
+    unit.repo,
+    unit.branch,
+    unit.base,
+    file,
+    runId,
+    unit.items,
+    !ready,
+    status,
+  )
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})
   const opened = ready ? { ready } : unit.deliver === 'pr' ? { draft: notReady } : {}
