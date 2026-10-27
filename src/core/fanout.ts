@@ -4,9 +4,12 @@ import { commentKind, commentMarkdown, footerItems, waitingTasks } from './foote
 import type { SkipKind, Skipped } from './foreman.js'
 import {
   cardTasks,
+  holdingTask,
+  openedChain,
   type PlanLimits,
   planState,
   planThread,
+  runOrder,
   TASK_SKILL,
   type Task,
   taskPrUrls,
@@ -79,6 +82,8 @@ export function branchName(
 
 /** A task of the plan on the card as an item: the card's source, URL, ownership, fields and comments, its own title and description. */
 export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = ''): Item {
+  const top = openedChain(task, plan)?.at(-1)
+  const onto = top && holdingTask(top, plan, (id) => card.taskPrs?.[id]?.state === 'merged')
   return {
     source: card.source,
     id: `${card.id}/${task.id}`,
@@ -103,7 +108,8 @@ export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = 
       id: task.id,
       skill: task.skill ?? TASK_SKILL,
       notes,
-      plan: plan.map((t) => ({ id: t.id, title: t.title, after: Object.keys(t.after ?? {}) })),
+      plan: plan.map((t) => ({ id: t.id, title: t.title, after: t.after ?? {} })),
+      ...(onto && { onto }),
     },
     raw: card.raw,
   }
@@ -166,10 +172,10 @@ export function taskPr(
 }
 
 /**
- * Replaces each card a `deliver: plan` rule took whose plan you approved with its tasks, which go
- * down the queue like any item. The card itself skips, as do the tasks that make no unit: merged,
- * waiting on another's merge, or held while any task's questions wait. A card whose tasks' PRs
- * closed unmerged since stays, to plan again.
+ * Replaces each card a `deliver: plan` rule took whose plan you approved with its tasks, in the
+ * order they run, which go down the queue like any item. The card itself skips, as do the tasks
+ * that make no unit: merged, waiting on another's merge, or held while any task's questions wait.
+ * A card whose tasks' PRs closed unmerged since stays, to plan again.
  */
 export function expandPlans(
   items: Item[],
@@ -208,15 +214,21 @@ export function expandPlans(
     }
     // Unset only when no task had a rule or a repo to look its PR up by.
     const prs = card.taskPrs ?? {}
-    const { tasks } = state.plan
+    const tasks = runOrder(state.plan.tasks)
+    const merged = (id: string) => prs[id]?.state === 'merged'
     const asked = waitingTasks(card)
     const states: string[] = []
     // The card's own skip goes first, its tasks' under it.
     const at = skipped.length
     for (const t of tasks) {
-      const item = taskItem(card, t, tasks, state.notes)
+      const item = taskItem(card, t, state.plan.tasks, state.notes)
       const pr = prs[t.id]
-      const blocker = Object.keys(t.after ?? {}).find((id) => prs[id]?.state !== 'merged')
+      // An `opened` task holds only where this one starts: planRun stacks it. A `merged` one holds until its whole stack merged.
+      const [waitedOn, blocker] =
+        Object.keys(t.after ?? {})
+          .filter((id) => t.after?.[id] === 'merged')
+          .map((id) => [id, holdingTask(id, state.plan.tasks, merged)])
+          .find(([, holder]) => holder) ?? []
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
         skip(item, 'task_merged', `merged in ${pr.url}`, pr.url)
@@ -237,7 +249,7 @@ export function expandPlans(
         skip(
           item,
           'waiting_for_task',
-          `waiting for task ${blocker}'s PR to merge`,
+          `waiting for task ${blocker}'s PR to merge${blocker === waitedOn ? '' : `, ${waitedOn}'s merged into it`}`,
           prs[blocker]?.url,
         )
       } else {
@@ -262,10 +274,10 @@ export function taskMarkdown(item: Item): string {
   const task = item.task
   if (!task) return ''
   const card = task.parent
-  const listed = task.plan.map(
-    (t) =>
-      `- \`${t.id}\`: ${t.title}${t.id === task.id ? ' (this task)' : ''}${t.after.length ? `, after ${t.after.join(', ')} merged` : ''}`,
-  )
+  const listed = task.plan.map((t) => {
+    const after = Object.entries(t.after).map(([id, when]) => `${id} ${when}`)
+    return `- \`${t.id}\`: ${t.title}${t.id === task.id ? ' (this task)' : ''}${after.length ? `, after ${after.join(', ')}` : ''}`
+  })
   const notes = task.notes ? `\n\nYour notes on approving it:\n\n${task.notes}` : ''
   const comments = card.comments.map(commentMarkdown)
   return [

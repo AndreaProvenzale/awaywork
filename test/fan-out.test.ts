@@ -121,12 +121,6 @@ describe('plan checks for tasks', () => {
     )
   })
 
-  it("refuses after: opened, which isn't supported yet", () => {
-    expect(
-      problem('tasks: [{ id: api, title: A }, { id: web, title: W, after: { api: opened } }]'),
-    ).toBe("task web: after api: opened isn't supported yet, only merged")
-  })
-
   it('refuses a retired id, naming its closed PR', () => {
     const retired = { web: 'https://github.com/acme/api/pull/9' }
     expect(problem('tasks: [{ id: web, title: W }]', { retired })).toBe(

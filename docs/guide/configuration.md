@@ -97,7 +97,7 @@ windows:
 
 [`awaywork watch`](./scheduling.md#on-your-machine) reads them every minute, so editing them needs no reinstall, only moving the [wake](./scheduling.md#waking-up-for-it) does. `windows: []` means none: the daemon idles, and the GitHub Actions workflow only runs when you dispatch it. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
 
-A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
+A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once, and each of a plan's tasks is one: a cap can cut a card's [block](./how-it-works.md#the-feature-block), and the next run carries on. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
 
 Budgets are shares of each provider's quota windows; see [How it works](./how-it-works.md#budget) for how they combine. Start low: `per_run: 5%` for a week shows what a unit costs you before you raise it.
 
@@ -460,7 +460,7 @@ A [plan's task](./how-it-works.md#tasks) only matches a rule whose top-level `wh
   where: { planned: true, labels: bug }   # a plan's `skill: fix` tasks, on bug cards only
 ```
 
-Every skill a plan's tasks name must be one a `planned` rule takes and opens a PR for, or the plan isn't posted: the first `planned` rule for a skill whose metadata reports (`review`, say), or whose chain only reports, takes no tasks. A `planned` rule delivers `draft_pr` or `pr`, since the task's PR is how awaywork knows it's done; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
+Every skill a plan's tasks name must be one a `planned` rule takes and opens a PR for, or the plan isn't posted: the first `planned` rule for a skill whose metadata reports (`review`, say), or whose chain only reports, takes no tasks. A `planned` rule delivers `draft_pr` or `pr`, since the task's PR is how awaywork knows it's done, and one a task after another's `opened` stacks on; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
 
 The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
 
@@ -489,7 +489,7 @@ Queue
 
 ### `order`
 
-Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last.
+Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last. A card's [tasks](./how-it-works.md#the-feature-block) run back to back where the first of them ranks, in the order they wait on each other.
 
 ### Retry on the next model
 
