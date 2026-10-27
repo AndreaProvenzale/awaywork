@@ -140,6 +140,10 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return tip?.message ?? ''
     },
 
+    async fileAt() {
+      throw new Error("awaywork doesn't read files from Bitbucket PRs yet")
+    },
+
     async push(dir, branch, { repo }) {
       if (await forge.branchExists(repo, branch))
         throw new Error(`refusing to push ${branch}: it already exists on ${repo}`)

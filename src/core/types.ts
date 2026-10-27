@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { PlanLimits } from './plan.js'
+import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
 export type Login = (
@@ -52,10 +52,18 @@ export interface Item {
     skill: string
     /** The lines under your `approve`. */
     notes: string
-    /** The plan's tasks, this one too, with what each waits on. */
-    plan: { id: string; title: string; after: Record<string, 'opened' | 'merged'> }[]
-    /** The task whose PR this one stacks on: the first down its stack of `opened` tasks whose PR isn't merged. */
+    /** The plan's tasks, this one too, with what each waits on, its repo and the files it ships. */
+    plan: {
+      id: string
+      title: string
+      after: Record<string, 'opened' | 'merged'>
+      repo?: string
+      ships?: string[]
+    }[]
+    /** The task whose PR this one stacks on: the first down its stack of `opened` tasks in its repo whose PR isn't merged. */
     onto?: string
+    /** The contract approved with the plan. */
+    contract?: Contract
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null
@@ -207,6 +215,8 @@ export interface Forge {
   prsOn(repo: string, branch: string): Promise<BranchPr[]>
   /** The message of the commit at the tip of `branch` in the repo. */
   tipMessage(repo: string, branch: string): Promise<string>
+  /** The text of the file at `path` in the repo at `ref`, a commit or branch; undefined when there's none. */
+  fileAt(repo: string, ref: string, path: string): Promise<string | undefined>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
@@ -243,6 +253,8 @@ export interface BranchPr {
   url: string
   number: number
   body: string
+  /** Its head commit, when the forge says. */
+  head?: string
   open: boolean
   merged: boolean
   closedAt?: string

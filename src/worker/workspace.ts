@@ -99,6 +99,15 @@ interface WorkspaceInput {
   replay?: { commit: string; context: string }
   /** A gate's judge of the slice's commits since `from`: its unit is `foreign`, as the agent wrote the clone. */
   judge?: { from: string }
+  /** For a task: the files its tasks in other repos ship, read from their PRs. */
+  shipped?: Shipped[]
+}
+
+/** A file task `task` ships, at `path` in its repo, as on its PR's head. */
+export interface Shipped {
+  task: string
+  path: string
+  text: string
 }
 
 export interface Previous {
@@ -160,13 +169,21 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
     const source = w.sources[item.source]
     if (!source && !w.replay) throw new Error(`no source "${item.source}" for ${item.key}`)
     const context = join(WORK_DIR, 'context', slug(item.key))
+    const files = item.task ? taskFiles(item.task, w.shipped ?? []) : []
     if (!w.reuse && source) {
       await mkdir(join(dir, context), { recursive: true })
       // A task isn't the tracker's: its item.md is awaywork's, with the card's thread.
       if (item.task) await writeFile(join(dir, context, 'item.md'), taskMarkdown(item))
       else await source.prefetch(item, join(dir, context), w.ctx)
+      for (const { path, text } of files) {
+        await mkdir(dirname(join(dir, context, path)), { recursive: true })
+        await writeFile(join(dir, context, path), text)
+      }
     }
-    items.push(`- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``)
+    items.push(
+      `- ${item.key}: ${item.title} (${item.url}); context in \`${context}/\``,
+      ...files.map((f) => `  ${f.what}: \`${context}/${f.path}\``),
+    )
   }
   const previous = join(work, 'context', 'previous')
   if (!w.replay) await rm(previous, { recursive: true, force: true })
@@ -499,6 +516,30 @@ function findSkill(name: string, roots: string[]): string {
   const root = roots.find((r) => existsSync(join(r, name, 'SKILL.md')))
   if (!root) throw new Error(`unknown skill "${name}" (looked in ${roots.join(', ')})`)
   return join(root, name)
+}
+
+/** The files a task gets in its context folder, the contract approved with the plan and those its tasks in other repos ship, each with what it is. */
+function taskFiles(
+  task: NonNullable<Item['task']>,
+  shipped: Shipped[],
+): { path: string; text: string; what: string }[] {
+  const repoOf = (id: string) => task.plan.find((t) => t.id === id)?.repo
+  return [
+    ...(task.contract
+      ? [
+          {
+            path: `contract/${task.contract.name}`,
+            text: `${task.contract.text}\n`,
+            what: `the contract ${task.contract.name}, approved with the plan`,
+          },
+        ]
+      : []),
+    ...shipped.map((f) => ({
+      path: `shipped/${f.task}/${f.path}`,
+      text: f.text,
+      what: `${f.path}, as task ${f.task}'s PR in ${repoOf(f.task)} ships it`,
+    })),
+  ]
 }
 
 function unitSection(unit: Unit, items: string[], dir: string, w: WorkspaceInput): string {

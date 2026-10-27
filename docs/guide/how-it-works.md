@@ -185,7 +185,7 @@ queue:
     deliver: pr
 ```
 
-The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's own, for now) and `after`, which maps other task ids to `merged` or `opened` (see [The feature block](#the-feature-block)), the `opened` ones of a task on one chain. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every `after` naming another task, no cycles, a task's `opened` tasks on one chain, no key it doesn't know), then posts the report and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence and the last two paragraphs:
+The second rule takes the plan's [tasks](#tasks) once you approve it. Every step of the plan rule reports, as under `report`, and the prompt asks for `.away/out/plan.yml` too: `tasks:`, at most `limits.plan_tasks` of them (8 by default), each with an `id` (lowercase letters, digits and dashes), a `title`, and optionally a `description`, a `skill` (one a `planned` rule takes and opens a PR for, `implement` when unset), a `repo` (the card's when unset, or another the config names, see [Across repos](#across-repos)), `ships`, the files its PR will hold that tasks in other repos need, and `after`, which maps other task ids to `merged` or `opened` (see [The feature block](#the-feature-block)), the `opened` ones of a task in its repo on one chain. Next to `tasks:`, an optional `contract:` names one file the step wrote under `.away/out/`, an OpenAPI diff or a schema the tasks share, which awaywork posts with the plan. The prompt lists the skills the `planned` rules take, leaving out one whose rule opens no PR: a skill whose metadata reports, like `review`, or a chain whose steps all report, since a task is done only once its PR merges. The built-in `plan` skill writes it; any skill can. awaywork checks it in plain code, outside the model (ids unique and not [retired](#tasks), under the cap, every skill taken by a `planned` rule that opens a PR, every repo one the config names, `ships` paths inside the repo, every `after` naming another task, no cycles, a task's `opened` tasks in its repo on one chain, a `contract` under `.away/out/`, no key it doesn't know), then posts the report, the contract and the file as one comment on your item, the one [questions](#questions) would go to. The model writes the report and the file; awaywork adds the fence, a [contract](#across-repos)'s heading and fence when there's one, and the last two paragraphs:
 
 ````
 VAT export lands in two PRs: the endpoint first, then the button that calls it.
@@ -240,14 +240,14 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 
 - **Anything else is feedback:** your reply that doesn't start with a bare `approve` (`approve if web waits` included), a teammate's, a code owner's. Only you approve. Your reply changed the card, so the next run plans again with the whole thread in `item.md`, the plan headed `awaywork's plan`, and posts a new plan, which needs a fresh approval. A re-plan that isn't posted is skipped as unchanged until the card changes again. A plan's answer is the first comment after it that isn't a bot's.
 - The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
-- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml`, or a comment over 30 KB is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
+- A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included, is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
 - A `deliver: plan` rule can't `stack`, and one that matches only merged or closed items, names a `source` that can't write, or has no rule whose `where` names `planned` to take its tasks, is a config error.
 
 ### Tasks
 
 Approve the plan and it fans out. The card makes no unit of its own anymore: each task becomes a child item keyed `ENG-2101/api`, which goes down the queue like any item, on its own branch, `away/ENG-2101-api`, and opens its own PR. A task only matches rules whose top-level `where` names `planned`, and only the first of them whose `skill` is the task's; a rule naming `planned` takes nothing else. So caps, attempts, `skip`, gates and chains work on tasks as on anything else. Tasks without `after` run in parallel; `after` orders them, and a card's tasks run back to back, as one [block](#the-feature-block).
 
-A task carries the card's source, URL, repo, owner and fields, so `where: { planned: true, labels: backend }` works, and the card's whole thread. Its `item.md` is awaywork's own, the task first:
+A task carries the card's source, URL, owner and fields, and the card's repo unless the plan names another, so `where: { planned: true, labels: backend }` works, and the card's whole thread. Its `item.md` is awaywork's own, the task first:
 
 ```markdown
 # ENG-2101/api: VAT export endpoint
@@ -331,7 +331,7 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 `after` says what a task waits for:
 
 - **`merged`**: run after run, until that task's PR merges. Then the task is cut from the default branch, which has it. One PR lands before the next one starts, each reviewed on its own.
-- **`opened`**: only until that task's PR opens, which happens in the same run. The task's clone starts from that task's branch and its PR stacks on that task's PR, so the whole feature is up for review in the morning, as a stack.
+- **`opened`**: only until that task's PR opens, which happens in the same run. The task's clone starts from that task's branch and its PR stacks on that task's PR, so the whole feature is up for review in the morning, as a stack. A task in [another repo](#across-repos) only waits.
 
 The run that sees a card runs its tasks back to back, as one block: those that can run, in the order they wait on each other, before the next unit starts, wherever the first of them ranks in the queue. A task joins the block when every `merged` task it names has merged and every `opened` one has an open or merged PR, or runs earlier in the block. So a block stops only at `merged`, which needs you to merge something.
 
@@ -402,6 +402,114 @@ The card, run by run:
 - A task waiting on an `opened` task that doesn't run this run (it's waiting for an answer, unchanged, gave up, left out by a cap) is skipped as `waiting for task api's PR to open`. Caps and the window's end can cut a block; the next run carries on from the task with no PR.
 - A stacked task is a unit like any other, with its own clone, `setup` and branch. That clone starts on a branch a worker wrote, so `setup` gets none of the repo's `secrets`, as on any awaywork PR a rule takes up again ([Safety](./safety.md#what-the-agent-can-reach)). So a repo whose `setup` needs a secret, a private registry token for `pnpm install` say, can't use `opened`: every stacked task fails setup, run after run. Use `merged` there.
 - When the `opened` task's rule has [`stack: true`](./chains.md#stack) slices, the task stacks on the first slice's PR, the task's own, so the later slices' commits aren't in its branch. Merge the stack bottom-up: once `api`'s PR merges and its branch is deleted, GitHub retargets `web`'s to the default branch, as with any [stack](./chains.md#stack); awaywork does nothing there.
+
+### Across repos
+
+A feature rarely stays in one repo: the endpoint goes in `acme/backend`, the button that calls it in `acme/web`. A task's `repo` can be any repo the forge source's `repos` globs cover (`sources.github.repos`), or one named under [`repos`](./configuration.md#repos-and-instructions); unset, it's the card's. Anything else isn't posted: `task x: repo evil/x isn't the card's (acme/backend) or one the config names`. Case counts, since the repo's settings and caps go by its exact name: `task web: repo Acme/Web isn't acme/* as configured`. A card with no repo of its own needs a `repo` on every task.
+
+The plan step can also write a contract, the interface the tasks agree on, and name it in `plan.yml`. A task can list the files its PR will hold that tasks in other repos need, like the spec a client is generated from:
+
+```yaml
+contract: .away/out/openapi.yaml
+tasks:
+  - id: api
+    title: VAT export endpoint
+    description: Add GET /exports/vat to src/routes/exports.ts, as the contract says.
+    ships: [openapi.yaml]
+  - id: web
+    title: Export button
+    description: Add an Export button to the reports page, on the client generated from openapi.yaml.
+    repo: acme/web
+    after: { api: opened }
+```
+
+The contract goes in the plan comment, in its own fence under a heading naming it, before `plan.yml`. The fence is longer than any run of backticks in the file, so a Markdown contract with its own fences survives:
+
+````
+VAT export spans two repos: the endpoint in acme/backend, then the button in acme/web.
+
+### Contract: openapi.yaml
+
+```yaml
+openapi: 3.1.0
+paths:
+  /exports/vat:
+    get:
+      parameters:
+        - { name: month, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { content: { text/csv: {} } }
+```
+
+```yaml
+contract: .away/out/openapi.yaml
+tasks:
+…
+```
+
+To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
+
+— awaywork
+````
+
+It's part of the plan, so you approve it with the rest: it counts toward the 30 KB, it must read back from the comment as the file it was, and your edits to it are checked again on every read. A contract the file names but the step didn't write isn't posted (`plan not posted: plan.yml: contract .away/out/openapi.yaml is missing or empty`), and an edit that drops it from the comment refuses the plan (`plan refused: contract .away/out/openapi.yaml isn't in the plan comment`). Every task finds it in `.away/context/<task>/contract/openapi.yaml`, next to its `item.md`, and its prompt says it was approved with the plan.
+
+Each task is a unit in its own repo: the clone, `setup`, `secrets`, `test`, branch template, gates and `units_per_repo` are that repo's, and its PR opens there, `Part of` the card like any task's. Questions and `on_done` still go to the card, and the forge looks the task's PR up in the task's repo.
+
+`opened` across repos only waits. There's no branch to stack on in another repo, so `web` is cut from `acme/web`'s default branch, and since that's a branch nobody's agent wrote, its `setup` gets the repo's `secrets`. It still joins the block once `api` opened its PR earlier in the run, and it's skipped as `api opened no PR` when `api` didn't. The run after `approve`, from `awaywork plan`:
+
+```text
+Units 2
+     item          rule  skill                 provider  deliver  title
+  1  ENG-2101/api  #2    implement (built-in)  fake      pr       VAT export endpoint
+  2  ENG-2101/web  #2    implement (built-in)  fake      pr       Export button
+     in acme/web
+     waits for api's PR in acme/backend
+
+Skipped 1: 1 fanned_out
+```
+
+```text
+$ awaywork plan --why ENG-2101/web
+tracker ENG-2101/web  Export button
+  https://acme.atlassian.net/browse/ENG-2101
+  task web of the plan on ENG-2101, in acme/web
+  after api opened in acme/backend (no PR yet)
+  planned
+    unit      2, eng-2101-web
+    rule      #2 planned=true deliver=pr
+    skill     implement (built-in)
+    provider  fake
+    deliver   pr
+    branch    away/ENG-2101-web
+    waits     for api's PR in acme/backend
+```
+
+The one-chain rule counts only `opened` tasks in the task's own repo: with `ui` in `acme/web` too, `web` after `{ api: opened, ui: opened }` stacks on `ui` and waits for `api`, as `after ui, stacks on its PR` and `waits for api's PR in acme/backend` under its row.
+
+`web` gets what `api` ships in `.away/context/<task>/shipped/api/openapi.yaml`, and its prompt names it. awaywork reads it when `web` is about to run, from `api`'s PR head, open or merged, since `api` may have opened that PR a minute earlier in the same block. A file that isn't there skips `web`, counting no attempt, so the next run tries again:
+
+```text
+Units 2
+     item          skill      status          result
+  1  ENG-2101/api  implement  done, 12 turns  https://github.com/acme/backend/pull/41
+     Adds GET /exports/vat to src/routes/exports.ts, as the contract says.
+  2  ENG-2101/web  implement  skipped         api's PR has no openapi.yaml
+     Export button
+```
+
+A task in the same repo gets no `shipped/`: a stacked one already has the files in its branch, and a `merged` one is cut from a default branch that holds them.
+
+The card, run by run:
+
+| What happened | The card | Its tasks |
+| --- | --- | --- |
+| You approved | `fanned out: api no PR yet, web no PR yet` | `api` opens its PR in `acme/backend`, then `web` runs in `acme/web`, cut from its default branch, with the contract and `api`'s `openapi.yaml` |
+| `api`'s PR has no `openapi.yaml` | `fanned out: api PR open, web no PR yet` | `web` is skipped as `api's PR has no openapi.yaml`, every run, until `api`'s PR has it |
+| `api` merged before `web` ran | `fanned out: api merged, web no PR yet` | `web` runs, with `openapi.yaml` as `api`'s merged PR left it |
+| Both PRs are open | `fanned out: api PR open, web PR open` | both wait for your review, each in its repo |
+
+Bitbucket stays where [Tasks](#tasks) left it: a card there stops at its approved plan.
 
 ## The morning report
 

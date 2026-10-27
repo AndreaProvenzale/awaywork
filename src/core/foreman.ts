@@ -7,7 +7,7 @@ import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
-import { planState } from './plan.js'
+import { elsewhere, planState } from './plan.js'
 import {
   closestRule,
   defaultRules,
@@ -58,6 +58,8 @@ export interface PlannedUnit {
   capped?: string
   /** On a task's first step: the chain, by id, earlier in this run whose PR it stacks on. */
   after?: string
+  /** On a task's first step: its `opened` tasks in other repos that open their PR earlier in this run, which it waits for. */
+  waitsFor?: string[]
 }
 
 export interface LoopRound {
@@ -202,8 +204,13 @@ export function planRun(input: {
       continue
     }
     const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
-    if (stack && !stack.pr && !stack.after) {
-      skip('waiting_for_task', `waiting for task ${stack.onto}'s PR to open`)
+    const waitsFor = prs.length === 0 ? openedElsewhere(items[0] as Item) : []
+    const unplanned =
+      stack && !stack.pr && !stack.after
+        ? stack.onto
+        : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
+    if (unplanned) {
+      skip('waiting_for_task', `waiting for task ${unplanned}'s PR to open`)
       continue
     }
     const ontoPr = stack?.pr
@@ -352,6 +359,7 @@ export function planRun(input: {
         ...(slice > 0 && { slice }),
         ...(loop && { loop }),
         ...(written === rule && after && { after: after.unit.id }),
+        ...(written === rule && waitsFor.length > 0 && { waitsFor }),
       })
       return provider
     }
@@ -406,11 +414,28 @@ function stackTarget(
   if (!task?.onto) return undefined
   const pr = task.parent.taskPrs?.[task.onto]
   if (pr) return { onto: task.onto, pr }
-  const key = `${task.parent.key}/${task.onto}`
-  const after = units.find(
-    (u) => !u.chain && u.unit.items.some((i) => i.source === item.source && i.key === key),
-  )
+  const after = taskChain(units, item, task.onto)
   return { onto: task.onto, ...(after && { after }) }
+}
+
+/** The chain planned so far for task `id` of the card `item` is a task of. */
+export const taskChain = (units: PlannedUnit[], item: Item, id: string) =>
+  units.find(
+    (u) =>
+      !u.chain &&
+      u.unit.items.some(
+        (i) => i.source === item.source && i.key === `${item.task?.parent.key}/${id}`,
+      ),
+  )
+
+/** A task's `opened` tasks in other repos that have no PR yet: it waits for them without stacking. */
+function openedElsewhere(item: Item): string[] {
+  const task = item.task
+  const own = task?.plan.find((t) => t.id === task.id)
+  if (!task || !own) return []
+  return elsewhere(own, task.plan)
+    .filter((t) => own.after[t.id] === 'opened' && !task.parent.taskPrs?.[t.id])
+    .map((t) => t.id)
 }
 
 /** Each card's tasks back to back, where the first of them ranks, in the order `order` lists them: a task runs right after the one whose PR it stacks on. */

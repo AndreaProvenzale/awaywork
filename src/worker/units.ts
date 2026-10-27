@@ -15,6 +15,7 @@ import {
   type PlannedUnit,
   type RunPlan,
   slug,
+  taskChain,
 } from '../core/foreman.js'
 import {
   CONTAINER_HOME,
@@ -26,7 +27,7 @@ import {
   workerHome,
   workerRoot,
 } from '../core/launch.js'
-import { checkPlan, planYaml } from '../core/plan.js'
+import { checkPlan, contractName, contractText, elsewhere, planYaml } from '../core/plan.js'
 import {
   type Moved,
   type PlanPost,
@@ -88,6 +89,7 @@ import {
   readOutput,
   refuseSymlinks,
   reportsOnly,
+  type Shipped,
   WORK_DIR,
   workerEnv,
   writeOutput,
@@ -201,10 +203,8 @@ interface Retry {
   keep: () => void
 }
 
-/** A task's chain skipped, its loops' first rounds listed, because the chain it stacks on opened no PR, or never got to run. */
-function noPrToStackOn(chain: PlannedUnit[], ran: boolean): UnitResult[] {
-  const below = (chain[0] as PlannedUnit).unit.items[0]?.task?.onto
-  const reason = `${below} ${ran ? 'opened no PR' : "didn't run"}`
+/** A task's chain skipped, its loops' first rounds listed, e.g. because a task it waits on opened no PR, or never got to run. */
+function skipTask(chain: PlannedUnit[], reason: string): UnitResult[] {
   return chain
     .filter((p) => !p.loop || p.loop.round === 1)
     .map((planned) => ({ planned, status: 'skipped', reason }))
@@ -327,18 +327,25 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
       : postComment(p, 'questions', (item) => questionsComment(text, item.task?.id))
 
-  /** Checks the chain's `plan.yml` and posts it with the report; a refused plan posts nothing. */
-  const postPlan = async (p: PlannedUnit, report: string, yaml: string): Promise<PlanPost> => {
+  /** Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract; a refused plan posts nothing. */
+  const postPlan = async (p: PlannedUnit, report: string, out: string): Promise<PlanPost> => {
     const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
+    const yaml = await readOutput(join(out, 'plan.yml'))
     const file = checkPlan(yaml, limits)
     if ('problem' in file) return { unposted: `plan.yml: ${file.problem}` }
-    const body = planComment(report, yaml)
+    const name = file.plan.contract && contractName(file.plan.contract)
+    const text = name ? (await readOutput(join(out, name))).replace(/\r\n/g, '\n').trimEnd() : ''
+    if (name && !text.trim())
+      return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
+    const body = planComment(report, yaml, name ? { name, text } : undefined)
     // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
     if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))
       return {
         unposted: `plan.yml doesn't read back from its comment: ${'problem' in read ? read.problem : 'it reads as another plan'}`,
       }
+    if (name && contractText(body, name) !== text)
+      return { unposted: `the contract ${name} doesn't read back from its comment` }
     const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
@@ -380,7 +387,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     }
   }
 
-  const runChain = async (chain: PlannedUnit[]): Promise<UnitResult[]> => {
+  const runChain = async (chain: PlannedUnit[], shipped: Shipped[] = []): Promise<UnitResult[]> => {
     const done: UnitResult[] = []
     const first = chain[0] as PlannedUnit
     const { repo, base } = first.unit
@@ -722,6 +729,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                   input.runId,
                 )),
           reuse,
+          shipped,
           chain: steps,
           slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
           loop: p.loop,
@@ -944,10 +952,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
     if (asked && lead) lead.questions = { ...asked, ...(await postQuestions(first, asked.text)) }
-    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report') {
-      const yaml = await readOutput(join(chainDir, sliceOut(0), 'plan.yml'))
-      lead.plan = await postPlan(first, lead.outcome.text, yaml)
-    }
+    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
+      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, sliceOut(0)))
     // Every slice that ran published, and only a `when` ended the chain early; a plan rule's plan was posted.
     const finished = !interrupted && !unfinished && (!ended || ended.when) && leads.size > 0
     const posted = deliver !== 'plan' || !!lead?.plan?.url
@@ -966,8 +972,52 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   // The PR each chain opened first, and the chains a step ran in, by id: a task's chain stacks on its dependency's.
-  const opened: Record<string, { branch: string; url: string }> = {}
+  const opened: Record<string, { repo: string; branch: string; url: string; head: string }> = {}
   const started = new Set<string>()
+
+  /** Why a task's chain can't start: a task it stacks on or waits for opened no PR in this run; else the files its tasks in other repos ship, from their PRs. */
+  const blocked = async (head: PlannedUnit): Promise<{ skip: string } | { shipped: Shipped[] }> => {
+    const item = head.unit.items[0] as Item
+    const task = item.task
+    const own = task?.plan.find((t) => t.id === task.id)
+    if (!task || !own) return { shipped: [] }
+    const chainOf = (id: string) => taskChain(input.plan.units, item, id)?.unit.id ?? ''
+    const waited = [
+      ...(head.after && task.onto ? [{ id: task.onto, chain: head.after }] : []),
+      ...(head.waitsFor ?? []).map((id) => ({ id, chain: chainOf(id) })),
+    ]
+    const missing = input.dryRun ? undefined : waited.find(({ chain }) => !opened[chain])
+    if (missing)
+      return {
+        skip: `${missing.id} ${started.has(missing.chain) ? 'opened no PR' : "didn't run"}`,
+      }
+    const shipped: Shipped[] = []
+    for (const dep of elsewhere(own, task.plan).filter((t) => t.ships?.length)) {
+      const pr = task.parent.taskPrs?.[dep.id]
+      const ran = opened[chainOf(dep.id)]
+      // An open PR's branch is its head now; a merged one's may be deleted.
+      const at = pr
+        ? { repo: pr.repo, ref: pr.state === 'open' ? pr.branch : (pr.head ?? pr.branch) }
+        : ran && { repo: ran.repo, ref: ran.head }
+      if (!at) {
+        input.ctx.log(
+          `${head.unit.id}: prepared without ${dep.id}'s files; a real run reads them from its PR`,
+        )
+        continue
+      }
+      for (const path of dep.ships ?? []) {
+        const text = await input.forge
+          .fileAt(at.repo, at.ref, path)
+          .catch((e: Error) => ({ failed: e.message }))
+        if (text === undefined) return { skip: `${dep.id}'s PR has no ${path}` }
+        if (typeof text !== 'string')
+          return { skip: `couldn't read ${path} from ${dep.id}'s PR: ${text.failed}` }
+        shipped.push({ task: dep.id, path, text })
+      }
+    }
+    return { shipped }
+  }
+
   try {
     const turn = input.turn ?? ((chain) => chain())
     for (const chain of chains) {
@@ -977,9 +1027,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         input.ctx.log(
           `${head.unit.id}: prepared from the default branch; a real run clones ${head.unit.items[0]?.task?.onto}'s branch`,
         )
+      const ready = await blocked(head)
       const done =
-        head.after && !input.dryRun && !onto
-          ? noPrToStackOn(chain, started.has(head.after))
+        'skip' in ready
+          ? skipTask(chain, ready.skip)
           : await turn(() =>
               runChain(
                 onto
@@ -988,12 +1039,18 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                       unit: { ...p.unit, base: onto.branch, stackedOn: onto.url },
                     }))
                   : chain,
+                ready.shipped,
               ),
             )
       if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
       if (lead?.outcome?.kind === 'pr')
-        opened[head.unit.id] = { branch: lead.planned.unit.branch, url: lead.outcome.url }
+        opened[head.unit.id] = {
+          repo: lead.planned.unit.repo,
+          branch: lead.planned.unit.branch,
+          url: lead.outcome.url,
+          head: lead.outcome.head,
+        }
       results.push(...done)
       await notifyUnits(done.filter((r) => !r.retried && !(input.soon && triedLater(r))))
     }

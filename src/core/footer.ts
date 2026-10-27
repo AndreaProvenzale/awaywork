@@ -1,4 +1,6 @@
+import { posix } from 'node:path'
 import { placeholderProblem } from './branch.js'
+import type { Contract } from './plan.js'
 import type { Item } from './types.js'
 
 const marker = '<!-- awaywork'
@@ -76,9 +78,18 @@ export function waitingTasks(item: Pick<Item, 'comments'>): string[] {
   return [...new Set(item.comments.slice(answered + 1).flatMap((c) => questionsTask(c) ?? []))]
 }
 
-/** What awaywork posts on an item for a `deliver: plan` rule: the report, `plan.yml` in a fence, and how to answer. */
-export const planComment = (report: string, plan: string): string =>
-  `${report.trim()}\n\n\`\`\`yaml\n${plan.trim()}\n\`\`\`\n\n${planAnswer}`
+/** What awaywork posts on an item for a `deliver: plan` rule: the report, the contract and `plan.yml` in fences, and how to answer. */
+export const planComment = (report: string, plan: string, contract?: Contract): string =>
+  `${report.trim()}\n\n${contract ? `${contractBlock(contract)}\n\n` : ''}\`\`\`yaml\n${plan.trim()}\n\`\`\`\n\n${planAnswer}`
+
+export const contractHeading = (name: string) => `### Contract: ${name}`
+
+/** The contract under its heading, in a fence longer than any run of backticks in it. */
+function contractBlock({ name, text }: Contract): string {
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map(([run]) => run.length))
+  const fence = '`'.repeat(Math.max(3, longest + 1))
+  return `${contractHeading(name)}\n\n${fence}${posix.extname(name).slice(1)}\n${text}\n${fence}`
+}
 
 /** The reply that approves a plan: `approve`, then the notes for its tasks. */
 export const approveReply = (notes: string): string =>

@@ -3,6 +3,7 @@ import { defaultType, renderBranch } from './branch.js'
 import { commentKind, commentMarkdown, footerItems, waitingTasks } from './footer.js'
 import type { SkipKind, Skipped } from './foreman.js'
 import {
+  type Contract,
   cardTasks,
   holdingTask,
   openedChain,
@@ -23,6 +24,14 @@ import type { BranchPr, Item, Rule, TaskPr, ThenStep } from './types.js'
 export const cardRepo = (item: Item): string | undefined =>
   item.linkedPrs[0]?.repo ?? (typeof item.fields.repo === 'string' ? item.fields.repo : undefined)
 
+/** The repos the forge source reads, as its globs, and those the config's `repos` names: a task may name any of them. */
+const configRepos = (config: Config): string[] => {
+  const forge = (config.sources.bitbucket ?? config.sources.github) as
+    | { repos?: string[] }
+    | undefined
+  return [...(forge?.repos ?? []), ...Object.keys(config.repos)]
+}
+
 /** What a plan on the card is checked against: every id whose PR closed unmerged is retired. */
 export const planLimits = (
   config: Config,
@@ -32,6 +41,7 @@ export const planLimits = (
 ): PlanLimits => ({
   maxTasks: config.limits.plan_tasks,
   repo: cardRepo(card),
+  repos: configRepos(config),
   ...taskSkills(queue, card.source, catalog),
   retired: taskPrUrls(card, (pr) => pr.state === 'closed'),
 })
@@ -80,10 +90,18 @@ export function branchName(
   return renderBranch(template, item, type)
 }
 
-/** A task of the plan on the card as an item: the card's source, URL, ownership, fields and comments, its own title and description. */
-export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = ''): Item {
-  const top = openedChain(task, plan)?.at(-1)
-  const onto = top && holdingTask(top, plan, (id) => card.taskPrs?.[id]?.state === 'merged')
+/** A task of the plan on the card as an item: the card's source, URL, ownership, fields and comments, its own title, description and repo. */
+export function taskItem(
+  card: Item,
+  task: Task,
+  plan: Task[] = [task],
+  notes = '',
+  contract?: Contract,
+): Item {
+  const home = cardRepo(card)
+  const top = openedChain(task, plan, home)?.at(-1)
+  const merged = (id: string) => card.taskPrs?.[id]?.state === 'merged'
+  const onto = top && holdingTask(top, plan, merged, home)
   return {
     source: card.source,
     id: `${card.id}/${task.id}`,
@@ -101,15 +119,22 @@ export function taskItem(card: Item, task: Task, plan: Task[] = [task], notes = 
     // Never a closing line: the card outlives each of its tasks' PRs.
     link: `Part of ${card.url}`,
     // A task takes no approval of its own: the card's plan approval covers it.
-    fields: { ...card.fields, approved: false, repo: cardRepo(card) },
+    fields: { ...card.fields, approved: false, repo: task.repo ?? home },
     ...(card.mine && { mine: card.mine }),
     task: {
       parent: card,
       id: task.id,
       skill: task.skill ?? TASK_SKILL,
       notes,
-      plan: plan.map((t) => ({ id: t.id, title: t.title, after: t.after ?? {} })),
+      plan: plan.map((t) => ({
+        id: t.id,
+        title: t.title,
+        after: t.after ?? {},
+        repo: t.repo ?? home,
+        ...(t.ships && { ships: t.ships }),
+      })),
       ...(onto && { onto }),
+      ...(contract && { contract }),
     },
     raw: card.raw,
   }
@@ -166,6 +191,7 @@ export function taskPr(
     mine: true,
     trusted: true,
     fork: false,
+    ...(pr.head && { head: pr.head }),
     state: pr.open ? 'open' : pr.merged ? 'merged' : 'closed',
     ...(pr.closedAt && { closedAt: pr.closedAt }),
   }
@@ -214,6 +240,7 @@ export function expandPlans(
     }
     // Unset only when no task had a rule or a repo to look its PR up by.
     const prs = card.taskPrs ?? {}
+    const home = cardRepo(card)
     const tasks = runOrder(state.plan.tasks)
     const merged = (id: string) => prs[id]?.state === 'merged'
     const asked = waitingTasks(card)
@@ -221,13 +248,13 @@ export function expandPlans(
     // The card's own skip goes first, its tasks' under it.
     const at = skipped.length
     for (const t of tasks) {
-      const item = taskItem(card, t, state.plan.tasks, state.notes)
+      const item = taskItem(card, t, state.plan.tasks, state.notes, state.contract)
       const pr = prs[t.id]
       // An `opened` task holds only where this one starts: planRun stacks it. A `merged` one holds until its whole stack merged.
       const [waitedOn, blocker] =
         Object.keys(t.after ?? {})
           .filter((id) => t.after?.[id] === 'merged')
-          .map((id) => [id, holdingTask(id, state.plan.tasks, merged)])
+          .map((id) => [id, holdingTask(id, state.plan.tasks, merged, home)])
           .find(([, holder]) => holder) ?? []
       if (pr?.state === 'merged') {
         states.push(`${t.id} merged`)
@@ -274,9 +301,11 @@ export function taskMarkdown(item: Item): string {
   const task = item.task
   if (!task) return ''
   const card = task.parent
+  const home = cardRepo(card)
   const listed = task.plan.map((t) => {
     const after = Object.entries(t.after).map(([id, when]) => `${id} ${when}`)
-    return `- \`${t.id}\`: ${t.title}${t.id === task.id ? ' (this task)' : ''}${after.length ? `, after ${after.join(', ')}` : ''}`
+    const repo = t.repo && t.repo !== home ? ` in ${t.repo}` : ''
+    return `- \`${t.id}\`: ${t.title}${repo}${t.id === task.id ? ' (this task)' : ''}${after.length ? `, after ${after.join(', ')}` : ''}`
   })
   const notes = task.notes ? `\n\nYour notes on approving it:\n\n${task.notes}` : ''
   const comments = card.comments.map(commentMarkdown)

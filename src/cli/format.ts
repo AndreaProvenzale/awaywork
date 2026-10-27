@@ -1,6 +1,7 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
 import { type Allowance, pct, presenceLine } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
+import { cardRepo } from '../core/fanout.js'
 import {
   isNamed,
   type PlannedUnit,
@@ -236,8 +237,12 @@ export function planUnitTable(
       const rule = p.itemRules[j + 1] ?? p.rule
       out.push(`   + ${shortRef(item)}: same feature, matched #${rule + 1}`)
     })
+    const repo = taskRepo(p.unit.items[0])
+    if (repo) out.push(`   in ${repo}`)
     const stacks = stackLine(p)
     if (stacks) out.push(`   ${stacks}`)
+    const waits = waitLine(p)
+    if (waits) out.push(`   waits for ${waits}`)
     if (p.passed.length > 0 || !p.provider)
       out.push(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
@@ -371,7 +376,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const heading = (item: Item) => [
     `${item.source} ${item.key}  ${item.title}`,
     `  ${item.url}`,
-    ...(item.task ? taskLines(item.task) : []),
+    ...(item.task ? taskLines(item) : []),
   ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
@@ -380,6 +385,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     const passed = p.passed.length > 0 ? ` (${p.passed.join('; ')})` : ''
     const rule = plan.queue[p.rule]
     const stacks = stackLine(p)
+    const waits = waitLine(p)
     const rows = [
       ['unit', `${i + 1}, ${p.unit.id}`],
       ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
@@ -388,6 +394,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
       ...(stacks ? [['stack', stacks]] : []),
+      ...(waits ? [['waits', `for ${waits}`]] : []),
     ]
     out.push(
       ...(out.length ? [''] : []),
@@ -410,18 +417,38 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
   return out.join('\n')
 }
 
-/** A task's place in its card's plan: what it waits on, and where each of those stands. */
-function taskLines(task: NonNullable<Item['task']>): string[] {
+/** A task's place in its card's plan: its repo when it isn't the card's, what it waits on, and where each of those stands. */
+function taskLines(item: Item): string[] {
+  const task = item.task as NonNullable<Item['task']>
+  const repoOf = (id: string) => task.plan.find((t) => t.id === id)?.repo
   const after = Object.entries(task.plan.find((t) => t.id === task.id)?.after ?? {}).map(
     ([id, when]) => {
       const pr = task.parent.taskPrs?.[id]
-      return `${id} ${when} (${pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'})`
+      const away = repoOf(id) !== repoOf(task.id) ? ` in ${repoOf(id)}` : ''
+      return `${id} ${when}${away} (${pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'})`
     },
   )
+  const repo = taskRepo(item)
   return [
-    `  task ${task.id} of the plan on ${task.parent.key}`,
+    `  task ${task.id} of the plan on ${task.parent.key}${repo ? `, in ${repo}` : ''}`,
     ...(after.length ? [`  after ${after.join(', ')}`] : []),
   ]
+}
+
+/** A task's repo when it isn't its card's. */
+function taskRepo(item: Item | undefined): string | undefined {
+  const repo = item?.fields.repo
+  return item?.task && typeof repo === 'string' && repo !== cardRepo(item.task.parent)
+    ? repo
+    : undefined
+}
+
+/** The PRs in other repos a task's chain waits for in this run, e.g. `api's PR in acme/backend`. */
+function waitLine(p: PlannedUnit): string | undefined {
+  const task = p.unit.items[0]?.task
+  const repoOf = (id: string) => task?.plan.find((t) => t.id === id)?.repo
+  const waits = (p.waitsFor ?? []).map((id) => `${id}'s PR in ${repoOf(id)}`)
+  return waits.length ? waits.join(', ') : undefined
 }
 
 /** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */
