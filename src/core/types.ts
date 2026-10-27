@@ -292,6 +292,8 @@ export interface Rule extends Step {
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published. */
   on_done?: { move: string }
+  /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
+  run?: 'soon' | 'window'
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */

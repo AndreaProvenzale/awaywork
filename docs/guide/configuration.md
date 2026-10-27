@@ -36,7 +36,7 @@ limits:                         # per run, every provider; unset by default
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
 keep_runs: 30d                  # default; older run dirs go when run or watch starts
-watch: { debug: false }         # default; true also logs every run line in watch.log
+watch: { every: 5m, debug: false }  # defaults; how often run: soon rules poll, and true logs every run line in watch.log
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
@@ -52,6 +52,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     repo_map: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+    every: 15m                  # poll it for run: soon rules at most this often
 branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
@@ -66,6 +67,7 @@ queue:                          # first matching rule wins; top = highest priori
   - skill: fix
     where: { type: pr, mine: true, checks: failing }
     branch: fix/{key}
+    run: soon                   # within minutes, not only in the windows
   - skill: implement
     source: github
     where: { type: issue, label: awaywork, repo: acme/api }
@@ -151,7 +153,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs).
+Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
 
 Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
 
@@ -415,6 +417,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
 | `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published; see [`on_done`](#on-done) |
+| `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
 
@@ -525,6 +528,26 @@ A move never fails the unit. It goes in the run's output and the morning report 
 ```
 
 Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+
+### `run: soon`
+
+Some work shouldn't wait for 1 AM: your PR's checks just went red, or you answered awaywork's [questions](./how-it-works.md#questions) at 10:00. `run: soon` has [`awaywork watch`](./scheduling.md#soon-runs) start a rule's units as soon as it sees them due, a new item or one changed since its last attempt, instead of at the next window:
+
+```yaml
+watch: { every: 5m }            # the default
+sources:
+  github: { repos: [acme/*] }
+  jira: { site: acme.atlassian.net, email: me@acme.dev, every: 15m }   # a slow tracker
+queue:
+  - skill: fix
+    where: { type: pr, mine: true, checks: failing }
+    run: soon
+  - skill: implement
+    source: jira
+    where: { status: Ready }
+```
+
+The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing; either is 1m or more, as the daemon looks once a minute). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 

@@ -17,7 +17,13 @@ import {
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
-import { commandConfig, contextCommand, linkTemplate } from '../sources/command.js'
+import {
+  commandConfig,
+  contextCommand,
+  linkTemplate,
+  pollEvery,
+  pollSpan,
+} from '../sources/command.js'
 import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
 
 const percent = z
@@ -121,7 +127,11 @@ function builtinConfig(s: Source): z.ZodObject {
   const fallback = s.link ? `\`${s.link}\`` : 'none'
   const link = linkTemplate.optional().describe(`${linkTemplate.description}; default ${fallback}`)
   return s.configSchema
-    .extend({ context: contextCommand.optional(), ...(s.link === false ? {} : { link }) })
+    .extend({
+      context: contextCommand.optional(),
+      every: pollEvery,
+      ...(s.link === false ? {} : { link }),
+    })
     .describe(s.configSchema.description ?? '')
 }
 
@@ -383,6 +393,12 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
       ),
+    run: z
+      .enum(['soon', 'window'])
+      .optional()
+      .describe(
+        'When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every',
+      ),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -547,6 +563,11 @@ export const configSchema = z
       ),
     watch: z
       .strictObject({
+        every: pollSpan
+          .default('5m')
+          .describe(
+            "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
+          ),
         debug: z
           .boolean()
           .default(false)

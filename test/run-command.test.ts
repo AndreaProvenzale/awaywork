@@ -1,10 +1,11 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { abortOnSignals, runCommand } from '../src/cli/run.js'
+import { abortOnSignals, executeRun, type RunArgs, runCommand } from '../src/cli/run.js'
+import { loadConfig } from '../src/config/load.js'
 import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
@@ -102,7 +103,7 @@ describe('run command', () => {
       await writeFile(watchLockPath, `${process.pid} watch`)
       const daemon = await run([])
       expect(daemon.err.at(-1)).toBe(
-        `awaywork watch holds the run lock (pid ${process.pid}); try again once its run ends`,
+        `awaywork watch holds the run lock (pid ${process.pid}); try again once its runs end, awaywork schedule status lists them`,
       )
       expect(process.exitCode).toBe(1)
     } finally {
@@ -146,6 +147,29 @@ describe('run command', () => {
     await run([], undefined, `notify: { command: ${JSON.stringify(command)} }\n`)
     const id = (await readdir(runsDir)).sort().at(-1) ?? ''
     expect(await readFile(out, 'utf8')).toBe(`run ${id} ${join(runsDir, id, 'report.md')}\n`)
+  })
+
+  it('takes presence as given, and a soon run notifies no run end', async () => {
+    const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-')), 'out.txt')
+    const path = join(dirname(out), 'config.yml')
+    const notify = `notify: { command: ${JSON.stringify(`echo "$AWAYWORK_EVENT" >> '${out}'`)} }`
+    await writeFile(
+      path,
+      `providers: [claude]\nsources: { chores: { command: 'echo []' } }\nwindows: []\n${notify}\n`,
+    )
+    const config = await loadConfig(path)
+    const log = { info: () => {}, error: () => {} }
+    const signal = () => new AbortController().signal
+    const at = (runId: string, extra: Partial<RunArgs>) =>
+      executeRun({ path, config, runId, now: new Date(), log, signal, ...extra })
+    await at('20261025-120000', { present: false, soon: { sources: ['chores'], units: [] } })
+    const plan = await readFile(join(runsDir, '20261025-120000', 'plan.txt'), 'utf8')
+    expect(plan).toContain('away run (inside a window)')
+    expect(await readFile(out, 'utf8').catch(() => '')).toBe('')
+    await at('20261025-120100', {})
+    const present = await readFile(join(runsDir, '20261025-120100', 'plan.txt'), 'utf8')
+    expect(present).toContain('present run (outside the windows)')
+    expect(await readFile(out, 'utf8')).toBe('run\n')
   })
 
   it("masks the notify command's secret in its failure", async () => {

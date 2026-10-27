@@ -113,6 +113,10 @@ export interface RunInput {
   skillDirs?: { user: string; builtin: string }
   /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
   attempts?: Attempts
+  /** Runs each chain when it's this run's turn: awaywork watch runs one worker at a time across its runs. */
+  turn?: <T>(chain: () => Promise<T>) => Promise<T>
+  /** A `run: soon` run: no notify for a step that sat out or its `when` passed over, as the next poll tries it again. */
+  soon?: boolean
 }
 
 /** The latest report an earlier run left on one of the items. */
@@ -130,6 +134,12 @@ async function earlierReport(
       return { skill: last.skill, out, earlierRun: last.runId }
   }
 }
+
+/** A step that sat out or its `when` passed over: a poll tries it again an hour later. */
+const triedLater = (r: UnitResult) =>
+  r.status === 'skipped' &&
+  (!!r.reason?.startsWith('no provider left') ||
+    (!!r.passedOver && !!r.reason?.startsWith('when ')))
 
 /** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
 const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
@@ -914,10 +924,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   try {
+    const turn = input.turn ?? ((chain) => chain())
     for (const chain of chains) {
-      const done = await runChain(chain)
+      const done = await turn(() => runChain(chain))
       results.push(...done)
-      await notifyUnits(done.filter((r) => !r.retried))
+      await notifyUnits(done.filter((r) => !r.retried && !(input.soon && triedLater(r))))
     }
   } finally {
     if (root !== input.runDir && !input.dryRun && !lostToWorker(root))

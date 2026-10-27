@@ -5,20 +5,35 @@ import { setTimeout } from 'node:timers/promises'
 import type { Command } from 'commander'
 import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import {
+  attemptsPath,
   runLockPath,
   runsDir,
+  skillsDirOf,
   watchLockPath,
   watchLogPath,
   watchStatePath,
 } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
+import { loadAttempts } from '../core/attempts.js'
+import type { RunPlan } from '../core/foreman.js'
 import { isolateFor } from '../core/launch.js'
-import { localTime } from '../core/report.js'
+import {
+  claimUnits,
+  dueUnits,
+  nextPoll,
+  type Poll,
+  releaseUnits,
+  type Seen,
+  soonSources,
+} from '../core/poll.js'
+import { counted, localTime } from '../core/report.js'
 import { lockHolder, takeRunLock } from '../core/run-lock.js'
-import { firstOpening, windowRun } from '../core/window.js'
+import { firstOpening, windowEnd, windowRun } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { holdAwake } from '../scheduler/wake.js'
-import { executeRun, newRunId, pruneOld, type RunLog } from './run.js'
+import { maskSecrets } from '../worker/setup.js'
+import { probeAndPlan, sourceFailure } from './plan.js'
+import { executeRun, newRunId, pruneOld, type RunArgs, type RunLog, serial } from './run.js'
 
 export function watchCommand(program: Command): void {
   program
@@ -36,12 +51,16 @@ export function watchCommand(program: Command): void {
     })
 }
 
+type Trigger = 'window' | 'soon'
+
 /** What the daemon is doing, rewritten on each change. */
 interface WatchState {
   pid: number
   since: string
   config: string
-  run?: { trigger: 'window'; runId: string; until: string }
+  runs: { trigger: Trigger; runId: string; until?: string }[]
+  /** Each `run: soon` source's next poll, and its failed polls in a row. */
+  polls: Record<string, Poll>
 }
 
 const MINUTE = 60_000
@@ -61,25 +80,190 @@ const event = (line: string) => appendLog(watchLogPath, `${localTime(new Date())
 const reason = (e: unknown) =>
   e instanceof ConfigError ? e.message : String((e as Error)?.stack ?? e)
 
-/** The daemon: each minute on the wall clock, starts the window run due, until `stop`. */
+/**
+ * Sets launch's isolation for each of the daemon's runs, between two workers: to its config's for a
+ * run that starts `alone`, none other in progress; a run started meanwhile keeps the one in force, so
+ * no run's later chains switch. The promise settles once it's in force.
+ */
+export function isolation(turn: <T>(f: () => Promise<T>) => Promise<T>, log: (l: string) => void) {
+  // Unset while it switches and once a switch failed: isolateFor resets launch's state first.
+  let current: Config['isolation'] | undefined
+  let wanted: Config['isolation'] | undefined
+  let kept: Config['isolation'] | undefined
+  let switched: Promise<void> = Promise.resolve()
+  return (config: Config, alone: boolean): Promise<void> => {
+    if (!alone) {
+      if (config.isolation !== wanted && config.isolation !== kept)
+        log(`isolation: ${config.isolation} waits for the runs in progress`)
+      kept = config.isolation
+      return switched
+    }
+    kept = undefined
+    wanted = config.isolation
+    if (current !== config.isolation)
+      switched = turn(async () => {
+        current = undefined
+        await isolateFor(config.isolation, process.env)
+        current = config.isolation
+      })
+    return switched
+  }
+}
+
+/**
+ * The daemon: each minute on the wall clock, starts the window run due and polls the sources of
+ * `run: soon` rules that are due, starting a soon run for the units due, until `stop`.
+ */
 export async function watch(path: string, stop: AbortSignal): Promise<void> {
   const lock = await takeRunLock(watchLockPath, 'watch')
   if (!('release' in lock)) {
     console.log(`awaywork watch is already running (pid ${lock.pid})`)
     return
   }
-  const state: WatchState = { pid: process.pid, since: new Date().toISOString(), config: path }
-  // Renamed into place, so `schedule status` never reads it half-written.
-  const save = async () => {
-    await writeFile(`${watchStatePath}.tmp`, JSON.stringify(state))
-    await rename(`${watchStatePath}.tmp`, watchStatePath)
+  const state: WatchState = {
+    pid: process.pid,
+    since: new Date().toISOString(),
+    config: path,
+    runs: [],
+    polls: {},
   }
+  const polls = state.polls
+  // One at a time, through the same tmp file: renamed into place, so `schedule status` never reads it half-written.
+  const inSave = serial()
+  const save = () =>
+    inSave(async () => {
+      await writeFile(`${watchStatePath}.tmp`, JSON.stringify(state))
+      await rename(`${watchStatePath}.tmp`, watchStatePath)
+    }).catch((e) => event(`couldn't save ${watchStatePath}: ${reason(e)}`))
   const daemonLog: RunLog = { info: (line) => event(line), error: (line) => event(line) }
+  /** Per-unit locks: the run working on each item, by `source:key`. */
+  const held = new Map<string, string>()
+  const seen: Seen = new Map()
+  const running = new Map<string, Promise<void>>()
+  let releaseLock: (() => Promise<void>) | undefined
+  let releaseAwake: (() => void) | undefined
+  let lastId = ''
+  // One at a time, so runs starting and ending together take and release the run lock once.
+  const inTurn = serial()
+  // One worker at a time across the runs: the watchdog, isolation: user's kill and the container stops each count on it.
+  const oneWorker = serial()
+  const isolate = isolation(oneWorker, event)
+
+  const finish = (runId: string) =>
+    inTurn(async () => {
+      running.delete(runId)
+      releaseUnits(held, runId)
+      state.runs = state.runs.filter((r) => r.runId !== runId)
+      if (!running.size) {
+        releaseAwake?.()
+        await releaseLock?.()
+      }
+      await save()
+    })
+
+  /** Starts a run under the run lock, held while any of the daemon's runs is in progress; the lock's holder when that's someone else. */
+  const start = (r: Omit<DaemonRun, 'runId' | 'path' | 'stop' | 'claim' | 'turn' | 'isolated'>) =>
+    inTurn(async (): Promise<string | { pid: number; runId: string }> => {
+      const alone = !running.size
+      if (alone) {
+        const taken = await takeRunLock(runLockPath, 'watch')
+        if (!('release' in taken)) return taken
+        releaseLock = taken.release
+        releaseAwake = await holdAwake(exec)
+      }
+      // A run's id is its start to the second, and two triggers can land in the same one.
+      let runId = newRunId()
+      for (; runId <= lastId; runId = newRunId()) await setTimeout(1000 - (Date.now() % 1000))
+      lastId = runId
+      state.runs.push({
+        trigger: r.trigger,
+        runId,
+        ...(r.until && { until: r.until.toISOString() }),
+      })
+      await save()
+      const claim = (plan: RunPlan) => claimUnits(plan, runId, held, seen)
+      const isolated = isolate(r.config, alone)
+      const run = daemonRun({ ...r, path, runId, stop, claim, turn: oneWorker, isolated })
+      running.set(
+        runId,
+        run
+          .finally(() => finish(runId))
+          .catch((e) => event(`run ${runId} didn't end cleanly: ${reason(e)}`)),
+      )
+      return runId
+    })
+
   let failed: string | undefined
   let lastEnd: Date | undefined
   let pruned = 0
   let waiting = false
-  let running: Promise<void> | undefined
+  const lockedOut = (what: string, holder: { pid: number; runId: string }, again: string) => {
+    if (!waiting)
+      event(
+        `${what}, but run ${holder.runId} (pid ${holder.pid}) holds the run lock; trying again ${again}`,
+      )
+    waiting = true
+  }
+
+  /** Prunes old runs under the run lock while none of the daemon's runs is in progress; false when it can't yet. */
+  const prune = (config: Config, now: Date) =>
+    inTurn(async () => {
+      if (running.size) return false
+      const taken = await takeRunLock(runLockPath, 'watch')
+      if (!('release' in taken)) return false
+      await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
+      await taken.release()
+      return true
+    })
+
+  /** Polls the soon sources that are due and starts a soon run for the units due; reads no quota. */
+  const poll = async (config: Config, now: Date) => {
+    const every = soonSources(config)
+    for (const id of Object.keys(polls)) if (!(id in every)) delete polls[id]
+    const due = Object.keys(every).filter((id) => (polls[id]?.next ?? 0) <= now.getTime())
+    if (!due.length) return
+    const failures: Record<string, Error & { retryAfter?: number }> = {}
+    const { plan, warnings, ctx, secrets } = await probeAndPlan(config, skillsDirOf(path), {
+      soon: { sources: due },
+      probe: false,
+      failed: (id, e) => {
+        failures[id] = e
+      },
+    })
+    const at = Date.now()
+    for (const id of due) {
+      const e = failures[id]
+      const before = polls[id]?.failures ?? 0
+      const interval = every[id] as number
+      const next = nextPoll(interval, at, e && { failures: before + 1, retryAfter: e.retryAfter })
+      polls[id] = next
+      if (e) {
+        const why = maskSecrets(sourceFailure(e).split('\n')[0] ?? '', secrets, ctx.env)
+        const asked = e.retryAfter ? ', as it asked' : ''
+        event(
+          `source ${id}: poll failed, next at ${localTime(new Date(next.next))}${asked}: ${why}`,
+        )
+      } else if (before) event(`source ${id}: polled fine again, every ${describeSpan(interval)}`)
+    }
+    const units = dueUnits(plan, await loadAttempts(attemptsPath), seen, held, Date.now())
+    if (config.watch.debug) {
+      for (const warning of warnings) event(`poll warning: ${warning.split('\n')[0]}`)
+      event(`polled ${due.join(', ')}: ${units.length ? `due ${units.join(', ')}` : 'nothing due'}`)
+    }
+    await save()
+    if (!units.length || stop.aborted) return
+    const sources = due.filter((id) => !failures[id])
+    // Inside a window it's away, until the window ends, as the window run.
+    const until = windowEnd(config.windows, now)
+    const soon = { sources, units }
+    const started = await start({ trigger: 'soon', config, until, present: !until, soon })
+    if (typeof started !== 'string')
+      lockedOut(`${units.join(', ')} due`, started, 'at the next poll')
+    else waiting = false
+  }
+
+  let polling: Promise<void> | undefined
+  let pollFailed: string | undefined
   event(`awaywork watch started, pid ${process.pid}, config ${path}`)
   await save()
   try {
@@ -93,57 +277,62 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
         if (reason(e) !== failed) event(`config not loaded: ${reason(e)}`)
         failed = reason(e)
       }
-      // Under the run lock with no run in progress, else at the next minute.
-      if (config && !running && now.getTime() - pruned >= DAY) {
-        const pruneLock = await takeRunLock(runLockPath, 'watch')
-        if ('release' in pruneLock) {
-          pruned = now.getTime()
-          await pruneOld(config, now, daemonLog).catch((e) => event(`pruning failed: ${reason(e)}`))
-          await pruneLock.release()
-        }
-      }
-      const until = config && windowRun(config.windows, now, { running: !!running, lastEnd })
+      if (config && now.getTime() - pruned >= DAY && (await prune(config, now)))
+        pruned = now.getTime()
+      const inWindow = state.runs.some((r) => r.trigger === 'window')
+      const until = config && windowRun(config.windows, now, { running: inWindow, lastEnd })
       if (config && until) {
-        const runId = newRunId()
-        const runLock = await takeRunLock(runLockPath, runId)
-        if (!('release' in runLock)) {
-          if (!waiting)
-            event(
-              `a window is open, but run ${runLock.runId} (pid ${runLock.pid}) holds the run lock; trying again each minute`,
-            )
-          waiting = true
-        } else {
+        const started = await start({ trigger: 'window', config, until, present: false })
+        if (typeof started !== 'string') lockedOut('a window is open', started, 'each minute')
+        else {
           waiting = false
           lastEnd = until
-          state.run = { trigger: 'window', runId, until: until.toISOString() }
-          await save()
-          const run = { path, config, runId, until, stop }
-          running = windowRunIn(run).finally(async () => {
-            await runLock.release()
-            delete state.run
-            await save()
-            running = undefined
-          })
         }
       }
+      if (config && !polling)
+        polling = poll(config, now)
+          .then(
+            () => {
+              pollFailed = undefined
+            },
+            (e) => {
+              if (reason(e) !== pollFailed) event(`poll failed: ${reason(e)}`)
+              pollFailed = reason(e)
+            },
+          )
+          .finally(() => {
+            polling = undefined
+          })
       await setTimeout(MINUTE - (Date.now() % MINUTE), undefined, { signal: stop }).catch(() => {})
     }
-    await running
+    await polling
+    await Promise.all(running.values())
   } finally {
-    await rm(watchStatePath, { force: true })
+    // The last run's finish, which may have left `running` before it released the run lock.
+    await inTurn(async () => {})
+    await inSave(() => rm(watchStatePath, { force: true }))
     event('awaywork watch stopped')
     await lock.release()
   }
 }
 
-/** One window run, its full output in `run.log` in its run dir; never throws. */
-async function windowRunIn(r: {
+/** E.g. `5m` or `1h`. */
+const describeSpan = (ms: number) =>
+  ms % (60 * MINUTE) === 0 ? `${ms / (60 * MINUTE)}h` : `${Math.round(ms / MINUTE)}m`
+
+interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn'> {
+  trigger: Trigger
   path: string
   config: Config
   runId: string
-  until: Date
   stop: AbortSignal
-}): Promise<void> {
+  present: boolean
+  /** Settles once the isolation the run's workers launch under is in force. */
+  isolated: Promise<void>
+}
+
+/** One of the daemon's runs, its full output in `run.log` in its run dir; never throws. */
+async function daemonRun(r: DaemonRun): Promise<void> {
   const runDir = join(runsDir, r.runId)
   const runLog = join(runDir, 'run.log')
   const log: RunLog = {
@@ -156,16 +345,15 @@ async function windowRunIn(r: {
       event(line)
     },
   }
-  event(`window run ${r.runId} started, until ${localTime(r.until)}`)
-  const release = await holdAwake(exec)
+  const until = r.until ? `, until ${localTime(r.until)}` : ''
+  const units = r.soon ? ` for ${r.soon.units.join(', ')}` : ''
+  event(`${r.trigger} run ${r.runId} started${until}${units}`)
   try {
+    await r.isolated
     await mkdir(runDir, { recursive: true, mode: 0o700 })
-    await isolateFor(r.config.isolation, process.env)
     await executeRun({ ...r, now: new Date(), log, signal: () => r.stop })
   } catch (e) {
     event(`run ${r.runId} failed: ${reason(e)}`)
-  } finally {
-    release()
   }
 }
 
@@ -197,10 +385,14 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
       ? `Daemon: running, pid ${pid}, since ${localTime(new Date(state.since))}`
       : 'Daemon: not running',
   ]
-  if (up && state.run)
-    lines.push(
-      `Run in progress: ${state.run.trigger} run ${state.run.runId}, until ${localTime(new Date(state.run.until))}`,
-    )
+  for (const run of up ? (state.runs ?? []) : []) {
+    const until = run.until ? `, until ${localTime(new Date(run.until))}` : ''
+    lines.push(`Run in progress: ${run.trigger} run ${run.runId}${until}`)
+  }
+  for (const [id, p] of Object.entries(up ? (state.polls ?? {}) : {})) {
+    const backoff = p.failures ? `, backing off after ${counted(p.failures, 'failed poll')}` : ''
+    lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
+  }
   const windows = await loadConfig(up ? state.config : config).then(
     (c) => c.windows,
     () => undefined,

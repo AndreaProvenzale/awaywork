@@ -203,7 +203,7 @@ export function planUnitTable(
     return [
       String(i + 1),
       top ? shortRef(top) : p.unit.id,
-      `#${p.rule + 1}`,
+      `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
       describeSkill(p),
       p.provider ?? '-',
       deliverOf(plan, p),
@@ -435,6 +435,7 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
+    r.run === 'soon' && 'run=soon',
     r.then?.length &&
       `then=${r.then.map((s) => `${s.stack ? 'stack:' : ''}${isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill}`).join(',')}`,
   ]

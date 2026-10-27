@@ -3457,6 +3457,27 @@ it('runs no notify unit event on a dry run, nor once interrupted, past those of 
   )
 })
 
+it('runs no notify unit event in a soon run for a step its when passed over, but does for one whose setup failed', async () => {
+  const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-soon-')), 'out.txt')
+  const hook = `notify: { command: 'echo "$AWAYWORK_UNIT $AWAYWORK_STATUS" >> ${out}' }`
+  const passed = await loopRun(
+    `queue: [{ skill: plan, when: { runs_until_reset: 1 } }]\n${hook}`,
+    [issue(1)],
+    pusher,
+    { soon: true },
+  )
+  const broken = await loopRun(
+    `repos: { acme/api: { setup: 'exit 3' } }\nqueue: [{ skill: plan }]\n${hook}`,
+    [issue(2)],
+    pusher,
+    { soon: true },
+  )
+
+  expect(passed.report.results[0]).toMatchObject({ status: 'skipped', passedOver: true })
+  expect(broken.report.results[0]?.reason).toMatch(/^setup failed: /)
+  expect(await readFile(out, 'utf8')).toBe('acme-api-2 skipped\n')
+})
+
 it("runs a chain's notify unit events once it published, with its PR and each step's own output, before the next chain runs", async () => {
   const out = join(await mkdtemp(join(tmpdir(), 'awaywork-notify-loop-')), 'out.txt')
   const yaml = `queue:

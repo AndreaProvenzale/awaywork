@@ -348,6 +348,11 @@ export async function installWorkflow(
       process.exitCode = 1
       return
     }
+    const soon = (loaded.queue ?? []).flatMap((r, i) => (r.run === 'soon' ? [`#${i + 1}`] : []))
+    if (soon.length)
+      console.log(
+        `run: soon needs awaywork watch, which GitHub Actions doesn't have: ${soon.length === 1 ? 'rule' : 'rules'} ${and(soon)} run in the windows like the rest`,
+      )
     const current = await readFile(join(root, WORKFLOW), 'utf8').catch(() => '')
     const selfHosted = io.interactive
       ? await askSelfHosted(io.ask, isSelfHosted(current))

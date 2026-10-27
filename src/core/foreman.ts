@@ -78,6 +78,7 @@ export type SkipKind =
   | 'invalid_branch'
   | 'refused_delivery'
   | 'unstackable'
+  | 'running'
 
 /** Whether you can act to make the item run: the rest is the config working as intended. */
 export const needsYou: Record<SkipKind, boolean> = {
@@ -92,6 +93,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   invalid_branch: true,
   refused_delivery: true,
   unstackable: true,
+  running: false,
 }
 
 export interface Skipped {
@@ -123,8 +125,8 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
-  /** Plans only the units of a repo glob and a 1-based rule, under the full run's caps. */
-  only?: { repo?: string; rule?: number }
+  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps. */
+  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[] }
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
@@ -146,6 +148,8 @@ export function planRun(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
+    if (only.soon && rule.run !== 'soon') continue
+    if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
     const skip = (kind: SkipKind, reason: string, url?: string) =>
       skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
     const skippedByUser = items

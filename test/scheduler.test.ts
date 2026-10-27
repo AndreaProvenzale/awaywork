@@ -526,6 +526,19 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     },
   )
 
+  it('says once that run: soon rules run in the windows there', async () => {
+    const { config, install } = await setup()
+    await writeFile(
+      config,
+      `${CONFIG}queue: [{ skill: fix, run: soon }, { skill: plan }, { skill: implement, run: soon }]\n`,
+    )
+    await install()
+    expect(out[0]).toBe(
+      "run: soon needs awaywork watch, which GitHub Actions doesn't have: rules #1 and #3 run in the windows like the rest",
+    )
+    expect(out.filter((l) => l.includes('run: soon'))).toHaveLength(1)
+  })
+
   it('refuses a Bitbucket config and writes nothing', async () => {
     const { root, config } = await setup()
     await writeFile(config, 'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n')
