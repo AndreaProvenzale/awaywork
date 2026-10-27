@@ -1,4 +1,5 @@
 import { posix } from 'node:path'
+import { MAX_ATTEMPTS } from './attempts.js'
 import { placeholderProblem } from './branch.js'
 import type { Contract } from './plan.js'
 import type { Item } from './types.js'
@@ -7,17 +8,15 @@ const marker = '<!-- awaywork'
 
 /**
  * Appended to every PR body awaywork opens; it discloses the author, marks the PR as ours and
- * names its items, each part URI-encoded so no key can end the comment, and the status its step said, if any.
+ * names its items, each part URI-encoded so no key can end the comment, and what a draft `left` for a later run, if anything.
  */
-export function footer(
-  runId: string,
-  items: Pick<Item, 'source' | 'key'>[],
-  status?: Status,
-): string {
+export function footer(runId: string, items: Pick<Item, 'source' | 'key'>[], left?: Left): string {
   const named = items.map(
     (i) => ` item=${encodeURIComponent(i.source)}:${encodeURIComponent(i.key)}`,
   )
-  const said = status ? ` status=${status}` : ''
+  const said = left
+    ? ` status=${left.status} continued=${left.continued} head=${left.head} from=${left.from}`
+    : ''
   return `---\n${marker} run=${runId}${named.join('')}${said} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.`
 }
 
@@ -40,9 +39,42 @@ export function footerItems(body: string | null | undefined): string[] {
   )
 }
 
-/** The status an awaywork PR's footer records, e.g. `ask`: the body's visible status line is for people, and the model could write one. */
-export const footerStatus = (body: string | null | undefined): string | undefined =>
-  /\bstatus=([a-z]+)/.exec(footerLine(body))?.[1]
+/**
+ * What awaywork's draft left for a later run: the status its step said, the times the unit said `continue` so far,
+ * the head awaywork pushed and the commit its own commits start after.
+ */
+export interface Left {
+  status: 'ask' | 'continue'
+  continued: number
+  head: string
+  from: string
+}
+
+/** What an awaywork PR's footer says it left, if anything: the body's visible status line is for people, and the model could write one. */
+export function footerLeft(body: string | null | undefined): Left | undefined {
+  const line = footerLine(body)
+  const value = (key: string) => new RegExp(`\\b${key}=(\\S+)`).exec(line)?.[1]
+  const status = value('status')
+  const [head, from] = [value('head'), value('from')]
+  if ((status !== 'ask' && status !== 'continue') || !head || !from) return undefined
+  return { status, continued: Number(value('continued')) || 0, head, from }
+}
+
+/** What an open draft's footer says awaywork left, the items it names, and why awaywork won't go on with it, if it won't. */
+export type DraftLeft = Left & { items: string[]; refused?: string }
+
+/**
+ * A PR's `left`, for its ref, while it's still a draft whose footer says it left anything: one you marked ready is yours.
+ * It holds dependents back from anyone's footer; `refused` says why awaywork won't push onto it.
+ */
+export const leftIn = (
+  body: string | null | undefined,
+  draft: boolean,
+  refused?: string,
+): { left?: DraftLeft } => {
+  const left = draft ? footerLeft(body) : undefined
+  return left ? { left: { ...left, items: footerItems(body), ...(refused && { refused }) } } : {}
+}
 
 /** The line a PR body carries to link an item, e.g. `Part of {key}`; `{key}`, `{id}` and `{url}` are the item's. */
 export function renderLink(template: string, item: Pick<Item, 'key' | 'id' | 'url'>): string {
@@ -78,22 +110,36 @@ export const questionsComment = (questions: string, task?: string): string =>
   `${task ? `${taskHeadings.questions}${task}\n\n` : ''}${questions.trim()}\n\n${questionsAnswer}`
 
 /** The words awaywork reads from a step's `.away/out/status`. */
-export type Status = 'done' | 'ask'
+export type Status = 'done' | 'ask' | 'continue'
 
-const statusLine = /^Status: ([a-z]+)$/
+const statusLine = /^Status: ([a-z]+)(?: \((\d+) of \d+\))?$/
 
-/** What awaywork posts on an item when its unit finished: headed with its task or else its skill, the result, then its status. */
+/** What awaywork posts on an item when its unit finished, or will go on: headed with its task or else its skill, the result, then its status, a `continue` with its count. */
 export const resultComment = (
   result: string,
   status: Status,
   skill: string,
   task?: string,
+  continued = 0,
 ): string =>
-  `${task ? `${taskHeadings.result}${task}` : `Result of ${skill}`}\n\n${result.trim()}\n\nStatus: ${status}`
+  `${task ? `${taskHeadings.result}${task}` : `Result of ${skill}`}\n\n${result.trim()}\n\nStatus: ${status}${status === 'continue' ? ` (${continued} of ${MAX_ATTEMPTS})` : ''}`
 
 /** The status an awaywork result comment carries, e.g. `done`. */
-export const resultStatus = (c: Item['comments'][number]): string | undefined =>
-  commentKind(c) === 'result' ? statusLine.exec(visibleLines(c).at(-2) ?? '')?.[1] : undefined
+export const resultStatus = (c: Item['comments'][number]): string | undefined => resultOf(c)?.status
+
+/** An awaywork result comment's status, the times its unit said `continue` so far, and the result itself, below its heading. */
+export function resultOf(
+  c: Item['comments'][number],
+): { status: string; continued: number; text: string } | undefined {
+  const said = commentKind(c) === 'result' ? statusLine.exec(visibleLines(c).at(-2) ?? '') : null
+  if (!said?.[1]) return undefined
+  const lines = c.body.trim().split('\n')
+  const text = lines.slice(
+    1,
+    lines.findLastIndex((line) => statusLine.test(line.trim())),
+  )
+  return { status: said[1], continued: Number(said[2]) || 0, text: text.join('\n').trim() }
+}
 
 const taskHeadings = { questions: 'Questions from task ', result: 'Result of task ' }
 

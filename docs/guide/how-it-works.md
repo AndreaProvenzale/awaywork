@@ -66,11 +66,11 @@ The section and status names are guesses; `awaywork init` replaces them with you
 Items that share a key or a linked PR (repo and branch) are one unit, one piece of work on one feature, ranked at its best item's rule. An Asana task linked to your PR becomes one unit with that PR. An awaywork PR is linked to the items its footer names; one you wrote, by the key in its branch or title, or the source's [`link`](./configuration.md#linking-prs) line in its body.
 
 - The unit works in its linked PR's repo, else the item's `repo` field; with neither it is skipped.
-- A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open.
+- A unit that links an open awaywork PR is skipped as **waiting for review**: awaywork doesn't add to work you haven't read from an earlier run. An awaywork PR only matches rules whose `where` names `ours`, like the default `fix` on threads you left on it: that rule then takes the unit, even over a better-ranked item linked to the PR, and its draft PR stacks on the awaywork PR. A GitHub issue's draft PR into the default branch says `Closes` it, which links the two, so the issue is skipped as waiting for review while that draft is open. Except for a draft awaywork left for a later run, whose footer says the agent goes on there: the unit [continues](#continue) on it.
 - A PR awaywork pushed onto (a `deliver: push` rule) is skipped as **waiting for review** too, while its head is still the commit awaywork pushed (kept in the state dir, so not on a runner).
 - A unit whose item's newest comment is awaywork's [questions](#questions) is skipped as **waiting for your answer**, until someone replies on the item.
 - A unit a `deliver: plan` rule took waits on awaywork's [plan](#plans) on its item: skipped as **waiting for your approval** until someone replies, planned again on feedback, and [fanned out](#tasks) into its tasks once you approved it.
-- A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
+- A unit none of whose items changed since a worker last finished the same skill on it is skipped as **unchanged since run `<id>`**, unless it said [`continue`](#continue), so a review or a unit that gave up isn't redone every run. A unit's chain counts as one attempt, finished when every step that ran was done and no publish left anything behind; commits left unpushed retry. "Changed" is the item's `updated` time; attempts live in `~/.local/state/awaywork/attempts.json`, and a unit picked with `run --unit` isn't skipped.
 - A unit whose chain didn't finish 3 runs in a row (a failure, an error, a `unit_minutes` timeout, commits left unpushed) is skipped as **gave up after 3 attempts; next try on `<date>`**, a week after the last one, even if its items changed in between: a Sentry error that keeps firing doesn't get a fresh try every night. That week-later try is one try: fail again and it waits another week. A plan report followed by a failed implement is one failure; a finished attempt clears the count, matching another skill starts a new one, and skipped, dry-run and aborted units don't count. Neither does a stop the item didn't cause (quota, session limit, window end) or may not have (a watchdog stop for low memory or disk): it tries again next run. `run --unit` runs it anyway, as its one try.
 - `awaywork skip <source:key>` (e.g. `github:acme/api#5`) leaves an item, and any unit it joins, alone until `awaywork unskip` or the `--until` date; `plan --skipped skipped_by_you` lists it with the `--reason`. Skips live in `~/.local/state/awaywork/skips.json`, and `run --unit` runs the item anyway.
 - `awaywork approve <source:key>` marks an item approved, for items with no tracker section, state or label to say so (those already work through `where`). Rules read it as the key `approved`, like `title`: `skill: implement, where: { approved: true }` waits for it, so you can approve a `plan` report today and have `implement` take the item tonight. An item takes the first rule it matches, so that rule goes above the one that plans the item (or give the `plan` rule `approved: false`), as in the example below. The approval clears once the unit planned with it finishes, as an attempt counts it: a failed step or work left unpublished keeps it for the retry. An approval you give during a run stays. Approvals live in `~/.local/state/awaywork/approvals.json`. On an item waiting on a [plan](#plans), it approves the plan instead, with a reply on the item; it reads the item's source only when a `deliver: plan` rule can take items from it, so without one it stays offline.
@@ -131,7 +131,7 @@ Each unit runs in a fresh clone on a new branch cut from its base: the linked PR
 
 Either way, a skill that defines verdicts also writes one word to `.away/out/verdict`, such as `approve`. The report shows it next to the unit's result, and a [loop](./chains.md#loops) can end on it.
 
-The harness also asks every step for one word in `.away/out/status` when it stops: `done` when it finished, `ask` when it wrote [questions](#questions). `ask` is the one awaywork acts on; a step that writes no status file is read as it always was, from what it left.
+The harness also asks every step for one word in `.away/out/status` when it stops: `done` when it finished, `ask` when it wrote [questions](#questions), `continue` when it made progress and needs [another run](#continue). `ask` and `continue` are the ones awaywork acts on; `done` only lets a draft it goes on with turn ready, and a step that writes no status file is read as it always was, from what it left.
 
 A skill commits unless its metadata says it reports, as `review` and `plan` do; the rule's `deliver` says where the commits go, and a chain that committed nothing reports whatever its `deliver`. `pr`, `push`, `pending_review` and `plan` are never a skill's default. A PR's body gets its items' [`link`](./configuration.md#linking-prs) lines, and ends with a footer naming awaywork, the run and the unit's items, which is how the next plan recognises it and links it to them.
 
@@ -188,9 +188,65 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 
   The footer is where awaywork keeps the status: the agent could write a `Status:` line of its own, but not after the footer.
 
-  Under `push` they're pushed onto your PR, and it asks the same. For now the next run treats that draft like any awaywork PR: it waits for your review.
+  Under `push` they're pushed onto your PR, and it asks the same. Once someone answers, the next run goes on with that draft, as for [`continue`](#continue), `run: soon` included.
 
-- Without a status file, awaywork guesses as it always did: a step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A word other than `done` or `ask`, or `ask` without `questions.md`, reads as no file, with a line in the run's log saying so. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
+- Without a status file, awaywork guesses as it always did: a step that committed went on, so its `questions.md` is left in its `out/` and nothing is posted. A word other than `done`, `ask` or `continue`, or `ask` without `questions.md`, reads as no file, with a line in the run's log saying so. A chain that asked doesn't run its rule's [`on_done`](./configuration.md#on-done).
+
+## Continue
+
+Work too big for one run doesn't have to be squeezed into one. A step that commits what's solid and writes `continue` to `.away/out/status` says so: progress made, run me again. The chain stops there, so a review or a fix doesn't run on half-done work, and publishes what it has. Under `draft_pr` or `pr`, its commits open as a draft (`draft: the agent will continue` in the report), headed by awaywork's status line and counted in the footer:
+
+```text
+Export screen
+
+Status: continue (1 of 3): awaywork's next window run goes on here
+
+Gates: none fired (schema)
+
+---
+
+Done.
+
+…
+
+---
+<!-- awaywork run=20261026-232730 item=github:acme%2Fapi%231%2Fapp status=continue continued=1 head=1f8a2313462c9a1f49af169ae1822d14c8adcde3 from=16548667d8e02a7a03e25135ff6054b195de8e51 -->
+Opened by awaywork (run `20261026-232730`): a coding agent worked on this unattended. Review it like any other contribution.
+```
+
+The footer is where awaywork reads it back, never the state dir, so a fresh runner goes on too: the status, the times the unit said `continue`, the head it pushed and the commit the draft's own commits start after. The visible line is for you. The rule:
+
+> A `continue` goes on in the next run that would take the item anyway: a window run, a scheduled one or a manual `awaywork run`, never `run: soon`. It goes on only where awaywork can fast-forward its own GitHub draft: the chain's first slice, its head unchanged since awaywork left it, the PR opened by you and its body last edited by you, under 3 continues. Otherwise the draft is yours, with a "finish by hand" note. A draft that [asked](#questions) goes on the same way once someone answers, `run: soon` included, as any item change.
+
+Going on, the unit clones the draft's branch, its prompt says so, and `.away/context/previous/report.md` holds the last report, the draft's body when no run of it is kept on the machine. Its commits are fast-forwarded onto the draft, no new PR and no suffixed branch, and the new `pr.md` replaces its title and body:
+
+```text
+Units 2
+     item            rule     skill                 provider  deliver  title
+  1  acme/api#1/app  #2 soon  implement (built-in)  claude    pr       Export screen
+     in acme/web
+     goes on with its draft https://github.com/acme/web/pull/13, which said continue (1 of 3)
+```
+
+Once the agent says `done`, or writes no status file, and `verify`, the gates and the loops pass on every commit of the draft, a `deliver: pr` draft is marked ready for review; under `draft_pr` it stays a draft, its status line gone. The agent's word can only hold a PR back:
+
+```text
+| 1 | [acme/api#1/app Export screen](https://github.com/acme/api/issues/1) | implement → loop(review ⇄ fix) | claude | done, 2 turns (loop: 1 round of review ⇄ fix; until held: verdict approve) | https://github.com/acme/web/pull/13 (1 commit, ready for review), verdict approve |
+```
+
+When awaywork won't go on, the run's report says `<why>: finish <PR> by hand`, the draft opens without the status line, and questions it asked stay in the report, a stacked slice's even without commits (`finish it on <PR below> by hand`). A first slice that committed nothing has no draft, so its questions are posted. The next plan skips the unit with the same why:
+
+```text
+Needs you 1
+  web#7  awaywork's draft says continue, but it moved from 1f8a231,…
+         Export screen
+```
+
+The whys are `a stacked slice can't go on`, `awaywork goes on with its own draft on GitHub only`, `someone else opened or edited it last`, `it moved from <sha>, where awaywork left it` and `it continued 3 times`. The footer still holds the draft's [dependents](#tasks) back. Mark it ready to take it over: a ready PR, or a draft without a status in its footer, waits for your review like any awaywork PR. A `run: soon` run skips a `continue` as `goes on from <PR> in the next window run`.
+
+- **A report** that says `continue` posts its result where a result goes, a [report task](#report-tasks)'s or `on_done: { comment: result }`'s, with `Status: continue (1 of 3)`, and runs again from it, its report reaching the next run as `previous/report.md`, up to the same cap. Clear a capped report's count with `awaywork skip`, or by deleting awaywork's `continue` results on the item. Otherwise it only reports.
+- A `continue` with nowhere to keep its count, a committing step with no commits on a new branch or a `push`, `pending_review` or `plan` rule, reads as no status file, with a line in the run's log.
+- A chain that says `continue` doesn't run its rule's `on_done` move: the unit isn't done.
 
 ## Plans
 
@@ -320,6 +376,7 @@ Nothing about the feature lives in the state dir. Every run reads the plan off t
 | --- | --- | --- |
 | You approved | `fanned out: api no PR yet, web waits for api` | `api` runs and opens its PR; `web` is skipped as `waiting for task api's PR to merge` |
 | `api`'s PR is open | `fanned out: api PR open, web waits for api` | `api` waits for your review, under Needs you, like any awaywork PR |
+| `api` said `continue` | `fanned out: api draft says continue, web waits for api` | the next window run [goes on](#continue) with `api`'s draft |
 | `api` merged | `fanned out: api merged, web no PR yet` | `web` runs, cut from the default branch, which has `api` in it |
 | `web`'s PR closed unmerged | plans again | none run until you approve the new plan |
 | Every task done | `all tasks done: close or move the card`, under Needs you | none: each merged, or a [report task](#report-tasks) posted its `done` result |
@@ -347,7 +404,7 @@ Opened by awaywork (run `20261026-220012`): a coding agent worked on this unatte
 - A task's branch is its name for good: when something else holds `away/ENG-2101-api`, the task is skipped with `delete it to run this task` rather than taking `-2`, which its PR lookup wouldn't find. A configured [`branch`](./configuration.md#branch-names) template renders from the task's key alone, so a re-plan that retitles a task keeps its PR: `{title}` or `{type}` in the template a `planned` rule uses, its own or the one it inherits, is a config error. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does.
 - A task branch awaywork pushed whose PR then failed to open still reads `no PR yet` on the card and in `awaywork plan`, since the PR is the task's state. The run skips it, `away/ENG-2101-api exists on acme/api without a PR; delete it to run again`, in each morning report; delete the branch and the next run starts the task over.
 - A task takes no approval of its own: the plan's covers it, so its `approved` is always false, and `awaywork approve tracker:ENG-2101/api` is refused.
-- On [Bitbucket](./configuration.md#bitbucket-and-jira) it all works the same, through twg: a declined or superseded PR counts as closed unmerged, when it was last updated, and a stacked task's PR goes into the branch of the one below, since Bitbucket has no stacks.
+- On [Bitbucket](./configuration.md#bitbucket-and-jira) it all works the same, through twg: a declined or superseded PR counts as closed unmerged, when it was last updated, and a stacked task's PR goes into the branch of the one below, since Bitbucket has no stacks. A task whose draft says `continue`, or asks, holds its dependents back as on GitHub, but it's yours to [finish](#continue).
 
 ### Report tasks
 
@@ -385,6 +442,7 @@ Status: done
 ```
 
 - It's **done** once a `done` result for it is on the card, newer than your approval of the plan: `awaywork plan` skips it as `done: its result is on <card>`, and the card reads `qa done`. Until then it runs, a failed attempt counting like any unit's. A re-plan's new approval leaves older results behind, so its tasks report again.
+- A `continue` result isn't done: the task [runs again](#continue).
 - **Nothing can wait on it**: no PR to stack on, no check, no merge. A plan whose `after` names a report task isn't posted (`plan not posted: plan.yml: task web: after names qa, which reports: it opens no PR to stack on, check or merge`). It can wait on others, as `qa` waits for `app` to open above.
 - A `planned` rule delivers `draft_pr`, `pr` or `report`; anything else is a config error.
 
@@ -456,6 +514,7 @@ The card, run by run:
 | --- | --- | --- |
 | You approved | `fanned out: api no PR yet, web no PR yet` | `api` opens its PR, then `web` runs on `api`'s branch and opens its PR, stacked on `api`'s |
 | `api` failed | `fanned out: api no PR yet, web no PR yet` | `web` is skipped as `api opened no PR`; both run again next run |
+| `api` said `continue` | `fanned out: api draft says continue, web no PR yet` | `web` is skipped as `api left a draft that says continue`; the window run that finishes `api` runs `web` right after it, stacked on its PR. A check on `api`'s PR waits as `its draft says continue` |
 | A cap cut the block after `api` | `fanned out: api PR open, web no PR yet` | the next run stacks `web` on `api`'s open PR: `after api, stacks on #41` |
 | `api` merged before `web` ran | `fanned out: api merged, web no PR yet` | `web` is cut from the default branch |
 | Both PRs are open | `fanned out: api PR open, web PR open` | both wait for your review |

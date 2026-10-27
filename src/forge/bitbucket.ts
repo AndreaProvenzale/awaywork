@@ -2,7 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
+import { GITHUB_ONLY } from '../core/continue.js'
+import { isOurs, leftIn } from '../core/footer.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
@@ -18,6 +19,7 @@ type Pr = {
   title: string
   description: string | null
   state: string
+  draft: boolean
   updated_on: string
   source: Side
   destination: Side
@@ -94,6 +96,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
   let myPrs: Promise<Pr[]> | undefined
 
   const forge: Forge = {
+    ownDraftsRefused: GITHUB_ONLY,
+
     async clone(repo, branch, dir, fork) {
       if (fork)
         throw new Error(
@@ -123,6 +127,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
+          ...leftIn(pr.description, pr.draft, GITHUB_ONLY),
         }))
     },
 
@@ -146,6 +151,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           head: pr.source.commit.hash,
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
+          ...leftIn(pr.description, pr.state === 'OPEN' && pr.draft, GITHUB_ONLY),
           // A declined or superseded PR changes no more: its last update is when it closed.
           ...(pr.state !== 'OPEN' && pr.state !== 'MERGED' && { closedAt: pr.updated_on }),
         }))
@@ -186,8 +192,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return "Bitbucket can't push onto a PR: twg reads neither branch restrictions nor auto-merge"
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
-      const { title, body } = await prText(bodyFile, head, runId, items, status)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
       try {
         const file = join(dir, 'description.md')
@@ -200,6 +206,10 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       } finally {
         await rm(dir, { recursive: true, force: true })
       }
+    },
+
+    async updatePr() {
+      throw new Error(GITHUB_ONLY)
     },
 
     /** Bitbucket has no stacked PRs; the upper PR's base is already the lower one's branch. */

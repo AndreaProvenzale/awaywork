@@ -27,7 +27,7 @@ The unit section below says which delivery this unit has.
 - **Push.** Commit as for a PR; awaywork pushes your commits onto the developer's own pull request. Write `.away/out/pr.md` right after your first commit and keep it current: it says what you changed, and without it nothing is pushed.
 - **Questions.** When you can't go on without a person's answer, write the questions to `.away/out/questions.md`, in plain text, and `ask` to `.away/out/status`. awaywork posts them on the item, and the unit runs again once someone replies there: an earlier round's questions show up in the item's comments as awaywork's, with the replies after them. Commits you already made still go out: a PR as a draft, a push onto the developer's PR. Ask only what blocks you; anything else, pick the most likely reading.
 - **Verdict.** When the skill defines verdicts, also write the one word that fits to `.away/out/verdict`. awaywork reads it, e.g. to end a loop.
-- **Status.** When you stop, write one word to `.away/out/status`: `done` when the work is finished, `ask` when you wrote questions.
+- **Status.** When you stop, write one word to `.away/out/status`: `done` when the work is finished, `ask` when you wrote questions, `continue` when the work is too big for one run: commit what's solid, say in your PR body or report what's left, and awaywork runs the unit again from there, on the same branch.
 
 Either way, state only what you checked: the commands you ran and their result, and what you could not verify. Leave out rationale you did not confirm. Work that needs a device or a manual check is flagged, never blocked on.
 

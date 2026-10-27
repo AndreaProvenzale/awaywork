@@ -3,11 +3,12 @@ import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } 
 import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
+import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
-import { elsewhere, planState } from './plan.js'
+import { elsewhere, latestResult, planState } from './plan.js'
 import {
   closestRule,
   defaultRules,
@@ -93,6 +94,9 @@ export type SkipKind =
   | 'invalid_branch'
   | 'refused_delivery'
   | 'unstackable'
+  | 'draft_moved'
+  | 'continue_cap'
+  | 'continues_later'
   | 'running'
 
 /** Whether you can act to make the item run: the rest is the config working as intended. */
@@ -115,6 +119,9 @@ export const needsYou: Record<SkipKind, boolean> = {
   invalid_branch: true,
   refused_delivery: true,
   unstackable: true,
+  draft_moved: true,
+  continue_cap: true,
+  continues_later: false,
   running: false,
 }
 
@@ -186,8 +193,28 @@ export function planRun(input: {
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
-    if (ours && !pickup) {
+    // awaywork's own draft for these items, which it left for a later run.
+    const keys = items.map((i) => `${i.source}:${i.key}`)
+    const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
+    if (ours && !pickup && !draft) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
+      continue
+    }
+    // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
+    const result = draft ? undefined : latestResult(items[0] as Item)
+    const left = draft ?? (result?.status === 'continue' ? result : undefined)
+    const where = (draft && ours?.url) || (items[0] as Item).url
+    const stop = left && byHand(left, { head: ours?.head })
+    if (left && stop) {
+      const what = draft ? `awaywork's draft ${where}` : "awaywork's result"
+      const or = draft ? ', or mark it ready' : ''
+      skip(stop.kind, `${what} says ${left.status}, but ${stop.why}: finish it by hand${or}`, where)
+      continue
+    }
+    const goesOn = left?.status === 'continue'
+    // A soon run reacts to an item changing, and a `continue` isn't one.
+    if (goesOn && only.soon) {
+      skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
     const held = pushedOnto(items, input.attempts ?? {})
@@ -212,7 +239,11 @@ export function planRun(input: {
         ? stack.onto
         : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
     if (unplanned) {
-      skip('waiting_for_task', `waiting for task ${unplanned}'s PR to open`)
+      const held = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
+      skip(
+        'waiting_for_task',
+        `waiting for task ${unplanned}'s ${held ? `draft, which says ${held.status}` : 'PR to open'}`,
+      )
       continue
     }
     const ontoPr = stack?.pr
@@ -238,7 +269,7 @@ export function planRun(input: {
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean)) {
+    if (since.every(Boolean) && !goesOn) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -257,7 +288,7 @@ export function planRun(input: {
     const reports = stepReports(rule, input.skills)
     const committing = committingStep(rule, input.skills)
     const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
-    const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
+    const pr = (draft && ours) || (committing ? prs.find((p) => p.mine) : undefined) || prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no_repo', 'no repo: no linked PR or repo field')
@@ -312,13 +343,28 @@ export function planRun(input: {
     }
 
     const id = slug(items[0]?.key ?? '')
+    // A resumed task's draft stays stacked on the task below it while that one is open.
+    const below =
+      draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
+    const stackedOn = ontoPr?.url ?? (below && below.state === 'open' ? below.url : undefined)
     const at = {
       base,
       foreign,
       untrusted: pr ? !pr.trusted : false,
       fork,
-      branch,
-      ...(ontoPr && { stackedOn: ontoPr.url }),
+      branch: draft ? base : branch,
+      ...(stackedOn && { stackedOn }),
+      ...(draft &&
+        pr && {
+          resume: {
+            url: pr.url,
+            number: pr.number,
+            from: draft.from,
+            head: draft.head,
+            status: draft.status,
+          },
+        }),
+      ...(left && { continued: left.continued }),
     }
     let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
@@ -415,7 +461,8 @@ function stackTarget(
   const { task } = item
   if (!task?.onto) return undefined
   const pr = task.parent.taskPrs?.[task.onto]
-  if (pr) return { onto: task.onto, pr }
+  // A draft left for a later run holds half-done work: it stacks only once that run finished it.
+  if (pr && !pr.left) return { onto: task.onto, pr }
   const after = taskChain(units, item, task.onto)
   return { onto: task.onto, ...(after && { after }) }
 }
@@ -436,7 +483,11 @@ function openedElsewhere(item: Item): string[] {
   const own = task?.plan.find((t) => t.id === task.id)
   if (!task || !own) return []
   return elsewhere(own, task.plan)
-    .filter((t) => own.after[t.id] === 'opened' && !task.parent.taskPrs?.[t.id])
+    .filter(
+      (t) =>
+        own.after[t.id] === 'opened' &&
+        (task.parent.taskPrs?.[t.id]?.left ?? !task.parent.taskPrs?.[t.id]),
+    )
     .map((t) => t.id)
 }
 

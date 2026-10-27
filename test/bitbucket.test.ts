@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { GITHUB_ONLY } from '../src/core/continue.js'
 import { footer } from '../src/core/footer.js'
 import type { Item } from '../src/core/types.js'
 import { bitbucketForge } from '../src/forge/bitbucket.js'
@@ -118,6 +119,27 @@ describe('bitbucket forge', () => {
     expect(await linked({ source: 'asana', id: '1205', key: '1205', url })).toEqual([14])
   })
 
+  it("reads what awaywork's draft left, refused as GitHub only: it holds dependents back, never resumes", async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const description = `Half.\n\n${footer('r1', [{ source: 'jira', key: 'ENG-12' }], left)}`
+    const run = recorded([
+      [
+        /--scope me/,
+        minePage([
+          { description, draft: true },
+          { description, draft: false },
+        ]),
+      ],
+    ])
+    const prs = await bitbucketForge(['acme'], run).prsFor(
+      fakeItem({ source: 'jira', key: 'ENG-12' }),
+    )
+    expect(prs.map((pr) => pr.left)).toEqual([
+      { ...left, items: ['jira:ENG-12'], refused: GITHUB_ONLY },
+      undefined,
+    ])
+  })
+
   it('marks a PR whose branch is in another repo as a fork', async () => {
     const [pr] = JSON.parse(fixture('prs-me.json')).values
     pr.source.repository.full_name = 'someone/awaywork-sandbox'
@@ -150,15 +172,18 @@ describe('bitbucket forge', () => {
     fork.source.repository.full_name = 'someone/awaywork-sandbox'
     const declined = JSON.parse(fixture('prs-on-declined.json'))
     declined.values.push(fork)
+    const open = JSON.parse(fixture('prs-on-open.json'))
+    const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
+    open.values[0].description += `\n${footer('r1', [{ source: 'jira', key: 'SANDBOX-7' }], left)}`
     const run = recorded([
-      [/--state OPEN /, fixture('prs-on-open.json')],
+      [/--state OPEN /, JSON.stringify(open)],
       [/--state DECLINED /, JSON.stringify(declined)],
       [/--state (MERGED|SUPERSEDED) /, empty],
     ])
     const prs = await bitbucketForge(['andrea89'], run).prsOn(sandbox, 'probe/awaywork-fixture')
-    expect(prs.map(({ url, merged }) => [url, merged])).toEqual([
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false],
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false],
+    expect(prs.map(({ url, merged, left }) => [url, merged, left?.refused])).toEqual([
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false, GITHUB_ONLY],
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false, undefined],
     ])
     expect(prs[0]?.body).toContain('item=jira:SANDBOX-7')
     expect(prs.map(({ head, closedAt }) => [head, closedAt])).toEqual([

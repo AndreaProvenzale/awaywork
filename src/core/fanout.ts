@@ -197,6 +197,7 @@ export function taskPr(
     trusted: true,
     fork: false,
     ...(pr.head && { head: pr.head }),
+    ...(pr.left && { left: pr.left }),
     state: pr.open ? 'open' : pr.merged ? 'merged' : 'closed',
     ...(pr.closedAt && { closedAt: pr.closedAt }),
   }
@@ -279,7 +280,7 @@ export function expandPlans(
           card.url,
         )
       } else if (pr) {
-        states.push(`${t.id} PR open`)
+        states.push(pr.left ? `${t.id} draft says ${pr.left.status}` : `${t.id} PR open`)
         out.push({ ...item, linkedPrs: [pr] })
       } else if (blocker) {
         states.push(`${t.id} waits for ${blocker}`)
@@ -318,6 +319,7 @@ export function expandPlans(
 export function unpassed(pr: TaskPr | undefined, name: string): string | undefined {
   if (!pr) return 'no PR yet'
   if (pr.state === 'merged') return undefined
+  if (pr.left) return `its draft says ${pr.left.status}`
   const state = pr.checks?.[name] ?? 'not reported'
   return state === 'passed' ? undefined : state
 }

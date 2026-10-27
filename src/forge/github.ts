@@ -2,24 +2,38 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
+import { NOT_YOURS } from '../core/continue.js'
+import { isOurs, leftIn } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from './checks.js'
 import { type Exec, exec, graphql, onHost } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
+/** Who opened a PR and who last edited its body, if anyone. */
+export const EDITED = 'viewerDidAuthor author { login } editor { login }'
+export type Edited = {
+  viewerDidAuthor: boolean
+  author: { login: string } | null
+  editor: { login: string } | null
+}
+
+/** Why awaywork won't push onto the PR: none once you opened it and you, or awaywork as you, edited its body last. */
+export const notYours = (pr: Edited): string | undefined =>
+  pr.viewerDidAuthor && (!pr.editor || pr.editor.login === pr.author?.login) ? undefined : NOT_YOURS
+
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body isDraft ${EDITED} headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
   }
 }`
 
-type PrNode = {
+type PrNode = Edited & {
   number: number
   url: string
   title: string
   body: string
+  isDraft: boolean
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
@@ -33,7 +47,7 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
   repository(owner: $owner, name: $name) {
     defaultBranchRef { name }
     pullRequest(number: $number) {
-      state viewerDidAuthor isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
+      state isDraft body ${EDITED} isCrossRepository headRefName headRefOid autoMergeRequest { enabledAt }
     }
     pullRequests(headRefName: $branch, states: OPEN, first: 100) {
       nodes { number isCrossRepository viewerDidAuthor }
@@ -43,9 +57,10 @@ const prStateQuery = `query($owner: String!, $name: String!, $number: Int!, $bra
 
 type PrState = {
   defaultBranchRef: { name: string } | null
-  pullRequest: {
+  pullRequest: Edited & {
     state: string
-    viewerDidAuthor: boolean
+    isDraft: boolean
+    body: string
     isCrossRepository: boolean
     headRefName: string
     headRefOid: string
@@ -60,7 +75,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { number url body state closedAt headRefOid isCrossRepository }
+      nodes { number url body state isDraft ${EDITED} closedAt headRefOid isCrossRepository }
     }
   }
 }`
@@ -128,6 +143,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           mine: true,
           trusted: true,
           fork: pr.isCrossRepository,
+          ...leftIn(pr.body, pr.isDraft, notYours(pr)),
         }))
     },
 
@@ -143,28 +159,30 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const { repository } = await graphql<{
         repository: {
           pullRequests: {
-            nodes: {
+            nodes: (Edited & {
               number: number
               url: string
               body: string
               state: 'OPEN' | 'CLOSED' | 'MERGED'
+              isDraft: boolean
               closedAt: string | null
               headRefOid: string
               isCrossRepository: boolean
-            }[]
+            })[]
           }
         }
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
         .filter((pr) => !pr.isCrossRepository)
-        .map(({ number, url, body, state, closedAt, headRefOid }) => ({
-          url,
-          number,
-          body,
-          head: headRefOid,
-          open: state === 'OPEN',
-          merged: state === 'MERGED',
-          ...(closedAt && { closedAt }),
+        .map((pr) => ({
+          url: pr.url,
+          number: pr.number,
+          body: pr.body,
+          head: pr.headRefOid,
+          open: pr.state === 'OPEN',
+          merged: pr.state === 'MERGED',
+          ...leftIn(pr.body, pr.state === 'OPEN' && pr.isDraft, notYours(pr)),
+          ...(pr.closedAt && { closedAt: pr.closedAt }),
         }))
     },
 
@@ -214,7 +232,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
     },
 
     /** Reads the PR live: hours may have passed since planning. */
-    async fastForward(dir, branch, from, { repo, pr }) {
+    async fastForward(dir, branch, from, { repo, pr, draft }) {
       const [owner = '', name = ''] = repo.split('/')
       const { repository: r } = await graphql<{ repository: PrState }>(run, prStateQuery, {
         owner,
@@ -224,10 +242,17 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       })
       const p = r.pullRequest
       const shared = r.pullRequests.nodes.find((o) => !o.isCrossRepository && !o.viewerDidAuthor)
-      const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+      const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`
+      const named = leftIn(p.body, p.isDraft).left?.items ?? []
       const checks: [boolean, string][] = [
         [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
+        [!!draft && !p.isDraft, `#${pr} was marked ready`],
         [!p.viewerDidAuthor, `#${pr} isn't yours`],
+        [!!draft && !!notYours(p), `someone else edited #${pr}'s body last`],
+        [
+          !!draft && !draft.some((i) => named.includes(`${i.source}:${i.key}`)),
+          `#${pr}'s footer no longer says awaywork left it for this unit`,
+        ],
         [p.isCrossRepository, `#${pr}'s branch is on a fork`],
         [p.headRefName !== branch, `#${pr}'s branch is ${p.headRefName}`],
         [branch === r.defaultBranchRef?.name, `${branch} is the default branch`],
@@ -245,13 +270,19 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       await pushHead(run, withGhLogin, remote(repo), dir, repo, branch, from)
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft, status) {
-      const { title, body } = await prText(bodyFile, head, runId, items, status)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left)
       const into = base ? ['--base', base] : []
       const asDraft = draft ? ['--draft'] : []
       const args = ['pr', 'create', '-R', repo, ...asDraft, '--head', head, ...into]
       const out = await run('gh', [...args, '--title', title, '--body', body])
       return out.trim().split('\n').at(-1) ?? ''
+    },
+
+    async updatePr(repo, pr, bodyFile, runId, items, ready, left) {
+      const { title, body } = await prText(bodyFile, '', runId, items, left)
+      await run('gh', ['pr', 'edit', String(pr), '-R', repo, '--title', title, '--body', body])
+      if (ready) await run('gh', ['pr', 'ready', String(pr), '-R', repo])
     },
 
     /** Starts a stack of the two, or adds `pr` to `below`'s while `below` is its top; a stack can't fork. */

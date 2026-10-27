@@ -48,6 +48,8 @@ export interface UnitResult {
   result?: Commented[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
+  /** On the chain's first step: why the draft a `continue` left is yours to finish by hand, as `byHand` says; an `ask`'s why is its questions' `unposted`. */
+  byHand?: string
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
   plan?: PlanPost
 }
@@ -111,6 +113,7 @@ export function describeResult(c: Commented): string {
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */
 export const unitNotes = (u: UnitResult): string[] => [
   ...(u.questions ? [describeQuestions(u.questions)] : []),
+  ...(u.byHand ? [u.byHand] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
   ...(u.result ?? []).map(describeResult),
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
@@ -164,7 +167,7 @@ export function summaryOf(text: string, titled = false): string | undefined {
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: ask\b/.test(p))
+    .find((p) => p && !p.startsWith('Gates: none fired') && !/^Status: (ask|continue)\b/.test(p))
   if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
   return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }

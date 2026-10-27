@@ -1,11 +1,12 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { commentMarkdown, isOurs } from '../core/footer.js'
+import { commentMarkdown, isOurs, leftIn } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
+import { EDITED, type Edited, notYours } from '../forge/github.js'
 
 const config = z
   .strictObject({
@@ -56,11 +57,11 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName headRefOid isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor
+        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor editor { login }
         additions deletions
         files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
@@ -135,14 +136,14 @@ type Comment = By & { body: string; createdAt: string; editor?: { login: string 
 type Comments = Nodes<Comment> & {
   pageInfo?: { hasPreviousPage: boolean; startCursor: string | null }
 }
-type PrLink = {
+type PrLink = Edited & {
   number: number
   url: string
+  isDraft: boolean
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
   body: string
-  viewerDidAuthor: boolean
   authorAssociation: string
   repository: { nameWithOwner: string }
 }
@@ -160,7 +161,6 @@ interface Node extends PrLink {
   labels: Nodes<{ name: string }>
   comments: Comments
   closedByPullRequestsReferences?: Nodes<PrLink>
-  isDraft?: boolean
   additions?: number
   deletions?: number
   files?: Files
@@ -523,6 +523,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ours: isOurs(pr.body),
+  ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,
