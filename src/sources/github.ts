@@ -6,7 +6,7 @@ import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
-import { bodyYours, EDITED, type Edited } from '../forge/github.js'
+import { EDITED, type Edited, notYours } from '../forge/github.js'
 
 const config = z
   .strictObject({
@@ -523,7 +523,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ours: isOurs(pr.body),
-  ...leftIn(pr.body, pr.isDraft, bodyYours(pr)),
+  ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,

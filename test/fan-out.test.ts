@@ -10,6 +10,7 @@ import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
+import { NOT_YOURS } from '../src/core/continue.js'
 import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
 import {
   approveReply,
@@ -545,11 +546,11 @@ describe('a task that goes on in a later run', () => {
     status: 'ask' | 'continue',
     continued = 1,
     head = 'h1',
-    yours = true,
+    refused?: string,
   ): TaskPr => ({
     ...pr('api', 'open'),
     head,
-    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'], yours },
+    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'], refused },
   })
   // Nothing changed since the last run took the tasks.
   const unchanged: Attempts = Object.fromEntries(
@@ -597,64 +598,36 @@ describe('a task that goes on in a later run', () => {
     ])
   })
 
-  it('stops at the cap, or once its head moved, and needs you', () => {
-    const capped = plan([approved({ api: draftOf('continue', 3) })], config, unchanged)
-    expect(capped.units).toEqual([])
-    expect(skips(capped)).toContainEqual([
-      'acme/api#1/api',
-      'continue_cap',
-      'continued 3 times on https://github.com/acme/api/pull/api: needs you',
-    ])
-    const moved = plan([approved({ api: draftOf('continue', 1, 'h2') })], config, unchanged)
-    expect(skips(moved)).toContainEqual([
-      'acme/api#1/api',
-      'draft_moved',
-      "awaywork's draft https://github.com/acme/api/pull/api moved from h1, where it left it: needs you",
-    ])
+  it("leaves it to you, saying why, once it can't go on, holding its dependents back", () => {
+    const said = "awaywork's draft https://github.com/acme/api/pull/api says continue, but"
+    const cases: [TaskPr, string, string][] = [
+      [draftOf('continue', 3), 'continue_cap', 'it continued 3 times'],
+      [draftOf('continue', 1, 'h2'), 'draft_moved', 'it moved from h1, where awaywork left it'],
+      [draftOf('continue', 1, 'h1', NOT_YOURS), 'waiting_for_review', NOT_YOURS],
+    ]
+    for (const [api, kind, why] of cases) {
+      const p = plan([stacked({ api })], configOf(queue), unchanged)
+      expect(p.units.filter((u) => !u.chain)).toEqual([])
+      expect(skips(p)).toEqual(
+        expect.arrayContaining([
+          ['acme/api#1/api', kind, `${said} ${why}: finish it by hand, or mark it ready`],
+          [
+            'acme/api#1/web',
+            'waiting_for_task',
+            "waiting for task api's draft, which says continue",
+          ],
+          [
+            'acme/api#1/app',
+            'waiting_for_task',
+            "waiting for api's check CI (its draft says continue)",
+          ],
+        ]),
+      )
+    }
     expect([needsYou.continue_cap, needsYou.draft_moved, needsYou.continues_later]).toEqual([
       true,
       true,
       false,
-    ])
-    // Its dependents wait for it with the reason.
-    const held = plan([stacked({ api: draftOf('continue', 3) })], configOf(queue), unchanged)
-    expect(skips(held)).toContainEqual([
-      'acme/api#1/web',
-      'waiting_for_task',
-      "waiting for task api's draft, which says continue",
-    ])
-  })
-
-  it("holds its dependents, but doesn't go on, once someone else edited its body last, or on Bitbucket", () => {
-    const edited = { api: draftOf('continue', 1, 'h1', false) }
-    const p = plan([stacked(edited)], configOf(queue), unchanged)
-    expect(p.units.filter((u) => !u.chain)).toEqual([])
-    expect(skips(p)).toEqual(
-      expect.arrayContaining([
-        [
-          'acme/api#1/api',
-          'waiting_for_review',
-          "awaywork's draft https://github.com/acme/api/pull/api says continue, but someone else opened or edited it last: finish it, or mark it ready",
-        ],
-        ['acme/api#1/web', 'waiting_for_task', "waiting for task api's draft, which says continue"],
-        [
-          'acme/api#1/app',
-          'waiting_for_task',
-          "waiting for api's check CI (its draft says continue)",
-        ],
-      ]),
-    )
-    const onBitbucket = parseConfig(`
-providers: [claude: {}]
-sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', write: 'cat' } }
-queue:
-${queue}`)
-    const left = { ...edited.api.left, items: ['tracker:acme/api#1/api'] } as TaskPr['left']
-    const tracked = { ...approved({ api: { ...edited.api, left } }), source: 'tracker' }
-    expect(skips(plan([tracked], onBitbucket, unchanged))).toContainEqual([
-      'acme/api#1/api',
-      'waiting_for_review',
-      "awaywork's draft https://github.com/acme/api/pull/api says continue, but awaywork goes on with its own draft on GitHub only: finish it by hand, or mark it ready",
     ])
   })
 
@@ -697,7 +670,7 @@ ${queue}`)
     expect(skips(plan([fanned(3)], qaRule, unchanged))).toContainEqual([
       'acme/api#1/qa',
       'continue_cap',
-      'continued 3 times on https://example.com/1: needs you',
+      "awaywork's result says continue, but it continued 3 times: finish it by hand",
     ])
   })
 })
@@ -716,34 +689,19 @@ describe("a task's PR", () => {
     body: body(key),
     open: state === 'open',
     merged: state === 'merged',
-    draft: false,
-    bodyYours: true,
     ...(state !== 'open' && { closedAt: at(3) }),
   })
 
-  it('goes on only while it is a draft whose body is yours: one you marked ready, or someone else edited, waits for review', () => {
+  it("carries what its draft left, and waits for review once it's ready", () => {
     const left = { status: 'continue', continued: 1, head: 'h1', from: 'f0' } as const
-    const said = (draft: boolean, bodyYours = true) => ({
-      ...on(4, 'open'),
-      draft,
-      bodyYours,
-      body: `Half.\n\n${footer('r1', [{ source: 'github', key: task.key }], left)}`,
-    })
-    const items = ['github:acme/api#1/api']
-    expect(taskPr([said(true)], task)?.left).toEqual({ ...left, items, yours: true })
-    expect(taskPr([said(false)], task)?.left).toBeUndefined()
-    expect(taskPr([said(true, false)], task)?.left).toEqual({ ...left, items, yours: false })
-    const waits = (pr: ReturnType<typeof said>) =>
-      skips(plan([approved({ api: taskPr([pr], task) as TaskPr })]))
-    expect(waits(said(false))).toContainEqual([
+    const draft = { ...left, items: [`github:${task.key}`] }
+    expect(taskPr([{ ...on(4, 'open'), left: draft }], task)?.left).toEqual(draft)
+    expect(
+      skips(plan([approved({ api: taskPr([on(4, 'open')], task) as TaskPr })])),
+    ).toContainEqual([
       'acme/api#1/api',
       'waiting_for_review',
       'waiting for review: awaywork PR https://github.com/acme/api/pull/4 is open',
-    ])
-    expect(waits(said(true, false))).toContainEqual([
-      'acme/api#1/api',
-      'waiting_for_review',
-      "awaywork's draft https://github.com/acme/api/pull/4 says continue, but someone else opened or edited it last: finish it, or mark it ready",
     ])
   })
 

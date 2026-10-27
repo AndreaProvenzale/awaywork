@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
+import { NOT_YOURS } from '../core/continue.js'
 import { isOurs, leftIn } from '../core/footer.js'
 import type { Forge, Item, PrRef } from '../core/types.js'
 import { type Check, checkContexts, checkResult } from './checks.js'
@@ -17,9 +18,9 @@ export type Edited = {
   editor: { login: string } | null
 }
 
-/** You opened the PR, and you, or awaywork as you, edited its body last. */
-export const bodyYours = (pr: Edited): boolean =>
-  pr.viewerDidAuthor && (!pr.editor || pr.editor.login === pr.author?.login)
+/** Why awaywork won't push onto the PR: none once you opened it and you, or awaywork as you, edited its body last. */
+export const notYours = (pr: Edited): string | undefined =>
+  pr.viewerDidAuthor && (!pr.editor || pr.editor.login === pr.author?.login) ? undefined : NOT_YOURS
 
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
@@ -144,7 +145,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           mine: true,
           trusted: true,
           fork: pr.isCrossRepository,
-          ...leftIn(pr.body, pr.isDraft, bodyYours(pr)),
+          ...leftIn(pr.body, pr.isDraft, notYours(pr)),
         }))
     },
 
@@ -182,8 +183,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           head: pr.headRefOid,
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
-          draft: pr.isDraft,
-          bodyYours: bodyYours(pr),
+          ...leftIn(pr.body, pr.state === 'OPEN' && pr.isDraft, notYours(pr)),
           ...(pr.closedAt && { closedAt: pr.closedAt }),
         }))
     },

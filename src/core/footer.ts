@@ -60,18 +60,20 @@ export function footerLeft(body: string | null | undefined): Left | undefined {
   return { status, continued: Number(value('continued')) || 0, head, from }
 }
 
+/** What an open draft's footer says awaywork left, the items it names, and why awaywork won't go on with it, if it won't. */
+export type DraftLeft = Left & { items: string[]; refused?: string }
+
 /**
- * A PR's `left`, with the items its footer names, for its ref, when it's still a draft whose footer says it left anything:
- * one you marked ready is yours to finish. It holds dependents back from anyone's footer, but goes on only from one `yours`,
- * since someone else's edit could forge it.
+ * A PR's `left`, for its ref, while it's still a draft whose footer says it left anything: one you marked ready is yours.
+ * It holds dependents back from anyone's footer; `refused` says why awaywork won't push onto it.
  */
 export const leftIn = (
   body: string | null | undefined,
   draft: boolean,
-  yours: boolean,
-): { left?: Left & { items: string[]; yours: boolean } } => {
+  refused?: string,
+): { left?: DraftLeft } => {
   const left = draft ? footerLeft(body) : undefined
-  return left ? { left: { ...left, items: footerItems(body), yours } } : {}
+  return left ? { left: { ...left, items: footerItems(body), ...(refused && { refused }) } } : {}
 }
 
 /** The line a PR body carries to link an item, e.g. `Part of {key}`; `{key}`, `{id}` and `{url}` are the item's. */

@@ -214,31 +214,38 @@ Done.
 Opened by awaywork (run `20261026-232730`): a coding agent worked on this unattended. Review it like any other contribution.
 ```
 
-The footer is where awaywork reads it back, never the state dir, so a fresh runner goes on too: the status, the times the unit said `continue`, the head it pushed and the commit the draft's own commits start after. The visible line is for you.
+The footer is where awaywork reads it back, never the state dir, so a fresh runner goes on too: the status, the times the unit said `continue`, the head it pushed and the commit the draft's own commits start after. The visible line is for you. The rule:
 
-- **The next run goes on with the draft.** Its unit clones the draft's branch, the step's prompt says so, and `.away/context/previous/report.md` holds the last report, the draft's body when no run of it is kept on the machine. Its commits are fast-forwarded onto the draft, no new PR and no suffixed branch, and the new `pr.md` replaces its title and body, awaywork's part updated:
+> A `continue` goes on in the next run that would take the item anyway: a window run, a scheduled one or a manual `awaywork run`, never `run: soon`. It goes on only where awaywork can fast-forward its own GitHub draft: the chain's first slice, its head unchanged since awaywork left it, the PR opened by you and its body last edited by you, under 3 continues. Otherwise the draft is yours, with a "finish by hand" note. A draft that [asked](#questions) goes on the same way once someone answers, `run: soon` included, as any item change.
 
-  ```text
-  Units 2
-       item            rule     skill                 provider  deliver  title
-    1  acme/api#1/app  #2 soon  implement (built-in)  claude    pr       Export screen
-       in acme/web
-       goes on with its draft https://github.com/acme/web/pull/13, which said continue (1 of 3)
-  ```
+Going on, the unit clones the draft's branch, its prompt says so, and `.away/context/previous/report.md` holds the last report, the draft's body when no run of it is kept on the machine. Its commits are fast-forwarded onto the draft, no new PR and no suffixed branch, and the new `pr.md` replaces its title and body:
 
-- **Which runs go on.** A `continue` re-queues the unit though its items didn't change, in a window run, a scheduled run and a manual `awaywork run`. A `run: soon` run skips it as `goes on from <PR> in the next window run`: it reacts to items changing, and a `continue` isn't a change. A draft whose step asked goes on once someone answers, like any item change, `run: soon` included.
-- **Only while the draft is as awaywork left it.** Its head must still be the commit in the footer: a commit of yours on it, or a force-push, and the unit is skipped as `awaywork's draft <PR> moved from <sha>, where it left it: needs you`. It's yours to finish then. A draft without a status in its footer, `done` or one opened before, waits for your review as always, and so does one you marked ready for review, whatever its footer says. One someone else opened, or whose body someone else edited last, still holds its [dependents](#tasks) back, but awaywork doesn't go on with it: the unit is skipped as `awaywork's draft <PR> says continue, but someone else opened or edited it last: finish it, or mark it ready`.
-- **Mark it ready to take it over.** That's the way out of a draft that moved or hit the cap: it then waits for your review like any awaywork PR.
-- **Only the chain's first slice goes on.** A [stacked slice](./chains.md#stack) that says `continue`, or asks, still ends the chain and opens as a draft if it committed, but no later run goes on with it: the report says `a stacked slice can't go on: finish <PR> by hand`, and its questions aren't posted, committed or not, since no run would read the answer.
-- **Only where awaywork can push onto a PR.** On Bitbucket it can't, so a draft that says `continue`, or asks, opens without the status line, its questions not posted, and the report says `awaywork goes on with its own draft on GitHub only: finish <PR> by hand`. Its footer still records the status, so its [dependents](#tasks) wait for it as on GitHub, and the next run skips it as `awaywork's draft <PR> says continue, but awaywork goes on with its own draft on GitHub only: finish it by hand, or mark it ready`. A step that asks without committing has no draft to go on with, so its questions are posted as anywhere else.
-- **Ready takes both sides.** Once the agent says `done`, or writes no status file, and `verify` passed, no gate fired and no loop ran out, both on every commit of the draft, a `deliver: pr` draft is marked ready for review; under `draft_pr` it stays a draft, its status line gone. Anything else keeps it a draft that waits for your review. The agent's word can only hold a PR back. The status line goes once it's done:
+```text
+Units 2
+     item            rule     skill                 provider  deliver  title
+  1  acme/api#1/app  #2 soon  implement (built-in)  claude    pr       Export screen
+     in acme/web
+     goes on with its draft https://github.com/acme/web/pull/13, which said continue (1 of 3)
+```
 
-  ```text
-  | 1 | [acme/api#1/app Export screen](https://github.com/acme/api/issues/1) | implement → loop(review ⇄ fix) | claude | done, 2 turns (loop: 1 round of review ⇄ fix; until held: verdict approve) | https://github.com/acme/web/pull/13 (1 commit, ready for review), verdict approve |
-  ```
+Once the agent says `done`, or writes no status file, and `verify`, the gates and the loops pass on every commit of the draft, a `deliver: pr` draft is marked ready for review; under `draft_pr` it stays a draft, its status line gone. The agent's word can only hold a PR back:
 
-- **The cap.** Every `continue` counts, and the third is the last: the next run skips the unit as `continued 3 times on <PR>: needs you`, with the agent's last report in the draft. Close the draft, mark it ready, or finish it. A report's count sits in its result comments, so `awaywork skip` the item, or delete awaywork's `continue` results on it to clear the count.
-- **A report** that says `continue` posts its result where a result goes, a [report task](#report-tasks)'s or `on_done: { comment: result }`'s, with `Status: continue (1 of 3)`, and runs again from it: the result is its count, and its report reaches the next run as `previous/report.md`. Otherwise it only reports. A `continue` that has nowhere to keep its count, a committing step with no commits on a new branch or a `push`, `pending_review` or `plan` rule, reads as no status file, with a line in the run's log.
+```text
+| 1 | [acme/api#1/app Export screen](https://github.com/acme/api/issues/1) | implement → loop(review ⇄ fix) | claude | done, 2 turns (loop: 1 round of review ⇄ fix; until held: verdict approve) | https://github.com/acme/web/pull/13 (1 commit, ready for review), verdict approve |
+```
+
+When awaywork won't go on, the run's report says `<why>: finish <PR> by hand`, the draft opens without the status line, and questions it asked stay in the report. The next plan skips the unit with the same why:
+
+```text
+Needs you 1
+  web#7  awaywork's draft says continue, but it moved from 1f8a231,…
+         Export screen
+```
+
+The whys are `a stacked slice can't go on`, `awaywork goes on with its own draft on GitHub only`, `someone else opened or edited it last`, `it moved from <sha>, where awaywork left it` and `it continued 3 times`. The footer still holds the draft's [dependents](#tasks) back. Mark it ready to take it over: a ready PR, or a draft without a status in its footer, waits for your review like any awaywork PR. A `run: soon` run skips a `continue` as `goes on from <PR> in the next window run`.
+
+- **A report** that says `continue` posts its result where a result goes, a [report task](#report-tasks)'s or `on_done: { comment: result }`'s, with `Status: continue (1 of 3)`, and runs again from it, its report reaching the next run as `previous/report.md`, up to the same cap. Clear a capped report's count with `awaywork skip`, or by deleting awaywork's `continue` results on the item. Otherwise it only reports.
+- A `continue` with nowhere to keep its count, a committing step with no commits on a new branch or a `push`, `pending_review` or `plan` rule, reads as no status file, with a line in the run's log.
 - A chain that says `continue` doesn't run its rule's `on_done` move: the unit isn't done.
 
 ## Plans
@@ -435,7 +442,7 @@ Status: done
 ```
 
 - It's **done** once a `done` result for it is on the card, newer than your approval of the plan: `awaywork plan` skips it as `done: its result is on <card>`, and the card reads `qa done`. Until then it runs, a failed attempt counting like any unit's. A re-plan's new approval leaves older results behind, so its tasks report again.
-- A `continue` result isn't done: it runs again in the next window run, its count in the result, as in [Continue](#continue).
+- A `continue` result isn't done: the task [runs again](#continue).
 - **Nothing can wait on it**: no PR to stack on, no check, no merge. A plan whose `after` names a report task isn't posted (`plan not posted: plan.yml: task web: after names qa, which reports: it opens no PR to stack on, check or merge`). It can wait on others, as `qa` waits for `app` to open above.
 - A `planned` rule delivers `draft_pr`, `pr` or `report`; anything else is a config error.
 

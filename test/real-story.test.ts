@@ -303,7 +303,7 @@ queue:
         'PATCH',
       )
       expect(reasonOf(await planJson(), taskKey('notes'))).toBe(
-        `awaywork's draft ${notes.html_url} says continue, but someone else opened or edited it last: finish it, or mark it ready`,
+        `awaywork's draft ${notes.html_url} says continue, but someone else opened or edited it last: finish it by hand, or mark it ready`,
       )
     },
     60_000,

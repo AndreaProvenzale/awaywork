@@ -6,6 +6,7 @@ import type { Config } from '../config/schema.js'
 import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
+import { byHand, GITHUB_ONLY } from '../core/continue.js'
 import { planComment, questionsComment, resultComment, type Status } from '../core/footer.js'
 import {
   bySlice,
@@ -529,12 +530,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let unfinished = false
     // The step that couldn't go on without answers, and its questions.
     let asked: Pick<Questions, 'step' | 'text'> | undefined
-    // Whether that step's status file said `ask`: only then do its commits publish as asking.
-    let saidAsk = false
-    // A step said `continue`: the chain stops, publishes what it has and runs again later.
-    let continues = false
-    // A later slice asked or said `continue`, or a draft did where awaywork can't push onto it: no later run goes on, so it's yours to finish.
-    let byHand: string | undefined
+    // What a step's status file left for a later run, `ask` or `continue`, and why no later run goes on with its draft, if none will.
+    const leave = (status: Held['status']): Held & { byHand?: string } => {
+      const continued = status === 'continue' ? before + 1 : before
+      const refused = input.forge.canFastForward ? undefined : GITHUB_ONLY
+      const stop = opensPr ? byHand({ continued, refused }, { slice: at }) : undefined
+      return { status, continued, ...(stop && { byHand: stop.why }) }
+    }
+    let leaves: ReturnType<typeof leave> | undefined
+    // The note saying the draft it left is yours to finish by hand.
+    let finishByHand: string | undefined
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
@@ -652,22 +657,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? "the clone's .git was refused"
                 : undefined
           const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
-          // Only a first slice's draft goes on in a later run, and only where awaywork can push onto it.
-          const byHandWhy =
-            at > 0 && (asked || continues)
-              ? "a stacked slice can't go on"
-              : opensPr && !input.forge.canFastForward && (saidAsk || continues)
-                ? 'awaywork goes on with its own draft on GitHub only'
-                : undefined
-          // Where awaywork can't push, the footer still records it, to hold dependents back.
-          const held: Held | undefined =
-            at > 0
-              ? undefined
-              : saidAsk
-                ? { status: 'ask', continued: before, url: askedOn?.url }
-                : continues
-                  ? { status: 'continue', continued: before + 1 }
-                  : undefined
+          // A first slice's footer records it even when no later run goes on, to hold dependents back; a stacked slice's would resume onto it.
+          const held = at === 0 && leaves ? { ...leaves, url: askedOn?.url } : undefined
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -681,12 +672,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 stack,
                 // Only the whole chain, cut from the default branch as the draft it resumes was, closes its issues.
                 last && !first.capped && (base === '' || (!!shape.resume && !shape.stackedOn)),
-                (failed && notReady(failed)) || byHandWhy,
+                (failed && notReady(failed)) || leaves?.byHand,
                 held,
               )
           // A stacked slice's questions stay in the report whatever it published; a first slice's only with a draft.
-          if (byHandWhy && (at > 0 || lead.outcome.kind === 'pr'))
-            byHand = `${byHandWhy}: finish ${lead.outcome.kind === 'pr' ? lead.outcome.url : `it on ${shape.stackedOn}`} by hand`
+          if (leaves?.byHand && (at > 0 || lead.outcome.kind === 'pr'))
+            finishByHand = `${leaves.byHand}: finish ${lead.outcome.kind === 'pr' ? lead.outcome.url : `it on ${shape.stackedOn}`} by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
@@ -1018,16 +1009,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         else if (asks) {
           ended = { reason: `${unit.id} asked questions`, passedOver: true }
           asked = { step: unit.id, text: questions }
-          saidAsk = status === 'ask'
+          // A stacked slice's questions reach no later run, whatever its status file said.
+          if (status === 'ask' || at > 0) leaves = leave('ask')
         } else if (status === 'continue' && kept) {
-          const why =
-            at > 0
-              ? 'said continue in a stacked slice'
-              : opensPr && !input.forge.canFastForward
-                ? 'said continue'
-                : 'will continue'
-          ended = { reason: `${unit.id} ${why}`, passedOver: true }
-          continues = true
+          leaves = leave('continue')
+          ended = {
+            reason: `${unit.id} ${leaves.byHand ? 'said' : 'will'} continue`,
+            passedOver: true,
+          }
         } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
           // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
@@ -1092,28 +1081,26 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     if (asked && lead)
       lead.questions = {
         ...asked,
-        ...(byHand ? { unposted: byHand } : await postQuestions(first, asked.text)),
+        ...(finishByHand ? { unposted: finishByHand } : await postQuestions(first, asked.text)),
       }
-    else if (byHand && lead) lead.byHand = byHand
+    else if (finishByHand && lead) lead.byHand = finishByHand
     if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
       lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, sliceOut(0)))
-    // Every slice that ran published, and only a `when` or a `continue` ended the chain early; a plan rule's plan was posted.
+    // A unit that goes on isn't done: a report keeps its count in its result, a PR in its draft.
+    const continues = leaves?.status === 'continue'
+    // Every slice that ran published, and only a `when`, or a report's `continue`, ended the chain early; a plan rule's plan was posted.
     const finished =
       !interrupted &&
       !unfinished &&
-      (!ended || ended.when || (continues && !byHand)) &&
+      (!ended || ended.when || (continues && deliver === 'report')) &&
       leads.size > 0
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
       // A report task's result is how its card hears it's done, so it always posts one.
-      const reports =
-        onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))
-      // A unit that goes on isn't done: a report keeps its count in its result, a PR in its draft.
-      if (reports && (!continues || deliver === 'report')) {
+      if (onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))) {
         const outcomes = [...leads].flatMap((r) => r.outcome ?? [])
-        lead.result = continues
-          ? await postResult(first, resultOf(outcomes), 'continue', before + 1)
-          : await postResult(first, resultOf(outcomes))
+        const status = continues ? 'continue' : 'done'
+        lead.result = await postResult(first, resultOf(outcomes), status, leaves?.continued)
       }
       if (onDone?.move && !continues)
         lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
