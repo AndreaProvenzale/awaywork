@@ -27,7 +27,7 @@ const developerFolders = [
   'XDG_RUNTIME_DIR',
 ]
 
-/** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the providers), which a container always gets. */
+/** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the checks', the providers), which a container always gets. */
 export const AWAYWORK_ENV = [
   'GH_CONFIG_DIR',
   'GH_TOKEN',
@@ -35,8 +35,11 @@ export const AWAYWORK_ENV = [
   'TWG_CONFIG_DIR',
   'GIT_CONFIG_GLOBAL',
   'GIT_CONFIG_NOSYSTEM',
+  'GIT_NO_REPLACE_OBJECTS',
+  'GIT_ATTR_SOURCE',
   'ENABLE_CLAUDEAI_MCP_SERVERS',
   'AWAYWORK_PROMPT',
+  'AWAYWORK_FROM',
 ]
 
 /** The container's `HOME`, in the clone and gone with it: what setup installs there reaches the chain's agents and checks, never another chain. */

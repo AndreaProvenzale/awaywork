@@ -194,6 +194,15 @@ describe('summaryOf', () => {
     expect(summaryOf('Fix it\n\n## Why\nThe retry hid it.', true)).toBe('The retry hid it.')
   })
 
+  it('takes the decision card, or skips the gates line when none fired', () => {
+    const card =
+      'Add VAT\n\n## Needs a decision\n\n### Gates (from scripts)\n\n- schema: db/1.sql\n\n---\n\nDid it.'
+    expect(summaryOf(card, true)).toBe('- schema: db/1.sql')
+    expect(summaryOf('Add VAT\n\nGates: none fired (schema)\n\n---\n\nDid it.', true)).toBe(
+      'Did it.',
+    )
+  })
+
   it('leaves out HTML comments, as a PR template leaves them', () => {
     const body = 'Fix it\n\n<!-- Describe the change -->\n## Summary\nDid it.<!--\nwhy\n-->'
     expect(summaryOf(body, true)).toBe('Did it.')

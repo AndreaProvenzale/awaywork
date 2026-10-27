@@ -40,7 +40,7 @@ export async function runCommand(
   dir: string,
   env: NodeJS.ProcessEnv,
   { secrets, signal, until, timeoutMs = TIMEOUT_MS, start = launch }: SetupOptions,
-): Promise<{ output: string; failed?: string; stopped?: true; timedOut?: true }> {
+): Promise<{ output: string; stdout: string; failed?: string; stopped?: true; timedOut?: true }> {
   const windowEnds = until !== undefined && until.getTime() < Date.now() + timeoutMs
   const deadline = AbortSignal.timeout(
     Math.max(0, windowEnds ? until.getTime() - Date.now() : timeoutMs),
@@ -67,13 +67,15 @@ export async function runCommand(
   const result = await (start === launch ? asWorker(dir, run) : run())
 
   const output = maskSecrets(result.all.trim(), secrets, env)
-  if (!result.failed) return { output }
-  if (!stop.aborted) return { output, failed: result.shortMessage }
+  const stdout = maskSecrets(result.stdout.trim(), secrets, env)
+  if (!result.failed) return { output, stdout }
+  if (!stop.aborted) return { output, stdout, failed: result.shortMessage }
   // A hang fails like a non-zero exit for `until`; a `when` treats `timedOut` as unchecked.
   if (!signal?.aborted && !windowEnds)
-    return { output, failed: `timed out after ${timeoutMs / 60_000} min`, timedOut: true }
+    return { output, stdout, failed: `timed out after ${timeoutMs / 60_000} min`, timedOut: true }
   return {
     output,
+    stdout,
     failed: signal?.aborted ? 'interrupted' : 'the window ended',
     stopped: true,
   }

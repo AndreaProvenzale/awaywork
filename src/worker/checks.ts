@@ -5,12 +5,21 @@ import { bin } from '../config/paths.js'
 import { type Facts, holds } from '../core/condition.js'
 import type { Condition, Unit } from '../core/types.js'
 import { runCommand } from './setup.js'
-import { inClone, refuseSymlinks, restoreGitConfig, workerEnv, writeOutput } from './workspace.js'
+import {
+  checkEnv,
+  gateEnv,
+  inClone,
+  refuseSymlinks,
+  restoreGitConfig,
+  writeOutput,
+} from './workspace.js'
 
 const CHECK_LOG_CHARS = 8000
 
 export interface Check {
   output: string
+  /** The command's own stdout, without stderr, when it ran. */
+  stdout?: string
   failed?: string
   /** Cut short by Ctrl-C or the window's end: the condition is unknown, not false. */
   stopped?: true
@@ -21,6 +30,15 @@ export interface Check {
 }
 
 export type RanCheck = Check & { command: string }
+
+export interface CheckOptions {
+  /** The slice's base, the command's `AWAYWORK_FROM`. */
+  from?: string
+  /** It decides what is published (`until`): files left uncommitted fail it. */
+  published?: boolean
+  /** A gate's chain start: the check runs even when this commit's result is known, keeps nothing, and its git reads attributes from `start` on a fresh global config. */
+  start?: string
+}
 
 export interface ChecksInput {
   env: NodeJS.ProcessEnv
@@ -44,14 +62,14 @@ export function createChecks(input: ChecksInput) {
 
   /**
    * Runs a condition's command in the clone outside the model, once per commit, with none of the
-   * secrets. When it decides what is published (`until`), files left uncommitted fail it.
+   * secrets, and git reading history as it is, not as the clone's replace refs say.
    */
   const check = async (
     command: string,
     unit: Unit,
     dir: string,
     log: (line: string) => void,
-    published: boolean,
+    { from, published, start }: CheckOptions = {},
   ): Promise<Check> => {
     if (unit.untrusted) return refusal("not run on an untrusted author's PR")
     await restoreGit(dir)
@@ -60,10 +78,13 @@ export function createChecks(input: ChecksInput) {
     const left = before.filter((line) => !alreadyDirty.has(line))
     if (left.length && published)
       return { output: left.join('\n'), failed: 'uncommitted changes in the clone' }
-    const key = `${dir} ${await head(dir)} ${command}`
-    const known = left.length ? undefined : checks.get(key)
+    const key = `${dir} ${await head(dir)} ${from} ${command}`
+    const known = left.length || start ? undefined : checks.get(key)
     if (known) return known
-    const result = await runCommand(command, dir, workerEnv(input.env, dir, input.secrets), {
+    const env = start
+      ? await gateEnv(input.env, dir, input.secrets, from, start)
+      : checkEnv(input.env, dir, input.secrets, from)
+    const result = await runCommand(command, dir, env, {
       secrets: [],
       signal: input.signal,
       until: input.until,
@@ -73,11 +94,11 @@ export function createChecks(input: ChecksInput) {
     // Only what the check itself left joins the baseline, never what a worker left before it.
     for (const line of await uncommitted(dir)) if (!before.includes(line)) alreadyDirty.add(line)
     baselines.set(dir, alreadyDirty)
-    if (!result.stopped && !left.length) checks.set(key, result)
+    if (!result.stopped && !left.length && !start) checks.set(key, result)
     return result
   }
 
-  /** What `condition` needs to know about the clone; a command's output goes to `logFile`. */
+  /** What `condition` needs to know about the clone, its `changed` since the commit `since`; a command's output goes to `logFile`. */
   const factsFor = async (
     condition: Condition,
     unit: Unit,
@@ -86,19 +107,20 @@ export function createChecks(input: ChecksInput) {
     verdict: string | undefined,
     log: (line: string) => void,
     logFile: string,
-    published = false,
+    options: CheckOptions = {},
   ) => {
     const facts: Facts = { verdict }
     let ran: RanCheck | undefined
     if (condition.command) {
-      const result = await check(condition.command, unit, dir, log, published)
+      const result = await check(condition.command, unit, dir, log, options)
       ran = { command: condition.command, ...result }
       facts.command = !ran.failed
       await refuseSymlinks(dir, [relative(dir, logFile)])
       await mkdir(dirname(logFile), { recursive: true })
       await writeOutput(logFile, checkLog(ran))
     }
-    if (condition.changed) facts.changed = await changes(dir, condition.changed, since)
+    if (condition.changed)
+      facts.changed = (await changedPaths(dir, since, condition.changed)).length > 0
     return { facts, check: ran }
   }
 
@@ -122,11 +144,19 @@ async function uncommitted(dir: string): Promise<string[]> {
   return (await git(dir, ...status)).split('\n').filter(Boolean)
 }
 
-/** Whether the chain's commits since `start`, the default branch when empty, touch `globs`. */
-async function changes(dir: string, globs: string[], start = ''): Promise<boolean> {
+/** The paths matching `globs` the commits since `from` change; a rename counts as both of its paths. */
+export async function changedPaths(dir: string, from: string, globs: string[]) {
   const paths = globs.map((glob) => `:(glob)${glob}`)
-  const since = `origin/${start || 'HEAD'}...HEAD`
-  return (await git(dir, 'diff', '--name-only', since, '--', ...paths)) !== ''
+  const diff = await git(
+    dir,
+    'diff',
+    '--name-only',
+    '--no-renames',
+    `${from}...HEAD`,
+    '--',
+    ...paths,
+  )
+  return diff.split('\n').filter(Boolean)
 }
 
 /** The command and the tail of its output. */

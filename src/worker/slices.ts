@@ -2,7 +2,16 @@ import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { footerItems, hasTrailer } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
-import { type Check, checkDetails, checkLog, commitsSince, git, type RanCheck } from './checks.js'
+import {
+  type Check,
+  type CheckOptions,
+  checkDetails,
+  checkLog,
+  commitsSince,
+  git,
+  type RanCheck,
+} from './checks.js'
+import { describeFired, gatesSection, runGates } from './gates.js'
 import { type Outcome, publish, type Stack } from './publish.js'
 import { leaveReview } from './review.js'
 import {
@@ -84,20 +93,23 @@ export interface Publisher {
     unit: Unit,
     dir: string,
     log: (line: string) => void,
-    published: boolean,
+    options?: CheckOptions,
   ) => Promise<Check>
 }
 
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
  * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
- * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed or one of its loops ended before its `until` held.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
+ * With gates, the PR body, or a push's summary, which goes only in the report, opens with their section: the decision card with each fired gate's line, else the gates that ran.
+ * `start` is the commit gates check their scripts against: the clone's before the chain's setup and workers, or where an awaywork PR it took up left the default branch.
  */
 export async function publishSlice(
   deps: Publisher,
   unit: Unit,
   dir: string,
   from: string,
+  start: string,
   reports: StepReport[],
   loops: Record<number, OpenLoop>,
   stack?: Stack,
@@ -122,13 +134,30 @@ export async function publishSlice(
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
   const failed = await verify(deps, unit, dir, from)
+  const fired = await runGates(deps.check, unit, dir, from, start)
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
+  await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
+  if (unit.gates) {
+    const section = gatesSection(Object.keys(unit.gates), fired)
+    await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
+  }
   const unmet = Object.values(loops).find((l) => !l.held)
   // `runLine` splits a chain's cell at `; `.
   const why =
     unmet && `loop ${unmet.skills.join(' ⇄ ')}: ${unmet.ended?.split('; ')[0] ?? 'nothing ran'}`
-  const notReady = failedStep ?? failed ?? why
-  return publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
+  const gated = describeFired(fired)
+  const notReady = failedStep ?? failed ?? why ?? gated
+  const outcome = await publish(unit, dir, deps.forge, deps.runId, from, stack, closes, notReady)
+  return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
+}
+
+/** Puts the gates' section first in the PR body, under its title line, or atop a push's summary. */
+async function prependSection(file: string, section: string, titled: boolean): Promise<void> {
+  const body = (await readOutput(file)).trim()
+  if (!body) return
+  const cut = titled ? body.indexOf('\n') + 1 || body.length : 0
+  const title = titled ? `${body.slice(0, cut).trim()}\n\n` : ''
+  await writeOutput(file, `${title}${section}\n\n${body.slice(cut).trim()}\n`)
 }
 
 /** Runs the unit's `verify` before it is published, its output in `verify.log`; a failure goes in the PR body, and the unit is still published. Returns how it failed. */
@@ -141,7 +170,7 @@ async function verify(
   if (!unit.verify || (await commitsSince(dir, start)) === 0) return
   const ran = {
     command: unit.verify,
-    ...(await deps.check(unit.verify, unit, dir, () => {}, false)),
+    ...(await deps.check(unit.verify, unit, dir, () => {}, { from: start })),
   }
   const out = join(dir, WORK_DIR, 'out')
   await refuseSymlinks(dir, [

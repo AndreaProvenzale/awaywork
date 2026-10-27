@@ -32,7 +32,16 @@ export type Outcome =
       /** Why its line comments were left out. */
       note?: string
     }
-  | { kind: 'pushed'; branch: string; url: string; commits: number; text: string; head: string }
+  | {
+      kind: 'pushed'
+      branch: string
+      url: string
+      commits: number
+      text: string
+      head: string
+      /** Which gates fired: their card tops `text`, which reaches only the report. */
+      gated?: string
+    }
   | { kind: 'none'; reason: string; unpublished?: true }
 
 /** A chain's own repo, kept across its slices, and the tip the slice before pushed in place of the clone's `start`. */

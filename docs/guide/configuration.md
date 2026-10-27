@@ -287,12 +287,85 @@ Every command in your config that touches a unit's clone, side by side. All of t
 | `repos.<repo>.verify` | Once per slice, when it ends with commits, before it's published; not for `deliver: report` | None | The tail of its output goes into the PR body or the push's summary, and a `deliver: pr` PR opens as a draft; the work is still published |
 | `when.command` | Before a step's agent starts, in the chain's clone; not on an untrusted author's PR | None | The step is passed over; over 15 minutes or the window's end ends the chain instead, which publishes what it has |
 | `until.command` | After every step of a loop; not on an untrusted author's PR, where the loop ends | None | The loop goes on; uncommitted changes fail it too; the window's end ends the chain, and a loop that ends failing puts the tail in the PR body |
+| `gates.<name>.command` | Once per slice, right after `verify`, when it ends with commits; not for `deliver: report` or `pending_review`, nor on a dry run | None | The gate fires: its stdout goes in the decision card, and a `deliver: pr` PR opens as a draft. So does a command that can't run, times out, hits the window's end or isn't run on an untrusted author's PR; see [Gates](#gates) |
 
-`verify`, `when` and `until` share their results: the same command on the same commit runs once. [Loops](./chains.md#loops) has the rest of their rules.
+`verify`, `when` and `until` share their results: the same command on the same commit runs once. A gate's command always runs afresh. All four get the commit the slice started from as `$AWAYWORK_FROM`, and their git ignores the clone's replace refs. Only a gate's git reads attributes from the commit the chain started from; the other three keep the worktree's, so an eol or LFS rule the chain adds doesn't trip a `git status` or `git diff --exit-code` in your `verify`. [Loops](./chains.md#loops) has the rest of their rules.
 
 `skills` at the top level adds skills to every unit, like a rule's `skills`; see [Skills](./skills.md#where-skills-come-from).
 
 PR titles, bodies and commit messages have no config: the agent follows the repo's PR template, its recent commit style and your instructions (e.g. "prefix PR titles with the task key").
+
+## Gates
+
+Some changes want a human before they go anywhere: a migration, a new public route, a bumped dependency. A gate spots one and changes what gets delivered. Each gate has a name and either `changed`, git globs from the repo root that fire when the slice's commits touch a matching path, or `command`, a script that fires when it exits non-zero, its stdout becoming the gate's line:
+
+```yaml
+gates:
+  schema: { changed: ["**/migrations/**", "**/*.prisma"] }
+  routes: { command: scripts/route-diff.sh } # non-zero exit = fires, stdout = the line
+  deps: { changed: [package.json, pnpm-lock.yaml] }
+repos:
+  acme/backend:
+    gates:
+      schema: { changed: ["src/db/schema/**"] } # joins the top-level schema globs
+      queues: { changed: ["src/jobs/**"] } # only this repo has it
+```
+
+A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from:
+
+```sh
+#!/bin/sh
+# scripts/route-diff.sh: fires when the slice adds a route
+routes=$(git diff --text "$AWAYWORK_FROM" HEAD -- src/routes | grep -E '^\+ *router\.(get|post)')
+[ -z "$routes" ] || { echo "$routes"; exit 1; }
+```
+
+Diff from `$AWAYWORK_FROM`, never from a branch like `origin/main`: the clone's refs are the agent's to move. So are its replace refs and attributes, where a `* -diff` turns the diff into `Binary files … differ`: the command's git ignores replace refs, awaywork deletes `.git/info/attributes` before it runs, and git reads `.gitattributes` files, committed or not, from the commit the chain started from rather than the worktree. Older git ignores that last part, hence the `--text`. The steps' git config is the agent's too, where a `diff.external` or a textconv driver blanks the diff, so the command's git reads a fresh global config awaywork writes, with your identity and git-lfs's filter but no attributes file, instead.
+
+Top-level gates apply to every repo, and a repo's `gates` can only add to them. A gate both define fires on either's globs, and when both have a `command`, both run and either one fires it. There's no way for a repo to turn off or loosen a top-level gate.
+
+Gates run on every slice that publishes commits, once its chain's steps are done, right after `verify`, on that slice's own commits. A fired gate puts a decision card first in the PR body, right under the title, above the agent's own text and awaywork's chain notes:
+
+```markdown
+## Needs a decision
+
+### Gates (from scripts)
+
+- schema: migrations/20261023_add_vat_mode.ts
+- routes: + GET /exports/vat   + POST /exports/vat/retry
+
+---
+```
+
+When none fired, that spot holds one line naming the gates that ran, closed by the same rule:
+
+```markdown
+Gates: none fired (schema, routes, deps)
+
+---
+```
+
+So whenever a repo has gates, awaywork's section comes first in the body and anything the agent wrote is below the rule, a card it made up included. That's what it guarantees, and no more. A repo without gates gets no section. A `changed` line lists the first three matching paths and how many more; a `command` line is its stdout on one line, cut at 300 characters, or why it failed when it printed nothing. Then:
+
+- `deliver: pr` opens the PR as a draft, and the report says which gates fired, like `draft: gate schema fired`.
+- `deliver: draft_pr` was a draft anyway: only the card is new.
+- `deliver: push` still pushes onto your PR. Its body is yours, so the section tops the push's summary in the morning report instead: `1 commit pushed onto feat/vat-export, gate schema fired, report below`.
+- `report` and `pending_review` commit nothing, so no gate runs.
+
+A `deliver: pr` run where the schema gate fired ends like this, the card's lines under the unit:
+
+```text
+Run 20261024-031502: 1 draft PR, 0 reports, 1 unit
+     item         skill      status          result
+  1  backend#412  implement  done, 14 turns  https://github.com/acme/backend/pull/88, draft: gate schema fired
+     - schema: migrations/20261023_add_vat_mode.ts
+```
+
+Gates fail closed: a command that can't run, times out, is stopped or isn't run on an untrusted author's PR fires its gate with the reason, like ``- routes: `scripts/route-diff.sh` not checked: timed out after 15 min``. The agent could also rewrite the script that judges its work, so right before a command runs, awaywork compares each file it names with the same path at the commit the clone started from, before `setup` or any agent ran, or, on an awaywork PR a rule took up, where that PR left the default branch. A file that differs, is new or is gone fires the gate without running the command, as ``- routes: `scripts/route-diff.sh` changed, not run``, whether the change is committed in this slice or an earlier [stacked](./chains.md#stack) one, left uncommitted, hidden from `git status`, or made by `verify`.
+
+That only works when the command names its script by its path from the repo root, as a word of its own: `scripts/route-diff.sh` in `bash ./scripts/route-diff.sh` or `(scripts/route-diff.sh) && echo ok` counts, but `cd scripts && sh route-diff.sh` doesn't. A file the command names that wasn't there when the chain started always fires it, so don't name one the command writes.
+
+Only the named files are compared, though, and a command gate runs repo code the agent may have changed: a helper the script sources, the repo code it calls, a module its interpreter loads from next to it. `python3 scripts/gate.py` imports a `scripts/json.py` the agent committed before the real `json`, so run Python with `-I`; Node looks for `node_modules` up from the script the same way. A `changed` gate is the one to trust: awaywork computes it from the commits it pushes. See [Safety](./safety.md#what-awaywork-publishes).
 
 ## Queue rules
 
@@ -307,7 +380,7 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, or a loop ended before its `until` held), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)) |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |

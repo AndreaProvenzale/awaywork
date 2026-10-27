@@ -21,6 +21,7 @@ import { describeSkip, type Skip } from './skips.js'
 import type {
   Condition,
   Deliver,
+  Gate,
   Item,
   Loop,
   Rule,
@@ -255,6 +256,7 @@ export function planRun(input: {
         ...at,
         id: unitId,
         verify: config.repos[repo]?.verify,
+        gates: gatesFor(config, repo),
         items,
         repo,
         rule: step,
@@ -323,6 +325,21 @@ export function planRun(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs and command join the top-level ones. */
+function gatesFor(config: Config, repo: string): Record<string, Gate> | undefined {
+  const gates = new Map<string, Gate>()
+  for (const [name, g] of [
+    ...Object.entries(config.gates),
+    ...Object.entries(config.repos[repo]?.gates ?? {}),
+  ]) {
+    const gate = gates.get(name) ?? { changed: [], commands: [] }
+    gate.changed.push(...(g.changed ?? []))
+    if (g.command) gate.commands.push(g.command)
+    gates.set(name, gate)
+  }
+  return gates.size ? Object.fromEntries(gates) : undefined
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {

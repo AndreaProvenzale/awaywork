@@ -74,7 +74,7 @@ export interface RunReport {
 
 const SUMMARY_LENGTH = 200
 
-/** A PR body's or report's first paragraph on one line, past the body's title line and any heading. */
+/** A PR body's or report's first paragraph on one line, past the body's title line, any heading or rule, and a gates section where none fired. */
 export function summaryOf(text: string, titled = false): string | undefined {
   const body = text
     .replace(/<!--[\s\S]*?-->/g, '')
@@ -87,12 +87,12 @@ export function summaryOf(text: string, titled = false): string | undefined {
     .map((p) =>
       p
         .split('\n')
-        .filter((line) => !/^#{1,6}(\s|$)/.test(line.trim()))
+        .filter((line) => !/^(#{1,6}(\s|$)|---$)/.test(line.trim()))
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .find(Boolean)
+    .find((p) => p && !p.startsWith('Gates: none fired'))
   if (!paragraph || paragraph.length <= SUMMARY_LENGTH) return paragraph
   return `${paragraph.slice(0, SUMMARY_LENGTH - 1).trimEnd()}…`
 }
@@ -358,8 +358,10 @@ function result(u: UnitResult): string {
     return `${u.outcome.url} (${counted(u.outcome.commits, 'commit')}${opened(u.outcome)})${verdict}`
   if (u.outcome?.kind === 'report') return `report below${unposted(u.outcome)}${verdict}`
   if (u.outcome?.kind === 'review') return `${u.outcome.url} (${reviewed(u.outcome)})${verdict}`
-  if (u.outcome?.kind === 'pushed')
-    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}, report below${verdict}`
+  if (u.outcome?.kind === 'pushed') {
+    const gated = u.outcome.gated ? `, ${u.outcome.gated}` : ''
+    return `${counted(u.outcome.commits, 'commit')} pushed onto ${u.outcome.branch}${gated}, report below${verdict}`
+  }
   return `${u.outcome?.reason ?? '-'}${verdict}`
 }
 

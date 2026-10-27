@@ -31,6 +31,7 @@ with:
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
+| `gates` | map | `{}` | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
 | `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
@@ -264,9 +265,21 @@ A custom source: any command that prints your open items as JSON.
 | `setup` | string |  | Setup command, run in the clone before the worker; a failure skips the unit |
 | `secrets` | string[] | `[]` | Env vars setup needs; withheld from workers, listed in Actions |
 | `verify` | string |  | Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published |
+| `gates` | map | `{}` | Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed or command |
 | `test` | string |  | Targeted test command, given to the worker in its prompt |
 | `instructions` | string |  | Instruction file for units in this repo |
 | `image` | string |  | Docker image setup, the agent and the checks run in under isolation: container; it ships the agent CLIs the repo's rules use and its toolchain |
+
+## `repos.<key>.gates.<key>`
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `changed` | string \| string[] |  | Git globs from the repo root; fires when the slice's commits change a matching path |
+| `command` | string |  | A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with |
+
+## `gates.<key>`
+
+Same keys as `repos.<key>.gates.<key>`.
 
 ## `mcp.<key>`
 
@@ -295,7 +308,7 @@ First matching rule wins; top = highest priority.
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |
-| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, or a loop's until never held), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it |
+| `deliver` | "draft_pr" \| "pr" \| "report" \| "push" \| "pending_review" |  | Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it |
 | `branch` | string |  | Branch name template for this rule |
 | `order` | "oldest" \| "newest" \| "updated" |  | Which item goes first: oldest, newest or last updated; default the source order |
 | `when` | object |  | Run this rule's unit only when the quota holds; otherwise skip it |

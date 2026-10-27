@@ -20,7 +20,8 @@ The `deliver` values are in [Delivery](./how-it-works.md#delivery), set per rule
 
 ## Built in
 
-- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong. See [Delivery](./how-it-works.md#delivery).
+- **Ready PRs:** `deliver: pr` on the rule, a draft still when something in the slice went wrong or a [gate](./configuration.md#gates) fired. See [Delivery](./how-it-works.md#delivery).
+- **Decision cards:** a gate that fires puts a "Needs a decision" card on top of the PR body, on any delivery that commits; with gates and none fired, a `Gates: none fired (…)` line sits there instead. On a `push` onto your own PR, the PR body isn't awaywork's, so it tops the summary in the morning report instead, and the push still happens. See [Gates](./configuration.md#gates).
 - **Review comments:** `deliver: pending_review` leaves the report and its line comments as your pending review, unseen until you submit it. See [Delivery](./how-it-works.md#delivery).
 
 ## Recipes

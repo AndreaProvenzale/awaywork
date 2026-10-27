@@ -25,6 +25,7 @@ import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
 import {
   copyOut,
+  gateEnv,
   prepareWorkspace,
   readOutput,
   restoreGitConfig,
@@ -325,6 +326,23 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await worker('config', '--global', 'worker.wrote', 'this')
     await prepare(true)
     expect((await worker('config', '--global', 'worker.wrote')).stdout).toBe('this')
+
+    await worker('config', '--global', 'diff.external', 'true')
+    const gate = await execa(bin('git'), ['-C', dir, 'config', '--global', '--list'], {
+      env: await gateEnv(env, dir, []),
+      extendEnv: false,
+    })
+    expect(gate.stdout).toBe(
+      [
+        'user.name=Dev Eloper',
+        'user.email=dev@example.com',
+        'filter.lfs.smudge=git-lfs smudge -- %f',
+        'filter.lfs.clean=git-lfs clean -- %f',
+        'filter.lfs.required=true',
+        'filter.lfs.process=git-lfs filter-process',
+        'core.attributesfile=/dev/null',
+      ].join('\n'),
+    )
   })
 
   describe("with skills in the repo's .claude/skills and .agents/skills", () => {
@@ -738,6 +756,19 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
     await symlink(tmpdir(), join(dir, '.git/objects/pack/elsewhere'))
     await expect(restoreGitConfig(dir, '')).rejects.toThrow(
       '.git/objects/pack/elsewhere in the clone is a symlink',
+    )
+  })
+
+  it('drops attributes a worker wrote in .git/info, and refuses grafts', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ns-restore-'))
+    await git(dir, 'init', '-q')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'start')
+    await writeFile(join(dir, '.git/info/attributes'), '* -diff\n')
+    await restoreGitConfig(dir, '')
+    expect(existsSync(join(dir, '.git/info/attributes'))).toBe(false)
+    await writeFile(join(dir, '.git/info/grafts'), '')
+    await expect(restoreGitConfig(dir, '')).rejects.toThrow(
+      '.git/info/grafts in the clone points elsewhere',
     )
   })
 

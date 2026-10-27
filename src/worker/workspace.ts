@@ -60,12 +60,13 @@ const noHooks = [
 ].flatMap((entry) => ['-c', entry])
 
 /**
- * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant.
+ * Git's args for the clone `dir` and its own `.git` only, never a repo found above it or at its root, which a worker can plant,
+ * and its history as it is, not as replace refs a worker wrote say.
  * Throws after repo code ran in it until restoreGitConfig puts its config back: git would run what the worker's config says.
  */
 export function inClone(dir: string): string[] {
   if (gitUnrestored(dir)) throw new Error('no git in the clone until its .git is restored')
-  return ['-C', dir, '--git-dir=.git', ...noHooks]
+  return ['-C', dir, '--git-dir=.git', '--no-replace-objects', ...noHooks]
 }
 
 interface WorkspaceInput {
@@ -193,9 +194,9 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
 }
 
 /**
- * Puts back the clone's git config as it was cloned, so nothing a worker or check wrote there runs or
- * steers awaywork's own git. Refuses a `.git` that now borrows a repo or objects from elsewhere, or
- * holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
+ * Puts back the clone's git config as it was cloned, and drops its `info/attributes`, so nothing a worker or check
+ * wrote there runs or steers awaywork's own git or a check's. Refuses a `.git` that now borrows a repo or objects
+ * from elsewhere, grafts its history, or holds a symlink outside its hooks, which git never makes there and would read and write through: awaywork then runs
  * no more git in the clone.
  */
 export async function restoreGitConfig(dir: string, config: string): Promise<void> {
@@ -207,10 +208,11 @@ export async function restoreGitConfig(dir: string, config: string): Promise<voi
     if (entry.isSymbolicLink() && !/^hooks($|\/)/.test(path))
       throw new Error(`.git/${path} in the clone is a symlink`)
   }
-  for (const path of ['commondir', 'objects/info/alternates'])
+  for (const path of ['commondir', 'objects/info/alternates', 'info/grafts'])
     if ((await lstat(join(git, path)).catch(() => undefined)) !== undefined)
       throw new Error(`.git/${path} in the clone points elsewhere`)
   await rm(join(git, 'config'), { recursive: true, force: true })
+  await rm(join(git, 'info', 'attributes'), { recursive: true, force: true })
   await writeFile(join(git, 'config'), config, { flag: 'wx' })
   markGitRestored(dir)
 }
@@ -233,7 +235,14 @@ async function writeGitConfig(dir: string, env: NodeJS.ProcessEnv): Promise<void
   }
   const lfs = await read('--get-regexp', '^filter\\.lfs\\.')
   for (const entry of lfs.stdout.split('\0').filter(Boolean)) entries.push(entry.split(/\n(.*)/s))
-  const file = gitConfigFile(dir)
+  gitEntries.set(dir, entries)
+  await writeConfigFile(gitConfigFile(dir), entries)
+}
+
+/** The entries `writeGitConfig` resolved for each clone, which the gates' config gets again. Per process. */
+const gitEntries = new Map<string, string[][]>()
+
+async function writeConfigFile(file: string, entries: string[][]): Promise<void> {
   await writeFile(file, '', { flag: 'wx' })
   for (const [key = '', value = 'true'] of entries)
     await execa(bin('git'), ['config', '--file', file, '--add', key, value])
@@ -337,6 +346,46 @@ export function workerEnv(
     ...Object.fromEntries(kept),
     GIT_CONFIG_GLOBAL: gitConfigFile(dir),
     GIT_CONFIG_NOSYSTEM: '1',
+  }
+}
+
+/** The env of the checks: `workerEnv`'s, git ignoring the clone's replace refs, and the slice's base as `AWAYWORK_FROM`. */
+export function checkEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  withheld: string[],
+  from?: string,
+): NodeJS.ProcessEnv {
+  return {
+    ...workerEnv(env, dir, withheld),
+    GIT_NO_REPLACE_OBJECTS: '1',
+    ...(from && { AWAYWORK_FROM: from }),
+  }
+}
+
+/**
+ * The env of a gate's command: a gate check's, on a global git config awaywork writes afresh from the steps' identity
+ * and lfs filter, none of their edits, with no attributes file and no diff or textconv drivers, so the clone's git
+ * shows it the slice as pushed, reading attributes from the chain's `start` rather than the worktree.
+ */
+export async function gateEnv(
+  env: NodeJS.ProcessEnv,
+  dir: string,
+  withheld: string[],
+  from?: string,
+  start?: string,
+): Promise<NodeJS.ProcessEnv> {
+  const file = join(dir, WORK_DIR, 'gate-gitconfig')
+  await refuseSymlinks(dir, [WORK_DIR])
+  await rm(file, { recursive: true, force: true })
+  await writeConfigFile(file, [
+    ...(gitEntries.get(dir) ?? []),
+    ['core.attributesFile', '/dev/null'],
+  ])
+  return {
+    ...checkEnv(env, dir, withheld, from),
+    ...(start && { GIT_ATTR_SOURCE: start }),
+    GIT_CONFIG_GLOBAL: file,
   }
 }
 

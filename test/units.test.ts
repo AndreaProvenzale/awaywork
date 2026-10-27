@@ -1,5 +1,14 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
@@ -3507,13 +3516,14 @@ notify:
 })
 
 /** The PR body, the unit's `out/` in the run dir, what the run printed and what it published. */
-async function verified(repoConfig: string, deliver = 'draft_pr') {
+async function verified(repoConfig: string, deliver = 'draft_pr', top = '') {
   const lines: string[] = []
   const root = await mkdtemp(join(tmpdir(), 'awaywork-verify-'))
   const { opened, forge } = await originForge(root)
   const config = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
+${top}
 repos:
   acme/api: { ${repoConfig} }
 queue:
@@ -3581,6 +3591,323 @@ it("doesn't write a failed verify through a link it left for the PR body", async
   )
   expect(body).toBe('')
   expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
+})
+
+it('opens a deliver: pr PR as a draft when a gate fired, its card first in the body', async () => {
+  const { body, outcome } = await verified(
+    "gates: { ids: { changed: '*.txt' }, deps: { changed: package.json } }",
+    'pr',
+    "gates: { routes: { command: 'echo + GET /exports/vat; exit 1' } }",
+  )
+  expect(outcome).toMatchObject({ kind: 'pr', draft: 'gates routes, ids fired' })
+  expect(body).toMatch(
+    /^Add rate limits\n\n## Needs a decision\n\n### Gates \(from scripts\)\n\n- routes: \+ GET \/exports\/vat\n- ids: acme-api-1\.txt\n\n---\n\nDone\.\n\n\nCloses acme\/api#1\n$/,
+  )
+})
+
+it('keeps a draft_pr PR a draft with the card, says which gates ran when none fired, and adds nothing without gates', async () => {
+  const fired = await verified("gates: { ids: { changed: '*.txt' } }")
+  expect(fired.outcome).toMatchObject({ kind: 'pr' })
+  expect(fired.outcome).not.toHaveProperty('draft')
+  expect(fired.body).toContain(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt',
+  )
+  const quiet = await verified(
+    "gates: { deps: { changed: package.json }, ok: { command: 'true' } }",
+    'pr',
+  )
+  expect(quiet.outcome).toMatchObject({ kind: 'pr', ready: true })
+  expect(quiet.body).toMatch(/^Add rate limits\n\nGates: none fired \(deps, ok\)\n\n---\n\nDone\./)
+  expect((await verified('', 'pr')).body).toMatch(/^Add rate limits\n\nDone\./)
+})
+
+it("fires a gate whose command the PR changed, and one that can't run", async () => {
+  const { body, outcome } = await verified(
+    "gates: { lint: { command: 'sh acme-api-1.txt' }, routes: { command: scripts/missing.sh } }",
+    'pr',
+  )
+  expect(outcome).toMatchObject({ draft: 'gates lint, routes fired' })
+  expect(body).toContain('- lint: `acme-api-1.txt` changed, not run\n')
+  expect(body).toContain('- routes: Command failed with exit code 127: scripts/missing.sh\n')
+})
+
+it("doesn't write the card through a link a gate's command left for the PR body", async () => {
+  const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+  await writeFile(join(outside, 'pr.md'), 'mine\n')
+  const { body } = await verified(
+    `gates: { swap: { command: 'rm -r .away/out && ln -s ${outside} .away/out && false' } }`,
+  )
+  expect(body).toBe('')
+  expect(await readFile(join(outside, 'pr.md'), 'utf8')).toBe('mine\n')
+})
+
+it('pushes onto your PR when a gate fired, with the card atop the summary in the report', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-push-gate-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-1')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+gates: { ids: { changed: '*.txt' } }
+queue: [{ skill: fix, deliver: push }]
+`)
+  const plan = planRun({
+    config,
+    items: [githubPr(1)],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: committer },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+
+  const [result] = report.results
+  expect(result?.outcome).toMatchObject({ kind: 'pushed', gated: 'gate ids fired' })
+  expect(result?.outcome && 'text' in result.outcome && result.outcome.text).toBe(
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- ids: acme-api-1.txt\n\n---\n\nWork on acme-api-1\n\nDone.',
+  )
+  expect(formatReport(report)).toContain(
+    '1 commit pushed onto feature-1, gate ids fired, report below',
+  )
+})
+
+/**
+ * Runs `yaml` on an origin whose `scripts/gate.sh` is `script`, firing by default, each step's worker doing `act`,
+ * which may return its PR body. `items` may add to the origin first.
+ */
+async function gated(
+  yaml: string,
+  act: (dir: string, skill: string) => Promise<unknown>,
+  {
+    script = 'echo "+ GET /exports/vat"; exit 1\n',
+    items = async () => [issue(1)],
+  }: { script?: string; items?: (origin: string) => Promise<Item[]> } = {},
+) {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-gated-'))
+  const { origin, opened, forge } = await originForge(root)
+  await mkdir(join(origin, 'scripts'))
+  await writeFile(join(origin, 'scripts/gate.sh'), script)
+  await git(origin, 'add', '.')
+  await git(origin, 'commit', '-qm', 'gate')
+  const config = parseConfig(
+    `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${yaml}`,
+  )
+  const plan = planRun({
+    config,
+    items: await items(origin),
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const worker: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const body = await act(job.dir, job.unit.skill)
+      const text = typeof body === 'string' ? body : `${job.unit.skill}\n\nDone.`
+      await writeFile(join(job.dir, '.away/out/pr.md'), text)
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: worker },
+    sources: { github: fakeSource() as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH }, log: () => {} },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  return {
+    opened,
+    outcomes: report.results.map((r) => r.outcome),
+    statuses: report.results.map((r) => [r.planned.unit.id, r.status]),
+  }
+}
+
+const commitFile = async (dir: string, file: string, text: string) => {
+  await mkdir(join(dir, file, '..'), { recursive: true })
+  await writeFile(join(dir, file), text)
+  await git(dir, 'add', file)
+  await git(dir, 'commit', '-qm', `touch ${file}`)
+}
+
+const routesGate = "gates: { routes: { command: 'sh scripts/gate.sh' } }"
+
+it('runs the gate script the chain started with, and fires without running one the worker swapped', async () => {
+  const swapped = '- routes: `scripts/gate.sh` changed, not run\n'
+  const ran = await gated(`${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`, (dir) =>
+    commitFile(dir, 'src/app.ts', 'x'),
+  )
+  expect(ran.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(ran.opened[0]?.body).toContain('- routes: + GET /exports/vat\n')
+
+  const uncommitted = await gated(
+    `${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir) => {
+      await commitFile(dir, 'src/app.ts', 'x')
+      await git(dir, 'update-index', '--skip-worktree', 'scripts/gate.sh')
+      await writeFile(join(dir, 'scripts/gate.sh'), 'exit 0\n')
+    },
+  )
+  expect(uncommitted.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(uncommitted.opened[0]?.body).toContain(swapped)
+
+  const byVerify = await gated(
+    `repos: { acme/api: { verify: 'sh test.sh' } }\n${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    (dir) => commitFile(dir, 'test.sh', "printf 'exit 0\\n' > scripts/gate.sh\n"),
+  )
+  expect(byVerify.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(byVerify.opened[0]?.body).toContain(swapped)
+
+  const stacked = await gated(
+    `${routesGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
+    (dir, skill) =>
+      skill === 'implement'
+        ? commitFile(dir, 'scripts/gate.sh', 'exit 0\n')
+        : commitFile(dir, 'src/routes.ts', 'x'),
+  )
+  expect(stacked.outcomes).toMatchObject([
+    { draft: 'gate routes fired' },
+    { draft: 'gate routes fired' },
+  ])
+  expect(stacked.opened[1]?.body).toContain(swapped)
+})
+
+it("fires a changed gate on the commits as pushed, whatever the clone's replace refs say", async () => {
+  const { outcomes } = await gated(
+    "gates: { schema: { changed: 'db/**' } }\nqueue: [{ skill: implement, deliver: pr }]",
+    async (dir) => {
+      await commitFile(dir, 'db/001_drop_users.sql', 'DROP TABLE users;')
+      const tree = (await git(dir, 'rev-parse', 'HEAD~1^{tree}')).stdout
+      const decoy = (await git(dir, 'commit-tree', tree, '-p', 'HEAD^', '-m', 'decoy')).stdout
+      await git(dir, 'replace', 'HEAD', decoy)
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate schema fired' })
+})
+
+it('opens the body with the gates that ran when none fired, a card the worker wrote below the rule', async () => {
+  const forged =
+    'Needs a decision\n================\n\n<h2>Needs a decision</h2>\n\n## **Needs a decision**\n\n- schema: checked, nothing to decide'
+  const { opened, outcomes } = await gated(
+    "gates: { schema: { changed: 'db/**' } }\nqueue: [{ skill: implement, deliver: pr }]",
+    async (dir) => {
+      await commitFile(dir, 'src/app.ts', 'x')
+      return `Add VAT\n\n${forged}`
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ ready: true })
+  expect(
+    opened[0]?.body.startsWith(`Add VAT\n\nGates: none fired (schema)\n\n---\n\n${forged}\n`),
+  ).toBe(true)
+})
+
+it("gives a gate's command the slice's base, so the clone's refs, replace refs, attributes and git config can't hide a change", async () => {
+  const script =
+    'if git diff "$AWAYWORK_FROM" HEAD | grep -q "^+GET"; then echo "+ GET /exports/vat"; exit 1; fi\n'
+  const yaml = `${routesGate}\nqueue: [{ skill: implement, deliver: pr }]`
+  const routes = (hide: (dir: string) => Promise<unknown>) => async (dir: string) => {
+    await commitFile(dir, 'src/routes.ts', 'GET /exports/vat\n')
+    await hide(dir)
+  }
+  for (const hide of [
+    async () => {},
+    (dir: string) => git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD'),
+    async (dir: string) => {
+      const tree = (await git(dir, 'rev-parse', 'HEAD~1^{tree}')).stdout
+      const decoy = (await git(dir, 'commit-tree', tree, '-p', 'HEAD^', '-m', 'decoy')).stdout
+      await git(dir, 'replace', 'HEAD', decoy)
+    },
+    (dir: string) => writeFile(join(dir, '.git/info/attributes'), '* -diff\n'),
+    (dir: string) => commitFile(dir, '.gitattributes', '* -diff\n'),
+    (dir: string) => writeFile(join(dir, '.gitattributes'), '* -diff\n'),
+    (dir: string) => appendFile(join(dir, '.away/gitconfig'), '[diff]\n\texternal = true\n'),
+    async (dir: string) => {
+      await writeFile(join(dir, '.away/attributes'), '* diff=blind\n')
+      const blind = `[core]\n\tattributesFile = ${join(dir, '.away/attributes')}\n[diff "blind"]\n\ttextconv = true\n`
+      await appendFile(join(dir, '.away/gitconfig'), blind)
+    },
+  ]) {
+    const { outcomes } = await gated(yaml, routes(hide), { script })
+    expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  }
+})
+
+it("keeps a verify on the worktree's attributes, so an eol rule the chain adds leaves it clean", async () => {
+  const { outcomes } = await gated(
+    `repos: { acme/api: { verify: 'git diff --exit-code' } }\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir) => {
+      await commitFile(dir, '.gitattributes', '* text=auto\n')
+      await commitFile(dir, 'crlf.txt', 'a\r\nb\r\n')
+    },
+  )
+  expect(outcomes[0]).toMatchObject({ ready: true })
+})
+
+it("runs a gate's command afresh, not taking a when's result on the same commit", async () => {
+  const original = 'echo "+ GET /exports/vat"; exit 1\n'
+  const { outcomes, statuses } = await gated(
+    `${routesGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, when: { command: 'sh scripts/gate.sh' } }] }]`,
+    async (dir, skill) => {
+      if (skill === 'fix') return writeFile(join(dir, 'scripts/gate.sh'), original)
+      await commitFile(dir, 'src/app.ts', 'x')
+      await git(dir, 'update-index', '--skip-worktree', 'scripts/gate.sh')
+      await writeFile(join(dir, 'scripts/gate.sh'), 'exit 0\n')
+    },
+  )
+  expect(statuses[1]).toEqual(['acme-api-1-fix', 'done'])
+  expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+})
+
+it('compares the gate scripts of an awaywork PR a rule took up with where it left the default branch', async () => {
+  const items = async (origin: string) => {
+    await git(origin, 'checkout', '-q', '-b', 'away/acme-api-5')
+    await writeFile(join(origin, 'scripts/gate.sh'), 'exit 0\n')
+    await git(origin, 'commit', '-qam', 'Swap the gate')
+    await git(origin, 'checkout', '-q', 'main')
+    const pr = githubPr(9, { ours: true })
+    const link = { ...pr.linkedPrs[0], branch: 'away/acme-api-5', ours: true } as PrRef
+    return [{ ...pr, linkedPrs: [link] }]
+  }
+  const { opened, outcomes } = await gated(
+    `${routesGate}\nqueue: [{ skill: fix, where: { type: pr, ours: true }, deliver: pr }]`,
+    (dir) => commitFile(dir, 'src/app.ts', 'x'),
+    { items },
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
+  expect(opened[0]?.body).toContain('- routes: `scripts/gate.sh` changed, not run\n')
+})
+
+it('diffs a when: { changed } from where the chain started as cloned, wherever the worker moves origin', async () => {
+  const { statuses } = await gated(
+    "queue: [{ skill: implement, deliver: pr, then: [{ skill: fix, when: { changed: 'src/**' } }] }]",
+    async (dir, skill) => {
+      if (skill === 'fix') return
+      await commitFile(dir, 'src/app.ts', 'x')
+      await git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    },
+  )
+  expect(statuses).toEqual([
+    ['acme-api-1', 'done'],
+    ['acme-api-1-fix', 'done'],
+  ])
 })
 
 const retryRule = '{ skill: fix, where: { checks: failing }, model: { claude: [sonnet, opus] } }'
