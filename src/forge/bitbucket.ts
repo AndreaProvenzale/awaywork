@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
+import { isOurs, leftIn } from '../core/footer.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
@@ -126,6 +126,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
+          // twg doesn't say who last edited a description: a draft's footer holds dependents back, never resumes.
+          ...leftIn(pr.description, pr.draft, false),
         }))
     },
 

@@ -541,10 +541,15 @@ ${queue}`)
 })
 
 describe('a task that goes on in a later run', () => {
-  const draftOf = (status: 'ask' | 'continue', continued = 1, head = 'h1'): TaskPr => ({
+  const draftOf = (
+    status: 'ask' | 'continue',
+    continued = 1,
+    head = 'h1',
+    yours = true,
+  ): TaskPr => ({
     ...pr('api', 'open'),
     head,
-    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'] },
+    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'], yours },
   })
   // Nothing changed since the last run took the tasks.
   const unchanged: Attempts = Object.fromEntries(
@@ -620,6 +625,39 @@ describe('a task that goes on in a later run', () => {
     ])
   })
 
+  it("holds its dependents, but doesn't go on, once someone else edited its body last, or on Bitbucket", () => {
+    const edited = { api: draftOf('continue', 1, 'h1', false) }
+    const p = plan([stacked(edited)], configOf(queue), unchanged)
+    expect(p.units.filter((u) => !u.chain)).toEqual([])
+    expect(skips(p)).toEqual(
+      expect.arrayContaining([
+        [
+          'acme/api#1/api',
+          'waiting_for_review',
+          "awaywork's draft https://github.com/acme/api/pull/api says continue, but someone else edited it last: finish it, or mark it ready",
+        ],
+        ['acme/api#1/web', 'waiting_for_task', "waiting for task api's draft, which says continue"],
+        [
+          'acme/api#1/app',
+          'waiting_for_task',
+          "waiting for api's check CI (its draft says continue)",
+        ],
+      ]),
+    )
+    const onBitbucket = parseConfig(`
+providers: [claude: {}]
+sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', write: 'cat' } }
+queue:
+${queue}`)
+    const left = { ...edited.api.left, items: ['tracker:acme/api#1/api'] } as TaskPr['left']
+    const tracked = { ...approved({ api: { ...edited.api, left } }), source: 'tracker' }
+    expect(skips(plan([tracked], onBitbucket, unchanged))).toContainEqual([
+      'acme/api#1/api',
+      'waiting_for_review',
+      "awaywork's draft https://github.com/acme/api/pull/api says continue, but awaywork goes on with its own draft on GitHub only: finish it by hand, or mark it ready",
+    ])
+  })
+
   it('goes on only in a window run, but on an answered ask in a soon one too', () => {
     const soon = configOf(`  - { skill: plan, deliver: plan }
   - { skill: implement, where: { planned: true }, run: soon }
@@ -691,17 +729,22 @@ describe("a task's PR", () => {
       bodyYours,
       body: `Half.\n\n${footer('r1', [{ source: 'github', key: task.key }], left)}`,
     })
-    expect(taskPr([said(true)], task)?.left).toEqual({ ...left, items: ['github:acme/api#1/api'] })
+    const items = ['github:acme/api#1/api']
+    expect(taskPr([said(true)], task)?.left).toEqual({ ...left, items, yours: true })
     expect(taskPr([said(false)], task)?.left).toBeUndefined()
-    expect(taskPr([said(true, false)], task)?.left).toBeUndefined()
-    for (const pr of [said(false), said(true, false)]) {
-      const waits = plan([approved({ api: taskPr([pr], task) as TaskPr })])
-      expect(skips(waits)).toContainEqual([
-        'acme/api#1/api',
-        'waiting_for_review',
-        'waiting for review: awaywork PR https://github.com/acme/api/pull/4 is open',
-      ])
-    }
+    expect(taskPr([said(true, false)], task)?.left).toEqual({ ...left, items, yours: false })
+    const waits = (pr: ReturnType<typeof said>) =>
+      skips(plan([approved({ api: taskPr([pr], task) as TaskPr })]))
+    expect(waits(said(false))).toContainEqual([
+      'acme/api#1/api',
+      'waiting_for_review',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/4 is open',
+    ])
+    expect(waits(said(true, false))).toContainEqual([
+      'acme/api#1/api',
+      'waiting_for_review',
+      "awaywork's draft https://github.com/acme/api/pull/4 says continue, but someone else edited it last: finish it, or mark it ready",
+    ])
   })
 
   it('is the one on its branch whose footer names the task, open or merged first', () => {

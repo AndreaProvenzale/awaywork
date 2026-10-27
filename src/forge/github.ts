@@ -17,7 +17,7 @@ export type Edited = {
   editor: { login: string } | null
 }
 
-/** You opened the PR and no one else edited its body since: awaywork edits it as you. */
+/** You opened the PR, and you, or awaywork as you, edited its body last. */
 export const bodyYours = (pr: Edited): boolean =>
   pr.viewerDidAuthor && (!pr.editor || pr.editor.login === pr.author?.login)
 

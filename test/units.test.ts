@@ -4925,13 +4925,14 @@ it("leaves a draft to you where awaywork can't push onto it, as a stacked slice'
       false,
     )
     const [head, review] = report.results
-    expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
+    // Its footer still records the status, so dependents wait; no line promises a later run.
+    expect(opened.map((o) => [o.head, o.left?.status])).toEqual([['away/acme-api-1', status]])
     expect(opened[0]?.body).toMatch(/^Add a\n\nDone\.\n/)
     expect(head?.outcome).toMatchObject({
       kind: 'pr',
       draft: 'awaywork goes on with its own draft on GitHub only',
+      held: status,
     })
-    expect(head?.outcome).not.toHaveProperty('held')
     if (status === 'ask')
       expect(head?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
     else {
@@ -5028,7 +5029,7 @@ async function resumed(
         mine: true,
         trusted: true,
         fork: false,
-        left: { status, continued: 1, head: left, from, items: ['github:acme/api#1'] },
+        left: { status, continued: 1, head: left, from, items: ['github:acme/api#1'], yours: true },
       },
     ],
   }

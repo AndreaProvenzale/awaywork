@@ -423,7 +423,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.report).toEqual(
       expect.arrayContaining([
         `| 1 | [acme/api#1/app Export screen](${cardUrl}) | implement → loop(review ⇄ fix) | claude | done, 1 turn (loop: 0 rounds of review ⇄ fix; nothing ran) | ${appPr} (1 commit, draft: the agent will continue) |`,
-        `| 2 | [acme/api#1/qa QA evidence](${cardUrl}) | qa-evidence | - | skipped | app left a draft that goes on in a later run |`,
+        `| 2 | [acme/api#1/qa QA evidence](${cardUrl}) | qa-evidence | - | skipped | app left a draft that says continue |`,
       ]),
     )
     expect(run.events).toEqual([

@@ -24,7 +24,7 @@ export interface PrRef {
   /** Its branch lives on a fork, not in `repo`. */
   fork: boolean
   /** On an awaywork draft for a later run: what its footer says it left. */
-  left?: Left & { items: string[] }
+  left?: Left & { items: string[]; yours: boolean }
 }
 
 export interface Item {
@@ -282,7 +282,7 @@ export interface BranchPr {
   open: boolean
   merged: boolean
   draft: boolean
-  /** You opened it and no one else edited its body since. */
+  /** You opened it, and you, or awaywork as you, edited its body last. */
   bodyYours: boolean
   closedAt?: string
 }

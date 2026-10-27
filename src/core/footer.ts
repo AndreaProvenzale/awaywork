@@ -61,16 +61,17 @@ export function footerLeft(body: string | null | undefined): Left | undefined {
 }
 
 /**
- * A PR's `left`, with the items its footer names, for its ref, when it's still a draft whose footer says it left anything
- * and whose body is yours: one you marked ready is yours to finish, and someone else's edit could forge the footer.
+ * A PR's `left`, with the items its footer names, for its ref, when it's still a draft whose footer says it left anything:
+ * one you marked ready is yours to finish. It holds dependents back from anyone's footer, but goes on only from one `yours`,
+ * since someone else's edit could forge it.
  */
 export const leftIn = (
   body: string | null | undefined,
   draft: boolean,
-  bodyYours: boolean,
-): { left?: Left & { items: string[] } } => {
-  const left = draft && bodyYours ? footerLeft(body) : undefined
-  return left ? { left: { ...left, items: footerItems(body) } } : {}
+  yours: boolean,
+): { left?: Left & { items: string[]; yours: boolean } } => {
+  const left = draft ? footerLeft(body) : undefined
+  return left ? { left: { ...left, items: footerItems(body), yours } } : {}
 }
 
 /** The line a PR body carries to link an item, e.g. `Part of {key}`; `{key}`, `{id}` and `{url}` are the item's. */

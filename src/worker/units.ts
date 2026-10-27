@@ -659,13 +659,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
               : opensPr && !input.forge.canFastForward && (saidAsk || continues)
                 ? 'awaywork goes on with its own draft on GitHub only'
                 : undefined
-          const held: Held | undefined = byHandWhy
-            ? undefined
-            : saidAsk
-              ? { status: 'ask', continued: before, url: askedOn?.url }
-              : continues
-                ? { status: 'continue', continued: before + 1 }
-                : undefined
+          // Where awaywork can't push, the footer still records it, to hold dependents back.
+          const held: Held | undefined =
+            at > 0
+              ? undefined
+              : saidAsk
+                ? { status: 'ask', continued: before, url: askedOn?.url }
+                : continues
+                  ? { status: 'continue', continued: before + 1 }
+                  : undefined
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -1131,7 +1133,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   // The PR each chain opened first, the chains a step ran in, and those whose draft waits for a later run, by id: a task's chain stacks on its dependency's.
   const opened: Record<string, { repo: string; branch: string; url: string; head: string }> = {}
   const started = new Set<string>()
-  const held = new Set<string>()
+  const held = new Map<string, Held['status']>()
 
   /** Why a task's chain can't start: a task it stacks on or waits for opened no PR in this run; else the files its tasks in other repos ship, from their PRs. */
   const blocked = async (head: PlannedUnit): Promise<{ skip: string } | { shipped: Shipped[] }> => {
@@ -1147,7 +1149,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const missing = input.dryRun ? undefined : waited.find(({ chain }) => !opened[chain])
     if (missing)
       return {
-        skip: `${missing.id} ${held.has(missing.chain) ? 'left a draft that goes on in a later run' : started.has(missing.chain) ? 'opened no PR' : "didn't run"}`,
+        skip: `${missing.id} ${held.has(missing.chain) ? `left a draft that says ${held.get(missing.chain)}` : started.has(missing.chain) ? 'opened no PR' : "didn't run"}`,
       }
     const shipped: Shipped[] = []
     for (const dep of elsewhere(own, task.plan).filter((t) => t.ships?.length)) {
@@ -1203,7 +1205,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       if (done.some((r) => r.status !== 'skipped')) started.add(head.unit.id)
       const lead = done.find((r) => !r.planned.chain && !r.retried)
       // A draft that waits for a later run holds half-done work: nothing stacks on it.
-      if (lead?.outcome?.kind === 'pr' && lead.outcome.held) held.add(head.unit.id)
+      if (lead?.outcome?.kind === 'pr' && lead.outcome.held)
+        held.set(head.unit.id, lead.outcome.held)
       else if (lead?.outcome?.kind === 'pr')
         opened[head.unit.id] = {
           repo: lead.planned.unit.repo,

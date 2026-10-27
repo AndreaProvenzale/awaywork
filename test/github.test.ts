@@ -331,7 +331,7 @@ describe('github source', () => {
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
-  it("reads what awaywork's draft closing an issue left for a later run, and nothing once it's ready or someone else edited it", async () => {
+  it("reads what awaywork's draft closing an issue left for a later run, nothing once it's ready, and not as yours once someone else edited it", async () => {
     const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
     const linked = async (isDraft: boolean, editor: { login: string } | null = null) => {
       const assigned = JSON.parse(fixture('search-assigned.json'))
@@ -344,9 +344,14 @@ describe('github source', () => {
       const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
       return issue5?.linkedPrs[0]
     }
-    expect((await linked(true))?.left).toEqual({ ...left, items: ['github:acme/api#5'] })
+    const items = ['github:acme/api#5']
+    expect((await linked(true))?.left).toEqual({ ...left, items, yours: true })
     expect((await linked(false))?.left).toBeUndefined()
-    expect((await linked(true, { login: 'teammate' }))?.left).toBeUndefined()
+    expect((await linked(true, { login: 'teammate' }))?.left).toEqual({
+      ...left,
+      items,
+      yours: false,
+    })
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
@@ -946,7 +951,7 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
-  it("reads what awaywork's draft left only while it's a draft whose body only you edited", async () => {
+  it("reads what awaywork's draft left only while it's a draft, as yours while you edited its body last", async () => {
     const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
     const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
     const run = recorded([
@@ -961,8 +966,8 @@ describe('github forge', () => {
       ],
     ])
     const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
-    const kept = { ...left, items: ['linear:ENG-12'] }
-    expect(prs.map((pr) => pr.left)).toEqual([kept, undefined, kept, undefined])
+    const kept = { ...left, items: ['linear:ENG-12'], yours: true }
+    expect(prs.map((pr) => pr.left)).toEqual([kept, undefined, kept, { ...kept, yours: false }])
   })
 
   it('reads PRs on a branch in any state, not the ones from forks, and whether their body is yours', async () => {

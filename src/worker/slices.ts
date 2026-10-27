@@ -115,7 +115,7 @@ export interface Publisher {
 /**
  * Publishes a slice's commits since `from` as one PR or push, with its reports; without commits, its reports,
  * the last of them left as a pending review under `deliver: pending_review` unless a step failed or stopped or the run ended before one ran.
- * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step's status file said `ask` or `continue` (`held`, whose status line then tops the body), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
+ * A `deliver: pr` slice opens as a draft when one of its steps failed or stopped or the run ended before one ran (`failedStep`), a step's status file said `ask` or `continue` (`held`, whose status line then tops the body unless `failedStep` leaves it to you), its `verify` failed, one of its loops ended before its `until` held or one of its gates fired.
  * On a unit that resumes awaywork's own draft, verify and gates read all of the draft's commits, and it publishes without new ones too.
  * With gates, the PR body, or a push's summary, which goes only in the report, opens with their section: the decision card with each fired gate's line, else the gates that ran.
  * `start` is the commit gates check their scripts against: the clone's before the chain's setup and workers, or where an awaywork PR it took up left the default branch.
@@ -160,7 +160,8 @@ export async function publishSlice(
     const section = gatesSection(Object.keys(unit.gates), fired)
     await prependSection(join(out, outputFile[deliver]), section, deliver !== 'push')
   }
-  if (held) {
+  // A draft left to you by hand promises no later run.
+  if (held && !failedStep) {
     const line =
       held.status === 'ask'
         ? `Status: ask${held.url ? `, questions on ${held.url}` : ''}`

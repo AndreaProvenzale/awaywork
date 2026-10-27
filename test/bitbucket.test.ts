@@ -118,6 +118,27 @@ describe('bitbucket forge', () => {
     expect(await linked({ source: 'asana', id: '1205', key: '1205', url })).toEqual([14])
   })
 
+  it("reads what awaywork's draft left, never as yours: it holds dependents back, never resumes", async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const description = `Half.\n\n${footer('r1', [{ source: 'jira', key: 'ENG-12' }], left)}`
+    const run = recorded([
+      [
+        /--scope me/,
+        minePage([
+          { description, draft: true },
+          { description, draft: false },
+        ]),
+      ],
+    ])
+    const prs = await bitbucketForge(['acme'], run).prsFor(
+      fakeItem({ source: 'jira', key: 'ENG-12' }),
+    )
+    expect(prs.map((pr) => pr.left)).toEqual([
+      { ...left, items: ['jira:ENG-12'], yours: false },
+      undefined,
+    ])
+  })
+
   it('marks a PR whose branch is in another repo as a fork', async () => {
     const [pr] = JSON.parse(fixture('prs-me.json')).values
     pr.source.repository.full_name = 'someone/awaywork-sandbox'

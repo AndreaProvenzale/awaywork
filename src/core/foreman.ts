@@ -200,6 +200,18 @@ export function planRun(input: {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
+    // A footer that isn't yours still holds dependents back, but awaywork pushes onto it only from yours.
+    if (ours && draft && !draft.yours) {
+      const why = config.sources.bitbucket
+        ? 'awaywork goes on with its own draft on GitHub only: finish it by hand'
+        : 'someone else edited it last: finish it'
+      skip(
+        'waiting_for_review',
+        `awaywork's draft ${ours.url} says ${draft.status}, but ${why}, or mark it ready`,
+        ours.url,
+      )
+      continue
+    }
     if (ours && draft && ours.head !== draft.head) {
       const at = draft.head.slice(0, 7)
       skip(
