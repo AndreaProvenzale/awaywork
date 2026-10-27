@@ -45,6 +45,8 @@
                 "headRefName": "rate-limits",
                 "headRefOid": "abc1234",
                 "viewerDidAuthor": true,
+                "author": { "login": "dev" },
+                "editor": null,
                 "repository": { "nameWithOwner": "acme/api" }
               }
             ]

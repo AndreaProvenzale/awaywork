@@ -60,12 +60,16 @@ export function footerLeft(body: string | null | undefined): Left | undefined {
   return { status, continued: Number(value('continued')) || 0, head, from }
 }
 
-/** A PR's `left`, with the items its footer names, for its ref, when it's still a draft whose footer says it left anything: one you marked ready is yours. */
+/**
+ * A PR's `left`, with the items its footer names, for its ref, when it's still a draft whose footer says it left anything
+ * and whose body is yours: one you marked ready is yours to finish, and someone else's edit could forge the footer.
+ */
 export const leftIn = (
   body: string | null | undefined,
   draft: boolean,
+  bodyYours: boolean,
 ): { left?: Left & { items: string[] } } => {
-  const left = draft ? footerLeft(body) : undefined
+  const left = draft && bodyYours ? footerLeft(body) : undefined
   return left ? { left: { ...left, items: footerItems(body) } } : {}
 }
 

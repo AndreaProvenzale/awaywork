@@ -533,7 +533,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let saidAsk = false
     // A step said `continue`: the chain stops, publishes what it has and runs again later.
     let continues = false
-    // A later slice said `ask` or `continue`: only the first slice can go on, so its draft is yours to finish.
+    // A later slice asked or said `continue`, or a draft did where awaywork can't push onto it: no later run goes on, so it's yours to finish.
     let byHand: string | undefined
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
@@ -652,8 +652,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? "the clone's .git was refused"
                 : undefined
           const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
-          const stacked = at > 0 && (saidAsk || continues)
-          const held: Held | undefined = stacked
+          // Only a first slice's draft goes on in a later run, and only where awaywork can push onto it.
+          const byHandWhy =
+            at > 0 && (asked || continues)
+              ? "a stacked slice can't go on"
+              : opensPr && !input.forge.canFastForward && (saidAsk || continues)
+                ? 'awaywork goes on with its own draft on GitHub only'
+                : undefined
+          const held: Held | undefined = byHandWhy
             ? undefined
             : saidAsk
               ? { status: 'ask', continued: before, url: askedOn?.url }
@@ -673,12 +679,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 stack,
                 // Only the whole chain, cut from the default branch as the draft it resumes was, closes its issues.
                 last && !first.capped && (base === '' || (!!shape.resume && !shape.stackedOn)),
-                (failed && notReady(failed)) ||
-                  (stacked ? "a stacked slice can't go on" : undefined),
+                (failed && notReady(failed)) || byHandWhy,
                 held,
               )
-          if (stacked && lead.outcome.kind === 'pr')
-            byHand = `a stacked slice can't go on: finish ${lead.outcome.url} by hand`
+          // A stacked slice's questions stay in the report whatever it published; a first slice's only with a draft.
+          if (byHandWhy && (at > 0 || lead.outcome.kind === 'pr'))
+            byHand = `${byHandWhy}: finish ${lead.outcome.kind === 'pr' ? lead.outcome.url : `it on ${shape.stackedOn}`} by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
@@ -1012,7 +1018,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           asked = { step: unit.id, text: questions }
           saidAsk = status === 'ask'
         } else if (status === 'continue' && kept) {
-          const why = at > 0 ? 'said continue in a stacked slice' : 'will continue'
+          const why =
+            at > 0
+              ? 'said continue in a stacked slice'
+              : opensPr && !input.forge.canFastForward
+                ? 'said continue'
+                : 'will continue'
           ended = { reason: `${unit.id} ${why}`, passedOver: true }
           continues = true
         } else if (!left) {
@@ -1075,7 +1086,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     await endSlice(true)
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
-    // A stacked slice's answers would reach no later run.
+    // Answers to a stacked slice, or to a draft awaywork can't push onto, would reach no later run.
     if (asked && lead)
       lead.questions = {
         ...asked,

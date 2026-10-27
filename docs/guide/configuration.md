@@ -220,6 +220,7 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
 - **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
 - **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
 - **`deliver: pending_review`.** Refused when the config loads: awaywork leaves pending reviews on GitHub only.
+- **Going on with its own draft.** A draft whose step said `continue`, or asked, is yours to finish by hand: awaywork goes on with its own draft on GitHub only ([Continue](./how-it-works.md#continue)).
 - **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
 - **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 

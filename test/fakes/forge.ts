@@ -38,6 +38,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
         open: !pr.merged,
         merged: false,
         draft: false,
+        bodyYours: true,
         ...pr,
       })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',

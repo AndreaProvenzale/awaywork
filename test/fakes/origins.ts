@@ -67,7 +67,7 @@ export async function originsForge(root: string, repos: string[]) {
     ) => {
       const at = (await git(origins[to.repo] as string, 'rev-parse', branch)).stdout
       if (at !== from)
-        return `${branch} is at ${at.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+        return `${branch} is at ${at.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`
       await fake.fastForward(dir, branch, from, to)
       await git(dir, 'push', '-q', origins[to.repo] as string, `HEAD:refs/heads/${branch}`)
     },

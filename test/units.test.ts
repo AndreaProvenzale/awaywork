@@ -4440,6 +4440,7 @@ async function finishedRun(
   items: Item[],
   provider = looper({}),
   write?: Source['write'] | null,
+  canFastForward = true,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
   const { origin, forge, opened, updated } = await originForge(root)
@@ -4479,7 +4480,7 @@ ${queue}
     dryRun: false,
     providers: { claude: provider },
     sources: { github: source as Source, tracker: source as Source },
-    forge,
+    forge: { ...forge, canFastForward },
     ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
@@ -4890,6 +4891,64 @@ it('leaves a stacked slice that says continue or ask to you: a draft no later ru
     // It isn't done: no result, no move.
     expect(writes).toEqual([])
   }
+})
+
+it('holds back the questions of a stacked slice that asks without committing: no later run reads the answer', async () => {
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job, signal) {
+      yield* (job.unit.skill === 'fix' ? asker('Which?', false, 'ask') : committer).run(job, signal)
+    },
+  }
+  const { report, writes, opened } = await finishedRun(
+    '  - { skill: implement, deliver: pr, on_done: { comment: result }, then: [{ skill: fix, stack: true }] }',
+    [yours(1)],
+    provider,
+  )
+  expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
+  const byHand = `a stacked slice can't go on: finish it on https://example.com/acme/api/pull/away/acme-api-1 by hand`
+  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
+  expect(writes).toEqual([])
+})
+
+it("leaves a draft to you where awaywork can't push onto it, as a stacked slice's, but posts an ask without commits", async () => {
+  const queue =
+    '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [review] }'
+  const byHand = `awaywork goes on with its own draft on GitHub only: finish https://example.com/acme/api/pull/away/acme-api-1 by hand`
+  for (const status of ['continue', 'ask'] as const) {
+    const asked = status === 'ask' ? 'Which?' : ''
+    const { report, writes, opened } = await finishedRun(
+      queue,
+      [yours(1)],
+      asker(asked, true, status),
+      undefined,
+      false,
+    )
+    const [head, review] = report.results
+    expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
+    expect(opened[0]?.body).toMatch(/^Add a\n\nDone\.\n/)
+    expect(head?.outcome).toMatchObject({
+      kind: 'pr',
+      draft: 'awaywork goes on with its own draft on GitHub only',
+    })
+    expect(head?.outcome).not.toHaveProperty('held')
+    if (status === 'ask')
+      expect(head?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
+    else {
+      expect(head?.byHand).toBe(byHand)
+      expect(review).toMatchObject({ status: 'skipped', reason: 'acme-api-1 said continue' })
+    }
+    expect(writes).toEqual([])
+  }
+  const { report, writes } = await finishedRun(
+    queue,
+    [yours(1)],
+    asker('Which?', false, 'ask'),
+    undefined,
+    false,
+  )
+  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?', url: expect.any(String) })
+  expect(writes.map(([, w]) => w.op)).toEqual(['comment'])
 })
 
 it("posts a report's continue as its result, counted on from the last, with that result as its report", async () => {

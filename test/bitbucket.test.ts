@@ -156,10 +156,13 @@ describe('bitbucket forge', () => {
       [/--state (MERGED|SUPERSEDED) /, empty],
     ])
     const prs = await bitbucketForge(['andrea89'], run).prsOn(sandbox, 'probe/awaywork-fixture')
-    expect(prs.map(({ url, merged, draft }) => [url, merged, draft])).toEqual([
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false, true],
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false, false],
-    ])
+    // twg doesn't say who last edited a description, so no footer there can resume a draft.
+    expect(prs.map(({ url, merged, draft, bodyYours }) => [url, merged, draft, bodyYours])).toEqual(
+      [
+        ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false, true, false],
+        ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false, false, false],
+      ],
+    )
     expect(prs[0]?.body).toContain('item=jira:SANDBOX-7')
     expect(prs.map(({ head, closedAt }) => [head, closedAt])).toEqual([
       ['58961c892aa5', undefined],
@@ -344,40 +347,6 @@ describe('bitbucket forge', () => {
     await forge.openPr(sandbox, 'away/x', '', bodyFile, 'r1', items, false)
     expect(run.calls[1]).not.toContain('--dest')
     expect(run.calls[1]).not.toContain('--draft')
-  })
-
-  it("rewrites a draft's title and description, and marks it ready only when asked", async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'awaywork-'))
-    const bodyFile = join(dir, 'PR_BODY.md')
-    await writeFile(bodyFile, 'SANDBOX-7 Probe twg output\n\nDone.\n')
-    let description = ''
-    const run: Exec & { calls: string[][] } = Object.assign(
-      async (cmd: string, args: string[]) => {
-        run.calls.push([cmd, ...args])
-        description = readFileSync(args[args.indexOf('--description-file') + 1] ?? '', 'utf8')
-        return '{}'
-      },
-      { calls: [] as string[][] },
-    )
-    const items = [{ source: 'jira', key: 'SANDBOX-7' }]
-    await bitbucketForge(['andrea89'], run).updatePr(sandbox, 4, bodyFile, 'r2', items, true)
-    expect(run.calls[0]).toEqual([
-      'twg',
-      'bb',
-      'prs',
-      'update',
-      '--pull-request',
-      '4',
-      '-r',
-      sandbox,
-      '--ready',
-      '--title',
-      'SANDBOX-7 Probe twg output',
-      '--description-file',
-      expect.stringMatching(/awaywork-pr-.*description\.md$/),
-      ...json,
-    ])
-    expect(description).toBe(`Done.\n\n${footer('r2', items)}`)
   })
 
   it("throws twg's own message, wherever it prints it", async () => {

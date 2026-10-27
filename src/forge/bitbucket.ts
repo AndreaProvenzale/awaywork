@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs, leftIn } from '../core/footer.js'
+import { isOurs } from '../core/footer.js'
 import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
@@ -126,7 +126,6 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
-          ...leftIn(pr.description, pr.draft),
         }))
     },
 
@@ -151,6 +150,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
           draft: pr.draft,
+          // twg doesn't say who last edited a description.
+          bodyYours: false,
           // A declined or superseded PR changes no more: its last update is when it closed.
           ...(pr.state !== 'OPEN' && pr.state !== 'MERGED' && { closedAt: pr.updated_on }),
         }))
@@ -207,18 +208,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       }
     },
 
-    async updatePr(repo, pr, bodyFile, runId, items, ready, left) {
-      const { title, body } = await prText(bodyFile, '', runId, items, left)
-      const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
-      try {
-        const file = join(dir, 'description.md')
-        await writeFile(file, body)
-        const args = ['bb', 'prs', 'update', '--pull-request', String(pr), '-r', repo]
-        const asReady = ready ? ['--ready'] : []
-        await twg(run, [...args, ...asReady, '--title', title, '--description-file', file])
-      } finally {
-        await rm(dir, { recursive: true, force: true })
-      }
+    async updatePr() {
+      throw new Error('awaywork goes on with its own draft on GitHub only')
     },
 
     /** Bitbucket has no stacked PRs; the upper PR's base is already the lower one's branch. */

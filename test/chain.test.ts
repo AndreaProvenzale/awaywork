@@ -90,6 +90,7 @@ async function originForge(root: string) {
               open: true,
               merged: false,
               draft: false,
+              bodyYours: true,
             },
           ]
         : [],

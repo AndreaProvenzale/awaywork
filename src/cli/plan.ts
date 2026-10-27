@@ -195,8 +195,7 @@ export async function probeAndPlan(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  const forge = forgeFor(config)
-  await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
+  await linkPlanTasks(items, config, skills, forgeFor(config), ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   const sources = configuredSources(config)
@@ -212,7 +211,6 @@ export async function probeAndPlan(
         attempts,
         skips,
         only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
-        canFastForward: forge.canFastForward,
       }),
       present,
     },

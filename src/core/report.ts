@@ -48,7 +48,7 @@ export interface UnitResult {
   result?: Commented[]
   /** On the chain's first step: the questions a step asked instead of going on, and where they went. */
   questions?: Questions
-  /** On the chain's first step: why a stacked slice's draft, which said `continue`, is yours to finish. */
+  /** On the chain's first step: why a draft that said `continue` is yours to finish: a stacked slice's, or one awaywork can't push onto. */
   byHand?: string
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
   plan?: PlanPost

@@ -40,6 +40,9 @@ const authored = (...prs: Record<string, unknown>[]) =>
           headRefName: `change-${i + 1}`,
           headRefOid: 'abc1234',
           isCrossRepository: false,
+          viewerDidAuthor: true,
+          author: { login: 'dev' },
+          editor: null,
           repository: { nameWithOwner: 'acme/api' },
           ...pr,
         })),
@@ -328,12 +331,13 @@ describe('github source', () => {
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
-  it("reads what awaywork's draft closing an issue left for a later run, and nothing once it's ready", async () => {
+  it("reads what awaywork's draft closing an issue left for a later run, and nothing once it's ready or someone else edited it", async () => {
     const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
-    const linked = async (isDraft: boolean) => {
+    const linked = async (isDraft: boolean, editor: { login: string } | null = null) => {
       const assigned = JSON.parse(fixture('search-assigned.json'))
       Object.assign(assigned.data.search.nodes[0].closedByPullRequestsReferences.nodes[0], {
         isDraft,
+        editor,
         body: `Half.\n\n${footer('r1', [{ source: 'github', key: 'acme/api#5' }], left)}`,
       })
       const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
@@ -342,6 +346,7 @@ describe('github source', () => {
     }
     expect((await linked(true))?.left).toEqual({ ...left, items: ['github:acme/api#5'] })
     expect((await linked(false))?.left).toBeUndefined()
+    expect((await linked(true, { login: 'teammate' }))?.left).toBeUndefined()
   })
 
   it('links a PR to itself and an issue to the PR that closes it', async () => {
@@ -941,31 +946,43 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
-  it("reads what awaywork's draft left only while it's a draft", async () => {
+  it("reads what awaywork's draft left only while it's a draft whose body only you edited", async () => {
     const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
     const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
     const run = recorded([
-      [/author:@me/, authored({ body, isDraft: true }, { body, isDraft: false })],
+      [
+        /author:@me/,
+        authored(
+          { body, isDraft: true },
+          { body, isDraft: false },
+          { body, isDraft: true, editor: { login: 'dev' } },
+          { body, isDraft: true, editor: { login: 'teammate' } },
+        ),
+      ],
     ])
     const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
-    expect(prs.map((pr) => pr.left)).toEqual([{ ...left, items: ['linear:ENG-12'] }, undefined])
+    const kept = { ...left, items: ['linear:ENG-12'] }
+    expect(prs.map((pr) => pr.left)).toEqual([kept, undefined, kept, undefined])
   })
 
-  it('reads PRs on a branch in any state, not the ones from forks', async () => {
+  it('reads PRs on a branch in any state, not the ones from forks, and whether their body is yours', async () => {
     const pr = (number: number, state: string, closedAt: string | null, fork = false) => ({
       number,
       url: `https://github.com/acme/api/pull/${number}`,
       body: `${state}.`,
       state,
       isDraft: state === 'OPEN',
+      viewerDidAuthor: true,
+      author: { login: 'dev' },
+      editor: null as { login: string } | null,
       closedAt,
       isCrossRepository: fork,
     })
     const nodes = [
       pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
       pr(8, 'OPEN', null, true),
-      pr(9, 'CLOSED', '2026-10-21T10:00:00Z'),
-      pr(10, 'OPEN', null),
+      { ...pr(9, 'CLOSED', '2026-10-21T10:00:00Z'), editor: { login: 'teammate' } },
+      { ...pr(10, 'OPEN', null), editor: { login: 'dev' } },
     ]
     const run = recorded([
       [
@@ -982,6 +999,7 @@ describe('github forge', () => {
         open: false,
         merged: true,
         draft: false,
+        bodyYours: true,
         closedAt: '2026-10-20T10:00:00Z',
       },
       {
@@ -991,9 +1009,18 @@ describe('github forge', () => {
         open: false,
         merged: false,
         draft: false,
+        bodyYours: false,
         closedAt: '2026-10-21T10:00:00Z',
       },
-      { number: 10, url: url(10), body: 'OPEN.', open: true, merged: false, draft: true },
+      {
+        number: 10,
+        url: url(10),
+        body: 'OPEN.',
+        open: true,
+        merged: false,
+        draft: true,
+        bodyYours: true,
+      },
     ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=away/eng-12']),
@@ -1153,9 +1180,7 @@ describe('github forge', () => {
     expect(await push('main', 4)).toBe('main is the default branch')
     expect(await push('feature-1', 4)).toBe("#4's branch is main")
     expect(await push('feature-1', 5)).toBe('#5 has auto-merge on')
-    expect(await push('feature-1', 6)).toBe(
-      'feature-1 is at def5678, the clone started from abc1234',
-    )
+    expect(await push('feature-1', 6)).toBe('feature-1 is at def5678, awaywork left it at abc1234')
     expect(await push('feature-1', 7)).toBe("#7 isn't yours")
     expect(await push('feature-1', 8)).toBe(
       "feature-1 is also the branch of #12, which isn't yours",

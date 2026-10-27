@@ -282,6 +282,8 @@ export interface BranchPr {
   open: boolean
   merged: boolean
   draft: boolean
+  /** You opened it and no one else edited its body since. */
+  bodyYours: boolean
   closedAt?: string
 }
 

@@ -9,13 +9,25 @@ import { type Exec, exec, graphql, onHost } from './gh.js'
 import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
+/** Who opened a PR and who last edited its body, if anyone. */
+export const EDITED = 'viewerDidAuthor author { login } editor { login }'
+export type Edited = {
+  viewerDidAuthor: boolean
+  author: { login: string } | null
+  editor: { login: string } | null
+}
+
+/** You opened the PR and no one else edited its body since: awaywork edits it as you. */
+export const bodyYours = (pr: Edited): boolean =>
+  pr.viewerDidAuthor && (!pr.editor || pr.editor.login === pr.author?.login)
+
 const myPrsQuery = `query {
   search(query: "is:pr is:open archived:false author:@me", type: ISSUE, first: 100) {
-    nodes { ... on PullRequest { number url title body isDraft headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
+    nodes { ... on PullRequest { number url title body isDraft ${EDITED} headRefName headRefOid isCrossRepository repository { nameWithOwner } } }
   }
 }`
 
-type PrNode = {
+type PrNode = Edited & {
   number: number
   url: string
   title: string
@@ -61,7 +73,7 @@ type PrState = {
 const headPrsQuery = `query($owner: String!, $name: String!, $branch: String!) {
   repository(owner: $owner, name: $name) {
     pullRequests(headRefName: $branch, states: [OPEN, CLOSED, MERGED], first: 100) {
-      nodes { number url body state isDraft closedAt headRefOid isCrossRepository }
+      nodes { number url body state isDraft ${EDITED} closedAt headRefOid isCrossRepository }
     }
   }
 }`
@@ -131,7 +143,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
           mine: true,
           trusted: true,
           fork: pr.isCrossRepository,
-          ...leftIn(pr.body, pr.isDraft),
+          ...leftIn(pr.body, pr.isDraft, bodyYours(pr)),
         }))
     },
 
@@ -147,7 +159,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       const { repository } = await graphql<{
         repository: {
           pullRequests: {
-            nodes: {
+            nodes: (Edited & {
               number: number
               url: string
               body: string
@@ -156,21 +168,22 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
               closedAt: string | null
               headRefOid: string
               isCrossRepository: boolean
-            }[]
+            })[]
           }
         }
       }>(run, headPrsQuery, { owner, name, branch })
       return repository.pullRequests.nodes
         .filter((pr) => !pr.isCrossRepository)
-        .map(({ number, url, body, state, isDraft, closedAt, headRefOid }) => ({
-          url,
-          number,
-          body,
-          head: headRefOid,
-          open: state === 'OPEN',
-          merged: state === 'MERGED',
-          draft: isDraft,
-          ...(closedAt && { closedAt }),
+        .map((pr) => ({
+          url: pr.url,
+          number: pr.number,
+          body: pr.body,
+          head: pr.headRefOid,
+          open: pr.state === 'OPEN',
+          merged: pr.state === 'MERGED',
+          draft: pr.isDraft,
+          bodyYours: bodyYours(pr),
+          ...(pr.closedAt && { closedAt: pr.closedAt }),
         }))
     },
 
@@ -230,7 +243,7 @@ export function githubForge(base: Exec = exec, host = 'github.com'): Forge {
       })
       const p = r.pullRequest
       const shared = r.pullRequests.nodes.find((o) => !o.isCrossRepository && !o.viewerDidAuthor)
-      const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, the clone started from ${from.slice(0, 7)}`
+      const moved = `${branch} is at ${p.headRefOid.slice(0, 7)}, awaywork left it at ${from.slice(0, 7)}`
       const checks: [boolean, string][] = [
         [p.state !== 'OPEN', `#${pr} is ${p.state.toLowerCase()}`],
         [!p.viewerDidAuthor, `#${pr} isn't yours`],
