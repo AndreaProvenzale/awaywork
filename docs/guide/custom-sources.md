@@ -52,6 +52,7 @@ The command prints a JSON array to stdout. Anything it writes to stderr shows up
 | `id`, `key`, `title`, `url` | Required. `key` is the tracker's own reference; branch names use it, and your PRs are matched by it |
 | `type` | `task` (default) or `issue` |
 | `description`, `status`, `assignee`, `reviewers`, `labels`, `comments` | Optional |
+| `state`, `closed` | Optional: `open` (default) or `closed`, and the ISO time it closed; see [Finished items](#finished-items) |
 | `fields` | Strings, numbers, booleans or lists of them. Every key must be listed in `fields` in the config, except `repo`, `created` and `updated` |
 | `context` | Optional Markdown the worker reads instead of `description`: attachments, linked specs, whatever helps |
 
@@ -59,6 +60,28 @@ The command prints a JSON array to stdout. Anything it writes to stderr shows up
 - **`link`** in the config is the line, in your tracker's own words, that links a PR to an item: awaywork writes it into its draft PRs, and links a PR of yours whose body holds it, on top of the key in its branch or title. `{key}`, `{id}` and `{url}` are the item's; there's no default. See [Linking PRs](./configuration.md#linking-prs).
 - **`created` and `updated`** are ISO timestamps, and a rule's `order` sorts by them.
 - The command gets 10 minutes before it is killed.
+
+## Finished items
+
+A rule that names [`state`](./configuration.md#finished-items) can match items you closed lately. When one does, the command gets `AWAYWORK_CLOSED_SINCE`, the ISO time its lookback starts (`2026-10-11T09:30:00.000Z`), and may print the items closed since then next to the open ones, with `"state": "closed"` and `"closed"` set to when. Without the variable, no rule wants them: print open items only, or print them anyway and the rules leave them alone.
+
+```js
+// board.mjs: open cards, and those done since the lookback when a rule asks
+const since = process.env.AWAYWORK_CLOSED_SINCE
+const cards = await fetchCards() // your tracker's API
+const items = cards
+  .filter((c) => !c.doneAt || (since && c.doneAt >= since))
+  .map((c) => ({
+    id: c.id,
+    key: c.ref,
+    title: c.title,
+    url: c.url,
+    ...(c.doneAt && { state: 'closed', closed: c.doneAt }),
+  }))
+console.log(JSON.stringify(items))
+```
+
+`state` and `closed` are every item's own keys, so `fields` in the config can't list them: if your tracker has a field called `state`, print it under another name. A top-level `state` other than `open` or `closed`, or a `closed` that isn't an ISO time, is ignored, with one warning naming the first such item, so a command that printed GitLab's `"state": "opened"` before keeps working.
 
 ## House rules
 

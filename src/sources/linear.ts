@@ -20,13 +20,16 @@ type Config = z.infer<typeof config>
 
 export const API = 'https://api.linear.app/graphql'
 
-const issuesQuery = `query Issues($after: String) {
+const FINISHED = ['completed', 'canceled']
+const OPEN = { state: { type: { nin: FINISHED } } }
+
+const issuesQuery = `query Issues($after: String, $filter: IssueFilter, $archived: Boolean) {
   viewer {
-    assignedIssues(first: 50, after: $after, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+    assignedIssues(first: 50, after: $after, filter: $filter, includeArchived: $archived) {
       nodes {
-        id identifier title description url priorityLabel createdAt updatedAt
+        id identifier title description url priorityLabel createdAt updatedAt completedAt canceledAt
         assignee { name }
-        state { name }
+        state { name type }
         team { key }
         project { name }
         labels { nodes { name } }
@@ -62,8 +65,10 @@ interface Issue {
   priorityLabel: string
   createdAt: string
   updatedAt: string
+  completedAt: string | null
+  canceledAt: string | null
   assignee: { name: string } | null
-  state: { name: string }
+  state: { name: string; type: string }
   team: { key: string }
   project: { name: string } | null
   labels: { nodes: { name: string }[] }
@@ -119,7 +124,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     link: 'Part of {key}',
     fields: {
       team: z.string(),
-      state: z.string(),
+      status: z.string(),
       labels: z.string(),
       priority: z.string(),
       blocked: z.boolean(),
@@ -130,12 +135,23 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     },
     secrets: (cfg) => [cfg.token_env],
 
-    /** My assigned issues that are neither completed nor canceled, with their comments. */
-    async items(cfg, ctx) {
+    /** My assigned issues that are neither completed nor canceled, or were since `since`, with their comments. */
+    async items(cfg, ctx, since) {
       const token = tokenFrom(cfg, ctx)
+      const after = since && { gte: since.toISOString() }
+      // Linear archives finished issues after a while; reading those keeps archived open ones out.
+      const filter = after
+        ? {
+            or: [
+              { ...OPEN, archivedAt: { null: true } },
+              { completedAt: after },
+              { canceledAt: after },
+            ],
+          }
+        : OPEN
       const issues = await all(
         issuesQuery,
-        {},
+        { filter, ...(after && { archived: true }) },
         token,
         (d: { viewer: { assignedIssues: Connection<Issue> } }) => d.viewer.assignedIssues,
       )
@@ -181,7 +197,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
         config: Object.keys(repos).length > 0 ? { repo_map: repos } : {},
         values: {
           team: teams.map((t) => t.key),
-          state: [...new Set(teams.flatMap((t) => t.states.nodes.map((s) => s.name)))],
+          status: [...new Set(teams.flatMap((t) => t.states.nodes.map((s) => s.name)))],
         },
       }
     },
@@ -199,6 +215,8 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
 function toItem(issue: Issue, comments: Comment[], repoMap: Config['repo_map'] = {}): Item {
   const labels = issue.labels.nodes.map((l) => l.name)
   const repo = repoMap[issue.team.key]
+  const finished = FINISHED.includes(issue.state.type)
+  const closed = finished && (issue.completedAt ?? issue.canceledAt)
   return {
     source: 'linear',
     id: issue.id,
@@ -217,16 +235,18 @@ function toItem(issue: Issue, comments: Comment[], repoMap: Config['repo_map'] =
     linkedPrs: [],
     fields: {
       team: issue.team.key,
-      state: issue.state.name,
+      status: issue.state.name,
       labels,
       priority: issue.priorityLabel,
       blocked: issue.inverseRelations.nodes.some(
-        (r) => r.type === 'blocks' && !['completed', 'canceled'].includes(r.issue.state.type),
+        (r) => r.type === 'blocks' && !FINISHED.includes(r.issue.state.type),
       ),
       ...(issue.project && { project: issue.project.name }),
       ...(repo && { repo }),
       created: issue.createdAt,
       updated: issue.updatedAt,
+      state: finished ? 'closed' : 'open',
+      ...(closed && { closed }),
     },
     raw: issue,
   }

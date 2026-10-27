@@ -16,14 +16,14 @@ Only the workers call a model. Everything else is plain code you can inspect wit
 
 ## Items
 
-A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, `approved` (whether you ran [`awaywork approve`](#units) on it), and source fields.
+A source returns your open items with facts about each: a `type` (`pr`, `issue`, `task`), a `title` and `description`, `approved` (whether you ran [`awaywork approve`](#units) on it), `state` (`open`, or `merged` or `closed` for the [finished items](./configuration.md#finished-items) a rule asks for) and `closed` (when it finished), and source fields.
 
 | Source | Items | Fields a rule can match |
 | --- | --- | --- |
-| GitHub | PRs you authored, PRs awaiting your review, issues assigned to you, plus any extra `search` (e.g. `label:awaywork`, `mentions:@me`), in the configured repos | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `ours` (awaywork opened it), `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads` (those [shown to the agent](./safety.md#public-repos)), `my_unresolved_threads` (the unresolved ones you started), `files` (paths the PR touches, the first 500; test with `matches`), `changed_lines` (additions plus deletions), `review_requested`, `created`, `updated` |
-| Asana | Tasks assigned to you in a workspace, optionally some projects | `project`, `section`, `blocked` (a dependency is incomplete), `tags`, `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated`, `due` |
-| Linear | Issues assigned to you that are neither completed nor canceled | `team` (key), `state`, `labels`, `priority` (e.g. `High`), `blocked` (an open blocker), `project`, `repo` (from `repo_map`), `created`, `updated` |
-| Jira Cloud | Unresolved issues assigned to you, optionally narrowed by `jql` | `project` (key), `status`, `labels`, `priority`, `blocked` (an open "is blocked by" link), `issuetype` (e.g. `Bug`), `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated` |
+| GitHub | Open PRs you authored, PRs awaiting your review, issues assigned to you, plus any extra `search` (e.g. `label:awaywork`, `mentions:@me`), in the configured repos; your merged and closed ones too when a rule asks | `repo`, `label`, `author`, `trusted` (the author is an owner, member or collaborator), `mine`, `ours` (awaywork opened it), `draft`, `checks` (`failing`, `pending`, `passing`), `unresolved_threads` (those [shown to the agent](./safety.md#public-repos)), `my_unresolved_threads` (the unresolved ones you started), `files` (paths the PR touches, the first 500; test with `matches`), `changed_lines` (additions plus deletions), `review_requested`, `created`, `updated` |
+| Asana | Incomplete tasks assigned to you in a workspace, optionally some projects; completed ones too when a rule asks | `project`, `section`, `blocked` (a dependency is incomplete), `tags`, `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated`, `due` |
+| Linear | Issues assigned to you that are neither completed nor canceled; completed and canceled ones too when a rule asks | `team` (key), `status` (the workflow state), `labels`, `priority` (e.g. `High`), `blocked` (an open blocker), `project`, `repo` (from `repo_map`), `created`, `updated` |
+| Jira Cloud | Unresolved issues assigned to you, optionally narrowed by `jql`; resolved ones too when a rule asks | `project` (key), `status`, `labels`, `priority`, `blocked` (an open "is blocked by" link), `issuetype` (e.g. `Bug`), `repo` (from `repo_map`), `fields.<custom field>`, `created`, `updated` |
 
 ## The queue
 
@@ -47,19 +47,19 @@ With no `queue` in the config, the default one applies, keeping only the rules w
 | --- | ----------- | ------ | -------------------------------------------- |
 | 1   | `fix`       | GitHub | my PR, checks failing                        |
 | 2   | `fix`       | Asana  | section `QA`                                 |
-| 3   | `fix`       | Linear | state `QA`                                   |
+| 3   | `fix`       | Linear | status `QA`                                  |
 | 4   | `fix`       | Jira   | status `QA`                                  |
 | 5   | `fix`       | GitHub | my PR, unresolved threads                    |
 | 6   | `fix`       | GitHub | my awaywork PR, unresolved threads I started |
 | 7   | `review`    | GitHub | my review requested, trusted author          |
 | 8   | `implement` | Asana  | section `In progress`                        |
-| 9   | `implement` | Linear | state `In Progress`                          |
+| 9   | `implement` | Linear | status `In Progress`                         |
 | 10  | `implement` | Jira   | status `In Progress`                         |
 | 11  | `plan`      | Asana  | section `Current sprint`                     |
-| 12  | `plan`      | Linear | state `Todo`                                 |
+| 12  | `plan`      | Linear | status `Todo`                                |
 | 13  | `plan`      | Jira   | status `To Do`                               |
 
-The section, state and status names are guesses; `awaywork init` replaces them with your tracker's real ones and writes the queue out so you can edit it.
+The section and status names are guesses; `awaywork init` replaces them with your tracker's real ones and writes the queue out so you can edit it.
 
 ## Units
 

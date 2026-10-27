@@ -379,7 +379,7 @@
               "pattern": "^[^/\\s]+$"
             },
             "search": {
-              "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",
+              "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",
               "type": "array",
               "items": {
                 "type": "string",
@@ -932,7 +932,7 @@
           },
           "where": {
             "default": {},
-            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title and description are on every source",
+            "description": "Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only",
             "$ref": "#/$defs/__schema0"
           },
           "provider": {

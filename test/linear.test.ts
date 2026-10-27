@@ -6,7 +6,7 @@ import { parseConfig } from '../src/config/load.js'
 import type { Ctx } from '../src/core/types.js'
 import { linearSource } from '../src/sources/linear.js'
 import { recordedFetch } from './fakes/asana.js'
-import { linearFetch } from './fakes/linear.js'
+import { linearFetch, linearFixture } from './fakes/linear.js'
 
 const ctx: Ctx = { env: { LINEAR_API_KEY: 'lin_api_key' }, log: () => {} }
 const cfg = { token_env: 'LINEAR_API_KEY' }
@@ -25,21 +25,64 @@ describe('linear source', () => {
     const [first, second] = http.calls.filter((c) => c.body.includes('query Issues'))
     expect(first?.url).toBe('https://api.linear.app/graphql')
     expect(first?.headers.Authorization).toBe('lin_api_key')
-    expect(first?.body).toContain('nin: [\\"completed\\", \\"canceled\\"]')
-    expect(JSON.parse(second?.body ?? '{}').variables).toEqual({ after: 'cursor-1' })
+    const open = { state: { type: { nin: ['completed', 'canceled'] } } }
+    expect(JSON.parse(first?.body ?? '{}').variables).toEqual({ filter: open, after: null })
+    expect(JSON.parse(second?.body ?? '{}').variables).toEqual({ filter: open, after: 'cursor-1' })
   })
 
-  it('states team, state, labels, priority, project and dates', async () => {
+  it('also reads issues completed or canceled since the time asked, archived too, as closed', async () => {
+    const done = JSON.parse(linearFixture('issues-2.json'))
+    Object.assign(done.data.viewer.assignedIssues.nodes[0], {
+      state: { name: 'Done', type: 'completed' },
+      completedAt: '2026-10-20T10:00:00.000Z',
+    })
+    const canceled = JSON.parse(linearFixture('issues-1.json'))
+    Object.assign(canceled.data.viewer.assignedIssues.nodes[0], {
+      state: { name: 'Canceled', type: 'canceled' },
+      canceledAt: '2026-10-19T10:00:00.000Z',
+    })
+    const http = linearFetch([
+      [/query Issues.*"after":"cursor-1"/, JSON.stringify(done)],
+      [/query Issues/, JSON.stringify(canceled)],
+    ])
+    const since = new Date('2026-10-11T00:00:00.000Z')
+    const [eng12, web7] = await linearSource(http).items(cfg, ctx, since)
+    const [first] = http.calls.filter((c) => c.body.includes('query Issues'))
+    const after = { gte: since.toISOString() }
+    expect(JSON.parse(first?.body ?? '{}').variables).toMatchObject({
+      archived: true,
+      filter: {
+        or: [
+          { state: { type: { nin: ['completed', 'canceled'] } }, archivedAt: { null: true } },
+          { completedAt: after },
+          { canceledAt: after },
+        ],
+      },
+    })
+    expect(web7?.fields).toMatchObject({
+      status: 'Done',
+      state: 'closed',
+      closed: '2026-10-20T10:00:00.000Z',
+    })
+    expect(eng12?.fields).toMatchObject({
+      status: 'Canceled',
+      state: 'closed',
+      closed: '2026-10-19T10:00:00.000Z',
+    })
+  })
+
+  it('states team, status, labels, priority, project and dates', async () => {
     const [eng12, web7] = await items()
     expect(eng12?.fields).toEqual({
       team: 'ENG',
-      state: 'QA',
+      status: 'QA',
       labels: ['backend', 'bug'],
       priority: 'High',
       blocked: true,
       project: 'Rate limits',
       created: '2026-01-01T08:00:00.000Z',
       updated: '2026-01-03T08:00:00.000Z',
+      state: 'open',
     })
     expect(web7?.fields).toMatchObject({ blocked: false })
     expect(web7?.fields).not.toHaveProperty('project')
@@ -81,7 +124,7 @@ describe('linear source', () => {
     await source.prefetch(eng12 as never, dir, ctx)
     const issue = await readFile(join(dir, 'item.md'), 'utf8')
     expect(issue).toContain('# ENG-12: Refill the rate-limit bucket\n\n')
-    expect(issue).toContain('- state: QA\n')
+    expect(issue).toContain('- status: QA\n')
     expect(issue).toContain('- labels: backend, bug\n')
     expect(issue).toContain('Bursts still return 500.')
     expect(issue).toContain('### QA, 2026-01-01T10:00:00.000Z\n\nStill returns 500 on burst.')

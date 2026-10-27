@@ -18,7 +18,7 @@ const config = z
       .array(z.string().min(1))
       .optional()
       .describe(
-        'Extra GitHub search qualifiers, each ANDed with is:open archived:false, e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested',
+        'Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested',
       ),
   })
   .describe(
@@ -27,6 +27,10 @@ const config = z
 type Config = z.infer<typeof config>
 
 const PAGE = 100
+/** Finished PRs come in pages this small: a page of 100 with their files timed out on GitHub. */
+const FINISHED_PAGE = 50
+/** GitHub search returns no result past this many, however many pages. */
+const SEARCH_CAP = 1000
 const LOG_TAIL = 200
 /** Paths read per PR: a rule routes on where a change lands, and a huge one is huge wherever it lands. */
 const MAX_FILES = 500
@@ -35,16 +39,17 @@ const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
 const BY = 'author { login __typename } authorAssociation viewerDidAuthor'
 
 const common = `
-  id number title body url state createdAt updatedAt
+  id number title body url state createdAt updatedAt closedAt
   repository { nameWithOwner }
   author { login } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
   comments(last: 50) { nodes { ${BY} body createdAt } }`
 
-const searchQuery = `query($q: String!) {
-  search(query: $q, type: ISSUE, first: ${PAGE}) {
+const searchQuery = `query($q: String!, $first: Int!, $after: String) {
+  search(query: $q, type: ISSUE, first: $first, after: $after) {
     issueCount
+    pageInfo { hasNextPage endCursor }
     nodes {
       __typename
       ... on Issue { ${common}
@@ -131,6 +136,7 @@ interface Node extends PrLink {
   state: string
   createdAt: string
   updatedAt: string
+  closedAt: string | null
   author: Login
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
@@ -165,10 +171,18 @@ interface PrDetails {
   commits: Nodes<{ commit: { statusCheckRollup: { contexts: Nodes<Check> } | null } }>
 }
 
-const searches: { q: string; fields: Record<string, boolean> }[] = [
+/** A search and the fields every item it finds gets; a finished one is bounded by a date. */
+type Query = { q: string; fields: Record<string, boolean>; finished?: boolean }
+
+const searches: Query[] = [
   { q: 'is:pr is:open archived:false author:@me', fields: { mine: true } },
   { q: 'is:pr is:open archived:false review-requested:@me', fields: { review_requested: true } },
   { q: 'is:issue is:open archived:false assignee:@me', fields: { mine: true } },
+]
+
+const finishedSearches: Query[] = [
+  { q: 'is:pr is:closed archived:false author:@me', fields: { mine: true } },
+  { q: 'is:issue is:closed archived:false assignee:@me', fields: { mine: true } },
 ]
 
 export function githubSource(base: Exec = exec): Source<Config> {
@@ -196,8 +210,8 @@ export function githubSource(base: Exec = exec): Source<Config> {
     },
     secrets: () => [],
 
-    /** My open PRs, PRs awaiting my review and issues assigned to me, in the configured repos. */
-    async items(cfg, ctx) {
+    /** My open PRs, PRs awaiting my review and issues assigned to me, in the configured repos; since `since`, my PRs and issues closed too. */
+    async items(cfg, ctx, since) {
       const run = onHost(base, cfg.host)
       const inScope = (repo: string) => cfg.repos.some((glob) => globToRegExp(glob).test(repo))
       const byId = new Map<string, Item>()
@@ -205,15 +219,21 @@ export function githubSource(base: Exec = exec): Source<Config> {
         q: `is:open archived:false ${q}`,
         fields: {},
       }))
-      for (const { q, fields } of [...searches, ...extra]) {
-        const { search } = await graphql<{ search: { issueCount: number; nodes: Node[] } }>(
-          run,
-          searchQuery,
-          { q },
-        )
-        if (search.issueCount > PAGE)
-          ctx.log(`github: "${q}" found ${search.issueCount}, reading the first ${PAGE}`)
-        for (const node of search.nodes) {
+      // A merged PR is closed too, at the time it merged; the day bounds the pages to read.
+      const closed = since
+        ? [
+            ...finishedSearches,
+            ...(cfg.search ?? []).map((q) => ({ q: `is:closed archived:false ${q}`, fields: {} })),
+          ].map(({ q, fields }) => ({
+            q: `${q} closed:>=${since.toISOString().slice(0, 10)}`,
+            fields,
+            finished: true,
+          }))
+        : []
+      const queries: Query[] = [...searches, ...extra, ...closed]
+      for (const { q, fields, finished } of queries) {
+        const nodes = await (finished ? searchAll : searchFirst)(run, q, ctx.log)
+        for (const node of nodes) {
           if (!inScope(node.repository.nameWithOwner)) continue
           const item = byId.get(node.id) ?? toItem(node)
           Object.assign(item.fields, fields)
@@ -269,6 +289,40 @@ export function githubSource(base: Exec = exec): Source<Config> {
 }
 
 export const github = githubSource()
+
+type Search = {
+  search: {
+    issueCount: number
+    pageInfo: { hasNextPage: boolean; endCursor: string }
+    nodes: Node[]
+  }
+}
+
+/** A search's first page, saying when there was more. */
+async function searchFirst(run: Exec, q: string, log: (line: string) => void): Promise<Node[]> {
+  const { search } = await graphql<Search>(run, searchQuery, { q, first: PAGE })
+  if (search.issueCount > PAGE)
+    log(`github: "${q}" found ${search.issueCount}, reading the first ${PAGE}`)
+  return search.nodes
+}
+
+/** Every page of a search bounded by a date, up to GitHub's cap, saying when it hit it. */
+async function searchAll(run: Exec, q: string, log: (line: string) => void): Promise<Node[]> {
+  const nodes: Node[] = []
+  let after: string | undefined
+  do {
+    const { search } = await graphql<Search>(run, searchQuery, {
+      q,
+      first: FINISHED_PAGE,
+      ...(after && { after }),
+    })
+    if (!after && search.issueCount > SEARCH_CAP)
+      log(`github: "${q}" found ${search.issueCount}, GitHub returns the first ${SEARCH_CAP}`)
+    nodes.push(...search.nodes)
+    after = search.pageInfo.hasNextPage ? search.pageInfo.endCursor : undefined
+  } while (after)
+  return nodes
+}
 
 /**
  * Sets `unresolved_threads` and `my_unresolved_threads` on the PRs that have unresolved threads,
@@ -347,6 +401,8 @@ function toItem(node: Node): Item {
     mine: false,
     created: node.createdAt,
     updated: node.updatedAt,
+    state: node.state.toLowerCase(),
+    ...(node.closedAt && { closed: node.closedAt }),
   }
   if (isPr) {
     const checks = checkState(node.commits?.nodes[0]?.commit.statusCheckRollup?.state)
@@ -362,7 +418,9 @@ function toItem(node: Node): Item {
       ...(checks && { checks }),
     })
   }
-  const links = isPr ? [node] : (node.closedByPullRequestsReferences?.nodes ?? [])
+  // A finished item links no PR: it never joins an open PR's unit, nor works on a branch that may be gone.
+  const links =
+    node.state !== 'OPEN' ? [] : isPr ? [node] : (node.closedByPullRequestsReferences?.nodes ?? [])
   return {
     source: 'github',
     id: node.id,

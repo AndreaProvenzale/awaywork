@@ -103,6 +103,7 @@ describe('github source', () => {
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
+      state: 'open',
     })
     expect(pr3?.fields).toMatchObject({ draft: true, mine: true })
     expect(pr3?.fields).not.toHaveProperty('checks')
@@ -121,6 +122,7 @@ describe('github source', () => {
       mine: true,
       created: '2026-01-01T08:00:00Z',
       updated: '2026-02-01T08:00:00Z',
+      state: 'open',
     })
     expect(issue5?.comments).toEqual([
       { author: 'dev', body: 'Start with the public routes.', at: '2026-01-01T10:00:00Z' },
@@ -406,6 +408,87 @@ describe('github source', () => {
         'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
         "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
     )
+  })
+})
+
+describe('github source, finished items', () => {
+  const since = new Date('2026-10-11T09:30:00Z')
+  const closedAt = '2026-10-20T08:00:00Z'
+  const end = { hasNextPage: false, endCursor: '' }
+  const none = JSON.stringify({ data: { search: { issueCount: 0, pageInfo: end, nodes: [] } } })
+  /** A recorded search's first node, finished and numbered `n`, on a page that may lead to another. */
+  const finished = (name: string, state: string, n: number, next = '') => {
+    const page = JSON.parse(fixture(name))
+    const [node] = page.data.search.nodes
+    page.data.search.pageInfo = { hasNextPage: !!next, endCursor: next }
+    page.data.search.nodes = [{ ...node, id: `done-${n}`, number: n, state, closedAt }]
+    if (node.reviewThreads) page.data.search.nodes[0].reviewThreads = { nodes: [] }
+    return JSON.stringify(page)
+  }
+  const run = () =>
+    recorded([
+      [
+        /author:@me closed:>=2026-10-11 -F first=50 -f after=c2/,
+        finished('search-authored.json', 'CLOSED', 12),
+      ],
+      [
+        /q=is:pr is:closed archived:false author:@me closed:>=2026-10-11 -F first=50 -f query/,
+        finished('search-authored.json', 'MERGED', 11, 'c2'),
+      ],
+      [
+        /q=is:issue is:closed archived:false assignee:@me closed:>=2026-10-11 -F first=50/,
+        finished('search-assigned.json', 'CLOSED', 15),
+      ],
+      [/q=is:(open|closed) archived:false label:awaywork/, none],
+      ...githubRoutes(),
+    ])
+  const searches = (calls: string[][]) =>
+    calls.flatMap((c) => c.find((a) => a.startsWith('q='))?.slice(2) ?? [])
+  const cfg = { repos: ['acme/*'], search: ['label:awaywork'] }
+
+  it('searches for nothing finished unless asked', async () => {
+    const exec = run()
+    await githubSource(exec).items(cfg, ctx)
+    expect(searches(exec.calls)).toEqual([
+      'is:pr is:open archived:false author:@me',
+      'is:pr is:open archived:false review-requested:@me',
+      'is:issue is:open archived:false assignee:@me',
+      'is:open archived:false label:awaywork',
+    ])
+  })
+
+  it('reads every page of my PRs and issues closed since the day asked, extra searches too, linking no PR', async () => {
+    const exec = run()
+    const found = await githubSource(exec).items(cfg, ctx, since)
+    expect(searches(exec.calls).slice(4)).toEqual([
+      'is:pr is:closed archived:false author:@me closed:>=2026-10-11',
+      'is:pr is:closed archived:false author:@me closed:>=2026-10-11',
+      'is:issue is:closed archived:false assignee:@me closed:>=2026-10-11',
+      'is:closed archived:false label:awaywork closed:>=2026-10-11',
+    ])
+    const done = found.filter((i) => i.fields.state !== 'open')
+    expect(done.map((i) => [i.key, i.fields.state, i.fields.closed, i.fields.mine])).toEqual([
+      ['acme/api#11', 'merged', closedAt, true],
+      ['acme/api#12', 'closed', closedAt, true],
+      ['acme/api#15', 'closed', closedAt, true],
+    ])
+    // The issue's recorded PR #1 is open, and stays linked to the open issue only.
+    expect(done.map((i) => i.linkedPrs)).toEqual([[], [], []])
+    expect(found.find((i) => i.key === 'acme/api#5')?.linkedPrs).toHaveLength(1)
+  })
+
+  it("warns when a finished search hits GitHub's cap", async () => {
+    const capped = none.replace('"issueCount":0', '"issueCount":1500')
+    const exec = recorded([
+      [/q=is:issue is:closed/, capped],
+      [/is:closed/, none],
+      ...githubRoutes(),
+    ])
+    log.length = 0
+    await githubSource(exec).items({ repos: ['acme/*'] }, ctx, since)
+    expect(log).toEqual([
+      'github: "is:issue is:closed archived:false assignee:@me closed:>=2026-10-11" found 1500, GitHub returns the first 1000',
+    ])
   })
 })
 

@@ -25,7 +25,7 @@ const rule = (skill: string, source: string, where: Where): Rule => ({
 export const defaultQueue: Rule[] = [
   rule('fix', 'github', { type: 'pr', mine: true, checks: 'failing' }),
   rule('fix', 'asana', { section: 'QA' }),
-  rule('fix', 'linear', { state: 'QA' }),
+  rule('fix', 'linear', { status: 'QA' }),
   rule('fix', 'jira', { status: 'QA' }),
   rule('fix', 'github', { type: 'pr', mine: true, unresolved_threads: { not: 0 } }),
   rule('fix', 'github', {
@@ -36,10 +36,10 @@ export const defaultQueue: Rule[] = [
   }),
   rule('review', 'github', { type: 'pr', review_requested: true, trusted: true }),
   rule('implement', 'asana', { section: 'In progress' }),
-  rule('implement', 'linear', { state: 'In Progress' }),
+  rule('implement', 'linear', { status: 'In Progress' }),
   rule('implement', 'jira', { status: 'In Progress' }),
   rule('plan', 'asana', { section: 'Current sprint' }),
-  rule('plan', 'linear', { state: 'Todo' }),
+  rule('plan', 'linear', { status: 'Todo' }),
   rule('plan', 'jira', { status: 'To Do' }),
 ]
 
@@ -88,18 +88,92 @@ function eligible(rule: Rule, item: Item): boolean {
   return !isAwayworkPr(item) || 'ours' in rule.where
 }
 
-/** A PR awaywork opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
+/** An open PR awaywork opened; only the GitHub source can tell, whatever a custom source's `ours` says. */
 export function isAwayworkPr(item: Item): boolean {
-  return item.source === 'github' && item.fields.ours === true
+  return item.source === 'github' && item.fields.ours === true && itemState(item) === 'open'
 }
 
-/** The keys of `where` the item fails; `any` fails when every entry fails. */
-export function failedIn(where: Where, item: Item): string[] {
-  return Object.keys(where).filter((key) =>
+export const itemStates = ['open', 'merged', 'closed'] as const
+export type ItemState = (typeof itemStates)[number]
+
+/** Whether the item is open, or a PR merged, or closed unmerged, done or canceled; open unless its source says. */
+export function itemState(item: Item): ItemState {
+  const state = item.fields.state
+  return state === 'merged' || state === 'closed' ? state : 'open'
+}
+
+/** How far back a rule reads finished items when its `where` doesn't bound `closed`. */
+export const DEFAULT_LOOKBACK = '7d'
+
+/** What a finished item is held to where no level of a `where` says: open items only, read back {@link DEFAULT_LOOKBACK}. */
+export const implicitWhere: Where = { state: 'open', closed: { newer_than: DEFAULT_LOOKBACK } }
+
+/** Whether a level of a `where`, or one around it, names `state`, and the tightest `closed: { newer_than }` among them. */
+export type Scope = { named: boolean; bound: number }
+
+export const TOP: Scope = { named: false, bound: Number.POSITIVE_INFINITY }
+
+export function within(where: Where, outer: Scope): Scope {
+  const newer = newerThan(where.closed as WhereValue | undefined)
+  return {
+    named: outer.named || 'state' in where,
+    bound: Math.min(outer.bound, newer ? spanMs(newer) : Number.POSITIVE_INFINITY),
+  }
+}
+
+export function newerThan(value: WhereValue | undefined): string | undefined {
+  return typeof value === 'object' && !Array.isArray(value) && isAge(value)
+    ? value.newer_than
+    : undefined
+}
+
+/**
+ * How far back, in milliseconds, a `where` reads finished (merged or closed) items: the widest
+ * `closed: { newer_than }` among the ways through its `any` that can match one, {@link DEFAULT_LOOKBACK}
+ * where one sets none. Undefined when it matches open items only: a way through that never names
+ * `state` does.
+ */
+export function lookback(where: Where, outer = TOP): number | undefined {
+  const state = where.state as WhereValue | undefined
+  if (state !== undefined && !['merged', 'closed'].some((s) => matchesValue(state, s)))
+    return undefined
+  const scope = within(where, outer)
+  const any = where.any as Where[] | undefined
+  if (any) {
+    const reached = any.flatMap((w) => lookback(w, scope) ?? [])
+    return reached.length > 0 ? Math.max(...reached) : undefined
+  }
+  if (!scope.named) return undefined
+  return Number.isFinite(scope.bound) ? scope.bound : spanMs(DEFAULT_LOOKBACK)
+}
+
+/** Whether some way through `where` can match an open item, which has no `closed`. */
+export function matchesOpen(where: Where): boolean {
+  if (where.state !== undefined && !matchesValue(where.state as WhereValue, 'open')) return false
+  if (where.closed !== undefined && !matchesValue(where.closed as WhereValue, undefined))
+    return false
+  return !where.any || (where.any as Where[]).some(matchesOpen)
+}
+
+/**
+ * The keys of `where` the item fails; `any` fails when every entry fails. A finished item also
+ * fails `state` on a way through that never names it, and `closed` past {@link DEFAULT_LOOKBACK}
+ * on one that never bounds it.
+ */
+export function failedIn(where: Where, item: Item, outer = TOP): string[] {
+  const scope = within(where, outer)
+  const failed = Object.keys(where).filter((key) =>
     key === 'any'
-      ? !(where[key] as Where[]).some((w) => failedIn(w, item).length === 0)
+      ? !(where[key] as Where[]).some((w) => failedIn(w, item, scope).length === 0)
       : !matchesValue(where[key] as WhereValue, fieldValue(item, key)),
   )
+  if ('any' in where || itemState(item) === 'open') return failed
+  if (!scope.named) return [...failed, 'state']
+  // One without a `closed` time can't be too old.
+  const tooOld = Date.now() - timestamp(item.fields.closed) > spanMs(DEFAULT_LOOKBACK)
+  return Number.isFinite(scope.bound) || !tooOld || failed.includes('closed')
+    ? failed
+    : [...failed, 'closed']
 }
 
 export function fieldValue(item: Item, key: string): unknown {
