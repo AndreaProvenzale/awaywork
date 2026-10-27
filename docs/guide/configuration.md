@@ -297,13 +297,14 @@ PR titles, bodies and commit messages have no config: the agent follows the repo
 
 ## Gates
 
-Some changes want a human before they go anywhere: a migration, a new public route, a bumped dependency. A gate spots one and changes what gets delivered. Each gate has a name and either `changed`, git globs from the repo root that fire when the slice's commits touch a matching path, or `command`, a script that fires when it exits non-zero, its stdout becoming the gate's line:
+Some changes want a human before they go anywhere: a migration, a new public route, a bumped dependency. A gate spots one and changes what gets delivered. Each gate has a name and one of `changed`, git globs from the repo root that fire when the slice's commits touch a matching path, `command`, a script that fires when it exits non-zero, its stdout becoming the gate's line, or `skill`, a [judge](#judges):
 
 ```yaml
 gates:
   schema: { changed: ["**/migrations/**", "**/*.prisma"] }
   routes: { command: scripts/route-diff.sh } # non-zero exit = fires, stdout = the line
   deps: { changed: [package.json, pnpm-lock.yaml] }
+  risk: { skill: judge } # a model reads the slice and may fire it
 repos:
   acme/backend:
     gates:
@@ -322,9 +323,9 @@ routes=$(git diff --text "$AWAYWORK_FROM" HEAD -- src/routes | grep -E '^\+ *rou
 
 Diff from `$AWAYWORK_FROM`, never from a branch like `origin/main`: the clone's refs are the agent's to move. So are its replace refs and attributes, where a `* -diff` turns the diff into `Binary files … differ`: the command's git ignores replace refs, awaywork deletes `.git/info/attributes` before it runs, and git reads `.gitattributes` files, committed or not, from the commit the chain started from rather than the worktree. Older git ignores that last part, hence the `--text`. The steps' git config is the agent's too, where a `diff.external` or a textconv driver blanks the diff, so the command's git reads a fresh global config awaywork writes, with your identity and git-lfs's filter but no attributes file, instead.
 
-Top-level gates apply to every repo, and a repo's `gates` can only add to them. A gate both define fires on either's globs, and when both have a `command`, both run and either one fires it. There's no way for a repo to turn off or loosen a top-level gate.
+Top-level gates apply to every repo, and a repo's `gates` can only add to them. A gate both define fires on either's globs, and when both have a `command` or a `skill`, both run and either one fires it. There's no way for a repo to turn off or loosen a top-level gate.
 
-Gates run on every slice that publishes commits, once its chain's steps are done, right after `verify`, on that slice's own commits. A fired gate puts a decision card first in the PR body, right under the title, above the agent's own text and awaywork's chain notes:
+Gates run on every slice that publishes commits, once its chain's steps are done, right after `verify`, judges last, on that slice's own commits. A fired gate puts a decision card first in the PR body, right under the title, above the agent's own text and awaywork's chain notes:
 
 ```markdown
 ## Needs a decision
@@ -366,6 +367,30 @@ Gates fail closed: a command that can't run, times out, is stopped or isn't run 
 That only works when the command names its script by its path from the repo root, as a word of its own: `scripts/route-diff.sh` in `bash ./scripts/route-diff.sh` or `(scripts/route-diff.sh) && echo ok` counts, but `cd scripts && sh route-diff.sh` doesn't. A file the command names that wasn't there when the chain started always fires it, so don't name one the command writes.
 
 Only the named files are compared, though, and a command gate runs repo code the agent may have changed: a helper the script sources, the repo code it calls, a module its interpreter loads from next to it. `python3 scripts/gate.py` imports a `scripts/json.py` the agent committed before the real `json`, so run Python with `-I`; Node looks for `node_modules` up from the script the same way. A `changed` gate is the one to trust: awaywork computes it from the commits it pushes. See [Safety](./safety.md#what-awaywork-publishes).
+
+### Judges
+
+A `skill` gate is a judge: once the scripts ran, awaywork runs that skill in the slice's clone as one more model run, routed on the rule's providers and models like a step, and tells it which commit to diff from and to change nothing. The built-in `judge` looks for what a human must decide: schema and data changes, public routes and API contracts, money and rounding, auth, infra, performance-sensitive paths, dependency changes, anything irreversible. Name your own skill to judge by your rules; it comes from your skills or the built-ins, never the repo's.
+
+A judge that writes `fires` to `.away/out/verdict` fires its gate, the first ten lines of its `report.md` going into a Judge part of the card, after the scripts':
+
+```markdown
+## Needs a decision
+
+### Gates (from scripts)
+
+- schema: migrations/20261023_add_vat_mode.ts
+
+### Judge
+
+- risk: VAT rounding moved from the invoice total to each line → totals change on open invoices
+
+---
+```
+
+Any other verdict, or none, adds nothing. Scripts set the minimum and a judge can only add: it can't clear a script's gate, even one with its name. It reads what the agent wrote, `// reviewed: safe` comments included, so it can be fooled, and then it just doesn't fire. It can't change what gets published: when it leaves a commit, a moved HEAD, an uncommitted change or a changed file in `.away/out/`, awaywork puts it all back as it was and fires the gate with `the judge changed the clone; awaywork dropped its changes`, though a worker process that outlived the watchdog could still change a file after that. It fails closed too: a judge that errors, times out, is stopped or can't run fires with `judge didn't run: <why>`, so a run out of quota drafts its `deliver: pr` PR.
+
+Each judge is one more model run per published slice, on the same quota as the steps. The run's log says `acme-backend-412: gate risk, judge on claude`, and the judge's worker log sits next to what the slice published, as `out/judge-risk-judge.log`.
 
 ## Queue rules
 

@@ -296,10 +296,11 @@ export interface Unit {
   deliver: Deliver
 }
 
-/** A gate fires when the slice's commits change a path matching one of `changed`, or one of `commands` fails. */
+/** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */
 export interface Gate {
   changed: string[]
   commands: string[]
+  skills: string[]
 }
 
 export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review'

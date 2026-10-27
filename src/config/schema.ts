@@ -444,14 +444,22 @@ const gate = z
       .describe(
         "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
       ),
+    skill: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+      ),
   })
   .superRefine((g, ctx) => {
-    if ((g.changed === undefined) === (g.command === undefined))
+    const set = [g.changed, g.command, g.skill].filter((d) => d !== undefined).length
+    if (set !== 1)
       ctx.addIssue({
         code: 'custom',
-        message: g.changed
-          ? 'expected changed or command, not both'
-          : 'expected changed or command',
+        message: set
+          ? 'expected one of changed, command or skill'
+          : 'expected changed, command or skill',
       })
   })
 const gates = z
@@ -475,7 +483,7 @@ const repo = z.strictObject({
       'Command run in the clone after the worker, before publishing; a failure goes in the PR body or report, and the work is still published',
     ),
   gates: gates.describe(
-    "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed or command",
+    "Gates for this repo's units, on top of the top-level ones; a name both have fires on either's changed, command or skill",
   ),
   test: z.string().optional().describe('Targeted test command, given to the worker in its prompt'),
   instructions: z.string().optional().describe('Instruction file for units in this repo'),

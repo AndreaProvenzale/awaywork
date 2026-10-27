@@ -34,6 +34,7 @@ import type {
   Provider,
   Quota,
   Source,
+  Unit,
 } from '../core/types.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
@@ -66,6 +67,7 @@ import { shortage } from './watchdog.js'
 import {
   configSecrets,
   copyOut,
+  gateEnv,
   notSymlink,
   outputFile,
   type Previous,
@@ -206,7 +208,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     signal: input.signal,
     until: input.until,
   })
-  const publisher: Publisher = {
+  const publisher: Omit<Publisher, 'judge'> = {
     forge: input.forge,
     runId: input.runId,
     signal: input.signal,
@@ -296,6 +298,94 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     // Each slice's first step, which publishes it.
     const leads = new Set<UnitResult>()
 
+    /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the slice's `out/`. */
+    const judge: Publisher['judge'] = async (gate, skill, unit, dir, from) => {
+      // On a provider that ran a step of its slice, a judge rides on that step's fallback unit; elsewhere it takes one.
+      const ranSlice = new Set(
+        done
+          .filter((r) => (r.planned.slice ?? 0) === at && r.status !== 'skipped')
+          .map((r) => r.provider),
+      )
+      const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
+      const { provider: id, passed } = route(unit.providers, allowances, counted)
+      const provider = id && input.providers[id]
+      const a = id && allowances[id]
+      if (!id || !provider || !a)
+        return `no provider left: ${passed.join('; ') || 'none configured'}`
+      if (!ranSlice.has(id)) routed[id] = (routed[id] ?? 0) + 1
+      const image = input.config.repos[unit.repo]?.image
+      const entry = input.config.providers.find((c) => c.id === id)
+      const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
+      const name = `judge-${gate}-${slug(skill)}`
+      input.ctx.log(`${unit.id}: gate ${gate}, ${skill} on ${id}${model ? ` (${model})` : ''}`)
+      const out = join(chainDir, sliceOut(at))
+      await mkdir(out, { recursive: true })
+      const logFile = createWriteStream(join(out, `${name}.log`))
+      const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
+      const plugin = join(root, 'plugins', `${unit.id}-${name}`)
+      const judged: Unit = {
+        ...unit,
+        skill,
+        skills: [],
+        deliver: 'report',
+        foreign: true,
+        stackedOn: undefined,
+        rule: {
+          ...unit.rule,
+          instructions: [],
+          with: undefined,
+          when: undefined,
+        },
+      }
+      let why: string | undefined
+      try {
+        if (contained() && image) contain(dir, { image, plugin, secrets })
+        const prompt = await prepareWorkspace({
+          ...input,
+          unit: judged,
+          dir,
+          plugin,
+          provider,
+          ctx: { ...input.ctx, log },
+          reuse: true,
+          judge: { from },
+        })
+        const withheld = secrets.filter((name) => !provider.secrets.includes(name))
+        const job = {
+          unit: judged,
+          dir,
+          prompt,
+          maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
+          model,
+          env: await gateEnv(input.ctx.env, dir, withheld, from, original),
+          config: entry?.config,
+          configDir: input.configDir,
+          plugin,
+        }
+        const worker = await runWorker(provider, job, a, {
+          log,
+          signal: input.signal,
+          until: input.until,
+          maxMinutes: input.config.limits.unit_minutes,
+          watch: input.watch,
+        })
+        if (worker.quota) {
+          quotas[id] = worker.quota
+          allowances[id] = withQuota(a, worker.quota)
+        }
+        if (worker.status !== 'done') why = worker.reason ?? 'its worker failed'
+      } catch (e) {
+        why = (e as Error).message
+        log(`error: ${(e as Error).stack}`)
+      } finally {
+        await new Promise((done) => logFile.end(done))
+        await rm(plugin, { recursive: true, force: true })
+      }
+      if (lostToWorker(dir)) throw new Error('the clone is lost to the worker user')
+      await restoreGit(dir)
+      return why
+    }
+
     /** Publishes the open slice once its last step ended; after its PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find(
@@ -324,7 +414,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
-                publisher,
+                { ...publisher, judge },
                 { ...first.unit, ...shape, deliver },
                 dir,
                 from,
