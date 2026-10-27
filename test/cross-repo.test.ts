@@ -23,10 +23,10 @@ import {
 } from '../src/core/plan.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Write } from '../src/core/types.js'
-import { prText } from '../src/forge/pr.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
+import { originsForge } from './fakes/origins.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
 
@@ -375,71 +375,6 @@ describe('the contract', () => {
     expect(big.posted?.unposted).toBe('the plan comment is over 30000 bytes')
   })
 })
-
-/** Forges on local origins, one per repo, that take pushes, open PRs on the base they name and read files at a ref. */
-async function originsForge(root: string, repos: string[]) {
-  const origins: Record<string, string> = {}
-  for (const repo of repos) {
-    const origin = join(root, repo.replace('/', '-'))
-    await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
-    await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
-    origins[repo] = origin
-  }
-  const fake = fakeForge()
-  const bases: Record<string, string> = {}
-  const clones: Record<string, string> = {}
-  let n = 10
-  const forge = {
-    ...fake,
-    clone: async (repo: string, branch: string, dir: string) => {
-      clones[`${repo}:${dir}`] = branch || 'main'
-      await execa(bin('git'), [
-        'clone',
-        '-q',
-        ...(branch ? ['--branch', branch] : []),
-        origins[repo] as string,
-        dir,
-      ])
-    },
-    push: async (dir: string, branch: string, to: { repo: string }) => {
-      await fake.push(dir, branch, to)
-      await git(dir, 'push', '-q', origins[to.repo] as string, `HEAD:refs/heads/${branch}`)
-    },
-    openPr: async (
-      repo: string,
-      head: string,
-      base: string,
-      bodyFile: string,
-      runId: string,
-      items: Pick<Item, 'source' | 'key'>[],
-    ) => {
-      const { body } = await prText(bodyFile, head, runId, items)
-      const url = `https://github.com/${repo}/pull/${++n}`
-      bases[`${repo}:${head}`] = base || 'main'
-      const sha = (await git(origins[repo] as string, 'rev-parse', head)).stdout
-      fake.heads[`${repo}:${head}`] = [{ url, number: n, body, open: true, head: sha }]
-      return url
-    },
-    fileAt: async (repo: string, ref: string, path: string) => {
-      const shown = await execa(
-        bin('git'),
-        ['-C', origins[repo] as string, 'show', `${ref}:${path}`],
-        {
-          reject: false,
-          stripFinalNewline: false,
-        },
-      )
-      return shown.exitCode === 0 ? shown.stdout : undefined
-    },
-  }
-  /** Merges the PR on `branch` and deletes the branch, as GitHub does. */
-  const merge = async (repo: string, branch: string) => {
-    const [found] = fake.heads[`${repo}:${branch}`] ?? []
-    if (found) Object.assign(found, { open: false, merged: true, closedAt: at(9) })
-    await git(origins[repo] as string, 'branch', '-D', branch)
-  }
-  return { forge, bases, clones, merge, stacked: fake.stacked }
-}
 
 describe('a cross-repo feature run by run', () => {
   const setup = async (cfg = config, ships = true) => {

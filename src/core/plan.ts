@@ -10,7 +10,7 @@ const task = z.strictObject({
   description: z.string().optional(),
   skill: z.string().min(1).optional(),
   repo: z.string().optional(),
-  after: z.record(z.string(), z.enum(['opened', 'merged'])).optional(),
+  after: z.record(z.string(), z.string().min(1)).optional(),
   ships: z.array(z.string()).optional(),
 })
 // Strict, so a later shape widens it on purpose.
@@ -18,6 +18,9 @@ const planFile = z.strictObject({ tasks: z.array(task).min(1), contract: z.strin
 
 export type Plan = z.output<typeof planFile>
 export type Task = Plan['tasks'][number]
+
+/** Whether an `after` value is a check's name: anything but `opened` and `merged`. */
+export const isCheck = (when: string) => when !== 'opened' && when !== 'merged'
 
 /** The skill a task runs when it names none. */
 export const TASK_SKILL = 'implement'
@@ -56,7 +59,7 @@ export function planContract(
       .map(([id, url]) => `\`${id}\` (${url})`)
       .join(', ')
   return [
-    `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (${repoText}), \`ships\`, a list of repo-relative paths of files its PR will contain that tasks in other repos need, and \`after\`, a map from other task ids to \`merged\` or \`opened\`, with no cycles; and optionally \`contract:\`, the path of one file you wrote under \`.away/out/\`, e.g. \`.away/out/openapi.yaml\` with an OpenAPI diff or a schema the tasks share; no other key. \`merged\` waits, across runs, until that task's PR merges, then cuts the task from the default branch. \`opened\` waits only until that task's PR opens, which can be in the same run, right before it: in the same repo, the task's branch is cut from that task's and its PR stacks on that task's PR; in another repo, it only waits, and the task is cut from its own repo's default branch. A task's \`opened\` tasks in its own repo must lie on one chain, each after the one before, and it stacks on the last: web after \`api: opened\` and \`schema: opened\` needs api after \`schema: opened\`. A task in another repo than a task it names in \`after\` gets the files that task \`ships\`, read from its PR. Each task becomes its own item with its own branch and PR once the plan is approved, and every task gets the contract. awaywork checks it and posts your report, the narrative a person reads to approve the plan, the contract and \`plan.yml\` as one comment on the item.`,
+    `\`plan.yml\` is YAML: \`tasks:\`, a list of at most ${maxTasks} tasks, each with an \`id\` (lowercase letters, digits and dashes, unique), a \`title\`, and optionally a \`description\`, a \`skill\` (one of ${named}; \`${TASK_SKILL}\` when unset), a \`repo\` (${repoText}), \`ships\`, a list of repo-relative paths of files its PR will contain that tasks in other repos need, and \`after\`, a map from other task ids to \`merged\`, \`opened\` or the name of a check on that task's PR, with no cycles; and optionally \`contract:\`, the path of one file you wrote under \`.away/out/\`, e.g. \`.away/out/openapi.yaml\` with an OpenAPI diff or a schema the tasks share; no other key. \`merged\` waits, across runs, until that task's PR merges, then cuts the task from the default branch. \`opened\` waits only until that task's PR opens, which can be in the same run, right before it: in the same repo, the task's branch is cut from that task's and its PR stacks on that task's PR; in another repo, it only waits, and the task is cut from its own repo's default branch. A check's name, e.g. \`Vercel Preview\`, is \`opened\` plus that check passing on that task's PR head, across runs; a merged PR counts as passed. Write it as the forge shows it, letter for letter: anything but \`merged\` and \`opened\` is a check's name. A task's \`opened\` and check tasks in its own repo must lie on one chain, each after the one before, and it stacks on the last: web after \`api: opened\` and \`schema: opened\` needs api after \`schema: opened\`. A task in another repo than a task it names in \`after\` gets the files that task \`ships\`, read from its PR. Each task becomes its own item with its own branch and PR once the plan is approved, and every task gets the contract. awaywork checks it and posts your report, the narrative a person reads to approve the plan, the contract and \`plan.yml\` as one comment on the item.`,
     ...(Object.keys(retired).length
       ? [
           `These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: ${listed(retired)}. Plan the work again without them.`,
@@ -156,15 +159,15 @@ type Planned = Pick<Task, 'id' | 'after' | 'repo' | 'ships'>
 export const elsewhere = <T extends Planned>(task: Planned, tasks: T[], home?: string): T[] =>
   tasks.filter((t) => task.after?.[t.id] && (t.repo ?? home) !== (task.repo ?? home))
 
-/** A task's `opened` tasks in its own repo: those it stacks on. */
+/** A task's `opened` and check tasks in its own repo: those it stacks on. */
 const openedHere = (task: Planned, tasks: Planned[], home?: string): string[] => {
   const away = elsewhere(task, tasks, home).map((t) => t.id)
   return Object.keys(task.after ?? {}).filter(
-    (id) => task.after?.[id] === 'opened' && !away.includes(id),
+    (id) => task.after?.[id] !== 'merged' && !away.includes(id),
   )
 }
 
-/** A task's `opened` tasks in its own repo in the order they run, each after the one before, or undefined when they aren't on one chain. */
+/** A task's `opened` and check tasks in its own repo in the order they run, each after the one before, or undefined when they aren't on one chain. */
 export function openedChain(task: Planned, tasks: Planned[], home?: string): string[] | undefined {
   const opened = openedHere(task, tasks, home)
   const here = (id: string) =>

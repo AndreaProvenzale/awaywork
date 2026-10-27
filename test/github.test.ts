@@ -430,6 +430,7 @@ describe('github source', () => {
     expect(checks).not.toContain('line 51\n')
     expect(checks).toContain('line 52\n')
     expect(checks).toContain('## sonar: FAILURE\n\nhttps://sonar.example.com/acme-api/1')
+    expect(checks).toContain('## deploy: CANCELLED\n\nhttps://deploy.example.com/acme-api/1')
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
   })
@@ -983,6 +984,38 @@ describe('github forge', () => {
     ])
     expect(await forge.fileAt('acme/api', 'abc123', 'missing.yaml')).toBeUndefined()
     expect(await forge.fileAt('acme/api', 'abc123', 'gen')).toBeUndefined()
+  })
+
+  it("reads the checks on a PR's head by name: runs and statuses, the worse of a name reported twice", async () => {
+    const recordedChecks = JSON.parse(fixture('pr-checks.json'))
+    const nodes =
+      recordedChecks.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts
+        .nodes
+    const run = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(run).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'passed',
+      isolation: 'passed',
+      container: 'passed',
+    })
+    nodes.push(
+      { __typename: 'CheckRun', name: 'Expo Preview', status: 'IN_PROGRESS', conclusion: null },
+      { __typename: 'CheckRun', name: 'docs', status: 'COMPLETED', conclusion: 'SKIPPED' },
+      { __typename: 'CheckRun', name: 'check', status: 'COMPLETED', conclusion: 'FAILURE' },
+      { __typename: 'StatusContext', context: 'Vercel Preview', state: 'PENDING' },
+      { __typename: 'StatusContext', context: 'Netlify', state: 'ERROR' },
+      { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS' },
+    )
+    const mixed = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(mixed).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'failing',
+      isolation: 'passed',
+      container: 'passed',
+      'Expo Preview': 'pending',
+      docs: 'passed',
+      'Vercel Preview': 'pending',
+      Netlify: 'failing',
+      'ci/legacy': 'passed',
+    })
   })
 
   it('checks branch existence by exact name, not prefix', async () => {

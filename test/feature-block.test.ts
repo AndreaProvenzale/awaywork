@@ -116,9 +116,11 @@ describe('after: opened in a plan', () => {
 
   it('tells the plan step what opened and merged mean, and the one-chain rule', () => {
     const text = planContract(limits)
-    expect(text).toContain('a map from other task ids to `merged` or `opened`')
+    expect(text).toContain('a map from other task ids to `merged`, `opened` or the name of a check')
     expect(text).toContain("its PR stacks on that task's PR")
-    expect(text).toContain("A task's `opened` tasks in its own repo must lie on one chain")
+    expect(text).toContain(
+      "A task's `opened` and check tasks in its own repo must lie on one chain",
+    )
   })
 })
 
