@@ -43,10 +43,8 @@ Commands:
                             PRs and reports
   report [options] [id]     print a run's morning report, the latest by default;
                             browsable in a terminal
-  watch                     keep running and start a run when a window opens;
-                            `schedule install` keeps it running
   stats [options]           what each rule, skill and provider cost and
-                            delivered across the runs kept
+                            delivered across all runs
   replay <run> <unit>       re-run a past run's unit, its first step, on its
                             base commit and saved context with today's skills
                             and instructions; nothing is pushed
@@ -125,15 +123,15 @@ Options:
   --json            print the plan and warnings as JSON
   --repo <glob>     only units in repos matching owner/name, * globs
   --rule <n>        only units of this queue rule, counted from 1
-  --rules           show what each rule takes now and what earlier rules take
-                    from it, instead of the units; probes no provider
+  --rules           show what each rule takes now and what other rules take from
+                    it, instead of the units; probes no provider
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",
                     "waiting_for_approval", "invalid_plan", "fanned_out",
                     "waiting_for_task", "task_merged", "all_tasks_merged",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
-                    "unstackable", "running")
+                    "unstackable")
   --why <key>       say why an item is planned or skipped, by key, source:key or
                     the ref plan shows
   -h, --help        display help for command
@@ -254,20 +252,8 @@ Options:
                     "waiting_for_approval", "invalid_plan", "fanned_out",
                     "waiting_for_task", "task_merged", "all_tasks_merged",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
-                    "unstackable", "running")
+                    "unstackable")
   -h, --help        display help for command
-```
-
-## awaywork watch
-
-```text
-Usage: awaywork watch [options]
-
-keep running and start a run when a window opens; `schedule install` keeps it
-running
-
-Options:
-  -h, --help  display help for command
 ```
 
 ## awaywork stats
@@ -275,7 +261,7 @@ Options:
 ```text
 Usage: awaywork stats [options]
 
-what each rule, skill and provider cost and delivered across the runs kept
+what each rule, skill and provider cost and delivered across all runs
 
 Options:
   --json      print the totals as JSON
@@ -305,12 +291,11 @@ Options:
   -h, --help         display help for command
 
 Commands:
-  install [options]  keep `awaywork watch` running, which starts a run when a
-                     window opens
+  install [options]  start `awaywork run` when a window opens; it starts no unit
+                     after it closes
   remove             remove the scheduled job, and
                      .github/workflows/awaywork.yml in the current repo
-  status             show the installed scheduled job and what awaywork watch is
-                     doing
+  status             show the installed scheduled job
   help [command]     display help for command
 ```
 
@@ -319,7 +304,7 @@ Commands:
 ```text
 Usage: awaywork schedule install [options]
 
-keep `awaywork watch` running, which starts a run when a window opens
+start `awaywork run` when a window opens; it starts no unit after it closes
 
 Options:
   --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
@@ -344,7 +329,7 @@ Options:
 ```text
 Usage: awaywork schedule status [options]
 
-show the installed scheduled job and what awaywork watch is doing
+show the installed scheduled job
 
 Options:
   -h, --help  display help for command

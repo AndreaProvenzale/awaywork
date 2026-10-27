@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
 import type { Exec } from '../src/forge/gh.js'
-import { cron, cronLines, parseCronLines } from '../src/scheduler/cron.js'
+import { cron, cronLine, cronLines, parseCronLines } from '../src/scheduler/cron.js'
 import {
   REPO_CONFIG,
   REPO_SKILLS,
@@ -16,14 +16,12 @@ import {
   WORKFLOW,
   workflow,
 } from '../src/scheduler/github-actions.js'
-import { olderJob, type Schedule, type Scheduler, type Start } from '../src/scheduler/index.js'
+import type { Schedule, Scheduler, Start } from '../src/scheduler/index.js'
 import { launchd, parsePlist, plist } from '../src/scheduler/launchd.js'
-import { parseService, service, systemd } from '../src/scheduler/systemd.js'
+import { parseUnits, service, systemd, timer } from '../src/scheduler/systemd.js'
 import {
-  holdAwake,
   keepAwake,
   pmsetArgs,
-  staleWake,
   timerWake,
   wakeFor,
   wakeTimer,
@@ -32,7 +30,15 @@ import {
 import { initial, scriptedAsk } from './fakes/ask.js'
 
 const schedule: Schedule = {
-  command: ['/opt/node', '/opt/away work/index.js', 'watch', '--config', "/h/it's.yml"],
+  command: [
+    '/opt/node',
+    '/opt/away work/index.js',
+    'run',
+    '--scheduled',
+    '--config',
+    "/h/it's.yml",
+  ],
+  starts: [{ hour: 1, minute: 5 }],
   path: '/opt/bin:/usr/bin',
   log: '/h/state/schedule.log',
 }
@@ -56,7 +62,7 @@ function recorder(crontab = '') {
   return { run, calls, crontab: () => crontab }
 }
 
-it('writes a LaunchAgent started at login, restarted on a crash, that logs to the state dir', async () => {
+it('writes a LaunchAgent that starts at the window start and logs to the state dir', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   const scheduler = launchd(home, run, 501)
@@ -64,11 +70,7 @@ it('writes a LaunchAgent started at login, restarted on a crash, that logs to th
   expect(file).toBe(join(home, 'Library/LaunchAgents/awaywork.plist'))
   const text = await readFile(file, 'utf8')
   expect(text).toBe(plist(schedule))
-  expect(text).toContain(
-    '<key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>',
-  )
-  expect(text).toContain('<key>ExitTimeOut</key><integer>120</integer>')
-  expect(text).not.toContain('StartCalendarInterval')
+  expect(text).toContain('<key>Hour</key><integer>1</integer><key>Minute</key><integer>5</integer>')
   expect(text).toContain('<string>/opt/away work/index.js</string>')
   expect(calls).toEqual([
     'launchctl bootout gui/501/awaywork',
@@ -101,42 +103,22 @@ it('retries bootstrap while launchd still holds the old job', async () => {
   ])
 })
 
-it('writes a systemd user service restarted on a crash and enabled at login', async () => {
+it('writes a persistent systemd user timer and its service', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   const { run, calls } = recorder()
   await systemd(home, run).install(schedule)
+  expect(timer(schedule)).toContain('OnCalendar=*-*-* 01:05:00\nPersistent=true')
   expect(service(schedule)).toContain(
-    `ExecStart="/opt/node" "/opt/away work/index.js" "watch" "--config" "/h/it's.yml"\nRestart=on-failure`,
+    `ExecStart="/opt/node" "/opt/away work/index.js" "run" "--scheduled" "--config" "/h/it's.yml"`,
   )
-  expect(service(schedule)).toContain('KillMode=mixed\nTimeoutStopSec=120')
-  expect(service(schedule)).toContain('[Install]\nWantedBy=default.target')
   expect(calls).toEqual([
     'systemctl --user daemon-reload',
-    'systemctl --user enable awaywork.service',
-    'systemctl --user restart awaywork.service',
+    'systemctl --user enable --now awaywork.timer',
   ])
   expect(await systemd(home, run).read()).toEqual(schedule)
   expect(await systemd(home, run).remove()).toBe(true)
   expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
   expect(await systemd(home, run).read()).toBeUndefined()
-})
-
-it("replaces an older awaywork's timer and reads its job back as older until then", async () => {
-  const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
-  const dir = join(home, '.config/systemd/user')
-  const older = { ...schedule, command: ['/opt/node', '/x/index.js', 'run', '--scheduled'] }
-  await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, 'awaywork.service'), service(older))
-  await writeFile(join(dir, 'awaywork.timer'), '[Timer]\nOnCalendar=*-*-* 01:05:00\n')
-  const { run, calls } = recorder()
-  const job = await systemd(home, run).read()
-  expect(job && olderJob(job)).toBe(true)
-  expect(calls).toEqual(['systemctl --user is-enabled awaywork.timer'])
-  await systemd(home, run).install(schedule)
-  expect(calls.slice(1, 2)).toEqual(['systemctl --user disable --now awaywork.timer'])
-  expect(existsSync(join(dir, 'awaywork.timer'))).toBe(false)
-  const current = await systemd(home, run).read()
-  expect(current && olderJob(current)).toBe(false)
 })
 
 it('removes its unit files and fails in one line, with the cause, when systemctl fails', async () => {
@@ -177,7 +159,7 @@ it('reloads systemd after restoring the unit files', async () => {
   await expect(systemd(home, run).install(schedule)).rejects.toThrow('boom')
   expect(calls).toEqual([
     '--user daemon-reload',
-    '--user enable awaywork.service',
+    '--user enable --now awaywork.timer',
     '--user daemon-reload',
   ])
 })
@@ -189,7 +171,7 @@ it('restores the previous unit files when a reinstall fails', async () => {
     throw new Error('boom')
   }
   await expect(
-    systemd(home, failing).install({ ...schedule, log: '/h/other.log' }),
+    systemd(home, failing).install({ ...schedule, starts: [{ hour: 3, minute: 0 }] }),
   ).rejects.toThrow('boom')
   expect(await systemd(home, recorder().run).read()).toEqual(schedule)
 })
@@ -201,10 +183,10 @@ it('removes the unit files even when daemon-reload fails', async () => {
     throw new Error('no bus')
   }
   expect(await systemd(home, failing).remove()).toBe(true)
-  expect(existsSync(join(home, '.config/systemd/user/awaywork.service'))).toBe(false)
+  expect(existsSync(join(home, '.config/systemd/user/awaywork.timer'))).toBe(false)
 })
 
-it('reads no job when the service is not enabled', async () => {
+it('reads no job when the timer is not enabled', async () => {
   const home = await mkdtemp(join(tmpdir(), 'awaywork-home-'))
   await systemd(home, recorder().run).install(schedule)
   const disabled: Exec = async () => {
@@ -213,13 +195,14 @@ it('reads no job when the service is not enabled', async () => {
   expect(await systemd(home, disabled).read()).toBeUndefined()
 })
 
-it("adds tagged crontab lines at boot and every 5 minutes, keeps the user's own and removes only its lines", async () => {
+it("adds one tagged crontab line, keeps the user's own and removes only its line", async () => {
   const cronTab = recorder('MAILTO=me\n\n0 9 * * * backup\n')
   const scheduler = cron(cronTab.run)
   await scheduler.install(schedule)
   await scheduler.install(schedule)
-  const command = `PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'watch' '--config' '/h/it'\\''s.yml' > /dev/null 2>> '/h/state/schedule.log' & # awaywork`
-  expect(cronLines(schedule)).toEqual([`@reboot ${command}`, `*/5 * * * * ${command}`])
+  expect(cronLine(schedule, schedule.starts[0] as Start)).toBe(
+    `5 1 * * * PATH='/opt/bin:/usr/bin' '/opt/node' '/opt/away work/index.js' 'run' '--scheduled' '--config' '/h/it'\\''s.yml' >> '/h/state/schedule.log' 2>&1 # awaywork`,
+  )
   expect(cronTab.crontab()).toBe(
     `MAILTO=me\n\n0 9 * * * backup\n${cronLines(schedule).join('\n')}\n`,
   )
@@ -232,7 +215,7 @@ it("adds tagged crontab lines at boot and every 5 minutes, keeps the user's own 
 
 it('reads back a job whose paths need escaping', () => {
   expect(parsePlist(plist(awkward))).toEqual(awkward)
-  expect(parseService(service(awkward))).toEqual(awkward)
+  expect(parseUnits(service(awkward), timer(awkward))).toEqual(awkward)
   expect(parseCronLines(cronLines(awkward))).toEqual(awkward)
 })
 
@@ -526,19 +509,6 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     },
   )
 
-  it('says once that run: soon rules run in the windows there', async () => {
-    const { config, install } = await setup()
-    await writeFile(
-      config,
-      `${CONFIG}queue: [{ skill: fix, run: soon }, { skill: plan }, { skill: implement, run: soon }]\n`,
-    )
-    await install()
-    expect(out[0]).toBe(
-      "run: soon needs awaywork watch, which GitHub Actions doesn't have: rules #1 and #3 run in the windows like the rest",
-    )
-    expect(out.filter((l) => l.includes('run: soon'))).toHaveLength(1)
-  })
-
   it('refuses a Bitbucket config and writes nothing', async () => {
     const { root, config } = await setup()
     await writeFile(config, 'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n')
@@ -692,76 +662,58 @@ it('offers to set only the secrets it has values for, and never prints them', as
   expect(ask.notes.join('\n')).not.toMatch(/_secret/)
 })
 
-it("warns about an older awaywork's job for this config, or a wake off the windows' start", async () => {
+it('warns when an installed job for this config no longer starts when its windows open', async () => {
   const installed = (id: string, job?: Schedule): Scheduler => ({
     id,
     install: async () => '',
     remove: async () => false,
     read: async () => job,
   })
-  const older = {
-    ...schedule,
-    command: ['/opt/node', 'run', '--scheduled', '--config', '/h/o.yml'],
-  }
   const all = {
     launchd: installed('launchd', schedule),
-    cron: installed('cron', older),
+    cron: installed('cron', { ...schedule, command: ['awaywork', '--config', '/h/other.yml'] }),
     systemd: installed('systemd'),
   }
-  const pmset: Exec = async () => 'Repeating power events:\n  wake at 1:05AM every day\n'
-  const windows = (start: string) => [{ start, end: '07:00' }]
-  expect(await staleSchedules("/h/it's.yml", windows('01:05'), all, pmset)).toEqual([])
-  expect(await staleSchedules('/h/o.yml', windows('01:05'), all, pmset)).toEqual([
-    'the cron job was installed by an older awaywork; run `awaywork schedule install` again',
+  expect(await staleSchedules("/h/it's.yml", [{ start: '01:05', end: '07:00' }], all)).toEqual([])
+  expect(await staleSchedules("/h/it's.yml", [{ start: '02:30', end: '07:00' }], all)).toEqual([
+    "the launchd job starts at 01:05, the config's windows start at 02:30; run `awaywork schedule install`",
   ])
-  const moved = await staleSchedules("/h/it's.yml", windows('02:30'), all, pmset)
-  expect(moved).toEqual(
-    process.platform === 'darwin'
-      ? [
-          'this Mac wakes at 01:05, the windows start at 02:30; run `awaywork schedule install` to move the wake',
-        ]
-      : [],
-  )
+  const reordered = { launchd: installed('launchd', weekly) }
+  const windows = [
+    { days: ['sun' as const, 'sat' as const], start: '10:00', end: '18:00' },
+    { start: '01:05', end: '07:00' },
+  ]
+  expect(await staleSchedules("/h/it's.yml", windows, reordered)).toEqual([])
 })
 
-it('says only when the wake set at install no longer lands on the windows start', async () => {
-  const sched = (events: string) => async () => `Repeating power events:\n${events}\n`
-  const at = [{ hour: 13, minute: 0 }]
-  expect(await staleWake(at, sched('  wake at 1:00PM every day'), 'darwin')).toBeUndefined()
-  expect(await staleWake(at, sched('  wake at 1:00AM every day'), 'darwin')).toBe(
-    'this Mac wakes at 01:00, the windows start at 13:00; run `awaywork schedule install` to move the wake',
-  )
-  expect(await staleWake(at, sched('  wakepoweron at 7:00AM every day'), 'darwin')).toBeUndefined()
-  expect(await staleWake([], sched('  wake at 1:00AM every day'), 'darwin')).toBeUndefined()
-  const dir = await mkdtemp(join(tmpdir(), 'awaywork-wake-'))
-  expect(await staleWake(at, async () => '', 'linux', dir)).toBeUndefined()
-  await writeFile(join(dir, 'awaywork-wake.timer'), wakeTimer(at))
-  expect(await staleWake(at, async () => '', 'linux', dir)).toBeUndefined()
-  expect(await staleWake([{ hour: 2, minute: 0 }], async () => '', 'linux', dir)).toBe(
-    `${dir}/awaywork-wake.timer doesn't wake at the windows' start (02:00); run \`awaywork schedule install\` to move the wake`,
-  )
-})
+const weekly: Schedule = {
+  ...schedule,
+  starts: [
+    { hour: 1, minute: 5 },
+    { hour: 10, minute: 0, days: [0, 6] },
+  ],
+}
 
-const weekly: Start[] = [
-  { hour: 1, minute: 5 },
-  { hour: 10, minute: 0, days: [0, 6] },
-]
-
-it('reads an older per-window crontab back as an older job', async () => {
-  const line = `5 1 * * * PATH='/opt/bin' '/opt/node' '/x/index.js' 'run' '--scheduled' '--config' '/h/c.yml' >> '/h/s.log' 2>&1 # awaywork`
-  const job = await cron(recorder(`${line}\n`).run).read()
-  expect(job).toEqual({
-    command: ['/opt/node', '/x/index.js', 'run', '--scheduled', '--config', '/h/c.yml'],
-    path: '/opt/bin',
-    log: '/h/s.log',
-  })
-  expect(job && olderJob(job)).toBe(true)
-  expect(olderJob(schedule)).toBe(false)
+it('installs one trigger per window in every scheduler and reads them back', async () => {
+  expect(parsePlist(plist(weekly))).toEqual(weekly)
+  expect(plist(weekly)).toContain('<key>Weekday</key><integer>6</integer>')
+  expect(timer(weekly)).toContain('OnCalendar=Sun,Sat *-*-* 10:00:00')
+  expect(parseUnits(service(weekly), timer(weekly))).toEqual(weekly)
+  expect(cronLines(weekly).map((l) => l.split(' ').slice(0, 5).join(' '))).toEqual([
+    '5 1 * * *',
+    '0 10 * * 0,6',
+  ])
+  expect(parseCronLines(cronLines(weekly))).toEqual(weekly)
+  const cronTab = recorder()
+  const scheduler = cron(cronTab.run)
+  await scheduler.install(weekly)
+  expect(await scheduler.read()).toEqual(weekly)
+  expect(await scheduler.remove()).toBe(true)
 })
 
 it('writes a workflow cron per window', () => {
   const text = workflow({
-    starts: weekly,
+    starts: weekly.starts,
     timezone: 'UTC',
     config: 'c.yml',
     version: '0.3.1',
@@ -770,16 +722,6 @@ it('writes a workflow cron per window', () => {
     setup: [],
   })
   expect(parse(text).on.schedule).toEqual([{ cron: '5 1 * * *' }, { cron: '0 10 * * 0,6' }])
-  const dispatchOnly = workflow({
-    starts: [],
-    timezone: 'UTC',
-    config: 'c.yml',
-    version: '0.3.1',
-    packages: [],
-    secrets: [],
-    setup: [],
-  })
-  expect(parse(dispatchOnly).on).toEqual({ workflow_dispatch: parse(text).on.workflow_dispatch })
 })
 
 it("starts the workflow's cron in UTC at the zone's standard time, shifting days across midnight", () => {
@@ -839,28 +781,6 @@ describe('wake', () => {
     expect(await keepAwake(noBus, 'linux')).toEqual([])
   })
 
-  it('holds awake through a child its release kills, and returns a no-op with nothing to run', async () => {
-    expect((await holdAwake(async () => '', 'win32'))()).toBeUndefined()
-    const dir = await mkdtemp(join(tmpdir(), 'awaywork-inhibit-'))
-    const pidFile = join(dir, 'pid')
-    const script = `#!/bin/sh\necho $$ > ${pidFile}\nexec sleep 30\n`
-    await writeFile(join(dir, 'systemd-inhibit'), script, { mode: 0o755 })
-    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`)
-    try {
-      const release = await holdAwake(async () => '', 'linux')
-      const pid = await vi.waitFor(async () => {
-        const pid = Number(await readFile(pidFile, 'utf8'))
-        if (!pid) throw new Error('no pid yet')
-        return pid
-      })
-      expect(() => process.kill(pid, 0)).not.toThrow()
-      release()
-      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
-    } finally {
-      vi.unstubAllEnvs()
-    }
-  })
-
   it('repeats one pmset wake on the days of the windows starting then', () => {
     expect(pmsetArgs([{ hour: 1, minute: 5 }])).toEqual([
       'pmset',
@@ -875,7 +795,7 @@ describe('wake', () => {
         { hour: 1, minute: 5, days: [1] },
       ])?.[3],
     ).toBe('MSU')
-    expect(pmsetArgs(weekly)).toBeUndefined()
+    expect(pmsetArgs(weekly.starts)).toBeUndefined()
   })
 
   it('asks before replacing repeating power events, and says why it cannot wake for two times', async () => {
@@ -897,7 +817,7 @@ Scheduled power events:
     expect(wake.initial).toBe(false)
     await wake.install()
     expect(calls.at(-1)).toEqual(['sudo', 'pmset', 'repeat', 'wake', 'MTWRFSU', '01:05:00'])
-    expect(await wakeFor(weekly, run, 'darwin')).toBe(
+    expect(await wakeFor(weekly.starts, run, 'darwin')).toBe(
       'pmset repeats one wake time and the windows start at 01:05, 10:00 on 0,6; keep this Mac awake for them',
     )
     const none = await wakeFor([{ hour: 1, minute: 5 }], async () => '', 'darwin')
@@ -922,7 +842,7 @@ Scheduled power events:
   })
 
   it('installs a root timer that wakes the system at each start', async () => {
-    expect(wakeTimer(weekly)).toContain(
+    expect(wakeTimer(weekly.starts)).toContain(
       'OnCalendar=*-*-* 01:05:00\nOnCalendar=Sun,Sat *-*-* 10:00:00\nWakeSystem=true',
     )
     const calls: string[][] = []
@@ -932,8 +852,8 @@ Scheduled power events:
       if (args[0] === 'install') installed = await readFile(args[4] ?? '', 'utf8')
       return ''
     }
-    await timerWake(weekly, run).install()
-    expect(installed).toBe(wakeTimer(weekly))
+    await timerWake(weekly.starts, run).install()
+    expect(installed).toBe(wakeTimer(weekly.starts))
     expect(calls.map((c) => c.slice(0, 2).join(' '))).toEqual([
       'sudo install',
       'sudo systemctl',

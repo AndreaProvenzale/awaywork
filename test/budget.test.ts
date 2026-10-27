@@ -10,7 +10,6 @@ const hours = (h: number) => now / 1000 + h * 3600
 const budget = (over: Partial<Budget> = {}): Budget => ({
   reserve: 0.1,
   session_max: 0.9,
-  present_session_max: 0.4,
   fallback: { units: 4, turns: 60 },
   ...over,
 })
@@ -23,47 +22,14 @@ const quota = (used: number, resetsInHours: number, session = 0.02): Quota => ({
 const ceiling = (a: Allowance) => (a.kind === 'quota' ? Math.round(a.ceiling * 1000) / 1000 : a)
 
 describe('allowance', () => {
-  const present = { present: true }
-
   it.each([
     ['per_run binds early in the week', budget({ per_run: 0.15 }), quota(0.36, 60), 0.51],
-    ['pacing binds without per_run', budget(), quota(0.36, 60), 0.579],
-    ['pacing on day 3 of 7', budget(), quota(0.2, 96), 0.386],
-    ['pacing starts at 0 at the window start', budget(), quota(0, 168), 0],
-    ['pacing reaches 1 - reserve at the reset', budget(), quota(0.36, 0), 0.9],
-    ['a bigger reserve lowers every limit', budget({ reserve: 0.3 }), quota(0.36, 10), 0.658],
-    ['past the line the ceiling sits below used', budget(), quota(0.7, 60), 0.579],
-    ['a reset already past clamps to 1 - reserve', budget(), quota(0.36, -5), 0.9],
-    ['a reset further than the window clamps to 0', budget(), quota(0, 200), 0],
+    ['pacing binds without per_run', budget(), quota(0.36, 60), 0.54],
+    ['the last run may spend up to the reserve', budget(), quota(0.36, 10), 0.9],
+    ['a bigger reserve lowers every limit', budget({ reserve: 0.3 }), quota(0.36, 10), 0.7],
+    ['past the reserve the ceiling sits below used', budget(), quota(0.95, 60), 0.9],
   ])('%s', (_, b, q, expected) => {
-    expect(ceiling(allowance(b, q, now, daily, present))).toBe(expected)
-  })
-
-  it("paces over the long window's length, a week when the quota doesn't say", () => {
-    const month = (minutes?: number): Quota => ({
-      windows: [{ name: '30d', span: 'long', used: 0, resetsAt: hours(15 * 24), minutes }],
-    })
-    expect(ceiling(allowance(budget(), month(30 * 24 * 60), now, daily, present))).toBe(0.45)
-    expect(ceiling(allowance(budget(), month(), now, daily, present))).toBe(0)
-  })
-
-  it('reads an away run at the opening after its window', () => {
-    // Day 3 of 7 now, day 4 at Friday's 01:00 opening.
-    expect(ceiling(allowance(budget(), quota(0.2, 96), now, daily))).toBe(0.514)
-    const twice = [{ days: ['thu' as const, 'sat' as const], start: '01:00', end: '07:00' }]
-    // Saturday 01:00 is 48 hours away, 12 before the reset.
-    expect(ceiling(allowance(budget(), quota(0.36, 60), now, twice))).toBe(0.836)
-  })
-
-  it('reads away outside every window as a run at the next opening would', () => {
-    // At noon the next run is Friday's 01:00, which reads at Saturday's, day 5 of 7.
-    const noon = now + 11 * 3600 * 1000
-    expect(ceiling(allowance(budget(), quota(0.2, 96), noon, daily))).toBe(0.643)
-  })
-
-  it('reads an away run at the reset when no window opens before it', () => {
-    expect(ceiling(allowance(budget(), quota(0.7, 20), now, daily))).toBe(0.9)
-    expect(ceiling(allowance(budget(), quota(0.36, 60), now, []))).toBe(0.9)
+    expect(ceiling(allowance(b, q, now, daily))).toBe(expected)
   })
 
   it('counts the runs to the reset, the one under way included, at least one', () => {
@@ -79,18 +45,12 @@ describe('allowance', () => {
 
   it('carries the session stop', () => {
     expect(allowance(budget({ session_max: 0.8 }), quota(0.2, 60, 0.4), now, daily)).toMatchObject({
-      session: { used: 0.4, stopAt: 0.8, limit: 'session_max' },
-    })
-  })
-
-  it('stops a present run at present_session_max', () => {
-    expect(allowance(budget(), quota(0.2, 60, 0.3), now, daily, present)).toMatchObject({
-      session: { used: 0.3, stopAt: 0.4, limit: 'present_session_max' },
+      session: { used: 0.4, stopAt: 0.8 },
     })
   })
 
   it('falls back without a long window', () => {
-    expect(allowance(budget(), null, now, daily, { reason: 'probe failed: boom' })).toEqual({
+    expect(allowance(budget(), null, now, daily, 'probe failed: boom')).toEqual({
       kind: 'fallback',
       units: 4,
       turns: 60,
@@ -109,7 +69,7 @@ describe('route', () => {
   it('takes the first candidate under its ceiling and says why others passed', () => {
     expect(route(['full', 'open'], allowances, {})).toEqual({
       provider: 'open',
-      passed: ['full at its ceiling (95% of 70.7%)'],
+      passed: ['full at its ceiling (95% of 90%)'],
     })
   })
 
@@ -124,38 +84,6 @@ describe('route', () => {
     expect(route(['capped'], allowances, {})).toEqual({ provider: 'capped', passed: [] })
     expect(route(['capped'], allowances, { capped: 1 })).toEqual({
       passed: ['capped used its 1 fallback unit'],
-    })
-  })
-
-  describe('in a present run', () => {
-    const present = { present: true }
-    const presentAllowances = {
-      busy: allowance(budget(), quota(0.2, 60, 0.5), now, daily, present),
-      unread: allowance(budget(), null, now, daily, present),
-      open: allowance(budget(), quota(0.2, 60, 0.1), now, daily, present),
-    }
-
-    it('passes over a provider past present_session_max', () => {
-      expect(route(['busy', 'open'], presentAllowances, {})).toEqual({
-        provider: 'open',
-        passed: ['busy at present_session_max (50% of 40%)'],
-      })
-    })
-
-    it('routes around a provider without a quota reading', () => {
-      expect(route(['unread', 'open'], presentAllowances, {})).toEqual({
-        provider: 'open',
-        passed: ['unread sits out a present run (no quota reading)'],
-      })
-    })
-
-    it('leaves an away run at session_max, with its fallback', () => {
-      const busy = allowance(budget(), quota(0.2, 60, 0.5), now, daily)
-      expect(route(['busy', 'capped'], { busy, capped: allowances.capped }, {})).toEqual({
-        provider: 'busy',
-        passed: [],
-      })
-      expect(route(['capped'], allowances, {})).toEqual({ provider: 'capped', passed: [] })
     })
   })
 })
@@ -178,14 +106,13 @@ describe('quotaFacts', () => {
   })
 })
 
+it('paces over the windows left, not the days', () => {
+  const weekly = [{ days: ['sat' as const], start: '10:00', end: '18:00' }]
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now, weekly))).toBe(0.9)
+  expect(ceiling(allowance(budget(), quota(0.36, 60), now, daily))).toBe(0.54)
+})
+
 it('moves usage and the reset time to the last reading', () => {
   const next = withQuota(allowance(budget(), quota(0.1, 10), now, daily), quota(0.2, 20))
   expect(next).toMatchObject({ used: 0.2, resetsAt: hours(20) })
-})
-
-it('keeps the session limit across readings', () => {
-  const a = allowance(budget(), quota(0.1, 10), now, daily, { present: true })
-  expect(withQuota(a, quota(0.2, 20, 0.3))).toMatchObject({
-    session: { used: 0.3, stopAt: 0.4, limit: 'present_session_max' },
-  })
 })

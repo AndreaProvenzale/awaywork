@@ -10,7 +10,7 @@ export const unitsFile = 'units.json'
 export function statsCommand(program: Command): void {
   program
     .command('stats')
-    .description('what each rule, skill and provider cost and delivered across the runs kept')
+    .description('what each rule, skill and provider cost and delivered across all runs')
     .option('--json', 'print the totals as JSON')
     .action(async (opts: { json?: boolean }) => {
       const stats = await loadStats(runsDir)

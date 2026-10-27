@@ -29,10 +29,6 @@ export const runsDir = join(stateDir, 'runs')
 export const remoteDir = join(stateDir, 'remote')
 export const attemptsPath = join(stateDir, 'attempts.json')
 export const runLockPath = join(stateDir, 'run.lock')
-export const watchLockPath = join(stateDir, 'watch.lock')
-/** What `awaywork watch` is doing, for `schedule status`. */
-export const watchStatePath = join(stateDir, 'watch.json')
-export const watchLogPath = join(stateDir, 'watch.log')
 export const skipsPath = join(stateDir, 'skips.json')
 export const approvalsPath = join(stateDir, 'approvals.json')
 

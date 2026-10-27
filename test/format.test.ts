@@ -467,19 +467,6 @@ describe('report views', () => {
     )
   })
 
-  it('says whether the run was away or present above the quota', () => {
-    const run = acmeRun()
-    run.plan.present = true
-    run.plan.allowances = {
-      claude: { kind: 'fallback', units: 4, turns: 60, reason: 'no quota reading', present: true },
-    }
-    expect(formatReport(run)).toContain(
-      '## Quota\n\n- present run (outside the windows): present_session_max\n- claude: sat out (no quota reading)\n',
-    )
-    run.plan.present = false
-    expect(formatRun(run)).toContain('Quota\n  away run (inside a window): session_max\n')
-  })
-
   it('shows one unit by number, unit id or item, with its files and body, and no steps for one step', () => {
     const run = acmeRun()
     const [found] = findChains(run, '1')

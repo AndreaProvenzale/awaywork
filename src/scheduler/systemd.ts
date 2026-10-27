@@ -2,34 +2,31 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
-import { type Schedule, type Scheduler, SchedulerError } from './index.js'
+import { type Schedule, type Scheduler, SchedulerError, type Start } from './index.js'
 
-/** A user service started at login and restarted when it crashes. */
+/** A user service plus a persistent timer, so a run missed while off starts at boot. */
 export function systemd(home: string, run: Exec): Scheduler {
   const dir = join(home, '.config', 'systemd', 'user')
-  const file = join(dir, 'awaywork.service')
-  // The trigger per window an older awaywork installed.
-  const timerFile = join(dir, 'awaywork.timer')
+  const files = [join(dir, 'awaywork.service'), join(dir, 'awaywork.timer')] as const
   const systemctl = (...args: string[]) => run('systemctl', ['--user', ...args])
-  const removeTimer = async () => {
-    if (!existsSync(timerFile)) return
-    await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
-    await rm(timerFile, { force: true })
-  }
   return {
     id: 'systemd',
     async install(s) {
       await mkdir(dir, { recursive: true })
-      const previous = await readFile(file, 'utf8').catch(() => undefined)
-      await writeFile(file, service(s))
+      const previous = await Promise.all(
+        files.map((f) => readFile(f, 'utf8').catch(() => undefined)),
+      )
+      await writeFile(files[0], service(s))
+      await writeFile(files[1], timer(s))
       try {
-        await removeTimer()
         await systemctl('daemon-reload')
-        await systemctl('enable', 'awaywork.service')
-        await systemctl('restart', 'awaywork.service')
+        await systemctl('enable', '--now', 'awaywork.timer')
       } catch (e) {
-        if (previous === undefined) await rm(file, { force: true })
-        else await writeFile(file, previous)
+        for (const [i, file] of files.entries()) {
+          const old = previous[i]
+          if (old === undefined) await rm(file, { force: true })
+          else await writeFile(file, old)
+        }
         await systemctl('daemon-reload').catch(() => '')
         const { stderr } = e as { stderr?: string }
         const reason = (stderr?.trim() || (e instanceof Error ? e.message : String(e))).split(
@@ -40,59 +37,85 @@ export function systemd(home: string, run: Exec): Scheduler {
           { cause: e },
         )
       }
-      return file
+      return files.join(', ')
     },
     async remove() {
-      if (!existsSync(file)) return false
-      await removeTimer()
-      await systemctl('disable', '--now', 'awaywork.service').catch(() => '')
-      await rm(file, { force: true })
+      if (!existsSync(files[1])) return false
+      await systemctl('disable', '--now', 'awaywork.timer').catch(() => '')
+      for (const file of files) await rm(file, { force: true })
       await systemctl('daemon-reload').catch(() => '')
       return true
     },
     async read() {
-      if (!existsSync(file)) return undefined
-      const unit = existsSync(timerFile) ? 'awaywork.timer' : 'awaywork.service'
-      const enabled = await systemctl('is-enabled', unit).then(
+      if (!existsSync(files[1])) return undefined
+      const enabled = await systemctl('is-enabled', 'awaywork.timer').then(
         () => true,
         () => false,
       )
-      return enabled ? parseService(await readFile(file, 'utf8')) : undefined
+      if (!enabled) return undefined
+      return parseUnits(await readFile(files[0], 'utf8'), await readFile(files[1], 'utf8'))
     },
   }
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 const quote = (v: string) => `"${v.replace(/[\\"]/g, '\\$&').replace(/%/g, '%%')}"`
 
-export function parseService(text: string): Schedule {
+export function parseUnits(serviceText: string, timerText: string): Schedule {
   const value = (text: string, key: string) =>
     text.match(new RegExp(`^${key}=(.*)$`, 'm'))?.[1] ?? ''
   const unquote = (line: string) =>
     [...line.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
       (m[1] ?? '').replace(/\\(.)/g, '$1').replace(/%%/g, '%'),
     )
+  const starts = [
+    ...timerText.matchAll(/^OnCalendar=(?:([A-Za-z,]+) )?\*-\*-\* (\d+):(\d+)/gm),
+  ].map(([, days, hour, minute]) => ({
+    hour: Number(hour),
+    minute: Number(minute),
+    ...(days && { days: days.split(',').map((d) => WEEKDAYS.indexOf(d)) }),
+  }))
   return {
-    command: unquote(value(text, 'ExecStart')),
-    path: (unquote(value(text, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
-    log: value(text, 'StandardOutput').replace(/^append:/, ''),
+    command: unquote(value(serviceText, 'ExecStart')),
+    starts,
+    path: (unquote(value(serviceText, 'Environment'))[0] ?? '').replace(/^PATH=/, ''),
+    log: value(serviceText, 'StandardOutput').replace(/^append:/, ''),
   }
 }
 
 export function service(s: Schedule): string {
   return `[Unit]
-Description=awaywork watch
+Description=awaywork run
 
 [Service]
+Type=oneshot
 Environment=${quote(`PATH=${s.path}`)}
 ExecStart=${s.command.map(quote).join(' ')}
-Restart=on-failure
-RestartSec=10
-KillMode=mixed
-TimeoutStopSec=120
 StandardOutput=append:${s.log}
 StandardError=append:${s.log}
+`
+}
+
+export const onCalendar = (starts: Start[]) =>
+  starts
+    .map(
+      (start) =>
+        `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
+    )
+    .join('\n')
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+export function timer(s: Schedule): string {
+  return `[Unit]
+Description=awaywork scheduled run
+
+[Timer]
+${onCalendar(s.starts)}
+Persistent=true
 
 [Install]
-WantedBy=default.target
+WantedBy=timers.target
 `
 }

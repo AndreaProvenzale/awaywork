@@ -91,14 +91,12 @@ describe('command provider config', () => {
 
   it('describes its fallback without turns', () => {
     const a = { kind: 'fallback', units: 4, turns: 60, reason: 'no quota reading' } as const
-    expect(describeAllowance('opencode', a, 0.4)).toBe(
-      'fallback: 4 units (no quota reading), sits out runs outside the windows',
+    expect(describeAllowance('opencode', a)).toBe('fallback: 4 units (no quota reading)')
+    expect(describeAllowance('codex', a)).toBe(
+      'fallback: 4 units, 60 turns each (no quota reading)',
     )
-    expect(describeAllowance('codex', a, 0.4)).toBe(
-      'fallback: 4 units, 60 turns each (no quota reading), sits out runs outside the windows',
-    )
-    expect(describeAllowance('codex', { ...a, units: 1, turns: 1 }, 0.4)).toBe(
-      'fallback: 1 unit, 1 turn each (no quota reading), sits out runs outside the windows',
+    expect(describeAllowance('codex', { ...a, units: 1, turns: 1 })).toBe(
+      'fallback: 1 unit, 1 turn each (no quota reading)',
     )
   })
 
@@ -164,16 +162,11 @@ describe('command provider', () => {
   it('has no quota without a probe, and reads Quota as is from one', async () => {
     const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
     expect(await commandProvider('x', cfg()).probe(ctx)).toBeNull()
-    const window = { name: '5h', span: 'short', used: 0.2, resetsAt: 1793021152, minutes: 300 }
-    const quota = { windows: [window] }
+    const quota = { windows: [{ name: '5h', span: 'short', used: 0.2, resetsAt: 1793021152 }] }
     const ok = commandProvider('x', cfg({ probe: `echo '${JSON.stringify(quota)}'` }))
     expect(await ok.probe(ctx)).toEqual(quota)
     await expect(commandProvider('x', cfg({ probe: 'echo nope' })).probe(ctx)).rejects.toThrow(
       'did not print JSON',
-    )
-    const zero = JSON.stringify({ windows: [{ ...window, minutes: 0 }] })
-    await expect(commandProvider('x', cfg({ probe: `echo '${zero}'` })).probe(ctx)).rejects.toThrow(
-      'probe:',
     )
   })
 

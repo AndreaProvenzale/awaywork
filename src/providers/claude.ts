@@ -8,10 +8,7 @@ import type { Job, McpServer, Provider, Quota, WorkerEvent } from '../core/types
 
 const PROBE_MODEL = 'claude-haiku-4-5-20251001'
 const TOOLS = 'Bash Read Edit Write Grep Glob Skill'
-const knownWindows: Record<string, { span: 'short' | 'long'; minutes: number }> = {
-  five_hour: { span: 'short', minutes: 300 },
-  seven_day: { span: 'long', minutes: 7 * 24 * 60 },
-}
+const spans: Record<string, 'short' | 'long'> = { five_hour: 'short', seven_day: 'long' }
 const stream = ['--output-format', 'stream-json', '--verbose']
 /** Auto-memory lives under ~/.claude whatever the setting sources. */
 const noMemory = { autoMemoryEnabled: false }
@@ -121,8 +118,8 @@ export function toEvents(line: string): WorkerEvent[] {
     const unified: Record<string, { utilization: number; resetsAt: number }> =
       event.rate_limit_info?.unifiedWindows ?? {}
     const windows = Object.entries(unified).flatMap(([name, w]) => {
-      const known = knownWindows[name]
-      return known ? [{ name, ...known, used: w.utilization, resetsAt: w.resetsAt }] : []
+      const span = spans[name]
+      return span ? [{ name, span, used: w.utilization, resetsAt: w.resetsAt }] : []
     })
     return windows.length ? [{ type: 'quota', quota: { windows } satisfies Quota }] : []
   }

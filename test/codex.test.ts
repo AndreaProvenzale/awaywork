@@ -51,7 +51,7 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 }
 
 const monthly = {
-  windows: [{ name: '30d', span: 'long', used: 0.04, resetsAt: 1793021152, minutes: 43200 }],
+  windows: [{ name: '30d', span: 'long', used: 0.04, resetsAt: 1793021152 }],
 }
 
 describe('codex provider', () => {
@@ -84,8 +84,8 @@ describe('codex provider', () => {
       secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 200 },
     }
     expect(toQuota(plus)?.windows).toEqual([
-      { name: '5h', span: 'short', used: 0.12, resetsAt: 100, minutes: 300 },
-      { name: '7d', span: 'long', used: 0.4, resetsAt: 200, minutes: 10080 },
+      { name: '5h', span: 'short', used: 0.12, resetsAt: 100 },
+      { name: '7d', span: 'long', used: 0.4, resetsAt: 200 },
     ])
     expect(toQuota({ primary: null, secondary: null })).toBeNull()
   })

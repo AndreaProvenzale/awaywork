@@ -31,7 +31,7 @@ export interface WorkerOptions {
   watch?: (dir: string, onLimit: (reason: string) => void) => Watchdog
 }
 
-/** Runs one job; stops it at this run's ceiling, at its session limit, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
+/** Runs one job; stops it at this run's ceiling, at `session_max`, at `until`, after `maxMinutes`, or when the watchdog trips. The provider enforces the turn cap. */
 export async function runWorker(
   provider: Provider,
   job: Job,

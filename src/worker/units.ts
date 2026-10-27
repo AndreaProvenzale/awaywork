@@ -108,8 +108,6 @@ export interface RunInput {
   sources: Record<string, Source>
   forge: Forge
   ctx: Ctx
-  /** Logs a unit's start and end, and what went wrong; `ctx.log` when unset. */
-  event?: (line: string) => void
   signal?: AbortSignal
   watch?: WorkerOptions['watch']
   /** Why the machine is too short on memory or disk at a clone's dir to start a unit. */
@@ -117,10 +115,6 @@ export interface RunInput {
   skillDirs?: { user: string; builtin: string }
   /** Earlier attempts: a chain's first step on an item gets the item's latest report. */
   attempts?: Attempts
-  /** Runs each chain when it's this run's turn: awaywork watch runs one worker at a time across its runs. */
-  turn?: <T>(chain: () => Promise<T>) => Promise<T>
-  /** A `run: soon` run: no notify for a step that sat out or its `when` passed over, as the next poll tries it again. */
-  soon?: boolean
 }
 
 /** The latest report an earlier run left on one of the items. */
@@ -138,12 +132,6 @@ async function earlierReport(
       return { skill: last.skill, out, earlierRun: last.runId }
   }
 }
-
-/** A step that sat out or its `when` passed over: a poll tries it again an hour later. */
-const triedLater = (r: UnitResult) =>
-  r.status === 'skipped' &&
-  (!!r.reason?.startsWith('no provider left') ||
-    (!!r.passedOver && !!r.reason?.startsWith('when ')))
 
 /** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
 const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
@@ -222,7 +210,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const allowances = { ...input.plan.allowances }
   const routed: Record<string, number> = {}
   const quotas: Record<string, Quota> = {}
-  const event = (line: string) => (input.event ?? input.ctx.log)(line)
   const results: UnitResult[] = []
   const named = input.only ? namedChains(input.plan, input.only) : []
   if (input.only && named.length !== 1)
@@ -267,7 +254,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         moved.push({ ...ref, ...(updated && { updated }) })
       } catch (e) {
         const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
-        event(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
+        input.ctx.log(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
         moved.push({ ...ref, failed })
       }
     }
@@ -308,7 +295,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return { item: ref, url }
     } catch (e) {
       const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
-      event(`${p.unit.id}: couldn't post its ${what} on ${item.key}: ${failed}`)
+      input.ctx.log(`${p.unit.id}: couldn't post its ${what} on ${item.key}: ${failed}`)
       return { item: ref, unposted: failed }
     }
   }
@@ -366,7 +353,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           input.signal,
         )
         if (failure)
-          event(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
+          input.ctx.log(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
       }
     }
   }
@@ -664,7 +651,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const starts = `${unit.id}: ${unit.skill} on ${id}${model ? ` (${model})` : ''}`
       // A unit its `when` may pass over says it starts only once that held.
       const gated = !!unit.rule.when && !retryOf && !input.dryRun
-      if (!gated) event(starts)
+      if (!gated) input.ctx.log(starts)
 
       const step = `${done.filter((r) => r.step).length + 1}-${slug(unit.skill)}`
       const unitDir = join(chainDir, step)
@@ -748,7 +735,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           )
           if (failed) {
             Object.assign(result, { status: 'skipped', reason: failed })
-            event(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
+            input.ctx.log(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
             ended = { reason: `${unit.id} setup failed` }
             continue
           }
@@ -763,7 +750,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           if (met.check?.stopped || met.check?.timedOut) {
             const reason = `when ${describeCondition(when)} not checked: ${met.check.failed}`
             Object.assign(result, { status: 'skipped', reason })
-            event(`${unit.id}: skipped, ${reason}`)
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             ended = { reason }
             interrupted ||= !!input.signal?.aborted
@@ -773,7 +760,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             const failed = met.check?.failed ? ` (${met.check.failed})` : ''
             const reason = `when ${describeCondition(when)} didn't hold${failed}`
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
-            event(`${unit.id}: skipped, ${reason}`)
+            input.ctx.log(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
             // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
             if (p === opening) ended = { reason, passedOver: true, when: true }
@@ -788,7 +775,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             continue
           }
         }
-        if (gated) event(starts)
+        if (gated) input.ctx.log(starts)
         const maxTurns = a.kind === 'fallback' ? a.turns : MAX_TURNS
         const named = unit.rule.mcp ?? []
         if (named.length > 0 && unit.foreign)
@@ -926,7 +913,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           }
         if (!input.dryRun) await rm(plugin, { recursive: true, force: true })
       }
-      event(`${unit.id}: ${result.status}`)
+      input.ctx.log(`${unit.id}: ${result.status}`)
     }
 
     await endSlice(true)
@@ -955,11 +942,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   }
 
   try {
-    const turn = input.turn ?? ((chain) => chain())
     for (const chain of chains) {
-      const done = await turn(() => runChain(chain))
+      const done = await runChain(chain)
       results.push(...done)
-      await notifyUnits(done.filter((r) => !r.retried && !(input.soon && triedLater(r))))
+      await notifyUnits(done.filter((r) => !r.retried))
     }
   } finally {
     if (root !== input.runDir && !input.dryRun && !lostToWorker(root))

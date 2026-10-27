@@ -4,14 +4,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { Cancelled } from '../src/cli/ask.js'
-import { type Io, installSchedule, removeSchedule, whereToRun } from '../src/cli/schedule.js'
+import { type Io, installSchedule, whereToRun } from '../src/cli/schedule.js'
 import type { Ask } from '../src/core/types.js'
 import { WORKFLOW } from '../src/scheduler/github-actions.js'
 import { defaultScheduler, type Scheduler, SchedulerError } from '../src/scheduler/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
-const { installed, removed, woke, commands, stops } = vi.hoisted(() => ({
-  stops: [] as number[],
+const { installed, removed, woke, commands } = vi.hoisted(() => ({
   installed: [] as string[],
   removed: [] as string[],
   woke: [] as string[],
@@ -22,18 +21,10 @@ let failCron = false
 let failWake = false
 let wakeReason: string | undefined
 let wakeDefault = true
-let stuck: number | undefined
-
-vi.mock('../src/cli/watch.js', async (original) => ({
-  ...(await original<typeof import('../src/cli/watch.js')>()),
-  stopWatch: async () => {
-    stops.push(installed.length)
-    return stuck
-  },
-}))
 
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
+  keepAwake: async () => ['/usr/bin/caffeinate', '-i'],
   wakeFor: async () =>
     wakeReason ?? {
       question: 'Wake this machine when a window opens?',
@@ -73,8 +64,6 @@ beforeEach(() => {
   removed.length = 0
   woke.length = 0
   commands.length = 0
-  stops.length = 0
-  stuck = undefined
   failCron = false
   failWake = false
   wakeReason = undefined
@@ -131,32 +120,10 @@ it("takes the wake's default answer, no when it replaces power events", async ()
   expect(woke).toEqual([])
 })
 
-it('installs a job keeping awaywork watch running, and offers no wake without windows', async () => {
-  const { config, io } = await setup()
-  await installSchedule(config, 'cron', io([[/^Wake this machine/, true]], true))
-  expect(commands[0]?.slice(2)).toEqual(['watch', '--config', config])
-  expect(out[0]).toBe('Scheduled awaywork watch with cron for 01:00-07:00: /fake/cron')
-  await writeFile(
-    config,
-    'windows: []\nproviders: [claude]\nsources: { github: { repos: [a/b] } }\n',
-  )
-  await installSchedule(config, 'cron', io([], true))
-  expect(out).toContain('Scheduled awaywork watch with cron, no windows yet: /fake/cron')
-  expect(woke).toEqual(['wake'])
-})
-
-it('stops a running daemon before installing, and installs nothing while it keeps running', async () => {
+it('keeps the run awake by wrapping the scheduled command', async () => {
   const { config, io } = await setup()
   await installSchedule(config, 'cron', io([], false))
-  expect(stops).toEqual([0])
-  expect(installed).toEqual(['cron'])
-  stuck = 4242
-  await installSchedule(config, 'cron', io([], false))
-  expect(installed).toEqual(['cron'])
-  expect(out.at(-1)).toBe(
-    "awaywork watch (pid 4242) hasn't exited after 2 minutes; run `awaywork schedule install` again once it has",
-  )
-  expect(process.exitCode).toBe(1)
+  expect(commands[0]?.slice(0, 3)).toEqual(['/usr/bin/caffeinate', '-i', process.execPath])
 })
 
 it('says why it cannot wake without asking', async () => {
@@ -257,53 +224,5 @@ it('leaves the other schedulers alone when the install fails', async () => {
   await installSchedule(config, 'cron', io([], true))
   expect(removed).toEqual([])
   expect(out).toEqual(['cron failed'])
-  expect(process.exitCode).toBe(1)
-})
-
-it('refuses inside the daemon it would stop, as a notify hook or a worker', async () => {
-  const { config, io } = await setup()
-  vi.stubEnv('AWAYWORK_WATCH', '4242')
-  try {
-    await installSchedule(config, 'cron', io([], false))
-  } finally {
-    vi.unstubAllEnvs()
-  }
-  expect(stops).toEqual([])
-  expect(installed).toEqual([])
-  expect(out).toEqual([
-    "awaywork watch started this, so it can't change the schedule; do it from a terminal",
-  ])
-  expect(process.exitCode).toBe(1)
-})
-
-it('stops the daemon before removing the jobs, and refuses inside it', async () => {
-  const seen: number[] = []
-  const cron: Scheduler = {
-    id: 'cron',
-    install: async () => '',
-    remove: async () => {
-      seen.push(stops.length)
-      return true
-    },
-    read: async () => undefined,
-  }
-  // Outside a repo, so the repo's own workflow stays.
-  const cwd = process.cwd()
-  process.chdir(await mkdtemp(join(tmpdir(), 'awaywork-norepo-')))
-  try {
-    await removeSchedule({ cron })
-    expect(seen).toEqual([1])
-    expect(out[0]).toBe('Removed the cron job')
-    vi.stubEnv('AWAYWORK_WATCH', '4242')
-    await removeSchedule({ cron })
-  } finally {
-    vi.unstubAllEnvs()
-    process.chdir(cwd)
-  }
-  expect(seen).toEqual([1])
-  expect(stops).toEqual([0])
-  expect(out.at(-1)).toBe(
-    "awaywork watch started this, so it can't change the schedule; do it from a terminal",
-  )
   expect(process.exitCode).toBe(1)
 })

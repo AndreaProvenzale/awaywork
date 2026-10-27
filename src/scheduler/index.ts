@@ -4,22 +4,20 @@ import { cron } from './cron.js'
 import { launchd } from './launchd.js'
 import { systemd } from './systemd.js'
 
-/** A time of day (local) a window opens, on the given weekdays (0 is Sunday) or every day. */
+/** A time of day (local) a job starts, on the given weekdays (0 is Sunday) or every day. */
 export interface Start {
   hour: number
   minute: number
   days?: number[]
 }
 
-/** The job keeping `awaywork watch` running: the command, its PATH and its log file. */
+/** The scheduled job: the command, when it starts (local time), its PATH and its log file. */
 export interface Schedule {
   command: string[]
+  starts: Start[]
   path: string
   log: string
 }
-
-/** Whether a job is the per-window kind an older awaywork installed, starting `awaywork run`. */
-export const olderJob = (job: Schedule) => !job.command.includes('watch')
 
 /** A scheduler install that failed for a reason the user can act on. */
 export class SchedulerError extends Error {}

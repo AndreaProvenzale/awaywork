@@ -1,15 +1,14 @@
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Exec } from '../forge/gh.js'
 import { describeStarts, type Start } from './index.js'
+import { onCalendar } from './systemd.js'
 
 const UNIT = 'awaywork-wake'
 const UNIT_DIR = '/etc/systemd/system'
 const PMSET_DAYS = 'MTWRFSU'
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const systemdRuns = () => existsSync('/run/systemd/system')
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -24,17 +23,6 @@ export async function keepAwake(run: Exec, platform = process.platform): Promise
     () => ['systemd-inhibit', ...args],
     () => [],
   )
-}
-
-/** Holds the machine awake until the returned function is called, at most until this process exits. */
-export async function holdAwake(run: Exec, platform = process.platform): Promise<() => void> {
-  const [command, ...args] = await keepAwake(run, platform)
-  if (!command) return () => {}
-  const pid = String(process.pid)
-  const until = platform === 'darwin' ? ['-w', pid] : ['tail', `--pid=${pid}`, '-f', '/dev/null']
-  const child = spawn(command, [...args, ...until], { stdio: 'ignore' })
-  child.on('error', () => {})
-  return () => void child.kill()
 }
 
 /** Wakes the machine from sleep when a window opens; root sets it, so it goes through sudo. */
@@ -72,28 +60,6 @@ export async function wakeUndo(
   return undefined
 }
 
-/** Says when the wake install set no longer lands on the windows' start, which only another install moves. */
-export async function staleWake(
-  starts: Start[],
-  run: Exec,
-  platform = process.platform,
-  unitDir = UNIT_DIR,
-): Promise<string | undefined> {
-  const fix = 'run `awaywork schedule install` to move the wake'
-  if (platform === 'darwin') {
-    const wanted = pmsetArgs(starts)?.[4]?.slice(0, 5)
-    const set = (await repeating(run))?.match(/(?:^|; )wake at (\d+):(\d\d)(AM|PM)/)
-    if (!wanted || !set) return undefined
-    const at = `${pad((Number(set[1]) % 12) + (set[3] === 'PM' ? 12 : 0))}:${set[2]}`
-    return at === wanted
-      ? undefined
-      : `this Mac wakes at ${at}, the windows start at ${wanted}; ${fix}`
-  }
-  const timer = await readFile(join(unitDir, `${UNIT}.timer`), 'utf8').catch(() => undefined)
-  if (!starts.length || timer === undefined || timer === wakeTimer(starts)) return undefined
-  return `${unitDir}/${UNIT}.timer doesn't wake at the windows' start (${describeStarts(starts)}); ${fix}`
-}
-
 /** `pmset repeat` args for the starts; undefined when they differ in time, as pmset repeats one. */
 export function pmsetArgs(starts: Start[]): string[] | undefined {
   const [first] = starts
@@ -124,14 +90,6 @@ async function pmsetWake(starts: Start[], run: Exec): Promise<Wake | string> {
     install: async () => void (await run('sudo', args)),
   }
 }
-
-const onCalendar = (starts: Start[]) =>
-  starts
-    .map(
-      (start) =>
-        `OnCalendar=${start.days ? `${start.days.map((d) => WEEKDAYS[d]).join(',')} ` : ''}*-*-* ${pad(start.hour)}:${pad(start.minute)}:00`,
-    )
-    .join('\n')
 
 export const wakeTimer = (starts: Start[]) => `[Unit]
 Description=Wake for awaywork runs

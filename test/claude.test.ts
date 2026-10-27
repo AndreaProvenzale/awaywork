@@ -56,8 +56,8 @@ describe('claude provider', () => {
         type: 'quota',
         quota: {
           windows: [
-            { name: 'five_hour', span: 'short', used: 0.03, resetsAt: 1790374800, minutes: 300 },
-            { name: 'seven_day', span: 'long', used: 0.05, resetsAt: 1790676000, minutes: 10080 },
+            { name: 'five_hour', span: 'short', used: 0.03, resetsAt: 1790374800 },
+            { name: 'seven_day', span: 'long', used: 0.05, resetsAt: 1790676000 },
           ],
         },
       },
@@ -72,8 +72,8 @@ describe('claude provider', () => {
     expect(await claudeProvider('/nonexistent/claude').detect()).toEqual({ installed: false })
     expect(await provider.probe({ env: process.env, log: () => {} })).toEqual({
       windows: [
-        { name: 'five_hour', span: 'short', used: 0.02, resetsAt: 1790374800, minutes: 300 },
-        { name: 'seven_day', span: 'long', used: 0.05, resetsAt: 1790676000, minutes: 10080 },
+        { name: 'five_hour', span: 'short', used: 0.02, resetsAt: 1790374800 },
+        { name: 'seven_day', span: 'long', used: 0.05, resetsAt: 1790676000 },
       ],
     })
   })

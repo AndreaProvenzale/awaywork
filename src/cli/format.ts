@@ -1,5 +1,5 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { type Allowance, pct, presenceLine } from '../core/budget.js'
+import { type Allowance, pct } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
 import {
   isNamed,
@@ -175,7 +175,6 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     ? [style('dim', 'Queue: the default, no queue in config; awaywork plan --rules lists it'), '']
     : []
   out.push(style('bold', 'Providers'))
-  if (plan.present !== undefined) out.push(style('dim', `  ${presenceLine(plan.present)}`))
   const allowances = Object.entries(plan.allowances)
   const providerHeader = [
     'provider',
@@ -218,7 +217,7 @@ export function planUnitTable(
     return [
       String(i + 1),
       top ? shortRef(top) : p.unit.id,
-      `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
+      `#${p.rule + 1}`,
       describeSkill(p),
       p.provider ?? '-',
       deliverOf(plan, p),
@@ -454,7 +453,6 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
-    r.run === 'soon' && 'run=soon',
     r.then?.length &&
       `then=${r.then.map((s) => `${s.stack ? 'stack:' : ''}${isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill}`).join(',')}`,
   ]
@@ -488,12 +486,10 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-/** An allowance in one line, with what a run outside the windows gets under `outside`, the present session limit. */
-export function describeAllowance(id: string, a: Allowance, outside: number): string {
-  if (a.kind === 'fallback')
-    return `fallback: ${describeFallback(id, a)}, sits out runs outside the windows`
+export function describeAllowance(id: string, a: Allowance): string {
+  if (a.kind === 'fallback') return `fallback: ${describeFallback(id, a)}`
   const session = a.session
-    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)} in windows, ${pct(outside)} outside`
+    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
     : ''
   return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${runs(a.runs)})${session}`
 }
@@ -512,7 +508,6 @@ function allowanceNote(id: string, a: Allowance): string {
 }
 
 function describeFallback(id: string, a: FallbackAllowance): string {
-  if (a.present) return `sits out a present run (${a.reason})`
   // A command provider has no turn cap, so its fallback turns mean nothing.
   const turns = Object.hasOwn(providers, id) ? `, ${counted(a.turns, 'turn')} each` : ''
   return `${counted(a.units, 'unit')}${turns} (${a.reason})`

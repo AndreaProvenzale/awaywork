@@ -9,7 +9,6 @@ import { providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
 import { replayUnit } from '../worker/replay.js'
 import { reportConfigError } from './config.js'
-import { abortOnSignals } from './run.js'
 
 export function replayCommand(program: Command): void {
   program
@@ -22,7 +21,10 @@ export function replayCommand(program: Command): void {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
         await isolateFor(config.isolation, process.env)
-        const signal = abortOnSignals()
+        const abort = new AbortController()
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+          process.once(signal, () => abort.abort())
+        }
         const result = await replayUnit({
           config,
           configDir: dirname(path),
@@ -37,7 +39,7 @@ export function replayCommand(program: Command): void {
           ),
           forge: forgeFor(config),
           ctx: { env: process.env, log: (line) => console.log(`  ${line}`) },
-          signal,
+          signal: abort.signal,
         })
         console.log(
           `${unit}: ${result.status}, ${counted(result.commits, 'commit')} on the local branch in ${result.dir}; output in ${result.out}`,
