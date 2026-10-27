@@ -27,6 +27,7 @@ vi.mock('../src/config/paths.js', async (original) => {
     runLockPath: `${state}/run.lock`,
     watchLockPath: `${state}/watch.lock`,
     skipsPath: `${state}/skips.json`,
+    approvalsPath: `${state}/approvals.json`,
   }
 })
 
