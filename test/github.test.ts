@@ -1179,6 +1179,7 @@ describe('github forge', () => {
       [/number=10 /, state({})],
       [/number=11 /, state({ ...draft, editor: { login: 'sam' } })],
       [/number=14 /, state({ ...draft, body: body.replace('acme%2Fapi%231', 'acme%2Fapi%232') })],
+      [/number=15 /, state({ editor: { login: 'sam' } })],
       [/number=1 /, state(draft)],
       [/branches\/release\/9$/, '{ "protected": true }'],
       [/branches\/feature-1$/, '{ "protected": false }'],
@@ -1206,7 +1207,7 @@ describe('github forge', () => {
     expect(await resume(14)).toBe("#14's footer no longer says awaywork left it for this unit")
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
     expect(await resume(1)).toBeUndefined()
-    expect(await push('feature-1', 1)).toBeUndefined()
+    expect(await push('feature-1', 15)).toBeUndefined()
     expect(run.calls.at(-1)).toEqual([
       'git',
       '-C',

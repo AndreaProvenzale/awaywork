@@ -5091,7 +5091,7 @@ it('goes on with its own draft once its questions are answered, fast-forwarding 
   )
 })
 
-it('leaves its draft untouched when the forge refuses it mid-run, though the run committed nothing', async () => {
+it('leaves its draft untouched when the forge refuses it mid-run, committed or not', async () => {
   const answered: Provider = {
     ...fakeProvider('claude'),
     async *run(job) {
@@ -5105,11 +5105,11 @@ it('leaves its draft untouched when the forge refuses it mid-run, though the run
       ({ stdout }) => git(origin, 'update-ref', 'refs/heads/away/acme-api-1', stdout),
     )
   const markReady = async (_origin: string, readied: Set<number>) => readied.add(7)
-  for (const [status, meanwhile, refused, kept] of [
-    ['ask', commitYours, 'away/acme-api-1 moved', ['Mine', 'Add a', 'init']],
-    ['continue', markReady, '#7 was marked ready', ['Add a', 'init']],
+  for (const [status, worker, meanwhile, refused, kept] of [
+    ['ask', answered, commitYours, 'away/acme-api-1 moved', ['Mine', 'Add a', 'init']],
+    ['continue', committer, markReady, '#7 was marked ready', ['Add a', 'init']],
   ] as const) {
-    const { report, updated, log } = await resumed(status, answered, meanwhile)
+    const { report, updated, log } = await resumed(status, worker, meanwhile)
     expect(report.results[0]?.outcome).toEqual({
       kind: 'none',
       reason: `${refused}, not pushed`,
