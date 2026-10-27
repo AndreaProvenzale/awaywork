@@ -366,6 +366,19 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
       ),
+    on_done: z
+      .strictObject({
+        move: z
+          .string()
+          .min(1)
+          .describe(
+            "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add",
+          ),
+      })
+      .optional()
+      .describe(
+        "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+      ),
   })
   .describe('First matching rule wins; top = highest priority')
 
@@ -863,6 +876,18 @@ export type Config = z.output<typeof configSchema>
 type Sources = Record<string, unknown>
 
 const fieldsOf = (configured: Sources, id: string) => sourceFor(id, configured[id])?.fields ?? {}
+
+/** Whether source `id`'s items can match `where`: it has fields, and so items, unlike bitbucket, and one for each key. */
+export function canMatch(configured: Sources, id: string, where: Where): boolean {
+  const fields = fieldsOf(configured, id)
+  const fits = (w: Where): boolean =>
+    Object.entries(w).every(([key, value]) =>
+      key === 'any'
+        ? (value as Where[]).some(fits)
+        : key in itemFields || !!sourceField(fields, key),
+    )
+  return Object.keys(fields).length > 0 && fits(where)
+}
 
 function fieldFor(configured: Sources, scope: string[], key: string): z.ZodType | undefined {
   const matches = scope.flatMap((id) => sourceField(fieldsOf(configured, id), key) ?? [])

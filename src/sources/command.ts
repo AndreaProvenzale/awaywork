@@ -4,7 +4,7 @@ import { execa } from 'execa'
 import { z } from 'zod'
 import { linkProblem } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
-import type { Item, Source } from '../core/types.js'
+import type { Ctx, Item, Source, Write } from '../core/types.js'
 
 export const linkTemplate = z
   .string()
@@ -60,6 +60,13 @@ export const commandConfig = z
       .optional()
       .describe("Runs in the config file's folder before awaywork on GitHub Actions"),
     link: linkTemplate.optional(),
+    write: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item\'s updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source',
+      ),
   })
   .describe('A custom source: any command that prints your open items as JSON')
 
@@ -69,6 +76,8 @@ export type CommandConfig = z.output<typeof commandConfig> & { dir?: string }
 const TIMEOUT_MS = 10 * 60_000
 
 const scalar = z.union([z.string(), z.number(), z.boolean()])
+const time = z.iso.datetime({ offset: true }).optional()
+const written = z.object({ before: time, after: time })
 const entry = z.object({
   id: z.string().min(1),
   key: z.string().min(1),
@@ -83,7 +92,17 @@ const entry = z.object({
   assignee: z.string().optional(),
   reviewers: z.array(z.string()).default([]),
   labels: z.array(z.string()).default([]),
-  comments: z.array(z.object({ author: z.string(), body: z.string(), at: z.string() })).default([]),
+  comments: z
+    .array(
+      z.object({
+        author: z.string(),
+        body: z.string(),
+        at: z.string(),
+        /** Written by your own account. */
+        mine: z.boolean().optional(),
+      }),
+    )
+    .default([]),
   fields: z.record(z.string(), z.union([scalar, z.array(scalar)])).default({}),
   /** Markdown the worker reads instead of the description. */
   context: z.string().optional(),
@@ -102,6 +121,19 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     updated: z.iso.datetime({ offset: true }),
     ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),
   }
+  const run = (command: string, c: CommandConfig, ctx: Ctx, input?: string) =>
+    // A timeout kills only the shell; kill its process group so no child keeps stdout open.
+    awaitGroup(
+      execa(command, {
+        shell: true,
+        cwd: c.dir,
+        env: ctx.env,
+        extendEnv: false,
+        timeout: TIMEOUT_MS,
+        detached: true,
+        ...(input !== undefined && { input }),
+      }),
+    )
   return {
     id,
     configSchema: commandConfig,
@@ -109,16 +141,8 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     secrets: (c) => c.secrets,
 
     async items(c, ctx, since) {
-      const subprocess = execa(c.command, {
-        shell: true,
-        cwd: c.dir,
-        env: since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env,
-        extendEnv: false,
-        timeout: TIMEOUT_MS,
-        detached: true,
-      })
-      // A timeout kills only the shell; kill its process group so no child keeps stdout open.
-      const { stdout } = await awaitGroup(subprocess)
+      const env = since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env
+      const { stdout } = await run(c.command, c, { ...ctx, env })
       let json: unknown
       try {
         json = JSON.parse(stdout)
@@ -143,6 +167,23 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
     async prefetch(item, dir) {
       await writeFile(join(dir, 'item.md'), itemMarkdown(item))
     },
+
+    ...(cfg.write && {
+      async write(c: CommandConfig, item: Item, { op, ...write }: Write, ctx: Ctx) {
+        const { stdout } = await run(
+          c.write as string,
+          c,
+          ctx,
+          JSON.stringify({ op, item: item.key, id: item.id, ...write }),
+        )
+        let printed: unknown
+        try {
+          printed = JSON.parse(stdout)
+        } catch {}
+        // Times it didn't print, or printed wrong, are none: the move then reads as a change.
+        return written.safeParse(printed).data ?? {}
+      },
+    }),
   }
 }
 
@@ -154,16 +195,18 @@ function toItem(source: string, e: Entry, fields: Record<string, z.ZodType>): It
       if (!field.safeParse(v).success)
         throw new Error(`${e.key}: invalid ${key} ${JSON.stringify(v)}`)
   }
-  const { context: _, fields: itemFields, state, closed, ...rest } = e
+  const { context: _, fields: itemFields, comments, state, closed, ...rest } = e
   return {
     ...rest,
     source,
+    comments: comments.map(({ mine, ...c }) => ({ ...c, ...(mine && { mine: true as const }) })),
     fields: {
       ...itemFields,
       state: state === 'closed' ? 'closed' : 'open',
       ...(isTime(closed) && { closed }),
     },
     linkedPrs: [],
+    mine: true,
     raw: e,
   }
 }

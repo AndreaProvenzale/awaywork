@@ -144,7 +144,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
-| any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`: see [Custom sources](./custom-sources.md) |
+| any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`, `write`: see [Custom sources](./custom-sources.md) |
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
@@ -163,11 +163,11 @@ sources:
 
 Its `secrets` are withheld from the worker like a repo's, but whatever it writes reaches the agent as is: don't write a secret into the output (`curl -v` into a file, say). Its limits are in [What runs in the clone](#what-runs-in-the-clone). `extra/` belongs to this command. A custom source does this inside its own `command`.
 
-Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
+Asana has no read-only personal token: the token can do anything you can. awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your tasks, and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`. Create one just for awaywork so you can revoke it alone.
 
-Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only.
+Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your issues, and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only, or write access too for `on_done`.
 
-Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`: `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it. Tokens expire after at most a year.
+Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done): `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done` aside. Tokens expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
 
@@ -411,6 +411,7 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
+| `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published; see [`on_done`](#on-done) |
 
 ### `where`
 
@@ -490,6 +491,37 @@ Both attempts show in the report and count against the budget. Towards [giving u
 |  | └ acme-api-1 | fix | claude | done, 5 turns | 1 commit |
 |  | └ acme-api-1-review | review | claude | done, 5 turns | a report, verdict approve |
 ```
+
+### `on_done`
+
+Moving the card is how the next person hears it's their turn. `on_done` does it once the work is out:
+
+```yaml
+- skill: implement
+  source: jira
+  where: { status: Ready }
+  on_done: { move: In Review }
+```
+
+`move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
+
+```text
+  on_done: couldn't move ENG-12 to In Review: ENG-12 has no transition to "In Review", only to "QA", "Done"
+```
+
+It runs once the chain finished and every slice published: a PR opened, a push landed, a report written, a pending review left. Not when a step failed or stopped, the run ended before a step ran, a loop ran out of rounds before its `until` held, or a step left nothing for the chain, like `implement` writing questions instead of code. A step its `when` passed over doesn't hold it back. Gates that fired and a failed `verify` don't either: the PR is out, and its card or note waits on it.
+
+It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
+
+A move never fails the unit. It goes in the run's output and the morning report under the unit, masked like every other error:
+
+```text
+  1  ENG-12  implement  done, 7 turns  https://github.com/acme/api/pull/41 (2 commits)
+     Rate limit the public API per key.
+     on_done moved ENG-12 to "In Review"
+```
+
+Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 
@@ -666,7 +698,7 @@ The config holds env var **names** only. Values come from the environment or `~/
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |
-| A custom source's `secrets` | That source's command |
+| A custom source's `secrets` | That source's `command` and `write` |
 | `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
 | A built-in source's `context.secrets` | That source's `context` command |
 | Your `notify.secrets` | The notify command |

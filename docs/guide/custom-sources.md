@@ -51,7 +51,7 @@ The command prints a JSON array to stdout. Anything it writes to stderr shows up
 | --- | --- |
 | `id`, `key`, `title`, `url` | Required. `key` is the tracker's own reference; branch names use it, and your PRs are matched by it |
 | `type` | `task` (default) or `issue` |
-| `description`, `status`, `assignee`, `reviewers`, `labels`, `comments` | Optional |
+| `description`, `status`, `assignee`, `reviewers`, `labels`, `comments` | Optional. A comment may say `"mine": true` when your own account wrote it |
 | `state`, `closed` | Optional: `open` (default) or `closed`, and the ISO time it closed; see [Finished items](#finished-items) |
 | `fields` | Strings, numbers, booleans or lists of them. Every key must be listed in `fields` in the config, except `repo`, `created` and `updated` |
 | `context` | Optional Markdown the worker reads instead of `description`: attachments, linked specs, whatever helps |
@@ -87,9 +87,57 @@ console.log(JSON.stringify(items))
 
 The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source):
 
-- Only read. Never write to the tracker.
-- Print only your items: assigned to you, or waiting on your review.
+- `command` only reads. Writing is `write`'s, and only when awaywork pipes it a write.
+- Print only your items: assigned to you, or waiting on your review. awaywork takes every item you print as yours, so `write` may move any of them.
+- `write` refuses an item that's no longer yours, reassigned or unassigned since `command` printed it: awaywork can't tell, so exit non-zero and say so on stderr.
 - Read tokens from env vars and list them in `secrets`.
+
+## Writing back
+
+A rule's [`on_done`](./configuration.md#on-done) moves your item once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are.
+
+```yaml
+sources:
+  board:
+    command: python3 sources/board.py
+    write: node sources/board-write.mjs   # runs like `command`: config folder, `secrets` in its env
+    fields: [column]
+    secrets: [BOARD_TOKEN]                # a token that may write, for both
+
+queue:
+  - skill: implement
+    source: board
+    where: { column: Ready }
+    on_done: { move: Review }
+```
+
+awaywork runs it once per write with the write as JSON on stdin: `op`, the item's `key` as `item` and its `id`, then `to` for a move or `body` for a comment.
+
+```json
+{ "op": "move", "item": "AI-42", "id": "8812", "to": "Review" }
+{ "op": "comment", "item": "AI-42", "id": "8812", "body": "Which header row?\n\n— awaywork" }
+```
+
+No rule writes comments yet; when one does, the body ends with awaywork's `— awaywork` line, and the command posts it as is. A non-zero exit is a failed write: its stderr goes in the run's output and the morning report, and the unit stays done. Print the item's updated time (ISO) right before and after the write as `{"before": "…", "after": "…"}`: when `before` is still what `command` printed, awaywork records `after`, so its own move doesn't make the item look changed next run, while someone else's change during the run still does.
+
+```js
+// board-write.mjs: moves a card or comments on it, as you
+import { text } from 'node:stream/consumers'
+
+const write = JSON.parse(await text(process.stdin))
+const card = `https://board.example/api/cards/${write.id}`
+const headers = { Authorization: `Bearer ${process.env.BOARD_TOKEN}`, 'Content-Type': 'application/json' }
+const before = (await (await fetch(card, { headers })).json()).card.updated_at
+const res = await fetch(`${card}/${write.op === 'move' ? 'move' : 'comments'}`, {
+  method: 'POST',
+  headers,
+  body: JSON.stringify(write.op === 'move' ? { column: write.to } : { text: write.body }),
+})
+if (!res.ok) throw new Error(`${write.op} ${write.item}: ${res.status} ${await res.text()}`)
+console.log(JSON.stringify({ before, after: (await res.json()).card.updated_at }))
+```
+
+On a comment your `command` prints back, set `"mine": true` when your own account wrote it and, if the tracker says, nobody else edited it last: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
 
 ## Recipe: chores
 

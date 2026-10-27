@@ -2,18 +2,21 @@ import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Ask, Ctx, Source } from '../../src/core/types.js'
+import { z } from 'zod'
+import type { Ask, Ctx, Item, Source } from '../../src/core/types.js'
 import { itemFields, sourceField } from '../../src/sources/index.js'
 
 /**
  * Every source adapter must pass this suite; `rawConfig` is its config as a
- * user writes it, and `ask` answers its `init` questions when it has one.
+ * user writes it, `ask` answers its `init` questions when it has one, and
+ * `move` is where a source that writes moves its first item.
  */
 export function sourceContract(
   source: Source<unknown>,
   rawConfig: unknown,
   env: Ctx['env'] = {},
   ask?: () => Ask,
+  move?: string,
 ): void {
   const ctx: Ctx = { env, log: () => {} }
   describe(`source contract: ${source.id}`, () => {
@@ -56,6 +59,22 @@ export function sourceContract(
         expect(source.configSchema.safeParse(setup?.config).success).toBe(true)
         for (const key of Object.keys(setup?.values ?? {}))
           expect(sourceField(source.fields, key), `undeclared field "${key}"`).toBeDefined()
+      },
+    )
+
+    it.runIf(source.write)(
+      'moves its first item to `move`, returning its updated times before and after, or none',
+      async () => {
+        expect(move, 'a source that writes needs a destination to move to').toBeDefined()
+        const [item] = await source.items(cfg(), ctx)
+        const written = await source.write?.(
+          cfg(),
+          item as Item,
+          { op: 'move', to: move as string },
+          ctx,
+        )
+        for (const time of [written?.before, written?.after].filter((t) => t !== undefined))
+          expect(z.iso.datetime().safeParse(time).success, `not an ISO time: ${time}`).toBe(true)
       },
     )
   })

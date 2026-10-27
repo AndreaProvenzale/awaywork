@@ -681,6 +681,11 @@
           "link": {
             "type": "string",
             "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
+          },
+          "write": {
+            "description": "Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {\"op\":\"move\",\"item\":\"ENG-2101\",\"id\":\"10012\",\"to\":\"QA\"}, and may print the item's updated times as {\"before\":\"…\",\"after\":\"…\"}. Without it, on_done writes nothing to this source",
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -2365,6 +2370,21 @@
                 }
               }
             ]
+          },
+          "on_done": {
+            "description": "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+            "type": "object",
+            "properties": {
+              "move": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add"
+              }
+            },
+            "required": [
+              "move"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

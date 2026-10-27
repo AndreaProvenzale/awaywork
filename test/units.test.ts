@@ -16,14 +16,14 @@ import { expect, it, vi } from 'vitest'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { recordAttempts } from '../src/core/attempts.js'
+import { recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
 import { footer } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import { unitStats } from '../src/core/stats.js'
-import type { Forge, Item, Provider, PrRef, Quota, Source } from '../src/core/types.js'
+import type { Forge, Item, Provider, PrRef, Quota, Source, Write } from '../src/core/types.js'
 import { namedChains, type RunInput, runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem, githubPr } from './fakes/items.js'
@@ -4380,4 +4380,191 @@ it('retries a step without checking its when again, keeping its when.log', async
     true,
     true,
   ])
+})
+
+/** Runs `queue` on `items` with GitHub and tracker sources that record what on_done writes, or fail as `write` does. */
+async function finishedRun(
+  queue: string,
+  items: Item[],
+  provider = looper({}),
+  write?: Source['write'],
+) {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
+  const { origin, forge } = await originForge(root)
+  await git(origin, 'branch', 'feature-2')
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] }, tracker: { command: 'echo []', write: 'true' } }
+queue:
+${queue}
+`)
+  const plan = planRun({
+    config,
+    items,
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: { builtin: builtinSkills },
+  })
+  const writes: [string, Write][] = []
+  const lines: string[] = []
+  const source = {
+    ...fakeSource(),
+    secrets: () => ['SRC_TOKEN'],
+    write:
+      write ??
+      (async (_cfg: unknown, item: Item, w: Write) => {
+        writes.push([item.key, w])
+        return { before: '2026-10-24T00:00:00Z', after: '2026-10-25T01:00:00Z' }
+      }),
+  }
+  const report = await runUnits({
+    config,
+    configDir: root,
+    plan,
+    runId: 'r1',
+    runDir: join(root, 'run'),
+    dryRun: false,
+    providers: { claude: provider },
+    sources: { github: source as Source, tracker: source as Source },
+    forge,
+    ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
+    watch: () => ({ stop: async () => {} }),
+    shortage: async () => undefined,
+    skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+  })
+  return { report, writes, lines }
+}
+
+const yours = (n: number) =>
+  fakeItem({
+    ...issue(n),
+    mine: true,
+    fields: { repo: 'acme/api', updated: '2026-10-24T00:00:00Z' },
+  })
+
+it("moves your items once the chain published, and counts the move as awaywork's own change", async () => {
+  const { report, writes } = await finishedRun('  - { skill: implement, on_done: { move: QA } }', [
+    yours(1),
+  ])
+  expect(writes).toEqual([['acme/api#1', { op: 'move', to: 'QA' }]])
+  expect(report.results[0]?.moved).toEqual([
+    { item: 'github:acme/api#1', to: 'QA', updated: '2026-10-25T01:00:00Z' },
+  ])
+  expect(formatReport(report)).toContain('- **api#1**: on_done moved acme/api#1 to "QA"')
+  expect(summarize(report, 'report.md')).toContain('     on_done moved acme/api#1 to "QA"')
+  expect(recordAttempts({}, report)['github:acme/api#1']?.updated).toBe('2026-10-25T01:00:00Z')
+})
+
+it('keeps the updated time the plan read when someone changed the item during the run', async () => {
+  const { report } = await finishedRun(
+    '  - { skill: implement, on_done: { move: QA } }',
+    [yours(1)],
+    looper({}),
+    async () => ({ before: '2026-10-24T00:30:00Z', after: '2026-10-24T01:00:00Z' }),
+  )
+  expect(report.results[0]?.moved).toEqual([{ item: 'github:acme/api#1', to: 'QA' }])
+  const attempts = recordAttempts({}, report)
+  expect(attempts['github:acme/api#1']?.updated).toBe('2026-10-24T00:00:00Z')
+  const next = { ...yours(1), fields: { ...yours(1).fields, updated: '2026-10-24T01:00:00Z' } }
+  expect(unchangedSince(next, 'implement', attempts)).toBeUndefined()
+})
+
+it("keeps a closed item's state with the move's updated time, so only a new state re-runs it", async () => {
+  const closed = new Date(Date.now() - 86_400_000).toISOString()
+  const done = fakeItem({ ...yours(1), fields: { ...yours(1).fields, state: 'closed', closed } })
+  const { report } = await finishedRun(
+    '  - { skill: implement, where: { state: closed }, on_done: { move: QA } }',
+    [done],
+  )
+  const attempts = recordAttempts({}, report)
+  expect(attempts['github:acme/api#1']).toMatchObject({
+    updated: '2026-10-25T01:00:00Z',
+    state: 'closed',
+  })
+  const moved = { ...done, fields: { ...done.fields, updated: '2026-10-25T01:00:00Z' } }
+  expect(unchangedSince(moved, 'implement', attempts)).toBe('r1')
+  const reopened = { ...moved, fields: { ...moved.fields, state: 'open' } }
+  expect(unchangedSince(reopened, 'implement', attempts)).toBeUndefined()
+})
+
+it("moves only the items of the rule's own source, or of the item it matched without one", async () => {
+  const pr = githubPr(2, { mine: true })
+  const card = fakeItem({
+    source: 'tracker',
+    id: 'c1',
+    key: 'ENG-1',
+    type: 'task',
+    mine: true,
+    linkedPrs: pr.linkedPrs,
+    fields: { repo: 'acme/api' },
+  })
+  const yourPr = { ...pr, mine: true as const }
+  const named = await finishedRun(
+    '  - { skill: review, source: tracker, deliver: report, on_done: { move: QA } }\n  - { skill: review, deliver: report }',
+    [yourPr, card],
+  )
+  expect(named.report.results[0]?.planned.unit.items.map((i) => i.key)).toEqual([
+    'ENG-1',
+    'acme/api#2',
+  ])
+  expect(named.writes).toEqual([['ENG-1', { op: 'move', to: 'QA' }]])
+  const unnamed = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { move: QA } }',
+    [yourPr, card],
+  )
+  expect(unnamed.writes).toEqual([['acme/api#2', { op: 'move', to: 'QA' }]])
+})
+
+it('moves nothing when a step failed, committed nothing or a loop never held', async () => {
+  const failing: Provider = {
+    ...fakeProvider('claude'),
+    async *run() {
+      yield { type: 'done', ok: false, turns: 1 }
+    },
+  }
+  const questions: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      await writeFile(join(job.dir, '.away/out/report.md'), 'Which limit?')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const rule = '  - { skill: implement, on_done: { move: QA } }'
+  for (const provider of [failing, questions]) {
+    const { report, writes } = await finishedRun(rule, [yours(1)], provider)
+    expect(writes).toEqual([])
+    expect(report.results[0]?.moved).toBeUndefined()
+  }
+  const looped = await finishedRun(
+    '  - { skill: implement, on_done: { move: QA }, then: { loop: [review, fix], until: { verdict: approve }, max: 1 } }',
+    [yours(1)],
+  )
+  expect(looped.report.results[0]?.outcome?.kind).toBe('pr')
+  expect(looped.writes).toEqual([])
+})
+
+it('never writes to a review-requested PR or an item only an extra search found', async () => {
+  const { writes, lines } = await finishedRun(
+    '  - { skill: review, deliver: report, on_done: { move: QA } }',
+    [githubPr(2, { mine: false, review_requested: true }), issue(3)],
+  )
+  expect(writes).toEqual([])
+  expect(lines).toContain('on_done: acme/api#2 not moved, not yours')
+  expect(lines).toContain('on_done: acme/api#3 not moved, not yours')
+})
+
+it('reports a move that failed, its secrets masked, and leaves the unit done', async () => {
+  const { report, lines } = await finishedRun(
+    '  - { skill: implement, on_done: { move: QA } }',
+    [yours(1)],
+    looper({}),
+    async () => {
+      throw new Error('401 for s3cret')
+    },
+  )
+  expect(report.results[0]?.status).toBe('done')
+  expect(report.results[0]?.moved).toEqual([
+    { item: 'github:acme/api#1', to: 'QA', failed: '401 for ***' },
+  ])
+  expect(lines).toContain(`on_done: couldn't move acme/api#1 to QA: 401 for ***`)
+  expect(formatReport(report)).toContain(`on_done couldn't move acme/api#1 to "QA": 401 for ***`)
 })

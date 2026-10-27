@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { canMatch } from '../src/config/schema.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import { recorded } from './fakes/gh.js'
@@ -82,6 +83,47 @@ describe('doctor', () => {
       detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`,
     })
     expect(checks.at(-1)?.what).toBe('github')
+  })
+
+  it("warns when a rule's on_done may meet a source that can't write", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      `providers: [codex]
+sources:
+  github: { repos: [a/b] }
+  tracker: { command: 'echo []', fields: [column] }
+  notes: { command: 'echo []' }
+  board: { command: 'echo []', fields: [column], write: 'true' }
+queue:
+  - { skill: fix, where: { column: Ready }, on_done: { move: QA } }
+  - { skill: fix, source: github, on_done: { move: QA } }
+  - { skill: fix, on_done: { move: QA } }
+`,
+    )
+    const checks = await runChecks(path, () => {})
+    const warn = (rule: number, id: string) => ({
+      status: 'warn',
+      what: `rule #${rule} on_done`,
+      detail: `${id} can't write to its items: they stay put`,
+    })
+    expect(checks.filter((c) => c.what.includes('on_done'))).toEqual([
+      warn(1, 'tracker'),
+      warn(3, 'tracker'),
+      warn(3, 'notes'),
+    ])
+  })
+
+  it('counts a source as matching a rule only with items and a field for each key', () => {
+    const { sources } = parseConfig(`
+providers: [codex]
+sources: { tracker: { command: 'echo []', fields: [column] }, jira: { site: a.atlassian.net, email: d@a.test } }
+`)
+    expect(canMatch(sources, 'tracker', {})).toBe(true)
+    expect(canMatch(sources, 'tracker', { any: [{ status: 'QA' }, { column: 'QA' }] })).toBe(true)
+    expect(canMatch(sources, 'jira', { column: 'QA' })).toBe(false)
+    expect(canMatch({ bitbucket: { repos: ['a/b'] } }, 'bitbucket', { type: 'pr' })).toBe(false)
   })
 })
 

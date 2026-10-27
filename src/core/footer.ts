@@ -42,3 +42,12 @@ export const trailerKey = 'Awaywork'
 
 export const hasTrailer = (message: string): boolean =>
   new RegExp(`^${trailerKey}: `, 'm').test(message)
+
+/** The last line of every comment awaywork writes: visible, since Jira's and Asana's rich text keep no hidden markup. */
+export const commentMark = '— awaywork'
+
+export const markComment = (body: string): string => `${body.trimEnd()}\n\n${commentMark}`
+
+/** A comment awaywork wrote: its mark as the last line, from your own account, so a mark someone else pastes doesn't count. */
+export const isAwayworkComment = (c: Item['comments'][number]): boolean =>
+  !!c.mine && c.body.trimEnd().split('\n').at(-1)?.trim() === commentMark

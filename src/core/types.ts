@@ -35,12 +35,15 @@ export interface Item {
   assignee?: string
   reviewers: string[]
   labels: string[]
-  comments: { author: string; body: string; at: string }[]
+  /** `mine` when your own account wrote it and nobody else edited it since. */
+  comments: { author: string; body: string; at: string; mine?: true }[]
   /** A PR item links itself, so items sharing a PR dedupe into one unit. */
   linkedPrs: PrRef[]
   /** The line a PR body carries to link this item, rendered from its source's `link`. */
   link?: string
   fields: Record<string, unknown>
+  /** Yours: your PR, or an item assigned to you; awaywork writes only to these. */
+  mine?: true
   raw: unknown
 }
 
@@ -89,6 +92,20 @@ export interface Source<C = unknown> {
   prefetch(item: Item, dir: string, ctx: Ctx): Promise<void>
   /** Asks what `awaywork init` needs to configure this source. */
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
+  /**
+   * Writes to one of its items as you: a comment, or a move to the status, state, section or
+   * label named `to`. Returns the item's updated time just before and after it, when the tracker says.
+   */
+  write?(cfg: C, item: Item, write: Write, ctx: Ctx): Promise<Written>
+}
+
+/** What awaywork writes to a tracker item. */
+export type Write = { op: 'comment'; body: string } | { op: 'move'; to: string }
+
+/** The item's updated time just before and after a write. */
+export interface Written {
+  before?: string
+  after?: string
 }
 
 export interface Quota {
@@ -265,6 +282,8 @@ export interface Rule extends Step {
   units?: number
   /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
+  /** Written to the unit's items that are yours once its chain finished and published. */
+  on_done?: { move: string }
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */

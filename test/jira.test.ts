@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { isAwayworkComment, markComment } from '../src/core/footer.js'
 import type { Ctx } from '../src/core/types.js'
-import { adfToMarkdown, jiraSource } from '../src/sources/jira.js'
+import { adfToMarkdown, jiraSource, textToAdf } from '../src/sources/jira.js'
 import { recordedFetch } from './fakes/asana.js'
 import { scriptedAsk } from './fakes/ask.js'
 import { jiraFetch, jiraFixture } from './fakes/jira.js'
@@ -305,5 +306,101 @@ describe('jira source', () => {
     expect(() => parseConfig(configured('acme.atlassian.net', 'api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('acme.atlassian.net', 'acme/sub/api'))).toThrow('repo_map')
     expect(() => parseConfig(configured('https://acme.atlassian.net', 'acme/api'))).toThrow('site')
+  })
+})
+
+describe('jira writes', () => {
+  const dev = { accountId: '5b10' }
+  const before = { fields: { updated: '2026-01-03T09:30:00.000+0100', assignee: dev } }
+  const transitions = [
+    { id: '21', name: 'Start review', to: { name: 'In Review' } },
+    { id: '31', name: 'Done', to: { name: 'Done' } },
+  ]
+  const writer = (read: object = before) =>
+    recordedFetch([
+      [
+        /\/issue\/10012\?fields=updated,assignee&expand=transitions$/,
+        JSON.stringify({ ...read, transitions }),
+      ],
+      [/\/issue\/10012\?fields=updated,assignee$/, JSON.stringify(read)],
+      [/\/issue\/10012\/transitions$/, '{}'],
+      [/\/issue\/10012\/comment$/, '{ "id": "1" }'],
+      [
+        /\/issue\/10012\?fields=updated$/,
+        '{ "fields": { "updated": "2026-01-04T08:00:00.000+0000" } }',
+      ],
+    ])
+  const eng12 = { id: '10012', key: 'ENG-12', raw: { fields: { assignee: dev } } } as never
+
+  it('moves an issue through the transition whose target status has that name', async () => {
+    const http = writer()
+    const move = { op: 'move', to: 'in review' } as const
+    expect(await jiraSource(http).write?.(cfg, eng12, move, ctx)).toEqual({
+      before: '2026-01-03T08:30:00.000Z',
+      after: '2026-01-04T08:00:00.000Z',
+    })
+    expect(http.calls.map((c) => c.url.split('/10012')[1])).toEqual([
+      '?fields=updated,assignee&expand=transitions',
+      '/transitions',
+      '?fields=updated',
+    ])
+    const post = http.calls.find((c) => c.body)
+    expect(post?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/transitions')
+    expect(JSON.parse(post?.body ?? '')).toEqual({ transition: { id: '21' } })
+  })
+
+  it('names the statuses it can go to when none has that name', async () => {
+    await expect(
+      jiraSource(writer()).write?.(cfg, eng12, { op: 'move', to: 'QA' }, ctx),
+    ).rejects.toThrow('ENG-12 has no transition to "QA", only to "In Review", "Done"')
+  })
+
+  it('refuses an issue reassigned or unassigned since it was read', async () => {
+    for (const assignee of [{ accountId: '5b20' }, null]) {
+      const http = writer({ fields: { ...before.fields, assignee } })
+      for (const write of [
+        { op: 'move', to: 'In Review' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(jiraSource(http).write?.(cfg, eng12, write, ctx)).rejects.toThrow(
+          'ENG-12 is no longer yours: not assigned to you',
+        )
+      expect(http.calls.filter((c) => c.body)).toEqual([])
+    }
+  })
+
+  it('comments in ADF that reads back as the same text, mark included', async () => {
+    const http = writer()
+    const body = markComment('Which limit?\nPer key.\n\nOr per IP?')
+    await jiraSource(http).write?.(cfg, eng12, { op: 'comment', body }, ctx)
+    const sent = JSON.parse(http.calls[1]?.body ?? '')
+    expect(http.calls[0]?.url).toMatch(/\/issue\/10012\?fields=updated,assignee$/)
+    expect(http.calls[1]?.url).toBe('https://acme.atlassian.net/rest/api/3/issue/10012/comment')
+    expect(sent.body).toEqual(textToAdf(body))
+    expect(adfToMarkdown(sent.body)).toBe(body)
+  })
+
+  it("marks the assignee's own comments as yours, so only those count as awaywork's", async () => {
+    const dev = { displayName: 'Dev', accountId: '5b10' }
+    const qa = { displayName: 'QA', accountId: '5b20' }
+    const comments = JSON.stringify({
+      total: 4,
+      comments: [
+        { author: dev, body: textToAdf(markComment('Q?')) },
+        { author: dev, updateAuthor: dev, body: textToAdf(markComment('Edited?')) },
+        { author: qa, body: textToAdf(markComment('Q?')) },
+        { author: dev, updateAuthor: qa, body: textToAdf(markComment('Theirs?')) },
+      ].map((c) => ({ ...c, created: '2026-01-01T10:00:00.000+0000' })),
+    })
+    const http = jiraFetch([[/\/issue\/10012\/comment/, comments]])
+    const [found] = await jiraSource(http).items(cfg, ctx)
+    expect(found?.comments.map((c) => [c.author, c.mine, isAwayworkComment(c)])).toEqual([
+      ['Dev', true, true],
+      ['Dev', true, true],
+      ['QA', undefined, false],
+      ['Dev', undefined, false],
+    ])
+    expect(found?.mine).toBe(true)
+    expect(http.calls.some((c) => c.url.includes('/myself'))).toBe(false)
   })
 })

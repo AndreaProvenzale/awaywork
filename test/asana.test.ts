@@ -202,3 +202,94 @@ describe('asana config and linking', () => {
     expect(log).toEqual(['linking T-13 to PRs: gh: not logged in'])
   })
 })
+
+describe('asana writes', () => {
+  const sections = (...names: string[]) =>
+    JSON.stringify({ data: names.map((name, i) => ({ gid: `5${i}`, name })), next_page: null })
+  const writer = (assignee: { gid: string } | null = { gid: '900' }) =>
+    recordedFetch([
+      [/\/projects\/11\/sections\?/, sections('Ready', 'QA')],
+      [/\/projects\/12\/sections\?/, sections('Ready', 'In review')],
+      [/\/sections\/51\/addTask$/, '{ "data": {} }'],
+      [/\/tasks\/1201\/stories$/, '{ "data": { "gid": "6001" } }'],
+      [
+        /\/tasks\/1201\?opt_fields=modified_at,assignee$/,
+        JSON.stringify({ data: { modified_at: '2026-01-04T08:00:00.000Z', assignee } }),
+      ],
+    ])
+  const task = asanaTask(
+    1201,
+    {},
+    {
+      id: '1201',
+      raw: {
+        assignee: { gid: '900' },
+        memberships: [{ project: { gid: '11' } }, { project: { gid: '12' } }],
+      },
+    },
+  )
+
+  it('moves a task to the section with that name in the first of its projects that has one', async () => {
+    const http = writer()
+    const move = { op: 'move', to: 'in review' } as const
+    expect(await asanaSource(http).write?.(cfg, task, move, ctx)).toEqual({
+      before: '2026-01-04T08:00:00.000Z',
+      after: '2026-01-04T08:00:00.000Z',
+    })
+    expect(http.calls[0]?.url).toMatch(/\/tasks\/1201\?opt_fields=modified_at,assignee$/)
+    const post = http.calls.find((c) => c.body)
+    expect(post?.url).toBe('https://app.asana.com/api/1.0/sections/51/addTask')
+    expect(JSON.parse(post?.body ?? '')).toEqual({ data: { task: '1201' } })
+    await expect(
+      asanaSource(writer()).write?.(cfg, task, { op: 'move', to: 'Done' }, ctx),
+    ).rejects.toThrow(
+      `T-1201's projects have no section "Done", only "Ready", "QA", "Ready", "In review"`,
+    )
+  })
+
+  it('looks for the section only in the projects the config names', async () => {
+    const scoped = { ...cfg, projects: ['11'] }
+    await expect(
+      asanaSource(writer()).write?.(scoped, task, { op: 'move', to: 'In review' }, ctx),
+    ).rejects.toThrow(`T-1201's projects have no section "In review", only "Ready", "QA"`)
+  })
+
+  it('refuses a task reassigned or unassigned since it was read', async () => {
+    for (const assignee of [{ gid: '901' }, null]) {
+      const http = writer(assignee)
+      for (const write of [
+        { op: 'move', to: 'QA' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(asanaSource(http).write?.(cfg, task, write, ctx)).rejects.toThrow(
+          'T-1201 is no longer yours: not assigned to you',
+        )
+      expect(http.calls.filter((c) => c.body)).toEqual([])
+    }
+  })
+
+  it('comments as a story of plain text', async () => {
+    const http = writer()
+    await asanaSource(http).write?.(cfg, task, { op: 'comment', body: 'Which?\n\nOr?' }, ctx)
+    expect(http.calls[1]?.url).toBe('https://app.asana.com/api/1.0/tasks/1201/stories')
+    expect(JSON.parse(http.calls[1]?.body ?? '')).toEqual({ data: { text: 'Which?\n\nOr?' } })
+  })
+
+  it("marks the assignee's own stories as yours and every task as yours", async () => {
+    const mine = JSON.stringify({
+      data: [
+        {
+          created_at: '2026-01-01T10:00:00.000Z',
+          created_by: { gid: '900', name: 'Dev' },
+          text: 'Q?',
+        },
+      ],
+      next_page: null,
+    })
+    const found = await asanaSource(
+      recordedFetch([[/\/tasks\/1201\/stories\?/, mine], ...asanaRoutes()]),
+    ).items(cfg, ctx)
+    expect(found[0]?.comments[0]?.mine).toBe(true)
+    expect(found.every((i) => i.mine)).toBe(true)
+  })
+})

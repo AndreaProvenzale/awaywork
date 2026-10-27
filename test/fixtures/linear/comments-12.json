@@ -11,7 +11,7 @@
           {
             "body": "Still returns 500 on burst.",
             "createdAt": "2026-01-01T10:00:00.000Z",
-            "user": { "name": "QA" }
+            "user": { "name": "QA", "isMe": false }
           }
         ],
         "pageInfo": { "hasNextPage": false, "endCursor": null }

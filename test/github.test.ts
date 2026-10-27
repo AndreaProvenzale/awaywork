@@ -4,11 +4,12 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
-import { footer, footerItems, isOurs } from '../src/core/footer.js'
-import type { Ctx, Item } from '../src/core/types.js'
+import { footer, footerItems, isAwayworkComment, isOurs, markComment } from '../src/core/footer.js'
+import type { Ctx, Item, Write } from '../src/core/types.js'
 import { type Exec, exec } from '../src/forge/gh.js'
 import { githubForge } from '../src/forge/github.js'
 import { githubSource } from '../src/sources/github.js'
+import { writeItem } from '../src/sources/index.js'
 import { fixture, githubRoutes, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
 
@@ -65,6 +66,61 @@ describe('footer', () => {
     expect(footerItems(`Quotes \`<!-- awaywork item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
       'linear:ENG-12',
     ])
+  })
+})
+
+describe('source writes', () => {
+  const comment = (body: string, mine?: true) => ({ author: 'dev', body, at: 't', mine })
+
+  it("counts a comment as awaywork's only with its mark last, from your own account", () => {
+    const marked = markComment('Which limit?  \n')
+    expect(marked).toBe('Which limit?\n\n— awaywork')
+    expect(isAwayworkComment(comment(marked, true))).toBe(true)
+    expect(isAwayworkComment(comment(`${marked}\n`, true))).toBe(true)
+    expect(isAwayworkComment(comment(marked))).toBe(false)
+    expect(isAwayworkComment(comment(`${marked}\n\nAnd more.`, true))).toBe(false)
+    expect(isAwayworkComment(comment('Which limit?', true))).toBe(false)
+  })
+
+  it('writes only to items that are yours, through a source that writes, marking comments', async () => {
+    const writes: Write[] = []
+    const source = {
+      ...githubSource(recorded([])),
+      write: async (_cfg: unknown, _item: Item, write: Write) => {
+        writes.push(write)
+        return { before: '2026-10-24T00:00:00Z', after: 'later' }
+      },
+    }
+    const yours = fakeItem({
+      source: 'github',
+      mine: true,
+      fields: { updated: '2026-10-24T00:00:00Z' },
+    })
+    await expect(writeItem(source, {}, fakeItem(), { op: 'move', to: 'QA' }, ctx)).rejects.toThrow(
+      'not yours',
+    )
+    await expect(
+      writeItem({ ...source, write: undefined }, {}, yours, { op: 'move', to: 'QA' }, ctx),
+    ).rejects.toThrow("github can't write to its items")
+    expect(await writeItem(source, {}, yours, { op: 'comment', body: 'Q?' }, ctx)).toBe('later')
+    expect(writes).toEqual([{ op: 'comment', body: 'Q?\n\n— awaywork' }])
+  })
+
+  it('returns no updated time when someone changed the item after it was read', async () => {
+    const source = {
+      ...githubSource(recorded([])),
+      write: async () => ({ before: '2026-10-24T00:30:00Z', after: '2026-10-24T01:00:00Z' }),
+    }
+    const read = fakeItem({
+      source: 'github',
+      mine: true,
+      fields: { updated: '2026-10-24T00:00:00Z' },
+    })
+    expect(await writeItem(source, {}, read, { op: 'move', to: 'QA' }, ctx)).toBeUndefined()
+    const same = { ...read, fields: { updated: '2026-10-24T00:30:00.000Z' } }
+    expect(await writeItem(source, {}, same, { op: 'move', to: 'QA' }, ctx)).toBe(
+      '2026-10-24T01:00:00Z',
+    )
   })
 })
 
@@ -125,7 +181,12 @@ describe('github source', () => {
       state: 'open',
     })
     expect(issue5?.comments).toEqual([
-      { author: 'dev', body: 'Start with the public routes.', at: '2026-01-01T10:00:00Z' },
+      {
+        author: 'dev',
+        body: 'Start with the public routes.',
+        at: '2026-01-01T10:00:00Z',
+        mine: true,
+      },
     ])
   })
 
@@ -408,6 +469,119 @@ describe('github source', () => {
         'Clients can flood us.\n\n## Comments\n\n### dev, 2026-01-01T10:00:00Z\n\n' +
         "Start with the public routes.\n\n_Hidden: 1 comment from outside the repo's owners, members and collaborators._\n",
     )
+  })
+
+  it('marks as yours only your PRs and issues assigned to you, not requested reviews or extra searches', async () => {
+    const mentioned = JSON.parse(fixture('search-assigned.json'))
+    mentioned.data.search.nodes = [{ ...mentioned.data.search.nodes[0], id: 'I_new', number: 9 }]
+    const run = recorded([
+      [/q=is:open archived:false mentions:@me/, JSON.stringify(mentioned)],
+      ...githubRoutes(),
+    ])
+    const found = await githubSource(run).items(
+      { repos: ['acme/*'], search: ['mentions:@me'] },
+      ctx,
+    )
+    expect(found.map((i) => [i.key, i.mine ?? false])).toEqual([
+      ['acme/api#1', true],
+      ['acme/web#3', true],
+      ['acme/api#2', false],
+      ['acme/api#5', true],
+      ['acme/web#6', true],
+      ['acme/api#9', false],
+    ])
+  })
+
+  it('takes your comment as yours only while nobody else edited it last', async () => {
+    const assigned = JSON.parse(fixture('search-assigned.json'))
+    const yours = assigned.data.search.nodes[0].comments.nodes[1]
+    assigned.data.search.nodes[0].comments.nodes = [
+      { ...yours, body: 'mine', editor: null },
+      { ...yours, body: 'edited by me', editor: { login: 'dev' } },
+      { ...yours, body: `edited by lead\n\n${markComment('')}`, editor: { login: 'lead' } },
+    ]
+    const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+    const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    expect(issue5?.comments.map((c) => [c.body.split('\n')[0], c.mine])).toEqual([
+      ['mine', true],
+      ['edited by me', true],
+      ['edited by lead', undefined],
+    ])
+    expect(issue5?.comments.some(isAwayworkComment)).toBe(false)
+  })
+
+  const read = (assignees?: string[]) =>
+    JSON.stringify({
+      data: {
+        viewer: { login: 'dev' },
+        repository: {
+          issueOrPullRequest: {
+            updatedAt: '2026-02-02T08:00:00Z',
+            ...(assignees && { assignees: { nodes: assignees.map((login) => ({ login })) } }),
+          },
+        },
+      },
+    })
+  const issue5 = fakeItem({
+    source: 'github',
+    key: 'acme/api#5',
+    type: 'issue',
+    url: 'https://git.acme.com/acme/api/issues/5',
+    fields: { repo: 'acme/api' },
+  })
+
+  it('comments on an item and moves it by adding a label, through the issues API on its host', async () => {
+    const seen: (string | undefined)[] = []
+    const replay = recorded([
+      [/^gh api repos\/acme\/api\/issues\/5\/(comments|labels) -f /, '{}'],
+      [
+        /^gh api graphql -f owner=acme -f name=api -F number=5 .*issueOrPullRequest/s,
+        read(['dev']),
+      ],
+    ])
+    const run: Exec = (cmd, args, env) => {
+      seen.push(env?.GH_HOST)
+      return replay(cmd, args, env)
+    }
+    const item = issue5
+    const write = githubSource(run).write
+    expect(await write?.({ repos: ['acme/*'] }, item, { op: 'move', to: 'In QA' }, ctx)).toEqual({
+      before: '2026-02-02T08:00:00Z',
+      after: '2026-02-02T08:00:00Z',
+    })
+    await write?.({ repos: ['acme/*'] }, item, { op: 'comment', body: 'Why `@here`?' }, ctx)
+    const updated = ['api', 'graphql', '-f', 'owner=acme', '-f', 'name=api', '-F', 'number=5']
+    expect(replay.calls.map((c) => (c[2] === 'graphql' ? c.slice(1, 9) : c.slice(1)))).toEqual([
+      updated,
+      ['api', 'repos/acme/api/issues/5/labels', '-f', 'labels[]=In QA'],
+      updated,
+      updated,
+      ['api', 'repos/acme/api/issues/5/comments', '-f', 'body=Why `@here`?'],
+      updated,
+    ])
+    expect(new Set(seen)).toEqual(new Set(['git.acme.com']))
+  })
+
+  it('refuses an issue no longer assigned to you, but not your PR, whose author is fixed', async () => {
+    for (const assignees of [['lead'], []]) {
+      const run = recorded([[/issueOrPullRequest/, read(assignees)]])
+      for (const write of [
+        { op: 'move', to: 'QA' },
+        { op: 'comment', body: 'Q?' },
+      ] as const)
+        await expect(
+          githubSource(run).write?.({ repos: ['acme/*'] }, issue5, write, ctx),
+        ).rejects.toThrow('acme/api#5 is no longer yours: not assigned to you')
+      expect(run.calls.filter((c) => c[2] !== 'graphql')).toEqual([])
+    }
+    const run = recorded([
+      [/issueOrPullRequest/, read()],
+      [/labels -f /, '{}'],
+    ])
+    const pr = { ...issue5, type: 'pr' as const }
+    expect(
+      await githubSource(run).write?.({ repos: ['acme/*'] }, pr, { op: 'move', to: 'QA' }, ctx),
+    ).toEqual({ before: '2026-02-02T08:00:00Z', after: '2026-02-02T08:00:00Z' })
   })
 })
 

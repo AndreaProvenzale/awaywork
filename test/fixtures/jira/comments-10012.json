@@ -4,7 +4,7 @@
   "total": 2,
   "comments": [
     {
-      "author": { "displayName": "QA" },
+      "author": { "displayName": "QA", "accountId": "5b20" },
       "body": {
         "type": "doc",
         "version": 1,

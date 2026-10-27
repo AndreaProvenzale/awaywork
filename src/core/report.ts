@@ -42,6 +42,22 @@ export interface UnitResult {
   summary?: string
   /** What the step left, relative to the run dir, whichever exist. */
   files?: StepFiles
+  /** On the chain's first step: where its rule's `on_done` moved the unit's items that are yours. */
+  moved?: Moved[]
+}
+
+/** An item (`source:key`) on_done moved, with its updated time after when only the move changed it, or why the move failed. */
+export interface Moved {
+  item: string
+  to: string
+  updated?: string
+  failed?: string
+}
+
+/** `moved ENG-12 to "In Review"`, or why it couldn't. */
+export function describeMoved(m: Moved): string {
+  const key = m.item.slice(m.item.indexOf(':') + 1)
+  return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
 export interface StepFiles {
@@ -142,6 +158,10 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     })
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
+    const moved = listed.flatMap(({ head }) =>
+      (head.moved ?? []).map((m) => `- **${refOf(head)}**: on_done ${describeMoved(m)}`),
+    )
+    if (moved.length > 0) out.push('', ...moved)
   }
   const waiting = r.plan.skipped.filter(needsYouOn)
   if (waiting.length > 0) {

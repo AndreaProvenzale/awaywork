@@ -54,7 +54,7 @@ interface Issue {
     priority: { name: string } | null
     issuetype: { name: string }
     project: { key: string }
-    assignee: { displayName: string } | null
+    assignee: { displayName: string; accountId?: string } | null
     created: string
     updated: string
     resolutiondate?: string | null
@@ -66,7 +66,8 @@ interface Issue {
   }
 }
 interface Comment {
-  author: { displayName: string } | null
+  author: { displayName: string; accountId?: string } | null
+  updateAuthor?: { accountId?: string } | null
   body: Adf
   created: string
 }
@@ -192,6 +193,41 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       await writeFile(join(dir, 'item.md'), taskMarkdown(item))
     },
 
+    /** Comments on the issue, or moves it through the transition whose target status is named `to`. */
+    async write(cfg, item, write, ctx) {
+      const token = tokenFrom(cfg, ctx)
+      const issue = `/rest/api/3/issue/${item.id}`
+      const read = await call<{
+        fields: { updated: string; assignee: { accountId?: string } | null }
+        transitions?: { id: string; to: { name: string } }[]
+      }>(
+        cfg,
+        token,
+        `${issue}?fields=updated,assignee${write.op === 'move' ? '&expand=transitions' : ''}`,
+      )
+      // Read as assigned to you, so the plan's assignee is you.
+      const me = (item.raw as Issue).fields.assignee?.accountId
+      if (!me || read.fields.assignee?.accountId !== me)
+        throw new Error(`${item.key} is no longer yours: not assigned to you`)
+      if (write.op === 'comment')
+        await call(cfg, token, `${issue}/comment`, { body: textToAdf(write.body) })
+      else {
+        const transitions = read.transitions ?? []
+        const to = transitions.find((t) => t.to.name.toLowerCase() === write.to.toLowerCase())
+        if (!to)
+          throw new Error(
+            `${item.key} has no transition to "${write.to}", only to ${transitions.map((t) => `"${t.to.name}"`).join(', ') || 'none'}`,
+          )
+        await call(cfg, token, `${issue}/transitions`, { transition: { id: to.id } })
+      }
+      const { fields } = await call<{ fields: { updated: string } }>(
+        cfg,
+        token,
+        `${issue}?fields=updated`,
+      )
+      return { before: iso(read.fields.updated), after: iso(fields.updated) }
+    },
+
     /** Finds the site, maps projects to repos and lists the site's real status names. */
     async init(ask, ctx) {
       const site = (await ask.text('Jira Cloud site', { placeholder: 'acme.atlassian.net' }))
@@ -257,6 +293,8 @@ function tokenFrom(cfg: Config, ctx: Ctx): string {
 
 function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, cfg: Config): Item {
   const f = issue.fields
+  // Issues are read as assigned to you: your comments are the assignee's that nobody else edited last.
+  const me = f.assignee?.accountId
   const repo = cfg.repo_map?.[f.project.key]
   const custom = [...names].flatMap(([id, name]) => {
     const value = fieldValue(f[id])
@@ -279,9 +317,13 @@ function toItem(issue: Issue, comments: Comment[], names: Map<string, string>, c
         author: c.author?.displayName ?? 'unknown',
         body: adfToMarkdown(c.body),
         at: iso(c.created),
+        ...(!!me &&
+          c.author?.accountId === me &&
+          (c.updateAuthor?.accountId ?? me) === me && { mine: true as const }),
       }))
       .sort((a, b) => a.at.localeCompare(b.at)),
     linkedPrs: [],
+    mine: true,
     fields: {
       project: f.project.key,
       status: f.status.name,
@@ -322,6 +364,20 @@ function fieldValue(value: unknown): string | number | string[] | undefined {
     return typeof named === 'string' ? named : undefined
   }
   return undefined
+}
+
+/** Text as ADF, a paragraph per block between blank lines, its line breaks kept; nothing in it is parsed as Markdown. */
+export function textToAdf(text: string): Adf & { version: 1 } {
+  const content = text.split(/\n\s*\n/).map((block) => ({
+    type: 'paragraph',
+    content: block
+      .split('\n')
+      .flatMap((line, i): Adf[] => [
+        ...(i > 0 ? [{ type: 'hardBreak' }] : []),
+        ...(line ? [{ type: 'text', text: line }] : []),
+      ]),
+  }))
+  return { type: 'doc', version: 1, content }
 }
 
 /** Atlassian Document Format as minimal Markdown: text, marks, lists, tasks, tables, code, quotes, mentions. */
