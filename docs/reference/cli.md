@@ -16,42 +16,45 @@ Usage: awaywork [options] [command]
 Spend idle coding-subscription quota while you're away
 
 Options:
-  -V, --version          output the version number
-  -c, --config <path>    config file (default: $AWAYWORK_CONFIG or
-                         ~/.config/awaywork/config.yml)
-  -h, --help             display help for command
+  -V, --version             output the version number
+  -c, --config <path>       config file (default: $AWAYWORK_CONFIG or
+                            ~/.config/awaywork/config.yml)
+  -h, --help                display help for command
 
 Commands:
-  init [options]         detect installed agents, pick providers, sources and a
-                         starting queue
-  config                 print the config schema or edit the config
-  plan [options]         show the next run's units in order, with each
-                         provider's ceiling; runs no worker; browsable in a
-                         terminal
-  skip [options] [key]   leave an item (source:key, e.g. github:acme/api#5)
-                         alone in the coming runs; with no key, list skipped
-                         items
-  unskip <key>           let awaywork pick up a skipped item (source:key) again
-  approve <key>          mark an item (source:key, e.g. github:acme/api#5)
-                         approved, for rules with `where: { approved: true }`; a
-                         unit that finishes on it clears the approval
-  skills                 list skills and eject built-ins to tweak
-  run [options]          plan the units, start a worker per unit and publish PRs
-                         and reports
-  report [options] [id]  print a run's morning report, the latest by default;
-                         browsable in a terminal
-  watch                  keep running and start a run when a window opens;
-                         `schedule install` keeps it running
-  stats [options]        what each rule, skill and provider cost and delivered
-                         across the runs kept
-  replay <run> <unit>    re-run a past run's unit, its first step, on its base
-                         commit and saved context with today's skills and
-                         instructions; nothing is pushed
-  schedule               run awaywork when its windows open, on this machine or
-                         in GitHub Actions
-  doctor [options]       validate the config and check binaries, credentials,
-                         quota and sources before a run
-  help [command]         display help for command
+  init [options]            detect installed agents, pick providers, sources and
+                            a starting queue
+  config                    print the config schema or edit the config
+  plan [options]            show the next run's units in order, with each
+                            provider's ceiling; runs no worker; browsable in a
+                            terminal
+  skip [options] [key]      leave an item (source:key, e.g. github:acme/api#5)
+                            alone in the coming runs; with no key, list skipped
+                            items
+  unskip <key>              let awaywork pick up a skipped item (source:key)
+                            again
+  approve <key> [notes...]  approve the plan an item (source:key, e.g.
+                            github:acme/api#5) waits on, replying approve on it
+                            with the notes below; otherwise mark it approved,
+                            for rules with `where: { approved: true }`, until a
+                            unit on it finishes
+  skills                    list skills and eject built-ins to tweak
+  run [options]             plan the units, start a worker per unit and publish
+                            PRs and reports
+  report [options] [id]     print a run's morning report, the latest by default;
+                            browsable in a terminal
+  watch                     keep running and start a run when a window opens;
+                            `schedule install` keeps it running
+  stats [options]           what each rule, skill and provider cost and
+                            delivered across the runs kept
+  replay <run> <unit>       re-run a past run's unit, its first step, on its
+                            base commit and saved context with today's skills
+                            and instructions; nothing is pushed
+  schedule                  run awaywork when its windows open, on this machine
+                            or in GitHub Actions
+  doctor [options]          validate the config and check binaries, credentials,
+                            quota and sources before a run
+  help [command]            display help for command
 ```
 
 ## awaywork init
@@ -127,6 +130,7 @@ Options:
   --skipped [kind]  list the skipped items and why, or those of one kind
                     (choices: "no_rule", "skipped_by_you", "unchanged",
                     "over_cap", "waiting_for_review", "waiting_for_answer",
+                    "waiting_for_approval", "invalid_plan", "plan_approved",
                     "gave_up", "no_repo", "invalid_branch", "refused_delivery",
                     "unstackable", "running")
   --why <key>       say why an item is planned or skipped, by key, source:key or
@@ -163,10 +167,11 @@ Options:
 ## awaywork approve
 
 ```text
-Usage: awaywork approve [options] <key>
+Usage: awaywork approve [options] <key> [notes...]
 
-mark an item (source:key, e.g. github:acme/api#5) approved, for rules with
-`where: { approved: true }`; a unit that finishes on it clears the approval
+approve the plan an item (source:key, e.g. github:acme/api#5) waits on, replying
+approve on it with the notes below; otherwise mark it approved, for rules with
+`where: { approved: true }`, until a unit on it finishes
 
 Options:
   -h, --help  display help for command
@@ -244,8 +249,9 @@ Options:
                     or item key
   --skipped [kind]  list the skipped items, or those of one kind (choices:
                     "no_rule", "skipped_by_you", "unchanged", "over_cap",
-                    "waiting_for_review", "waiting_for_answer", "gave_up",
-                    "no_repo", "invalid_branch", "refused_delivery",
+                    "waiting_for_review", "waiting_for_answer",
+                    "waiting_for_approval", "invalid_plan", "plan_approved",
+                    "gave_up", "no_repo", "invalid_branch", "refused_delivery",
                     "unstackable", "running")
   -h, --help        display help for command
 ```

@@ -477,6 +477,9 @@ describe('config', () => {
     expect(chain('deliver: pending_review, then: { skill: review, stack: true }')).toEqual([
       'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not pending_review: a stacked slice opens a PR',
     ])
+    expect(chain('deliver: plan, then: { skill: review, stack: true }')).toEqual([
+      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not plan: a stacked slice opens a PR',
+    ])
     expect(
       chain(
         'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',
@@ -564,14 +567,32 @@ describe('config', () => {
 
   it('takes limits for every provider, not per provider', () => {
     const cfg = parseConfig(`${minimal}limits: { units: 6, units_per_repo: 2, unit_minutes: 90 }`)
-    expect(cfg.limits).toEqual({ units: 6, units_per_repo: 2, unit_minutes: 90 })
-    expect(parseConfig(minimal).limits).toEqual({})
+    expect(cfg.limits).toEqual({ units: 6, units_per_repo: 2, unit_minutes: 90, plan_tasks: 8 })
+    expect(parseConfig(minimal).limits).toEqual({ plan_tasks: 8 })
+    expect(parseConfig(`${minimal}limits: { plan_tasks: 3 }`).limits.plan_tasks).toBe(3)
+    expect(problems(`${minimal}limits: { plan_tasks: 0 }`)).toEqual([
+      expect.stringMatching(/^limits\.plan_tasks: /),
+    ])
     expect(problems(`${minimal}limits: { unit_minutes: 0 }`)).toEqual([
       expect.stringMatching(/^limits\.unit_minutes: /),
     ])
     expect(
       problems(minimal.replace('[claude: {}]', '[claude: { budget: { unit_minutes: 30 } }]')),
     ).toEqual([expect.stringContaining('Unrecognized key: "unit_minutes"')])
+  })
+
+  it('takes deliver: plan only where it can post and wait for your reply', () => {
+    const rule = (r: string) => problems(`${minimal}queue: [{ skill: plan, deliver: plan, ${r} }]`)
+    expect(rule('where: { type: issue }')).toEqual([])
+    expect(rule('where: { state: closed, closed: { newer_than: 7d } }')).toEqual([
+      'queue[0].deliver: plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
+    ])
+    const bitbucket = minimal.replace('github', 'bitbucket')
+    expect(
+      problems(`${bitbucket}queue: [{ skill: plan, deliver: plan, source: bitbucket }]`),
+    ).toEqual([
+      "queue[0].deliver: plan posts on the item, and bitbucket can't write to its items; use report",
+    ])
   })
 
   it('reports YAML syntax errors', () => {

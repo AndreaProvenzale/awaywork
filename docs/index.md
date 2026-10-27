@@ -27,7 +27,7 @@ features:
   - title: Vendor binaries, your login
     details: Runs the stock agent CLIs (Claude Code, Codex, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
   - title: Drafts, never merges
-    details: Workers get no forge token. awaywork pushes only new branches and opens draft PRs, unless you opt in to ready ones or to fast-forward your own PR; it never force-pushes or merges, and comments only to ask questions on your own items.
+    details: Workers get no forge token. awaywork pushes only new branches and opens draft PRs, unless you opt in to ready ones or to fast-forward your own PR; it never force-pushes or merges, and comments only to ask questions or post a plan on your own items.
 ---
 
 ```sh

@@ -354,10 +354,10 @@ const rule: z.ZodType<Rule, unknown> = z
       ),
     ...stepSettings,
     deliver: z
-      .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review'])
+      .enum(['draft_pr', 'pr', 'report', 'push', 'pending_review', 'plan'])
       .optional()
       .describe(
-        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it",
+        "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans",
       ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
@@ -584,6 +584,11 @@ export const configSchema = z
           .positive()
           .optional()
           .describe('Stop a worker after this many minutes'),
+        plan_tasks: z
+          .int()
+          .positive()
+          .default(8)
+          .describe('At most this many tasks in a deliver: plan plan'),
       })
       .prefault({})
       .describe('Unit counts and time per run, for every provider'),
@@ -795,15 +800,29 @@ export const configSchema = z
           })
       })
       const scope = r.source ? [r.source] : sourceIds
-      if (
-        (r.deliver === 'push' || r.deliver === 'pending_review') &&
-        lookback(r.where) !== undefined &&
-        !matchesOpen(r.where)
-      )
+      const finishedOnly = lookback(r.where) !== undefined && !matchesOpen(r.where)
+      if ((r.deliver === 'push' || r.deliver === 'pending_review') && finishedOnly)
         ctx.addIssue({
           code: 'custom',
           path: [...at, 'deliver'],
           message: `${r.deliver} needs an open PR, and this rule matches only merged or closed items; use report, draft_pr or pr`,
+        })
+      if (r.deliver === 'plan' && finishedOnly)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message:
+            'plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
+        })
+      const silent =
+        r.source &&
+        sourceIds.includes(r.source) &&
+        !sourceFor(r.source, cfg.sources[r.source])?.write
+      if (r.deliver === 'plan' && silent)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
         })
       checkWhere(r.where, [...at, 'where'], false, undefined)
       function canFinish(state: WhereValue | undefined, where: Where): boolean {

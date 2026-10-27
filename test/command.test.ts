@@ -9,6 +9,7 @@ import type { Ctx, Source } from '../src/core/types.js'
 import { type CommandConfig, commandConfig, commandSource } from '../src/sources/command.js'
 import { configSecrets, workerEnv } from '../src/worker/workspace.js'
 import { sourceContract } from './contracts/source.contract.js'
+import { expectPlanBack, roundTripComment } from './fakes/plan.js'
 
 const dir = fileURLToPath(new URL('fixtures/command', import.meta.url))
 const raw = { command: 'node items.mjs', fields: ['column'], secrets: ['TRACKER_TOKEN'] }
@@ -240,6 +241,27 @@ sources:
       { author: 'qa', body: 'y', at: 't' },
     ])
     expect(item?.mine).toBe(true)
+  })
+
+  it('reads the plan comment it piped to `write` back as the same plan, as the command prints it', async () => {
+    const tmp = await mkdtemp(join(tmpdir(), 'awaywork-'))
+    const c = cfg({ write: `cat > ${join(tmp, 'write.json')}` })
+    const item = { key: 'A-1', id: '1' } as never
+    await commandSource('tracker', c).write?.(
+      c,
+      item,
+      { op: 'comment', body: roundTripComment },
+      ctx(),
+    )
+    const { body } = JSON.parse(await readFile(join(tmp, 'write.json'), 'utf8'))
+    const comments = [{ author: 'me', body, at: 't1', mine: true }]
+    await writeFile(
+      join(tmp, 'items.json'),
+      JSON.stringify([{ id: '1', key: 'A-1', title: 't', url: 'u', comments }]),
+    )
+    const read = cfg({ command: `cat ${join(tmp, 'items.json')}` })
+    const [found] = await source.items(read, ctx())
+    expectPlanBack(found)
   })
 
   it("shows awaywork's questions in item.md, then the reply", async () => {

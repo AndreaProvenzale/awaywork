@@ -37,6 +37,7 @@ const MAX_FILES = 500
 /** Author associations with write access or org membership; the rest can be anyone. */
 const TRUSTED = ['OWNER', 'MEMBER', 'COLLABORATOR']
 const BY = 'author { login __typename } authorAssociation viewerDidAuthor'
+const COMMENTS = `pageInfo { hasPreviousPage startCursor } nodes { ${BY} body createdAt editor { login } }`
 
 const common = `
   id number title body url state createdAt updatedAt closedAt
@@ -44,7 +45,7 @@ const common = `
   author { login } authorAssociation
   assignees(first: 10) { nodes { login } }
   labels(first: 20) { nodes { name } }
-  comments(last: 50) { nodes { ${BY} body createdAt editor { login } } }`
+  comments(last: 50) { ${COMMENTS} }`
 
 const searchQuery = `query($q: String!, $first: Int!, $after: String) {
   search(query: $q, type: ISSUE, first: $first, after: $after) {
@@ -76,6 +77,14 @@ const threadStartersQuery = (ids: string[]) => `{
       id
       reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { ${BY} } } } }
     }
+  }
+}`
+
+/** An issue's or PR's comments before `before`: a plan awaywork posted can sit far up a long thread. */
+const commentsQuery = `query($id: ID!, $before: String!) {
+  node(id: $id) {
+    ... on Issue { comments(last: ${PAGE}, before: $before) { ${COMMENTS} } }
+    ... on PullRequest { comments(last: ${PAGE}, before: $before) { ${COMMENTS} } }
   }
 }`
 
@@ -128,6 +137,9 @@ type By = {
   viewerDidAuthor: boolean
 }
 type Comment = By & { body: string; createdAt: string; editor?: { login: string } | null }
+type Comments = Nodes<Comment> & {
+  pageInfo?: { hasPreviousPage: boolean; startCursor: string | null }
+}
 type PrLink = {
   number: number
   url: string
@@ -151,7 +163,7 @@ interface Node extends PrLink {
   author: Login
   assignees: Nodes<{ login: string }>
   labels: Nodes<{ name: string }>
-  comments: Nodes<Comment>
+  comments: Comments
   closedByPullRequestsReferences?: Nodes<PrLink>
   isDraft?: boolean
   additions?: number
@@ -254,6 +266,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
       }
       await countThreads(run, byId, ctx.log)
       await readFiles(run, byId, ctx.log)
+      await readComments(run, byId, ctx.log)
       return [...byId.values()]
     },
 
@@ -435,6 +448,31 @@ async function readFiles(
       log(`github: couldn't read every file of ${item.key}: ${(e as Error).message}`)
     }
     item.fields.files = paths.slice(0, MAX_FILES)
+  }
+}
+
+/** Reads each item's comments back past the last 50, so its whole thread is there; one whose page fails keeps those read. */
+async function readComments(
+  run: Exec,
+  byId: Map<string, Item>,
+  log: (line: string) => void,
+): Promise<void> {
+  for (const [id, item] of byId) {
+    const comments = (item.raw as Node).comments
+    let page = comments.pageInfo
+    try {
+      while (page?.hasPreviousPage && page.startCursor) {
+        const { node } = await graphql<{ node: { comments: Comments } }>(run, commentsQuery, {
+          id,
+          before: page.startCursor,
+        })
+        comments.nodes.unshift(...node.comments.nodes)
+        page = node.comments.pageInfo
+      }
+    } catch (e) {
+      log(`github: couldn't read every comment of ${item.key}: ${(e as Error).message}`)
+    }
+    item.comments = comments.nodes.filter(isTrusted).map(toComment)
   }
 }
 

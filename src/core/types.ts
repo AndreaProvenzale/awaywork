@@ -281,7 +281,7 @@ export interface Loop {
 }
 
 export interface Rule extends Step {
-  /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report and pending_review commit nothing. */
+  /** How the chain publishes its commits: one draft or ready PR, or a push onto your PR; report, pending_review and plan commit nothing. */
   deliver?: Deliver
   branch?: string
   source?: string
@@ -290,7 +290,7 @@ export interface Rule extends Step {
   units?: number
   /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
-  /** Written to the unit's items that are yours once its chain finished and published. */
+  /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted. */
   on_done?: { move: string }
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
@@ -333,4 +333,4 @@ export interface Gate {
   skills: string[]
 }
 
-export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review'
+export type Deliver = 'draft_pr' | 'pr' | 'report' | 'push' | 'pending_review' | 'plan'

@@ -10,6 +10,7 @@ import { asanaSource } from '../src/sources/asana.js'
 import { asanaFixture, asanaRoutes, recordedFetch } from './fakes/asana.js'
 import { fakeForge } from './fakes/forge.js'
 import { asanaTask, fakeItem } from './fakes/items.js'
+import { expectPlanBack, roundTripComment } from './fakes/plan.js'
 
 const log: string[] = []
 const ctx: Ctx = { env: { ASANA_TOKEN: 'pat' }, log: (line) => log.push(line) }
@@ -273,6 +274,31 @@ describe('asana writes', () => {
     await asanaSource(http).write?.(cfg, task, { op: 'comment', body: 'Which?\n\nOr?' }, ctx)
     expect(http.calls[1]?.url).toBe('https://app.asana.com/api/1.0/tasks/1201/stories')
     expect(JSON.parse(http.calls[1]?.body ?? '')).toEqual({ data: { text: 'Which?\n\nOr?' } })
+  })
+
+  it('reads the plan story it wrote back as the same plan, past the first page of stories', async () => {
+    const http = writer()
+    await asanaSource(http).write?.(cfg, task, { op: 'comment', body: roundTripComment }, ctx)
+    const { text } = JSON.parse(http.calls[1]?.body ?? '').data
+    const story = (body: string) => ({
+      created_at: '2026-01-01T10:00:00.000Z',
+      created_by: { gid: '900', name: 'Dev' },
+      text: body,
+    })
+    const page = (body: string, offset?: string) =>
+      JSON.stringify({ data: [story(body)], next_page: offset ? { offset } : null })
+    const found = await asanaSource(
+      recordedFetch([
+        [/\/tasks\/1201\/stories\?.*offset=p2/, page(text)],
+        [/\/tasks\/1201\/stories\?/, page('Older.', 'p2')],
+        ...asanaRoutes(),
+      ]),
+    ).items(cfg, ctx)
+    expect(found[0]?.comments.map((c) => c.body.split('\n')[0])).toEqual([
+      'Older.',
+      'Two tasks: the **API** first, then the button.',
+    ])
+    expectPlanBack(found[0])
   })
 
   it("marks the assignee's own stories as yours and every task as yours", async () => {

@@ -13,12 +13,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { expect, it, vi } from 'vitest'
+import { approveItem } from '../src/cli/approve.js'
 import { formatPlan, formatRun, summarize } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
-import { recordAttempts, unchangedSince } from '../src/core/attempts.js'
+import { type Attempts, recordAttempts, unchangedSince } from '../src/core/attempts.js'
 import { type Allowance, allowance } from '../src/core/budget.js'
-import { footer } from '../src/core/footer.js'
+import { commentKind, footer, markComment, planComment } from '../src/core/footer.js'
 import { planRun, slug } from '../src/core/foreman.js'
 import { formatReport, runLine } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
@@ -4722,4 +4723,228 @@ it('posts no questions over the comment limit, and keeps them in the report', as
     text: long,
     unposted: 'questions.md is over 30000 bytes',
   })
+})
+
+const tasks =
+  'tasks:\n  - { id: api, title: VAT export endpoint }\n  - { id: web, title: Export button, after: { api: opened } }\n'
+
+/** A provider whose step writes a report and, unless empty, `plan.yml`; it keeps the prompts it got. */
+const planner = (
+  yaml: string,
+  report = 'Two tasks: the API first.',
+  prompts: string[] = [],
+): Provider => ({
+  ...fakeProvider('claude'),
+  async *run(job) {
+    prompts.push(job.prompt)
+    await writeFile(join(job.dir, '.away/out/report.md'), report)
+    if (yaml) await writeFile(join(job.dir, '.away/out/plan.yml'), yaml)
+    yield { type: 'done', ok: true, turns: 1 }
+  },
+})
+
+const planRule = '  - { skill: plan, deliver: plan, on_done: { move: Plan review } }'
+
+it("posts a plan rule's plan once on your card with its report, and fires on_done on posting", async () => {
+  const prompts: string[] = []
+  const { report, writes, lines } = await finishedRun(
+    planRule,
+    [yours(1)],
+    planner(tasks, undefined, prompts),
+  )
+  expect(prompts[0]).toContain(
+    'Deliver: a plan. Write `.away/out/report.md` and `.away/out/plan.yml`, and commit nothing. `plan.yml` is YAML: `tasks:`, a list of at most 8 tasks',
+  )
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: markComment(planComment('Two tasks: the API first.', tasks)) },
+    ],
+    ['acme/api#1', { op: 'move', to: 'Plan review' }],
+  ])
+  const [head] = report.results
+  expect(head?.planned.unit.deliver).toBe('plan')
+  expect(head?.outcome).toEqual({ kind: 'report', text: 'Two tasks: the API first.' })
+  expect(head?.plan).toEqual({
+    tasks: ['api', 'web'],
+    item: 'github:acme/api#1',
+    url: 'https://example.com/1',
+  })
+  expect(lines).toContain('acme-api-1: plan posted on https://example.com/1')
+  const text = formatReport(report)
+  expect(text).toContain('- **api#1**: plan posted on https://example.com/1, tasks api, web')
+  expect(text).toMatch(/\| done, 1 turn \| report below \|$/m)
+  expect(summarize(report, 'report.md')).toContain(
+    '     plan posted on https://example.com/1, tasks api, web',
+  )
+})
+
+it('posts no refused plan, keeps the reason in the report and fires no on_done', async () => {
+  const many = `tasks:\n${Array.from({ length: 9 }, (_, i) => `  - { id: t${i}, title: T }`).join('\n')}`
+  const refused: [Provider, string][] = [
+    [
+      planner('tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }'),
+      'plan.yml: task id "api" is used twice',
+    ],
+    [planner(''), 'plan.yml: missing or empty'],
+    [planner('tasks: ['), 'plan.yml: not YAML: '],
+    [planner(many), 'plan.yml: 9 tasks, over limits.plan_tasks (8)'],
+    [planner(tasks, 'x'.repeat(30_001)), 'the plan comment is over 30000 bytes'],
+    // Valid YAML, but its line-start fence ends the comment's yaml block early.
+    [
+      planner('{ tasks: [{ id: api, title: "A\n```\n" }] }'),
+      "plan.yml doesn't read back from its comment: not YAML: ",
+    ],
+    // Task a in the file, task b read back from the comment's last yaml fence.
+    [
+      planner('{ tasks: [{ id: a, title: "x\n```yaml\ntasks: [{id: b, title: y}]\n#" }] }'),
+      "plan.yml doesn't read back from its comment: it reads as another plan",
+    ],
+  ]
+  for (const [provider, reason] of refused) {
+    const { report, writes } = await finishedRun(planRule, [yours(1)], provider)
+    expect(writes).toEqual([])
+    expect(report.results[0]?.plan?.unposted).toContain(reason)
+    expect(report.results[0]?.moved).toBeUndefined()
+    expect(formatReport(report)).toContain(`plan not posted: ${reason}`)
+  }
+  const someone = await finishedRun(planRule, [issue(3)], planner(tasks))
+  expect(someone.writes).toEqual([])
+  expect(someone.report.results[0]?.plan).toEqual({
+    tasks: ['api', 'web'],
+    unposted: 'acme/api#3 not yours',
+  })
+})
+
+it('posts a plan whose task shows an indented yaml example', async () => {
+  const example =
+    'tasks:\n  - id: cfg\n    title: Add the option\n    description: |\n      ```yaml\n      limits: { plan_tasks: 8 }\n      ```\n'
+  const { report, writes } = await finishedRun(planRule, [yours(1)], planner(example))
+  expect(report.results[0]?.plan).toMatchObject({ tasks: ['cfg'], url: 'https://example.com/1' })
+  expect(writes[0]).toEqual([
+    'acme/api#1',
+    { op: 'comment', body: markComment(planComment('Two tasks: the API first.', example)) },
+  ])
+})
+
+it("reports a plan whose post failed, its secrets masked, and doesn't move the card", async () => {
+  const { report, lines } = await finishedRun(planRule, [yours(1)], planner(tasks), async () => {
+    throw new Error('403 for s3cret')
+  })
+  expect(report.results[0]?.status).toBe('done')
+  expect(report.results[0]?.plan).toMatchObject({ unposted: '403 for ***' })
+  expect(report.results[0]?.moved).toBeUndefined()
+  expect(lines).toContain(`acme-api-1: couldn't post its plan on acme/api#1: 403 for ***`)
+})
+
+it('posts no plan when the step asked questions instead', async () => {
+  const { report, writes } = await finishedRun(planRule, [yours(1)], asker('Which?'))
+  expect(
+    writes.map(
+      ([, w]) =>
+        w.op === 'comment' && commentKind({ author: 'me', at: '', mine: true, body: w.body }),
+    ),
+  ).toEqual(['questions'])
+  expect(report.results[0]?.plan).toBeUndefined()
+})
+
+it('goes from no plan to a posted one, waits, re-plans on feedback, and stops once approved, all read off the card', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'awaywork-plan-'))
+  const { forge } = await originForge(root)
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - { skill: plan, deliver: plan }
+`)
+  let card = yours(1)
+  let at = 0
+  // Every comment bumps `updated`, awaywork's own too, as on GitHub.
+  const comment = (body: string, mine?: true) => {
+    const time = `2026-10-25T0${++at}:00:00Z`
+    card = {
+      ...card,
+      fields: { ...card.fields, updated: time },
+      comments: [
+        ...card.comments,
+        { author: mine ? 'me' : 'sam', body, at: time, ...(mine && { mine }) },
+      ],
+    }
+  }
+  const source = {
+    ...fakeSource(),
+    items: async () => [card],
+    write: async (_cfg: unknown, _item: Item, w: Write) => {
+      if (w.op === 'comment') comment(w.body, true)
+      return {}
+    },
+  } as Source
+  const ctx = { env: { PATH: process.env.PATH }, log: () => {} }
+  let attempts: Attempts = {}
+  const round = async (yaml: string, n: number) => {
+    const plan = planRun({
+      config,
+      items: [card],
+      allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+      skills: { builtin: builtinSkills },
+      attempts,
+    })
+    const report = await runUnits({
+      config,
+      configDir: root,
+      plan,
+      runId: `r${n}`,
+      runDir: join(root, `run-${n}`),
+      dryRun: false,
+      providers: { claude: planner(yaml) },
+      sources: { github: source },
+      forge,
+      ctx,
+      watch: () => ({ stop: async () => {} }),
+      shortage: async () => undefined,
+      skillDirs: { user: join(root, 'none'), builtin: builtinSkillsDir },
+    })
+    attempts = recordAttempts(attempts, report)
+    return { skipped: plan.skipped.map((s) => [s.kind, s.reason]), posted: report.results[0]?.plan }
+  }
+  const kinds = () => card.comments.map((c) => commentKind(c) ?? c.author)
+
+  expect(await round(tasks, 1)).toMatchObject({ skipped: [], posted: { tasks: ['api', 'web'] } })
+  const waiting = [
+    ['waiting_for_approval', 'waiting for your approval of the plan on https://example.com/1'],
+  ]
+  expect(await round(tasks, 2)).toEqual({ skipped: waiting, posted: undefined })
+  comment('approve if web waits for the API to merge')
+  expect(await round('tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }\n', 3)).toEqual({
+    skipped: [],
+    posted: { unposted: 'plan.yml: task id "api" is used twice' },
+  })
+  expect(await round(tasks, 4)).toEqual({
+    skipped: [['unchanged', 'unchanged since run r3']],
+    posted: undefined,
+  })
+  comment('Split web in two.')
+  expect(await round('tasks:\n  - { id: api, title: VAT export endpoint }\n', 5)).toMatchObject({
+    skipped: [],
+    posted: { tasks: ['api'] },
+  })
+  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan'])
+  expect(await round(tasks, 6)).toEqual({ skipped: waiting, posted: undefined })
+  expect(
+    await approveItem('github:acme/api#1', config, 'Keep the old route.', {
+      sources: { github: source },
+      ctx,
+    }),
+  ).toBe('plan approved: replied approve, with your notes, on https://example.com/1')
+  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan', 'approve'])
+  expect(await round(tasks, 7)).toEqual({
+    skipped: [['plan_approved', 'plan approved, tasks api']],
+    posted: undefined,
+  })
+  await expect(
+    approveItem('github:acme/api#1', config, '', {
+      sources: { github: source },
+      ctx,
+    }),
+  ).rejects.toThrow('was already answered by me')
 })

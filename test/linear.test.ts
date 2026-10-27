@@ -7,6 +7,7 @@ import type { Ctx } from '../src/core/types.js'
 import { linearSource } from '../src/sources/linear.js'
 import { recordedFetch } from './fakes/asana.js'
 import { linearFetch, linearFixture } from './fakes/linear.js'
+import { expectPlanBack, roundTripComment } from './fakes/plan.js'
 
 const ctx: Ctx = { env: { LINEAR_API_KEY: 'lin_api_key' }, log: () => {} }
 const cfg = { token_env: 'LINEAR_API_KEY' }
@@ -198,6 +199,21 @@ describe('linear writes', () => {
       'query Updated',
     ])
     expect(sent(http)[1]?.variables).toEqual({ issueId: 'issue-12', body: 'Which?' })
+  })
+
+  it('reads the plan comment it wrote back as the same plan', async () => {
+    const http = writer()
+    await linearSource(http).write?.(cfg, eng12, { op: 'comment', body: roundTripComment }, ctx)
+    const { body } = sent(http)[1]?.variables ?? {}
+    const comments = {
+      nodes: [{ body, createdAt: '2026-01-01T10:00:00.000Z', user: { name: 'Dev', isMe: true } }],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    }
+    const read = linearFetch([
+      [/query Comments/, JSON.stringify({ data: { issue: { comments } } })],
+    ])
+    const [found] = await linearSource(read).items(cfg, ctx)
+    expectPlanBack(found)
   })
 
   it('marks your own comments as yours and every issue as yours', async () => {
