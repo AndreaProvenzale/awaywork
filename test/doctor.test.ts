@@ -25,7 +25,8 @@ vi.mock('../src/config/paths.js', async (importOriginal) => {
   // bin looks a name up once per process, so a test's fake docker comes in through the env.
   const bin = (name: string) => (name === 'docker' && process.env.FAKE_DOCKER) || original.bin(name)
   const runsDir = mkdtempSync(join(tmpdir(), 'awaywork-runs-'))
-  return { ...original, configDir, runsDir, bin }
+  const stateDir = mkdtempSync(join(tmpdir(), 'awaywork-state-'))
+  return { ...original, configDir, runsDir, stateDir, bin }
 })
 
 const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSecretChecks } =
