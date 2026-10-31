@@ -1,0 +1,12 @@
+{
+  "name": "awaywork",
+  "owner": { "name": "Andrea Provenzale" },
+  "description": "awaywork's Claude Code plugin, from its repo",
+  "plugins": [
+    {
+      "name": "awaywork",
+      "source": "./plugin",
+      "description": "Set up and tweak your awaywork queue: say what to offload, check the rules on your real PRs, issues and tasks, then write them"
+    }
+  ]
+}

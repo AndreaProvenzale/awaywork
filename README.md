@@ -117,6 +117,16 @@ The label isn't enough on its own: awaywork reads only the issues assigned to yo
 
 `awaywork plan --rules` shows what each rule takes right now. Skills are plain markdown: `awaywork skills eject fix` and hack away.
 
+Rather not write YAML? Tell your agent what to offload and it writes the rules, checked on your real items first. In Claude Code:
+
+```text
+/plugin marketplace add AndreaProvenzale/awaywork
+/plugin install awaywork@awaywork
+/awaywork:queue
+```
+
+Codex and friends get the same skill from the npm package: [With an AI agent](docs/guide/agents.md).
+
 ## How much quota it burns
 
 Each run's ceiling on the weekly window is an even spend over the week:
@@ -156,7 +166,7 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
-| [With an AI agent](docs/guide/agents.md) | Let your coding agent set awaywork up |
+| [With an AI agent](docs/guide/agents.md) | Let your coding agent write your queue, or set awaywork up |
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 
