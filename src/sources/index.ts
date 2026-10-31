@@ -8,9 +8,17 @@ import { commandSource, isCommand } from './command.js'
 import { github } from './github.js'
 import { jira } from './jira.js'
 import { linear } from './linear.js'
+import { routines } from './routines.js'
 
 // biome-ignore lint/suspicious/noExplicitAny: each source narrows its own config
-export const sources: Record<string, Source<any>> = { github, bitbucket, asana, linear, jira }
+export const sources: Record<string, Source<any>> = {
+  github,
+  bitbucket,
+  asana,
+  linear,
+  jira,
+  routines,
+}
 
 /** Keys every item has, whatever its source; a source sets `state`, and `closed` on a finished item. */
 export const itemFields: Record<string, z.ZodType> = {

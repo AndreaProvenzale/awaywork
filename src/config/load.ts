@@ -3,8 +3,10 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
 import type { z } from 'zod'
+import { repoUrl } from '../forge/index.js'
 import { isCommandProvider } from '../providers/command.js'
 import { isCommand } from '../sources/command.js'
+import { routinesOf } from '../sources/routines.js'
 import { defaultConfigPath } from './paths.js'
 import { type Config, configSchema } from './schema.js'
 
@@ -42,6 +44,7 @@ export function parseConfig(text: string, path = '<config>'): Config {
     )
   const result = configSchema.safeParse(doc.toJS())
   if (!result.success) throw new ConfigError(path, result.error.issues.map(formatIssue))
+  for (const [, r] of routinesOf(result.data.sources.routines)) r.url = repoUrl(result.data, r.repo)
   return result.data
 }
 

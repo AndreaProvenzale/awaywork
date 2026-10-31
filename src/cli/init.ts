@@ -6,11 +6,11 @@ import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
 import { builtinSkillsDir, skillsDirOf } from '../config/paths.js'
-import { time } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
 import { defaultRules } from '../core/queue.js'
 import type { SkillMeta } from '../core/skills.js'
 import type { Ask, Ctx, Provider, Rule, Source } from '../core/types.js'
+import { time } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
@@ -158,10 +158,13 @@ export async function initConfig(input: InitInput): Promise<string> {
   while (Object.keys(configs).length === 0) {
     const chosen = await ask.multiselect(
       'Where does the work come from? (pick at least one)',
-      Object.keys(registry.sources).map((id) => ({
-        value: id,
-        hint: id === 'github' && !input.ghLogin ? 'gh not logged in' : undefined,
-      })),
+      // Routines have nothing to ask: you write them in the config.
+      Object.keys(registry.sources)
+        .filter((id) => id !== 'routines')
+        .map((id) => ({
+          value: id,
+          hint: id === 'github' && !input.ghLogin ? 'gh not logged in' : undefined,
+        })),
       input.ghLogin ? ['github'] : [],
     )
     for (const id of chosen) {

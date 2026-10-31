@@ -150,6 +150,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
+| `routines` | Items from the clock, keyed by name: `at`, `repo`, `title`, optional `days` and `description`; see [Routines](#routines) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`, `write`: see [Custom sources](./custom-sources.md) |
 
 The gids, keys and names these keys and your `where` clauses take are one read-only command away. `awaywork sources <id>` lists what that source's credentials can see; with no id, every configured source; `--json` for scripts and agents:
@@ -177,7 +178,7 @@ linear:
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
+Every source but `github`, `bitbucket` and `routines` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
 
 Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
 
@@ -248,6 +249,61 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
 - **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 
 One forge per config: `github` and `bitbucket` together is an error.
+
+### Routines
+
+Some work has no ticket, only a day: every Monday you triage Sentry. A routine is an item that comes due on the clock, so it runs like any other: a rule takes it, `plan` shows it, attempts keep it from running twice.
+
+```yaml
+sources:
+  github: { repos: [acme/*] }
+  routines:
+    sentry-triage:
+      days: [mon]               # sun to sat, as in windows; every day when unset
+      at: "09:00"               # local time, as in windows; or a list: ["09:00", "14:00"]
+      repo: acme/api            # required: where the work happens
+      title: Triage last week's Sentry issues
+      description: Group new issues, link duplicates, draft fixes for the top three.
+
+queue:
+  - skill: triage
+    source: routines
+    where: { name: sentry-triage }
+    deliver: report
+    run: soon                   # within minutes of 09:00, not at the next window
+```
+
+Each routine is one `task`: its latest occurrence at or before now, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time, so its branch is `away/sentry-triage-20261026-0900`. A machine asleep all week wakes up to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, which is a new item. It's yours (`mine`), its `url` is the repo's page on your forge, and rules match `name`, `repo`, and `created` and `updated`, both the occurrence. `plan` lists when each routine comes due next, and `--why` says which occurrence an item is:
+
+```text
+$ awaywork plan
+Providers
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 40%
+    other limits: pacing 90%
+
+Units 1
+     item                         rule     skill              provider  deliver  title
+  1  sentry-triage-20261026-0900  #1 soon  triage (in-repo?)  claude    report   Triage last week's Sentry issues
+
+Routines 1
+  sentry-triage  next mon 2026-11-02 09:00
+
+$ awaywork plan --why sentry-triage-20261026-0900
+routines sentry-triage-20261026-0900  Triage last week's Sentry issues
+  https://github.com/acme/api
+  routine sentry-triage, due mon 2026-10-26 09:00; next mon 2026-11-02 09:00
+  planned
+    unit      1, sentry-triage-20261026-0900
+    rule      #1 source=routines name=sentry-triage deliver=report run=soon
+    skill     triage (in-repo?)
+    provider  claude
+    deliver   report
+    branch    away/sentry-triage-20261026-0900
+```
+
+Times are the machine's local time, as for windows; on GitHub Actions, the workflow's `TZ`, the timezone you ran `schedule install` in. Without `run: soon` a routine waits for a window: with the default `01:00` to `07:00`, Monday's 09:00 runs on Tuesday at 01:00. There's no tracker to write to, so `on_done` and `deliver: plan` on `source: routines` are refused when the config loads, and a unit's result or questions stay in its report; [`notify`](#notify) can send them on. A routine takes a [`context`](#sources) command like any built-in source, say to fetch last week's Sentry issues, and the built-in queue has no rules for routines: give each one yours.
 
 ## Branch names
 
