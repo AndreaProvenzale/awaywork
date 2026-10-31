@@ -5,7 +5,7 @@ def prompt: .message.content | text
     elif test("^\\s*(<|\\[Request interrupted)") then null else . end;
 def human: .type == "user" and (.isSidechain | not) and (.isMeta | not)
   and ((.origin.kind // "human") == "human")
-  and (.message.content | type == "string" or (type == "array" and all(.[]; .type == "text")))
+  and (.message.content | type == "string" or (type == "array" and all(.[]; .type == "text" or .type == "image")))
   and (prompt | . != null and (test("^/(clear|compact|resume|reload-plugins|plugin|model|config|exit) ") | not));
 def edits: .type == "assistant" and any(.message.content[]?; .type == "tool_use" and (.name | test("^(Edit|Write|MultiEdit|NotebookEdit)$")));
 [inputs] as $l

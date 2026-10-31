@@ -14,14 +14,14 @@ In Claude Code, with the [plugin](./agents.md#claude-code) installed:
 /awaywork:suggest
 ```
 
-On a first setup, `/awaywork:queue` offers it once before asking what to offload. Codex and friends get the same skill from the npm package, at `plugin/skills/suggest/SKILL.md`, as in [Codex and friends](./agents.md#codex-and-friends).
+On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/awaywork:queue` offers it once before asking what to offload. Codex and friends get the same skill from the npm package, at `plugin/skills/suggest/SKILL.md`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
 Every run starts with three questions and a number, before it opens a single transcript:
 
 - **Projects:** the repos in your config by default. Work and personal never mix: it reads only the folders you name, so your employer's sessions never feed your side project's queue, or the other way round.
-- **Window:** the last 30 days by default.
+- **Window:** the last 30 days by default. Under 3 weeks there's no routine to find, since a weekly habit needs 3 different weeks, and it says so.
 - **Histories:** which agents' sessions. Your agent reading another vendor's sessions sends them to its vendor, and it says so: Codex sessions read by Claude go to Anthropic.
 - **Size:** how many sessions and how many MB that is.
 
@@ -33,9 +33,9 @@ Nothing turns it on for good. Next time it asks again.
 | --- | --- |
 | Claude Code sessions | `~/.claude/projects/<folder>/*.jsonl`, and `$CLAUDE_CONFIG_DIR/projects/…` when that's set: both can hold sessions, counted once each |
 | Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl` |
-| Forge history | `gh`, read-only: your own PRs and issues, failed CI runs, reviews you gave. Not your replies on other people's threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
+| Forge history | `gh`, read-only: your own PRs (with who reviewed them and when) and issues, failed CI runs, reviews you gave. Not your replies on other people's threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
 
-It skips awaywork's own workers and every other headless session, subagent transcripts (they repeat their parent) and earlier suggest runs, or the counts would lie.
+It skips awaywork's own workers and every other headless session, subagent transcripts (they repeat their parent), the Claude Code sessions Codex Desktop imported into its own history, and earlier suggest runs, or the counts would lie. Times are turned into your local time before it looks for weekly habits, since that's what a routine's `at` means.
 
 Months of transcripts are a lot of tokens, so it digests each session first, with a `jq` script that ships with the skill: the opening prompt, branch, folder and start time, the PR it worked on, and the correction signals that work in any language (a turn you interrupted, a tool call you rejected, you speaking up right after the agent edited files). Then it joins sessions to forge events (the session that started half an hour after CI failed on that PR's branch), clusters similar asks, and reads full sessions only for the clusters worth it, with subagents where your agent has them. It runs in your session, on your subscription, while you watch.
 
