@@ -141,6 +141,8 @@ export interface RunPlan {
   allowances: Record<string, Allowance>
   /** Whether the run started outside every window; set once the quota is read. */
   present?: boolean
+  /** Each routine's next occurrence, by name, as an ISO time. */
+  routines?: Record<string, string>
 }
 
 /** Match, dedupe and route this run's items; no I/O. */
