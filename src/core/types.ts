@@ -131,11 +131,21 @@ export interface Source<C = unknown> {
   /** Asks what `awaywork init` needs to configure this source. */
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
   /**
+   * What its credentials can see, read only: the names a config and `where` use. An unconfigured
+   * source gets its schema's defaults alone, so its required keys may be missing.
+   */
+  discover?(cfg: C, ctx: Ctx): Promise<Discovery>
+  /**
    * Writes to one of its items as you: a comment, or a move to the status, state, section or
    * label named `to`. Returns the item's updated time just before and after it, when the tracker says,
    * and a comment's own link when it returns one.
    */
   write?(cfg: C, item: Item, write: Write, ctx: Ctx): Promise<Written>
+}
+
+/** Plain data: names, lists of names, and lists of records like it. */
+export interface Discovery {
+  [key: string]: string | string[] | Discovery[] | undefined
 }
 
 /** What awaywork writes to a tracker item. */

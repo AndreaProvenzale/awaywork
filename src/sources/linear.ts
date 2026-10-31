@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { Ctx, Item, Source } from '../core/types.js'
-import { taskMarkdown } from './asana.js'
+import { taskMarkdown, unsetSecret } from './asana.js'
 
 const config = z
   .strictObject({
@@ -134,6 +134,9 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     return nodes
   }
 
+  const teams = (token: string) =>
+    all(teamsQuery, {}, token, (d: { teams: Connection<Team> }) => d.teams)
+
   return {
     id: 'linear',
     configSchema: config,
@@ -230,10 +233,10 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
         ))
       if (!token) return { config: {} }
 
-      const teams = await all(teamsQuery, {}, token, (d: { teams: Connection<Team> }) => d.teams)
+      const found = await teams(token)
       const picked = await ask.multiselect(
         'Linear teams whose issues have code in a GitHub repo',
-        teams.map((t) => ({ value: t.key, label: t.name })),
+        found.map((t) => ({ value: t.key, label: t.name })),
       )
       const repos: Record<string, string> = {}
       for (const key of picked) {
@@ -243,9 +246,20 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
       return {
         config: Object.keys(repos).length > 0 ? { repo_map: repos } : {},
         values: {
-          team: teams.map((t) => t.key),
-          status: [...new Set(teams.flatMap((t) => t.states.nodes.map((s) => s.name)))],
+          team: found.map((t) => t.key),
+          status: [...new Set(found.flatMap((t) => t.states.nodes.map((s) => s.name)))],
         },
+      }
+    },
+
+    /** The teams, each with its workflow states. */
+    async discover(cfg, ctx) {
+      return {
+        teams: (await teams(tokenFrom(cfg, ctx))).map((t) => ({
+          key: t.key,
+          name: t.name,
+          states: t.states.nodes.map((s) => s.name),
+        })),
       }
     },
   }
@@ -255,7 +269,7 @@ export const linear = linearSource()
 
 function tokenFrom(cfg: Config, ctx: Ctx): string {
   const token = ctx.env[cfg.token_env]
-  if (!token) throw new Error(`${cfg.token_env} is not set`)
+  if (!token) throw unsetSecret(cfg.token_env)
   return token
 }
 

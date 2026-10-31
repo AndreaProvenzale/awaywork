@@ -117,6 +117,35 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
     return body as T
   }
 
+  const workspaces = (token: string) => getAll<Named>('/workspaces', { opt_fields: 'name' }, token)
+
+  const projects = (workspace: string, token: string) =>
+    getAll<Named>('/projects', { workspace, archived: 'false', opt_fields: 'name' }, token)
+
+  /** The section names of these projects, or else of the sections my incomplete tasks in the workspace sit in. */
+  async function sections(workspace: string, gids: string[], token: string) {
+    const found =
+      gids.length > 0
+        ? await Promise.all(
+            gids.map((p) =>
+              getAll<Named>(`/projects/${p}/sections`, { opt_fields: 'name' }, token),
+            ),
+          )
+        : (
+            await getAll<Task>(
+              '/tasks',
+              {
+                assignee: 'me',
+                workspace,
+                completed_since: new Date().toISOString(),
+                opt_fields: 'memberships.section.name',
+              },
+              token,
+            )
+          ).map((t) => t.memberships.flatMap((m) => (m.section ? [m.section] : [])))
+    return [...new Set(found.flat().map((s) => s.name))]
+  }
+
   return {
     id: 'asana',
     configSchema: config,
@@ -225,57 +254,54 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
         (await ask.secret('ASANA_TOKEN', 'Asana personal access token (Settings > Apps)'))
       if (!token) return { config: { workspace: await ask.text('Asana workspace gid') } }
 
-      const workspaces = await getAll<Named>('/workspaces', { opt_fields: 'name' }, token)
-      const [only] = workspaces
+      const found = await workspaces(token)
+      const [only] = found
       if (!only) throw new Error('this token sees no workspace')
       const workspace =
-        workspaces.length === 1
+        found.length === 1
           ? only.gid
           : await ask.select(
               'Asana workspace',
-              workspaces.map((w) => ({ value: w.gid, label: w.name })),
+              found.map((w) => ({ value: w.gid, label: w.name })),
             )
-      const projects = await getAll<Named>(
-        '/projects',
-        { workspace, archived: 'false', opt_fields: 'name' },
-        token,
-      )
+      const listed = await projects(workspace, token)
       const picked = await ask.multiselect(
         'Asana projects to watch (none: every project with my tasks)',
-        projects.map((p) => ({ value: p.gid, label: p.name })),
+        listed.map((p) => ({ value: p.gid, label: p.name })),
       )
       const repos: Record<string, string> = {}
       for (const gid of picked) {
-        const name = projects.find((p) => p.gid === gid)?.name
+        const name = listed.find((p) => p.gid === gid)?.name
         const repo = await ask.text(`GitHub repo for tasks in ${name} (owner/repo, blank: none)`)
         if (repo.trim()) repos[gid] = repo.trim()
       }
-      const sections =
-        picked.length > 0
-          ? await Promise.all(
-              picked.map((p) =>
-                getAll<Named>(`/projects/${p}/sections`, { opt_fields: 'name' }, token),
-              ),
-            )
-          : (
-              await getAll<Task>(
-                '/tasks',
-                {
-                  assignee: 'me',
-                  workspace,
-                  completed_since: new Date().toISOString(),
-                  opt_fields: 'memberships.section.name',
-                },
-                token,
-              )
-            ).map((t) => t.memberships.flatMap((m) => (m.section ? [m.section] : [])))
       return {
         config: {
           workspace,
           ...(picked.length > 0 && { projects: picked }),
           ...(Object.keys(repos).length > 0 && { repo_map: repos }),
         },
-        values: { section: [...new Set(sections.flat().map((s) => s.name))] },
+        values: { section: await sections(workspace, picked, token) },
+      }
+    },
+
+    /** The workspaces; the configured one's projects and sections, or every workspace's when unset. */
+    async discover(cfg, ctx) {
+      const token = tokenFrom(cfg, ctx)
+      const found = await workspaces(token)
+      return {
+        workspaces: await Promise.all(
+          found.map(async ({ gid, name }) =>
+            cfg.workspace && gid !== cfg.workspace
+              ? { gid, name }
+              : {
+                  gid,
+                  name,
+                  projects: (await projects(gid, token)).map((p) => ({ gid: p.gid, name: p.name })),
+                  sections: await sections(gid, cfg.projects ?? [], token),
+                },
+          ),
+        ),
       }
     },
   }
@@ -285,9 +311,13 @@ export const asana = asanaSource()
 
 function tokenFrom(cfg: Config, ctx: Ctx): string {
   const token = ctx.env[cfg.token_env]
-  if (!token) throw new Error(`${cfg.token_env} is not set`)
+  if (!token) throw unsetSecret(cfg.token_env)
   return token
 }
+
+/** An unset token's error, naming the variable in `unset` for a caller to explain. */
+export const unsetSecret = (name: string) =>
+  Object.assign(new Error(`${name} is not set`), { unset: name })
 
 function toItem(
   task: Task,

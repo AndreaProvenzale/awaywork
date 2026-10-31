@@ -11,6 +11,7 @@ import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
 import { skillsCommand } from './skills.js'
 import { skipCommand } from './skip.js'
+import { sourcesCommand } from './sources.js'
 import { statsCommand } from './stats.js'
 import { watchCommand } from './watch.js'
 
@@ -33,6 +34,7 @@ const program = new Command('awaywork')
 
 initCommand(program)
 configCommand(program)
+sourcesCommand(program)
 planCommand(program)
 skipCommand(program)
 approveCommand(program)

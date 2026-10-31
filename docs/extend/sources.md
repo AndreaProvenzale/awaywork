@@ -1,5 +1,5 @@
 ---
-description: How to add a work source such as a task tracker to awaywork, with the Source contract, fields for queue rules, prefetched context, init questions and contract tests.
+description: How to add a work source such as a task tracker to awaywork, with the Source contract, fields for queue rules, prefetched context, init questions, discovery and contract tests.
 ---
 
 # Adding a source
@@ -29,6 +29,7 @@ interface Source {
   items(cfg, ctx, since?): Promise<Item[]> // the user's open items, plus those finished since `since`
   prefetch(item, dir, ctx): Promise<void>  // write the context files the worker reads
   init?(ask: Ask, ctx): Promise<SourceSetup>   // its own `awaywork init` questions
+  discover?(cfg, ctx): Promise<Discovery>      // read-only: what its credentials can see
   write?(cfg, item, write, ctx): Promise<{ before?, after? }>  // comment or move; the item's updated times around it
 }
 ```
@@ -40,6 +41,7 @@ interface Source {
 - **`prefetch`** writes `item.md` with the item and all its comments; it's all the worker will see.
 - **`write`** gets `{ op: 'comment', body }` or `{ op: 'move', to }`. A move goes to the status, state, section or label named `to` in the tracker's words, ignoring case, and throws naming the ones there are when none matches. In that read right before the write, read the assignee too and throw `<key> is no longer yours` when the item isn't the user's any more: `mine` is from plan time. Return the item's `updated` as the tracker has it right before the write and right after, read back when the calls don't return it: awaywork records `after` only while `before` is the one it read, so its own change doesn't look new next run and nobody else's gets lost. Set `mine: true` on each comment the user wrote, unless the tracker says someone else edited it last: `isAwayworkComment` counts a comment as awaywork's only with its mark and `mine`. Tell the user's comments by the item's own assignee when items are read as assigned to them, rather than with one more call. Leave `write` out when the tracker can't be written to.
 - **`init`** asks for what the config needs and returns real values for `where` fields (e.g. section names), so the starting queue uses them. Tokens go through `ask.secret`, which saves them to the env file.
+- **`discover`** returns, read only, the names a config and `where` need: workspaces, projects, teams, statuses, as plain data (strings, lists of them, lists of records like it). `awaywork sources <id>` prints it, and calls it for an unconfigured source too, with only the schema's defaults in `cfg`: throw saying what to configure when the source can't do without it. Share its listing calls with `init`. Throw `unsetSecret(name)` from `asana.ts` for a missing token, so the command can say where to put it.
 
 [`asana.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/sources/asana.ts) is the example to copy.
 

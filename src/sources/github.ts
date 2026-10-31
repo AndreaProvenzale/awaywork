@@ -281,10 +281,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
 
     /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
     async init(ask) {
-      const login = (await base('gh', ['api', 'user', '--jq', '.login'])).trim()
-      const orgs = (await base('gh', ['api', 'user/orgs', '--jq', '.[].login']))
-        .split('\n')
-        .filter(Boolean)
+      const { login, orgs } = await account(base)
       const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''
       const answer = await ask.text(
         `GitHub repos to watch, comma-separated (owner/name or owner/*${hint})`,
@@ -296,6 +293,9 @@ export function githubSource(base: Exec = exec): Source<Config> {
         .filter(Boolean)
       return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
     },
+
+    /** The gh login and its orgs. */
+    discover: (cfg) => account(onHost(base, cfg.host)),
 
     /** Comments on the issue or PR, or moves it by adding the label `to`, which GitHub makes when the repo has none. */
     async write(_cfg, item, write) {
@@ -337,6 +337,14 @@ export function githubSource(base: Exec = exec): Source<Config> {
 }
 
 export const github = githubSource()
+
+async function account(run: Exec) {
+  const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()
+  const orgs = (await run('gh', ['api', 'user/orgs', '--jq', '.[].login']))
+    .split('\n')
+    .filter(Boolean)
+  return { login, orgs }
+}
 
 type Search = {
   search: {
