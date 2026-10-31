@@ -9,7 +9,7 @@ Find the work the developer hands to an agent by reflex, right after something h
 
 ## Ground rules
 
-- **Ask first, every run.** Read no session before the developer has said which projects, how far back and which agents' histories (step 1). Nothing turns this on for good.
+- **Ask first, every run.** Read nothing from a session but step 1's metadata before the developer has said which projects, how far back and which agents' histories (step 1). Nothing turns this on for good.
 - **One scope.** Use only the projects they named. Work and personal never mix: a session from another project never feeds a candidate, even when it sits next to one in scope.
 - **Paraphrase only.** Sessions hold pasted tokens, customer data and secrets. Evidence is a count and a paraphrase in your words, never a quote, a path or output from inside a session, and nothing from one goes verbatim into a rule, a line or the chat. Keep digests out of the chat too: they carry prompt text.
 - **Read-only.** Read sessions where they are, never copy them; put digests in a temp dir and delete it at the end. Forge CLIs only read.
@@ -54,14 +54,14 @@ Then the forge, per repo in scope, read-only. On GitHub, with `<since>` the wind
 gh pr list -R <repo> --author @me --state all --search "created:>=<since>" --limit 300 --json number,title,headRefName,createdAt,mergedAt,state,reviews --jq '.[] | .reviews |= map({author: .author.login, state, submittedAt})'
 gh issue list -R <repo> --author @me --state all --search "created:>=<since>" --limit 300 --json number,title,createdAt,closedAt,labels
 gh run list -R <repo> --status failure --created ">=<since>" --limit 300 --json headBranch,createdAt,workflowName,event
-gh pr list -R <repo> --state all --search "reviewed-by:@me -author:@me updated:>=<since>" --limit 300 --json number,title,author,headRefName,createdAt,updatedAt
+gh pr list -R <repo> --state all --search "reviewed-by:@me -author:@me updated:>=<since>" --limit 300 --json number,title,author,headRefName,updatedAt
 ```
 
 Their own PRs with the reviews on them (trimmed: a review's body is someone else's text) and issues (`--assignee @me` too), the failed runs, and the reviews they gave, which map to `review` with `deliver: pending_review`. Not their replies on other people's threads: awaywork has no action there that isn't commenting on someone's behalf. Elsewhere, the forge CLI's equivalent (`glab` on GitLab).
 
 ## 4. Join and cluster
 
-- **Session to item:** its `pr-link`, else the repo of its `cwd` and its `gitBranch` as a PR's `headRefName`. **Session to event:** the last forge event on that PR or branch before the session started, within a day: a failed run, a review on their PR, a PR they reviewed (joined by its `headRefName`, its `createdAt` as the time), a merge.
+- **Session to item:** its `pr-link`, else the repo of its `cwd` and its `gitBranch` as a PR's `headRefName`. **Session to event:** the last forge event on that PR or branch before the session started, within a day: a failed run, a review on their PR, a merge; and a PR they reviewed, joined by its `headRefName` alone, with no time limit, since reviews come days later.
 - **Time candidates:** a session on the default branch with no PR or event near it. Same weekday and hour, give or take one, in at least 3 different weeks. Timestamps are UTC and a routine's `at` and `days` local: convert first.
 - **Cluster** similar asks under the same trigger: the same kind of action on the same kind of item. One is worth reading at 3 sessions, or 3 weeks for a time pattern.
 - **Read** two or three full sessions per worthwhile cluster, no more, to learn the action and what got corrected. Where your agent has subagents, give each cluster to one and ask for a paraphrase back (what was asked, after what, what was corrected, how often), never quotes.
