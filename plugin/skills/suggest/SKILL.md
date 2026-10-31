@@ -17,7 +17,7 @@ Find the work the developer hands to an agent by reflex, right after something h
 
 ## 1. Ask
 
-Read the config as the queue skill's step 1 does. Then count what's in scope from file names and dates alone (step 2 says where), and ask in one message:
+Read the config as the queue skill's step 1 does. Then count what's in scope from file names and dates, plus, for Codex, each file's first line (`cwd`, `originator`) and whether it has a `turn_context` line (step 2 says where), and ask in one message:
 
 - **Projects:** default the repos in the config, as the local folders their sessions ran in. Ask for the folder when you can't tell.
 - **Window:** default the last 30 days. Under 3 weeks finds no routines (step 4 wants 3 different weeks): say so.
@@ -34,7 +34,7 @@ Formats are the vendors' and change: check one real file before trusting the not
 
 - awaywork's own workers: slugs with `-local-state-awaywork-runs-` in them, and any session whose `entrypoint` is `sdk-cli` (headless `claude -p`: awaywork's workers, scripts, CI);
 - subagent transcripts, `<session-id>/subagents/*.jsonl`, and lines with `isSidechain: true`: they repeat their parent;
-- this session and earlier suggest runs, by their `first`: `/awaywork:suggest …`, or the `/awaywork:queue …` prompt that opened this session when it came through the queue skill's offer. Not by "the newest file": other sessions may be open in the same project.
+- this session and earlier suggest runs, by their `first`: `/awaywork:suggest …`, or the `/awaywork:queue …` prompt that opened this session when it came through the queue skill's offer, or one asking in words for awaywork suggestions; and this session by its id when you know it. Not by "the newest file": other sessions may be open in the same project.
 
 User and assistant lines carry `sessionId`, `timestamp`, `cwd`, `gitBranch` and `entrypoint`. A typed prompt is a `user` line whose `message.content` is a string, or text and pasted image blocks (newer versions add `origin.kind: human`); tool results are `user` lines too, holding `tool_result` blocks, and a slash command is `<command-name>` and `<command-args>` tags. A `pr-link` line (`prUrl`, `prRepository`, `prNumber`) names a PR the session worked on, which beats `gitBranch` when the developer works from subagents' worktrees and stays on the default branch. An interrupted turn is a user text block starting `[Request interrupted by user` (`… for tool use]` when it stopped a tool call); a tool call they rejected is a `tool_result` with `is_error: true` starting `The user doesn't want to proceed with this tool use`. A rejection with `permissionDecision.source: config` came from a permission rule or classifier, not from them.
 
@@ -54,14 +54,14 @@ Then the forge, per repo in scope, read-only. On GitHub, with `<since>` the wind
 gh pr list -R <repo> --author @me --state all --search "created:>=<since>" --limit 300 --json number,title,headRefName,createdAt,mergedAt,state,reviews --jq '.[] | .reviews |= map({author: .author.login, state, submittedAt})'
 gh issue list -R <repo> --author @me --state all --search "created:>=<since>" --limit 300 --json number,title,createdAt,closedAt,labels
 gh run list -R <repo> --status failure --created ">=<since>" --limit 300 --json headBranch,createdAt,workflowName,event
-gh pr list -R <repo> --state all --search "reviewed-by:@me -author:@me updated:>=<since>" --limit 300 --json number,title,author,updatedAt
+gh pr list -R <repo> --state all --search "reviewed-by:@me -author:@me updated:>=<since>" --limit 300 --json number,title,author,headRefName,createdAt,updatedAt
 ```
 
 Their own PRs with the reviews on them (trimmed: a review's body is someone else's text) and issues (`--assignee @me` too), the failed runs, and the reviews they gave, which map to `review` with `deliver: pending_review`. Not their replies on other people's threads: awaywork has no action there that isn't commenting on someone's behalf. Elsewhere, the forge CLI's equivalent (`glab` on GitLab).
 
 ## 4. Join and cluster
 
-- **Session to item:** its `pr-link`, else the repo of its `cwd` and its `gitBranch` as a PR's `headRefName`. **Session to event:** the last forge event on that PR or branch before the session started, within a day: a failed run, a review on their PR, a review requested from them, a merge.
+- **Session to item:** its `pr-link`, else the repo of its `cwd` and its `gitBranch` as a PR's `headRefName`. **Session to event:** the last forge event on that PR or branch before the session started, within a day: a failed run, a review on their PR, a PR they reviewed (joined by its `headRefName`, its `createdAt` as the time), a merge.
 - **Time candidates:** a session on the default branch with no PR or event near it. Same weekday and hour, give or take one, in at least 3 different weeks. Timestamps are UTC and a routine's `at` and `days` local: convert first.
 - **Cluster** similar asks under the same trigger: the same kind of action on the same kind of item. One is worth reading at 3 sessions, or 3 weeks for a time pattern.
 - **Read** two or three full sessions per worthwhile cluster, no more, to learn the action and what got corrected. Where your agent has subagents, give each cluster to one and ask for a paraphrase back (what was asked, after what, what was corrected, how often), never quotes.
@@ -122,4 +122,4 @@ Nothing found in a group: say so in one line, and under 3 weeks just "no routine
 
 Delete the temp digests. Summarize in a few lines what was added where, and say they can run `/awaywork:suggest` (or ask for awaywork suggestions) again whenever their habits change; nothing reminds them.
 
-Report only changes you actually made: a file you didn't touch isn't "now a copy" or "fixed".
+Report only changes you actually made, naming each file; don't describe a file you didn't touch.

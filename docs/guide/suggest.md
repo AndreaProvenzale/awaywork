@@ -32,7 +32,7 @@ Nothing turns it on for good. Next time it asks again.
 | Input | Where |
 | --- | --- |
 | Claude Code sessions | `~/.claude/projects/<folder>/*.jsonl`, and `$CLAUDE_CONFIG_DIR/projects/…` when that's set: both can hold sessions, counted once each |
-| Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl` |
+| Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl`, or `$CODEX_HOME/sessions/…` when that's set |
 | Forge history | `gh`, read-only: your own PRs (with who reviewed them and when) and issues, failed CI runs, reviews you gave. Not your replies on other people's threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
 
 It skips awaywork's own workers and every other headless session, subagent transcripts (they repeat their parent), the Claude Code sessions Codex Desktop imported into its own history, and earlier suggest runs, or the counts would lie. Times are turned into your local time before it looks for weekly habits, since that's what a routine's `at` means.
