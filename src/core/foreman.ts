@@ -576,7 +576,7 @@ function deliveryRefusal(
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
-function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const closest = closestRule(item, queue)
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'
