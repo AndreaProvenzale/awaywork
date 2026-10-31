@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { localTime } from '../core/report.js'
 import type { Item, Source } from '../core/types.js'
 import { clock, DAYS, time } from '../core/window.js'
 import { itemMarkdown } from './command.js'
@@ -37,10 +38,26 @@ const routine = z
 export type Routine = z.output<typeof routine> & { url?: string }
 export type RoutinesConfig = Record<string, unknown>
 
-/** The routines in the source's config, by name: its own `context` and `every` aside. */
+/** The keys awaywork reads off any source's config, so no routine's name. */
+const ownKeys = ['context', 'every', 'link']
+
+/** Refuses a routine named after one of the source's own keys, before they're read as theirs. */
+export function refuseOwnKeys(cfg: unknown, ctx: z.RefinementCtx): unknown {
+  const named = Object.entries(cfg ?? {}).filter(
+    ([key, v]) => ownKeys.includes(key) && typeof v === 'object' && v !== null && 'at' in v,
+  )
+  for (const [key] of named)
+    ctx.addIssue({
+      code: 'custom',
+      path: [key],
+      message: "context, every and link are the source's own keys; give the routine another name",
+    })
+  return cfg
+}
+
+/** The routines in the source's config, by name: its own keys aside. */
 export function routinesOf(cfg: RoutinesConfig | undefined): [string, Routine][] {
-  const { context: _, every: __, ...named } = cfg ?? {}
-  return Object.entries(named as Record<string, Routine>)
+  return Object.entries(cfg ?? {}).filter(([key]) => !ownKeys.includes(key)) as [string, Routine][]
 }
 
 /** Each time the routine comes due within a week either side of `now`, local time: always one before it and one after. */
@@ -80,8 +97,7 @@ export function occurrenceKey(name: string, at: Date): string {
 }
 
 /** E.g. `mon 2026-10-26 09:00`, local time. */
-export const describeOccurrence = (at: Date) =>
-  `${DAYS[at.getDay()]} ${at.toLocaleDateString('sv-SE')} ${two(at.getHours())}:${two(at.getMinutes())}`
+export const describeOccurrence = (at: Date) => `${DAYS[at.getDay()]} ${localTime(at).slice(0, 16)}`
 
 /** Each routine's next occurrence, by name, as an ISO time. */
 export function nextOccurrences(
