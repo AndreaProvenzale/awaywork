@@ -273,7 +273,7 @@ queue:
     run: soon                   # within minutes of 09:00, not at the next window
 ```
 
-Each routine is one `task`: its latest occurrence at or before now, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time, so its branch is `away/sentry-triage-20261026-0900`. Any name goes but `context`, `every` and `link`, the source's own keys. A machine asleep all week wakes up to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, which is a new item. It's yours (`mine`), its `url` is the repo's page on your forge, and rules match `name`, `repo`, and `created` and `updated`, both the occurrence. `plan` lists when each routine comes due next, and `--why` says which occurrence an item is:
+Each routine is one `task`: its latest occurrence at or before now, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time, so its branch is `away/sentry-triage-20261026-0900`. Any name goes but `context` and `every`, the source's own keys. A machine asleep all week wakes up to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, which is a new item. It's yours (`mine`), its `url` is the repo's page on your forge, and rules match `name`, `repo`, and `created` and `updated`, both the occurrence. `plan` lists when each routine comes due next, and `--why` says which occurrence an item is:
 
 ```text
 $ awaywork plan
