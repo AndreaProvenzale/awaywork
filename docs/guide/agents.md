@@ -25,6 +25,8 @@ Then say what you want in your own words, or ask about an item: "fix my PRs when
 
 What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after and getting your yes.
 
+Not sure what to hand over? `/awaywork:suggest` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The queue skill offers it once, on a first setup.
+
 Asked to "fix my PRs when CI goes red, and implement my issues labelled skill-smoke" on a sandbox repo, it ran `sources`, tried the rules on a draft, hit `labels` (that's Linear's and Jira's field; GitHub's is `label`), fixed it from the config error, wrote the two rules under the existing one and ended with, trimmed:
 
 ```text
@@ -59,13 +61,14 @@ codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:queue`; ask Codex to set up your awaywork queue and it picks it up.
+It shows up in Codex's skill list as `awaywork:queue`, next to `awaywork:suggest`; ask Codex to set up your awaywork queue, or to suggest rules from your history, and it picks the right one.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
 ```sh
 mkdir -p ~/.agents/skills
 ln -s "$(npm root -g)/awaywork/plugin/skills/queue" ~/.agents/skills/queue
+ln -s "$(npm root -g)/awaywork/plugin/skills/suggest" ~/.agents/skills/suggest
 ```
 
 No skills support? Tell the agent to read that `SKILL.md` and follow it.
@@ -95,6 +98,7 @@ Machine-readable docs:
 | `<page>.md` | Any page as Markdown, e.g. [`guide/configuration.md`](https://andreaprovenzale.github.io/awaywork/guide/configuration.md) |
 | [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json) | The config's JSON Schema; `awaywork config schema` prints the installed version's |
 | [`SKILL.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | The queue skill: writing and checking rules on real items |
+| [`suggest/SKILL.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | The suggest skill: candidate rules from the user's own sessions and PRs, asked for every run |
 
 Setting up:
 

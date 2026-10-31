@@ -167,6 +167,7 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
 | [With an AI agent](docs/guide/agents.md) | Let your coding agent write your queue, or set awaywork up |
+| [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 
