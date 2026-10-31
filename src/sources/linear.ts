@@ -255,8 +255,9 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
 
     /** The teams, each with its workflow states. */
     async discover(cfg, ctx) {
+      const token = tokenFrom({ token_env: config.shape.token_env.parse(cfg.token_env) }, ctx)
       return {
-        teams: (await teams(tokenFrom(config.parse(cfg), ctx))).map((t) => ({
+        teams: (await teams(token)).map((t) => ({
           key: t.key,
           name: t.name,
           states: t.states.nodes.map((s) => s.name),
@@ -268,7 +269,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
 
 export const linear = linearSource()
 
-function tokenFrom(cfg: Config, ctx: Ctx): string {
+function tokenFrom(cfg: Pick<Config, 'token_env'>, ctx: Ctx): string {
   const token = ctx.env[cfg.token_env]
   if (!token) throw unsetSecret(cfg.token_env)
   return token

@@ -297,9 +297,14 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
 
     /** The projects and the site's statuses; the site and email come from the config alone. */
     async discover(partial, ctx) {
-      if (!partial.site || !partial.email)
-        throw new Error('add sources.jira { site, email } to the config first')
-      const cfg = config.parse(partial)
+      const { site, email } = partial
+      if (!site || !email) throw new Error('add sources.jira { site, email } to the config first')
+      const cfg = {
+        ...partial,
+        site,
+        email,
+        token_env: config.shape.token_env.parse(partial.token_env),
+      }
       const token = tokenFrom(cfg, ctx)
       // Jira takes wrong credentials as anonymous, who sees no projects but can't read /myself.
       await call(cfg, token, '/rest/api/3/myself')

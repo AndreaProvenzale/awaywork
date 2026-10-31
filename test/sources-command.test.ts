@@ -167,9 +167,9 @@ describe('awaywork sources', () => {
   it('reads every configured source that can tell, skipping the rest', async () => {
     const { sources } = parseConfig(`providers: [claude]
 sources:
-  linear: {}
+  linear: { every: 1h, link: 'Fixes {key}' }
   bitbucket: { repos: [acme/api] }
-  jira: { site: acme.atlassian.net, email: dev@acme.test }
+  jira: { site: acme.atlassian.net, email: dev@acme.test, context: { command: 'echo {}' } }
   chores: { command: 'echo []' }
 `)
     const { found } = await discover(undefined, sources)
