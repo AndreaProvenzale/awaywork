@@ -15,6 +15,7 @@ import {
   spanPattern,
 } from '../core/queue.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
+import { DAYS, time } from '../core/window.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
 import {
@@ -25,12 +26,12 @@ import {
   pollSpan,
 } from '../sources/command.js'
 import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
+import { refuseOwnKeys, routines } from '../sources/routines.js'
 
 const percent = z
   .string()
   .regex(/^(100|\d{1,2}(\.\d+)?)%$/, 'expected a percentage like "10%"')
   .transform((s) => Number.parseFloat(s) / 100)
-export const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
 const oneOrMany = z
   .union([z.string(), z.array(z.string())])
   .transform((v) => (typeof v === 'string' ? [v] : v))
@@ -136,9 +137,10 @@ function builtinConfig(s: Source): z.ZodObject {
 }
 
 const sourcesConfig = z
-  .object(
-    Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
-  )
+  .object({
+    ...Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
+    [routines.id]: z.preprocess(refuseOwnKeys, builtinConfig(routines)).optional(),
+  })
   .catchall(commandConfig)
   .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
   .describe('Where work comes from: built-in sources or your own commands; at least one')
@@ -556,7 +558,7 @@ export const configSchema = z
         z
           .strictObject({
             days: z
-              .array(z.enum(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']))
+              .array(z.enum(DAYS))
               .min(1)
               .optional()
               .describe('Weekdays the window opens on; every day when unset'),
@@ -831,6 +833,13 @@ export const configSchema = z
           code: 'custom',
           path: [...at, 'deliver'],
           message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
+        })
+      if (r.source === routines.id && r.on_done)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'on_done'],
+          message:
+            'a routine has no tracker to post a result on or move: drop on_done; its report stays in the run, and notify can send it on',
         })
       const takers = cfg.queue?.filter(
         (q) => 'planned' in q.where && (!q.source || !r.source || q.source === r.source),

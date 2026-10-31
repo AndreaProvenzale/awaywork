@@ -718,6 +718,102 @@
           ],
           "additionalProperties": false,
           "description": "My unresolved Jira Cloud issues"
+        },
+        "routines": {
+          "type": "object",
+          "properties": {
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "description": "Weekdays it comes due on; every day when unset",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "sun",
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu",
+                    "fri",
+                    "sat"
+                  ]
+                }
+              },
+              "at": {
+                "description": "When it comes due, local time: one time or a list",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    }
+                  }
+                ]
+              },
+              "repo": {
+                "type": "string",
+                "pattern": "^[^/\\s]+\\/[^/\\s]+$",
+                "description": "The repo its work happens in, owner/name"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The item's title"
+              },
+              "description": {
+                "default": "",
+                "description": "The item's description, what the worker reads",
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "repo",
+              "title"
+            ],
+            "additionalProperties": false,
+            "description": "A routine: an item that comes due on the clock"
+          },
+          "description": "Routines by name, each an item that comes due on the clock, like a weekly triage"
         }
       },
       "additionalProperties": {

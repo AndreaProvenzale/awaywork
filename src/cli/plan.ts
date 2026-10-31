@@ -18,6 +18,7 @@ import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from 
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
 import { sourceFor } from '../sources/index.js'
+import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
 import { interactive, itemCommands, openScreen } from './browse.js'
@@ -213,6 +214,9 @@ export async function probeAndPlan(
         only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
       }),
       present,
+      ...(config.sources.routines && {
+        routines: nextOccurrences(config.sources.routines as RoutinesConfig, at),
+      }),
     },
     warnings: warnings.map((w) => maskSecrets(w, secrets, ctx.env)),
     ctx,
@@ -260,7 +264,7 @@ export async function collectItems(
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     if (!source || (opts.sources && !opts.sources.includes(id))) continue
-    const link = (cfg as { link?: string }).link ?? source.link
+    const link = source.link !== false && ((cfg as { link?: string }).link ?? source.link)
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
       (found) => {
