@@ -23,7 +23,7 @@ Then say what you want in your own words, or ask about an item: "fix my PRs when
 - writes the rules you accept into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
 - starts a tweak from the item, with `awaywork plan --why <key>`, and shows the before and after.
 
-What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after and getting your yes.
+What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
 
 Not sure what to hand over? `/awaywork:suggest` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The queue skill offers it once, on a first setup.
 
@@ -61,7 +61,7 @@ codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:queue`, next to `awaywork:suggest`; ask Codex to set up your awaywork queue, or to suggest rules from your history, and it picks the right one.
+It shows up in Codex's skill list as `awaywork:queue`, next to `awaywork:suggest`; ask Codex to use one by name.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
@@ -126,15 +126,15 @@ What each command does:
 Machine-readable output:
 
 - `awaywork plan --json` prints the plan as one object: `queue`, `defaultQueue`, `allowances` (per provider), `units`, `skipped` and `warnings`. Items leave out their raw source payload. Each skipped entry is `{ item, kind, reason }`, plus `url` when it waits on an awaywork PR for review: the PR to open, which may not be the item, or on an answer or an approval: the item awaywork asked or posted its plan on. Its `kind` is `waiting_for_review`, `waiting_for_answer`, `waiting_for_approval`, `invalid_plan`, `all_tasks_done`, `gave_up`, `no_repo`, `invalid_branch`, `refused_delivery`, `unstackable`, `draft_moved` or `continue_cap` when the user can act to make it run (review the awaywork PR, answer awaywork's questions on the item, approve or fix its plan, close the card whose tasks are all done, read the failed logs, give the item a repo, fix the rule, finish, mark ready or close awaywork's draft that moved or that said `continue` 3 times), and `no_rule`, `over_cap`, `unchanged`, `skipped_by_you`, `fanned_out` (a card whose plan became tasks), `waiting_for_task` (a task waiting for another's PR to merge, or to open, or for a check on it to pass), `task_merged`, `task_done` (a task that reports, whose `done` result is on its card), `continues_later` (a `continue` a soon run leaves to the next window run) or `running` (another of the daemon's runs is working on it) when it's the config doing its job. A card's `taskPrs` holds its tasks' PRs by task id, with `checks`, the state of each check a task's `after` names (`passed`, `pending` or `failing`; missing when not reported). A plan's task has `item.task`: its card as `parent`, its `id` and `skill`, `plan`, the plan's tasks with each one's `after` (`opened`, `merged` or a check's name), `repo` and `ships`, `contract` when the plan has one, and `onto`, the task whose PR it stacks on; its `item.fields.repo` is its own repo. A unit that goes on from an earlier run has `continued`, the times it said `continue` so far, and, on awaywork's own draft, `resume`: its `url`, `number`, `status` (`continue` or `ask`), `head`, the commit awaywork left it at, and `from`, the commit the draft's commits start after. A unit stacked on a PR another unit of the run opens has `after`, that unit's id, and one waiting for tasks in other repos to open their PR earlier in the run has `waitsFor`, their task ids.
-- `awaywork plan --rules --json` prints the queue against the items the sources return now: `queue`, each rule's `rule` number, `skill`, `summary`, the items it takes (`taken`) and the ones it matches that another rule takes (`takenBy`, by that rule's number), then `defaultQueue`, `unmatched`, the items no rule takes, each with a `reason` naming the closest rule and the conditions it failed, and `warnings`. Items are references: `source`, `key`, `title` and `url`. It reads no quota, attempts or caps, so `plan --why <key>` says what a run would really do with an item. Trimmed:
+- `awaywork plan --rules --json` prints the queue against the items the sources return now: `rules`, each rule's `rule` number, `skill`, `summary`, the items it takes (`taken`, with `plan: true` on a card its `deliver: plan` rule keeps though its `where` no longer matches) and the ones it matches that another rule takes (`takenBy`, by that rule's number), then `defaultQueue`, `unmatched`, the items no rule takes, each with a `reason` naming the closest rule and the conditions it failed, and `warnings`. Items are references: `source`, `key`, `title` and `url`. It reads no quota, attempts or caps, so `plan --why <key>` says what a run would really do with an item. On a sandbox repo with one review rule:
 
   ```json
   {
-    "queue": [
+    "rules": [
       {
         "rule": 1,
-        "skill": "fix",
-        "summary": "source=github type=pr mine=true checks=failing",
+        "skill": "review",
+        "summary": "type=pr review_requested=true trusted=true",
         "taken": [],
         "takenBy": []
       }
@@ -143,10 +143,10 @@ Machine-readable output:
     "unmatched": [
       {
         "source": "github",
-        "key": "acme/api#9",
-        "title": "Cache user sessions",
-        "url": "https://github.com/acme/api/pull/9",
-        "reason": "matched no rule; closest #1 fix: checks is passing, wants failing"
+        "key": "AndreaProvenzale/awaywork-sandbox#134",
+        "title": "Review smoke: fix the typo in README",
+        "url": "https://github.com/AndreaProvenzale/awaywork-sandbox/issues/134",
+        "reason": "matched no rule; closest #1 review: type is issue, wants pr; review_requested is unset, wants true"
       }
     ],
     "warnings": []
