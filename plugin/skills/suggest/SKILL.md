@@ -1,6 +1,6 @@
 ---
 name: suggest
-description: "Suggest awaywork queue rules, routines and instruction fixes from what the developer already does: with their consent each run, read their recent coding-agent sessions and forge history for work they keep doing after the same kind of event or at the same time each week, and check each candidate on their real items. Use when they ask what awaywork could take off their plate, or say yes to the offer on first setup."
+description: "Suggest awaywork queue rules, routines and instruction fixes from what the developer already does: with their consent each run, read their recent coding-agent sessions, agent memories and forge history for work they keep doing after the same kind of event or at the same time each week, and check each candidate on their real items. Use when they ask what awaywork could take off their plate, or say yes to the offer on first setup."
 ---
 
 # awaywork suggest
@@ -9,10 +9,10 @@ Find the work the developer hands to an agent by reflex, right after something h
 
 ## Ground rules
 
-- **Ask first, every run.** Read nothing from a session but step 1's metadata before the developer has said which projects, how far back and which agents' histories (step 1). Nothing turns this on for good.
+- **Ask first, every run.** Read nothing from a session or a memory but step 1's metadata before the developer has said which projects, how far back and which agents' histories and memories (step 1). Nothing turns this on for good.
 - **One scope.** Use only the projects they named. Work and personal never mix: a session from another project never feeds a candidate, even when it sits next to one in scope.
-- **Paraphrase only.** Sessions hold pasted tokens, customer data and secrets. Evidence is a count and a paraphrase in your words, never a quote, a path or output from inside a session, and nothing from one goes verbatim into a rule, a line or the chat. Keep digests out of the chat too: they carry prompt text.
-- **Read-only.** Read sessions where they are, never copy them; put digests in a temp dir and delete it at the end. Forge CLIs only read.
+- **Paraphrase only.** Sessions hold pasted tokens, customer data and secrets. Evidence is a count and a paraphrase in your words, never a quote, a path or output from inside a session, and nothing from one goes verbatim into a rule, a line or the chat. Keep digests out of the chat too: they carry prompt text. Memories are paraphrased the same way. A user-level file (a global `CLAUDE.md`, `~/.codex/AGENTS.md`) spans every project: use only the lines that clearly apply to the repo in scope, never one written for another project.
+- **Read-only.** Read sessions and memories where they are, never copy them; put digests in a temp dir and delete it at the end. Forge CLIs only read.
 - **Nothing written but what they pick,** through the queue skill's loop. Its ground rules hold here: no credentials, no runs, real names only, widening needs its own yes.
 
 ## 1. Ask
@@ -21,8 +21,8 @@ Read the config as the queue skill's step 1 does. Then count what's in scope fro
 
 - **Projects:** default the repos in the config, as the local folders their sessions ran in. Ask for the folder when you can't tell.
 - **Window:** default the last 30 days. Under 3 weeks finds no routines (step 4 wants 3 different weeks): say so.
-- **Histories:** which agents' sessions, of those you found. Reading another vendor's sessions sends them to yours: say so by name, e.g. "Codex sessions I read go to Anthropic".
-- **Size:** what that is, e.g. "84 Claude Code sessions (31 MB) in 1 folder; no Codex sessions there".
+- **Histories:** which agents' sessions and memories, of those you found. Reading another vendor's sessions sends them to yours: say so by name, e.g. "Codex sessions I read go to Anthropic".
+- **Size:** what that is, e.g. "84 Claude Code sessions (31 MB) in 1 folder, 12 memory files and your global `CLAUDE.md`; no Codex sessions there".
 
 Wait for a yes or their changes.
 
@@ -42,11 +42,15 @@ User and assistant lines carry `sessionId`, `timestamp`, `cwd`, `gitBranch` and 
 
 **Codex** keeps `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl` (`$CODEX_HOME/sessions` when set). The first line is `session_meta`, whose `payload` has `id`, `timestamp`, `cwd`, `git.branch`, `git.repository_url` and `originator`; skip `codex_exec`, headless `codex exec`, where awaywork's workers run. Skip a file with no `turn_context` line too: that's a Claude Code session Codex Desktop imported, every line stamped in the minute the import ran, so it would count twice and form a fake same-hour cluster. A typed prompt is an `event_msg` line with `payload.type: user_message`, its text in `payload.message`; newer files (`history_mode: paginated`) have none and hold it as a `response_item` `message` with `role: user`, in `input_text` blocks mixed with injected ones starting `<` or `# AGENTS.md`. An interrupted turn is a `turn_aborted` event, unconfirmed in real files: treat a count of 0 as unknown. `jq -nc -f scripts/codex-sessions.jq <file>`, once per file, skips the files above and prints `session`, `start`, `cwd`, `branch`, `first`, `turns` and `aborted`.
 
-**Another agent:** find its history folder, check one file and pull the same fields.
+**Memories** are short: read them whole, no script. Claude Code keeps a project's in `<root>/projects/<slug>/memory/` under both roots: one `.md` per memory, its frontmatter `name`, `description` and `metadata.type` (`feedback`, `project`, `reference`, `user`), and a `MEMORY.md` index. Only the project's own slug has the folder, not its worktrees'. User-level ones span every project: `<root>/CLAUDE.md` and `<root>/rules/*.md` (both roots may link the same file: read it once). Codex reads `$CODEX_HOME/AGENTS.md` (or `AGENTS.override.md`), and with its `memories` feature on (`codex features list`) writes notes for every project into `$CODEX_HOME/memories/` (`memory_summary.md`, `MEMORY.md`, `rollout_summaries/*.md`): named in the binary, unconfirmed in real files, so check one before trusting this. Codex's `rules/` are command approvals, not memories.
+
+**Another agent:** find its history and memory folders, check one file and pull the same fields.
 
 ## 3. Prefilter
 
 Digest every session in scope; open none in full yet. Correction signals that work in any language come first: an interrupted turn, a rejected tool call, a typed prompt right after the agent edited files. That last one is as often "now do the next bit" as a correction, so it says which sessions to read, not what was corrected. Keywords ("no,", "don't", "always", "instead", in the developer's language) only add weight.
+
+A memory is a correction already distilled ("use account X", "never rebase a pushed branch"), and workers never see it: they run headless, under their own home. Each one that holds for the repo is a correction candidate, stronger when sessions show it corrected; one about the developer or their own workflow, not the repo, is not. A memory that hints at when they do something only backs a cluster in step 4, never a candidate alone.
 
 Then the forge, per repo in scope, read-only. On GitHub, with `<since>` the window's first day:
 
@@ -112,8 +116,10 @@ Routines
 Corrections
   4  run the formatter before committing  corrected in 5 sessions
      already in AGENTS.md, still corrected → repos.acme/api.verify: pnpm lint
+  5  use pnpm, never npm                  a saved memory + 3 sessions
+     → AGENTS.md: "Use pnpm, never npm."
 
-Keep which? (e.g. 2, 3, 4)
+Keep which? (e.g. 2, 3, 5)
 ```
 
 Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through the queue skill's steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.

@@ -22,8 +22,8 @@ Every run starts with three questions and a number, before it opens a single tra
 
 - **Projects:** the repos in your config by default. Work and personal never mix: it reads only the folders you name, so your employer's sessions never feed your side project's queue, or the other way round.
 - **Window:** the last 30 days by default. Under 3 weeks there's no routine to find, since a weekly habit needs 3 different weeks, and it says so.
-- **Histories:** which agents' sessions. Your agent reading another vendor's sessions sends them to its vendor, and it says so: Codex sessions read by Claude go to Anthropic.
-- **Size:** how many sessions and how many MB that is.
+- **Histories:** which agents' sessions and memories. Your agent reading another vendor's sessions sends them to its vendor, and it says so: Codex sessions read by Claude go to Anthropic.
+- **Size:** how many sessions and how many MB that is, and how many memory files.
 
 Nothing turns it on for good. Next time it asks again.
 
@@ -33,6 +33,7 @@ Nothing turns it on for good. Next time it asks again.
 | --- | --- |
 | Claude Code sessions | `~/.claude/projects/<folder>/*.jsonl`, and `$CLAUDE_CONFIG_DIR/projects/…` when that's set: both can hold sessions, counted once each |
 | Codex sessions | `~/.codex/sessions/<yyyy>/<mm>/<dd>/*.jsonl`, or `$CODEX_HOME/sessions/…` when that's set |
+| Agent memories | Claude Code's `~/.claude/projects/<folder>/memory/*.md` and your global `CLAUDE.md` and `rules/`; Codex's `~/.codex/AGENTS.md` and, with its memories feature on, `~/.codex/memories/`. A global file only lends the lines that clearly apply to the repo in scope |
 | Forge history | `gh`, read-only: your own PRs (with who reviewed them and when) and issues, failed CI runs, reviews you gave. Not your replies on other people's threads: awaywork has nothing to do there that isn't commenting on someone's behalf |
 
 It skips awaywork's own workers and every other headless session, subagent transcripts (they repeat their parent), the Claude Code sessions Codex Desktop imported into its own history, and earlier suggest runs, or the counts would lie. Times are turned into your local time before it looks for weekly habits, since that's what a routine's `at` means.
@@ -49,7 +50,7 @@ Months of transcripts are a lot of tokens, so it digests each session first, wit
 | A correction only awaywork's workers need | A line in your awaywork `instructions` |
 | A correction that's already written down and still made | A command instead of a second line: a [`verify`](./configuration.md#repos-and-instructions) like `pnpm lint` on the repo, or a command [gate](./configuration.md#gates) |
 
-Anything your config or `AGENTS.md` already has shows as "already rule #1", not as a new idea. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts every rule and routine into a copy of your config and runs `awaywork plan --rules --json` and `awaywork doctor --json` on it, so each candidate comes with the real items it takes now, the near misses, and a routine's next occurrence.
+A saved memory is a correction you already made once and wrote down, and awaywork's workers never see it: they run headless, under their own home. So a memory that holds for the repo comes back as a line for `AGENTS.md` or your `instructions`; one about you or your own workflow doesn't. Anything your config or `AGENTS.md` already has shows as "already rule #1", not as a new idea. A pattern with no trigger awaywork can see ("when someone asks in Slack") is dropped. Then it drafts every rule and routine into a copy of your config and runs `awaywork plan --rules --json` and `awaywork doctor --json` on it, so each candidate comes with the real items it takes now, the near misses, and a routine's next occurrence.
 
 ## What you see
 
@@ -90,7 +91,7 @@ Accept, tweak or decline each by number. Rules and routines you keep go through 
 
 What it won't do:
 
-- quote your sessions: evidence is a count and a paraphrase, since sessions hold pasted tokens and secrets;
+- quote your sessions or memories: evidence is a count and a paraphrase, since sessions hold pasted tokens and secrets;
 - touch the forge beyond reading;
 - leave anything behind: its digests go in a temp dir it deletes;
 - run in the background. The awaywork CLI never reads transcripts, and workers never see your history: only the session you started does.
