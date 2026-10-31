@@ -26,7 +26,7 @@ import {
   pollSpan,
 } from '../sources/command.js'
 import { itemFields, sourceField, sourceFor, sources } from '../sources/index.js'
-import { routines } from '../sources/routines.js'
+import { refuseOwnKeys, routines } from '../sources/routines.js'
 
 const percent = z
   .string()
@@ -137,9 +137,10 @@ function builtinConfig(s: Source): z.ZodObject {
 }
 
 const sourcesConfig = z
-  .object(
-    Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
-  )
+  .object({
+    ...Object.fromEntries(Object.values(sources).map((s) => [s.id, builtinConfig(s).optional()])),
+    [routines.id]: z.preprocess(refuseOwnKeys, builtinConfig(routines)).optional(),
+  })
   .catchall(commandConfig)
   .refine((s) => Object.keys(s).length > 0, 'configure at least one source')
   .describe('Where work comes from: built-in sources or your own commands; at least one')
