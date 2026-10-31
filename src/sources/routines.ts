@@ -39,7 +39,7 @@ export type Routine = z.output<typeof routine> & { url?: string }
 export type RoutinesConfig = Record<string, unknown>
 
 /** The keys awaywork reads off any source's config, so no routine's name. */
-const ownKeys = ['context', 'every', 'link']
+const ownKeys = ['context', 'every']
 
 /** Refuses a routine named after one of the source's own keys, before they're read as theirs. */
 export function refuseOwnKeys(cfg: unknown, ctx: z.RefinementCtx): unknown {
@@ -50,7 +50,7 @@ export function refuseOwnKeys(cfg: unknown, ctx: z.RefinementCtx): unknown {
     ctx.addIssue({
       code: 'custom',
       path: [key],
-      message: "context, every and link are the source's own keys; give the routine another name",
+      message: "context and every are the source's own keys; give the routine another name",
     })
   return cfg
 }

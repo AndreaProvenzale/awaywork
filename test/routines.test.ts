@@ -1,5 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { formatWhy } from '../src/cli/format.js'
+import { collectItems } from '../src/cli/plan.js'
 import { ConfigError, parseConfig } from '../src/config/load.js'
 import type { Attempts } from '../src/core/attempts.js'
 import { planRun } from '../src/core/foreman.js'
@@ -162,12 +163,20 @@ describe('routine config', () => {
     ])
   })
 
-  it.each(['context', 'every', 'link'])('refuses a routine named %s, a key of its own', (name) => {
+  it.each(['context', 'every'])('refuses a routine named %s, a key of its own', (name) => {
     expect(
       problems(`  routines:\n    ${name}: { at: "09:00", repo: acme/api, title: Tidy }`),
     ).toEqual([
-      `sources.routines.${name}: context, every and link are the source's own keys; give the routine another name`,
+      `sources.routines.${name}: context and every are the source's own keys; give the routine another name`,
     ])
+  })
+
+  it('takes a routine named link, since routines have no link line', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(local('2026-10-28T12:00'))
+    const cfg = config('  routines:\n    link: { at: "09:00", repo: acme/api, title: Link }')
+    const items = await collectItems(cfg, { env: {}, log: () => {} })
+    expect(items.map((i) => [i.key, i.link])).toEqual([['link-20261028-0900', undefined]])
   })
 
   it('keeps its context command and its poll interval', () => {

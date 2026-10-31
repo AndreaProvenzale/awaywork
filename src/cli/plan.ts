@@ -264,7 +264,7 @@ export async function collectItems(
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
     if (!source || (opts.sources && !opts.sources.includes(id))) continue
-    const link = (cfg as { link?: string }).link ?? source.link
+    const link = source.link !== false && ((cfg as { link?: string }).link ?? source.link)
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
       (found) => {
