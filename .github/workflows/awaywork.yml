@@ -38,6 +38,8 @@ jobs:
           git config --global user.email "$user@users.noreply.github.com"
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Make the worker user
+        run: bash scripts/worker-user.sh
       - id: run
         run: awaywork run ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
         env:
