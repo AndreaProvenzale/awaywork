@@ -11,6 +11,7 @@ import {
   type Routine,
   type RoutinesConfig,
   routines,
+  routinesOf,
 } from '../src/sources/routines.js'
 
 // Rome leaves summer time on 2026-10-25 at 03:00, back to 02:00.
@@ -159,6 +160,19 @@ describe('routine config', () => {
     expect(problems('  routines: { command: ./items.sh }')).toEqual([
       'sources.routines.command: expected a routine with at, repo and title; routines is a built-in source, so give a custom one another name',
     ])
+  })
+
+  it.each(['context', 'every', 'link'])('refuses a routine named %s, a key of its own', (name) => {
+    expect(
+      problems(`  routines:\n    ${name}: { at: "09:00", repo: acme/api, title: Tidy }`),
+    ).toEqual([
+      `sources.routines.${name}: context, every and link are the source's own keys; give the routine another name`,
+    ])
+  })
+
+  it('keeps its context command and its poll interval', () => {
+    const cfg = config(`${triage}\n    context: { command: ./fetch.sh }\n    every: 30m`)
+    expect(routinesOf(cfg.sources.routines).map(([name]) => name)).toEqual(['sentry-triage'])
   })
 })
 
