@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
-import { formatRules, formatWhy, planJson } from '../src/cli/format.js'
+import { formatRules, formatWhy, planJson, rulesJson } from '../src/cli/format.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
@@ -1009,7 +1009,12 @@ describe('a card carrying a plan', () => {
   })
 
   it('shows under plan --rules by the plan rule, marked when its where no longer holds it', () => {
-    expect(formatRules(sticky.queue ?? [], [moved(card([planned()])), card([])])).toEqual([
+    const cards = [moved(card([planned()])), card([])]
+    expect(JSON.parse(rulesJson(sticky.queue ?? [], cards, false)).rules[0].taken).toEqual([
+      expect.objectContaining({ key: 'acme/api#1', plan: true }),
+      expect.not.objectContaining({ plan: true }),
+    ])
+    expect(formatRules(sticky.queue ?? [], cards)).toEqual([
       '#1  plan       label=feature deliver=plan',
       '     2 taken: acme/api#1 (plan), acme/api#1',
       '#2  implement  planned=true',

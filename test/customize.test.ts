@@ -50,7 +50,7 @@ describe('plan --rules', () => {
 
   it('lists the same as JSON, with why each unmatched item misses', () => {
     const json = JSON.parse(rulesJson(queue, items, false))
-    expect(json.queue[2]).toMatchObject({
+    expect(json.rules[2]).toMatchObject({
       rule: 3,
       skill: 'review',
       summary: 'type=pr review_requested=true',
