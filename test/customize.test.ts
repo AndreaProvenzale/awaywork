@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { editUntilValid } from '../src/cli/config.js'
-import { formatRules } from '../src/cli/format.js'
+import { formatRules, rulesJson } from '../src/cli/format.js'
 import { ejectSkill, listSkills } from '../src/cli/skills.js'
 import { loadConfig, parseConfig } from '../src/config/load.js'
 import { builtinSkillsDir } from '../src/config/paths.js'
@@ -46,6 +46,25 @@ describe('plan --rules', () => {
         "1 unmatched: T-8",
       ]
     `)
+  })
+
+  it('lists the same as JSON, with why each unmatched item misses', () => {
+    const json = JSON.parse(rulesJson(queue, items, false))
+    expect(json.rules[2]).toMatchObject({
+      rule: 3,
+      skill: 'review',
+      summary: 'type=pr review_requested=true',
+      taken: [{ source: 'github', key: 'acme/api#2' }],
+      takenBy: [{ rule: 1, items: [{ key: 'acme/api#1' }] }],
+    })
+    expect(json.unmatched).toEqual([
+      expect.objectContaining({
+        key: 'T-8',
+        reason:
+          'matched no rule; closest #3 review: type is task, wants pr; review_requested is unset, wants true',
+      }),
+    ])
+    expect(json).toMatchObject({ defaultQueue: false, warnings: [] })
   })
 })
 

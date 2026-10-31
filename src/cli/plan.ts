@@ -32,6 +32,7 @@ import {
   formatWhy,
   namedItems,
   planJson,
+  rulesJson,
   warningLines,
 } from './format.js'
 import { type OnProgress, planTriage } from './triage.js'
@@ -42,14 +43,14 @@ export function planCommand(program: Command): void {
     .description(
       "show the next run's units in order, with each provider's ceiling; runs no worker; browsable in a terminal",
     )
-    .option('--json', 'print the plan and warnings as JSON')
+    .option('--json', 'print the plan, or with --rules the rules, and warnings as JSON')
     .option('--repo <glob>', 'only units in repos matching owner/name, * globs')
     .option('--rule <n>', 'only units of this queue rule, counted from 1', ruleNumber)
     .addOption(
       new Option(
         '--rules',
         'show what each rule takes now and what earlier rules take from it, instead of the units; probes no provider',
-      ).conflicts('json'),
+      ),
     )
     .addOption(
       new Option('--skipped [kind]', 'list the skipped items and why, or those of one kind')
@@ -68,7 +69,7 @@ export function planCommand(program: Command): void {
       try {
         const path = configPath(program.opts().config)
         const config = await loadConfig(path)
-        if (opts.rules) return console.log(await describeRules(config))
+        if (opts.rules) return console.log(await describeRules(config, opts.json))
         const { plan, warnings } = await probeAndPlan(config, skillsDirOf(path), {
           ...opts,
           onProgress: screen?.progress,
@@ -225,18 +226,19 @@ export async function probeAndPlan(
   }
 }
 
-/** The queue with what each rule takes now; reads the sources, probes no provider. */
-async function describeRules(config: Config): Promise<string> {
+/** The queue with what each rule takes now, as text or JSON; reads the sources, probes no provider. */
+async function describeRules(config: Config, json = false): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
   const items = withApprovals(await collectItems(config, ctx), await loadApprovals(approvalsPath))
   const secrets = configSecrets(config, providersOf(config), configuredSources(config))
+  const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
+  const rules = config.queue ?? defaultRules(Object.keys(config.sources))
+  if (json) return rulesJson(rules, items, !config.queue, masked)
   return [
-    ...warningLines(warnings.map((w) => maskSecrets(w, secrets, ctx.env))),
+    ...warningLines(masked),
     config.queue ? 'Queue' : 'Queue (default: no queue in config)',
-    ...formatRules(config.queue ?? defaultRules(Object.keys(config.sources)), items).map(
-      (line) => `  ${line}`,
-    ),
+    ...formatRules(rules, items).map((line) => `  ${line}`),
   ].join('\n')
 }
 
