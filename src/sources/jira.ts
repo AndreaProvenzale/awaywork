@@ -2,9 +2,9 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
-import { httpError } from '../core/poll.js'
+import { httpError, unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
-import { taskMarkdown, unsetSecret } from './asana.js'
+import { taskMarkdown } from './asana.js'
 
 const config = z
   .strictObject({
@@ -296,10 +296,13 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     },
 
     /** The projects and the site's statuses; the site and email come from the config alone. */
-    async discover(cfg, ctx) {
-      if (!cfg.site || !cfg.email)
+    async discover(partial, ctx) {
+      if (!partial.site || !partial.email)
         throw new Error('add sources.jira { site, email } to the config first')
+      const cfg = config.parse(partial)
       const token = tokenFrom(cfg, ctx)
+      // Jira takes wrong credentials as anonymous, who sees no projects but can't read /myself.
+      await call(cfg, token, '/rest/api/3/myself')
       return {
         projects: (await projects(cfg, token)).map((p) => ({ key: p.key, name: p.name })),
         statuses: await statuses(cfg, token),

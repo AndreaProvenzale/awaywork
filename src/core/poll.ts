@@ -13,6 +13,10 @@ export function httpError(message: string, res: Response): Error & { retryAfter?
   return Object.assign(new Error(message), wait > 0 ? { retryAfter: wait * 1000 } : {})
 }
 
+/** An unset token's error, naming the variable in `unset` for a caller to explain. */
+export const unsetSecret = (name: string) =>
+  Object.assign(new Error(`${name} is not set`), { unset: name })
+
 /** A source's poll state in awaywork watch: when it's next due, and the failed polls in a row. */
 export interface Poll {
   next: number

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
 import { commentMarkdown } from '../core/footer.js'
-import { httpError } from '../core/poll.js'
+import { httpError, unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 
 const config = z
@@ -287,7 +287,7 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
 
     /** The workspaces; the configured one's projects and sections, or every workspace's when unset. */
     async discover(cfg, ctx) {
-      const token = tokenFrom(cfg, ctx)
+      const token = tokenFrom({ token_env: config.shape.token_env.parse(cfg.token_env) }, ctx)
       const found = await workspaces(token)
       return {
         workspaces: await Promise.all(
@@ -309,15 +309,11 @@ export function asanaSource(http: typeof fetch = fetch): Source<Config> {
 
 export const asana = asanaSource()
 
-function tokenFrom(cfg: Config, ctx: Ctx): string {
+function tokenFrom(cfg: Pick<Config, 'token_env'>, ctx: Ctx): string {
   const token = ctx.env[cfg.token_env]
   if (!token) throw unsetSecret(cfg.token_env)
   return token
 }
-
-/** An unset token's error, naming the variable in `unset` for a caller to explain. */
-export const unsetSecret = (name: string) =>
-  Object.assign(new Error(`${name} is not set`), { unset: name })
 
 function toItem(
   task: Task,

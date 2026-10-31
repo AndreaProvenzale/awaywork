@@ -134,7 +134,7 @@ export interface Source<C = unknown> {
    * What its credentials can see, read only: the names a config and `where` use. An unconfigured
    * source gets its schema's defaults alone, so its required keys may be missing.
    */
-  discover?(cfg: C, ctx: Ctx): Promise<Discovery>
+  discover?(cfg: Partial<C>, ctx: Ctx): Promise<Discovery>
   /**
    * Writes to one of its items as you: a comment, or a move to the status, state, section or
    * label named `to`. Returns the item's updated time just before and after it, when the tracker says,

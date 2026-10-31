@@ -1,8 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
-import { taskMarkdown, unsetSecret } from './asana.js'
+import { taskMarkdown } from './asana.js'
 
 const config = z
   .strictObject({
@@ -255,7 +256,7 @@ export function linearSource(http: typeof fetch = fetch): Source<Config> {
     /** The teams, each with its workflow states. */
     async discover(cfg, ctx) {
       return {
-        teams: (await teams(tokenFrom(cfg, ctx))).map((t) => ({
+        teams: (await teams(tokenFrom(config.parse(cfg), ctx))).map((t) => ({
           key: t.key,
           name: t.name,
           states: t.states.nodes.map((s) => s.name),

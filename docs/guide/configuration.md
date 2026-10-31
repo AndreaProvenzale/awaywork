@@ -156,10 +156,21 @@ The gids, keys and names these keys and your `where` clauses take are one read-o
 
 ```text
 $ awaywork sources linear
-linear  (LINEAR_API_KEY from /home/me/.config/awaywork/env)
-  teams
-    ENG  Engineering  states: Todo, In Progress, QA, Done
-    WEB  Web          states: Todo, In Progress, Done
+linear:
+  teams:
+    - key: ENG
+      name: Engineering
+      states:
+        - Todo
+        - In Progress
+        - QA
+        - Done
+    - key: WEB
+      name: Web
+      states:
+        - Todo
+        - In Progress
+        - Done
 ```
 
 `github` lists your login and orgs, `asana` the workspaces, then the projects and section names of the configured workspace (of each, before you configure one), and `jira` the projects and the site's statuses, once `sources.jira` has its `site` and `email`.
