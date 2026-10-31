@@ -13,7 +13,7 @@ awaywork runs coding agents headless on the developer's items, picked by the `qu
 - **No runs.** Never run `awaywork run`, `watch`, `schedule`, `approve`, `skip` or `unskip`; say the command instead.
 - **Real names only.** Projects, sections and statuses come from `awaywork sources`, labels and repos from the items or the developer, never from a guess.
 - **Check before writing.** The config changes only after `plan --rules --json` shows each rule takes what the developer described. Show them and wait for their yes; when they can't answer, write only the rules they asked for whose check holds no surprise, and say what you left out.
-- **Widening needs its own yes** (below). awaywork's guardrails are not config: it never merges, force-pushes, approves or touches someone else's branch, and writes only on the developer's own items. Don't look for a way around them.
+- **Widening is shown on its own** (below). awaywork's guardrails are not config: it never merges, force-pushes, approves or touches someone else's branch, and writes only on the developer's own items. Don't look for a way around them.
 
 Pass `--config <path>` to every command when the developer uses one; otherwise awaywork reads `$AWAYWORK_CONFIG`, then `~/.config/awaywork/config.yml`.
 
