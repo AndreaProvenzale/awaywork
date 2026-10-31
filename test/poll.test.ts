@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { describeRule, formatPlan } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Attempts } from '../src/core/attempts.js'
@@ -14,6 +14,7 @@ import {
 } from '../src/core/poll.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Rule } from '../src/core/types.js'
+import { type RoutinesConfig, routines } from '../src/sources/routines.js'
 import { fakeItem } from './fakes/items.js'
 
 const MINUTE = 60_000
@@ -101,6 +102,43 @@ describe('due units', () => {
     expect(dueUnits(questions, {}, seen, new Map(), 0)).toEqual([])
     const answered = poll([issue(5, '2026-10-25T10:30:00Z', [asked, reply])])
     expect(dueUnits(answered, {}, seen, new Map(), 0)).toEqual(['acme-api-5'])
+  })
+
+  it('starts a routine once it comes due, not again once attempted, and at its next occurrence', async () => {
+    const routineConfig = parseConfig(`
+providers: [claude]
+sources:
+  routines:
+    standup: { at: ["09:00", "14:00"], repo: acme/api, title: Write the standup notes }
+queue:
+  - { skill: report, source: routines, deliver: report, run: soon }
+`)
+    const at = async (time: string, attempts: Attempts) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(time))
+      const cfg = routineConfig.sources.routines as RoutinesConfig
+      const items = await routines.items(cfg, { env: {}, log: () => {} })
+      vi.useRealTimers()
+      const plan = planRun({
+        config: routineConfig,
+        items,
+        allowances: {},
+        skills: { builtin: builtinSkills },
+        attempts,
+        only: { soon: true },
+      })
+      return dueUnits(plan, attempts, new Map(), new Map(), 0)
+    }
+    expect(await at('2026-10-26T09:01', {})).toEqual(['standup-20261026-0900'])
+    const attempts: Attempts = {
+      'routines:standup-20261026-0900': {
+        runId: 'r1',
+        skill: 'report',
+        updated: new Date('2026-10-26T09:00').toISOString(),
+      },
+    }
+    expect(await at('2026-10-26T13:59', attempts)).toEqual([])
+    expect(await at('2026-10-26T14:00', attempts)).toEqual(['standup-20261026-1400'])
   })
 
   it('leaves out a unit another run is working on', () => {

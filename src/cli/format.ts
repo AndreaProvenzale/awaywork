@@ -42,6 +42,7 @@ import {
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
+import { describeOccurrence, routines } from '../sources/routines.js'
 
 const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 
@@ -160,6 +161,7 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   const style = styler(styled)
   const out = [...warningLines(warnings, styled), ...providerLines(plan, style)]
   out.push('', heading('Units', listedUnits(plan).length, style), ...planUnitLines(plan, style))
+  out.push(...routineLines(plan, style))
   out.push(...needsYouLines(plan.skipped, style), ...skippedLines(plan.skipped, style))
   if (plan.skipped.length > 0)
     out.push(
@@ -196,6 +198,14 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     out.push(style('dim', `    ${allowanceNote(id, a)}`))
   })
   return out
+}
+
+/** Each routine and when it next comes due, local time. */
+function routineLines(plan: RunPlan, style: Style): string[] {
+  const next = Object.entries(plan.routines ?? {})
+  if (next.length === 0) return []
+  const rows = next.map(([name, at]) => [name, `next ${describeOccurrence(new Date(at))}`])
+  return ['', heading('Routines', next.length, style), ...indent(table(rows))]
 }
 
 const stepsOf = (plan: Pick<RunPlan, 'units'>, head: PlannedUnit) =>
@@ -381,6 +391,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     `${item.source} ${item.key}  ${item.title}`,
     `  ${item.url}`,
     ...(item.task ? taskLines(item) : []),
+    ...(item.source === routines.id ? [routineLine(plan, item)] : []),
   ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
@@ -422,6 +433,14 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
   return out.join('\n')
+}
+
+/** Which occurrence of its routine a routine's item is, and when the next one comes due. */
+function routineLine(plan: RunReport['plan'], item: Item): string {
+  const name = String(item.fields.name)
+  const next = plan.routines?.[name]
+  const due = describeOccurrence(new Date(String(item.fields.updated)))
+  return `  routine ${name}, due ${due}${next ? `; next ${describeOccurrence(new Date(next))}` : ''}`
 }
 
 /** A task's place in its card's plan: its repo when it isn't the card's, what it waits on, and where each of those stands. */
