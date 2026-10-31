@@ -18,4 +18,5 @@ export const jiraFetch = (first: Route[] = []) =>
     [/\/issue\/\d+\/comment/, jiraFixture('comments-empty.json')],
     [/\/rest\/api\/3\/project\/search/, jiraFixture('projects.json')],
     [/\/rest\/api\/3\/status$/, jiraFixture('statuses.json')],
+    [/\/rest\/api\/3\/myself$/, '{ "accountId": "5b10", "displayName": "Dev" }'],
   ])

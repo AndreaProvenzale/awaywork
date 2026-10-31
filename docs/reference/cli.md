@@ -25,6 +25,9 @@ Commands:
   init [options]            detect installed agents, pick providers, sources and
                             a starting queue
   config                    print the config schema or edit the config
+  sources [options] [id]    list what a source's credentials can see
+                            (workspaces, projects, teams, statuses), read-only;
+                            with no id, every configured source
   plan [options]            show the next run's units in order, with each
                             provider's ceiling; runs no worker; browsable in a
                             terminal
@@ -110,6 +113,19 @@ Usage: awaywork config edit [options]
 open the config in $VISUAL or $EDITOR; it is saved only once valid
 
 Options:
+  -h, --help  display help for command
+```
+
+## awaywork sources
+
+```text
+Usage: awaywork sources [options] [id]
+
+list what a source's credentials can see (workspaces, projects, teams,
+statuses), read-only; with no id, every configured source
+
+Options:
+  --json      print one object keyed by source id
   -h, --help  display help for command
 ```
 

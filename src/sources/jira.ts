@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { z } from 'zod'
-import { httpError } from '../core/poll.js'
+import { httpError, unsetSecret } from '../core/poll.js'
 import type { Ctx, Item, Source } from '../core/types.js'
 import { taskMarkdown } from './asana.js'
 
@@ -131,6 +131,21 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
     }
   }
 
+  const projects = (cfg: Config, token: string) =>
+    paged(
+      cfg,
+      token,
+      '/rest/api/3/project/search',
+      (p: { values: Project[]; isLast: boolean }) => p.values,
+      (p) => p.isLast,
+    )
+
+  const statuses = async (cfg: Config, token: string) => [
+    ...new Set(
+      (await call<{ name: string }[]>(cfg, token, '/rest/api/3/status')).map((s) => s.name),
+    ),
+  ]
+
   return {
     id: 'jira',
     configSchema: config,
@@ -256,23 +271,16 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
         if (!tenant.ok) throw new Error(`no Jira Cloud site at ${site}: ${tenant.status}`)
         cfg = { ...cfg, cloud_id: ((await tenant.json()) as { cloudId: string }).cloudId }
       }
-      const projects = await paged(
-        cfg,
-        token,
-        '/rest/api/3/project/search',
-        (p: { values: Project[]; isLast: boolean }) => p.values,
-        (p) => p.isLast,
-      )
+      const found = await projects(cfg, token)
       const picked = await ask.multiselect(
         'Jira projects whose issues have code in a GitHub repo',
-        projects.map((p) => ({ value: p.key, label: p.name })),
+        found.map((p) => ({ value: p.key, label: p.name })),
       )
       const repos: Record<string, string> = {}
       for (const key of picked) {
         const repo = await ask.text(`GitHub repo for issues in ${key} (owner/repo, blank: none)`)
         if (repo.trim()) repos[key] = repo.trim()
       }
-      const statuses = await call<{ name: string }[]>(cfg, token, '/rest/api/3/status')
       return {
         config: {
           site,
@@ -281,9 +289,28 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
           ...(Object.keys(repos).length > 0 && { repo_map: repos }),
         },
         values: {
-          project: projects.map((p) => p.key),
-          status: [...new Set(statuses.map((s) => s.name))],
+          project: found.map((p) => p.key),
+          status: await statuses(cfg, token),
         },
+      }
+    },
+
+    /** The projects and the site's statuses; the site and email come from the config alone. */
+    async discover(partial, ctx) {
+      const { site, email } = partial
+      if (!site || !email) throw new Error('add sources.jira { site, email } to the config first')
+      const cfg = {
+        ...partial,
+        site,
+        email,
+        token_env: config.shape.token_env.parse(partial.token_env),
+      }
+      const token = tokenFrom(cfg, ctx)
+      // Jira takes wrong credentials as anonymous, who sees no projects but can't read /myself.
+      await call(cfg, token, '/rest/api/3/myself')
+      return {
+        projects: (await projects(cfg, token)).map((p) => ({ key: p.key, name: p.name })),
+        statuses: await statuses(cfg, token),
       }
     },
   }
@@ -293,7 +320,7 @@ export const jira = jiraSource()
 
 function tokenFrom(cfg: Config, ctx: Ctx): string {
   const token = ctx.env[cfg.token_env]
-  if (!token) throw new Error(`${cfg.token_env} is not set`)
+  if (!token) throw unsetSecret(cfg.token_env)
   return token
 }
 

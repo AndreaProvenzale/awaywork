@@ -152,6 +152,29 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`, `write`: see [Custom sources](./custom-sources.md) |
 
+The gids, keys and names these keys and your `where` clauses take are one read-only command away. `awaywork sources <id>` lists what that source's credentials can see; with no id, every configured source; `--json` for scripts and agents:
+
+```text
+$ awaywork sources linear
+linear:
+  teams:
+    - key: ENG
+      name: Engineering
+      states:
+        - Todo
+        - In Progress
+        - QA
+        - Done
+    - key: WEB
+      name: Web
+      states:
+        - Todo
+        - In Progress
+        - Done
+```
+
+`github` lists your login and orgs, `asana` the workspaces, then the projects and section names of the configured workspace (of each, before you configure one), and `jira` the projects and the site's statuses, once `sources.jira` has its `site` and `email`.
+
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
 Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
