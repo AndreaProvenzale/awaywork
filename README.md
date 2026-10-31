@@ -125,7 +125,7 @@ Rather not write YAML? Tell your agent what to offload and it writes the rules, 
 /awaywork:queue
 ```
 
-Codex and friends get the same skill from the npm package: [With an AI agent](docs/guide/agents.md).
+Codex and friends get the same skill too: [With an AI agent](docs/guide/agents.md).
 
 ## How much quota it burns
 
