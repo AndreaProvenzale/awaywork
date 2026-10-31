@@ -25,6 +25,7 @@ const developerFolders = [
   'XDG_DATA_HOME',
   'XDG_STATE_HOME',
   'XDG_RUNTIME_DIR',
+  'PNPM_HOME',
 ]
 
 /** The names awaywork sets in a phase's env (`commandEnv`, `workerEnv`, the checks', the providers), which a container always gets. */
