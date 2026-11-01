@@ -139,8 +139,13 @@ function warningSection(warnings: string[]): Row[] {
 // The view clips each line to the terminal, not each cell.
 const whole = Infinity
 
-/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several. */
-function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Row[] {
+const nothing: Row = {
+  id: 'nothing',
+  text: style('dim', 'Nothing came in from your sources; awaywork sources lists what they can see'),
+}
+
+/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several; a section only when it has rows. */
+function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row[]): Row[] {
   const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
     skipRow(plan, skipped, lines, `needs/${i}`),
   )
@@ -158,16 +163,23 @@ function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Ro
           children: rows(list, `skipped/${kind}`),
         }))
       : rows(rest, 'skipped')
-  return [
-    ...warningSection(warnings),
+  const items = [
     ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
-    units,
+    ...units,
     ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
   ]
+  return [...warningSection(warnings), ...(items.length ? items : [nothing])]
 }
 
 const unitSection = (header: string, rows: Row[]) =>
-  section('units', 'Units', rows, [rows.length ? header : style('dim', 'none')])
+  rows.length ? [section('units', 'Units', rows, [header])] : []
+
+/** The first row under `row` that is no heading, and the headings to unfold to show it. */
+function firstLeaf(row: Row, path: string[] = []): { id: string; path: string[] } | undefined {
+  if (!row.children) return { id: row.id, path }
+  const [child] = row.children
+  return child && firstLeaf(child, [...path, row.id])
+}
 
 function triage(
   header: string[],
@@ -175,15 +187,15 @@ function triage(
   rows: number,
   actions: readonly Action[],
 ): State {
-  const open = new Set(sections.filter((s) => s.id !== 'skipped').map((s) => s.id))
-  const state = { header, sections, actions, open, selected: '', top: 0, rows, marks: {} }
-  const list = visible(state)
-  const first =
-    list.find((v) => v.parent === 'needs') ??
-    list.find((v) => v.parent === 'units') ??
-    list.find((v) => !v.row.children) ??
-    list[0]
-  return follow({ ...state, selected: first?.row.id ?? '' })
+  // Every section after the warnings holds items, in the order to land on them.
+  const items = sections.find((s) => s.id !== 'warnings')
+  const first = items && firstLeaf(items)
+  const open = new Set([
+    ...sections.filter((s) => s.id !== 'skipped').map((s) => s.id),
+    ...(first?.path ?? []),
+  ])
+  const selected = first?.id ?? ''
+  return follow({ header, sections, actions, open, selected, top: 0, rows, marks: {} })
 }
 
 /** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
