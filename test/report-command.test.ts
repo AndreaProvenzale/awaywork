@@ -88,11 +88,12 @@ describe('report command', () => {
   })
 
   it("prints the latest run's report.json with --json, and says so when a run has none", async () => {
-    await writeFile(join(runsDir, '20261015-220000', 'report.json'), '{"runId":"20261015-220000"}')
+    const written = { runId: '20261015-220000', plan: { units: [], skipped: [] }, results: [] }
+    await writeFile(join(runsDir, written.runId, 'report.json'), JSON.stringify(written))
     const run = await controlRepo([], '')
     const { out, err } = output()
     await printReport(undefined, false, run, true)
-    expect(out).toEqual(['{"runId":"20261015-220000"}'])
+    expect(JSON.parse(out.join('\n'))).toEqual({ ...written, warnings: [] })
 
     await printReport('20261013-220000', false, run, true)
     expect(err).toEqual([`no JSON report for run 20261013-220000 in ${runsDir}`])
@@ -112,7 +113,11 @@ describe('report command', () => {
         sliceBody: 'units/acme-api-1/out/pr.md',
       } satisfies StepFiles,
     }
-    const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
+    const waiting = { item: githubPr(3), kind: 'waiting_for_review', reason: 'r' }
+    const plan = {
+      units: [planned],
+      skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }, waiting],
+    }
     const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
     await writeFile(join(runsDir, run.runId, 'report.json'), reportJson(run))
     const { out } = output()
@@ -128,6 +133,22 @@ describe('report command', () => {
       },
     })
     expect(json.plan.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#2' } })
+    expect(json.plan.skipped[0]).not.toHaveProperty('needsYou')
+    expect(json.plan.skipped[1]).toMatchObject({ kind: 'waiting_for_review', needsYou: true })
+  })
+
+  it('flags what needs you in a report.json an older awaywork wrote without needsYou', async () => {
+    const item = (n: number) => ({ source: 'github', key: `acme/api#${n}`, title: `PR ${n}` })
+    const skipped = [
+      { item: item(1), kind: 'no_rule', reason: 'r' },
+      { item: item(2), kind: 'no_repo', reason: 'r' },
+    ]
+    const old = { runId: '20261015-220000', plan: { units: [], skipped }, results: [] }
+    await writeFile(join(runsDir, old.runId, 'report.json'), JSON.stringify(old))
+    const { out } = output()
+    await printReport(old.runId, false, await controlRepo([], ''), true)
+    const json = JSON.parse(out.join('\n'))
+    expect(json.plan.skipped).toEqual([skipped[0], { ...skipped[1], needsYou: true }])
   })
 
   it('prints a run from its report.json, one unit with the files still there, or its skips', async () => {
