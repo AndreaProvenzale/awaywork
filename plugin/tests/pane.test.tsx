@@ -97,6 +97,8 @@ test('bare /away opens the pane on what needs you, by repo and action, reading o
     expect(await ui.find({ type: 'Text', text: /last run \d\d-\d\d \d\d:\d\d/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /3 need you/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /1 PR/ })).toBeTruthy()
+    expect(await label(ui, 'tab:needs')).toBe('Needs you (3)')
+    expect(await label(ui, 'tab:next')).toBe('Next run')
     expect(await ui.find({ type: 'Text', text: 'acme/shop' })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: 'jira SHOP' })).toBeTruthy()
     expect(await rows(ui)).toEqual([SHOP7, SHOP8, TICKET])
@@ -239,7 +241,7 @@ test('reopening keeps the marks on the rows they correct', async ($, on) => {
   expect(await label(again, 'skip')).toBe('unskip')
 })
 
-test('a click or Tab opens a row in place, with its reason, link and only the buttons it has', async ($, on) => {
+test('a click or Tab opens a row in place, with its reason and only the buttons it has', async ($, on) => {
   engine(on, { 'report --json': ok(busyReport) })
   await $.command.run(away())
   for (const surface of SURFACES) {
@@ -247,7 +249,7 @@ test('a click or Tab opens a row in place, with its reason, link and only the bu
     expect(
       await ui.find({
         type: 'Text',
-        text: 'waiting for review: awaywork PR is open\nhttps://github.com/acme/shop/pull/31',
+        text: 'waiting for review: awaywork PR is open',
       }),
     ).toBeTruthy()
     expect(await label(ui, 'open')).toBe('open PR')

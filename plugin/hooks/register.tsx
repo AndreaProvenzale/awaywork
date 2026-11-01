@@ -212,7 +212,7 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
     note: reason.replace((s.kind && kindSays[s.kind]) || '', ''),
-    detail: lines(reasonOf(s), url),
+    detail: lines(reasonOf(s)),
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve:
@@ -242,7 +242,7 @@ function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean
     color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
     item: top,
     note,
-    detail: lines(note, url),
+    detail: lines(note),
     url,
     report: ['report', runId, '--unit', id],
     skip: top && 'skip',
@@ -263,7 +263,10 @@ function unitRow(p: Planned): Row {
     word: skill,
     item: top,
     note,
-    detail: lines(note, ...items.flatMap((i) => [`${itemKey(i)}  ${i.title}`, i.url])),
+    detail: lines(
+      note,
+      ...items.flatMap((i) => [`${itemKey(i)}  ${i.title}`, i === top ? undefined : i.url]),
+    ),
     url: top?.url ?? undefined,
     skip: top && 'skip',
   }
@@ -523,7 +526,7 @@ export const register: Register = (on) => {
             plain
             hotkey={String(order.indexOf(t) + 1)}
             dimColor={t !== tab}
-            label={t === 'next' && !d.plan ? titles[t] : `${titles[t]} ${rows[t].length}`}
+            label={t === 'next' && !d.plan ? titles[t] : `${titles[t]} (${rows[t].length})`}
             onPress={() => showTab($, t, rows[t][0]?.id)}
           />
         ))}

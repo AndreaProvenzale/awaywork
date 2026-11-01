@@ -21,12 +21,11 @@ Bare `/away` opens a pane beside the chat, straight from `awaywork report --json
 ```text
 awaywork · last run 06:10 · 1 PR · 5 need you  r: refresh p: plan
 
-1: Needs you 5  2: Last run 1  3: Next run  4: Skipped 2
+1: Needs you (5)  2: Last run (1)  3: Next run  4: Skipped (2)
 
 acme/sandbox
   ▾ #169  Add codex model flag to the provider config      review PR
     waiting for review: awaywork PR is open
-    https://github.com/acme/sandbox/pull/172
     o: open PR  s: skip
   #168  Round cart discounts to the cent                   review PR
   #167  Add toMinutes and toHours                          review PR
@@ -39,7 +38,7 @@ It lands on the first tab with something in it. Next run stays empty until you p
 
 Items sit under their repo, or their tracker and project key, a line each: the ref, the title, and what the item asks of you (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why it waits (`no rule`, `over cap`, `skipped by you`, ...). Needs you lists a repo's items by that word, so the PRs to review sit together. A second line shows up only when the reason says more than the word, like the cap that's full.
 
-One row is open at a time, with its whole reason, its links and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab and the arrows go row to row, opening the one they land on, and its keys work right away:
+One row is open at a time, with its whole reason and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab and the arrows go row to row, opening the one they land on, and its keys work right away:
 
 - `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
