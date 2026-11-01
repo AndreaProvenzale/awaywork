@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Ask } from '../src/core/types.js'
 import { API, asana } from '../src/sources/asana.js'
-import { sourceField } from '../src/sources/index.js'
+import { itemFields, sourceField } from '../src/sources/index.js'
 import { scriptedAsk } from './fakes/ask.js'
 
 const token = process.env.ASANA_TOKEN
@@ -123,7 +123,9 @@ describe.skipIf(!token || !workspace || !project)('asana source, live', () => {
     for (const item of Object.values(found))
       for (const [key, v] of Object.entries(item.fields))
         for (const one of [v].flat())
-          expect(sourceField(asana.fields, key)?.safeParse(one).success).toBe(true)
+          expect((itemFields[key] ?? sourceField(asana.fields, key))?.safeParse(one).success).toBe(
+            true,
+          )
 
     const seeded = (task: Named, isBlocked: boolean) => ({
       type: 'task',
