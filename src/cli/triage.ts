@@ -139,8 +139,16 @@ function warningSection(warnings: string[]): Row[] {
 // The view clips each line to the terminal, not each cell.
 const whole = Infinity
 
-/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several. */
-function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Row[] {
+const nothing =
+  'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
+
+/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several; a section only when it has rows. */
+function sectionsOf(
+  plan: RunReport['plan'],
+  warnings: string[],
+  units: Row[],
+  empty = nothing,
+): Row[] {
   const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
     skipRow(plan, skipped, lines, `needs/${i}`),
   )
@@ -158,16 +166,26 @@ function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row): Ro
           children: rows(list, `skipped/${kind}`),
         }))
       : rows(rest, 'skipped')
+  const items = [
+    ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
+    ...units,
+    ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
+  ]
   return [
     ...warningSection(warnings),
-    ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
-    units,
-    ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
+    ...(items.length ? items : [{ id: 'nothing', text: style('dim', empty) }]),
   ]
 }
 
 const unitSection = (header: string, rows: Row[]) =>
-  section('units', 'Units', rows, [rows.length ? header : style('dim', 'none')])
+  rows.length ? [section('units', 'Units', rows, [header])] : []
+
+/** The first row under `row` that is no heading, and the headings to unfold to show it. */
+function firstLeaf(row: Row, path: string[] = []): { id: string; path: string[] } | undefined {
+  if (!row.children) return { id: row.id, path }
+  const [child] = row.children
+  return child && firstLeaf(child, [...path, row.id])
+}
 
 function triage(
   header: string[],
@@ -175,19 +193,19 @@ function triage(
   rows: number,
   actions: readonly Action[],
 ): State {
-  const open = new Set(sections.filter((s) => s.id !== 'skipped').map((s) => s.id))
-  const state = { header, sections, actions, open, selected: '', top: 0, rows, marks: {} }
-  const list = visible(state)
-  const first =
-    list.find((v) => v.parent === 'needs') ??
-    list.find((v) => v.parent === 'units') ??
-    list.find((v) => !v.row.children) ??
-    list[0]
-  return follow({ ...state, selected: first?.row.id ?? '' })
+  // Every section after the warnings holds items, in the order to land on them.
+  const items = sections.find((s) => s.id !== 'warnings')
+  const first = items && firstLeaf(items)
+  const open = new Set([
+    ...sections.filter((s) => s.id !== 'skipped').map((s) => s.id),
+    ...(first?.path ?? []),
+  ])
+  const selected = first?.id ?? ''
+  return follow({ header, sections, actions, open, selected, top: 0, rows, marks: {} })
 }
 
 /** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
-export function planTriage(plan: RunPlan, warnings: string[], rows: number): State {
+export function planTriage(plan: RunPlan, warnings: string[], rows: number, empty?: string): State {
   const { header, units } = planUnitTable(plan, style, whole)
   const listed = listedUnits(plan)
   const unitRows = units.map(([text = '', ...more], i): Row => {
@@ -202,7 +220,7 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number): Sta
   })
   return triage(
     providerLines(plan, style),
-    sectionsOf(plan, warnings, unitSection(header, unitRows)),
+    sectionsOf(plan, warnings, unitSection(header, unitRows), empty),
     rows,
     ['read', 'open', 'skip', 'approve'],
   )
