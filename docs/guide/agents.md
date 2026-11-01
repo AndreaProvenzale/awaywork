@@ -23,23 +23,23 @@ awaywork · last run 06:10 · 1 PR · 2 need you  r: refresh p: plan
 
 1: Needs you 2  2: Last run 2  3: Next run  4: Skipped 2
 
-waiting_for_review acme/shop#7 Retry webhooks on 5xx
+waiting_for_review shop#7 Retry webhooks on 5xx
   waiting for your review of awaywork PR #31
-waiting_for_approval acme/shop#8 Split the checkout service
+waiting_for_approval shop#8 Split the checkout service
   waiting for your approval of the plan awaywork posted
 
 ⏎ read  o: open  s: skip  a: approve
 ```
 
-It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads everything again. Tab walks the rows, and on a row:
+It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else. Tab walks the rows, and on a row:
 
-- `⏎` reads the CLI's own take: `awaywork plan --why <key>` for an item, `awaywork report <run> --unit <id>` for a unit of the last run;
+- `⏎` reads it, from what's loaded: an item's skip reason as awaywork wrote it, with its link, or `awaywork report <run> --unit <id>` for a unit of the last run. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `o` opens its PR, or the item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
-- `a` approves it, when a plan waits on your approval or an `approved: true` rule could take it;
+- `a` approves it: replies approve on the plan it waits on, or marks it approved for `approved: true` rules;
 - `h` hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
 
-`s` and `a` ask `y`/`n` first, saying what they'll do. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s` and `a` ask `y`/`n` first, saying what they'll do, then mark the row `skipped`, `unskipped` or `approved`: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 `/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 

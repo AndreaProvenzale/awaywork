@@ -13,7 +13,7 @@ export type Skip = {
   needsYou?: true
 }
 
-export type Plan = { queue?: { where?: unknown }[]; units: Planned[]; skipped: Skip[] }
+export type Plan = { units: Planned[]; skipped: Skip[] }
 
 export type Result = {
   planned: Planned
@@ -39,12 +39,16 @@ export type Data = {
   plan?: Plan
   /** awaywork missing or too old, in one line with the fix. */
   error?: string
-  loading?: 'report' | 'plan'
+  loading?: true
+  planning?: true
 }
 
 export type Tab = 'needs' | 'last' | 'next' | 'skipped'
 
 export type Action = 'skip' | 'unskip' | 'approve'
+
+/** What the pane did to an item, drawn on its rows since the loaded JSON can't show it. */
+export type Mark = { skip?: 'skipped' | 'unskipped'; approved?: true }
 
 export type View = {
   tab?: Tab
@@ -53,6 +57,7 @@ export type View = {
   confirm?: { action: Action; key: string; question: string }
   reading?: { title: string; text: string }
   status?: string
+  marks?: Record<string, Mark>
 }
 
 declare module 'claude-code' {

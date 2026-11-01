@@ -5,6 +5,7 @@ import type {
   Action,
   Data,
   ItemRef,
+  Mark,
   Plan,
   Planned,
   Report,
@@ -17,8 +18,8 @@ import type {
 const PANE = 'away'
 const FIX = 'npm i -g awaywork@latest'
 
-const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-1' })
-const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-1' })
+const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
+const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-2' })
 
 /** One row of a tab, and what each key does on it. */
 type Row = {
@@ -28,9 +29,10 @@ type Row = {
   item?: ItemRef
   note: string
   url?: string
-  read: string[]
+  /** What ⏎ shows: the CLI's own read, or what the loaded JSON already says. */
+  read: string[] | { title: string; text: string }
   skip?: 'skip' | 'unskip'
-  approve?: string
+  waitsOnPlan?: true
   here?: string
 }
 
@@ -56,11 +58,16 @@ async function json<T>($: EngineInterface, args: string[], timeoutMs?: number): 
     return { error: `this awaywork is too old for the pane (no --json): ${FIX}` }
   if (r.exitCode !== 0)
     return { failed: firstLine(r.stderr) || `awaywork ${args.join(' ')} exited ${r.exitCode}` }
-  return { json: JSON.parse(r.stdout) as T }
+  try {
+    return { json: JSON.parse(r.stdout) as T }
+  } catch {
+    return { failed: `awaywork ${args.join(' ')} printed no JSON` }
+  }
 }
 
-async function reload($: EngineInterface, withPlan: boolean) {
-  await update($, data, (d): Data => ({ ...d, loading: 'report' }))
+async function readReport($: EngineInterface) {
+  await update($, view, (v) => ({ ...v, status: undefined }))
+  await update($, data, (d): Data => ({ ...d, loading: true }))
   const got = await json<Report>($, ['report', '--json'])
   const patch: Data =
     'json' in got
@@ -68,46 +75,58 @@ async function reload($: EngineInterface, withPlan: boolean) {
       : 'failed' in got
         ? { noReport: got.failed }
         : { error: got.error }
-  await update($, data, (d) => ({ plan: d.plan, ...patch }))
-  if (withPlan && !patch.error) await loadPlan($)
+  await update($, data, (d) => ({ plan: d.plan, planning: d.planning, ...patch }))
 }
 
-const refresh = async ($: EngineInterface) => reload($, !!(await read($, data)).plan)
-
 // plan probes quota and reads the forge, so it runs only when asked.
-async function loadPlan($: EngineInterface) {
-  if ((await read($, data)).loading === 'plan') return
-  await update($, data, (d): Data => ({ ...d, loading: 'plan' }))
+async function readPlan($: EngineInterface) {
+  await update($, view, (v) => ({ ...v, status: undefined }))
+  await update($, data, (d): Data => ({ ...d, planning: true }))
   const got = await json<Plan>($, ['plan', '--json'], 600_000)
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
-  await update($, data, (d) => ({ ...d, loading: undefined, ...patch }))
+  await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
   if ('failed' in got) await update($, view, (v) => ({ ...v, status: `plan: ${got.failed}` }))
 }
 
+/** Work nobody awaits: whatever goes wrong ends on the error line, never on a "planning…" for good. */
+const settled = ($: EngineInterface, work: Promise<void>, flag: 'loading' | 'planning') =>
+  work.catch((e) => update($, data, (d) => ({ ...d, [flag]: undefined, error: String(e) })))
+
+let reportCall: Promise<unknown> | undefined
+let planCall: Promise<unknown> | undefined
+
+const refresh = ($: EngineInterface) =>
+  (reportCall ??= settled($, readReport($), 'loading').finally(() => {
+    reportCall = undefined
+  }))
+
+const loadPlan = ($: EngineInterface) =>
+  (planCall ??= settled($, readPlan($), 'planning').finally(() => {
+    planCall = undefined
+  }))
+
 const itemKey = (item: ItemRef) => `${item.source}:${item.key}`
 
-const approves = (queue: Plan['queue']) =>
-  !!queue?.some((rule) => JSON.stringify(rule.where ?? {}).includes('"approved"'))
+/** `shop#7` for `acme/shop#7`, as the CLI's `shortRef`; any other key as is. */
+const shortRef = (key: string) => key.replace(/^[^/\s]+\/(?=[^/\s]+#\d+$)/, '')
 
-function skipRow(tab: Tab, s: Skip, queue: Plan['queue']): Row {
+/** A skip's reason without the URL `o` opens, as the CLI's `reasonOf`. */
+const reasonOf = (s: Skip) => s.reason.replace(` ${s.url ?? s.item.url}`, '').replace(/ on$/, '')
+
+function skipRow(tab: Tab, s: Skip): Row {
   const key = itemKey(s.item)
-  const approve =
-    s.kind === 'waiting_for_approval'
-      ? `approve the plan on ${key}? awaywork replies approve on it, no undo`
-      : s.kind === 'no_rule' && approves(queue)
-        ? `approve ${key} for your approved: true rules, until a unit on it finishes?`
-        : undefined
+  const url = s.url ?? s.item.url ?? undefined
   return {
     id: `row:${tab}:${key}`,
     word: s.kind ?? 'skipped',
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
-    note: s.reason,
-    url: s.url ?? s.item.url ?? undefined,
-    read: ['plan', '--why', key],
+    note: reasonOf(s),
+    url,
+    read: { title: `${key}  ${s.item.title}`, text: [reasonOf(s), url].filter(Boolean).join('\n') },
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
-    approve,
+    waitsOnPlan: s.kind === 'waiting_for_approval' || undefined,
   }
 }
 
@@ -134,13 +153,15 @@ function resultRow(runId: string, r: Result): Row {
 function unitRow(p: Planned): Row {
   const { id, repo, skill, deliver, items } = p.unit
   const top = items[0]
+  const note = [repo, deliver && `deliver ${deliver}`, p.provider].filter(Boolean).join(' · ')
+  const lines = items.map((i) => `${itemKey(i)}  ${i.title}${i.url ? `\n  ${i.url}` : ''}`)
   return {
     id: `row:next:${id}`,
     word: skill,
     item: top,
-    note: [repo, deliver && `deliver ${deliver}`, p.provider].filter(Boolean).join(' · '),
+    note,
     url: top?.url ?? undefined,
-    read: top ? ['plan', '--why', itemKey(top)] : [],
+    read: { title: `unit ${id}: ${skill} · ${note}`, text: lines.join('\n') },
     skip: top && 'skip',
   }
 }
@@ -169,31 +190,47 @@ const titles: Record<Tab, string> = {
 const questions = {
   skip: (key: string) => `skip ${key} in the coming runs? awaywork unskip undoes it`,
   unskip: (key: string) => `unskip ${key}? the coming runs can take it again`,
+  approvePlan: (key: string) =>
+    `approve the plan on ${key}? awaywork replies approve on it, no undo`,
+  approve: (key: string) =>
+    `mark ${key} approved for approved: true rules, until a unit on it finishes? no undo`,
 }
 
+const marked: Record<Action, Mark> = {
+  skip: { skip: 'skipped' },
+  unskip: { skip: 'unskipped' },
+  approve: { approved: true },
+}
+
+// The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
 async function act($: EngineInterface, action: Action, key: string) {
   await update($, view, (v) => ({ ...v, confirm: undefined, status: `${action}…` }))
   const r = await awaywork($, [action, key])
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
-  await update($, view, (v) => ({ ...v, status: said }))
-  await refresh($)
+  await update($, view, (v) => ({
+    ...v,
+    status: said,
+    marks:
+      r.exitCode === 0 ? { ...v.marks, [key]: { ...v.marks?.[key], ...marked[action] } } : v.marks,
+  }))
 }
 
-async function readRow($: EngineInterface, row: Row) {
-  if (row.read.length === 0) return
-  await update($, view, (v) => ({ ...v, status: `awaywork ${row.read.join(' ')}…` }))
-  const r = await awaywork($, row.read, 600_000)
+async function readRow($: EngineInterface, { read: what }: Row) {
+  if (!Array.isArray(what))
+    return update($, view, (v) => ({ ...v, status: undefined, reading: what }))
+  await update($, view, (v) => ({ ...v, status: `awaywork ${what.join(' ')}…` }))
+  const r = await awaywork($, what)
   const text = (r.stdout || r.stderr).trimEnd() || `exited ${r.exitCode}`
   await update($, view, (v) => ({
     ...v,
     status: undefined,
-    reading: { title: `awaywork ${row.read.join(' ')}`, text },
+    reading: { title: `awaywork ${what.join(' ')}`, text },
   }))
 }
 
 // The ring keeps its place across a redraw: move it onto the new tab's first row.
 async function showTab($: EngineInterface, tab: Tab, first?: string) {
-  await update($, view, (v) => ({ ...v, tab, row: first }))
+  await update($, view, (v) => ({ ...v, tab, row: first, status: undefined }))
   if (first) await $.ui.focus({ requestId: PANE, key: first }).catch(() => undefined)
 }
 
@@ -209,9 +246,9 @@ export const register: Register = (on) => {
     // A request goes to the skill, and so does a run with no surface to draw on.
     if (e.args.trim() || (await $.session.surfaces()).length === 0) return next(e)
     await update($, view, () => ({}))
-    await update($, data, (): Data => ({ loading: 'report' }))
+    await update($, data, (): Data => ({ loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })
-    void reload($, false)
+    void refresh($)
     return {}
   })
 
@@ -233,18 +270,17 @@ export const register: Register = (on) => {
     const report = d.report
     const heads = report?.results.filter((r) => !r.planned.chain && !r.retried) ?? []
     const rows: Record<Tab, Row[]> = {
-      needs: skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s, plan?.queue)),
+      needs: skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s)),
       last: report ? heads.map((r) => resultRow(report.runId, r)) : [],
       next: d.plan?.units.filter((p) => !p.chain).map(unitRow) ?? [],
-      skipped: skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s, plan?.queue)),
+      skipped: skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s)),
     }
     const landing =
       (['needs', 'last', 'skipped'] as const).find((t) => rows[t].length) ??
       (rows.next.length ? 'next' : undefined)
     const tab = v.tab === 'next' || (v.tab && rows[v.tab].length) ? v.tab : landing
-    const shown = (['needs', 'last', 'next', 'skipped'] as const).filter(
-      (t) => t === 'next' || rows[t].length,
-    )
+    const order = ['needs', 'last', 'next', 'skipped'] as const
+    const shown = order.filter((t) => t === 'next' || rows[t].length)
     const list = tab ? rows[tab] : []
     const row = list.find((r) => r.id === v.row) ?? list[0]
 
@@ -255,7 +291,7 @@ export const register: Register = (on) => {
       : [
           report
             ? `last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`
-            : d.loading === 'report'
+            : d.loading
               ? 'reading the last run…'
               : 'no run yet',
           prs > 0 && counted(prs, 'PR'),
@@ -316,11 +352,11 @@ export const register: Register = (on) => {
 
     const tabs = (
       <Box flexDirection="row" flexWrap="wrap" gap={2}>
-        {shown.map((t, i) => (
+        {shown.map((t) => (
           <Button
             key={`tab:${t}`}
             plain
-            hotkey={String(i + 1)}
+            hotkey={String(order.indexOf(t) + 1)}
             dimColor={t !== tab}
             label={t === 'next' && !d.plan ? titles[t] : `${titles[t]} ${rows[t].length}`}
             onPress={() => showTab($, t, rows[t][0]?.id)}
@@ -330,7 +366,7 @@ export const register: Register = (on) => {
     )
 
     const empty = () => {
-      if (d.loading === 'report') return <Text dimColor>reading the last run…</Text>
+      if (d.loading) return <Text dimColor>reading the last run…</Text>
       if (d.noReport && /^no runs in /.test(d.noReport))
         return (
           <Text>
@@ -347,7 +383,7 @@ export const register: Register = (on) => {
     }
 
     const next = () => {
-      if (d.loading === 'plan') return <Text dimColor>planning… it probes quota</Text>
+      if (d.planning) return <Text dimColor>planning… it probes quota</Text>
       if (!d.plan) return <Text dimColor>plan probes quota (one Haiku call): press p</Text>
       if (list.length === 0) return <Text dimColor>the next run takes nothing</Text>
     }
@@ -356,8 +392,12 @@ export const register: Register = (on) => {
       if (!tab) return empty()
       if (tab === 'next' && list.length === 0) return next()
       return list.map((r, i) => {
-        const key = r.item?.key ?? ''
-        const title = clip(r.item?.title ?? '', width - r.word.length - key.length - 2)
+        const ref = r.item ? shortRef(r.item.key) : ''
+        const mark = r.item && v.marks?.[itemKey(r.item)]
+        const word = mark
+          ? [mark.skip, mark.approved && 'approved'].filter(Boolean).join(', ')
+          : r.word
+        const title = clip(r.item?.title ?? '', width - word.length - ref.length - 2)
         return (
           <Box flexDirection="column">
             <Button
@@ -366,10 +406,10 @@ export const register: Register = (on) => {
               autoFocus={i === 0 || undefined}
               onPress={() => void readRow($, r)}
             >
-              <Text color={r.color} dimColor={!r.color}>
-                {r.word}
+              <Text color={mark ? 'warning' : r.color} dimColor={!mark && !r.color}>
+                {word}
               </Text>{' '}
-              {key} <Text dimColor>{title}</Text>
+              {ref} <Text dimColor>{title}</Text>
             </Button>
             {r.note && (
               <Text dimColor wrap="truncate-end">
@@ -413,8 +453,15 @@ export const register: Register = (on) => {
       }
       if (!row) return
       const item = row.item && itemKey(row.item)
+      const mark = item ? v.marks?.[item] : undefined
+      const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : row.skip
       const ask = (action: Action, question: string) => () =>
-        item && update($, view, (x) => ({ ...x, confirm: { action, key: item, question } }))
+        item &&
+        update($, view, (x) =>
+          action === 'approve' && mark?.approved
+            ? { ...x, status: 'already approved' }
+            : { ...x, confirm: { action, key: item, question } },
+        )
       return (
         <Box flexDirection="row" flexWrap="wrap" gap={2}>
           <Text dimColor>⏎ read</Text>
@@ -428,24 +475,27 @@ export const register: Register = (on) => {
               onPress={() => openUrl($, row.url as string)}
             />
           )}
-          {row.skip && item && (
+          {skip && item && (
             <Button
               key="skip"
               plain
               dimColor
               hotkey="s"
-              label={row.skip}
-              onPress={ask(row.skip, questions[row.skip](item))}
+              label={skip}
+              onPress={ask(skip, questions[skip](item))}
             />
           )}
-          {row.approve && (
+          {item && (
             <Button
               key="approve"
               plain
               dimColor
               hotkey="a"
               label="approve"
-              onPress={ask('approve', row.approve)}
+              onPress={ask(
+                'approve',
+                row.waitsOnPlan ? questions.approvePlan(item) : questions.approve(item),
+              )}
             />
           )}
           {row.here && (

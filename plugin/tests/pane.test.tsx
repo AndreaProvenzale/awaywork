@@ -1,5 +1,5 @@
 import type { TestBody } from 'claude-code/testing'
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { busyPlan, busyReport, emptyPlan, emptyReport } from './fixtures'
 
@@ -35,24 +35,24 @@ const focus = (element: string) =>
 type Reply = { exitCode?: number; stdout?: string; stderr?: string }
 
 /** Stands for the engine: a surface, the pane opening, and awaywork answering by subcommand. */
-function engine(on: On, replies: Record<string, Reply | (() => Reply)>) {
+function engine(on: On, replies: Record<string, Reply | (() => Reply | Promise<Reply>)>) {
   const calls: string[][] = []
   const opened: string[] = []
-  on('clock.now', () => ({ value: NOW }))
+  const clock = mock.clock(on, { now: NOW })
   on('ui.focus', () => ({}))
   on('session.surfaces', () => ({ value: ['terminal'] }))
   on('ui.open', (_, e) => {
     opened.push(e.id)
     return { value: { isPlaced: true } }
   })
-  on('process.run', (_, e) => {
+  on('process.run', async (_, e) => {
     calls.push([...e.argv])
     const reply = replies[e.argv.slice(1).join(' ')] ?? replies[e.argv[1] ?? ''] ?? {}
-    const r = typeof reply === 'function' ? reply() : reply
+    const r = typeof reply === 'function' ? await reply() : reply
     const value = { exitCode: 0, stdout: '', stderr: '', ...r }
     return { value: { ...value, isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  return { calls, opened }
+  return { calls, opened, clock }
 }
 
 const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
@@ -105,32 +105,60 @@ test('/away with a request goes to the skill', async ($, on) => {
   expect(opened).toEqual([])
 })
 
-test('p plans the next run; r reads it again', async ($, on) => {
-  const { calls } = engine(on, { 'report --json': ok(busyReport), 'plan --json': ok(busyPlan) })
+test('p plans once however often it is pressed; r reads only the report', async ($, on) => {
+  const { calls, clock } = engine(on, {
+    'report --json': ok(busyReport),
+    'plan --json': async () => {
+      await clock.sleep(1000)
+      return ok(busyPlan)
+    },
+  })
+  const plans = () => calls.filter((argv) => argv[1] === 'plan').length
   await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'plan' })
+  await ui.press({ key: 'tab:next' })
+  expect(await ui.find({ type: 'Text', text: /planning… it probes quota/ })).toBeTruthy()
+  await clock.advance(1000)
+  expect(plans()).toBe(1)
+  await ui.unmount()
 
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
-    await ui.press({ key: 'plan' })
     await ui.press({ key: 'tab:next' })
     expect(await ui.find({ key: 'row:next:acme-shop-12' })).toBeTruthy()
     expect(await ui.find({ key: 'row:next:acme-shop-12-2' })).toBeFalsy()
     expect(
       await ui.find({ type: 'Text', text: /acme\/shop · deliver draft_pr · claude/ }),
     ).toBeTruthy()
+    expect((await ui.find({ key: 'tab:skipped' }))?.props.hotkey).toBe('4')
     await ui.unmount()
   }
-  const plans = calls.filter((argv) => argv[1] === 'plan').length
-  await mount($, 'terminal')
-  expect(calls.filter((argv) => argv[1] === 'plan').length).toBe(plans + 1)
+  expect(plans()).toBe(1)
 })
 
-test('⏎ reads why, s skips after a yes, a approves a plan, h works on it here', async ($, on) => {
+test('a reply that is not JSON says so instead of reading for good', async ($, on) => {
+  engine(on, { 'report --json': { stdout: 'Debugger attached.\n{}' } })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  expect(
+    await ui.find({ type: 'Text', text: 'awaywork report --json printed no JSON' }),
+  ).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /reading the last run/ })).toBeFalsy()
+})
+
+test('⏎ reads what the JSON says, s and a ask first and mark the row, h works on it here', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),
-    'plan --why github:acme/shop#8': { stdout: 'acme/shop#8 waits for your approval' },
+    'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
     'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
     'approve github:acme/shop#8': { stdout: 'plan approved: replied approve on the issue' },
+    'approve github:acme/shop#9': {
+      stdout: 'github:acme/shop#9 is approved until a unit on it finishes',
+    },
   })
   const prompts: string[] = []
   on('prompt.submit', (_, e) => {
@@ -139,10 +167,19 @@ test('⏎ reads why, s skips after a yes, a approves a plan, h works on it here'
   })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
+  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
+    /^waiting_for_review shop#7 Retry webhooks/,
+  )
 
   await ui.press({ key: 'row:needs:github:acme/shop#8' })
-  expect(await ui.find({ type: 'Text', text: /waits for your approval/ })).toBeTruthy()
+  expect(
+    await ui.find({ type: 'Text', text: /waiting for your approval of the plan awaywork posted/ }),
+  ).toBeTruthy()
+  expect(
+    await ui.find({ type: 'Text', text: /https:\/\/github.com\/acme\/shop\/issues\/8/ }),
+  ).toBeTruthy()
   await ui.press({ key: 'back' })
+  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
 
   await ui.press({ key: 'skip' })
   expect(
@@ -154,8 +191,9 @@ test('⏎ reads why, s skips after a yes, a approves a plan, h works on it here'
   await ui.press({ key: 'yes' })
   expect(calls).toContainEqual(['awaywork', 'skip', 'github:acme/shop#7'])
   expect(await ui.find({ type: 'Text', text: /is skipped until awaywork unskip/ })).toBeTruthy()
+  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(/^skipped shop#7/)
+  expect((await ui.find({ key: 'skip' }))?.text).toMatch(/unskip/)
 
-  expect(await ui.find({ key: 'approve' })).toBeFalsy()
   await $.ui.focus(focus('row:needs:github:acme/shop#8'))
   await ui.press({ key: 'approve' })
   expect(
@@ -163,18 +201,35 @@ test('⏎ reads why, s skips after a yes, a approves a plan, h works on it here'
   ).toBeTruthy()
   await ui.press({ key: 'yes' })
   expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#8'])
+  expect((await ui.find({ key: 'row:needs:github:acme/shop#8' }))?.text).toMatch(/^approved/)
+  await ui.press({ key: 'approve' })
+  expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeTruthy()
 
   await ui.press({ key: 'tab:skipped' })
+  expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeFalsy()
   await $.ui.focus(focus('row:skipped:github:acme/shop#10'))
   expect((await ui.find({ key: 'skip' }))?.text).toMatch(/unskip/)
   await $.ui.focus(focus('row:skipped:github:acme/shop#9'))
-  expect(await ui.find({ key: 'approve' })).toBeTruthy()
+  await ui.press({ key: 'approve' })
+  expect(
+    await ui.find({
+      type: 'Text',
+      text: /mark github:acme\/shop#9 approved for approved: true rules/,
+    }),
+  ).toBeTruthy()
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#9'])
+  expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
 
   await ui.press({ key: 'tab:last' })
+  await ui.press({ key: 'row:last:acme-shop-3' })
+  expect(await ui.find({ type: 'Text', text: 'acme-shop-3: Pinned the clock' })).toBeTruthy()
+  await ui.press({ key: 'back' })
   await ui.press({ key: 'here' })
   expect(prompts).toEqual([
     'continue awaywork unit acme-shop-3 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-3`',
   ])
+  expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
 })
 
 test('no run yet, and a run that found nothing, each say why and what next', async ($, on) => {

@@ -6,5 +6,6 @@
   "repository": "https://github.com/AndreaProvenzale/awaywork",
   "license": "Apache-2.0",
   "keywords": ["awaywork", "queue", "automation"],
+  "hooks": "./hooks/mod.json",
   "types": "./types/index.d.ts"
 }
