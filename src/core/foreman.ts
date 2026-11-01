@@ -141,6 +141,8 @@ export interface RunPlan {
   allowances: Record<string, Allowance>
   /** Whether the run started outside every window; set once the quota is read. */
   present?: boolean
+  /** Each routine's next occurrence, by name, as an ISO time. */
+  routines?: Record<string, string>
 }
 
 /** Match, dedupe and route this run's items; no I/O. */
@@ -576,7 +578,7 @@ function deliveryRefusal(
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
-function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const closest = closestRule(item, queue)
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'

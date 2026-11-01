@@ -174,6 +174,7 @@ Where work comes from: built-in sources or your own commands; at least one.
 | `asana` | object |  | My incomplete Asana tasks |
 | `linear` | object |  | My open Linear issues |
 | `jira` | object |  | My unresolved Jira Cloud issues |
+| `routines` | object |  | Routines by name, each an item that comes due on the clock, like a weekly triage |
 
 ## `sources.github`
 
@@ -263,6 +264,31 @@ My unresolved Jira Cloud issues.
 ## `sources.jira.context`
 
 Same keys as `sources.github.context`.
+
+## `sources.routines`
+
+Routines by name, each an item that comes due on the clock, like a weekly triage.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
+| `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
+
+## `sources.routines.context`
+
+Same keys as `sources.github.context`.
+
+## `sources.routines.<key>`
+
+A routine: an item that comes due on the clock.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `days` | ("sun" \| "mon" \| "tue" \| "wed" \| "thu" \| "fri" \| "sat")[] |  | Weekdays it comes due on; every day when unset |
+| `at` (required) | time \| time[] |  | When it comes due, local time: one time or a list |
+| `repo` (required) | string |  | The repo its work happens in, owner/name |
+| `title` (required) | string |  | The item's title |
+| `description` | string | `""` | The item's description, what the worker reads |
 
 ## `sources.<key>`
 

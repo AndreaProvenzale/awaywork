@@ -232,7 +232,7 @@ function unreadable(e: Entry): string | undefined {
   if (e.closed !== undefined && !isTime(e.closed)) return `closed ${JSON.stringify(e.closed)}`
 }
 
-function itemMarkdown(item: Item): string {
+export function itemMarkdown(item: Item): string {
   const body = (item.raw as Entry).context ?? item.description
   const comments = item.comments.map(commentMarkdown)
   return [

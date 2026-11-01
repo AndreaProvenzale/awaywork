@@ -5,6 +5,7 @@ import { describeCondition } from '../core/condition.js'
 import { cardRepo, unpassed } from '../core/fanout.js'
 import {
   isNamed,
+  noRuleReason,
   type PlannedUnit,
   type RunPlan,
   type SkipKind,
@@ -42,6 +43,7 @@ import {
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
+import { describeOccurrence, routines } from '../sources/routines.js'
 
 const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 
@@ -160,6 +162,7 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   const style = styler(styled)
   const out = [...warningLines(warnings, styled), ...providerLines(plan, style)]
   out.push('', heading('Units', listedUnits(plan).length, style), ...planUnitLines(plan, style))
+  out.push(...routineLines(plan, style))
   out.push(...needsYouLines(plan.skipped, style), ...skippedLines(plan.skipped, style))
   if (plan.skipped.length > 0)
     out.push(
@@ -196,6 +199,14 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     out.push(style('dim', `    ${allowanceNote(id, a)}`))
   })
   return out
+}
+
+/** Each routine and when it next comes due, local time. */
+function routineLines(plan: RunPlan, style: Style): string[] {
+  const next = Object.entries(plan.routines ?? {})
+  if (next.length === 0) return []
+  const rows = next.map(([name, at]) => [name, `next ${describeOccurrence(new Date(at))}`])
+  return ['', heading('Routines', next.length, style), ...indent(table(rows))]
 }
 
 const stepsOf = (plan: Pick<RunPlan, 'units'>, head: PlannedUnit) =>
@@ -381,6 +392,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     `${item.source} ${item.key}  ${item.title}`,
     `  ${item.url}`,
     ...(item.task ? taskLines(item) : []),
+    ...(item.source === routines.id ? [routineLine(plan, item)] : []),
   ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
@@ -422,6 +434,14 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
   return out.join('\n')
+}
+
+/** Which occurrence of its routine a routine's item is, and when the next one comes due. */
+function routineLine(plan: RunReport['plan'], item: Item): string {
+  const name = String(item.fields.name)
+  const next = plan.routines?.[name]
+  const due = describeOccurrence(new Date(String(item.fields.updated)))
+  return `  routine ${name}, due ${due}${next ? `; next ${describeOccurrence(new Date(next))}` : ''}`
 }
 
 /** A task's place in its card's plan: its repo when it isn't the card's, what it waits on, and where each of those stands. */
@@ -543,6 +563,37 @@ export function formatRules(rules: Rule[], items: Item[]): string[] {
   const matched = new Set(matches.flatMap((m) => m.taken))
   const unmatched = items.filter((i) => !matched.has(i))
   return [...lines, `${unmatched.length} unmatched${keys(unmatched)}`]
+}
+
+/** `formatRules` as JSON, every item listed, each unmatched one with why it misses its closest rule; `plan` marks a card its `deliver: plan` rule holds though its `where` no longer matches. */
+export function rulesJson(
+  rules: Rule[],
+  items: Item[],
+  defaultQueue: boolean,
+  warnings: string[] = [],
+): string {
+  const matches = ruleMatches(items, rules)
+  const matched = new Set(matches.flatMap((m) => m.taken))
+  const described = rules.map((rule, i) => {
+    const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
+    const takenBy = [...new Set(shadowed.map((s) => s.by))].map((by) => ({
+      rule: by + 1,
+      items: shadowed.filter((s) => s.by === by).map((s) => itemRef(s.item)),
+    }))
+    return {
+      rule: i + 1,
+      skill: rule.skill,
+      summary: describeRule(rule),
+      taken: taken.map((item) =>
+        matchesRule(rule, item) ? itemRef(item) : { ...itemRef(item), plan: true },
+      ),
+      takenBy,
+    }
+  })
+  const unmatched = items
+    .filter((i) => !matched.has(i))
+    .map((item) => ({ ...itemRef(item), reason: noRuleReason(item, rules).reason }))
+  return JSON.stringify({ rules: described, defaultQueue, unmatched, warnings }, null, 2)
 }
 
 function describeSkill(p: PlannedUnit): string {

@@ -8,3 +8,9 @@ export const forgeFor = (config: Config): Forge =>
   config.sources.bitbucket
     ? bitbucketForge(bitbucketWorkspaces(config))
     : githubForge(undefined, githubHost(config))
+
+/** The repo's web page on the configured forge. */
+export const repoUrl = (config: Config, repo: string): string =>
+  config.sources.bitbucket
+    ? `https://bitbucket.org/${repo}`
+    : `https://${githubHost(config) ?? 'github.com'}/${repo}`

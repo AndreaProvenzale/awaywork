@@ -1,8 +1,11 @@
+import { z } from 'zod'
 import type { Config } from '../config/schema.js'
 
 export type Window = Config['windows'][number]
 
-const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+export const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+
+export const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected a time like "01:00"')
 
 const MINUTE = 60 * 1000
 const DAY = 24 * 60 * MINUTE
@@ -14,7 +17,7 @@ export const SELF_HOSTED_JOB_MINUTES = 1440
 /** How long a run on a GitHub-hosted runner lasts at most, counted from its own start: the rest of the job publishes and reports. */
 export const HOSTED_RUN_MINUTES = 340
 
-const clock = (time: string) => time.split(':').map(Number) as [number, number]
+export const clock = (time: string) => time.split(':').map(Number) as [number, number]
 
 /** Where a window opens (local time) as a scheduler trigger, same-time windows merged as launchd reads them back: weekdays are 0 (Sunday) to 6. */
 export function startsOf(windows: Window[]): { hour: number; minute: number; days?: number[] }[] {

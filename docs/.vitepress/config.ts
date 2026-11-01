@@ -20,6 +20,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Scheduling', link: '/guide/scheduling' },
       { text: 'Safety', link: '/guide/safety' },
       { text: 'For AI agents', link: '/guide/agents' },
+      { text: 'Suggested rules', link: '/guide/suggest' },
     ],
   },
   {
