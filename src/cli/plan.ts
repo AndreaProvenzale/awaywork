@@ -96,7 +96,10 @@ export function planCommand(program: Command): void {
         }
         if (screen) {
           return await screen.browse(
-            planTriage(plan, warnings, process.stdout.rows, none),
+            {
+              ...planTriage(plan, warnings, process.stdout.rows, none),
+              status: plan.skipped.length ? none : undefined,
+            },
             itemCommands(async () => config),
           )
         }
