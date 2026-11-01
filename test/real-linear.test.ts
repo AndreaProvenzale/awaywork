@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Item } from '../src/core/types.js'
-import { sourceField } from '../src/sources/index.js'
+import { itemFields, sourceField } from '../src/sources/index.js'
 import { API, linear } from '../src/sources/linear.js'
 import { scriptedAsk } from './fakes/ask.js'
 
@@ -135,7 +135,9 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     for (const item of items)
       for (const [key, value] of Object.entries(item.fields))
         for (const v of [value].flat())
-          expect(sourceField(linear.fields, key)?.safeParse(v).success).toBe(true)
+          expect((itemFields[key] ?? sourceField(linear.fields, key))?.safeParse(v).success).toBe(
+            true,
+          )
 
     // The source reads everything assigned to the key's user, so only the seeded keys are checked.
     const byKey = (key = ''): Item => {
@@ -149,7 +151,8 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     expect(first).toMatchObject({ type: 'task', assignee: viewer, labels: [label] })
     expect(first.fields).toEqual({
       team,
-      state,
+      status: state,
+      state: 'open',
       labels: [label],
       priority: 'High',
       blocked: false,
@@ -159,7 +162,8 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     expect(first.comments.map((c) => c.body)).toEqual([comment])
     expect(second.fields).toEqual({
       team,
-      state,
+      status: state,
+      state: 'open',
       labels: [],
       priority: 'No priority',
       blocked: true,
@@ -173,7 +177,7 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     expect(await readFile(join(dir, 'item.md'), 'utf8')).toContain(comment)
   }, 120_000)
 
-  it('offers the real team and state names at init', async () => {
+  it('offers the real team and status names at init', async () => {
     const ask = scriptedAsk([
       [/Linear teams/, [team]],
       [/GitHub repo for issues in/, repo],
@@ -181,6 +185,6 @@ describe.skipIf(!token || !team)('linear source, live', () => {
     const setup = await linear.init?.(ask, ctx)
     expect(setup?.config).toEqual({ repo_map: { [team]: repo } })
     expect(setup?.values?.team).toContain(team)
-    expect(setup?.values?.state).toContain(state)
+    expect(setup?.values?.status).toContain(state)
   }, 30_000)
 })
