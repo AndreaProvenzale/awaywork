@@ -95,9 +95,8 @@ export function planCommand(program: Command): void {
           return
         }
         if (screen) {
-          const state = planTriage(plan, warnings, process.stdout.rows)
           return await screen.browse(
-            { ...state, status: none },
+            planTriage(plan, warnings, process.stdout.rows, none),
             itemCommands(async () => config),
           )
         }

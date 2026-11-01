@@ -139,13 +139,16 @@ function warningSection(warnings: string[]): Row[] {
 // The view clips each line to the terminal, not each cell.
 const whole = Infinity
 
-const nothing: Row = {
-  id: 'nothing',
-  text: style('dim', 'Nothing came in from your sources; awaywork sources lists what they can see'),
-}
+const nothing =
+  'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
 
 /** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several; a section only when it has rows. */
-function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row[]): Row[] {
+function sectionsOf(
+  plan: RunReport['plan'],
+  warnings: string[],
+  units: Row[],
+  empty = nothing,
+): Row[] {
   const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
     skipRow(plan, skipped, lines, `needs/${i}`),
   )
@@ -168,7 +171,10 @@ function sectionsOf(plan: RunReport['plan'], warnings: string[], units: Row[]): 
     ...units,
     ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
   ]
-  return [...warningSection(warnings), ...(items.length ? items : [nothing])]
+  return [
+    ...warningSection(warnings),
+    ...(items.length ? items : [{ id: 'nothing', text: style('dim', empty) }]),
+  ]
 }
 
 const unitSection = (header: string, rows: Row[]) =>
@@ -199,7 +205,7 @@ function triage(
 }
 
 /** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
-export function planTriage(plan: RunPlan, warnings: string[], rows: number): State {
+export function planTriage(plan: RunPlan, warnings: string[], rows: number, empty?: string): State {
   const { header, units } = planUnitTable(plan, style, whole)
   const listed = listedUnits(plan)
   const unitRows = units.map(([text = '', ...more], i): Row => {
@@ -214,7 +220,7 @@ export function planTriage(plan: RunPlan, warnings: string[], rows: number): Sta
   })
   return triage(
     providerLines(plan, style),
-    sectionsOf(plan, warnings, unitSection(header, unitRows)),
+    sectionsOf(plan, warnings, unitSection(header, unitRows), empty),
     rows,
     ['read', 'open', 'skip', 'approve'],
   )

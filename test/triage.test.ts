@@ -102,7 +102,8 @@ describe('triage view', () => {
     plan.units = []
     plan.skipped = []
     const empty = planTriage(plan, [], 20)
-    const nothing = 'Nothing came in from your sources; awaywork sources lists what they can see'
+    const nothing =
+      'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
     expect(screen(empty).slice(4, 7)).toEqual(['', nothing, ''])
     expect(selectedLine(empty)).toBe(nothing)
     const warned = planTriage(plan, ['source tracker: Command failed'], 20)
@@ -114,6 +115,8 @@ describe('triage view', () => {
       nothing,
     ])
     expect(selectedLine(warned)).toBe(nothing)
+    const filtered = planTriage(plan, [], 20, 'no unit matches --repo/--rule')
+    expect(screen(filtered).slice(4, 7)).toEqual(['', 'no unit matches --repo/--rule', ''])
   })
 
   it('keeps a Needs you reason but the closest rule, and opens the PR it waits on', () => {
