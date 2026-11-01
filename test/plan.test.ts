@@ -1546,6 +1546,15 @@ describe('plan --json', () => {
     expect(json.allowances.claude).toMatchObject({ kind: 'quota', used: 0.36 })
     expect(json.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#3' } })
   })
+
+  it('marks the skips that need you', () => {
+    const result = plan(example, [githubPr(3)], { claude: week(0.36), codex: null })
+    const waiting = { item: githubPr(4), kind: 'waiting_for_review' as const, reason: 'r' }
+    const json = JSON.parse(planJson({ ...result, skipped: [...result.skipped, waiting] }))
+    expect(json.skipped[0]).toMatchObject({ kind: 'no_rule' })
+    expect(json.skipped[0]).not.toHaveProperty('needsYou')
+    expect(json.skipped[1]).toMatchObject({ kind: 'waiting_for_review', needsYou: true })
+  })
 })
 
 describe('ruleNumber', () => {

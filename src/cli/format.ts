@@ -55,9 +55,12 @@ function lean(key: string, value: unknown) {
   return { ...task, parent: itemRef(task.parent) }
 }
 
+/** Flags a skip you can act on, so a reader needn't know which kinds those are. */
+const flagged = (s: ReportedSkip) => (needsYouOn(s) ? { ...s, needsYou: true } : s)
+
 /** The plan and warnings as JSON; items drop their raw source payload. */
 export function planJson(plan: RunPlan, warnings: string[] = []): string {
-  return JSON.stringify({ ...plan, warnings }, lean, 2)
+  return JSON.stringify({ ...plan, skipped: plan.skipped.map(flagged), warnings }, lean, 2)
 }
 const withItemRefs = (p: PlannedUnit) => ({
   ...p,
@@ -73,7 +76,7 @@ export function reportJson(report: RunReport, warnings: string[] = []): string {
       plan: {
         ...plan,
         units: plan.units.map(withItemRefs),
-        skipped: plan.skipped.map((s) => ({ ...s, item: itemRef(s.item) })),
+        skipped: plan.skipped.map(flagged).map((s) => ({ ...s, item: itemRef(s.item) })),
       },
       results: results.map((r) => ({ ...r, planned: withItemRefs(r.planned) })),
       warnings,

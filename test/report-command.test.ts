@@ -112,7 +112,11 @@ describe('report command', () => {
         sliceBody: 'units/acme-api-1/out/pr.md',
       } satisfies StepFiles,
     }
-    const plan = { units: [planned], skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }] }
+    const waiting = { item: githubPr(3), kind: 'waiting_for_review', reason: 'r' }
+    const plan = {
+      units: [planned],
+      skipped: [{ item: skipped, kind: 'no_rule', reason: 'r' }, waiting],
+    }
     const run = { runId: '20261015-220000', plan, results: [result] } as unknown as RunReport
     await writeFile(join(runsDir, run.runId, 'report.json'), reportJson(run))
     const { out } = output()
@@ -128,6 +132,8 @@ describe('report command', () => {
       },
     })
     expect(json.plan.skipped[0]).toMatchObject({ kind: 'no_rule', item: { key: 'acme/api#2' } })
+    expect(json.plan.skipped[0]).not.toHaveProperty('needsYou')
+    expect(json.plan.skipped[1]).toMatchObject({ kind: 'waiting_for_review', needsYou: true })
   })
 
   it('prints a run from its report.json, one unit with the files still there, or its skips', async () => {
