@@ -30,6 +30,7 @@
     "dist",
     "harness.md",
     "skills",
+    "plugin",
     "NOTICE"
   ],
   "engines": {

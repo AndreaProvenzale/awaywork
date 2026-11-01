@@ -14,6 +14,8 @@ awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
 
+Or let your coding agent edit the queue for you, checked on your real items first: [With an AI agent](./agents.md).
+
 For autocompletion and hover docs in editors with the YAML language server (VS Code's YAML extension, JetBrains, Neovim), put this first line in the file:
 
 ```yaml

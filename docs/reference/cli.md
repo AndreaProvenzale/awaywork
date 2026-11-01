@@ -138,7 +138,8 @@ show the next run's units in order, with each provider's ceiling; runs no
 worker; browsable in a terminal
 
 Options:
-  --json            print the plan and warnings as JSON
+  --json            print the plan, or with --rules the rules, and warnings as
+                    JSON
   --repo <glob>     only units in repos matching owner/name, * globs
   --rule <n>        only units of this queue rule, counted from 1
   --rules           show what each rule takes now and what earlier rules take
