@@ -289,8 +289,10 @@ async function openUrl($: EngineInterface, url: string) {
 
 export const register: Register = (on) => {
   on('command.run', { command: ['away', 'awaywork:away'] }, async ($, e, next) => {
-    // A request goes to the skill, and so does a run with no surface to draw on.
-    if (e.args.trim() || (await $.session.surfaces()).length === 0) return next(e)
+    // A request goes to the skill, and so does a run nobody typed with no surface to draw on (`-p`).
+    // The desktop app attaches only once the pane asks to draw, so a typed /away opens it anyway.
+    const headless = e.origin.kind !== 'composer' && (await $.session.surfaces()).length === 0
+    if (e.args.trim() || headless) return next(e)
     await update($, view, (v) => ({ marks: v.marks }))
     await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })

@@ -35,12 +35,16 @@ const focus = (element: string) =>
 type Reply = { exitCode?: number; stdout?: string; stderr?: string }
 
 /** Stands for the engine: a surface, the pane opening, and awaywork answering by subcommand. */
-function engine(on: On, replies: Record<string, Reply | (() => Reply | Promise<Reply>)>) {
+function engine(
+  on: On,
+  replies: Record<string, Reply | (() => Reply | Promise<Reply>)>,
+  surfaces: (typeof SURFACES)[number][] = ['terminal'],
+) {
   const calls: string[][] = []
   const opened: string[] = []
   const clock = mock.clock(on, { now: NOW })
   on('ui.focus', () => ({}))
-  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('session.surfaces', () => ({ value: surfaces }))
   on('ui.open', (_, e) => {
     opened.push(e.id)
     return { value: { isPlaced: true } }
@@ -105,6 +109,19 @@ test('/away with a request goes to the skill', async ($, on) => {
   const ran = await $.command.run(away('why did acme/shop#7 not run?', 'awaywork:away'))
   expect(ran.text).toBe('the skill ran')
   expect(opened).toEqual([])
+})
+
+test('bare /away opens the pane when typed before the desktop attaches, not under -p', async ($, on) => {
+  const { opened } = engine(on, { 'report --json': ok(busyReport) }, [])
+  on('command.run', () => ({ text: 'the skill ran' }))
+  await $.command.run(away('', 'awaywork:away'))
+  expect(opened).toEqual(['away'])
+  const ui = await mount($, 'desktop')
+  expect(await ui.find({ type: 'Text', text: /2 need you/ })).toBeTruthy()
+  await ui.unmount()
+  const ran = await $.command.run({ ...away('', 'awaywork:away'), origin: { kind: 'sdk' } })
+  expect(ran.text).toBe('the skill ran')
+  expect(opened).toEqual(['away'])
 })
 
 test('p plans once however often it is pressed; r reads only the report', async ($, on) => {
