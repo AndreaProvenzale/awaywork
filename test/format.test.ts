@@ -28,7 +28,7 @@ import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
-import { asanaTask, githubPr } from './fakes/items.js'
+import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 /** The row of `acme/api#31` among the skips. */
 const row = (skipped: RunPlan['skipped'], clipAt?: number): SkipRow | undefined =>
@@ -292,6 +292,16 @@ describe('plan views', () => {
         skipped: waiting_for_review
           waiting for review: awaywork PR is open; closest #3 fix: checks is passing, wants failing"
     `)
+  })
+
+  it('lines up Needs you within each group, so one long key leaves the other titles be', () => {
+    const plan = acmePlan()
+    const key = 'dep-api--opentelemetry-instrumentation-mongoose'
+    const item = fakeItem({ source: 'deps', key, title: 'Bump mongoose instrumentation' })
+    plan.skipped.push({ item, kind: 'gave_up', reason: 'gave up after 3 attempts' })
+    const text = formatPlan(plan)
+    expect(text).toContain('\n    T-4  Task 4  add repo\n')
+    expect(text).toContain(`\n    ${key}  Bump mongoose instrumentation  read logs\n`)
   })
 
   it('keeps the date a gave_up reason gives in Needs you', () => {

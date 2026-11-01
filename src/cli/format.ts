@@ -297,18 +297,18 @@ export function planUnitTable(
 export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
   const waiting = skipped.filter(needsYouOn)
   if (waiting.length === 0) return []
-  const groups = skipRows(waiting)
-  const rows = groups.flatMap(([, list]) => list)
-  const lines = table(rows.map((r) => [r.ref, clip(r.title, TITLE), r.action]))
-  const under = ' '.repeat(Math.max(...rows.map((r) => width(r.ref))) + 2)
-  const block = (r: SkipRow) => [
-    lines[rows.indexOf(r)] ?? '',
-    ...(r.note ? [style('dim', `${under}${r.note}`)] : []),
-  ]
+  const group = (list: SkipRow[]) => {
+    const lines = table(list.map((r) => [r.ref, clip(r.title, TITLE), r.action]))
+    const under = ' '.repeat(Math.max(...list.map((r) => width(r.ref))) + 2)
+    return list.flatMap((r, i) => [
+      lines[i] ?? '',
+      ...(r.note ? [style('dim', `${under}${r.note}`)] : []),
+    ])
+  }
   return [
     '',
     heading('Needs you', waiting.length, style),
-    ...indent(groups.flatMap(([group, list]) => [group, ...indent(list.flatMap(block))])),
+    ...indent(skipRows(waiting).flatMap(([name, list]) => [name, ...indent(group(list))])),
   ]
 }
 
