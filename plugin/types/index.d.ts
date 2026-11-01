@@ -58,6 +58,8 @@ export type View = {
   tab?: Tab
   /** The row the focus ring is on. */
   row?: string
+  /** The detail's first row shown. */
+  at?: number
   confirm?: { action: Action; key: string; question: string }
   reading?: { title: string; text: string }
   status?: string
