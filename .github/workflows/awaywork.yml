@@ -30,7 +30,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile && pnpm build
       # Dogfoods main from source, unlike the generated workflow's npm install.
-      - run: npm install -g . @anthropic-ai/claude-code
+      # pnpm goes here, not in pnpm/action-setup: the worker can't enter the runner's home.
+      - run: npm install -g . pnpm@11.3.0 @anthropic-ai/claude-code
       - name: Commit as the token's user
         run: |
           user=$(gh api user --jq '"\(.id)+\(.login)"')
