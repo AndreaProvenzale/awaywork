@@ -6,7 +6,7 @@ user-invocable: false
 
 # awaywork queue
 
-awaywork runs coding agents headless on the developer's items, picked by the `queue` rules in its config. Turn what the developer wants offloaded into rules, check them on their real items, and write only what they accept. The ground rules in the [`away`](../away/SKILL.md#ground-rules) skill hold throughout: invoke it first if it isn't loaded.
+Turn what the developer wants offloaded into rules, check them on their real items, and write only what they accept. The ground rules in the [`away`](../away/SKILL.md#ground-rules) skill hold throughout: invoke it first if it isn't loaded.
 
 ## Set up
 
