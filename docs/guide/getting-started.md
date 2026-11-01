@@ -65,7 +65,7 @@ awaywork plan
 q quit
 ```
 
-Then the same screen is a view to browse, here with the `no_rule` skips unfolded and `over_cap` selected:
+Then the same screen is a view to browse, here with the skipped tracker items unfolded and the `acme/api` ones selected:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -77,21 +77,24 @@ Providers
     other limits: reserve cap 90%
 
 ▾ Needs you 1
-  T-4  no repo: no linked PR or repo field
-       Export invoices as CSV
+  ▾ tracker T 1
+    T-4  Export invoices as CSV  add repo
+         no linked PR or repo field
 
 ▾ Units 3
-     item   rule  skill              provider  deliver   title
-  1  api#1  #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
-     + api#5: same feature, matched #3
-  2  web#3  #1    fix (built-in)     claude    draft_pr  WIP: new billing page
-  3  api#2  #2    review (built-in)  claude    report    Cache user sessions
+       item  rule  skill              provider  deliver   title
+  ▾ acme/api 2
+    1  #1    #1    fix (built-in)     claude    draft_pr  Add rate limits to the public API
+       + api#5: same feature, matched #3
+    3  #2    #2    review (built-in)  claude    report    Cache user sessions
+  ▾ acme/web 1
+    2  #3    #1    fix (built-in)     claude    draft_pr  WIP: new billing page
 
 ▾ Skipped 2: 1 no_rule, 1 over_cap
-  ▾ no_rule 1
-    T-7  closest #3 implement: type is task, wants issue
-         Onboarding emails
-  ▸ over_cap 1
+  ▾ tracker T 1
+    T-7  Onboarding emails       no rule
+         closest #3 implement: type is task, wants issue
+  ▸ acme/api 1
 
 ⏎ unfold  o open  s skip  a approve  ? help  q quit
 ```
@@ -114,8 +117,9 @@ Units 3
   3  api#2  #2    review (built-in)  claude    report    Cache user sessions
 
 Needs you 1
-  T-4  no repo: no linked PR or repo field
-       Export invoices as CSV
+  tracker T
+    T-4  Export invoices as CSV  add repo
+         no linked PR or repo field
 
 Skipped 2: 1 no_rule, 1 over_cap
 
@@ -123,7 +127,7 @@ awaywork plan --skipped [kind]  lists them
 awaywork plan --why <key>       says why an item is planned or not
 ```
 
-Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, here a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, after the Needs you ones, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
+Each unit names its item (`api#1` is acme/api#1; a tracker's key stays as is), the rule it matched, its skill, provider and delivery. **Needs you** lists the skipped items only you can unblock, under their repo or their tracker and project key, each ending on what to do: here `add repo`, for a task with no repo to work in. The rest is the config doing its job, counted by kind: `plan --skipped` lists them with the reason, after the Needs you ones, `plan --skipped no_rule` only one kind, and `plan --why <key>` explains one item, with the queue when it matched no rule:
 
 ```
 $ awaywork plan --why T-7

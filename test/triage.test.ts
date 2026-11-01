@@ -23,7 +23,7 @@ import { githubPr } from './fakes/items.js'
 
 const files = [{ text: '1  api#1  PR 1', log: '/runs/1/worker.log' }]
 
-const needsRow = 'T-4  no repo: no linked PR or repo field'
+const needsRow = 'T-4  Task 4  add repo'
 
 const run = (rows = 30) => runTriage(acmeRun(), ['source tracker: Command failed'], files, rows)
 
@@ -50,17 +50,17 @@ describe('triage view', () => {
         "  source tracker: Command failed",
         "",
         "▾ Needs you 1",
-        "  T-4  no repo: no linked PR or repo field",
-        "       Task 4",
+        "  ▾ asana T 1",
+        "    T-4  Task 4  add repo",
+        "         no linked PR or repo field",
         "",
         "▾ Units 1",
-        "     item   skill  status          result",
-        "  1  api#1  fix    done, 12 turns  https://github.com/acme/api/pull/9",
-        "     Retries the flaky upload test instead of sleeping.",
+        "       item  skill  status          result",
+        "  ▾ acme/api 1",
+        "    1  #1    fix    done, 12 turns  https://github.com/acme/api/pull/9",
+        "       Retries the flaky upload test instead of sleeping.",
         "",
         "▸ Skipped 2: 1 no_rule, 1 over_cap",
-        "",
-        "",
         "",
         "",
         "",
@@ -78,23 +78,23 @@ describe('triage view', () => {
       '  claude    fallback',
       '    4 units, 60 turns each (no quota reading)',
     ])
-    expect(lines).toContain('  1  api#1  #1    fix (built-in)  claude    draft_pr  PR 1')
+    expect(lines).toContain('    1  #1    #1    fix (built-in)  claude    draft_pr  PR 1')
   })
 
   it('starts on the first Needs you item, in reverse video, else the first unit, else the first skipped one', () => {
     expect(selectedLine(run())).toBe(needsRow)
-    expect(view(run(), 80, 30).find((l) => l.includes('\u001b[7m'))).toBe(
-      `\u001b[7m${`  ${needsRow}`.padEnd(80)}\u001b[27m`,
-    )
+    const selected = view(run(), 80, 30).find((l) => l.includes('\u001b[7m')) ?? ''
+    expect(selected.startsWith('\u001b[7m') && selected.endsWith('\u001b[27m')).toBe(true)
+    expect(stripVTControlCharacters(selected)).toBe(`    ${needsRow}`.padEnd(80))
     const r = acmeRun()
     r.plan.skipped = r.plan.skipped.filter((s) => s.kind !== 'no_repo')
     const warnings = ['source tracker: Command failed']
-    expect(selectedLine(runTriage(r, warnings, files, 30))).toMatch(/^1 {2}api#1/)
+    expect(selectedLine(runTriage(r, warnings, files, 30))).toMatch(/^1 {2}#1/)
     r.results = []
     const skipped = runTriage(r, warnings, files, 30)
-    expect(selectedLine(skipped)).toBe('api#3  closest #1 fix: checks is passing, wants failing')
+    expect(selectedLine(skipped)).toBe('#3  PR 3  no rule')
     expect(screen(skipped)).not.toContain('▾ Units 0')
-    expect(screen(skipped)).toContain('  ▸ over_cap 1')
+    expect(screen(skipped)).toContain('  ▾ acme/api 2')
   })
 
   it('shows no section without items, and says why when there are none', () => {
@@ -119,12 +119,20 @@ describe('triage view', () => {
     expect(screen(filtered).slice(4, 7)).toEqual(['', 'no unit matches --repo/--rule', ''])
   })
 
-  it('keeps a Needs you reason but the closest rule, and opens the PR it waits on', () => {
+  it('groups Needs you by repo, says the action without the reason it repeats, and opens the PR it waits on', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
     const state = planTriage(plan, [], 30)
-    expect(screen(state)).toContain('  api#31  waiting for review: awaywork PR is open')
-    expect(update(press(state, 'down'), 'o').effect).toMatchObject({
+    expect(screen(state).slice(5, 12)).toEqual([
+      '▾ Needs you 2',
+      '  ▾ asana T 1',
+      '    T-4  Task 4  add repo',
+      '         no linked PR or repo field',
+      '  ▾ acme/api 1',
+      '    #31  PR 31   review PR',
+      '',
+    ])
+    expect(update(press(state, 'down', 'down'), 'o').effect).toMatchObject({
       target: 'https://github.com/acme/api/pull/31',
     })
   })
@@ -134,9 +142,7 @@ describe('triage view', () => {
     const url = 'https://github.com/acme/api/pull/31'
     const reason = `waiting for review: awaywork pushed onto your PR ${url}`
     plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
-    expect(screen(planTriage(plan, [], 30))).toContain(
-      '  api#31  waiting for review: awaywork pushed onto your PR',
-    )
+    expect(screen(planTriage(plan, [], 30))).toContain('         awaywork pushed onto your PR')
   })
 
   it('clips results and titles to the terminal, not to a fixed width', () => {
@@ -149,41 +155,54 @@ describe('triage view', () => {
     delete result.summary
     result.planned.unit.items[0] = { ...githubPr(1), title: `PR ${'1'.repeat(80)}` }
     const lines = screen(runTriage(r, [], files, 30), 200)
-    expect(lines).toContain(`  1  api#1  fix    skipped  awaywork tried this in ${url}`)
-    expect(lines).toContain(`     PR ${'1'.repeat(80)}`)
-    expect(screen(runTriage(r, [], files, 30), 60)).toContain(`     PR ${'1'.repeat(51)}…`)
+    expect(lines).toContain(`    1  #1    fix    skipped  awaywork tried this in ${url}`)
+    expect(lines).toContain(`       PR ${'1'.repeat(80)}`)
+    expect(screen(runTriage(r, [], files, 30), 60)).toContain(`       PR ${'1'.repeat(49)}…`)
   })
 
-  it('unfolds Skipped into kinds, each folded, and a kind into its items without what the kind says', () => {
+  it('unfolds Skipped into repos, each folded, and a repo into its items by action, without what the action says', () => {
     const skipped = press(run(), 'G', 'right')
-    expect(screen(skipped)).toContain('  ▸ no_rule 1')
-    expect(screen(skipped)).toContain('  ▸ over_cap 1')
+    expect(screen(skipped)).toContain('  ▸ acme/api 2')
     const open = press(skipped, 'down', 'space')
-    expect(screen(open)).toContain('    api#3  closest #1 fix: checks is passing, wants failing')
-    expect(screen(open)).toContain('           PR 3')
-    expect(selectedLine(open)).toBe('▾ no_rule 1')
-    expect(screen(press(open, 'down', 'down', 'right'))).toContain('    api#2  limits.units is 1')
+    expect(selectedLine(open)).toBe('▾ acme/api 2')
+    const lines = screen(open)
+    const at = lines.indexOf('▾ Skipped 2: 1 no_rule, 1 over_cap')
+    expect(lines.slice(at, at + 6)).toEqual([
+      '▾ Skipped 2: 1 no_rule, 1 over_cap',
+      '  ▾ acme/api 2',
+      '    #3  PR 3     no rule',
+      '        closest #1 fix: checks is passing, wants failing',
+      '    #2  PR 2     over cap',
+      '        limits.units is 1',
+    ])
   })
 
-  it('lists the items of a single kind right under Skipped', () => {
-    const r = acmeRun()
-    r.plan.skipped = r.plan.skipped.filter((s) => s.kind !== 'over_cap')
-    const open = press(runTriage(r, [], files, 30), 'G', 'right')
-    expect(screen(open)).toContain('▾ Skipped 1: 1 no_rule')
-    expect(selectedLine(press(open, 'down'))).toBe(
-      'api#3  closest #1 fix: checks is passing, wants failing',
+  it('lists Needs you by action within a repo, so the PRs to review sit together', () => {
+    const plan = acmePlan()
+    const url = 'https://github.com/acme/api/issues/32'
+    const approval = 'waiting for your approval of the plan on'
+    plan.skipped.push(
+      { item: githubPr(32), kind: 'waiting_for_approval', reason: `${approval} ${url}`, url },
+      waitingSkip(),
+      { ...waitingSkip(), item: githubPr(33) },
     )
+    expect(screen(planTriage(plan, [], 30)).slice(9, 13)).toEqual([
+      '  ▾ acme/api 3',
+      '    #31  PR 31   review PR',
+      '    #33  PR 33   review PR',
+      '    #32  PR 32   approve plan',
+    ])
   })
 
-  it('lists skips from a report.json older than kinds right under Skipped, uncounted', () => {
+  it('lists skips from a report.json older than kinds under Skipped, uncounted, with their whole reason', () => {
     const r = acmeRun()
     r.plan.skipped = r.plan.skipped.map(({ item, reason }) => ({ item, reason }))
-    const open = press(runTriage(r, [], files, 30), 'G', 'right')
+    const open = press(runTriage(r, [], files, 30), 'G', 'right', 'down', 'right')
     expect(screen(open)).toContain('▾ Skipped 3')
+    expect(screen(open)).toContain('    #3   PR 3  skipped')
     expect(screen(open)).toContain(
-      '  api#3  matched no rule; closest #1 fix: checks is passing, wants failing',
+      '         matched no rule; closest #1 fix: checks is passing, wants failing',
     )
-    expect(screen(open)).toContain('  T-4    no repo: no linked PR or repo field')
     expect(screen(open)).not.toContain('Needs you')
   })
 
@@ -202,7 +221,7 @@ describe('triage view', () => {
 
   it('counts an emoji that VS16 widens as two columns', () => {
     const r = acmeRun()
-    for (const s of r.plan.skipped) s.reason = `${s.reason} ⚠️`
+    for (const s of r.plan.skipped) s.item = { ...s.item, title: `${s.item.title} ⚠️` }
     const lines = view(runTriage(r, [], files, 30), 60, 30)
     const selected = lines.find((l) => l.includes('\u001b[7m')) ?? ''
     expect(selected).toContain('⚠️')
@@ -250,7 +269,7 @@ describe('triage view', () => {
     const help = screen(update(plan, '?').state)
     expect(help).toContain("  o                 open the unit's PR, else the item")
     expect(help.join('\n')).not.toMatch(/^ {2}[ld] /m)
-    const unit = press(plan, 'down', 'down')
+    const unit = press(plan, 'down', 'down', 'down')
     expect(update(unit, 'l')).toEqual({ state: unit })
     expect(screen(update(run(), '?').state)).toContain(
       "  l                 page the step's worker.log",
@@ -260,8 +279,8 @@ describe('triage view', () => {
   it('dims the keys a row has nothing behind', () => {
     const footer = (state: State) => view(state, 120, state.rows).at(-2) ?? ''
     const dim = (label: string) => `\u001b[2m${label}\u001b[22m`
-    const unit = press(run(), 'down', 'down')
-    expect(selectedLine(unit)).toMatch(/^1 {2}api#1/)
+    const unit = press(run(), 'down', 'down', 'down')
+    expect(selectedLine(unit)).toMatch(/^1 {2}#1/)
     expect(footer(unit)).toContain(dim('d diff'))
     expect(footer(unit)).not.toContain(dim('l log'))
     const needs = run()
@@ -276,22 +295,23 @@ describe('triage view', () => {
 describe('triage update', () => {
   it('moves with arrows and j k, jumps with g G, and stops at either end', () => {
     const start = run()
-    expect(selectedLine(press(start, 'down', 'j'))).toMatch(/^1 {2}api#1/)
+    expect(selectedLine(press(start, 'down', 'j', 'j'))).toMatch(/^1 {2}#1/)
     expect(selectedLine(press(start, 'k', 'up', 'up', 'up'))).toBe('▾ Warnings 1')
     expect(selectedLine(press(start, 'G', 'down'))).toMatch(/^▸ Skipped 2/)
     expect(selectedLine(press(start, 'end', 'g'))).toBe('▾ Warnings 1')
     expect(selectedLine(press(start, 'home'))).toBe('▾ Warnings 1')
   })
 
-  it('folds with ← and Space, and ← on a row goes to its section', () => {
+  it('folds with ← and Space, and ← on a row goes to its heading', () => {
     const start = run()
     const parent = press(start, 'left')
-    expect(selectedLine(parent)).toBe('▾ Needs you 1')
+    expect(selectedLine(parent)).toBe('▾ asana T 1')
     const folded = press(parent, 'left')
-    expect(screen(folded)).not.toContain(`  ${needsRow}`)
-    expect(selectedLine(folded)).toBe('▸ Needs you 1')
-    expect(selectedLine(press(folded, 'space'))).toBe('▾ Needs you 1')
-    expect(selectedLine(press(folded, 'return'))).toBe('▾ Needs you 1')
+    expect(screen(folded)).not.toContain(`    ${needsRow}`)
+    expect(selectedLine(folded)).toBe('▸ asana T 1')
+    expect(selectedLine(press(folded, 'space'))).toBe('▾ asana T 1')
+    expect(selectedLine(press(folded, 'return'))).toBe('▾ asana T 1')
+    expect(selectedLine(press(folded, 'left'))).toBe('▾ Needs you 1')
     expect(selectedLine(press(parent, 'right'))).toBe(needsRow)
   })
 
@@ -308,7 +328,7 @@ describe('triage update', () => {
   it('moves a screen with PageDown, PageUp, Ctrl-D and Ctrl-U', () => {
     const small = run(10)
     expect(selectedLine(press(small, 'pagedown'))).toBe('▾ Units 1')
-    expect(selectedLine(press(small, 'pagedown', 'ctrl-d'))).toMatch(/^1 {2}api#1/)
+    expect(selectedLine(press(small, 'pagedown', 'ctrl-d'))).toMatch(/^1 {2}#1/)
     const bottom = press(small, 'pagedown', 'pagedown', 'pagedown')
     expect(selectedLine(bottom)).toMatch(/^▸ Skipped 2/)
     expect(screen(bottom)).toContain('▸ Skipped 2: 1 no_rule, 1 over_cap')
@@ -323,7 +343,7 @@ describe('triage update', () => {
         "2026-10-19 22:00:00 to 2026-10-19 22:41…",
         "claude: fallback, 1 of 4 units (no quot…",
         "",
-        "  T-4  no repo: no linked PR or repo fi…",
+        "    T-4  Task 4  add repo",
         "⏎ read  o open  l log  d diff  s skip  …",
         "y/n: skip asana:T-4 in the coming runs?…",
       ]
@@ -343,7 +363,7 @@ describe('triage update', () => {
   })
 
   it('pages, opens and pages files through effects', () => {
-    const unit = press(run(), 'down', 'down')
+    const unit = press(run(), 'down', 'down', 'down')
     expect(update(unit, 'return').effect).toEqual({
       action: 'read',
       target: files[0]?.text,
@@ -360,15 +380,15 @@ describe('triage update', () => {
   })
 
   it('says why a key does nothing on this row', () => {
-    const unit = press(run(), 'down', 'down')
+    const unit = press(run(), 'down', 'down', 'down')
     const { state, effect } = update(unit, 'd')
     expect(effect).toBeUndefined()
     expect(state.status).toBe('diff: this unit left no diff')
     const remote = runTriage(acmeRun(), [], [{ text: '' }], 30, true)
-    expect(update(press(remote, 'down', 'down'), 'l').state.status).toBe(
+    expect(update(press(remote, 'down', 'down', 'down'), 'l').state.status).toBe(
       'log: a run fetched from GitHub keeps only its report',
     )
-    expect(update(press(run(), 'up', 'up'), 's').state.status).toBe('skip: nothing here')
+    expect(update(press(run(), 'up', 'up', 'up'), 's').state.status).toBe('skip: nothing here')
     expect(update(press(run(), 'up'), 'o').state.status).toBe(
       'open: a heading: pick a unit or an item',
     )
@@ -381,7 +401,7 @@ describe('triage update', () => {
     expect(update(asked, 'n').state.status).toBe('not skipped')
     expect(update(asked, 'n').effect).toBeUndefined()
     const { state, effect } = update(asked, 'y')
-    expect(effect).toEqual({ action: 'skip', target: 'asana:T-4', row: 'needs/0' })
+    expect(effect).toEqual({ action: 'skip', target: 'asana:T-4', row: 'needs/0/0' })
     if (!effect) return
     const done = settle(state, effect, {
       ok: true,
@@ -392,7 +412,7 @@ describe('triage update', () => {
     expect(update(needs, 'a').state.status).toBe('y/n: approve asana:T-4? there is no undo')
     const approved = settle(
       state,
-      { action: 'approve', target: 'asana:T-4', row: 'needs/0' },
+      { action: 'approve', target: 'asana:T-4', row: 'needs/0/0' },
       { ok: true, message: '' },
     )
     const both = settle(approved, effect, { ok: true, message: '' })

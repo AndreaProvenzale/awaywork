@@ -19,27 +19,35 @@ On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaP
 Bare `/away` opens a pane beside the chat, straight from `awaywork report --json`:
 
 ```text
-awaywork · last run 06:10 · 1 PR · 2 need you  r: refresh p: plan
+awaywork · last run 06:10 · 1 PR · 5 need you  r: refresh p: plan
 
-1: Needs you 2  2: Last run 2  3: Next run  4: Skipped 2
+1: Needs you 5  2: Last run 1  3: Next run  4: Skipped 2
 
-waiting_for_review shop#7 Retry webhooks on 5xx
-  waiting for your review of awaywork PR #31
-waiting_for_approval shop#8 Split the checkout service
-  waiting for your approval of the plan awaywork posted
-
-⏎ read  o: open  s: skip  a: approve
+acme/sandbox
+  ▾ #169  Add codex model flag to the provider config      review PR
+    waiting for review: awaywork PR is open
+    https://github.com/acme/sandbox/pull/172
+    o: open PR  s: skip
+  #168  Round cart discounts to the cent                   review PR
+  #167  Add toMinutes and toHours                          review PR
+  #166  Split the checkout service                      approve plan
+jira SHOP
+  SHOP-12  Migrate billing webhooks                  answer question
 ```
 
-It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else. Tab walks the rows, and on a row:
+It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
 
-- `⏎` reads it, from what's loaded: an item's skip reason as awaywork wrote it, with its link, a unit of the next run's items with their full titles and links, or `awaywork report <run> --unit <id>` for a unit of the last run. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
-- `o` opens its PR, or the item;
+Items sit under their repo, or their tracker and project key, a line each: the ref, the title, and what the item asks of you (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why it waits (`no rule`, `over cap`, `skipped by you`, ...). Needs you lists a repo's items by that word, so the PRs to review sit together. A second line shows up only when the reason says more than the word, like the cap that's full.
+
+One row is open at a time, with its whole reason, its links and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab opens the row it lands on, and its keys work right away:
+
+- `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
-- `a` approves it: replies approve on the plan it waits on, or marks it approved for `approved: true` rules;
-- `h` hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
+- `a` approves the plan the item waits on (`approve plan`), or, when one of your rules has `approved: true`, marks a last-run unit or a skipped item approved (`mark approved`);
+- `h` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`;
+- `⏎` on an open unit of the last run, or its `read report`, reads `awaywork report <run> --unit <id>`. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all.
 
-`s` and `a` ask `y`/`n` first, saying what they'll do, then mark the row `skipped`, `unskipped` or `approved`: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s` and `a` ask `yes`/`no` under the row first, saying what they'll do, then mark the row `skipped`, `unskipped` or `approved` in place of its word: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 `/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 

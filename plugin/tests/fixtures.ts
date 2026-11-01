@@ -15,27 +15,46 @@ const unit = (n: number, skill: string, title: string) => ({
   items: [item(n, title)],
 })
 
+const ticket = {
+  source: 'jira',
+  key: 'SHOP-12',
+  title: 'Migrate billing webhooks',
+  url: 'https://acme.atlassian.net/browse/SHOP-12',
+}
+
+// Listed as the plan lists them: the pane groups them by repo and orders them by action.
 const skipped = [
+  {
+    item: item(8, 'Split the checkout service'),
+    kind: 'waiting_for_approval',
+    reason: 'waiting for your approval of the plan on https://github.com/acme/shop/issues/8',
+    url: 'https://github.com/acme/shop/issues/8',
+    needsYou: true,
+  },
+  {
+    item: ticket,
+    kind: 'waiting_for_answer',
+    reason: `waiting for your answer on ${ticket.url}`,
+    url: ticket.url,
+    needsYou: true,
+  },
   {
     item: item(7, 'Retry webhooks on 5xx'),
     kind: 'waiting_for_review',
-    reason: 'waiting for your review of awaywork PR #31',
+    reason: 'waiting for review: awaywork PR https://github.com/acme/shop/pull/31 is open',
     url: 'https://github.com/acme/shop/pull/31',
     needsYou: true,
   },
   {
-    item: item(8, 'Split the checkout service'),
-    kind: 'waiting_for_approval',
-    reason: 'waiting for your approval of the plan awaywork posted',
-    url: 'https://github.com/acme/shop/issues/8',
-    needsYou: true,
+    item: item(10, 'Rewrite in Rust'),
+    kind: 'skipped_by_you',
+    reason: 'skipped with awaywork skip github:acme/shop#10: not now',
   },
   {
     item: item(9, 'Bump the linter'),
     kind: 'no_rule',
     reason: 'matched no rule; closest #1 fix: type is issue, wants pr',
   },
-  { item: item(10, 'Rewrite in Rust'), kind: 'skipped_by_you', reason: 'skipped by you' },
 ]
 
 const queue = [

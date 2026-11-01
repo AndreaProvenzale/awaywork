@@ -223,18 +223,23 @@ export function planUnitLines(plan: RunPlan, style: Style = (_, text) => text): 
   return units.length === 0 ? ['  none'] : indent([header, ...units.flat()])
 }
 
+/** A unit's item by its short ref, or `inRepo` by its ref in the unit's repo; the unit's id without one. */
+const unitRef = ({ id, repo, items: [top] }: PlannedUnit['unit'], inRepo: boolean) =>
+  top ? (inRepo ? refIn(repo, top) : shortRef(top)) : id
+
 /** The units table, unindented: one row per unit with its item, rule, skill, provider, delivery and title, clipped at `clipAt`, then its `when`, merged items and chain. */
 export function planUnitTable(
   plan: RunPlan,
   style: Style = (_, text) => text,
   clipAt = TITLE,
+  inRepo = false,
 ): { header: string; units: string[][] } {
   const units = listedUnits(plan)
   const rows = units.map((p, i) => {
     const top = p.unit.items[0]
     return [
       String(i + 1),
-      top ? shortRef(top) : p.unit.id,
+      unitRef(p.unit, inRepo),
       `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
       describeSkill(p),
       p.provider ?? '-',
@@ -288,55 +293,121 @@ export function planUnitTable(
   return { header: style('bold', lines[0] ?? ''), units: blocks }
 }
 
-/** The skipped items you can act on: each one's ref and why, then its title. */
+/** The skipped items you can act on, under their groups: a row each ending on its action, and what its reason adds under the title. */
 export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
-  const rows = needsYouRows(skipped, style)
-  if (rows.length === 0) return []
-  return ['', heading('Needs you', rows.length, style), ...indent(rows.flatMap((row) => row.lines))]
+  const waiting = skipped.filter(needsYouOn)
+  if (waiting.length === 0) return []
+  const groups = skipRows(waiting)
+  const rows = groups.flatMap(([, list]) => list)
+  const lines = table(rows.map((r) => [r.ref, clip(r.title, TITLE), r.action]))
+  const under = ' '.repeat(Math.max(...rows.map((r) => width(r.ref))) + 2)
+  const block = (r: SkipRow) => [
+    lines[rows.indexOf(r)] ?? '',
+    ...(r.note ? [style('dim', `${under}${r.note}`)] : []),
+  ]
+  return [
+    '',
+    heading('Needs you', waiting.length, style),
+    ...indent(groups.flatMap(([group, list]) => [group, ...indent(list.flatMap(block))])),
+  ]
 }
 
-/** Each skipped item you can act on, with its row of the Needs you table, its reason without the closest rule clipped at `clipAt`, and its title, unindented. */
-export function needsYouRows(
-  skipped: ReportedSkip[],
-  style: Style = (_, text) => text,
-  clipAt = CELL,
-) {
-  const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(/; closest #.*$/, ''), clipAt)
-  return itemRows(skipped.filter(needsYouOn), reason, style, clipAt)
+/** What a skip asks of you, or plainly why it waits: the word its row ends on, ranked as its group lists them. */
+const actions: Record<SkipKind, string> = {
+  waiting_for_review: 'review PR',
+  waiting_for_answer: 'answer question',
+  waiting_for_approval: 'approve plan',
+  invalid_plan: 'fix plan',
+  all_tasks_done: 'close card',
+  gave_up: 'read logs',
+  no_repo: 'add repo',
+  invalid_branch: 'fix branch',
+  refused_delivery: 'fix rule',
+  unstackable: 'fix rule',
+  draft_moved: 'finish by hand',
+  continue_cap: 'finish by hand',
+  no_rule: 'no rule',
+  over_cap: 'over cap',
+  unchanged: 'unchanged',
+  skipped_by_you: 'skipped by you',
+  fanned_out: 'fanned out',
+  waiting_for_task: 'waits on task',
+  task_merged: 'merged',
+  task_done: 'done',
+  continues_later: 'next run',
+  running: 'running',
 }
 
-/** What a reason starts with that its kind already says. */
+const ranks = Object.keys(actions)
+
+/** What a reason starts with that its kind's action already says. */
 const kindSays: Partial<Record<SkipKind, RegExp>> = {
+  waiting_for_review: /^waiting for review: (awaywork PR is open$)?/,
+  waiting_for_answer: /^waiting for your answer$/,
+  waiting_for_approval: /^waiting for your approval of the plan$/,
+  invalid_plan: /^plan refused: /,
+  all_tasks_done: /^all tasks done: close or move the card$/,
+  no_repo: /^no repo: /,
   no_rule: /^matched no rule(; |$)/,
   over_cap: /^over the cap: /,
   unchanged: /^unchanged /,
+  skipped_by_you: /^skipped with awaywork skip \S+(: | |$)/,
+  fanned_out: /^fanned out: /,
 }
 
-/** A row per skipped item, unindented: its ref and why, less what its kind says, then its title. */
-export function skippedRows(skipped: ReportedSkip[], style: Style, clipAt: number) {
-  const said = (s: ReportedSkip) => (s.kind && kindSays[s.kind]) || ''
-  const reason = (s: ReportedSkip) => brief(reasonOf(s).replace(said(s), ''), clipAt)
-  return itemRows(skipped, reason, style, clipAt)
+/** Where an item's row goes: the repo its key names, else its source and project key, else its source. */
+export function groupOf({ source, key }: Pick<Item, 'source' | 'key'>): string {
+  const repo = /^([^/\s]+\/[^/\s]+)#\d+$/.exec(key)?.[1]
+  const project = /^([A-Za-z]\w*)-\d+$/.exec(key)?.[1]
+  return repo ?? (project ? `${source} ${project}` : source)
+}
+
+/** `#7` for an item of `group`, else its short ref. */
+const refIn = (group: string, item: Pick<Item, 'key'>) =>
+  item.key.startsWith(`${group}#`) ? item.key.slice(group.length) : shortRef(item)
+
+/** `list` by group, the groups in the order they first come, each one's by `rank`. */
+export function byGroup<T>(
+  list: T[],
+  group: (t: T) => string,
+  rank: (t: T) => number = () => 0,
+): [string, T[]][] {
+  const groups = new Map<string, T[]>()
+  for (const t of list) groups.set(group(t), [...(groups.get(group(t)) ?? []), t])
+  return [...groups].map(([name, ts]) => [name, ts.toSorted((a, b) => rank(a) - rank(b))])
+}
+
+export interface SkipRow {
+  skipped: ReportedSkip
+  ref: string
+  title: string
+  action: string
+  /** What the reason adds to the action, clipped; empty when nothing. */
+  note: string
+}
+
+/** Each skip's row under its group, by action: its ref there, title, action and note, which leaves out the closest rule in Needs you. */
+export function skipRows(skipped: ReportedSkip[], clipAt = CELL): [string, SkipRow[]][] {
+  const rank = (s: ReportedSkip) => (s.kind ? ranks.indexOf(s.kind) : ranks.length)
+  const note = (s: ReportedSkip) => {
+    const reason = needsYouOn(s) ? reasonOf(s).replace(/; closest #.*$/, '') : reasonOf(s)
+    return brief(reason.replace((s.kind && kindSays[s.kind]) || '', ''), clipAt)
+  }
+  return byGroup(skipped, (s) => groupOf(s.item), rank).map(([group, list]) => [
+    group,
+    list.map((s) => ({
+      skipped: s,
+      ref: refIn(group, s.item),
+      title: s.item.title,
+      action: s.kind ? actions[s.kind] : 'skipped',
+      note: note(s),
+    })),
+  ])
 }
 
 /** A skip's reason without the URL its row, or `--why`, already shows. */
 const reasonOf = (s: ReportedSkip) =>
   s.reason.replace(` ${s.url ?? s.item.url}`, '').replace(/ on$/, '')
-
-function itemRows<S extends ReportedSkip>(
-  skipped: S[],
-  text: (s: S) => string,
-  style: Style,
-  clipAt: number,
-): { skipped: S; lines: string[] }[] {
-  if (skipped.length === 0) return []
-  const lines = table(skipped.map((s) => [shortRef(s.item), text(s)]))
-  const under = ' '.repeat(Math.max(...skipped.map((s) => shortRef(s.item).length)) + 2)
-  return skipped.map((s, i) => ({
-    skipped: s,
-    lines: [lines[i] ?? '', style('dim', `${under}${clip(s.item.title, clipAt)}`)],
-  }))
-}
 
 /** The other skipped items, counted by kind on one line. */
 export function skippedLines(skipped: ReportedSkip[], style: Style = (_, text) => text): string[] {
@@ -726,6 +797,7 @@ function brief(text: string, clipAt = CELL): string {
 export function reportUnitRows(
   r: RunReport,
   clipAt = TITLE,
+  inRepo = false,
 ): { cells: string[]; summary?: string; notes: string[] }[] {
   return chains(r).map((chain, i) => {
     const top = chain.head.planned.unit.items[0]
@@ -734,7 +806,7 @@ export function reportUnitRows(
     return {
       cells: [
         String(i + 1),
-        top ? shortRef(top) : chain.head.planned.unit.id,
+        unitRef(chain.head.planned.unit, inRepo),
         chain.skills,
         brief(status),
         result,
@@ -755,8 +827,9 @@ export function reportUnitTable(
   r: RunReport,
   styled: boolean,
   clipAt = TITLE,
+  inRepo = false,
 ): { header: string; units: string[][] } {
-  const rows = reportUnitRows(r, clipAt)
+  const rows = reportUnitRows(r, clipAt, inRepo)
   const header = ['', 'item', 'skill', 'status', 'result']
   const lines = table([header, ...rows.map((row) => row.cells)], (cell, i, c) =>
     styled && i > 0 && c === 3 ? styleText(statusStyle(cell), cell) : cell,
