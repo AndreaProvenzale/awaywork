@@ -8,7 +8,7 @@ import { isAwayworkComment } from '../src/core/footer.js'
 import type { Item } from '../src/core/types.js'
 import { exec } from '../src/forge/gh.js'
 import { github } from '../src/sources/github.js'
-import { sourceField, writeItem } from '../src/sources/index.js'
+import { itemFields, sourceField, writeItem } from '../src/sources/index.js'
 import { initial, scriptedAsk } from './fakes/ask.js'
 
 let repo = process.env.AWAYWORK_GITHUB_SANDBOX ?? ''
@@ -170,7 +170,9 @@ jobs:
     for (const item of Object.values(found))
       for (const [key, value] of Object.entries(item.fields))
         for (const v of [value].flat())
-          expect(sourceField(github.fields, key)?.safeParse(v).success).toBe(true)
+          expect((itemFields[key] ?? sourceField(github.fields, key))?.safeParse(v).success).toBe(
+            true,
+          )
 
     expect(found.issue).toMatchObject({
       type: 'issue',
