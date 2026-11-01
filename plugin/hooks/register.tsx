@@ -76,6 +76,7 @@ async function readReport($: EngineInterface) {
         ? { noReport: got.failed }
         : { error: got.error }
   await update($, data, (d) => ({ plan: d.plan, planning: d.planning, ...patch }))
+  await keepRing($)
 }
 
 // plan probes quota and reads the forge, so it runs only when asked.
@@ -87,6 +88,7 @@ async function readPlan($: EngineInterface) {
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
   await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
+  await keepRing($)
   // A fresh plan shows what the marks said, unless an act came in while it was planning.
   if ('json' in got)
     await update($, view, (v) => ({ ...v, marks: acts === before ? undefined : v.marks }))
@@ -177,6 +179,36 @@ function unitRow(p: Planned): Row {
   }
 }
 
+/** The tab and row a drawing shows, and what they come from. */
+function layout(d: Data, v: View) {
+  const plan = d.plan ?? d.report?.plan
+  const skips = plan?.skipped ?? []
+  const report = d.report
+  const heads = report?.results.filter((r) => !r.planned.chain && !r.retried) ?? []
+  const rows: Record<Tab, Row[]> = {
+    needs: skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s)),
+    last: report ? heads.map((r) => resultRow(report.runId, r)) : [],
+    next: d.plan?.units.filter((p) => !p.chain).map(unitRow) ?? [],
+    skipped: skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s)),
+  }
+  const landing =
+    (['needs', 'last', 'skipped'] as const).find((t) => rows[t].length) ??
+    (rows.next.length ? 'next' : undefined)
+  const tab = v.tab === 'next' || (v.tab && rows[v.tab].length) ? v.tab : landing
+  const order = ['needs', 'last', 'next', 'skipped'] as const
+  const shown = order.filter((t) => t === 'next' || rows[t].length)
+  const list = tab ? rows[tab] : []
+  const row = list.find((r) => r.id === v.row) ?? list[0]
+  return { report, heads, rows, tab, order, shown, list, row }
+}
+
+// The ring keeps its place, not its element, when a tab appears or ⏎'s text goes: put it on the row.
+async function keepRing($: EngineInterface) {
+  const v = await read($, view)
+  const { row } = layout(await read($, data), v)
+  if (row && !v.reading) await $.ui.focus({ requestId: PANE, key: row.id }).catch(() => undefined)
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 
 function when(iso: string, now: number) {
@@ -259,7 +291,7 @@ export const register: Register = (on) => {
   on('command.run', { command: ['away', 'awaywork:away'] }, async ($, e, next) => {
     // A request goes to the skill, and so does a run with no surface to draw on.
     if (e.args.trim() || (await $.session.surfaces()).length === 0) return next(e)
-    await update($, view, () => ({}))
+    await update($, view, (v) => ({ marks: v.marks }))
     await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })
     void refresh($)
@@ -280,24 +312,7 @@ export const register: Register = (on) => {
     const width = e.props.bodyColumns
     const now = await $.clock.now()
 
-    const plan = d.plan ?? d.report?.plan
-    const skips = plan?.skipped ?? []
-    const report = d.report
-    const heads = report?.results.filter((r) => !r.planned.chain && !r.retried) ?? []
-    const rows: Record<Tab, Row[]> = {
-      needs: skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s)),
-      last: report ? heads.map((r) => resultRow(report.runId, r)) : [],
-      next: d.plan?.units.filter((p) => !p.chain).map(unitRow) ?? [],
-      skipped: skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s)),
-    }
-    const landing =
-      (['needs', 'last', 'skipped'] as const).find((t) => rows[t].length) ??
-      (rows.next.length ? 'next' : undefined)
-    const tab = v.tab === 'next' || (v.tab && rows[v.tab].length) ? v.tab : landing
-    const order = ['needs', 'last', 'next', 'skipped'] as const
-    const shown = order.filter((t) => t === 'next' || rows[t].length)
-    const list = tab ? rows[tab] : []
-    const row = list.find((r) => r.id === v.row) ?? list[0]
+    const { report, heads, rows, tab, order, shown, list, row } = layout(d, v)
 
     const prs = heads.filter((r) => r.outcome?.kind === 'pr').length
     const needs = rows.needs.length
@@ -366,7 +381,7 @@ export const register: Register = (on) => {
             label="back"
             onPress={async () => {
               await update($, view, (x) => ({ ...x, reading: undefined }))
-              if (v.row) await $.ui.focus({ requestId: PANE, key: v.row }).catch(() => undefined)
+              await keepRing($)
             }}
           />
         </Box>

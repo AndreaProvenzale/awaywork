@@ -180,6 +180,25 @@ test('with a plan loaded, a failed report still says why, and the plan clears th
   expect(await ui.find({ type: 'Text', text: /no run yet/ })).toBeFalsy()
 })
 
+test('reopening keeps the marks on the rows they correct', async ($, on) => {
+  engine(on, {
+    'report --json': ok(busyReport),
+    'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  await ui.unmount()
+
+  await $.command.run(away())
+  const again = await mount($, 'terminal')
+  expect((await again.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
+    /^skipped shop#7/,
+  )
+  expect((await again.find({ key: 'skip' }))?.text).toMatch(/unskip/)
+})
+
 test('⏎ reads what the JSON says, s and a ask first and mark the row, h works on it here', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),
