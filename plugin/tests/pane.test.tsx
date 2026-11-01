@@ -91,6 +91,8 @@ test('bare /away opens the pane on what needs you, reading only the report', asy
 
     await ui.press({ key: 'tab:skipped' })
     expect(await ui.find({ key: 'row:skipped:github:acme/shop#9' })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /closest #1 fix/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /matched no rule/ })).toBeFalsy()
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
@@ -120,11 +122,14 @@ test('p plans once however often it is pressed; r reads only the report', async 
   await ui.press({ key: 'plan' })
   await ui.press({ key: 'refresh' })
   await ui.press({ key: 'plan' })
+  expect(await ui.find({ type: 'Text', text: /· planning…/ })).toBeTruthy()
   await ui.press({ key: 'tab:next' })
   expect(await ui.find({ type: 'Text', text: /planning… it probes quota/ })).toBeTruthy()
   await clock.advance(1000)
   expect(plans()).toBe(1)
   await ui.unmount()
+
+  await $.command.run(away())
 
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
@@ -145,9 +150,34 @@ test('a reply that is not JSON says so instead of reading for good', async ($, o
   await $.command.run(away())
   const ui = await mount($, 'terminal')
   expect(
-    await ui.find({ type: 'Text', text: 'awaywork report --json printed no JSON' }),
+    await ui.find({ type: 'Text', text: /awaywork report --json printed no JSON/ }),
   ).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /reading the last run/ })).toBeFalsy()
+})
+
+test('with a plan loaded, a failed report still says why, and the plan clears the marks', async ($, on) => {
+  let report: Reply = ok(busyReport)
+  engine(on, {
+    'report --json': () => report,
+    'plan --json': ok(busyPlan),
+    'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(/^skipped shop#7/)
+
+  await ui.press({ key: 'plan' })
+  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
+    /^waiting_for_review shop#7/,
+  )
+  report = { stdout: 'Debugger attached.\n{}' }
+  await ui.press({ key: 'refresh' })
+  expect(
+    await ui.find({ type: 'Text', text: /awaywork report --json printed no JSON/ }),
+  ).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /no run yet/ })).toBeFalsy()
 })
 
 test('⏎ reads what the JSON says, s and a ask first and mark the row, h works on it here', async ($, on) => {

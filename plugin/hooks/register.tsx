@@ -82,10 +82,14 @@ async function readReport($: EngineInterface) {
 async function readPlan($: EngineInterface) {
   await update($, view, (v) => ({ ...v, status: undefined }))
   await update($, data, (d): Data => ({ ...d, planning: true }))
+  const before = acts
   const got = await json<Plan>($, ['plan', '--json'], 600_000)
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
   await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
+  // A fresh plan shows what the marks said, unless an act came in while it was planning.
+  if ('json' in got)
+    await update($, view, (v) => ({ ...v, marks: acts === before ? undefined : v.marks }))
   if ('failed' in got) await update($, view, (v) => ({ ...v, status: `plan: ${got.failed}` }))
 }
 
@@ -114,6 +118,13 @@ const shortRef = (key: string) => key.replace(/^[^/\s]+\/(?=[^/\s]+#\d+$)/, '')
 /** A skip's reason without the URL `o` opens, as the CLI's `reasonOf`. */
 const reasonOf = (s: Skip) => s.reason.replace(` ${s.url ?? s.item.url}`, '').replace(/ on$/, '')
 
+/** What a reason starts with that its kind already says, as the CLI's `kindSays`. */
+const kindSays: Record<string, RegExp> = {
+  no_rule: /^matched no rule(; |$)/,
+  over_cap: /^over the cap: /,
+  unchanged: /^unchanged /,
+}
+
 function skipRow(tab: Tab, s: Skip): Row {
   const key = itemKey(s.item)
   const url = s.url ?? s.item.url ?? undefined
@@ -122,7 +133,7 @@ function skipRow(tab: Tab, s: Skip): Row {
     word: s.kind ?? 'skipped',
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
-    note: reasonOf(s),
+    note: reasonOf(s).replace((s.kind && kindSays[s.kind]) || '', ''),
     url,
     read: { title: `${key}  ${s.item.title}`, text: [reasonOf(s), url].filter(Boolean).join('\n') },
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
@@ -202,10 +213,13 @@ const marked: Record<Action, Mark> = {
   approve: { approved: true },
 }
 
+let acts = 0
+
 // The rows come from the last run's or plan's JSON, which an act doesn't change: a mark says what it did.
 async function act($: EngineInterface, action: Action, key: string) {
   await update($, view, (v) => ({ ...v, confirm: undefined, status: `${action}…` }))
   const r = await awaywork($, [action, key])
+  if (r.exitCode === 0) acts++
   const said = firstLine(r.exitCode === 0 ? r.stdout : r.stderr) || `${action} exited ${r.exitCode}`
   await update($, view, (v) => ({
     ...v,
@@ -246,7 +260,7 @@ export const register: Register = (on) => {
     // A request goes to the skill, and so does a run with no surface to draw on.
     if (e.args.trim() || (await $.session.surfaces()).length === 0) return next(e)
     await update($, view, () => ({}))
-    await update($, data, (): Data => ({ loading: true, planning: planCall && true }))
+    await update($, data, (d): Data => ({ ...d, loading: true, planning: planCall && true }))
     await $.ui.open({ id: PANE, title: 'awaywork', focus: true, closeOnEscape: true })
     void refresh($)
     return {}
@@ -254,7 +268,8 @@ export const register: Register = (on) => {
 
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
     const { element } = e
-    if (element?.startsWith('row:')) await update($, view, (v) => ({ ...v, row: element }))
+    if (element?.startsWith('row:') && element !== (await read($, view)).row)
+      await update($, view, (v) => ({ ...v, row: element, status: undefined }))
     return next(e)
   })
 
@@ -286,6 +301,7 @@ export const register: Register = (on) => {
 
     const prs = heads.filter((r) => r.outcome?.kind === 'pr').length
     const needs = rows.needs.length
+    const noRunsYet = d.noReport && /^no runs in /.test(d.noReport)
     const facts = d.error
       ? []
       : [
@@ -293,12 +309,15 @@ export const register: Register = (on) => {
             ? `last run ${when(report.finishedAt, now)}${report.dryRun ? ' (dry run)' : ''}`
             : d.loading
               ? 'reading the last run…'
-              : 'no run yet',
+              : d.noReport && !noRunsYet
+                ? d.noReport
+                : 'no run yet',
           prs > 0 && counted(prs, 'PR'),
+          d.planning && 'planning…',
         ].filter(Boolean)
 
     const header = (
-      <Box flexDirection="row" flexWrap="wrap" gap={2}>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         <Text>
           <Text bold>awaywork</Text>
           {facts.length > 0 && <Text dimColor> · {facts.join(' · ')}</Text>}
@@ -345,13 +364,16 @@ export const register: Register = (on) => {
             autoFocus
             hotkey="b"
             label="back"
-            onPress={() => update($, view, (x) => ({ ...x, reading: undefined }))}
+            onPress={async () => {
+              await update($, view, (x) => ({ ...x, reading: undefined }))
+              if (v.row) await $.ui.focus({ requestId: PANE, key: v.row }).catch(() => undefined)
+            }}
           />
         </Box>
       )
 
     const tabs = (
-      <Box flexDirection="row" flexWrap="wrap" gap={2}>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         {shown.map((t) => (
           <Button
             key={`tab:${t}`}
@@ -367,13 +389,13 @@ export const register: Register = (on) => {
 
     const empty = () => {
       if (d.loading) return <Text dimColor>reading the last run…</Text>
-      if (d.noReport && /^no runs in /.test(d.noReport))
+      if (noRunsYet)
         return (
           <Text>
             no run yet: `awaywork run`, or wait for the schedule; p shows what the next one takes
           </Text>
         )
-      if (d.noReport) return <Text>{d.noReport}</Text>
+      if (d.noReport) return // the header says why
       return (
         <Text>
           {d.plan ? 'the plan' : 'the last run'} found none of your items: `/away` and say what to
@@ -426,7 +448,7 @@ export const register: Register = (on) => {
       if (v.confirm) {
         const { action, key } = v.confirm
         return (
-          <Box flexDirection="row" flexWrap="wrap" gap={2}>
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
             <Text>{v.confirm.question}</Text>
             <Button
               key="yes"
@@ -463,7 +485,7 @@ export const register: Register = (on) => {
             : { ...x, confirm: { action, key: item, question } },
         )
       return (
-        <Box flexDirection="row" flexWrap="wrap" gap={2}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
           <Text dimColor>⏎ read</Text>
           {row.url && (
             <Button

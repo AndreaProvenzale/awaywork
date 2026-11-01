@@ -30,7 +30,11 @@ const skipped = [
     url: 'https://github.com/acme/shop/issues/8',
     needsYou: true,
   },
-  { item: item(9, 'Bump the linter'), kind: 'no_rule', reason: 'no rule takes it' },
+  {
+    item: item(9, 'Bump the linter'),
+    kind: 'no_rule',
+    reason: 'matched no rule; closest #1 fix: type is issue, wants pr',
+  },
   { item: item(10, 'Rewrite in Rust'), kind: 'skipped_by_you', reason: 'skipped by you' },
 ]
 

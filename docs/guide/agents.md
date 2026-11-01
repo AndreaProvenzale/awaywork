@@ -33,7 +33,7 @@ waiting_for_approval shop#8 Split the checkout service
 
 It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else. Tab walks the rows, and on a row:
 
-- `⏎` reads it, from what's loaded: an item's skip reason as awaywork wrote it, with its link, or `awaywork report <run> --unit <id>` for a unit of the last run. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
+- `⏎` reads it, from what's loaded: an item's skip reason as awaywork wrote it, with its link, a unit of the next run's items with their full titles and links, or `awaywork report <run> --unit <id>` for a unit of the last run. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
 - `o` opens its PR, or the item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
 - `a` approves it: replies approve on the plan it waits on, or marks it approved for `approved: true` rules;
