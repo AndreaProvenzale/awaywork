@@ -54,23 +54,23 @@ To try it:
 
 ## Codex and friends
 
-The same skill ships in the npm package, at `plugin/skills/away/`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
+The same skills ship in the npm package, in `plugin/skills/`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
 
 ```sh
 codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:away`; ask Codex to use it by name.
+It shows up in Codex's skill list as `awaywork:away`, next to `awaywork:queue` and `awaywork:suggest`, which it routes to; ask Codex to use it by name.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
 ```sh
 mkdir -p ~/.agents/skills
-ln -s "$(npm root -g)/awaywork/plugin/skills/away" ~/.agents/skills/away
+for s in away queue suggest; do ln -s "$(npm root -g)/awaywork/plugin/skills/$s" ~/.agents/skills/$s; done
 ```
 
-No skills support? Tell the agent to read that folder's `SKILL.md` and follow it.
+No skills support? Tell the agent to read `away/SKILL.md` and follow it.
 
 ## Prompt to paste
 
@@ -96,9 +96,9 @@ Machine-readable docs:
 | [`llms-full.txt`](https://andreaprovenzale.github.io/awaywork/llms-full.txt) | All pages in one file |
 | `<page>.md` | Any page as Markdown, e.g. [`guide/configuration.md`](https://andreaprovenzale.github.io/awaywork/guide/configuration.md) |
 | [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json) | The config's JSON Schema; `awaywork config schema` prints the installed version's |
-| [`SKILL.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `away` skill: status, why an item did or didn't run, and which file to follow for the rest |
-| [`queue.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/queue.md) | Writing and checking rules on real items |
-| [`suggest.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/suggest.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
+| [`away`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `/away` skill: status, why an item did or didn't run, and which skill handles the rest |
+| [`queue`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | Writing and checking rules on real items |
+| [`suggest`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
 
 Setting up:
 
