@@ -1,11 +1,6 @@
----
-name: suggest
-description: "Suggest awaywork queue rules, routines and instruction fixes from what the developer already does: with their consent each run, read their recent coding-agent sessions, agent memories and forge history for work they keep doing after the same kind of event or at the same time each week, and check each candidate on their real items. Use when they ask what awaywork could take off their plate, or say yes to the offer on first setup."
----
-
 # awaywork suggest
 
-Find the work the developer hands to an agent by reflex, right after something happens on one of their items (CI goes red on their PR, a review lands) or at the same time each week, plus the corrections they keep repeating. Propose each as awaywork config, checked on their real items, and write only what they pick, through the queue skill. Docs: https://andreaprovenzale.github.io/awaywork/guide/suggest.md
+Find the work the developer hands to an agent by reflex, right after something happens on one of their items (CI goes red on their PR, a review lands) or at the same time each week, plus the corrections they keep repeating. Propose each as awaywork config, checked on their real items, and write only what they pick, through queue.md. Docs: https://andreaprovenzale.github.io/awaywork/guide/suggest.md
 
 ## Ground rules
 
@@ -13,11 +8,11 @@ Find the work the developer hands to an agent by reflex, right after something h
 - **One scope.** Use only the projects they named. Work and personal never mix: a session or a memory about another project never feeds a candidate, even when it sits in a folder in scope.
 - **Paraphrase only.** Sessions hold pasted tokens, customer data and secrets. Evidence is a count and a paraphrase in your words, never a quote, a path or output from inside a session, and nothing from one goes verbatim into a rule, a line or the chat. Keep digests out of the chat too: they carry prompt text. Memories are paraphrased the same way. A user-level file (a global `CLAUDE.md`, `~/.codex/AGENTS.md`) spans every project: use only the lines that clearly apply to the repo in scope, never one written for another project.
 - **Read-only.** Read sessions and memories where they are, never copy them; put digests in a temp dir and delete it at the end. Forge CLIs only read.
-- **Nothing written but what they pick,** through the queue skill's loop. Its ground rules hold here: no credentials, no runs, real names only, widening needs its own yes.
+- **Nothing written but what they pick,** through [queue.md](queue.md)'s loop. The ground rules in [SKILL.md](SKILL.md#ground-rules) hold here: no credentials, no runs, real names only, widening needs its own yes.
 
 ## 1. Ask
 
-Read the config as the queue skill's step 1 does. Then count what's in scope from file names and dates, plus, for Codex, each file's first line (`cwd`, `originator`) and whether it has a `turn_context` line (step 2 says where), and ask in one message:
+Read the config as queue.md's step 1 does. Then count what's in scope from file names and dates, plus, for Codex, each file's first line (`cwd`, `originator`) and whether it has a `turn_context` line (step 2 says where), and ask in one message:
 
 - **Projects:** default the repos in the config, as the local folders their sessions ran in. Ask for the folder when you can't tell.
 - **Window:** default the last 30 days. Under 3 weeks finds no routines (step 4 wants 3 different weeks): say so.
@@ -34,7 +29,7 @@ Formats are the vendors' and change: check one real file before trusting the not
 
 - awaywork's own workers: slugs with `-local-state-awaywork-runs-` in them, and any session whose `entrypoint` is `sdk-cli` (headless `claude -p`: awaywork's workers, scripts, CI);
 - subagent transcripts, `<session-id>/subagents/*.jsonl`, and lines with `isSidechain: true`: they repeat their parent;
-- this session and earlier suggest runs, by their `first`: `/awaywork:suggest …`, or the `/awaywork:queue …` prompt that opened this session when it came through the queue skill's offer, or one asking in words for awaywork suggestions; and this session by its id when you know it. Not by "the newest file": other sessions may be open in the same project.
+- awaywork's own sessions, this one included, by their `first`: `/away` or `/awaywork:away`, with or without a request (`/awaywork:suggest` and `/awaywork:queue` in older ones), or one asking in words for awaywork suggestions; and this session by its id when you know it. Not by "the newest file": other sessions may be open in the same project.
 
 User and assistant lines carry `sessionId`, `timestamp`, `cwd`, `gitBranch` and `entrypoint`. A typed prompt is a `user` line whose `message.content` is a string, or text and pasted image blocks (newer versions add `origin.kind: human`); tool results are `user` lines too, holding `tool_result` blocks, and a slash command is `<command-name>` and `<command-args>` tags. A `pr-link` line (`prUrl`, `prRepository`, `prNumber`) names a PR the session worked on, which beats `gitBranch` when the developer works from subagents' worktrees and stays on the default branch. An interrupted turn is a user text block starting `[Request interrupted by user` (`… for tool use]` when it stopped a tool call); a tool call they rejected is a `tool_result` with `is_error: true` starting `The user doesn't want to proceed with this tool use`. A rejection with `permissionDecision.source: config` came from a permission rule or classifier, not from them.
 
@@ -76,7 +71,7 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 
 | Pattern | Becomes |
 | --- | --- |
-| Event on an item, then an action | A queue rule: a `where` on a configured source, with real names from `awaywork sources --json` as in the queue skill's step 3 (fields per source: https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#items), and a skill |
+| Event on an item, then an action | A queue rule: a `where` on a configured source, with real names from `awaywork sources --json` as in queue.md's step 3 (fields per source: https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#items), and a skill |
 | Same time each week, then an action | A routine, `sources.routines.<name>: { days, at, repo, title, description }`, and a rule with `source: routines`, `where: { name: <name> }` and `deliver: report`; `run: soon` when it shouldn't wait for a window (https://andreaprovenzale.github.io/awaywork/guide/configuration.md#routines) |
 | The action | A skill from `awaywork skills list`: built-in, ejected, or the repo's own |
 | A correction every agent on the repo needs | A line in the repo's `AGENTS.md`, or `CLAUDE.md` when that's what it has |
@@ -85,11 +80,11 @@ Their own PRs with the reviews on them (trimmed: a review's body is someone else
 
 Compare every candidate with what's there: the queue (or the default queue, when `plan --rules --json` says `defaultQueue: true`), the routines, the instructions files, the repo's `AGENTS.md` and `CLAUDE.md`. A match is shown as "already rule #2" or "already in AGENTS.md", not proposed again.
 
-A routine spends quota on every occurrence, work or not: show its units per week (days times times of day), and end its `description` with "stop with a one-line report when there's nothing new". A candidate that widens delivery or exposure, as the queue skill's Widening section lists, is flagged as such.
+A routine spends quota on every occurrence, work or not: show its units per week (days times times of day), and end its `description` with "stop with a one-line report when there's nothing new". A candidate that widens delivery or exposure, as queue.md's Widening section lists, is flagged as such.
 
 ## 6. Verify
 
-Copy the config to a draft as the queue skill's step 4 does and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate.
+Copy the config to a draft as queue.md's step 4 does and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate.
 
 For a correction, check the target file for the line, or one meaning the same.
 
@@ -122,10 +117,10 @@ Corrections
 Keep which? (e.g. 2, 3, 5)
 ```
 
-Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through the queue skill's steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
+Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through queue.md's steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
 
 ## End
 
-Delete the temp digests. Summarize in a few lines what was added where, and say they can run `/awaywork:suggest` (or ask for awaywork suggestions) again whenever their habits change; nothing reminds them.
+Delete the temp digests. Summarize in a few lines what was added where, and say they can ask `/away` for suggestions again whenever their habits change; nothing reminds them.
 
 Report only changes you actually made, naming each file; don't describe a file you didn't touch.

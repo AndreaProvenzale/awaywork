@@ -4,17 +4,17 @@ description: Let your coding agent read your recent sessions and PRs, with your 
 
 # Suggested rules
 
-CI goes red, you paste the failure into your agent. A review lands, you ask it to address the comments. Monday morning, you ask it to go through last week's errors. You've done each one so often you no longer notice, which is exactly why you'd never think to write a rule for it. `/awaywork:suggest` notices for you: it reads your recent agent sessions and your forge history, finds the work you keep doing right after the same kind of event or at the same time each week, and proposes it as queue rules, [routines](./configuration.md#routines) and fixes for the corrections you keep typing, each shown against the items it would take tonight.
+CI goes red, you paste the failure into your agent. A review lands, you ask it to address the comments. Monday morning, you ask it to go through last week's errors. You've done each one so often you no longer notice, which is exactly why you'd never think to write a rule for it. `/away` notices for you, when you ask: it reads your recent agent sessions and your forge history, finds the work you keep doing right after the same kind of event or at the same time each week, and proposes it as queue rules, [routines](./configuration.md#routines) and fixes for the corrections you keep typing, each shown against the items it would take tonight.
 
 ## Run it
 
 In Claude Code, with the [plugin](./agents.md#claude-code) installed:
 
 ```text
-/awaywork:suggest
+/away what could you take off my plate?
 ```
 
-On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/awaywork:queue` offers it once before asking what to offload. Codex and friends get the same skill from the npm package, at `plugin/skills/suggest/SKILL.md`, as in [Codex and friends](./agents.md#codex-and-friends).
+On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/away` offers it once before asking what to offload. Codex and friends get the same skill from the npm package, at `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
@@ -87,7 +87,7 @@ Plus a few lines under it: 2 patterns dropped because awaywork can't see what st
 
 ## You pick
 
-Accept, tweak or decline each by number. Rules and routines you keep go through the queue skill's usual loop: drafted, checked on your items, written into your config keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as in [the queue skill](./agents.md#claude-code). Nothing else is written.
+Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items, written into your config keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
 
 What it won't do:
 
@@ -98,4 +98,4 @@ What it won't do:
 
 ## Running it again
 
-There's no memory between runs, on purpose for now. What you accepted is in your config, so it comes back as "already rule #3". What you declined comes back as a fresh candidate next time. Nothing nudges you either: run `/awaywork:suggest` when your habits change, a new repo shows up, or you're curious what a month of your sessions says.
+There's no memory between runs, on purpose for now. What you accepted is in your config, so it comes back as "already rule #3". What you declined comes back as a fresh candidate next time. Nothing nudges you either: ask `/away` again when your habits change, a new repo shows up, or you're curious what a month of your sessions says.
