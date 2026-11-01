@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
+import { GITHUB_ONLY } from '../src/core/continue.js'
 import { footer } from '../src/core/footer.js'
 import type { Item } from '../src/core/types.js'
 import { bitbucketForge } from '../src/forge/bitbucket.js'
@@ -118,6 +119,27 @@ describe('bitbucket forge', () => {
     expect(await linked({ source: 'asana', id: '1205', key: '1205', url })).toEqual([14])
   })
 
+  it("reads what awaywork's draft left, refused as GitHub only: it holds dependents back, never resumes", async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const description = `Half.\n\n${footer('r1', [{ source: 'jira', key: 'ENG-12' }], left)}`
+    const run = recorded([
+      [
+        /--scope me/,
+        minePage([
+          { description, draft: true },
+          { description, draft: false },
+        ]),
+      ],
+    ])
+    const prs = await bitbucketForge(['acme'], run).prsFor(
+      fakeItem({ source: 'jira', key: 'ENG-12' }),
+    )
+    expect(prs.map((pr) => pr.left)).toEqual([
+      { ...left, items: ['jira:ENG-12'], refused: GITHUB_ONLY },
+      undefined,
+    ])
+  })
+
   it('marks a PR whose branch is in another repo as a fork', async () => {
     const [pr] = JSON.parse(fixture('prs-me.json')).values
     pr.source.repository.full_name = 'someone/awaywork-sandbox'
@@ -150,21 +172,101 @@ describe('bitbucket forge', () => {
     fork.source.repository.full_name = 'someone/awaywork-sandbox'
     const declined = JSON.parse(fixture('prs-on-declined.json'))
     declined.values.push(fork)
+    const open = JSON.parse(fixture('prs-on-open.json'))
+    const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
+    open.values[0].description += `\n${footer('r1', [{ source: 'jira', key: 'SANDBOX-7' }], left)}`
     const run = recorded([
-      [/--state OPEN /, fixture('prs-on-open.json')],
+      [/--state OPEN /, JSON.stringify(open)],
       [/--state DECLINED /, JSON.stringify(declined)],
       [/--state (MERGED|SUPERSEDED) /, empty],
     ])
     const prs = await bitbucketForge(['andrea89'], run).prsOn(sandbox, 'probe/awaywork-fixture')
-    expect(prs.map(({ url, merged }) => [url, merged])).toEqual([
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false],
-      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false],
+    expect(prs.map(({ url, merged, left }) => [url, merged, left?.refused])).toEqual([
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/4', false, GITHUB_ONLY],
+      ['https://bitbucket.org/andrea89/awaywork-sandbox/pull-requests/1', false, undefined],
     ])
     expect(prs[0]?.body).toContain('item=jira:SANDBOX-7')
+    expect(prs.map(({ head, closedAt }) => [head, closedAt])).toEqual([
+      ['58961c892aa5', undefined],
+      ['09db4a1b3c29', '2026-10-18T13:25:48.949282+00:00'],
+    ])
     expect(run.calls.map((c) => c.slice(4, 10).join(' '))).toEqual(
       ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED'].map(
         (s) => `-r ${sandbox} --source probe/awaywork-fixture --state ${s}`,
       ),
+    )
+  })
+
+  it('reads a file at a ref, and nothing for a missing one', async () => {
+    const run = recorded([[/repo file notes\.txt /, fixture('repo-file.json')]])
+    const forge = bitbucketForge(['andrea89'], run)
+    expect(await forge.fileAt(sandbox, '16fc60339a69', 'notes.txt')).toBe(
+      "line one\nline two\nline three\nsmoke from awaywork's Bitbucket forge\n",
+    )
+    expect(run.calls[0]).toEqual([
+      'twg',
+      ...['bb', 'repo', 'file', 'notes.txt', '-r', sandbox, '--ref', '16fc60339a69'],
+      ...json,
+    ])
+    const missing: Exec = async () => {
+      throw Object.assign(new Error('exit 1'), { stdout: fixture('not-found.json') })
+    }
+    expect(await bitbucketForge(['andrea89'], missing).fileAt(sandbox, 'x', 'nope')).toBe(undefined)
+  })
+
+  it("reads build statuses on a PR's head by name", async () => {
+    const recordedPr = JSON.parse(fixture('prs-get-statuses.json'))
+    const forge = (statuses: unknown[]) =>
+      bitbucketForge(
+        ['andrea89'],
+        recorded([[/prs get 5 /, JSON.stringify({ ...recordedPr, _statuses: statuses })]]),
+      )
+    const run = recorded([[/prs get 5 /, fixture('prs-get-statuses.json')]])
+    expect(await bitbucketForge(['andrea89'], run).checks(sandbox, 5)).toEqual({})
+    expect(run.calls[0]).toEqual([
+      'twg',
+      ...['bb', 'prs', 'get', '5', '-r', sandbox, '--statuses', '--strict'],
+      ...json,
+    ])
+    // Shaped as Bitbucket's API documents a build status: the sandbox has none to record.
+    const status = (
+      name: string,
+      state: string,
+      commit = '16fc60339a69dc87a10d517ab538573353126772',
+    ) => ({
+      type: 'build',
+      key: name.toLowerCase(),
+      name,
+      state,
+      links: {
+        commit: { href: `https://api.bitbucket.org/2.0/repositories/${sandbox}/commit/${commit}` },
+      },
+    })
+    expect(
+      await forge([
+        status('Pipeline', 'SUCCESSFUL'),
+        status('Vercel Preview', 'INPROGRESS'),
+        status('Expo Preview', 'FAILED'),
+        status('Lint', 'STOPPED'),
+        status('Old', 'SUCCESSFUL', '09db4a1b3c29'),
+      ]).checks(sandbox, 5),
+    ).toEqual({
+      Pipeline: 'passed',
+      'Vercel Preview': 'pending',
+      'Expo Preview': 'failing',
+      Lint: 'failing',
+    })
+  })
+
+  it('fails the read when twg reads the PR but not its statuses', async () => {
+    const pr = fixture('prs-get-statuses.json')
+    // Like twg: the PR without statuses, or with --strict an exit 1.
+    const run: Exec = async (_, args) => {
+      if (!args.includes('--strict')) return pr
+      throw Object.assign(new Error('exit 1'), { stderr: 'statuses: HTTP 502' })
+    }
+    await expect(bitbucketForge(['andrea89'], run).checks(sandbox, 5)).rejects.toThrow(
+      'twg bb prs get: statuses: HTTP 502',
     )
   })
 

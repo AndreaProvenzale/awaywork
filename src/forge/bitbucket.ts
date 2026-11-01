@@ -2,21 +2,37 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '../config/schema.js'
-import { isOurs } from '../core/footer.js'
-import type { Forge, Item, PrRef } from '../core/types.js'
+import { GITHUB_ONLY } from '../core/continue.js'
+import { isOurs, leftIn } from '../core/footer.js'
+import type { CheckState, Forge, Item, PrRef } from '../core/types.js'
 import { type Exec, exec } from './gh.js'
-import { linksItem, prText } from './pr.js'
+import { byName, linksItem, prText } from './pr.js'
 import { pushHead } from './push.js'
 
-type Side = { branch: { name: string }; repository: { full_name: string } }
+type Side = {
+  branch: { name: string }
+  commit: { hash: string }
+  repository: { full_name: string }
+}
 type Pr = {
   id: number
   title: string
   description: string | null
   state: string
+  draft: boolean
+  updated_on: string
   source: Side
   destination: Side
   links: { html: { href: string } }
+}
+/** A build status as Bitbucket's API documents it; twg returned none to check it against. */
+type Status = { name: string; state: string; links?: { commit?: { href?: string } } }
+
+const STATUS: Record<string, CheckState> = {
+  SUCCESSFUL: 'passed',
+  INPROGRESS: 'pending',
+  FAILED: 'failing',
+  STOPPED: 'failing',
 }
 
 const STATES = ['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED']
@@ -80,6 +96,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
   let myPrs: Promise<Pr[]> | undefined
 
   const forge: Forge = {
+    ownDraftsRefused: GITHUB_ONLY,
+
     async clone(repo, branch, dir, fork) {
       if (fork)
         throw new Error(
@@ -109,6 +127,7 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           mine: true,
           trusted: true,
           fork: pr.source.repository.full_name !== pr.destination.repository.full_name,
+          ...leftIn(pr.description, pr.draft, GITHUB_ONLY),
         }))
     },
 
@@ -129,8 +148,12 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
           url: pr.links.html.href,
           number: pr.id,
           body: pr.description ?? '',
+          head: pr.source.commit.hash,
           open: pr.state === 'OPEN',
           merged: pr.state === 'MERGED',
+          ...leftIn(pr.description, pr.state === 'OPEN' && pr.draft, GITHUB_ONLY),
+          // A declined or superseded PR changes no more: its last update is when it closed.
+          ...(pr.state !== 'OPEN' && pr.state !== 'MERGED' && { closedAt: pr.updated_on }),
         }))
     },
 
@@ -138,6 +161,25 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       const args = ['bb', 'commit', 'query', '-r', repo, '--branch', branch, '-n', '1']
       const [tip] = await twg<{ message?: string }[]>(run, args)
       return tip?.message ?? ''
+    },
+
+    async fileAt(repo, ref, path) {
+      const args = ['bb', 'repo', 'file', path, '-r', repo, '--ref', ref]
+      const file = await twg<{ content?: unknown }>(run, args).catch((e: Error) => {
+        if (/Resource not found/.test(e.message)) return undefined
+        throw e
+      })
+      return typeof file?.content === 'string' ? file.content : undefined
+    },
+
+    /** Build statuses on the PR's head: one that names another commit is left out. */
+    async checks(repo, number) {
+      // Without --strict, statuses twg failed to read may come back as none.
+      const args = ['bb', 'prs', 'get', String(number), '-r', repo, '--statuses', '--strict']
+      const pr = await twg<Pr & { _statuses: Status[] }>(run, args)
+      const onHead = (s: Status) =>
+        s.links?.commit?.href?.split('/').at(-1)?.startsWith(pr.source.commit.hash) ?? true
+      return byName(pr._statuses.filter(onHead).map((s) => [s.name, STATUS[s.state] ?? 'pending']))
     },
 
     async push(dir, branch, { repo }) {
@@ -150,8 +192,8 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       return "Bitbucket can't push onto a PR: twg reads neither branch restrictions nor auto-merge"
     },
 
-    async openPr(repo, head, base, bodyFile, runId, items, draft) {
-      const { title, body } = await prText(bodyFile, head, runId, items)
+    async openPr(repo, head, base, bodyFile, runId, items, draft, left) {
+      const { title, body } = await prText(bodyFile, head, runId, items, left)
       const dir = await mkdtemp(join(tmpdir(), 'awaywork-pr-'))
       try {
         const file = join(dir, 'description.md')
@@ -164,6 +206,10 @@ export function bitbucketForge(workspaces: string[], run: Exec = exec): Forge {
       } finally {
         await rm(dir, { recursive: true, force: true })
       }
+    },
+
+    async updatePr() {
+      throw new Error(GITHUB_ONLY)
     },
 
     /** Bitbucket has no stacked PRs; the upper PR's base is already the lower one's branch. */

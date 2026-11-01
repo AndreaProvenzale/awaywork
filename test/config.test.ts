@@ -53,12 +53,14 @@ describe('config', () => {
       reserve: 0.1,
       per_run: 0.15,
       session_max: 0.9,
+      present_session_max: 0.4,
       fallback: { units: 4, turns: 60 },
     })
     expect(codex?.budget.per_run).toBe(0.05)
     expect(parseConfig(minimal).budget).toEqual({
       reserve: 0.1,
       session_max: 0.9,
+      present_session_max: 0.4,
       fallback: { units: 4, turns: 60 },
     })
   })
@@ -548,7 +550,7 @@ describe('config', () => {
     ])
   })
 
-  it('takes a list of windows with optional weekdays, defaults to one, and rejects an empty one', () => {
+  it('takes a list of windows with optional weekdays, defaults to one, and takes none', () => {
     const cfg = parseConfig(
       `${minimal}windows: [{ start: "01:00", end: "07:00" }, { days: [sat, sun], start: "10:00", end: "18:00" }]`,
     )
@@ -560,7 +562,7 @@ describe('config', () => {
     expect(problems(`${minimal}windows: [{ start: "01:00", end: "01:00" }]`)).toEqual([
       'windows[0]: start and end must differ',
     ])
-    expect(problems(`${minimal}windows: []`)).toHaveLength(1)
+    expect(problems(`${minimal}windows: []`)).toEqual([])
   })
 
   it('takes limits for every provider, not per provider', () => {

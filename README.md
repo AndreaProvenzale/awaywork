@@ -22,9 +22,10 @@ awaywork plan     # a dry look at the next run; only a tiny quota probe
 ```
 $ awaywork plan | cat
 Providers
-  provider  window     used  ceiling  set by       resets in  session / stop at
-  claude    seven_day  5%    90%      reserve cap  1 run      2% / 90%
-    other limits: pacing 90%
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by  resets in  session / stop at
+  claude    seven_day  5%    25.7%    pacing  5 runs     2% / 40%
+    other limits: reserve cap 90%
 
 Units 3
      item   rule  skill              provider  deliver   title
@@ -64,7 +65,8 @@ Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit,
 
 Run 20261019-220012: 1 draft PR, 1 report, 3 units
 2026-10-19 22:00:12 to 2026-10-19 23:47:40
-claude: seven_day 5% to 17%, ceiling 90%; session 2% to 31%, stop at 90%
+away run (inside a window): session_max
+claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
   T-4  no repo: no linked PR or repo field
@@ -115,20 +117,30 @@ The label isn't enough on its own: awaywork reads only the issues assigned to yo
 
 `awaywork plan --rules` shows what each rule takes right now. Skills are plain markdown: `awaywork skills eject fix` and hack away.
 
+Rather not write YAML? Tell your agent what to offload and it writes the rules, checked on your real items first. In Claude Code:
+
+```text
+/plugin marketplace add AndreaProvenzale/awaywork
+/plugin install awaywork@awaywork
+/awaywork:queue
+```
+
+Codex and friends get the same skill too: [With an AI agent](docs/guide/agents.md).
+
 ## How much quota it burns
 
-Each run's ceiling on the weekly window:
+Each run's ceiling on the weekly window is an even spend over the week:
 
 ```
-ceiling = used + (1 - reserve - used) / runs_until_reset
+ceiling = (1 - reserve) × time since the last reset / week
 ```
 
-Early in the week that's a small slice, and it gets greedier as the reset gets closer. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%. There's no token estimation and no guessing.
+A run in one of your windows reads that at the next window's start, or at the reset if that comes first, since nobody else spends what piles up before then; a run outside your windows reads it right away. Day 3 of 7 with the default 10% reserve is 38.6%, and a night it didn't use is still there the next one. Every worker reads the live rate-limit events from its own stream and stops at the ceiling, or when the short session window passes 90%: 40% for a run outside the windows, since that's you at your desk wanting some for yourself. There's no token estimation and no guessing.
 
 ## The paranoid bit
 
 - **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
-- **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes or merges, and it never touches anyone else's branch. The only comments it writes are a step's questions or a rule's plan on your own item, signed `— awaywork`; your reply there runs it again. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
+- **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes or merges, and it never touches anyone else's branch. The only comments it writes are a step's questions, a rule's plan or a unit's result on your own item, signed `— awaywork`; your reply there runs it again. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.
 
@@ -154,7 +166,8 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
 | [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
-| [With an AI agent](docs/guide/agents.md) | Let your coding agent set awaywork up |
+| [With an AI agent](docs/guide/agents.md) | Let your coding agent write your queue, or set awaywork up |
+| [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
 | [CLI reference](docs/reference/cli.md) | Every command |
 | [Adding a provider](docs/extend/providers.md), [a source](docs/extend/sources.md) | Contributing adapters |
 

@@ -126,11 +126,12 @@ async function judged(
   from: string,
 ): Promise<string[]> {
   const out = join(dir, WORK_DIR, 'out')
-  // Only the judge's own report and verdict may differ; a missing `out/` reads as an empty one.
+  // Only the judge's own report, verdict and status may differ; a missing `out/` reads as an empty one.
   const clearOwn = async () => {
     await refuseSymlinks(dir, [`${WORK_DIR}/out`])
     await mkdir(out, { recursive: true })
-    for (const file of [outputFile.report, 'verdict']) await rm(join(out, file), { force: true })
+    for (const file of [outputFile.report, 'verdict', 'status'])
+      await rm(join(out, file), { force: true })
   }
   await clearOwn()
   // Git reads `out/` through attributes, a `.away/.gitattributes` too, so it's also compared and put back as bytes.

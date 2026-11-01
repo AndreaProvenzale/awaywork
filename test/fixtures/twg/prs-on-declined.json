@@ -7,6 +7,7 @@
       "description": "Changes `notes.txt` and adds a **failing** pipeline step.\n\n- a list item\n- another, with `code`\n\n<!-- awaywork: run test-run-1, items: jira:SANDBOX-1 -->",
       "state": "DECLINED",
       "draft": false,
+      "updated_on": "2026-10-18T13:25:48.949282+00:00",
       "source": {
         "branch": {
           "name": "away/SANDBOX-1-test"

@@ -94,7 +94,7 @@ The same rules as for [built-in sources](../extend/sources.md#rules-for-a-source
 
 ## Writing back
 
-A rule's [`on_done`](./configuration.md#on-done) moves your item once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are.
+A rule's [`on_done`](./configuration.md#on-done) posts its result on your item and moves it once its work is published. A custom source does that through a `write` command of its own; without one, its items stay where they are, with no result.
 
 ```yaml
 sources:
@@ -177,6 +177,7 @@ console.log(JSON.stringify(repos.flatMap((repo) => chores.map(({ name, task }) =
 
 - **Attempts** keep a chore from redoing the same work: a unit whose items haven't changed since a worker finished it is skipped, see [how it works](./how-it-works.md). `updated` is the Monday of the week, so a chore runs at most once a week, and not while its last draft PR is still open; print the day's date to run it every day.
 - **Weekdays** are the script's call: print nothing on the days a chore shouldn't run.
+- **A fixed time**, like every Monday at 09:00, needs no script: that's a built-in [routine](./configuration.md#routines). Each occurrence is a new item with its own branch, so with `deliver: draft_pr` or `pr` every week opens its own PR instead of waiting on last week's.
 - **`when`** is checked again when the unit starts: `plan` lists the chore with its gate and notes when the probe has no headroom for it, and the run skips it without the headroom.
 
 - **No `link`** is set: a chore has no tracker page, so its draft PRs carry no link line.

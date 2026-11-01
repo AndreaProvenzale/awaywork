@@ -25,5 +25,5 @@ export const roundTripComment = markComment(
 export function expectPlanBack(item: Item | undefined): void {
   const newest = item?.comments.at(-1)
   expect(planYaml(newest?.body ?? '')).toBe(roundTripYaml.trim())
-  expect(item && planState(item, { maxTasks: 8 })).toEqual({ state: 'waiting' })
+  expect(item && planState(item, { maxTasks: 8, repo: 'acme/api' })).toEqual({ state: 'waiting' })
 }

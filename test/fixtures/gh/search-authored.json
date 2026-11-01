@@ -33,6 +33,7 @@
           "headRefName": "rate-limits",
           "headRefOid": "abc1234",
           "viewerDidAuthor": true,
+          "editor": null,
           "additions": 30,
           "deletions": 12,
           "files": {
@@ -71,6 +72,7 @@
           "isDraft": true,
           "headRefName": "billing",
           "viewerDidAuthor": true,
+          "editor": null,
           "reviewRequests": { "nodes": [] },
           "reviewThreads": { "nodes": [] },
           "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] }
@@ -94,6 +96,7 @@
           "isDraft": false,
           "headRefName": "typo",
           "viewerDidAuthor": true,
+          "editor": null,
           "reviewRequests": { "nodes": [] },
           "reviewThreads": { "nodes": [] },
           "commits": { "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }] }

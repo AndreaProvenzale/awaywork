@@ -25,6 +25,12 @@ export async function readVerdict(dir: string): Promise<string | undefined> {
   return /^[a-z][a-z_-]*$/.test(word) ? word : undefined
 }
 
+/** What a step wrote on the first line of `out/status`, lowercased, if anything. */
+export async function readStatus(dir: string): Promise<string | undefined> {
+  const text = await readOutput(join(dir, WORK_DIR, 'out', 'status'))
+  return text.split('\n')[0]?.trim().toLowerCase() || undefined
+}
+
 /** What a step left for the chain, e.g. `2 commits and a report`. */
 export function made(commits: number, report: string, questions = ''): string {
   const parts = [
@@ -44,7 +50,7 @@ export async function handOff(dir: string, start: string, unitDir: string): Prom
   await refuseSymlinks(dir, [`${WORK_DIR}/out`])
   const out = join(dir, WORK_DIR, 'out')
   await Promise.all(
-    ['report.md', 'review.json', 'verdict', 'check.log', 'questions.md'].map((f) =>
+    ['report.md', 'review.json', 'verdict', 'status', 'check.log', 'questions.md'].map((f) =>
       rm(join(out, f), { force: true }),
     ),
   )

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { type Allowance, allowance } from '../src/core/budget.js'
+import { launch } from '../src/core/launch.js'
 import type { Job } from '../src/core/types.js'
 import { commandProvider } from '../src/providers/command.js'
 import { runWorker, type WorkerOptions } from '../src/worker/run.js'
@@ -34,7 +35,12 @@ const job: Job = {
 }
 
 const windows = [{ start: '01:00', end: '07:00' }]
-const budget = { reserve: 0.1, session_max: 0.9, fallback: { units: 4, turns: 60 } }
+const budget = {
+  reserve: 0.1,
+  session_max: 0.9,
+  present_session_max: 0.4,
+  fallback: { units: 4, turns: 60 },
+}
 const quota = await fakeProvider().probe({ env: {}, log: () => {} })
 const now = 1790391600 * 1000 - 3 * 24 * 60 * 60 * 1000
 const idle = { stop: async () => {} }
@@ -64,6 +70,15 @@ describe('worker', () => {
   it('stops once the short window reaches session_max', async () => {
     const result = await run(allowance({ ...budget, session_max: 0.02 }, quota, now, windows))
     expect(result).toMatchObject({
+      status: 'stopped: session',
+      reason: 'five_hour at 2%, stop at 2%',
+    })
+  })
+
+  it('stops a present run at present_session_max instead', async () => {
+    const strict = { ...budget, present_session_max: 0.02 }
+    expect(await run(allowance(strict, quota, now, windows))).toMatchObject({ status: 'done' })
+    expect(await run(allowance(strict, quota, now, windows, { present: true }))).toMatchObject({
       status: 'stopped: session',
       reason: 'five_hour at 2%, stop at 2%',
     })
@@ -178,19 +193,36 @@ describe('watchdog', () => {
     }
   }
 
-  it('kills a descendant that started its own session and outlived its parent', async () => {
+  it("kills a launch's descendant that started its own session and outlived it", async () => {
     const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
-    const parent = spawn(process.execPath, [
-      '-e',
-      `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+    const parent = launch(
+      process.execPath,
+      [
+        '-e',
+        `const c = require('node:child_process').spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
        console.log(c.pid); setTimeout(() => process.exit(0), 500)`,
-    ])
-    const orphan = Number(await new Promise<string>((ok) => parent.stdout.once('data', ok)))
-    await new Promise((ok) => parent.once('exit', ok))
+      ],
+      {},
+    )
+    const orphan = Number(await new Promise<string>((ok) => parent.stdout?.once('data', ok)))
+    await parent
     expect(alive(orphan)).toBe(true)
     await watchdog.stop()
     await new Promise((ok) => setTimeout(ok, 100))
     expect(alive(orphan)).toBe(false)
+  })
+
+  it("spares awaywork's own children, like the keep-awake one from before and a poll started meanwhile", async () => {
+    const awake = spawn('sleep', ['30'], { stdio: 'ignore' })
+    const watchdog = startWatchdog(tmpdir(), () => {}, { ...defaultLimits, intervalMs: 50 })
+    const poll = spawn('sleep', ['30'], { stdio: 'ignore' })
+    await new Promise((ok) => setTimeout(ok, 200))
+    await watchdog.stop()
+    await new Promise((ok) => setTimeout(ok, 100))
+    expect(awake.signalCode).toBeNull()
+    expect(poll.signalCode).toBeNull()
+    awake.kill('SIGKILL')
+    poll.kill('SIGKILL')
   })
 
   it('reports low memory', async () => {

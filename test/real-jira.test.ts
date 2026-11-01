@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Item } from '../src/core/types.js'
-import { sourceField } from '../src/sources/index.js'
+import { itemFields, sourceField } from '../src/sources/index.js'
 import { jira } from '../src/sources/jira.js'
 import { scriptedAsk } from './fakes/ask.js'
 
@@ -143,7 +143,9 @@ describe.skipIf(!JIRA_API_TOKEN || !JIRA_SITE || !JIRA_EMAIL || !project)(
       for (const item of Object.values(found))
         for (const [key, value] of Object.entries(item.fields))
           for (const v of [value].flat())
-            expect(sourceField(jira.fields, key)?.safeParse(v).success).toBe(true)
+            expect((itemFields[key] ?? sourceField(jira.fields, key))?.safeParse(v).success).toBe(
+              true,
+            )
 
       const fields = { project, status, issuetype, repo }
       expect(found.blocker).toMatchObject({

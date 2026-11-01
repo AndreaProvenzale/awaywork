@@ -4,12 +4,13 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
-import { formatRules, formatWhy, planJson } from '../src/cli/format.js'
+import { formatRules, formatWhy, planJson, rulesJson } from '../src/cli/format.js'
 import { linkPlanTasks } from '../src/cli/plan.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { type Attempts, recordAttempts } from '../src/core/attempts.js'
 import { allowance } from '../src/core/budget.js'
+import { NOT_YOURS } from '../src/core/continue.js'
 import { taskItem, taskMarkdown, taskPr } from '../src/core/fanout.js'
 import {
   approveReply,
@@ -19,6 +20,7 @@ import {
   markComment,
   planComment,
   questionsComment,
+  resultComment,
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
@@ -121,12 +123,6 @@ describe('plan checks for tasks', () => {
     )
   })
 
-  it("refuses after: opened, which isn't supported yet", () => {
-    expect(
-      problem('tasks: [{ id: api, title: A }, { id: web, title: W, after: { api: opened } }]'),
-    ).toBe("task web: after api: opened isn't supported yet, only merged")
-  })
-
   it('refuses a retired id, naming its closed PR', () => {
     const retired = { web: 'https://github.com/acme/api/pull/9' }
     expect(problem('tasks: [{ id: web, title: W }]', { retired })).toBe(
@@ -167,10 +163,25 @@ describe('plan checks for tasks', () => {
     ])
     expect(
       problems(`${queue}  - { skill: fix, where: { planned: true }, deliver: report }`),
+    ).toEqual([])
+    expect(
+      problems(`${queue}  - { skill: fix, where: { planned: true }, deliver: pending_review }`),
     ).toEqual([
       expect.stringContaining(
-        "queue[2].deliver: a plan's task opens its own PR, and that PR is how awaywork knows it's done: deliver draft_pr or pr, not report",
+        "queue[2].deliver: a plan's task opens its own PR, or reports on the card, and that's how awaywork knows it's done: deliver draft_pr, pr or report, not pending_review",
       ),
+    ])
+    expect(
+      problems(
+        `  - { skill: plan, deliver: plan, on_done: { comment: result } }\n${queue.split('\n')[1]}`,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "queue[0].on_done.comment: the plan comment is a plan rule's result, so a second comment would repeat it: use move alone",
+      ),
+    ])
+    expect(problems(`${queue}  - { skill: fix, on_done: {} }`)).toEqual([
+      expect.stringContaining('queue[2].on_done: expected move or comment'),
     ])
     expect(problems(`${queue}  - { skill: fix, where: { any: [{ planned: true }] } }`)).toEqual([
       expect.stringContaining("queue[2].where.any[0].planned: planned only takes a plan's tasks"),
@@ -204,30 +215,36 @@ describe('plan checks for tasks', () => {
     expect(problems('branch: "away/{title}"\n', ', branch: "away/{key}"')).toEqual([])
   })
 
-  it('takes no task for a skill whose planned rule opens no PR, and lists only the others', () => {
-    expect(problem('tasks: [{ id: qa, title: Q, skill: review }]', { noPr: ['review'] })).toBe(
-      'task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
-    )
+  it('takes a task for a skill whose planned rule reports, but no task may wait on it', () => {
+    const reports = { skills: ['implement', 'review'], reports: ['review'] }
+    expect(problem('tasks: [{ id: qa, title: Q, skill: review }]', reports)).toBeUndefined()
+    expect(
+      problem(
+        'tasks: [{ id: qa, title: Q, skill: review }, { id: api, title: A, after: { qa: merged } }]',
+        reports,
+      ),
+    ).toBe('task api: after names qa, which reports: it opens no PR to stack on, check or merge')
+    expect(
+      problem(
+        'tasks: [{ id: api, title: A }, { id: qa, title: Q, skill: review, after: { api: opened } }]',
+        reports,
+      ),
+    ).toBeUndefined()
     const reviewing = configOf(`${queue}  - { skill: review, where: { planned: true } }\n`)
-    const qa = 'tasks: [{ id: api, title: A }, { id: qa, title: Q, skill: review }]'
-    const waiting = card([planned(qa)])
-    expect(skips(plan([waiting], reviewing))).toEqual([
-      [
-        'acme/api#1',
-        'invalid_plan',
-        'plan refused: task qa: the planned rule for skill review opens no PR, and a task is done when its PR merges',
-      ],
-    ])
     const [unit] = plan([card([])], reviewing).units.map((u) => u.unit)
     expect(unit?.planLimits).toEqual({
       maxTasks: 8,
       repo: 'acme/api',
-      skills: ['implement'],
-      noPr: ['review'],
+      repos: ['acme/*'],
+      ...reports,
       retired: {},
     })
-    expect(planContract(unit?.planLimits ?? limits)).toContain(
-      'a `skill` (one of `implement`; `implement` when unset)',
+    const text = planContract(unit?.planLimits ?? limits)
+    expect(text).toContain(
+      'a `skill` (one of `implement`, `review` (reports); `implement` when unset)',
+    )
+    expect(text).toContain(
+      'A task whose skill reports opens no PR: awaywork posts its report on the item as its result, and no task may name it in `after`.',
     )
   })
 
@@ -392,13 +409,38 @@ describe('tasks as items', () => {
     expect(done.units).toEqual([])
     expect(skips(done)[0]).toEqual([
       'acme/api#1',
-      'all_tasks_merged',
-      'all tasks merged: close or move the card',
+      'all_tasks_done',
+      'all tasks done: close or move the card',
     ])
-    expect(needsYou.all_tasks_merged).toBe(true)
+    expect(needsYou.all_tasks_done).toBe(true)
   })
 
-  it('runs nothing for a card no longer yours, on Bitbucket, or whose task PRs went unread', () => {
+  it('runs a report task until its done result is on the card, and only a report task is done by one', () => {
+    const qaRule = configOf(
+      `${queue}  - { skill: qa, where: { planned: true }, deliver: report }\n`,
+    )
+    const qaPlan = `tasks:\n  - { id: api, title: A }\n  - { id: qa, title: Q, skill: qa, after: { api: opened } }\n`
+    const result = (task: string) => posted(resultComment('Done.', 'done', 'qa', task), 3)
+    const fanned = (...more: Item['comments']) =>
+      card([planned(qaPlan), yours(approveReply('')), ...more], { api: pr('api', 'merged') })
+    expect(units(plan([fanned()], qaRule))).toEqual([['acme-api-1-qa', 'away/acme-api-1-qa']])
+    const done = plan([fanned(result('qa'))], qaRule)
+    expect(done.units).toEqual([])
+    expect(skips(done)).toEqual([
+      ['acme/api#1', 'all_tasks_done', 'all tasks done: close or move the card'],
+      ['acme/api#1/api', 'task_merged', 'merged in https://github.com/acme/api/pull/api'],
+      ['acme/api#1/qa', 'task_done', 'done: its result is on https://example.com/1'],
+    ])
+    expect(needsYou.task_done).toBe(false)
+    const open = plan([approved({ api: pr('api', 'open') }, result('api'))])
+    expect(skips(open)[0]).toEqual([
+      'acme/api#1',
+      'fanned_out',
+      'fanned out: api PR open, web waits for api',
+    ])
+  })
+
+  it('runs nothing for a card no longer yours or whose task PRs went unread, and fans out on Bitbucket', () => {
     expect(skips(plan([{ ...approved(), mine: undefined }]))).toEqual([
       [
         'acme/api#1',
@@ -431,13 +473,9 @@ sources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []', writ
 queue:
 ${queue}`)
     const tracked = { ...approved(), source: 'tracker' }
-    expect(skips(plan([tracked], bitbucket))).toEqual([
-      [
-        'acme/api#1',
-        'refused_delivery',
-        "plan approved, but its tasks don't run on Bitbucket yet: awaywork can't read their merged and closed PRs there",
-      ],
-    ])
+    const onBitbucket = plan([tracked], bitbucket)
+    expect(onBitbucket.units.map((u) => u.unit.id)).toEqual(['acme-api-1-api'])
+    expect(skips(onBitbucket)[0]?.[1]).toBe('fanned_out')
   })
 
   it("holds every task while one's questions on the card wait, and one reply answers two", () => {
@@ -503,6 +541,140 @@ ${queue}`)
   })
 })
 
+describe('a task that goes on in a later run', () => {
+  const draftOf = (
+    status: 'ask' | 'continue',
+    continued = 1,
+    head = 'h1',
+    refused?: string,
+  ): TaskPr => ({
+    ...pr('api', 'open'),
+    head,
+    left: { status, continued, head: 'h1', from: 'f0', items: ['github:acme/api#1/api'], refused },
+  })
+  // Nothing changed since the last run took the tasks.
+  const unchanged: Attempts = Object.fromEntries(
+    ['api', 'qa'].map((t) => [
+      `github:acme/api#1/${t}`,
+      { runId: 'r1', skill: 'implement', updated: at(5) },
+    ]),
+  )
+  const opened = `tasks:
+  - { id: api, title: A }
+  - { id: web, title: W, after: { api: opened } }
+  - { id: app, title: P, after: { api: CI } }
+`
+  const stacked = (taskPrs: Record<string, TaskPr>) =>
+    card([planned(opened), yours(approveReply(''))], taskPrs)
+
+  it('goes on with its own draft, unchanged as it is, on its branch, and holds its dependents', () => {
+    const p = plan([approved({ api: draftOf('continue') })], config, unchanged)
+    expect(units(p)).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
+    expect(p.units[0]?.unit).toMatchObject({
+      base: 'away/acme-api-1-api',
+      continued: 1,
+      resume: {
+        url: 'https://github.com/acme/api/pull/api',
+        number: 3,
+        from: 'f0',
+        status: 'continue',
+      },
+    })
+    expect(skips(p)[0]).toEqual([
+      'acme/api#1',
+      'fanned_out',
+      'fanned out: api draft says continue, web waits for api',
+    ])
+    // A dependent stacks on it only after it, in the same run; a check on it waits.
+    const both = plan([stacked({ api: draftOf('continue') })], configOf(queue), unchanged)
+    expect(both.units.filter((u) => !u.chain).map((u) => [u.unit.id, u.after])).toEqual([
+      ['acme-api-1-api', undefined],
+      ['acme-api-1-web', 'acme-api-1-api'],
+    ])
+    expect(skips(both)).toContainEqual([
+      'acme/api#1/app',
+      'waiting_for_task',
+      "waiting for api's check CI (its draft says continue)",
+    ])
+  })
+
+  it("leaves it to you, saying why, once it can't go on, holding its dependents back", () => {
+    const said = "awaywork's draft https://github.com/acme/api/pull/api says continue, but"
+    const cases: [TaskPr, string, string][] = [
+      [draftOf('continue', 3), 'continue_cap', 'it continued 3 times'],
+      [draftOf('continue', 1, 'h2'), 'draft_moved', 'it moved from h1, where awaywork left it'],
+      [draftOf('continue', 1, 'h1', NOT_YOURS), 'waiting_for_review', NOT_YOURS],
+    ]
+    for (const [api, kind, why] of cases) {
+      const p = plan([stacked({ api })], configOf(queue), unchanged)
+      expect(p.units.filter((u) => !u.chain)).toEqual([])
+      expect(skips(p)).toEqual(
+        expect.arrayContaining([
+          ['acme/api#1/api', kind, `${said} ${why}: finish it by hand, or mark it ready`],
+          [
+            'acme/api#1/web',
+            'waiting_for_task',
+            "waiting for task api's draft, which says continue",
+          ],
+          [
+            'acme/api#1/app',
+            'waiting_for_task',
+            "waiting for api's check CI (its draft says continue)",
+          ],
+        ]),
+      )
+    }
+    expect([needsYou.continue_cap, needsYou.draft_moved, needsYou.continues_later]).toEqual([
+      true,
+      true,
+      false,
+    ])
+  })
+
+  it('goes on only in a window run, but on an answered ask in a soon one too', () => {
+    const soon = configOf(`  - { skill: plan, deliver: plan }
+  - { skill: implement, where: { planned: true }, run: soon }
+`)
+    const run = (taskPrs: Record<string, TaskPr>) =>
+      planRun({
+        config: soon,
+        items: [approved(taskPrs)],
+        allowances,
+        skills: { builtin: builtinSkills },
+        only: { soon: true },
+      })
+    expect(skips(run({ api: draftOf('continue') }))).toContainEqual([
+      'acme/api#1/api',
+      'continues_later',
+      'goes on from https://github.com/acme/api/pull/api in the next window run',
+    ])
+    expect(units(run({ api: draftOf('ask', 0) }))).toEqual([
+      ['acme-api-1-api', 'away/acme-api-1-api'],
+    ])
+  })
+
+  it('runs a report task again while its result says continue, up to the cap', () => {
+    const qaRule = configOf(`${queue}  - { skill: qa, where: { planned: true }, deliver: report }
+`)
+    const qaPlan = `tasks:
+  - { id: qa, title: Q, skill: qa }
+`
+    const result = (continued: number) =>
+      posted(resultComment('Half the screens.', 'continue', 'qa', 'qa', continued), 3)
+    const fanned = (continued: number) =>
+      card([planned(qaPlan), yours(approveReply('')), result(continued)])
+    const again = plan([fanned(1)], qaRule, unchanged)
+    expect(units(again)).toEqual([['acme-api-1-qa', 'away/acme-api-1-qa']])
+    expect(again.units[0]?.unit.continued).toBe(1)
+    expect(skips(again)[0]).toEqual(['acme/api#1', 'fanned_out', 'fanned out: qa no result yet'])
+    expect(skips(plan([fanned(3)], qaRule, unchanged))).toContainEqual([
+      'acme/api#1/qa',
+      'continue_cap',
+      "awaywork's result says continue, but it continued 3 times: finish it by hand",
+    ])
+  })
+})
+
 describe("a task's PR", () => {
   const task = {
     card: card([]),
@@ -518,6 +690,19 @@ describe("a task's PR", () => {
     open: state === 'open',
     merged: state === 'merged',
     ...(state !== 'open' && { closedAt: at(3) }),
+  })
+
+  it("carries what its draft left, and waits for review once it's ready", () => {
+    const left = { status: 'continue', continued: 1, head: 'h1', from: 'f0' } as const
+    const draft = { ...left, items: [`github:${task.key}`] }
+    expect(taskPr([{ ...on(4, 'open'), left: draft }], task)?.left).toEqual(draft)
+    expect(
+      skips(plan([approved({ api: taskPr([on(4, 'open')], task) as TaskPr })])),
+    ).toContainEqual([
+      'acme/api#1/api',
+      'waiting_for_review',
+      'waiting for review: awaywork PR https://github.com/acme/api/pull/4 is open',
+    ])
   })
 
   it('is the one on its branch whose footer names the task, open or merged first', () => {
@@ -755,6 +940,7 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   expect(prompts['acme-api-1']).toContain(
     "These tasks' PRs were closed without merging, so their ids are retired and no task may reuse them: `web` (https://github.com/acme/api/pull/12).",
   )
+  // A task that opens a PR posts no result: its PR says it's done.
   expect(item.comments.map((c) => commentKind(c) ?? c.author)).toEqual(['plan', 'approve'])
 
   comment('Drop web: put the button in the docs instead.')
@@ -776,7 +962,7 @@ it('fans out, merges one task, re-plans on the closed one, and needs you once al
   settle('away/acme-api-1-docs', true, tick())
   expect(await round(8)).toEqual({
     skipped: [
-      ['acme/api#1', 'all_tasks_merged', 'all tasks merged: close or move the card'],
+      ['acme/api#1', 'all_tasks_done', 'all tasks done: close or move the card'],
       ['acme/api#1/api', 'task_merged', 'merged in https://github.com/acme/api/pull/11'],
       ['acme/api#1/docs', 'task_merged', 'merged in https://github.com/acme/api/pull/13'],
     ],
@@ -823,7 +1009,12 @@ describe('a card carrying a plan', () => {
   })
 
   it('shows under plan --rules by the plan rule, marked when its where no longer holds it', () => {
-    expect(formatRules(sticky.queue ?? [], [moved(card([planned()])), card([])])).toEqual([
+    const cards = [moved(card([planned()])), card([])]
+    expect(JSON.parse(rulesJson(sticky.queue ?? [], cards, false)).rules[0].taken).toEqual([
+      expect.objectContaining({ key: 'acme/api#1', plan: true }),
+      expect.not.objectContaining({ plan: true }),
+    ])
+    expect(formatRules(sticky.queue ?? [], cards)).toEqual([
       '#1  plan       label=feature deliver=plan',
       '     2 taken: acme/api#1 (plan), acme/api#1',
       '#2  implement  planned=true',
@@ -903,7 +1094,7 @@ describe('a card carrying a plan', () => {
 
 /** The example plan's tasks, checked. */
 function checkPlanTasks() {
-  const checked = checkPlan(yaml, { maxTasks: 8 })
+  const checked = checkPlan(yaml, { maxTasks: 8, repo: 'acme/api' })
   return 'plan' in checked ? checked.plan.tasks : []
 }
 

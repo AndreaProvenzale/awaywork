@@ -7,6 +7,7 @@
       "description": "Probes twg output for fixtures.\n\n---\n<!-- awaywork run=probe-1 item=jira:SANDBOX-7 -->\nOpened by awaywork (run `probe-1`): a coding agent worked on this unattended. Review it like any other contribution.",
       "state": "OPEN",
       "draft": true,
+      "updated_on": "2026-10-22T17:34:51.801099+00:00",
       "source": {
         "branch": {
           "name": "probe/awaywork-fixture"

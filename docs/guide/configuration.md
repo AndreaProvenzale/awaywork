@@ -14,6 +14,8 @@ awaywork doctor         # validate, including skill names
 awaywork plan           # see what the change does to the next run
 ```
 
+Or let your coding agent edit the queue for you, checked on your real items first: [With an AI agent](./agents.md).
+
 For autocompletion and hover docs in editors with the YAML language server (VS Code's YAML extension, JetBrains, Neovim), put this first line in the file:
 
 ```yaml
@@ -36,10 +38,13 @@ limits:                         # per run, every provider; unset by default
   units_per_repo: 3
   unit_minutes: 90              # stop a worker after this many minutes
   plan_tasks: 8                 # tasks in a deliver: plan plan; 8 by default
+keep_runs: 30d                  # default; older run dirs go when run or watch starts
+watch: { every: 5m, debug: false }  # defaults; how often run: soon rules poll, and true logs every run line in watch.log
 budget:                         # defaults; any provider can override
   reserve: 10%                  # never go past 1 - reserve of any window
   per_run: 15%                  # at most this share of the long window per run
   session_max: 90%              # stop a worker past this share of the short window
+  present_session_max: 40%      # the same, in a run outside every window
   fallback: { units: 4, turns: 60 }   # when the quota can't be read
 providers:                      # order = routing preference
   - claude: { model: opus, settings: claude-worker.json }   # default: the binary's own model
@@ -50,6 +55,7 @@ sources:
     workspace: "123"
     token_env: ASANA_TOKEN
     repo_map: { "1201": acme/api }   # project gid -> the repo its tasks' code lives in
+    every: 15m                  # poll it for run: soon rules at most this often
 branch: away/{key}             # default; {key} or {title} is required
 repos:
   acme/api:
@@ -64,6 +70,7 @@ queue:                          # first matching rule wins; top = highest priori
   - skill: fix
     where: { type: pr, mine: true, checks: failing }
     branch: fix/{key}
+    run: soon                   # within minutes, not only in the windows
   - skill: implement
     source: github
     where: { type: issue, label: awaywork, repo: acme/api }
@@ -90,9 +97,9 @@ windows:
   - { days: [sat, sun], start: "10:00", end: "18:00" }
 ```
 
-The scheduler gets one trigger per window, and pacing divides the headroom by the runs left before the reset. Windows should not overlap. Budgets count runs, not days: three windows a day can spend `per_run` three times, and `runs_until_reset` counts window openings.
+[`awaywork watch`](./scheduling.md#on-your-machine) reads them every minute, so editing them needs no reinstall, only moving the [wake](./scheduling.md#waking-up-for-it) does. `windows: []` means none: the daemon idles, and the GitHub Actions workflow only runs when you dispatch it. Windows should not overlap. Pacing follows the clock, not the number of windows: a run inside a window may spend up to where an even spend over the long window stands at the next window's opening, or at the reset if that comes first, so more windows split the week finer rather than spend more. `per_run` still caps each run, and `runs_until_reset` counts window openings. A run that starts outside every window, like a manual `awaywork run` at lunch, stops its workers at `present_session_max` (default 40%) instead of `session_max`, and skips providers whose quota it can't read.
 
-A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
+A readable quota decides how much work fits, not how much you can review in a morning. `limits.units` caps the units planned per run, `limits.units_per_repo` those in any one repo, and a rule's `units` those from that rule. None is set by default. Units past a cap are skipped in queue order, with the cap named in `awaywork plan` and the report. A rule's [`then`](./chains.md#then) chain is one unit, counted once, and each of a plan's tasks is one, in its own [repo](./how-it-works.md#across-repos): a cap can cut a card's [block](./how-it-works.md#the-feature-block), and the next run carries on. Only units whose first step is routed to a provider count, and caps apply to each `awaywork run`, like `fallback.units`, which every step draws on. `limits.unit_minutes` stops any worker after that many minutes, whichever provider runs it. `limits.plan_tasks` (8 by default) caps the tasks in a [plan](./how-it-works.md#plans).
 
 Budgets are shares of each provider's quota windows; see [How it works](./how-it-works.md#budget) for how they combine. Start low: `per_run: 5%` for a week shows what a unit costs you before you raise it.
 
@@ -114,7 +121,7 @@ providers:
   - claude
   - opencode:
       command: opencode run --auto "$(cat "$AWAYWORK_PROMPT")"
-      probe: ./opencode-quota.sh # optional
+      probe: ./opencode-quota.sh # optional; without it, windows only
 limits:
   unit_minutes: 45
 ```
@@ -123,18 +130,18 @@ limits:
 
 The command runs in the clone like any worker, with the prompt in the file `$AWAYWORK_PROMPT`; stdout and stderr go to `worker.log`, and exit 0 is a finished unit. `secrets`, the env vars it reads such as an API key, are withheld from other workers and listed in Actions. `skills_dir` (default `.agents/skills`) is where the unit's skills go in the clone. There's no `model` key: put it in the command, and no `mcp` either: a rule or step it may run can't name MCP servers, so route those to another provider with `provider`. Nothing installs your CLI on a GitHub-hosted runner, so there `plan` routes around it and `schedule install` leaves it out; run it locally or on a self-hosted runner. A `probe` gets your whole environment, secrets included, since it's your own command.
 
-There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run); there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
+There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, and `fallback.turns` doesn't apply (it defaults to 60, the cap Claude and Codex get without a quota reading). Without a `probe`, the provider runs on the `fallback` caps (units per run) and sits out every run outside the windows, a manual `awaywork run --unit` included; there are no live rate-limit events, so it can't stop mid-unit at the ceiling. A `probe` is a command that prints the quota as JSON, run in the config file's folder once per `plan` or `run`, again after each unit, and by `doctor`; it gets 60 s:
 
 ```json
 {
   "windows": [
-    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152 },
-    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552 }
+    { "name": "5h", "span": "short", "used": 0.2, "resetsAt": 1793021152, "minutes": 300 },
+    { "name": "7d", "span": "long", "used": 0.3, "resetsAt": 1793539552, "minutes": 10080 }
   ]
 }
 ```
 
-`used` is a share from 0 to 1 and `resetsAt` is in unix seconds. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
+`used` is a share from 0 to 1, `resetsAt` is in unix seconds and `minutes`, optional, is the window's length; a `long` window without it counts as 7 days. awaywork paces against the `long` window; the `short` one only feeds the session stop, and a probe without a `long` window means the fallback caps, and no runs outside the windows. Whether the vendor allows unattended use is your call; `doctor` flags it as `unattended: grey`.
 
 ## Sources
 
@@ -145,11 +152,35 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
 | `jira` | `site` host (`acme.atlassian.net`), `email` of the token's account, optional `cloud_id` (for a scoped token), `jql` (a condition ANDed with my unresolved issues, no `ORDER BY`), `repo_map` (project key → `owner/name`), `token_env` (default `JIRA_API_TOKEN`) |
+| `routines` | Items from the clock, keyed by name: `at`, `repo`, `title`, optional `days` and `description`; see [Routines](#routines) |
 | any other name | `command` printing your items as JSON, `fields`, `secrets`, `setup`, `write`: see [Custom sources](./custom-sources.md) |
+
+The gids, keys and names these keys and your `where` clauses take are one read-only command away. `awaywork sources <id>` lists what that source's credentials can see; with no id, every configured source; `--json` for scripts and agents:
+
+```text
+$ awaywork sources linear
+linear:
+  teams:
+    - key: ENG
+      name: Engineering
+      states:
+        - Todo
+        - In Progress
+        - QA
+        - Done
+    - key: WEB
+      name: Web
+      states:
+        - Todo
+        - In Progress
+        - Done
+```
+
+`github` lists your login and orgs, `asana` the workspaces, then the projects and section names of the configured workspace (of each, before you configure one), and `jira` the projects and the site's statuses, once `sources.jira` has its `site` and `email`.
 
 ::: warning Experimental `github.host` has only run in tests so far, never against a real GitHub Enterprise. `init`, `doctor` and artifact downloads still use `gh`'s default host. Tried it? [Open an issue](https://github.com/AndreaProvenzale/awaywork/issues/new) with how it went. :::
 
-Every source but `github` and `bitbucket` also takes a [`link`](#linking-prs).
+Every source but `github`, `bitbucket` and `routines` also takes a [`link`](#linking-prs), and every source an `every`, how often [`run: soon`](#run-soon) polls it.
 
 Every built-in source also takes a `context` command, for what an item points at: a Sentry issue, a Figma frame, a runbook. awaywork runs it per item before the worker, in the config file's folder like a custom source's `command`, never in the clone. It writes its files into `$AWAYWORK_CONTEXT_DIR`, a fresh folder outside the clone, and awaywork copies them into `.away/context/<item>/extra/` next to `item.md`, where the worker reads them. The item reaches it as `AWAYWORK_ITEM_KEY`, `AWAYWORK_ITEM_URL` and `AWAYWORK_ITEM_FILE`, a path to the item as JSON.
 
@@ -210,15 +241,71 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
      Appends one line to notes.txt, from a stub provider.
 ```
 
-`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. What Bitbucket doesn't do yet:
+`away/{key}` already puts the Jira key in the branch, which is what Jira's development panel links on. A [plan](./how-it-works.md#plans) fans out there too: twg looks up each task's PR, reads the files a task in another repo [ships](./how-it-works.md#across-repos), and the build statuses a task [waits on](./how-it-works.md#waiting-on-a-check) by name. What Bitbucket doesn't do yet:
 
 - **Its own items.** `bitbucket` lists nothing for now, so no fix or review rules on Bitbucket PRs; your Jira issues, and any other source's items, are what runs. Your open PRs still link to items, as in [Linking PRs](#linking-prs).
 - **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
 - **`deliver: pending_review`.** Refused when the config loads: awaywork leaves pending reviews on GitHub only.
+- **Going on with its own draft.** GitHub only: a draft that says `continue`, or asked, is yours to finish by hand ([Continue](./how-it-works.md#continue)).
 - **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
 - **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 
 One forge per config: `github` and `bitbucket` together is an error.
+
+### Routines
+
+Some work has no ticket, only a day: every Monday you triage Sentry. A routine is an item that comes due on the clock, so it runs like any other: a rule takes it, `plan` shows it, attempts keep it from running twice.
+
+```yaml
+sources:
+  github: { repos: [acme/*] }
+  routines:
+    sentry-triage:
+      days: [mon]               # sun to sat, as in windows; every day when unset
+      at: "09:00"               # local time, as in windows; or a list: ["09:00", "14:00"]
+      repo: acme/api            # required: where the work happens
+      title: Triage last week's Sentry issues
+      description: Group new issues, link duplicates, draft fixes for the top three.
+
+queue:
+  - skill: triage
+    source: routines
+    where: { name: sentry-triage }
+    deliver: report
+    run: soon                   # within minutes of 09:00, not at the next window
+```
+
+Each routine is one `task`: its latest occurrence at or before now, keyed `<name>-<YYYYMMDD>-<HHMM>` in local time, so its branch is `away/sentry-triage-20261026-0900`. Any name goes but `context` and `every`, the source's own keys. A machine asleep all week wakes up to one item, not a backlog. Once a unit on it finishes, it's [unchanged](./how-it-works.md#units) until the next occurrence, which is a new item. It's yours (`mine`), its `url` is the repo's page on your forge, and rules match `name`, `repo`, and `created` and `updated`, both the occurrence. `plan` lists when each routine comes due next, and `--why` says which occurrence an item is:
+
+```text
+$ awaywork plan
+Providers
+  present run (outside the windows): present_session_max
+  provider  window     used  ceiling  set by       resets in  session / stop at
+  claude    seven_day  5%    90%      reserve cap  1 run      2% / 40%
+    other limits: pacing 90%
+
+Units 1
+     item                         rule     skill              provider  deliver  title
+  1  sentry-triage-20261026-0900  #1 soon  triage (in-repo?)  claude    report   Triage last week's Sentry issues
+
+Routines 1
+  sentry-triage  next mon 2026-11-02 09:00
+
+$ awaywork plan --why sentry-triage-20261026-0900
+routines sentry-triage-20261026-0900  Triage last week's Sentry issues
+  https://github.com/acme/api
+  routine sentry-triage, due mon 2026-10-26 09:00; next mon 2026-11-02 09:00
+  planned
+    unit      1, sentry-triage-20261026-0900
+    rule      #1 source=routines name=sentry-triage deliver=report run=soon
+    skill     triage (in-repo?)
+    provider  claude
+    deliver   report
+    branch    away/sentry-triage-20261026-0900
+```
+
+Times are the machine's local time, as for windows; on GitHub Actions, the workflow's `TZ`, the timezone you ran `schedule install` in. Without `run: soon` a routine waits for a window: with the default `01:00` to `07:00`, Monday's 09:00 runs on Tuesday at 01:00. There's no tracker to write to, so `on_done` and `deliver: plan` on `source: routines` are refused when the config loads, and a unit's result or questions stay in its report; [`notify`](#notify) can send them on. A routine takes a [`context`](#sources) command like any built-in source, say to fetch last week's Sentry issues, and the built-in queue has no rules for routines: give each one yours.
 
 ## Branch names
 
@@ -242,7 +329,7 @@ queue:
 
 The name is cosmetic: awaywork finds its own PRs by their footer, and yours as [Linking PRs](#linking-prs) says. Jira is the exception, since it links a PR only by the key in its branch or title: for Jira items keep the key in one of them, e.g. `feat/{key}-{title}`, or Jira loses the PR.
 
-The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push). When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./how-it-works.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
+The guardrail is that awaywork only pushes a branch that doesn't exist on the remote yet, unless a rule opts in to [`push`](./chains.md#push), or it goes on with its own draft, fast-forwarding it while its head is still the one it left, to [continue](./how-it-works.md#continue) work it started. When the name is taken, the unit takes the first free one of `<branch>-2` to `<branch>-10`, and every step of its chain works on it; a [stacked slice](./chains.md#stack) renders its own name, with its own `{type}`, and takes the next free one when that's taken, as it always is with `away/{key}`. Not when awaywork already tried there: when a PR on the taken branch, open or closed unmerged, has a footer naming one of the unit's items, the unit is skipped as `awaywork tried this in <PR>; delete <branch> to run it again`, unless it's awaywork's draft the unit [goes on](./how-it-works.md#continue) with. That record lives on GitHub, so it holds on a runner that keeps no [attempts](./how-it-works.md#units). A merged one landed, so the next pickup is a new round and takes a suffix. A taken branch with no PR whose tip has the `Awaywork:` trailer is a push whose PR failed, so it skips the unit too, until you delete it; one without the trailer, your own work in progress, is passed over for a suffix. A [plan's task](./how-it-works.md#tasks) takes no suffix: its PR is looked up by its branch, so when the name is taken it's skipped until you delete it. For the same reason a `planned` rule's template, its own or the one it inherits, renders from `{key}` alone: a re-plan may retitle a task, so `{title}` or `{type}` there is a config error, and a `branch` on the `planned` rule fixes it. A re-plan may also hand a task another skill, and so another `planned` rule, so every `planned` rule for a source sets the same `branch`, or none does; anything else is a config error.
 
 ## Linking PRs
 
@@ -267,7 +354,7 @@ sources:
 
 ## Repos and instructions
 
-`repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
+`repos.<owner/name>` holds the `setup` and `test` commands for that repo, plus an instructions file. A plan's task may name it as its `repo`, as it may any repo the forge source's `repos` globs cover, and its unit then runs with that repo's settings ([Across repos](./how-it-works.md#across-repos)). `setup` runs once per unit, in the fresh clone before any agent starts, outside the model; the agent is told it already ran. A chain's later steps share that clone and don't run it again, so dependencies a step adds aren't installed for the steps after it: a `when` or `until` command that needs them installs them itself, like `pnpm i --frozen-lockfile && pnpm test`. Anything setup leaves running is stopped when it exits. A setup that fails, takes over 15 minutes or reaches the window's end skips the unit, with the tail of its output in the report.
 
 `secrets` names the env vars setup needs, such as a private registry token: setup gets them and no other secret, the agent never sees them, and the GitHub Actions workflow passes them from repository secrets. Their values are masked in setup's output. Setup gets the placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN` (`none`) too, so a `gh` call in it fails with a 401 even against a public repo, and so does git over https through gh's credential helper (a private dependency in `pnpm install`); list `GH_TOKEN` in `secrets` to give it yours (gh reads `GH_TOKEN` first). On a PR someone else opened, setup runs the author's install scripts, so it gets none of them, and it runs only when the author has write access or org membership; otherwise the agent is told it didn't run. It gets none of them either on the branch of an awaywork PR a rule took up again, which a worker wrote. Read them from the repo's config, e.g. `${NPM_TOKEN}` in `.npmrc`, rather than writing them to your home directory, which the agent shares.
 
@@ -407,13 +494,14 @@ Each judge is one more model run per published slice, on the same quota as the s
 | `mcp` | MCP servers the agent gets, by name; see [MCP servers](#mcp-servers) |
 | `instructions` | One or more instruction files for this rule |
 | `with` | Parameters for the skill, listed in its prompt; see [Write your own](./skills.md#write-your-own) |
-| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./how-it-works.md#plans)) |
+| `deliver` | Where the chain's commits go: `draft_pr` (default), `pr`, the same but opened ready for review (a draft still when a step failed or stopped or the run ended before one ran, a step asked [questions](./how-it-works.md#questions) with `ask` in its status file, `verify` failed, a loop ended before its `until` held, or a [gate](#gates) fired), `push` onto your own open PR's branch (see [`push`](./chains.md#push)), `report`, where no step commits, or `pending_review`, a report that also lands on the PR it reviews as your pending review, which only you see until you submit it (see [Delivery](./how-it-works.md#delivery)), or `plan`, a report posted with the `plan.yml` its step wrote on your item, waiting for your approval, whose tasks then go to the [`planned`](#where) rules (see [Plans](./how-it-works.md#plans)) |
 | `branch` | Branch template for this rule |
 | `order` | Which matching item goes first: `oldest` or `newest` created, or last `updated`; default the source's order |
 | `units` | At most this many units per run from this rule; a chain counts once |
 | `then` | Steps that run after this rule's skill, in the same clone; see [`then`](./chains.md#then) |
 | `when` | Quota checks, `runs_until_reset` and `headroom`, that skip the rule's whole chain; see [`when`](./chains.md#when) |
-| `on_done` | `{ move: <where> }`: moves the unit's items that are yours once its chain published, or its plan was posted; see [`on_done`](#on-done) |
+| `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; see [`on_done`](#on-done) |
+| `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
 
@@ -454,7 +542,7 @@ A [plan's task](./how-it-works.md#tasks) only matches a rule whose top-level `wh
   where: { planned: true, labels: bug }   # a plan's `skill: fix` tasks, on bug cards only
 ```
 
-Every skill a plan's tasks name must be one a `planned` rule takes and opens a PR for, or the plan isn't posted: the first `planned` rule for a skill whose metadata reports (`review`, say), or whose chain only reports, takes no tasks. A `planned` rule delivers `draft_pr` or `pr`, since the task's PR is how awaywork knows it's done; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
+Every skill a plan's tasks name must be one a `planned` rule takes, or the plan isn't posted. A `planned` rule delivers `draft_pr`, `pr` or `report`: a task is done when its PR merges, or, when the first `planned` rule for its skill reports (its metadata says so, like `review`, or its chain only reports), once its result is on the card, a [report task](./how-it-works.md#report-tasks) nothing can wait on; `planned: false` or `planned` inside `any` is a config error, and so is a `deliver: plan` rule with no `planned` rule to take its tasks.
 
 The unit's PR stacks on the awaywork PR, on a branch named after it (`away/acme-api-9` for #9). Once you merge the stacked PR, the next pickup of #9 takes a `-2` branch; while the stacked PR is open or closed unmerged, it is skipped as `awaywork tried this in <PR>; delete away/acme-api-9 to run it again`. Resolve the threads it answered too: merging moves #9, and with your threads still open the rule takes it up again for the same threads. The rule runs on the threads you started, but the agent reads every unresolved thread, as on your other PRs. `ours` comes from the GitHub source: a custom source's `ours` field holds nothing back.
 
@@ -483,7 +571,7 @@ Queue
 
 ### `order`
 
-Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last.
+Within a rule, units run in the order the source returns items; for GitHub that is newest first, so with little quota the oldest can wait run after run. `order: oldest` runs them first. Items without the timestamp go last. A card's [tasks](./how-it-works.md#the-feature-block) run back to back where the first of them ranks, in the order they wait on each other.
 
 ### Retry on the next model
 
@@ -508,14 +596,28 @@ Both attempts show in the report and count against the budget. Towards [giving u
 
 ### `on_done`
 
-Moving the card is how the next person hears it's their turn. `on_done` does it once the work is out:
+Moving the card is how the next person hears it's their turn, and a comment on it is how they hear what happened. `on_done` does either, or both, once the work is out:
 
 ```yaml
 - skill: implement
   source: jira
   where: { status: Ready }
-  on_done: { move: In Review }
+  on_done: { comment: result, move: In Review }
 ```
+
+`comment: result` posts the unit's result as awaywork's comment, before the move: headed with the rule's skill, a report rule's report, else a line for what it published (`Opened <PR>`, `Opened <PR> as a draft`, `Pushed 2 commits onto <PR>`, `Left your pending review on <PR>`), with awaywork's status line under it:
+
+```text
+Result of implement
+
+Opened https://github.com/acme/api/pull/41
+
+Status: done
+
+— awaywork
+```
+
+A [report task](./how-it-works.md#report-tasks) posts its result on the card whether its rule asks or not; a task that opens a PR posts one only when it does. A `deliver: plan` rule takes no `comment`: its plan comment is its result, and a second comment would repeat it.
 
 `move` is named in the tracker's own words, like `where`: a Jira status (awaywork takes the transition that leads there), a Linear workflow state of the issue's team, an Asana section of the task's project (the first of its projects, among the ones `projects` names, that has one), a GitHub label, which it adds, creating it in the repo when it's new. Names compare ignoring case. A custom source moves through its [`write`](./custom-sources.md#writing-back) command. A move that finds no such status says which ones there are:
 
@@ -527,15 +629,36 @@ It runs once the chain finished and every slice published: a PR opened, a push l
 
 It moves the unit's items that are yours and come from the rule's own tracker: its `source`, or, on a rule without one, the source of the item the rule matched. `In Review` is a Jira status, not a label, so a Jira card's rule leaves the PR it links alone, even when another rule put that PR in the unit. Yours is your PR, an issue assigned to you, a Jira, Linear or Asana item, or a custom source's. Never a PR you were asked to review or an item only an extra GitHub `search` found; those are logged as `not moved, not yours`. Yours is checked again right before the move, in the read the move makes anyway, so an item reassigned or unassigned during the run stays put: `couldn't move ENG-12 to In Review: ENG-12 is no longer yours: not assigned to you`. A custom source's `write` checks that itself. Bitbucket and a custom source without `write` can't move anything, and `doctor` warns about a rule whose items may come from one. The token needs write scope: `write:jira-work` on a scoped Jira token, write access on a Linear key; Asana's has it, and `gh`'s login or `GH_TOKEN` (`repo` scope) adds labels already.
 
-A move never fails the unit. It goes in the run's output and the morning report under the unit, masked like every other error:
+The result goes to the same items, through the same check (`got no result, not yours` in the log), and a result over 30 KB isn't posted. Neither write ever fails the unit. Both go in the run's output and the morning report under the unit, masked like every other error:
 
 ```text
   1  ENG-12  implement  done, 7 turns  https://github.com/acme/api/pull/41 (2 commits)
      Rate limit the public API per key.
+     result posted on https://acme.atlassian.net/browse/ENG-12
      on_done moved ENG-12 to "In Review"
 ```
 
-Moving an item changes its updated time. awaywork reads it right before the move and right after: when it's still the one the plan read, it records the new one, so the move alone never makes the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+Posting the result and moving an item each change its updated time. awaywork reads it right before each write and right after: when it's still the one the plan read, or the one the result left, it records the new one, so awaywork's own writes never make the item look changed next run and redo it on the same rule. When someone changed the item while the unit ran, it keeps the plan's, so their change still counts, and so does whatever a person changes after the move. A custom source's `write` has to print both times for the same; without them, have the rule stop matching where the item moved to.
+
+### `run: soon`
+
+Some work shouldn't wait for 1 AM: your PR's checks just went red, or you answered awaywork's [questions](./how-it-works.md#questions) at 10:00. `run: soon` has [`awaywork watch`](./scheduling.md#soon-runs) start a rule's units as soon as it sees them due, a new item or one changed since its last attempt, instead of at the next window:
+
+```yaml
+watch: { every: 5m }            # the default
+sources:
+  github: { repos: [acme/*] }
+  jira: { site: acme.atlassian.net, email: me@acme.dev, every: 15m }   # a slow tracker
+queue:
+  - skill: fix
+    where: { type: pr, mine: true, checks: failing }
+    run: soon
+  - skill: implement
+    source: jira
+    where: { status: Ready }
+```
+
+The daemon polls the sources the soon rules read every `watch.every`, and a source with its own `every` less often (an `every` shorter than `watch.every` changes nothing; either is 1m or more, as the daemon looks once a minute). A poll plans only the soon rules over the sources it just read and reads no quota; only the units it finds due start a run. Inside a window, the window run takes every rule as usual. A manual `awaywork run` and `awaywork plan` take every rule too, `run` or not; `plan` marks a soon rule's units `#1 soon`. GitHub Actions has no daemon, so there soon rules run in the windows like the rest. The details, what a poll costs and how it backs off, are in [Scheduling](./scheduling.md#soon-runs).
 
 A rule can run more steps after its skill, such as a review and a fix until the review approves: see [Chains](./chains.md).
 
@@ -701,6 +824,16 @@ The image is yours to build, and what's in it is all the units get:
 - **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
 - **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
 - **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
+
+## Old runs
+
+Run dirs pile up: each keeps its plan, logs, context and reports, and a `replay` keeps its clone there too, easily 100 MB for a big repo. `keep_runs` says how long they stay, a span like `14d` or `4w`, `30d` by default. Each `awaywork run` removes the older ones once it holds the run lock, going by the run id, its start time; a `--dry-run` removes nothing. [`awaywork watch`](./scheduling.md#on-your-machine) does the same when it starts and once a day, logging the line. A run still holding an item's latest report stays, since the next attempt on that item reads it, and so does a run in progress. You get one line, only when something went:
+
+```text
+Removed 3 runs older than 30d, 124.8 MB freed
+```
+
+A dir it can't remove is a `warning:`, never a failed run. `report --list`, `stats` and `replay` only see the runs kept.
 
 ## Secrets
 

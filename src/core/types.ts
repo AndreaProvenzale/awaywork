@@ -1,5 +1,6 @@
 import type { z } from 'zod'
-import type { PlanLimits } from './plan.js'
+import type { DraftLeft, Left } from './footer.js'
+import type { Contract, PlanLimits } from './plan.js'
 
 /** Puts the machine's own login in the worker's `home` before a phase; what it returns saves it back after, told whether `home` is the developer's again, and logs a save it refuses. */
 export type Login = (
@@ -22,6 +23,8 @@ export interface PrRef {
   trusted: boolean
   /** Its branch lives on a fork, not in `repo`. */
   fork: boolean
+  /** On an awaywork draft for a later run: what its footer says it left. */
+  left?: DraftLeft
 }
 
 export interface Item {
@@ -52,8 +55,19 @@ export interface Item {
     skill: string
     /** The lines under your `approve`. */
     notes: string
-    /** The plan's tasks, this one too, with the ids each waits on. */
-    plan: { id: string; title: string; after: string[] }[]
+    /** The plan's tasks, this one too, with what each waits on, its repo and the files it ships. */
+    plan: {
+      id: string
+      title: string
+      /** By task id: `opened`, `merged`, or a check's name. */
+      after: Record<string, string>
+      repo?: string
+      ships?: string[]
+    }[]
+    /** The task whose PR this one stacks on: the first down its stack of `opened` tasks in its repo whose PR isn't merged. */
+    onto?: string
+    /** The contract approved with the plan. */
+    contract?: Contract
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null
@@ -64,7 +78,12 @@ export interface Item {
 export interface TaskPr extends PrRef {
   state: 'open' | 'merged' | 'closed'
   closedAt?: string
+  /** On an open PR, the checks some task's `after` names, by name, as they stand on its head; a name the forge doesn't report is missing. */
+  checks?: Record<string, CheckState>
 }
+
+/** A check's latest run or status on a commit. */
+export type CheckState = 'passed' | 'pending' | 'failing'
 
 export interface Ctx {
   env: NodeJS.ProcessEnv
@@ -112,11 +131,21 @@ export interface Source<C = unknown> {
   /** Asks what `awaywork init` needs to configure this source. */
   init?(ask: Ask, ctx: Ctx): Promise<SourceSetup>
   /**
+   * What its credentials can see, read only: the names a config and `where` use. An unconfigured
+   * source gets its schema's defaults alone, so its required keys may be missing.
+   */
+  discover?(cfg: Partial<C>, ctx: Ctx): Promise<Discovery>
+  /**
    * Writes to one of its items as you: a comment, or a move to the status, state, section or
    * label named `to`. Returns the item's updated time just before and after it, when the tracker says,
    * and a comment's own link when it returns one.
    */
   write?(cfg: C, item: Item, write: Write, ctx: Ctx): Promise<Written>
+}
+
+/** Plain data: names, lists of names, and lists of records like it. */
+export interface Discovery {
+  [key: string]: string | string[] | Discovery[] | undefined
 }
 
 /** What awaywork writes to a tracker item. */
@@ -130,8 +159,14 @@ export interface Written {
 }
 
 export interface Quota {
-  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds. */
-  windows: { name: string; span: 'short' | 'long'; used: number; resetsAt: number }[]
+  /** `used` is a share (0 to 1); `resetsAt` is in unix seconds; `minutes` is the window's length. */
+  windows: {
+    name: string
+    span: 'short' | 'long'
+    used: number
+    resetsAt: number
+    minutes?: number
+  }[]
 }
 
 export type WorkerEvent =
@@ -191,6 +226,8 @@ export interface Provider {
 }
 
 export interface Forge {
+  /** Why awaywork won't go on with its own drafts here, if it won't. */
+  ownDraftsRefused?: string
   /** With `fork`, `branch` is on a fork: the clone checks out its pull ref, which must be at `fork.head` if given. */
   clone(repo: string, branch: string, dir: string, fork?: Unit['fork']): Promise<void>
   prsFor(item: Item): Promise<PrRef[]>
@@ -199,19 +236,24 @@ export interface Forge {
   prsOn(repo: string, branch: string): Promise<BranchPr[]>
   /** The message of the commit at the tip of `branch` in the repo. */
   tipMessage(repo: string, branch: string): Promise<string>
+  /** The text of the file at `path` in the repo at `ref`, a commit or branch; undefined when there's none. */
+  fileAt(repo: string, ref: string, path: string): Promise<string | undefined>
+  /** The state of each check on PR `pr`'s head commit, by name. */
+  checks(repo: string, pr: number): Promise<Record<string, CheckState>>
   push(dir: string, branch: string, opts: { repo: string }): Promise<void>
   /**
    * Pushes HEAD onto PR `pr`'s branch, only while the PR is yours, open, in the repo, without
-   * auto-merge, and still at `from`, and the branch is unprotected and backs no one else's PR;
-   * never forced. Returns why it refused, or nothing once pushed.
+   * auto-merge, and still at `from`, and the branch is unprotected and backs no one else's PR; never
+   * forced. With `draft`, the PR is also awaywork's draft for those items, as planning read it: still a
+   * draft, its body last edited by you, its footer naming one of them. Returns why it refused, or nothing once pushed.
    */
   fastForward(
     dir: string,
     branch: string,
     from: string,
-    opts: { repo: string; pr: number },
+    opts: { repo: string; pr: number; draft?: Pick<Item, 'source' | 'key'>[] },
   ): Promise<string | undefined>
-  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`. */
+  /** Opens a PR from `head` into `base`, the default branch when empty, as a draft when `draft`, its footer recording what it `left`. */
   openPr(
     repo: string,
     head: string,
@@ -220,7 +262,18 @@ export interface Forge {
     runId: string,
     items: Pick<Item, 'source' | 'key'>[],
     draft: boolean,
+    left?: Left,
   ): Promise<string>
+  /** Rewrites PR `pr`'s title and body as `openPr` writes them, and marks it ready for review when `ready`. */
+  updatePr(
+    repo: string,
+    pr: number,
+    bodyFile: string,
+    runId: string,
+    items: Pick<Item, 'source' | 'key'>[],
+    ready: boolean,
+    left?: Left,
+  ): Promise<void>
   /** Puts PR `pr` on top of PR `below` in the forge's stacked PRs, without editing either PR. */
   stack(repo: string, below: string, pr: string): Promise<void>
   /**
@@ -235,8 +288,12 @@ export interface BranchPr {
   url: string
   number: number
   body: string
+  /** Its head commit, when the forge says. */
+  head?: string
   open: boolean
   merged: boolean
+  /** On an open awaywork draft for a later run: what its footer says it left. */
+  left?: DraftLeft
   closedAt?: string
 }
 
@@ -313,8 +370,10 @@ export interface Rule extends Step {
   units?: number
   /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
-  /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted. */
-  on_done?: { move: string }
+  /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */
+  on_done?: { move?: string; comment?: 'result' }
+  /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
+  run?: 'soon' | 'window'
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
@@ -338,6 +397,10 @@ export interface Unit {
   gates?: Record<string, Gate>
   /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
   stackedOn?: string
+  /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
+  resume?: { url: string; number: number; from: string; head: string; status: 'ask' | 'continue' }
+  /** The times the unit said `continue` so far, on its draft or in its result. */
+  continued?: number
   branch: string
   rule: Step
   skill: string

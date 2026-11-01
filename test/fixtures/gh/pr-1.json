@@ -144,21 +144,31 @@
                     "nodes": [
                       {
                         "__typename": "CheckRun",
+                        "status": "COMPLETED",
                         "name": "lint",
                         "conclusion": "SUCCESS",
                         "detailsUrl": "https://github.com/acme/api/actions/runs/100/job/200"
                       },
                       {
                         "__typename": "CheckRun",
+                        "status": "COMPLETED",
                         "name": "test (ubuntu-latest)",
                         "conclusion": "FAILURE",
                         "detailsUrl": "https://github.com/acme/api/actions/runs/100/job/201"
                       },
                       {
                         "__typename": "CheckRun",
+                        "status": "COMPLETED",
                         "name": "sonar",
                         "conclusion": "FAILURE",
                         "detailsUrl": "https://sonar.example.com/acme-api/1"
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "status": "COMPLETED",
+                        "name": "deploy",
+                        "conclusion": "CANCELLED",
+                        "detailsUrl": "https://deploy.example.com/acme-api/1"
                       },
                       {
                         "__typename": "StatusContext",

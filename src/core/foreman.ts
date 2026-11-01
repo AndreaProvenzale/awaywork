@@ -3,11 +3,12 @@ import { type Attempts, gaveUpUntil, MAX_ATTEMPTS, pushedOnto, unchangedSince } 
 import { isValidRef } from './branch.js'
 import { type Allowance, quotaFacts, route } from './budget.js'
 import { holds } from './condition.js'
+import { byHand } from './continue.js'
 import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
-import { planState } from './plan.js'
+import { elsewhere, latestResult, planState } from './plan.js'
 import {
   closestRule,
   defaultRules,
@@ -18,6 +19,7 @@ import {
   isAwayworkPr,
   isLoop,
   isMatch,
+  type Ranked,
   rank,
   TOP,
   within,
@@ -32,6 +34,7 @@ import type {
   Loop,
   Rule,
   Step,
+  TaskPr,
   ThenStep,
   Unit,
   Where,
@@ -54,6 +57,10 @@ export interface PlannedUnit {
   loop?: LoopRound
   /** On a chain's first step: the slice a cap left out, and the cap. */
   capped?: string
+  /** On a task's first step: the chain, by id, earlier in this run whose PR it stacks on. */
+  after?: string
+  /** On a task's first step: its `opened` tasks in other repos that open their PR earlier in this run, which it waits for. */
+  waitsFor?: string[]
 }
 
 export interface LoopRound {
@@ -80,12 +87,17 @@ export type SkipKind =
   | 'fanned_out'
   | 'waiting_for_task'
   | 'task_merged'
-  | 'all_tasks_merged'
+  | 'task_done'
+  | 'all_tasks_done'
   | 'gave_up'
   | 'no_repo'
   | 'invalid_branch'
   | 'refused_delivery'
   | 'unstackable'
+  | 'draft_moved'
+  | 'continue_cap'
+  | 'continues_later'
+  | 'running'
 
 /** Whether you can act to make the item run: the rest is the config working as intended. */
 export const needsYou: Record<SkipKind, boolean> = {
@@ -100,12 +112,17 @@ export const needsYou: Record<SkipKind, boolean> = {
   fanned_out: false,
   waiting_for_task: false,
   task_merged: false,
-  all_tasks_merged: true,
+  task_done: false,
+  all_tasks_done: true,
   gave_up: true,
   no_repo: true,
   invalid_branch: true,
   refused_delivery: true,
   unstackable: true,
+  draft_moved: true,
+  continue_cap: true,
+  continues_later: false,
+  running: false,
 }
 
 export interface Skipped {
@@ -122,6 +139,10 @@ export interface RunPlan {
   units: PlannedUnit[]
   skipped: Skipped[]
   allowances: Record<string, Allowance>
+  /** Whether the run started outside every window; set once the quota is read. */
+  present?: boolean
+  /** Each routine's next occurrence, by name, as an ISO time. */
+  routines?: Record<string, string>
 }
 
 /** Match, dedupe and route this run's items; no I/O. */
@@ -135,8 +156,8 @@ export function planRun(input: {
   attempts?: Attempts
   /** The time attempts are judged at; defaults to now. */
   now?: number
-  /** Plans only the units of a repo glob and a 1-based rule, under the full run's caps. */
-  only?: { repo?: string; rule?: number }
+  /** Plans only the units of a repo glob, a 1-based rule, `run: soon` rules and these unit ids, under the full run's caps. */
+  only?: { repo?: string; rule?: number; soon?: boolean; units?: string[] }
 }): RunPlan {
   const { config, allowances, skips = {}, now = Date.now(), only = {} } = input
   const onlyRepo = only.repo === undefined ? undefined : globToRegExp(only.repo)
@@ -153,7 +174,7 @@ export function planRun(input: {
   const perRule: Record<number, number> = {}
   let counted = 0
 
-  for (const found of dedupe(ranked)) {
+  for (const found of inBlocks(dedupe(ranked), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -162,6 +183,8 @@ export function planRun(input: {
     const ruleIndex = group[0]?.rule ?? 0
     const rule = queue[ruleIndex] as Rule
     if (only.rule !== undefined && ruleIndex + 1 !== only.rule) continue
+    if (only.soon && rule.run !== 'soon') continue
+    if (only.units && !only.units.includes(slug(items[0]?.key ?? ''))) continue
     const skip = (kind: SkipKind, reason: string, url?: string) =>
       skipped.push(...items.map((item) => ({ item, kind, reason, ...(url && { url }) })))
     const skippedByUser = items
@@ -172,8 +195,28 @@ export function planRun(input: {
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
-    if (ours && !pickup) {
+    // awaywork's own draft for these items, which it left for a later run.
+    const keys = items.map((i) => `${i.source}:${i.key}`)
+    const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
+    if (ours && !pickup && !draft) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
+      continue
+    }
+    // What an earlier run left for this one: its draft, else a report's `continue` result, which goes on though its items didn't change.
+    const result = draft ? undefined : latestResult(items[0] as Item)
+    const left = draft ?? (result?.status === 'continue' ? result : undefined)
+    const where = (draft && ours?.url) || (items[0] as Item).url
+    const stop = left && byHand(left, { head: ours?.head })
+    if (left && stop) {
+      const what = draft ? `awaywork's draft ${where}` : "awaywork's result"
+      const or = draft ? ', or mark it ready' : ''
+      skip(stop.kind, `${what} says ${left.status}, but ${stop.why}: finish it by hand${or}`, where)
+      continue
+    }
+    const goesOn = left?.status === 'continue'
+    // A soon run reacts to an item changing, and a `continue` isn't one.
+    if (goesOn && only.soon) {
+      skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
     const held = pushedOnto(items, input.attempts ?? {})
@@ -191,6 +234,22 @@ export function planRun(input: {
       skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
       continue
     }
+    const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
+    const waitsFor = prs.length === 0 ? openedElsewhere(items[0] as Item) : []
+    const unplanned =
+      stack && !stack.pr && !stack.after
+        ? stack.onto
+        : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
+    if (unplanned) {
+      const held = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
+      skip(
+        'waiting_for_task',
+        `waiting for task ${unplanned}'s ${held ? `draft, which says ${held.status}` : 'PR to open'}`,
+      )
+      continue
+    }
+    const ontoPr = stack?.pr
+    const after = stack?.after
     const limits = (item: Item) => planLimits(config, queue, item, input.skills)
     const card =
       rule.deliver === 'plan'
@@ -212,7 +271,7 @@ export function planRun(input: {
       continue
     }
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean)) {
+    if (since.every(Boolean) && !goesOn) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -231,7 +290,7 @@ export function planRun(input: {
     const reports = stepReports(rule, input.skills)
     const committing = committingStep(rule, input.skills)
     const deliver = rule.deliver === 'push' || rule.deliver === 'pr' ? rule.deliver : 'draft_pr'
-    const pr = (committing ? prs.find((p) => p.mine) : undefined) ?? prs[0]
+    const pr = (draft && ours) || (committing ? prs.find((p) => p.mine) : undefined) || prs[0]
     const repo = pr?.repo ?? items.map((i) => i.fields.repo).find((r) => typeof r === 'string')
     if (!repo) {
       skip('no_repo', 'no repo: no linked PR or repo field')
@@ -251,7 +310,7 @@ export function planRun(input: {
       skip('invalid_branch', `branch template ${template} renders an invalid name "${branch}"`)
       continue
     }
-    const base = pr?.branch ?? ''
+    const base = pr?.branch ?? ontoPr?.branch ?? ''
     const foreign = pr ? !pr.mine : false
     const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
     const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
@@ -286,7 +345,29 @@ export function planRun(input: {
     }
 
     const id = slug(items[0]?.key ?? '')
-    const at = { base, foreign, untrusted: pr ? !pr.trusted : false, fork, branch }
+    // A resumed task's draft stays stacked on the task below it while that one is open.
+    const below =
+      draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
+    const stackedOn = ontoPr?.url ?? (below && below.state === 'open' ? below.url : undefined)
+    const at = {
+      base,
+      foreign,
+      untrusted: pr ? !pr.trusted : false,
+      fork,
+      branch: draft ? base : branch,
+      ...(stackedOn && { stackedOn }),
+      ...(draft &&
+        pr && {
+          resume: {
+            url: pr.url,
+            number: pr.number,
+            from: draft.from,
+            head: draft.head,
+            status: draft.status,
+          },
+        }),
+      ...(left && { continued: left.continued }),
+    }
     let slice = 0
     const add = (written: ThenStep, unitId: string, loop?: LoopRound) => {
       const step = written === rule ? rule : inherit(rule, written)
@@ -327,6 +408,8 @@ export function planRun(input: {
         ...(written !== rule && { chain: id }),
         ...(slice > 0 && { slice }),
         ...(loop && { loop }),
+        ...(written === rule && after && { after: after.unit.id }),
+        ...(written === rule && waitsFor.length > 0 && { waitsFor }),
       })
       return provider
     }
@@ -370,6 +453,59 @@ export function planRun(input: {
     }
   }
   return { queue, defaultQueue: !config.queue, units, skipped, allowances }
+}
+
+/** Where a task after another's `opened` starts: on that task's open PR, else after its chain earlier in this run. */
+function stackTarget(
+  item: Item,
+  units: PlannedUnit[],
+): { onto: string; pr?: TaskPr; after?: PlannedUnit } | undefined {
+  const { task } = item
+  if (!task?.onto) return undefined
+  const pr = task.parent.taskPrs?.[task.onto]
+  // A draft left for a later run holds half-done work: it stacks only once that run finished it.
+  if (pr && !pr.left) return { onto: task.onto, pr }
+  const after = taskChain(units, item, task.onto)
+  return { onto: task.onto, ...(after && { after }) }
+}
+
+/** The chain planned so far for task `id` of the card `item` is a task of. */
+export const taskChain = (units: PlannedUnit[], item: Item, id: string) =>
+  units.find(
+    (u) =>
+      !u.chain &&
+      u.unit.items.some(
+        (i) => i.source === item.source && i.key === `${item.task?.parent.key}/${id}`,
+      ),
+  )
+
+/** A task's `opened` tasks in other repos that have no PR yet: it waits for them without stacking. */
+function openedElsewhere(item: Item): string[] {
+  const task = item.task
+  const own = task?.plan.find((t) => t.id === task.id)
+  if (!task || !own) return []
+  return elsewhere(own, task.plan)
+    .filter(
+      (t) =>
+        own.after[t.id] === 'opened' &&
+        (task.parent.taskPrs?.[t.id]?.left ?? !task.parent.taskPrs?.[t.id]),
+    )
+    .map((t) => t.id)
+}
+
+/** Each card's tasks back to back, where the first of them ranks, in the order `order` lists them: a task runs right after the one whose PR it stacks on. */
+function inBlocks(groups: Ranked[][], order: Item[]): Ranked[][] {
+  const taskIn = (g: Ranked[]) => g.find((e) => e.item.task)?.item
+  const cardOf = (g: Ranked[]) => taskIn(g)?.task?.parent
+  const at = (g: Ranked[]) => order.indexOf(taskIn(g) as Item)
+  const out: Ranked[][] = []
+  for (const g of groups) {
+    const card = cardOf(g)
+    if (!card) out.push(g)
+    else if (!out.some((o) => cardOf(o) === card))
+      out.push(...groups.filter((o) => cardOf(o) === card).sort((a, b) => at(a) - at(b)))
+  }
+  return out
 }
 
 /** The top-level gates with the repo's: a repo adds gates, and on a shared name its globs, command and skill join the top-level ones. */
@@ -442,7 +578,7 @@ function deliveryRefusal(
 }
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
-function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const closest = closestRule(item, queue)
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'

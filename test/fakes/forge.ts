@@ -1,4 +1,4 @@
-import type { BranchPr, Forge, Item, PrRef, Review } from '../../src/core/types.js'
+import type { BranchPr, CheckState, Forge, Item, PrRef, Review } from '../../src/core/types.js'
 
 export function fakeForge(prs: PrRef[] = []): Forge & {
   branches: Set<string>
@@ -7,6 +7,9 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   reviews: ({ repo: string; pr: number; head: string } & Review)[]
   heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]>
   tips: Record<string, string>
+  files: Record<string, string>
+  /** By `repo#number`. */
+  states: Record<string, Record<string, CheckState>>
 } {
   const branches = new Set<string>()
   const fastForwards: string[] = []
@@ -14,6 +17,8 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
   const reviews: ({ repo: string; pr: number; head: string } & Review)[] = []
   const heads: Record<string, ({ url: string; body: string } & Partial<BranchPr>)[]> = {}
   const tips: Record<string, string> = {}
+  const files: Record<string, string> = {}
+  const states: Record<string, Record<string, CheckState>> = {}
   return {
     branches,
     fastForwards,
@@ -21,6 +26,8 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
     reviews,
     heads,
     tips,
+    files,
+    states,
     clone: async () => {},
     prsFor: async (item: Item) => prs.filter((pr) => pr.branch.includes(item.key)),
     branchExists: async (repo, name) => branches.has(`${repo}:${name}`),
@@ -32,6 +39,8 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
         ...pr,
       })),
     tipMessage: async (repo, branch) => tips[`${repo}:${branch}`] ?? '',
+    fileAt: async (repo, ref, path) => files[`${repo}@${ref}:${path}`],
+    checks: async (repo, pr) => states[`${repo}#${pr}`] ?? {},
     push: async (_dir, branch, { repo }) => {
       if (branches.has(`${repo}:${branch}`)) throw new Error(`${branch} already exists`)
       branches.add(`${repo}:${branch}`)
@@ -40,6 +49,7 @@ export function fakeForge(prs: PrRef[] = []): Forge & {
       fastForwards.push(`${repo}:${branch} (#${pr}) from ${from}`)
     },
     openPr: async (repo, head) => `https://example.com/${repo}/pull/${head}`,
+    updatePr: async () => {},
     stack: async (_repo, below, pr) => {
       stacked.push([below, pr])
     },

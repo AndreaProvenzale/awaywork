@@ -1,13 +1,17 @@
 import { stripVTControlCharacters, styleText } from 'node:util'
-import { type Allowance, pct } from '../core/budget.js'
+import { MAX_ATTEMPTS } from '../core/attempts.js'
+import { type Allowance, pct, presenceLine } from '../core/budget.js'
 import { describeCondition } from '../core/condition.js'
+import { cardRepo, unpassed } from '../core/fanout.js'
 import {
   isNamed,
+  noRuleReason,
   type PlannedUnit,
   type RunPlan,
   type SkipKind,
   shortRef,
 } from '../core/foreman.js'
+import { isCheck, openedChain } from '../core/plan.js'
 import {
   bounds,
   comparisons,
@@ -39,6 +43,7 @@ import {
 } from '../core/report.js'
 import type { Item, Rule, Where, WhereValue } from '../core/types.js'
 import { providers } from '../providers/index.js'
+import { describeOccurrence, routines } from '../sources/routines.js'
 
 const itemRef = ({ source, key, title, url }: Item) => ({ source, key, title, url })
 
@@ -157,6 +162,7 @@ export function formatPlan(plan: RunPlan, warnings: string[] = [], styled = fals
   const style = styler(styled)
   const out = [...warningLines(warnings, styled), ...providerLines(plan, style)]
   out.push('', heading('Units', listedUnits(plan).length, style), ...planUnitLines(plan, style))
+  out.push(...routineLines(plan, style))
   out.push(...needsYouLines(plan.skipped, style), ...skippedLines(plan.skipped, style))
   if (plan.skipped.length > 0)
     out.push(
@@ -175,6 +181,7 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     ? [style('dim', 'Queue: the default, no queue in config; awaywork plan --rules lists it'), '']
     : []
   out.push(style('bold', 'Providers'))
+  if (plan.present !== undefined) out.push(style('dim', `  ${presenceLine(plan.present)}`))
   const allowances = Object.entries(plan.allowances)
   const providerHeader = [
     'provider',
@@ -192,6 +199,14 @@ export function providerLines(plan: RunPlan, style: Style = (_, text) => text): 
     out.push(style('dim', `    ${allowanceNote(id, a)}`))
   })
   return out
+}
+
+/** Each routine and when it next comes due, local time. */
+function routineLines(plan: RunPlan, style: Style): string[] {
+  const next = Object.entries(plan.routines ?? {})
+  if (next.length === 0) return []
+  const rows = next.map(([name, at]) => [name, `next ${describeOccurrence(new Date(at))}`])
+  return ['', heading('Routines', next.length, style), ...indent(table(rows))]
 }
 
 const stepsOf = (plan: Pick<RunPlan, 'units'>, head: PlannedUnit) =>
@@ -217,7 +232,7 @@ export function planUnitTable(
     return [
       String(i + 1),
       top ? shortRef(top) : p.unit.id,
-      `#${p.rule + 1}`,
+      `#${p.rule + 1}${plan.queue[p.rule]?.run === 'soon' ? ' soon' : ''}`,
       describeSkill(p),
       p.provider ?? '-',
       deliverOf(plan, p),
@@ -234,6 +249,15 @@ export function planUnitTable(
       const rule = p.itemRules[j + 1] ?? p.rule
       out.push(`   + ${shortRef(item)}: same feature, matched #${rule + 1}`)
     })
+    const repo = taskRepo(p.unit.items[0])
+    if (repo) out.push(`   in ${repo}`)
+    const goes = goesOnLine(p)
+    if (goes) out.push(`   ${goes}`)
+    const stacks = stackLine(p)
+    if (stacks) out.push(`   ${stacks}`)
+    const waits = waitLine(p)
+    if (waits) out.push(`   waits for ${waits}`)
+    for (const check of checkLines(p)) out.push(`   after ${check}`)
     if (p.passed.length > 0 || !p.provider)
       out.push(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
@@ -367,7 +391,8 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
   const heading = (item: Item) => [
     `${item.source} ${item.key}  ${item.title}`,
     `  ${item.url}`,
-    ...(item.task ? [`  task ${item.task.id} of the plan on ${item.task.parent.key}`] : []),
+    ...(item.task ? taskLines(item) : []),
+    ...(item.source === routines.id ? [routineLine(plan, item)] : []),
   ]
   const isIt = (item: Item) => itemId(item) === itemId(named)
   units.forEach((p, i) => {
@@ -375,6 +400,9 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (!item) return
     const passed = p.passed.length > 0 ? ` (${p.passed.join('; ')})` : ''
     const rule = plan.queue[p.rule]
+    const goes = goesOnLine(p)
+    const stacks = stackLine(p)
+    const waits = waitLine(p)
     const rows = [
       ['unit', `${i + 1}, ${p.unit.id}`],
       ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
@@ -382,6 +410,10 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['provider', `${p.provider ?? 'none left'}${passed}`],
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
+      ...(goes ? [['goes on', goes]] : []),
+      ...(stacks ? [['stack', stacks]] : []),
+      ...(waits ? [['waits', `for ${waits}`]] : []),
+      ...checkLines(p).map((check) => ['check', check]),
     ]
     out.push(
       ...(out.length ? [''] : []),
@@ -402,6 +434,100 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
     if (s.kind === 'no_rule') out.push('', ...queueLines(plan))
   }
   return out.join('\n')
+}
+
+/** Which occurrence of its routine a routine's item is, and when the next one comes due. */
+function routineLine(plan: RunReport['plan'], item: Item): string {
+  const name = String(item.fields.name)
+  const next = plan.routines?.[name]
+  const due = describeOccurrence(new Date(String(item.fields.updated)))
+  return `  routine ${name}, due ${due}${next ? `; next ${describeOccurrence(new Date(next))}` : ''}`
+}
+
+/** A task's place in its card's plan: its repo when it isn't the card's, what it waits on, and where each of those stands. */
+function taskLines(item: Item): string[] {
+  const task = item.task as NonNullable<Item['task']>
+  const repoOf = (id: string) => task.plan.find((t) => t.id === id)?.repo
+  const after = Object.entries(task.plan.find((t) => t.id === task.id)?.after ?? {}).map(
+    ([id, when]) => {
+      const pr = task.parent.taskPrs?.[id]
+      const away = repoOf(id) !== repoOf(task.id) ? ` in ${repoOf(id)}` : ''
+      const state = pr ? `PR #${pr.number} ${pr.state}` : 'no PR yet'
+      if (!isCheck(when)) return `${id} ${when}${away} (${state})`
+      const check = pr?.state === 'open' ? `, ${pr.checks?.[when] ?? 'not reported'}` : ''
+      return `${id}'s check ${when}${away} (${state}${check})`
+    },
+  )
+  const repo = taskRepo(item)
+  return [
+    `  task ${task.id} of the plan on ${task.parent.key}${repo ? `, in ${repo}` : ''}`,
+    ...(after.length ? [`  after ${after.join(', ')}`] : []),
+  ]
+}
+
+/** A task's repo when it isn't its card's. */
+function taskRepo(item: Item | undefined): string | undefined {
+  const repo = item?.fields.repo
+  return item?.task && typeof repo === 'string' && repo !== cardRepo(item.task.parent)
+    ? repo
+    : undefined
+}
+
+/** The PRs in other repos a task's chain waits for in this run, e.g. `api's PR in acme/backend`. */
+function waitLine(p: PlannedUnit): string | undefined {
+  const task = p.unit.items[0]?.task
+  const repoOf = (id: string) => task?.plan.find((t) => t.id === id)?.repo
+  const waits = (p.waitsFor ?? []).map((id) => `${id}'s PR in ${repoOf(id)}`)
+  return waits.length ? waits.join(', ') : undefined
+}
+
+/** The checks a task's chain starts after and where each stands, but the one its stack line names. */
+function checkLines(p: PlannedUnit): string[] {
+  const task = p.unit.items[0]?.task
+  if (!task) return []
+  const after = task.plan.find((t) => t.id === task.id)?.after ?? {}
+  const stacked = stackOn(p)?.after
+  return Object.entries(after)
+    .filter(([id, when]) => isCheck(when) && id !== stacked)
+    .map(([id, name]) => checkText(task, id, name))
+}
+
+/** A check a task is after and where it stands, e.g. `api's check Vercel Preview (passed)`. */
+function checkText(task: NonNullable<Item['task']>, id: string, name: string): string {
+  const pr = task.parent.taskPrs?.[id]
+  const state = pr?.state === 'merged' ? `${id} merged` : (unpassed(pr, name) ?? 'passed')
+  return `${id}'s check ${name} (${state})`
+}
+
+/** How a unit goes on from an earlier run: on awaywork's own draft, or after its `continue` result. */
+function goesOnLine({ unit }: PlannedUnit): string | undefined {
+  const count = `continue (${unit.continued} of ${MAX_ATTEMPTS})`
+  if (unit.resume)
+    return `goes on with its draft ${unit.resume.url}, which ${unit.resume.status === 'ask' ? 'asked questions' : `said ${count}`}`
+  if (unit.continued) return `goes on from its result, which said ${count}`
+}
+
+/** The task an open PR's stack puts a task's chain after, and that PR's number. */
+function stackOn(p: PlannedUnit): { after: string; number: number } | undefined {
+  const task = p.unit.items[0]?.task
+  const onto = task?.onto
+  const pr = onto && task.parent.taskPrs?.[onto]
+  if (p.after || !pr || !p.unit.stackedOn) return undefined
+  const own = task.plan.find((t) => t.id === task.id)
+  return { after: (own && openedChain(own, task.plan)?.at(-1)) ?? onto, number: pr.number }
+}
+
+/** Where a task's chain starts when it stacks: on the PR a chain earlier in this run opens, or on one already open. */
+function stackLine(p: PlannedUnit): string | undefined {
+  const task = p.unit.items[0]?.task
+  const onto = task?.onto
+  if (p.after) return `after ${onto}, stacks on its PR`
+  const stack = stackOn(p)
+  if (!task || !stack) return undefined
+  const { after, number } = stack
+  const when = task.plan.find((t) => t.id === task.id)?.after[after]
+  const what = when && isCheck(when) ? checkText(task, after, when) : after
+  return `after ${what}, stacks on ${after === onto ? '' : `${onto}'s `}#${number}`
 }
 
 /** The queue as numbered rules. */
@@ -439,6 +565,37 @@ export function formatRules(rules: Rule[], items: Item[]): string[] {
   return [...lines, `${unmatched.length} unmatched${keys(unmatched)}`]
 }
 
+/** `formatRules` as JSON, every item listed, each unmatched one with why it misses its closest rule; `plan` marks a card its `deliver: plan` rule holds though its `where` no longer matches. */
+export function rulesJson(
+  rules: Rule[],
+  items: Item[],
+  defaultQueue: boolean,
+  warnings: string[] = [],
+): string {
+  const matches = ruleMatches(items, rules)
+  const matched = new Set(matches.flatMap((m) => m.taken))
+  const described = rules.map((rule, i) => {
+    const { taken, shadowed } = matches[i] ?? { taken: [], shadowed: [] }
+    const takenBy = [...new Set(shadowed.map((s) => s.by))].map((by) => ({
+      rule: by + 1,
+      items: shadowed.filter((s) => s.by === by).map((s) => itemRef(s.item)),
+    }))
+    return {
+      rule: i + 1,
+      skill: rule.skill,
+      summary: describeRule(rule),
+      taken: taken.map((item) =>
+        matchesRule(rule, item) ? itemRef(item) : { ...itemRef(item), plan: true },
+      ),
+      takenBy,
+    }
+  })
+  const unmatched = items
+    .filter((i) => !matched.has(i))
+    .map((item) => ({ ...itemRef(item), reason: noRuleReason(item, rules).reason }))
+  return JSON.stringify({ rules: described, defaultQueue, unmatched, warnings }, null, 2)
+}
+
 function describeSkill(p: PlannedUnit): string {
   return `${p.unit.skill} (${p.origin === 'builtin' ? 'built-in' : (p.origin ?? 'in-repo?')})`
 }
@@ -453,6 +610,7 @@ export function describeRule(r: Rule): string {
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
     r.order && `order=${r.order}`,
+    r.run === 'soon' && 'run=soon',
     r.then?.length &&
       `then=${r.then.map((s) => `${s.stack ? 'stack:' : ''}${isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill}`).join(',')}`,
   ]
@@ -486,10 +644,12 @@ function describeWhere(key: string, value: WhereValue): string {
   return `${key}=${[value].flat().join('|')}`
 }
 
-export function describeAllowance(id: string, a: Allowance): string {
-  if (a.kind === 'fallback') return `fallback: ${describeFallback(id, a)}`
+/** An allowance in one line, with what a run outside the windows gets under `outside`, the present session limit. */
+export function describeAllowance(id: string, a: Allowance, outside: number): string {
+  if (a.kind === 'fallback')
+    return `fallback: ${describeFallback(id, a)}, sits out runs outside the windows`
   const session = a.session
-    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)}`
+    ? `; session ${pct(a.session.used)}, workers stop at ${pct(a.session.stopAt)} in windows, ${pct(outside)} outside`
     : ''
   return `${a.window} ${pct(a.used)} used, ceiling ${pct(a.ceiling)} set by ${bindingLimit(a)} (${otherLimits(a)}; resets in ${runs(a.runs)})${session}`
 }
@@ -508,6 +668,7 @@ function allowanceNote(id: string, a: Allowance): string {
 }
 
 function describeFallback(id: string, a: FallbackAllowance): string {
+  if (a.present) return `sits out a present run (${a.reason})`
   // A command provider has no turn cap, so its fallback turns mean nothing.
   const turns = Object.hasOwn(providers, id) ? `, ${counted(a.turns, 'turn')} each` : ''
   return `${counted(a.units, 'unit')}${turns} (${a.reason})`

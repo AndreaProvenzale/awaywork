@@ -1,10 +1,12 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { commentMarkdown, isOurs } from '../core/footer.js'
+import { commentMarkdown, isOurs, leftIn } from '../core/footer.js'
 import { globToRegExp } from '../core/glob.js'
 import type { Item, PrRef, Source } from '../core/types.js'
+import { type Check, checkContexts, checkResult } from '../forge/checks.js'
 import { type Exec, exec, graphql, onHost } from '../forge/gh.js'
+import { EDITED, type Edited, notYours } from '../forge/github.js'
 
 const config = z
   .strictObject({
@@ -55,11 +57,11 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url headRefName headRefOid isCrossRepository body viewerDidAuthor authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor
+        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor editor { login }
         additions deletions
         files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
@@ -106,13 +108,7 @@ const prQuery = `query($owner: String!, $name: String!, $number: Int!) {
           comments(first: 50) { nodes { ${BY} body createdAt url } }
         }
       }
-      commits(last: 1) {
-        nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-          __typename
-          ... on CheckRun { name conclusion detailsUrl }
-          ... on StatusContext { context state targetUrl description }
-        } } } } }
-      }
+      commits(last: 1) { nodes { commit { ${checkContexts} } } }
     }
   }
 }`
@@ -140,14 +136,14 @@ type Comment = By & { body: string; createdAt: string; editor?: { login: string 
 type Comments = Nodes<Comment> & {
   pageInfo?: { hasPreviousPage: boolean; startCursor: string | null }
 }
-type PrLink = {
+type PrLink = Edited & {
   number: number
   url: string
+  isDraft: boolean
   headRefName: string
   headRefOid: string
   isCrossRepository: boolean
   body: string
-  viewerDidAuthor: boolean
   authorAssociation: string
   repository: { nameWithOwner: string }
 }
@@ -165,7 +161,6 @@ interface Node extends PrLink {
   labels: Nodes<{ name: string }>
   comments: Comments
   closedByPullRequestsReferences?: Nodes<PrLink>
-  isDraft?: boolean
   additions?: number
   deletions?: number
   files?: Files
@@ -179,15 +174,6 @@ interface Thread {
   line: number | null
   comments: Nodes<Comment & { url: string }>
 }
-type Check =
-  | { __typename: 'CheckRun'; name: string; conclusion: string | null; detailsUrl: string }
-  | {
-      __typename: 'StatusContext'
-      context: string
-      state: string
-      targetUrl: string | null
-      description: string | null
-    }
 interface PrDetails {
   reviews: Nodes<By & { state: string; body: string; submittedAt: string }>
   reviewThreads: Nodes<Thread>
@@ -295,10 +281,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
 
     /** Suggests my own repos and names my orgs, which `owner/*` can cover. */
     async init(ask) {
-      const login = (await base('gh', ['api', 'user', '--jq', '.login'])).trim()
-      const orgs = (await base('gh', ['api', 'user/orgs', '--jq', '.[].login']))
-        .split('\n')
-        .filter(Boolean)
+      const { login, orgs } = await account(base)
       const hint = orgs.length > 0 ? `; your orgs: ${orgs.join(', ')}` : ''
       const answer = await ask.text(
         `GitHub repos to watch, comma-separated (owner/name or owner/*${hint})`,
@@ -310,6 +293,9 @@ export function githubSource(base: Exec = exec): Source<Config> {
         .filter(Boolean)
       return { config: { repos: repos.length > 0 ? repos : [`${login}/*`] } }
     },
+
+    /** The gh login and its orgs. */
+    discover: (cfg) => account(onHost(base, cfg.host)),
 
     /** Comments on the issue or PR, or moves it by adding the label `to`, which GitHub makes when the repo has none. */
     async write(_cfg, item, write) {
@@ -351,6 +337,14 @@ export function githubSource(base: Exec = exec): Source<Config> {
 }
 
 export const github = githubSource()
+
+async function account(run: Exec) {
+  const login = (await run('gh', ['api', 'user', '--jq', '.login'])).trim()
+  const orgs = (await run('gh', ['api', 'user/orgs', '--jq', '.[].login']))
+    .split('\n')
+    .filter(Boolean)
+  return { login, orgs }
+}
 
 type Search = {
   search: {
@@ -537,6 +531,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ours: isOurs(pr.body),
+  ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
   trusted: pr.viewerDidAuthor || TRUSTED.includes(pr.authorAssociation),
   fork: pr.isCrossRepository,
@@ -622,11 +617,7 @@ function threadsMarkdown(threads: Thread[]): string {
 }
 
 async function checksMarkdown(run: Exec, repo: string, checks: Check[]): Promise<string> {
-  const failed = checks.filter((c) =>
-    c.__typename === 'CheckRun'
-      ? ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(c.conclusion ?? '')
-      : ['FAILURE', 'ERROR'].includes(c.state),
-  )
+  const failed = checks.filter((c) => checkResult(c)[1] === 'failing')
   if (!failed.length) return 'No failing checks.\n'
   const sections = await Promise.all(
     failed.map(async (c) => {

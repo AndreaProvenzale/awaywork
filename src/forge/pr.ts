@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { footer, footerItems } from '../core/footer.js'
-import type { Item } from '../core/types.js'
+import { footer, footerItems, type Left } from '../core/footer.js'
+import type { CheckState, Item } from '../core/types.js'
 
 /**
  * Whether one of my PRs is for the item: one whose footer names items by those items, whatever its
@@ -27,16 +27,29 @@ export function linksItem(
   }
 }
 
-/** The body file's first line is the title; the rest, plus the footer, is the body. */
+/** The body file's first line is the title; the rest, plus the footer recording what a draft `left`, is the body. */
 export async function prText(
   bodyFile: string,
   head: string,
   runId: string,
   items: Pick<Item, 'source' | 'key'>[],
+  left?: Left,
 ): Promise<{ title: string; body: string }> {
   const [first = '', ...rest] = (await readFile(bodyFile, 'utf8')).trimStart().split('\n')
   const title = first.replace(/^#+\s*/, '').trim() || head
-  return { title, body: `${rest.join('\n').trim()}\n\n${footer(runId, items)}` }
+  return { title, body: `${rest.join('\n').trim()}\n\n${footer(runId, items, left)}` }
+}
+
+const WORSE: CheckState[] = ['passed', 'pending', 'failing']
+
+/** Checks by name; a name reported twice takes its worse state. */
+export function byName(checks: [string, CheckState][]): Record<string, CheckState> {
+  const out: Record<string, CheckState> = {}
+  for (const [name, state] of checks) {
+    const was = out[name]
+    out[name] = was && WORSE.indexOf(was) > WORSE.indexOf(state) ? was : state
+  }
+  return out
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

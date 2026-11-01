@@ -393,6 +393,13 @@ it('drops what a judge changed in the clone, and fires its gate whatever it says
   }
 })
 
+it('clears a judge that also wrote its status', async () => {
+  const { dir, from } = await slice()
+  const judge = judging('clear', '', (dir) => writeFile(join(dir, '.away/out/status'), 'done\n'))
+  expect(await runJudges(judge, unit({ risk: { skills: ['judge'] } }), dir, from)).toEqual([])
+  expect((await readdir(join(dir, '.away/out'))).sort()).toEqual(['diff.patch', 'pr.md'])
+})
+
 it("fails closed: a judge that didn't run or finish fires, whatever it wrote", async () => {
   const { dir, from } = await slice()
   const judge = judging('clear', '', async () => {}, 'reached the window end')

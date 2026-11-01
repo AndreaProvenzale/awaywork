@@ -9,8 +9,7 @@
           "end": "07:00"
         }
       ],
-      "description": "Local hours a scheduled run may start units in; each opening is one run",
-      "minItems": 1,
+      "description": "Local hours a scheduled run may start units in; each opening is one run; [] for none",
       "type": "array",
       "items": {
         "type": "object",
@@ -49,6 +48,25 @@
         ],
         "additionalProperties": false
       }
+    },
+    "watch": {
+      "description": "awaywork watch, the daemon schedule install keeps running",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "every": {
+          "default": "5m",
+          "description": "How often the daemon polls the sources of run: soon rules; a source's own every can make it less often",
+          "type": "string",
+          "pattern": "^[1-9]\\d*[mhdw]$"
+        },
+        "debug": {
+          "default": false,
+          "description": "Also write each run's full output to the daemon log",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "limits": {
       "description": "Unit counts and time per run, for every provider",
@@ -111,6 +129,12 @@
         "session_max": {
           "description": "Stop a worker past this share of the short window",
           "default": "90%",
+          "type": "string",
+          "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+        },
+        "present_session_max": {
+          "description": "Stop a worker past this share of the short window in a run started outside every window",
+          "default": "40%",
           "type": "string",
           "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
         },
@@ -192,6 +216,11 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
+                      "present_session_max": {
+                        "description": "Stop a worker past this share of the short window in a run started outside every window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -259,6 +288,11 @@
                         "type": "string",
                         "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                       },
+                      "present_session_max": {
+                        "description": "Stop a worker past this share of the short window in a run started outside every window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
                       "fallback": {
                         "type": "object",
                         "properties": {
@@ -295,7 +329,7 @@
                   "description": "Shell command that works the clone; the prompt is in the file named by AWAYWORK_PROMPT. Its output goes to worker.log"
                 },
                 "probe": {
-                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply",
+                  "description": "Shell command printing the quota as JSON, { windows: [{ name, span, used, resetsAt, minutes? }] }, with a long window to pace against; runs in the config file's folder once per plan or run, after each unit, and in doctor. Unset, the fallback caps apply",
                   "type": "string",
                   "minLength": 1
                 },
@@ -329,6 +363,11 @@
                     },
                     "session_max": {
                       "description": "Stop a worker past this share of the short window",
+                      "type": "string",
+                      "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                    },
+                    "present_session_max": {
+                      "description": "Stop a worker past this share of the short window in a run started outside every window",
                       "type": "string",
                       "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
                     },
@@ -416,6 +455,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
             }
           },
           "required": [
@@ -459,6 +503,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
             }
           },
           "required": [
@@ -521,6 +570,11 @@
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
+            },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `{url}`",
               "type": "string"
@@ -574,6 +628,11 @@
               ],
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
             },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default `Part of {key}`",
@@ -643,6 +702,11 @@
               "additionalProperties": false,
               "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
             },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
+            },
             "link": {
               "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's; default none",
               "type": "string"
@@ -654,6 +718,102 @@
           ],
           "additionalProperties": false,
           "description": "My unresolved Jira Cloud issues"
+        },
+        "routines": {
+          "type": "object",
+          "properties": {
+            "context": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Shell command run per item before the worker, in the config file's folder; AWAYWORK_ITEM_KEY, _ITEM_URL and _ITEM_FILE (the item as JSON) are in its env. Files it writes to $AWAYWORK_CONTEXT_DIR reach the worker in the item's `extra/` folder"
+                },
+                "secrets": {
+                  "default": [],
+                  "description": "Env vars the command needs; withheld from workers, listed in Actions",
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z_][A-Z0-9_]*$"
+                  }
+                }
+              },
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "description": "Fetches more context for an item, with secrets kept out of the agent's environment"
+            },
+            "every": {
+              "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+              "type": "string",
+              "pattern": "^[1-9]\\d*[mhdw]$"
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "description": "Weekdays it comes due on; every day when unset",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "sun",
+                    "mon",
+                    "tue",
+                    "wed",
+                    "thu",
+                    "fri",
+                    "sat"
+                  ]
+                }
+              },
+              "at": {
+                "description": "When it comes due, local time: one time or a list",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    }
+                  }
+                ]
+              },
+              "repo": {
+                "type": "string",
+                "pattern": "^[^/\\s]+\\/[^/\\s]+$",
+                "description": "The repo its work happens in, owner/name"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The item's title"
+              },
+              "description": {
+                "default": "",
+                "description": "The item's description, what the worker reads",
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "repo",
+              "title"
+            ],
+            "additionalProperties": false,
+            "description": "A routine: an item that comes due on the clock"
+          },
+          "description": "Routines by name, each an item that comes due on the clock, like a weekly triage"
         }
       },
       "additionalProperties": {
@@ -688,6 +848,11 @@
           "link": {
             "type": "string",
             "description": "Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's"
+          },
+          "every": {
+            "description": "How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every",
+            "type": "string",
+            "pattern": "^[1-9]\\d*[mhdw]$"
           },
           "write": {
             "description": "Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {\"op\":\"move\",\"item\":\"ENG-2101\",\"id\":\"10012\",\"to\":\"QA\"}, and may print the item's updated times as {\"before\":\"…\",\"after\":\"…\"}. Without it, on_done writes nothing to this source",
@@ -1034,7 +1199,7 @@
             }
           },
           "deliver": {
-            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans",
+            "description": "Where the chain's commits go: one draft PR (default), one PR ready for review (a draft when a step fails or the run ends before one runs, a step asks questions with ask in its status file, verify fails, a loop's until never held, or a gate fires), or a push onto your own PR's branch; report makes no step commit, and a chain without commits reports; pending_review reports too, and leaves the last report on the PR it reviews as your pending review, seen by no one until you submit it; plan reports too, and posts the report with the plan.yml a step wrote as one comment on the item, which waits for your reply: approve as its first line approves it, anything else re-plans",
             "type": "string",
             "enum": [
               "draft_pr",
@@ -2387,12 +2552,22 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Where the item goes, in its tracker's words: a Jira status, a Linear state, an Asana section, a GitHub label to add"
+              },
+              "comment": {
+                "description": "result posts the unit's result as awaywork's comment, before any move: a report rule's report, else a link to what it published",
+                "type": "string",
+                "const": "result"
               }
             },
-            "required": [
-              "move"
-            ],
             "additionalProperties": false
+          },
+          "run": {
+            "description": "When its units start: window (default), in the next window run; soon, as soon as awaywork watch sees one due (a new item, or one changed since its last attempt), polling every watch.every",
+            "type": "string",
+            "enum": [
+              "soon",
+              "window"
+            ]
           }
         },
         "required": [
@@ -2425,6 +2600,12 @@
         "command"
       ],
       "additionalProperties": false
+    },
+    "keep_runs": {
+      "default": "30d",
+      "description": "How long run dirs stay; older ones go when awaywork run or watch starts and daily while watch runs, except those holding an item's latest report",
+      "type": "string",
+      "pattern": "^\\d+[mhdw]$"
     }
   },
   "required": [

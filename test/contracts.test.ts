@@ -3,6 +3,7 @@ import { asanaSource } from '../src/sources/asana.js'
 import { githubSource } from '../src/sources/github.js'
 import { jiraSource } from '../src/sources/jira.js'
 import { linearSource } from '../src/sources/linear.js'
+import { routines } from '../src/sources/routines.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { sourceContract } from './contracts/source.contract.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
@@ -37,6 +38,9 @@ providerContract(fakeProvider(), () => ({
 }))
 
 sourceContract(fakeSource() as Source<unknown>, {})
+sourceContract(routines as Source<unknown>, {
+  'sentry-triage': { days: ['mon'], at: '09:00', repo: 'acme/api', title: 'Triage Sentry' },
+})
 sourceContract(
   githubSource(
     recorded([

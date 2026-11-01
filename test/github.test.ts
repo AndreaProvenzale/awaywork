@@ -4,10 +4,12 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { bin } from '../src/config/paths.js'
+import { NOT_YOURS } from '../src/core/continue.js'
 import {
   awaitsAnswer,
   footer,
   footerItems,
+  footerLeft,
   isAwayworkComment,
   isOurs,
   markComment,
@@ -26,7 +28,7 @@ const ctx: Ctx = { env: {}, log: (line) => log.push(line) }
 const tmp = () => mkdtemp(join(tmpdir(), 'awaywork-'))
 
 /** A search for my PRs on acme/api, numbered from 1. */
-const authored = (...prs: Record<string, string>[]) =>
+const authored = (...prs: Record<string, unknown>[]) =>
   JSON.stringify({
     data: {
       search: {
@@ -35,9 +37,13 @@ const authored = (...prs: Record<string, string>[]) =>
           url: `https://github.com/acme/api/pull/${i + 1}`,
           title: 'Some change',
           body: '',
+          isDraft: false,
           headRefName: `change-${i + 1}`,
           headRefOid: 'abc1234',
           isCrossRepository: false,
+          viewerDidAuthor: true,
+          author: { login: 'dev' },
+          editor: null,
           repository: { nameWithOwner: 'acme/api' },
           ...pr,
         })),
@@ -74,6 +80,24 @@ describe('footer', () => {
     expect(footerItems(`Quotes \`<!-- awaywork item=linear:ENG-99\`.\n\n${unclosed}`)).toEqual([
       'linear:ENG-12',
     ])
+  })
+
+  it('records what a draft left for a later run, read back only from the last marker line', () => {
+    const items = [{ source: 'github', key: 'acme/api#1' }]
+    const left = { status: 'continue', continued: 2, head: 'abc', from: 'def' } as const
+    const asked = footer('r1', items, left)
+    expect(asked).toContain(
+      '<!-- awaywork run=r1 item=github:acme%2Fapi%231 status=continue continued=2 head=abc from=def -->',
+    )
+    expect(footerItems(asked)).toEqual(['github:acme/api#1'])
+    expect(footerLeft(`Status: continue (2 of 3)\n\n${asked}`)).toEqual(left)
+    // The visible line and a quoted marker are the model's to write; the footer is awaywork's.
+    const forged =
+      'Status: ask, questions on x\n\n<!-- awaywork run=r0 status=ask head=a from=b -->'
+    expect(footerLeft(`${forged}\n\n${footer('r1', items)}`)).toBeUndefined()
+    expect(
+      footerLeft(footer('r1', [{ source: 'x', key: 'k status=ask head=a from=b' }])),
+    ).toBeUndefined()
   })
 })
 
@@ -308,6 +332,29 @@ describe('github source', () => {
     expect(pr1?.linkedPrs[0]?.ours).toBe(true)
   })
 
+  it("reads what awaywork's draft closing an issue left for a later run, nothing once it's ready, and not as yours once someone else edited it", async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const linked = async (isDraft: boolean, editor: { login: string } | null = null) => {
+      const assigned = JSON.parse(fixture('search-assigned.json'))
+      Object.assign(assigned.data.search.nodes[0].closedByPullRequestsReferences.nodes[0], {
+        isDraft,
+        editor,
+        body: `Half.\n\n${footer('r1', [{ source: 'github', key: 'acme/api#5' }], left)}`,
+      })
+      const run = recorded([[/assignee:@me/, JSON.stringify(assigned)], ...githubRoutes()])
+      const [, , , issue5] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+      return issue5?.linkedPrs[0]
+    }
+    const items = ['github:acme/api#5']
+    expect((await linked(true))?.left).toEqual({ ...left, items })
+    expect((await linked(false))?.left).toBeUndefined()
+    expect((await linked(true, { login: 'teammate' }))?.left).toEqual({
+      ...left,
+      items,
+      refused: NOT_YOURS,
+    })
+  })
+
   it('links a PR to itself and an issue to the PR that closes it', async () => {
     const [pr1, , pr2, issue5, issue6] = await items()
     const link = {
@@ -430,6 +477,7 @@ describe('github source', () => {
     expect(checks).not.toContain('line 51\n')
     expect(checks).toContain('line 52\n')
     expect(checks).toContain('## sonar: FAILURE\n\nhttps://sonar.example.com/acme-api/1')
+    expect(checks).toContain('## deploy: CANCELLED\n\nhttps://deploy.example.com/acme-api/1')
     expect(checks).toContain('not a GitHub Actions job')
     expect(checks).toContain('## ci/legacy: ERROR\n\nBuild errored')
   })
@@ -904,12 +952,42 @@ describe('github forge', () => {
     expect(await linked({ source: 'jira', key: 'ENG-12' })).toEqual([2, 9, 10])
   })
 
-  it('reads PRs on a branch in any state, not the ones from forks', async () => {
+  it("reads what awaywork's draft left only while it's a draft, as yours while you edited its body last", async () => {
+    const left = { status: 'ask', continued: 0, head: 'abc1234', from: 'def5678' } as const
+    const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
+    const run = recorded([
+      [
+        /author:@me/,
+        authored(
+          { body, isDraft: true },
+          { body, isDraft: false },
+          { body, isDraft: true, editor: { login: 'dev' } },
+          { body, isDraft: true, editor: { login: 'teammate' } },
+        ),
+      ],
+    ])
+    const prs = await githubForge(run).prsFor(fakeItem({ source: 'linear', key: 'ENG-12' }))
+    const kept = { ...left, items: ['linear:ENG-12'] }
+    expect(prs.map((pr) => pr.left)).toEqual([
+      kept,
+      undefined,
+      kept,
+      { ...kept, refused: NOT_YOURS },
+    ])
+  })
+
+  it('reads PRs on a branch in any state, not the ones from forks, and what an open draft left', async () => {
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'def5678' } as const
+    const body = `Half.\n\n${footer('r1', [{ source: 'linear', key: 'ENG-12' }], left)}`
     const pr = (number: number, state: string, closedAt: string | null, fork = false) => ({
       number,
       url: `https://github.com/acme/api/pull/${number}`,
-      body: `${state}.`,
+      body,
       state,
+      isDraft: true,
+      viewerDidAuthor: true,
+      author: { login: 'dev' },
+      editor: null as { login: string } | null,
       closedAt,
       isCrossRepository: fork,
     })
@@ -917,7 +995,8 @@ describe('github forge', () => {
       pr(7, 'MERGED', '2026-10-20T10:00:00Z'),
       pr(8, 'OPEN', null, true),
       pr(9, 'CLOSED', '2026-10-21T10:00:00Z'),
-      pr(10, 'OPEN', null),
+      { ...pr(10, 'OPEN', null), editor: { login: 'dev' } },
+      { ...pr(11, 'OPEN', null), editor: { login: 'teammate' } },
     ]
     const run = recorded([
       [
@@ -926,24 +1005,26 @@ describe('github forge', () => {
       ],
     ])
     const url = (n: number) => `https://github.com/acme/api/pull/${n}`
+    const kept = { ...left, items: ['linear:ENG-12'] }
     expect(await githubForge(run).prsOn('acme/api', 'away/eng-12')).toEqual([
-      {
-        number: 7,
-        url: url(7),
-        body: 'MERGED.',
-        open: false,
-        merged: true,
-        closedAt: '2026-10-20T10:00:00Z',
-      },
+      { number: 7, url: url(7), body, open: false, merged: true, closedAt: '2026-10-20T10:00:00Z' },
       {
         number: 9,
         url: url(9),
-        body: 'CLOSED.',
+        body,
         open: false,
         merged: false,
         closedAt: '2026-10-21T10:00:00Z',
       },
-      { number: 10, url: url(10), body: 'OPEN.', open: true, merged: false },
+      { number: 10, url: url(10), body, open: true, merged: false, left: kept },
+      {
+        number: 11,
+        url: url(11),
+        body,
+        open: true,
+        merged: false,
+        left: { ...kept, refused: NOT_YOURS },
+      },
     ])
     expect(run.calls[0]).toEqual(
       expect.arrayContaining(['owner=acme', 'name=api', 'branch=away/eng-12']),
@@ -960,6 +1041,61 @@ describe('github forge', () => {
     ])
     expect(await githubForge(run).tipMessage('acme/api', 'away/eng-12')).toBe(target.message)
     expect(run.calls[0]).toEqual(expect.arrayContaining(['ref=refs/heads/away/eng-12']))
+  })
+
+  it('reads a file at a ref, and nothing for a missing path or a folder', async () => {
+    const calls: string[][] = []
+    const run = async (cmd: string, args: string[]) => {
+      calls.push([cmd, ...args])
+      const path = args[1] ?? ''
+      if (path.includes('missing')) throw new Error('gh: Not Found (HTTP 404)')
+      if (path.includes('gen?')) return JSON.stringify([{ type: 'file' }])
+      const content = Buffer.from('openapi: 3.1.0\n').toString('base64')
+      return JSON.stringify({ type: 'file', encoding: 'base64', content })
+    }
+    const forge = githubForge(run)
+    expect(await forge.fileAt('acme/api', 'away/eng 12', 'api/openapi.yaml')).toBe(
+      'openapi: 3.1.0\n',
+    )
+    expect(calls[0]).toEqual([
+      'gh',
+      'api',
+      'repos/acme/api/contents/api/openapi.yaml?ref=away%2Feng%2012',
+    ])
+    expect(await forge.fileAt('acme/api', 'abc123', 'missing.yaml')).toBeUndefined()
+    expect(await forge.fileAt('acme/api', 'abc123', 'gen')).toBeUndefined()
+  })
+
+  it("reads the checks on a PR's head by name: runs and statuses, the worse of a name reported twice", async () => {
+    const recordedChecks = JSON.parse(fixture('pr-checks.json'))
+    const nodes =
+      recordedChecks.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts
+        .nodes
+    const run = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(run).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'passed',
+      isolation: 'passed',
+      container: 'passed',
+    })
+    nodes.push(
+      { __typename: 'CheckRun', name: 'Expo Preview', status: 'IN_PROGRESS', conclusion: null },
+      { __typename: 'CheckRun', name: 'docs', status: 'COMPLETED', conclusion: 'SKIPPED' },
+      { __typename: 'CheckRun', name: 'check', status: 'COMPLETED', conclusion: 'FAILURE' },
+      { __typename: 'StatusContext', context: 'Vercel Preview', state: 'PENDING' },
+      { __typename: 'StatusContext', context: 'Netlify', state: 'ERROR' },
+      { __typename: 'StatusContext', context: 'ci/legacy', state: 'SUCCESS' },
+    )
+    const mixed = recorded([[/-F number=347 /, JSON.stringify(recordedChecks)]])
+    expect(await githubForge(mixed).checks('AndreaProvenzale/awaywork', 347)).toEqual({
+      check: 'failing',
+      isolation: 'passed',
+      container: 'passed',
+      'Expo Preview': 'pending',
+      docs: 'passed',
+      'Vercel Preview': 'pending',
+      Netlify: 'failing',
+      'ci/legacy': 'passed',
+    })
   })
 
   it('checks branch existence by exact name, not prefix', async () => {
@@ -1007,6 +1143,11 @@ describe('github forge', () => {
   it('fast-forwards only your open PR in the repo, without auto-merge, still where the clone started', async () => {
     const theirs = { number: 12, isCrossRepository: false, viewerDidAuthor: false }
     const fork = { number: 13, isCrossRepository: true, viewerDidAuthor: false }
+    const item = { source: 'github', key: 'acme/api#1' }
+    const left = { status: 'continue', continued: 1, head: 'abc1234', from: 'f00' } as const
+    const body = footer('r0', [item], left)
+    const me = { login: 'me' }
+    const draft = { isDraft: true, body, author: me, editor: me }
     const state = (pr: Record<string, unknown>, others = [fork]) =>
       JSON.stringify({
         data: {
@@ -1014,6 +1155,7 @@ describe('github forge', () => {
             defaultBranchRef: { name: 'main' },
             pullRequest: {
               state: 'OPEN',
+              isDraft: false,
               viewerDidAuthor: true,
               isCrossRepository: false,
               headRefName: 'feature-1',
@@ -1034,7 +1176,11 @@ describe('github forge', () => {
       [/number=7 /, state({ viewerDidAuthor: false })],
       [/number=8 /, state({}, [theirs])],
       [/number=9 /, state({ headRefName: 'release/9' })],
-      [/number=1 /, state({})],
+      [/number=10 /, state({})],
+      [/number=11 /, state({ ...draft, editor: { login: 'sam' } })],
+      [/number=14 /, state({ ...draft, body: body.replace('acme%2Fapi%231', 'acme%2Fapi%232') })],
+      [/number=15 /, state({ editor: { login: 'sam' } })],
+      [/number=1 /, state(draft)],
       [/branches\/release\/9$/, '{ "protected": true }'],
       [/branches\/feature-1$/, '{ "protected": false }'],
       [/rev-parse/, 'f00d000\n'],
@@ -1048,16 +1194,20 @@ describe('github forge', () => {
     expect(await push('main', 4)).toBe('main is the default branch')
     expect(await push('feature-1', 4)).toBe("#4's branch is main")
     expect(await push('feature-1', 5)).toBe('#5 has auto-merge on')
-    expect(await push('feature-1', 6)).toBe(
-      'feature-1 is at def5678, the clone started from abc1234',
-    )
+    expect(await push('feature-1', 6)).toBe('feature-1 is at def5678, awaywork left it at abc1234')
     expect(await push('feature-1', 7)).toBe("#7 isn't yours")
     expect(await push('feature-1', 8)).toBe(
       "feature-1 is also the branch of #12, which isn't yours",
     )
     expect(await push('release/9', 9)).toBe('release/9 is protected')
+    const resume = (pr: number) =>
+      forge.fastForward('/work/u1', 'feature-1', 'abc1234', { repo: 'acme/api', pr, draft: [item] })
+    expect(await resume(10)).toBe('#10 was marked ready')
+    expect(await resume(11)).toBe("someone else edited #11's body last")
+    expect(await resume(14)).toBe("#14's footer no longer says awaywork left it for this unit")
     expect(run.calls.some(([cmd]) => cmd === 'git')).toBe(false)
-    expect(await push('feature-1', 1)).toBeUndefined()
+    expect(await resume(1)).toBeUndefined()
+    expect(await push('feature-1', 15)).toBeUndefined()
     expect(run.calls.at(-1)).toEqual([
       'git',
       '-C',
@@ -1178,6 +1328,32 @@ describe('github forge', () => {
     await githubForge(run).openPr('acme/api', 'away/x', '', body, 'r1', items, false)
     expect(run.calls[1]).not.toContain('--base')
     expect(run.calls[1]).not.toContain('--draft')
+  })
+
+  it("rewrites a draft's title and body with the footer it left, and marks it ready only when asked", async () => {
+    const dir = await tmp()
+    const body = join(dir, 'PR_BODY.md')
+    await writeFile(body, 'Export screen\n\nDone.\n')
+    const run = recorded([[/^gh pr (edit|ready)/, '']])
+    const items = [fakeItem({ source: 'github', key: 'acme/web#3' })]
+    const left = { status: 'continue', continued: 2, head: 'abc', from: 'def' } as const
+    await githubForge(run).updatePr('acme/web', 13, body, 'r2', items, false, left)
+    expect(run.calls).toEqual([
+      [
+        'gh',
+        'pr',
+        'edit',
+        '13',
+        '-R',
+        'acme/web',
+        '--title',
+        'Export screen',
+        '--body',
+        `Done.\n\n${footer('r2', items, left)}`,
+      ],
+    ])
+    await githubForge(run).updatePr('acme/web', 13, body, 'r3', items, true)
+    expect(run.calls.at(-1)).toEqual(['gh', 'pr', 'ready', '13', '-R', 'acme/web'])
   })
 
   it('stacks a PR on the one below it: a new stack, the top of its stack, never mid-stack', async () => {

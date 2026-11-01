@@ -1,0 +1,489 @@
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { execa } from 'execa'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { printStatus } from '../src/cli/schedule.js'
+import { appendLog, isolation, stopWatch, watch } from '../src/cli/watch.js'
+import {
+  runLockPath,
+  runsDir,
+  watchLockPath,
+  watchLogPath,
+  watchStatePath,
+} from '../src/config/paths.js'
+import type { Config } from '../src/config/schema.js'
+import { contained, isolateFor } from '../src/core/launch.js'
+import type { Job } from '../src/core/types.js'
+import type { Schedule, Scheduler } from '../src/scheduler/index.js'
+
+/** The units the fake worker ran, the most at a time, how long each takes, what the next probe waits for, and the repo each clone is of. */
+const workers = vi.hoisted(() => ({
+  ran: [] as string[],
+  running: 0,
+  most: 0,
+  ms: 0,
+  gate: undefined as Promise<unknown> | undefined,
+  open: () => {},
+  origin: '',
+}))
+
+vi.mock('../src/providers/index.js', async () => {
+  const { fakeProvider } = await import('./fakes/provider.js')
+  const { setTimeout } = await import('node:timers/promises')
+  const fake = fakeProvider('claude')
+  const providers = {
+    claude: {
+      ...fake,
+      // No quota reading: a present run's units sit out, so none clones.
+      probe: async () => {
+        const gate = workers.gate
+        workers.gate = undefined
+        if (gate) await Promise.race([gate, setTimeout(10_000)])
+        return null
+      },
+      async *run(job: Job, signal: AbortSignal) {
+        workers.ran.push(job.unit.id)
+        workers.open()
+        workers.most = Math.max(workers.most, ++workers.running)
+        try {
+          await setTimeout(workers.ms)
+          yield* fake.run(job, signal)
+        } finally {
+          workers.running--
+        }
+      },
+    },
+  }
+  return {
+    providers,
+    providerFor: (id: string) => providers[id as 'claude'],
+    providersOf: () => providers,
+  }
+})
+vi.mock('../src/forge/index.js', async () => {
+  const { fakeForge } = await import('./fakes/forge.js')
+  const { execa } = await import('execa')
+  const clone = async (_repo: string, _branch: string, dir: string) =>
+    void (await execa('git', ['clone', '-q', workers.origin, dir]))
+  return { forgeFor: () => ({ ...fakeForge(), clone }) }
+})
+/** How long releasing the run lock takes. */
+const lock = vi.hoisted(() => ({ releaseMs: 0 }))
+vi.mock('../src/core/run-lock.js', async (original) => {
+  const real = await original<typeof import('../src/core/run-lock.js')>()
+  const { setTimeout } = await import('node:timers/promises')
+  return {
+    ...real,
+    takeRunLock: async (file: string, runId: string) => {
+      const taken = await real.takeRunLock(file, runId)
+      if (!('release' in taken)) return taken
+      return { release: () => setTimeout(lock.releaseMs).then(taken.release) }
+    },
+  }
+})
+// Shortens the daemon's wait for the next minute while `fast`.
+const clock = vi.hoisted(() => ({ fast: false }))
+vi.mock('node:timers/promises', async (original) => {
+  const timers = await original<typeof import('node:timers/promises')>()
+  return {
+    ...timers,
+    setTimeout: (ms?: number, value?: unknown, options?: object) =>
+      timers.setTimeout(clock.fast && (ms ?? 0) > 1000 ? 20 : ms, value, options),
+  }
+})
+vi.mock('../src/scheduler/wake.js', async (original) => ({
+  ...(await original<typeof import('../src/scheduler/wake.js')>()),
+  holdAwake: async () => () => {},
+}))
+vi.mock('../src/config/paths.js', async (original) => {
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const state = await mkdtemp(`${tmpdir()}/awaywork-state-`)
+  return {
+    ...(await original<typeof import('../src/config/paths.js')>()),
+    runsDir: `${state}/runs`,
+    attemptsPath: `${state}/attempts.json`,
+    runLockPath: `${state}/run.lock`,
+    skipsPath: `${state}/skips.json`,
+    approvalsPath: `${state}/approvals.json`,
+    watchLockPath: `${state}/watch.lock`,
+    watchStatePath: `${state}/watch.json`,
+    watchLogPath: `${state}/watch.log`,
+  }
+})
+
+const hhmm = (offset: number) => new Date(Date.now() + offset * 60_000).toTimeString().slice(0, 5)
+
+/** A config whose one window is open now, or `windows` as given. */
+async function config(windows = `[{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]`) {
+  const path = join(await mkdtemp(join(tmpdir(), 'awaywork-watch-')), 'config.yml')
+  await writeFile(
+    path,
+    `providers: [claude]\nsources: { chores: { command: exit 1 } }\nwindows: ${windows}\n`,
+  )
+  return path
+}
+
+const daemonLog = () => readFile(watchLogPath, 'utf8').catch(() => '')
+
+/** Runs the daemon until its log shows `until`, then stops it. */
+async function watchUntil(path: string, until: string) {
+  const stop = new AbortController()
+  const done = watch(path, stop.signal)
+  await vi.waitFor(async () => expect(await daemonLog()).toContain(until), { timeout: 10_000 })
+  stop.abort()
+  await done
+  return daemonLog()
+}
+
+let out: string[]
+beforeEach(async () => {
+  out = []
+  vi.spyOn(console, 'log').mockImplementation((...line) => void out.push(line.join(' ')))
+  vi.stubEnv('GITHUB_OUTPUT', '')
+  vi.stubEnv('RUNNER_ENVIRONMENT', '')
+  for (const file of [watchLogPath, watchLockPath, watchStatePath, runLockPath])
+    await rm(file, { force: true })
+  lock.releaseMs = 0
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
+
+describe('awaywork watch', () => {
+  it('starts a window run in an open window, logging events and its output to the run dir', async () => {
+    // Stopping waits for the last run to let go of the run lock.
+    lock.releaseMs = 300
+    const log = await watchUntil(await config(), 'Report: ')
+    const runId = /window run (\d{8}-\d{6}) started, until /.exec(log)?.[1] ?? ''
+    expect(log).toMatch(/^\S+ \S+ awaywork watch started, pid \d+, config /)
+    expect(log).toContain(`Run ${runId}: 0 units planned, state in ${join(runsDir, runId)}`)
+    expect(log).toContain('warning: source chores: Command failed with exit code 1')
+    expect(log.trimEnd()).toMatch(/awaywork watch stopped$/)
+    const runLog = await readFile(join(runsDir, runId, 'run.log'), 'utf8')
+    expect(runLog).toContain(`Run ${runId}: 0 units planned`)
+    expect(existsSync(join(runsDir, runId, 'report.md'))).toBe(true)
+    expect(existsSync(runLockPath)).toBe(false)
+    expect(existsSync(watchLockPath)).toBe(false)
+    expect(existsSync(watchStatePath)).toBe(false)
+  })
+
+  it('logs a config that fails to load and keeps going with nothing to do', async () => {
+    const path = await config()
+    await writeFile(path, 'providers: [nope]\n')
+    const log = await watchUntil(path, 'config not loaded: ')
+    expect(log).not.toContain('window run')
+  })
+
+  it('idles with no windows, and waits on a manual run holding the run lock, saying so once, pruning nothing', async () => {
+    await watchUntil(await config('[]'), 'awaywork watch started')
+    await mkdir(join(runsDir, '20200101-000000'), { recursive: true })
+    const before = await readdir(runsDir)
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    const log = await watchUntil(await config(), 'holds the run lock')
+    expect(log).toContain(
+      'a window is open, but run 20261025-010000 (pid ' +
+        `${process.pid}) holds the run lock; trying again each minute`,
+    )
+    expect(log).not.toContain('window run')
+    expect(log).not.toContain('older than')
+    expect(await readdir(runsDir)).toEqual(before)
+    await rm(join(runsDir, '20200101-000000'), { recursive: true })
+  })
+
+  it('starts a present soon run for a due unit, notifying nothing for one that sat out, and backs off a failing source', async () => {
+    const path = await config('[]')
+    const dir = dirname(path)
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'Fix the typo',
+      url: 'https://example.com/1',
+      fields: { repo: 'acme/api', updated: '2026-10-25T10:00:00Z' },
+    }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: []
+sources: { chores: { command: cat items.json }, broken: { command: exit 1 } }
+queue: [{ skill: plan, run: soon }]
+notify: { command: 'echo $AWAYWORK_EVENT >> ${join(dir, 'events.txt')}' }
+`,
+    )
+    const log = await watchUntil(path, 'Report: ')
+    expect(log).toMatch(
+      /source broken: poll failed, next at \S+ \S+: Command failed with exit code 1: 'exit 1'$/m,
+    )
+    const runId = /soon run (\d{8}-\d{6}) started for ch-1\n/.exec(log)?.[1] ?? ''
+    expect(runId).not.toBe('')
+    const plan = await readFile(join(runsDir, runId, 'plan.txt'), 'utf8')
+    expect(plan).toContain('present run (outside the windows)')
+    expect(plan).toContain('claude sits out a present run')
+    expect(existsSync(join(dir, 'events.txt'))).toBe(false)
+    expect(existsSync(runLockPath)).toBe(false)
+  })
+
+  it('leaves a soon unit to the next poll while a manual run holds the run lock', async () => {
+    const path = await config('[]')
+    const item = {
+      id: '1',
+      key: 'CH-1',
+      title: 'T',
+      url: 'https://e.com/1',
+      fields: { repo: 'acme/api' },
+    }
+    await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item]))
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan, run: soon }]\n`,
+    )
+    await writeFile(runLockPath, `${process.pid} 20261025-010000`)
+    try {
+      const log = await watchUntil(path, 'holds the run lock')
+      expect(log).toContain(
+        `ch-1 due, but run 20261025-010000 (pid ${process.pid}) holds the run lock; trying again at the next poll`,
+      )
+      expect(log).not.toContain('soon run')
+    } finally {
+      await rm(runLockPath, { force: true })
+    }
+  })
+
+  it('runs one worker at a time across overlapping runs, a soon one in a window until its end', async () => {
+    const path = await config()
+    const dir = dirname(path)
+    workers.origin = join(dir, 'origin')
+    await execa('git', ['init', '-q', '-b', 'main', workers.origin])
+    const id = ['-c', 'user.name=a', '-c', 'user.email=a@b']
+    await execa('git', [...id, '-C', workers.origin, 'commit', '-q', '--allow-empty', '-m', 'init'])
+    const item = (n: number, kind: string) => ({
+      id: String(n),
+      key: `CH-${n}`,
+      title: `Chore ${n}`,
+      url: `https://example.com/${n}`,
+      fields: { kind, repo: 'acme/api', updated: '2026-10-25T10:00:00Z' },
+    })
+    await writeFile(join(dir, 'items.json'), JSON.stringify([item(1, 'soon'), item(2, 'later')]))
+    await writeFile(
+      path,
+      `providers: [claude]
+windows: [{ start: "${hhmm(-60)}", end: "${hhmm(60)}" }]
+sources: { chores: { command: cat items.json, fields: [kind] } }
+queue:
+  - { skill: plan, source: chores, where: { kind: soon }, run: soon }
+  - { skill: plan, source: chores, where: { kind: later } }
+notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events.txt')}' }
+`,
+    )
+    // The window run probes first and waits for the soon run's worker, so both have a unit.
+    const gate = new Promise((open) => Object.assign(workers, { open }))
+    Object.assign(workers, { ran: [], most: 0, ms: 1000, gate })
+    const stop = new AbortController()
+    const done = watch(path, stop.signal)
+    await vi.waitFor(async () => expect((await daemonLog()).match(/Report: /g)).toHaveLength(2), {
+      timeout: 20_000,
+    })
+    stop.abort()
+    await done
+    const log = await daemonLog()
+    const windowRun = /window run (\d{8}-\d{6}) started, until (\S+ \S+)\n/.exec(log)
+    expect(log).toContain(
+      `soon run ${/soon run (\d{8}-\d{6})/.exec(log)?.[1]} started, until ${windowRun?.[2]} for ch-1`,
+    )
+    const plan = await readFile(join(runsDir, windowRun?.[1] ?? '', 'plan.txt'), 'utf8')
+    expect(plan).toMatch(/CH-1: running in run \d{8}-\d{6}/)
+    expect(workers.ran.sort()).toEqual(['ch-1', 'ch-2'])
+    expect(workers.most).toBe(1)
+    const events = (await readFile(join(dir, 'events.txt'), 'utf8')).trim().split('\n')
+    expect(events.sort()).toEqual(['run', 'unit ch-1', 'unit ch-2'])
+  }, 30_000)
+
+  it('switches isolation only with no run in progress, and again after a switch failed', async () => {
+    // A docker that answers, and a sudo that refuses: isolation: user fails on Linux too.
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-fakes-'))
+    await writeFile(join(fakes, 'docker'), '#!/bin/sh\necho 27.0\n', { mode: 0o755 })
+    await writeFile(join(fakes, 'sudo'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    vi.stubEnv('PATH', `${fakes}:${process.env.PATH}`)
+    const lines: string[] = []
+    const isolate = isolation(
+      (f) => f(),
+      (line) => lines.push(line),
+    )
+    const as = (isolation: Config['isolation']) => ({ isolation }) as Config
+    try {
+      await isolate(as('container'), true)
+      expect(contained()).toBe(true)
+      await expect(isolate(as('user'), true)).rejects.toThrow()
+      expect(contained()).toBe(false)
+      await isolate(as('container'), true)
+      expect(contained()).toBe(true)
+      await isolate(as('none'), false)
+      await isolate(as('none'), false)
+      expect(contained()).toBe(true)
+      expect(lines).toEqual(['isolation: none waits for the runs in progress'])
+    } finally {
+      await isolateFor('none', process.env)
+    }
+  })
+
+  it('prunes old runs only with no run in progress, its own included', async () => {
+    const path = await config()
+    await writeFile(
+      path,
+      `${(await readFile(path, 'utf8')).replace('exit 1', 'sleep 2; exit 1')}keep_runs: 1d\n`,
+    )
+    clock.fast = true
+    vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true })
+    try {
+      const stop = new AbortController()
+      const done = watch(path, stop.signal)
+      await vi.waitFor(async () => expect(await daemonLog()).toContain('window run'))
+      const runId = /window run (\d{8}-\d{6}) started/.exec(await daemonLog())?.[1] ?? ''
+      vi.setSystemTime(Date.now() + 25 * 3_600_000)
+      await vi.waitFor(async () => expect(await daemonLog()).toContain('older than 1d'), {
+        timeout: 10_000,
+      })
+      stop.abort()
+      await done
+      expect(await daemonLog()).toMatch(/Report: [\s\S]*older than 1d/)
+      expect(existsSync(join(runsDir, runId))).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      clock.fast = false
+    }
+  }, 15_000)
+
+  it('exits in one line while another copy runs, and takes over a dead one', async () => {
+    await writeFile(watchLockPath, `${process.pid} watch`)
+    await watch(await config(), new AbortController().signal)
+    expect(out).toEqual([`awaywork watch is already running (pid ${process.pid})`])
+    expect(await daemonLog()).toBe('')
+
+    const dead = await execa('node', ['-e', 'console.log(process.pid)'])
+    await writeFile(watchLockPath, `${dead.stdout} watch`)
+    await watch(await config(), AbortSignal.abort())
+    expect(await daemonLog()).toContain('awaywork watch stopped')
+    expect(existsSync(watchLockPath)).toBe(false)
+  })
+})
+
+describe('stopping the daemon', () => {
+  it('SIGTERMs the lock holder and waits for it to exit', async () => {
+    const daemon = execa('sleep', ['30'], { reject: false })
+    await writeFile(watchLockPath, `${daemon.pid} watch`)
+    expect(await stopWatch()).toBeUndefined()
+    expect((await daemon).signal).toBe('SIGTERM')
+    expect(out).toEqual([`Stopping awaywork watch (pid ${daemon.pid})`])
+    expect(await stopWatch()).toBeUndefined()
+    expect(out).toHaveLength(1)
+  })
+
+  it("leaves alone a pid reused since a crash left the lock, and another user's", async () => {
+    const other = execa('sleep', ['30'], { reject: false })
+    await writeFile(watchLockPath, `${other.pid} watch`)
+    const before = new Date(Date.now() - 3_600_000)
+    await utimes(watchLockPath, before, before)
+    expect(await stopWatch(300)).toBeUndefined()
+    other.kill('SIGKILL')
+    expect((await other).signal).toBe('SIGKILL')
+    await writeFile(watchLockPath, '1 watch')
+    expect(await stopWatch(300)).toBeUndefined()
+    expect(out).toEqual([])
+  })
+
+  it("gives up after the wait on one that doesn't exit, and says its pid", async () => {
+    const daemon = execa(
+      'node',
+      ['-e', "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000)"],
+      { reject: false },
+    )
+    await new Promise((ready) => daemon.stdout?.once('data', ready))
+    await writeFile(watchLockPath, `${daemon.pid} watch`)
+    try {
+      expect(await stopWatch(300)).toBe(daemon.pid)
+    } finally {
+      daemon.kill('SIGKILL')
+      await daemon
+    }
+  })
+})
+
+it('rotates a log past its size, keeping one previous generation', async () => {
+  const file = join(await mkdtemp(join(tmpdir(), 'awaywork-log-')), 'watch.log')
+  appendLog(file, 'one', 5)
+  appendLog(file, 'two', 5)
+  appendLog(file, 'three', 5)
+  appendLog(file, 'four', 5)
+  expect(await readFile(file, 'utf8')).toBe('four\n')
+  expect(await readFile(`${file}.1`, 'utf8')).toBe('three\n')
+})
+
+describe('schedule status', () => {
+  const job = (command: string[]): Schedule => ({
+    command,
+    path: '/usr/bin',
+    log: '/h/schedule.log',
+  })
+  const installed = (schedule?: Schedule): Record<string, Scheduler> => ({
+    launchd: {
+      id: 'launchd',
+      install: async () => '',
+      remove: async () => false,
+      read: async () => schedule,
+    },
+  })
+
+  it('shows the daemon down, then up with its runs in progress, next polls and the next window', async () => {
+    const path = await config('[{ start: "01:00", end: "07:00" }]')
+    const current = installed(job(['/node', '/awaywork', 'watch', '--config', path]))
+    await printStatus(undefined, current)
+    expect(out.slice(0, 3)).toEqual([
+      'Scheduled with launchd, keeping awaywork watch running',
+      `Config: ${path}`,
+      'Log: /h/schedule.log',
+    ])
+    expect(out).toContain('Daemon: not running')
+    expect(out.find((l) => l.startsWith('Next window: '))).toMatch(/ 01:00:00$/)
+    expect(out.at(-1)).toBe(`Daemon log: ${watchLogPath}`)
+
+    out = []
+    await writeFile(watchLockPath, `${process.pid} watch`)
+    const window = { trigger: 'window', runId: '20261025-230000', until: '2026-10-26T05:00:00Z' }
+    const runs = [window, { trigger: 'soon', runId: '20261025-231500' }]
+    const polls = {
+      github: { next: Date.parse('2026-10-25T23:20:00Z') },
+      jira: { next: Date.parse('2026-10-25T23:50:00Z'), failures: 2 },
+    }
+    const since = '2026-10-25T07:12:03Z'
+    const daemon = { pid: process.pid, since, config: path, runs, polls }
+    await writeFile(watchStatePath, JSON.stringify(daemon))
+    await printStatus(undefined, current)
+    const local = (t: string | number) => new Date(t).toLocaleString('sv-SE')
+    expect(out).toContain(`Daemon: running, pid ${process.pid}, since ${local(since)}`)
+    expect(out).toContain(
+      `Run in progress: window run 20261025-230000, until ${local(window.until)}`,
+    )
+    expect(out).toContain('Run in progress: soon run 20261025-231500')
+    expect(out).toContain(`Next poll of github: ${local(polls.github.next)}`)
+    expect(out).toContain(
+      `Next poll of jira: ${local(polls.jira.next)}, backing off after 2 failed polls`,
+    )
+
+    out = []
+    await writeFile(watchStatePath, '')
+    await printStatus(undefined, current)
+    expect(out).toContain('Daemon: not running')
+  })
+
+  it('tells an older per-window job to reinstall, without daemon lines', async () => {
+    await printStatus(undefined, installed(job(['/node', '/awaywork', 'run', '--scheduled'])))
+    expect(out[0]).toBe(
+      'Scheduled with launchd, installed by an older awaywork; run `awaywork schedule install` again',
+    )
+    expect(out.some((l) => l.startsWith('Daemon'))).toBe(false)
+  })
+})

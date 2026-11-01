@@ -303,7 +303,7 @@ export function toQuota(
     const mins = w.windowDurationMins
     const name = mins < DAY_MINS ? `${mins / 60}h` : `${mins / DAY_MINS}d`
     const span = mins <= DAY_MINS ? ('short' as const) : ('long' as const)
-    return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt }]
+    return [{ name, span, used: w.usedPercent / 100, resetsAt: w.resetsAt, minutes: mins }]
   })
   return windows.length ? { windows } : null
 }
