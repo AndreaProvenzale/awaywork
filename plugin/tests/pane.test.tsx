@@ -1,0 +1,235 @@
+import type { TestBody } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
+
+import { busyPlan, busyReport, emptyPlan, emptyReport } from './fixtures'
+
+const PANE = {
+  plugin: 'awaywork',
+  component: 'Pane',
+  requestId: 'away',
+  props: {
+    title: 'awaywork',
+    isFocused: true,
+    bodyColumns: 70,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 30 },
+    view: {},
+  },
+} as const
+
+const SURFACES = ['terminal', 'desktop'] as const
+const NOW = Date.parse('2099-01-02T12:00:00Z')
+
+type On = Parameters<TestBody>[1]
+
+const away = (args = '', command = 'away') => ({
+  command,
+  args,
+  origin: { kind: 'composer' } as const,
+  presentation: { isFullscreen: true, columns: 160 },
+})
+
+const focus = (element: string) =>
+  ({ component: 'Pane', requestId: 'away', element, origin: { kind: 'person' } }) as const
+
+type Reply = { exitCode?: number; stdout?: string; stderr?: string }
+
+/** Stands for the engine: a surface, the pane opening, and awaywork answering by subcommand. */
+function engine(on: On, replies: Record<string, Reply | (() => Reply)>) {
+  const calls: string[][] = []
+  const opened: string[] = []
+  on('clock.now', () => ({ value: NOW }))
+  on('ui.focus', () => ({}))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('ui.open', (_, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('process.run', (_, e) => {
+    calls.push([...e.argv])
+    const reply = replies[e.argv.slice(1).join(' ')] ?? replies[e.argv[1] ?? ''] ?? {}
+    const r = typeof reply === 'function' ? reply() : reply
+    const value = { exitCode: 0, stdout: '', stderr: '', ...r }
+    return { value: { ...value, isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  return { calls, opened }
+}
+
+const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
+
+type Engine = Parameters<TestBody>[0]
+
+/** Draws the pane once the report /away started reading is in: a refresh settles with it. */
+async function mount($: Engine, surface: (typeof SURFACES)[number]) {
+  const ui = await $.ui.mount({ ...PANE, surface })
+  await ui.press({ key: 'refresh' })
+  return ui
+}
+
+test('bare /away opens the pane on what needs you, reading only the report', async ($, on) => {
+  const { calls, opened } = engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  expect(opened).toEqual(['away'])
+
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect(await ui.find({ type: 'Text', text: /last run \d\d-\d\d \d\d:\d\d/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /2 need you/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /1 PR/ })).toBeTruthy()
+    expect(await ui.find({ key: 'row:needs:github:acme/shop#7' })).toBeTruthy()
+    expect(await ui.find({ key: 'row:needs:github:acme/shop#9' })).toBeFalsy()
+
+    await ui.press({ key: 'tab:last' })
+    expect(await ui.find({ key: 'row:last:acme-shop-3' })).toBeTruthy()
+    expect(await ui.find({ key: 'row:last:acme-shop-3-2' })).toBeFalsy()
+    expect(await ui.find({ type: 'Text', text: /verify failed/ })).toBeTruthy()
+
+    await ui.press({ key: 'tab:next' })
+    expect(
+      await ui.find({ type: 'Text', text: /plan probes quota \(one Haiku call\): press p/ }),
+    ).toBeTruthy()
+
+    await ui.press({ key: 'tab:skipped' })
+    expect(await ui.find({ key: 'row:skipped:github:acme/shop#9' })).toBeTruthy()
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
+})
+
+test('/away with a request goes to the skill', async ($, on) => {
+  const { opened } = engine(on, {})
+  on('command.run', () => ({ text: 'the skill ran' }))
+  const ran = await $.command.run(away('why did acme/shop#7 not run?', 'awaywork:away'))
+  expect(ran.text).toBe('the skill ran')
+  expect(opened).toEqual([])
+})
+
+test('p plans the next run; r reads it again', async ($, on) => {
+  const { calls } = engine(on, { 'report --json': ok(busyReport), 'plan --json': ok(busyPlan) })
+  await $.command.run(away())
+
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    await ui.press({ key: 'plan' })
+    await ui.press({ key: 'tab:next' })
+    expect(await ui.find({ key: 'row:next:acme-shop-12' })).toBeTruthy()
+    expect(await ui.find({ key: 'row:next:acme-shop-12-2' })).toBeFalsy()
+    expect(
+      await ui.find({ type: 'Text', text: /acme\/shop · deliver draft_pr · claude/ }),
+    ).toBeTruthy()
+    await ui.unmount()
+  }
+  const plans = calls.filter((argv) => argv[1] === 'plan').length
+  await mount($, 'terminal')
+  expect(calls.filter((argv) => argv[1] === 'plan').length).toBe(plans + 1)
+})
+
+test('⏎ reads why, s skips after a yes, a approves a plan, h works on it here', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'plan --why github:acme/shop#8': { stdout: 'acme/shop#8 waits for your approval' },
+    'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
+    'approve github:acme/shop#8': { stdout: 'plan approved: replied approve on the issue' },
+  })
+  const prompts: string[] = []
+  on('prompt.submit', (_, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await ui.press({ key: 'row:needs:github:acme/shop#8' })
+  expect(await ui.find({ type: 'Text', text: /waits for your approval/ })).toBeTruthy()
+  await ui.press({ key: 'back' })
+
+  await ui.press({ key: 'skip' })
+  expect(
+    await ui.find({ type: 'Text', text: /skip github:acme\/shop#7 in the coming runs\?/ }),
+  ).toBeTruthy()
+  await ui.press({ key: 'no' })
+  expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'skip', 'github:acme/shop#7'])
+  expect(await ui.find({ type: 'Text', text: /is skipped until awaywork unskip/ })).toBeTruthy()
+
+  expect(await ui.find({ key: 'approve' })).toBeFalsy()
+  await $.ui.focus(focus('row:needs:github:acme/shop#8'))
+  await ui.press({ key: 'approve' })
+  expect(
+    await ui.find({ type: 'Text', text: /approve the plan on github:acme\/shop#8\?/ }),
+  ).toBeTruthy()
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#8'])
+
+  await ui.press({ key: 'tab:skipped' })
+  await $.ui.focus(focus('row:skipped:github:acme/shop#10'))
+  expect((await ui.find({ key: 'skip' }))?.text).toMatch(/unskip/)
+  await $.ui.focus(focus('row:skipped:github:acme/shop#9'))
+  expect(await ui.find({ key: 'approve' })).toBeTruthy()
+
+  await ui.press({ key: 'tab:last' })
+  await ui.press({ key: 'here' })
+  expect(prompts).toEqual([
+    'continue awaywork unit acme-shop-3 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-3`',
+  ])
+})
+
+test('no run yet, and a run that found nothing, each say why and what next', async ($, on) => {
+  let report: Reply = { exitCode: 1, stderr: 'no runs in /home/dev/.local/state/awaywork/runs' }
+  engine(on, { 'report --json': () => report, 'plan --json': ok(emptyPlan) })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect(
+      await ui.find({ type: 'Text', text: /no run yet: `awaywork run`, or wait for the schedule/ }),
+    ).toBeTruthy()
+    expect(await ui.find({ key: 'tab:needs' })).toBeFalsy()
+    await ui.unmount()
+  }
+  report = ok(emptyReport)
+  const ui = await mount($, 'terminal')
+  expect(
+    await ui.find({ type: 'Text', text: /the last run found none of your items/ }),
+  ).toBeTruthy()
+})
+
+test('awaywork missing from PATH, or too old for --json, says the fix', async ($, on) => {
+  on('clock.now', () => ({ value: NOW }))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  let old = false
+  on('process.run', () => {
+    if (!old) return { deny: 'spawn awaywork ENOENT' }
+    return {
+      value: {
+        exitCode: 1,
+        stdout: '',
+        stderr: "error: unknown option '--json'",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect(
+      await ui.find({
+        type: 'Text',
+        text: "awaywork isn't on your PATH: npm i -g awaywork@latest",
+      }),
+    ).toBeTruthy()
+    await ui.unmount()
+  }
+  old = true
+  const ui = await mount($, 'terminal')
+  expect(
+    await ui.find({
+      type: 'Text',
+      text: 'this awaywork is too old for the pane (no --json): npm i -g awaywork@latest',
+    }),
+  ).toBeTruthy()
+})

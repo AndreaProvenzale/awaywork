@@ -88,6 +88,8 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 Piped or in CI, `plan` and `report` print plain text, like the `plan` above.
 
+In Claude Code, bare `/away` from the [plugin](docs/guide/agents.md#claude-code) opens the last run in a pane beside the chat.
+
 **Docs:** https://andreaprovenzale.github.io/awaywork/ · **Setting it up with an agent?** Point it at [`llms.txt`](https://andreaprovenzale.github.io/awaywork/llms.txt).
 
 ## What it picks up

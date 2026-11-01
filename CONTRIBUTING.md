@@ -12,6 +12,7 @@ Read [AGENTS.md](AGENTS.md) first: it holds how we work, for people and coding a
 | `src/worker/` | The workspace, the worker run, the watchdog and publishing |
 | `src/config/`, `src/cli/`, `src/scheduler/` | Config schema and loading, one file per command, launchd/systemd/cron/Actions |
 | `harness.md`, `skills/` | The fixed worker prompt and the built-in skills |
+| `plugin/` | The Claude Code plugin: the `away` skill, and the `/away` pane in `hooks/register.tsx` |
 | `test/contracts/`, `test/fakes/` | Shared contract suites and the fakes they run against |
 
 The `Provider` and `Source` contracts are spelled out in [docs/extend/providers.md](docs/extend/providers.md) and [sources.md](docs/extend/sources.md): a change to them updates those pages in the same PR.
@@ -25,6 +26,8 @@ pnpm format      # Biome for code, Prettier for Markdown and YAML
 pnpm docs:gen    # after a CLI or config schema change; CI fails on stale output
 pnpm docs:dev    # the site at http://localhost:5173/awaywork/
 ```
+
+The `/away` pane is a Claude Code mod, so its types and test kit come from the `claude` binary, not from this repo: Biome lints it, but the repo's `tsc` and Vitest leave it out. `pnpm test:plugin` runs its tests (CI pins the Claude Code version), and `tsc -p plugin` type-checks it once a `claude --plugin-dir plugin` session has laid its types in `plugin/.claude-plugin/types/`.
 
 Tests run against fakes and recorded fixtures. Tests against real accounts (`test/real-*.test.ts`) are skipped by default: provider tests unless `AWAYWORK_REAL=1`, source tests unless their env (token, test workspace or sandbox) is set; see below. `real-isolation.test.ts` needs `AWAYWORK_WORKER_TEST=1` and a Linux box with passwordless sudo where `scripts/worker-user.sh` made the worker user, as CI's `isolation` job does on a hosted runner. The script changes permissions all over the disk, so run it in a throwaway container or VM, not on your machine. `real-container.test.ts` needs `AWAYWORK_CONTAINER_TEST=<image>`, any image with a POSIX shell (`alpine` will do), and a Docker engine that sees your home, as CI's `container` job runs it.
 

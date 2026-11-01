@@ -19,6 +19,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # The /away pane's tests run in Claude Code's own mod kit, pinned to the version it was built on.
+      - run: npm i -g @anthropic-ai/claude-code@2.1.316 && pnpm test:plugin
       - run: pnpm build
       - run: pnpm docs:gen && git diff --exit-code docs/
 
