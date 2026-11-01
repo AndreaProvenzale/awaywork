@@ -81,7 +81,7 @@ describe('triage view', () => {
     expect(lines).toContain('  1  api#1  #1    fix (built-in)  claude    draft_pr  PR 1')
   })
 
-  it('starts on the first Needs you item, in reverse video, else the first unit, else the first row', () => {
+  it('starts on the first Needs you item, in reverse video, else the first unit, else the first skipped one', () => {
     expect(selectedLine(run())).toBe(needsRow)
     expect(view(run(), 80, 30).find((l) => l.includes('\u001b[7m'))).toBe(
       `\u001b[7m${`  ${needsRow}`.padEnd(80)}\u001b[27m`,
@@ -91,7 +91,32 @@ describe('triage view', () => {
     const warnings = ['source tracker: Command failed']
     expect(selectedLine(runTriage(r, warnings, files, 30))).toMatch(/^1 {2}api#1/)
     r.results = []
-    expect(selectedLine(runTriage(r, warnings, files, 30))).toBe(warnings[0])
+    const skipped = runTriage(r, warnings, files, 30)
+    expect(selectedLine(skipped)).toBe('api#3  closest #1 fix: checks is passing, wants failing')
+    expect(screen(skipped)).not.toContain('▾ Units 0')
+    expect(screen(skipped)).toContain('  ▸ over_cap 1')
+  })
+
+  it('shows no section without items, and says why when there are none', () => {
+    const plan = acmePlan()
+    plan.units = []
+    plan.skipped = []
+    const empty = planTriage(plan, [], 20)
+    const nothing =
+      'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
+    expect(screen(empty).slice(4, 7)).toEqual(['', nothing, ''])
+    expect(selectedLine(empty)).toBe(nothing)
+    const warned = planTriage(plan, ['source tracker: Command failed'], 20)
+    expect(screen(warned).slice(4, 9)).toEqual([
+      '',
+      '▾ Warnings 1',
+      '  source tracker: Command failed',
+      '',
+      nothing,
+    ])
+    expect(selectedLine(warned)).toBe(nothing)
+    const filtered = planTriage(plan, [], 20, 'no unit matches --repo/--rule')
+    expect(screen(filtered).slice(4, 7)).toEqual(['', 'no unit matches --repo/--rule', ''])
   })
 
   it('keeps a Needs you reason but the closest rule, and opens the PR it waits on', () => {

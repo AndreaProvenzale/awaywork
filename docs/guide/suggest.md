@@ -14,7 +14,7 @@ In Claude Code, with the [plugin](./agents.md#claude-code) installed:
 /away what could you take off my plate?
 ```
 
-On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/away` offers it once before asking what to offload. Codex and friends get the same skill from the npm package, at `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
+On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/away` offers it once before asking what to offload. Codex and friends get the same skills from the npm package, in `plugin/skills/`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
