@@ -14,6 +14,7 @@ import type {
   Skip,
   Tab,
   View,
+  Where,
 } from '../types'
 
 const PANE = 'away'
@@ -174,7 +175,7 @@ const kindSays: Record<string, RegExp> = {
   waiting_for_approval: /^waiting for your approval of the plan$/,
   invalid_plan: /^plan refused: /,
   all_tasks_done: /^all tasks done: close or move the card$/,
-  no_repo: /^no repo: /,
+  no_repo: /^no repo: no linked PR or repo field$/,
   no_rule: /^matched no rule(; |$)/,
   over_cap: /^over the cap: /,
   unchanged: /^unchanged /,
@@ -182,14 +183,22 @@ const kindSays: Record<string, RegExp> = {
   fanned_out: /^fanned out: /,
 }
 
-/** Whether a rule waits for the mark `awaywork approve` leaves: `approved: true` in its `where`. */
-const takesApproval = ({ where }: Rule) =>
-  where?.approved === true || !!where?.any?.some((w) => w.approved === true)
+/** Whether a where waits for the mark `awaywork approve` leaves: `approved: true`, or `[true]`, in it or an `any` under it. */
+const wantsApproval = ({ approved, any }: Where): boolean =>
+  approved === true ||
+  (Array.isArray(approved) && approved.includes(true)) ||
+  !!any?.some(wantsApproval)
+
+/** Whether a rule that can take `item` takes approved items. */
+const takesApproval =
+  (item: ItemRef) =>
+  ({ source, where }: Rule) =>
+    (!source || source === item.source) && !!where && wantsApproval(where)
 
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
-/** `marking`: a rule takes approved items, so `approve` can make one run. */
-function skipRow(tab: Tab, s: Skip, marking: boolean): Row {
+/** `marking`: a rule takes the item approved, so `approve` can make it run. */
+function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
   const key = itemKey(s.item)
   const group = groupOf(s.item)
   const url = s.url ?? s.item.url ?? undefined
@@ -207,11 +216,15 @@ function skipRow(tab: Tab, s: Skip, marking: boolean): Row {
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
     approve:
-      s.kind === 'waiting_for_approval' ? 'plan' : marking && !s.needsYou ? 'mark' : undefined,
+      s.kind === 'waiting_for_approval'
+        ? 'plan'
+        : marking(s.item) && !s.needsYou
+          ? 'mark'
+          : undefined,
   }
 }
 
-function resultRow(runId: string, r: Result, marking: boolean): Row {
+function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean): Row {
   const { id, repo, skill, items } = r.planned.unit
   const top = items[0]
   const fact =
@@ -233,7 +246,7 @@ function resultRow(runId: string, r: Result, marking: boolean): Row {
     url,
     report: ['report', runId, '--unit', id],
     skip: top && 'skip',
-    approve: top && marking ? 'mark' : undefined,
+    approve: top && marking(top) ? 'mark' : undefined,
     here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\``,
   }
 }
@@ -270,7 +283,7 @@ function layout(d: Data, v: View) {
   const skips = plan?.skipped ?? []
   const report = d.report
   const heads = report?.results.filter((r) => !r.planned.chain && !r.retried) ?? []
-  const marking = !!plan?.queue?.some(takesApproval)
+  const marking = (item: ItemRef) => !!plan?.queue?.some(takesApproval(item))
   const rows: Record<Tab, Row[]> = {
     needs: grouped(skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s, marking))),
     last: report ? grouped(heads.map((r) => resultRow(report.runId, r, marking))) : [],
@@ -290,6 +303,9 @@ function layout(d: Data, v: View) {
 
 /** The open row's key: another element than the shut row's, so focusing it waits for the drawing that opens it. */
 const opened = (id: string) => `open:${id}`
+
+/** The keys of the buttons under the open row: ⏎ on the row reads its report, a hotkey presses each other one. */
+const rowButtons = ['open', 'report', 'skip', 'approve', 'here', 'yes', 'no']
 
 // The ring keeps its place, not its element, when a tab appears or a row opens: put it on the open row.
 async function keepRing($: EngineInterface) {
@@ -403,12 +419,18 @@ export const register: Register = (on) => {
   })
 
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
-    const { element } = e
-    if (!element?.startsWith('row:') || element === (await read($, view)).row) return next(e)
-    await update($, view, (v) => ({ ...v, row: element, confirm: undefined, status: undefined }))
+    const v = await read($, view)
+    const { list, row } = layout(await read($, data), v)
+    const after = row && list[list.indexOf(row) + 1]
+    // Tab and the arrows go row to row, past the open row's buttons: their hotkeys press them.
+    const past = e.origin.kind === 'person' && after && rowButtons.includes(e.element ?? '')
+    const moved = past ? { ...e, element: after.id } : e
+    const { element } = moved
+    if (!element?.startsWith('row:') || element === v.row) return next(moved)
+    await update($, view, (x) => ({ ...x, row: element, confirm: undefined, status: undefined }))
     // Once this move is done, the ring goes onto the row it opened.
     $.clock.after(0, () => void keepRing($))
-    return next(e)
+    return next(moved)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

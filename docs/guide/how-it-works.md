@@ -717,7 +717,6 @@ claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 ▾ Needs you 1
   ▾ tracker T 1
     T-4  Export invoices as CSV  add repo
-         no linked PR or repo field
 
 ▾ Units 3
        item  skill   status          result
@@ -774,7 +773,6 @@ Units 3
 Needs you 1
   tracker T
     T-4  Export invoices as CSV  add repo
-         no linked PR or repo field
 
 Skipped 2: 1 no_rule, 1 over_cap
 

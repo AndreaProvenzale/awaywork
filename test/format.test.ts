@@ -274,7 +274,6 @@ describe('plan views', () => {
       Needs you 1
         asana T
           T-4  Task 4  add repo
-               no linked PR or repo field
 
       Skipped 2: 1 no_rule, 1 over_cap
 
@@ -325,7 +324,7 @@ describe('plan views', () => {
 
   it("clips a skip row's note at the given width, as the view asks", () => {
     const plan = acmePlan()
-    const long = { ...waitingSkip(), reason: `no repo: ${'x'.repeat(80)}` }
+    const long = { ...waitingSkip(), reason: 'x'.repeat(80) }
     plan.skipped.push({ ...long, kind: 'no_repo' })
     expect(row(plan.skipped)?.note).toBe(`${'x'.repeat(59)}…`)
     expect(row(plan.skipped, Number.POSITIVE_INFINITY)?.note).toBe('x'.repeat(80))
@@ -452,7 +451,6 @@ describe('report views', () => {
       Needs you 1
         asana T
           T-4  Task 4  add repo
-               no linked PR or repo field
 
       Skipped 2: 1 no_rule, 1 over_cap
 

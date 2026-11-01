@@ -347,7 +347,7 @@ const kindSays: Partial<Record<SkipKind, RegExp>> = {
   waiting_for_approval: /^waiting for your approval of the plan$/,
   invalid_plan: /^plan refused: /,
   all_tasks_done: /^all tasks done: close or move the card$/,
-  no_repo: /^no repo: /,
+  no_repo: /^no repo: no linked PR or repo field$/,
   no_rule: /^matched no rule(; |$)/,
   over_cap: /^over the cap: /,
   unchanged: /^unchanged /,

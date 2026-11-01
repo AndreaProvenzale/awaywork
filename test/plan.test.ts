@@ -116,7 +116,6 @@ describe('plan', () => {
       Needs you 1
         asana T
           T-8  Task 8  add repo
-               no linked PR or repo field
 
       Skipped 1: 1 no_rule
 

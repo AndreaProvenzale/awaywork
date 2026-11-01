@@ -79,7 +79,6 @@ Providers
 ▾ Needs you 1
   ▾ tracker T 1
     T-4  Export invoices as CSV  add repo
-         no linked PR or repo field
 
 ▾ Units 3
        item  rule  skill              provider  deliver   title
@@ -92,7 +91,7 @@ Providers
 
 ▾ Skipped 2: 1 no_rule, 1 over_cap
   ▾ tracker T 1
-    T-7  Onboarding emails       no rule
+    T-7  Onboarding emails  no rule
          closest #3 implement: type is task, wants issue
   ▸ acme/api 1
 
@@ -119,7 +118,6 @@ Units 3
 Needs you 1
   tracker T
     T-4  Export invoices as CSV  add repo
-         no linked PR or repo field
 
 Skipped 2: 1 no_rule, 1 over_cap
 

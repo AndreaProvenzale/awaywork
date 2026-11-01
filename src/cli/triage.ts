@@ -142,15 +142,16 @@ const whole = Infinity
 const nothing =
   'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
 
-/** Skips under a heading per repo or project, by action, their titles in line across groups. */
+/** Skips under a heading per repo or project, by action, their titles in line within each group. */
 function skipGroups(plan: RunReport['plan'], skipped: ReportedSkip[], id: string): Row[] {
-  const groups = skipRows(skipped, whole)
-  const refs = Math.max(...groups.flatMap(([, list]) => list.map((r) => width(r.ref))))
-  return groups.map(([group, list], g) => ({
-    id: `${id}/${group}`,
-    text: `${group} ${list.length}`,
-    children: list.map((r, i) => skipRow(plan, r, refs, `${id}/${g}/${i}`)),
-  }))
+  return skipRows(skipped, whole).map(([group, list], g) => {
+    const refs = Math.max(...list.map((r) => width(r.ref)))
+    return {
+      id: `${id}/${group}`,
+      text: `${group} ${list.length}`,
+      children: list.map((r, i) => skipRow(plan, r, refs, `${id}/${g}/${i}`)),
+    }
+  })
 }
 
 /** Warnings, what needs you, the units, then the other skipped items, folded: each under a heading per repo; a section only when it has rows. */
@@ -311,11 +312,13 @@ interface Line {
   lead?: true
   /** Kept on screen after the text: a row's tail, then its marks. */
   tail?: string
+  /** The heading whose rows' tails line up. */
+  group?: string
 }
 
 function layout(s: State): Line[] {
   const lines: Line[] = []
-  visible(s).forEach(({ row, depth }, at) => {
+  visible(s).forEach(({ row, depth, parent }, at) => {
     if (depth === 0 && at > 0) lines.push({ text: '', at })
     const indent = '  '.repeat(depth)
     const fold = row.children ? (isOpen(s, row) ? '▾ ' : '▸ ') : ''
@@ -323,7 +326,13 @@ function layout(s: State): Line[] {
     const mark = marks.length ? style('yellow', marks.join(', ')) : ''
     const text = `${indent}${fold}${row.text}`
     if (row.tail)
-      lines.push({ text, at, lead: true, tail: [row.tail, mark].filter(Boolean).join('  ') })
+      lines.push({
+        text,
+        at,
+        lead: true,
+        tail: [row.tail, mark].filter(Boolean).join('  '),
+        group: parent,
+      })
     else lines.push({ text: mark ? `${text}  ${mark}` : text, at, lead: true })
     if (!isOpen(s, row)) return
     const under = '  '.repeat(depth + (row.children ? 1 : 0))
@@ -469,11 +478,13 @@ export function view(s: State, cols: number, rows: number): string[] {
   const height = bodyHeight(s, rows)
   const list = visible(s)
   const lines = layout(s)
-  // Tails line up after the widest text, and stay on screen when it's wider than the terminal.
-  const column = Math.max(0, ...lines.filter((l) => l.tail).map((l) => width(l.text))) + 2
-  const withTail = ({ text, tail }: Line) => {
+  // Tails line up after the widest text of their group, and stay on screen when it's wider than the terminal.
+  const tailAt = new Map<string | undefined, number>()
+  for (const l of lines.filter((l) => l.tail))
+    tailAt.set(l.group, Math.max(tailAt.get(l.group) ?? 0, width(l.text) + 2))
+  const withTail = ({ text, tail, group }: Line) => {
     if (!tail) return text
-    const at = Math.min(column, cols - width(tail))
+    const at = Math.min(tailAt.get(group) ?? 0, cols - width(tail))
     return `${pad(clipLine(text, at - 2), at)}${tail}`
   }
   const body = s.help

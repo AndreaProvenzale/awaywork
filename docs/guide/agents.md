@@ -39,7 +39,7 @@ It lands on the first tab with something in it. Next run stays empty until you p
 
 Items sit under their repo, or their tracker and project key, a line each: the ref, the title, and what the item asks of you (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why it waits (`no rule`, `over cap`, `skipped by you`, ...). Needs you lists a repo's items by that word, so the PRs to review sit together. A second line shows up only when the reason says more than the word, like the cap that's full.
 
-One row is open at a time, with its whole reason, its links and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab opens the row it lands on, and its keys work right away:
+One row is open at a time, with its whole reason, its links and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab and the arrows go row to row, opening the one they land on, and its keys work right away:
 
 - `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
@@ -47,7 +47,7 @@ One row is open at a time, with its whole reason, its links and only the buttons
 - `h` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`;
 - `⏎` on an open unit of the last run, or its `read report`, reads `awaywork report <run> --unit <id>`. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all.
 
-`s` and `a` ask `yes`/`no` under the row first, saying what they'll do, then mark the row `skipped`, `unskipped` or `approved` in place of its word: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s` and `a` ask `yes`/`no` under the row first (`y` or `n`), saying what they'll do, then mark the row `skipped`, `unskipped` or `approved` in place of its word: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 `/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 

@@ -19,7 +19,7 @@ import {
   view,
 } from '../src/cli/triage.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
-import { githubPr } from './fakes/items.js'
+import { fakeItem, githubPr } from './fakes/items.js'
 
 const files = [{ text: '1  api#1  PR 1', log: '/runs/1/worker.log' }]
 
@@ -52,7 +52,6 @@ describe('triage view', () => {
         "▾ Needs you 1",
         "  ▾ asana T 1",
         "    T-4  Task 4  add repo",
-        "         no linked PR or repo field",
         "",
         "▾ Units 1",
         "       item  skill  status          result",
@@ -61,6 +60,7 @@ describe('triage view', () => {
         "       Retries the flaky upload test instead of sleeping.",
         "",
         "▸ Skipped 2: 1 no_rule, 1 over_cap",
+        "",
         "",
         "",
         "",
@@ -123,13 +123,12 @@ describe('triage view', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
     const state = planTriage(plan, [], 30)
-    expect(screen(state).slice(5, 12)).toEqual([
+    expect(screen(state).slice(5, 11)).toEqual([
       '▾ Needs you 2',
       '  ▾ asana T 1',
       '    T-4  Task 4  add repo',
-      '         no linked PR or repo field',
       '  ▾ acme/api 1',
-      '    #31  PR 31   review PR',
+      '    #31  PR 31  review PR',
       '',
     ])
     expect(update(press(state, 'down', 'down'), 'o').effect).toMatchObject({
@@ -170,9 +169,9 @@ describe('triage view', () => {
     expect(lines.slice(at, at + 6)).toEqual([
       '▾ Skipped 2: 1 no_rule, 1 over_cap',
       '  ▾ acme/api 2',
-      '    #3  PR 3     no rule',
+      '    #3  PR 3  no rule',
       '        closest #1 fix: checks is passing, wants failing',
-      '    #2  PR 2     over cap',
+      '    #2  PR 2  over cap',
       '        limits.units is 1',
     ])
   })
@@ -186,12 +185,25 @@ describe('triage view', () => {
       waitingSkip(),
       { ...waitingSkip(), item: githubPr(33) },
     )
-    expect(screen(planTriage(plan, [], 30)).slice(9, 13)).toEqual([
+    expect(screen(planTriage(plan, [], 30)).slice(8, 12)).toEqual([
       '  ▾ acme/api 3',
-      '    #31  PR 31   review PR',
-      '    #33  PR 33   review PR',
-      '    #32  PR 32   approve plan',
+      '    #31  PR 31  review PR',
+      '    #33  PR 33  review PR',
+      '    #32  PR 32  approve plan',
     ])
+  })
+
+  it('lines up refs and actions within each group, so one long key leaves the other titles be', () => {
+    const plan = acmePlan()
+    const key = 'dep-api--opentelemetry-instrumentation-mongoose'
+    const item = fakeItem({ source: 'deps', key, title: 'Bump mongoose instrumentation' })
+    plan.skipped.push({ item, kind: 'no_rule', reason: 'matched no rule' })
+    const state = planTriage(plan, [], 40)
+    const open = new Set([...state.open, 'skipped', 'skipped/acme/api', 'skipped/deps'])
+    const lines = screen({ ...state, open })
+    expect(lines).toContain('    T-4  Task 4  add repo')
+    expect(lines).toContain('    #3  PR 3  no rule')
+    expect(lines).toContain(`    ${key}  Bump mongoose instrumentation  no rule`)
   })
 
   it('lists skips from a report.json older than kinds under Skipped, uncounted, with their whole reason', () => {
@@ -199,9 +211,9 @@ describe('triage view', () => {
     r.plan.skipped = r.plan.skipped.map(({ item, reason }) => ({ item, reason }))
     const open = press(runTriage(r, [], files, 30), 'G', 'right', 'down', 'right')
     expect(screen(open)).toContain('▾ Skipped 3')
-    expect(screen(open)).toContain('    #3   PR 3  skipped')
+    expect(screen(open)).toContain('    #3  PR 3  skipped')
     expect(screen(open)).toContain(
-      '         matched no rule; closest #1 fix: checks is passing, wants failing',
+      '        matched no rule; closest #1 fix: checks is passing, wants failing',
     )
     expect(screen(open)).not.toContain('Needs you')
   })
@@ -327,8 +339,8 @@ describe('triage update', () => {
 
   it('moves a screen with PageDown, PageUp, Ctrl-D and Ctrl-U', () => {
     const small = run(10)
-    expect(selectedLine(press(small, 'pagedown'))).toBe('▾ Units 1')
-    expect(selectedLine(press(small, 'pagedown', 'ctrl-d'))).toMatch(/^1 {2}#1/)
+    expect(selectedLine(press(small, 'pagedown'))).toBe('▾ acme/api 1')
+    expect(selectedLine(press(small, 'ctrl-d'))).toBe('▾ acme/api 1')
     const bottom = press(small, 'pagedown', 'pagedown', 'pagedown')
     expect(selectedLine(bottom)).toMatch(/^▸ Skipped 2/)
     expect(screen(bottom)).toContain('▸ Skipped 2: 1 no_rule, 1 over_cap')

@@ -277,11 +277,39 @@ test('a click or Tab opens a row in place, with its reason, link and only the bu
   }
 })
 
-test('mark approved shows only while a rule takes approved items', async ($, on) => {
+test('Tab and the arrows go row to row, past the open row, whose buttons each have a hotkey', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  const hotkey = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.hotkey
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect([await hotkey(ui, 'open'), await hotkey(ui, 'skip')]).toEqual(['o', 's'])
+    await $.ui.focus(focus('open'))
+    expect(await line(ui, SHOP8)).toMatch(/^▾ #8 /)
+    expect(await hotkey(ui, 'approve')).toBe('a')
+
+    await ui.press({ key: 'approve' })
+    expect([await hotkey(ui, 'yes'), await hotkey(ui, 'no')]).toEqual(['y', 'n'])
+    await $.ui.focus(focus('yes'))
+    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
+    expect(await ui.find({ key: 'yes' })).toBeFalsy()
+
+    // The last row has none after it: the ring walks its buttons.
+    await $.ui.focus(focus('skip'))
+    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
+
+    await ui.press({ key: 'tab:last' })
+    expect(await hotkey(ui, 'here')).toBe('h')
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('mark approved shows only while a rule for the item takes approved items', async ($, on) => {
   const [first] = busyReport.plan.queue
-  engine(on, {
-    'report --json': ok({ ...busyReport, plan: { ...busyReport.plan, queue: [first] } }),
-  })
+  const nested = { skill: 'implement', where: { any: [{ any: [{ approved: [true] }] }] } }
+  let queue: unknown[] = [first, { ...nested, source: 'jira' }]
+  engine(on, { 'report --json': () => ok({ ...busyReport, plan: { ...busyReport.plan, queue } }) })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
   await ui.press({ key: 'tab:skipped' })
@@ -289,6 +317,11 @@ test('mark approved shows only while a rule takes approved items', async ($, on)
   await ui.press({ key: 'tab:needs' })
   await ui.press({ key: SHOP8 })
   expect(await label(ui, 'approve')).toBe('approve plan')
+
+  queue = [first, nested]
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'tab:skipped' })
+  expect(await label(ui, 'approve')).toBe('mark approved')
 })
 
 test('s and a ask under the row and mark it, ⏎ on an open unit reads its report, h works on it here', async ($, on) => {

@@ -15,7 +15,7 @@ export type Skip = {
 
 export type Where = { approved?: unknown; any?: Where[] }
 
-export type Rule = { where?: Where }
+export type Rule = { source?: string; where?: Where }
 
 export type Plan = { queue?: Rule[]; units: Planned[]; skipped: Skip[] }
 
