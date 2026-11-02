@@ -16,6 +16,7 @@ import type {
   View,
   Where,
 } from '../types'
+import { CARD_ROWS, type Card, card } from './cards'
 
 const PANE = 'away'
 const FIX = 'npm i -g awaywork@latest'
@@ -23,7 +24,7 @@ const FIX = 'npm i -g awaywork@latest'
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
 const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
 
-/** One row of a tab under its group, what it shows open, and the buttons it opens to. */
+/** One item of a tab under its group: its card, its detail, and the buttons it has. */
 type Row = {
   id: string
   group: string
@@ -33,12 +34,11 @@ type Row = {
   word: string
   color?: Color
   item?: ItemRef
-  /** The line under the shut row: what the word doesn't say. */
-  note: string
-  /** The open row's lines: the full reason, or the unit's items, and the links. */
+  title: string
+  /** The detail's lines under the title: the reason, or the unit's items and links. */
   detail: string[]
   url?: string
-  /** The CLI's read of a last-run unit: ⏎ on the open row, or its `read report`. */
+  /** The CLI's read of a last-run unit, what `v` shows. */
   report?: string[]
   skip?: 'skip' | 'unskip'
   approve?: 'plan' | 'mark'
@@ -166,21 +166,6 @@ const actions: Record<string, string> = {
 
 const ranks = Object.keys(actions)
 
-/** What a reason starts with that its kind's action already says, as the CLI's `kindSays`. */
-const kindSays: Record<string, RegExp> = {
-  waiting_for_review: /^waiting for review: (awaywork PR is open$)?/,
-  waiting_for_answer: /^waiting for your answer$/,
-  waiting_for_approval: /^waiting for your approval of the plan$/,
-  invalid_plan: /^plan refused: /,
-  all_tasks_done: /^all tasks done: close or move the card$/,
-  no_repo: /^no repo: no linked PR or repo field$/,
-  no_rule: /^matched no rule(; |$)/,
-  over_cap: /^over the cap: /,
-  unchanged: /^unchanged /,
-  skipped_by_you: /^skipped with awaywork skip \S+(: | |$)/,
-  fanned_out: /^fanned out: /,
-}
-
 /** Whether a where waits for the mark `awaywork approve` leaves: `approved: true`, or `[true]`, in it or an `any` under it. */
 const wantsApproval = ({ approved, any }: Where): boolean =>
   approved === true ||
@@ -200,7 +185,6 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
   const key = itemKey(s.item)
   const group = groupOf(s.item)
   const url = s.url ?? s.item.url ?? undefined
-  const reason = s.needsYou ? reasonOf(s).replace(/; closest #.*$/, '') : reasonOf(s)
   return {
     id: `row:${tab}:${key}`,
     group,
@@ -209,7 +193,7 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
     word: (s.kind && actions[s.kind]) || s.kind || 'skipped',
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
-    note: reason.replace((s.kind && kindSays[s.kind]) || '', ''),
+    title: s.item.title,
     detail: lines(reasonOf(s)),
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
@@ -239,7 +223,7 @@ function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean
     word: r.status,
     color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
     item: top,
-    note,
+    title: top?.title ?? note,
     detail: lines(note),
     url,
     report: ['report', runId, '--unit', id],
@@ -260,7 +244,7 @@ function unitRow(p: Planned): Row {
     ref: top ? refIn(repo, top.key) : id,
     word: skill,
     item: top,
-    note,
+    title: top?.title ?? note,
     detail: lines(
       note,
       ...items.flatMap((i) => [`${itemKey(i)}  ${i.title}`, i === top ? undefined : i.url]),
@@ -383,34 +367,34 @@ async function showTab($: EngineInterface, tab: Tab) {
   await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
 }
 
-const select = ($: EngineInterface, id: string) =>
-  update($, view, (v) => ({
-    ...v,
-    row: id,
-    at: 0,
-    confirm: undefined,
-    reading: undefined,
-    status: undefined,
-  }))
+const selected = (v: View, id: string): View => ({
+  ...v,
+  row: id,
+  at: 0,
+  confirm: undefined,
+  reading: undefined,
+  status: undefined,
+})
 
+const select = ($: EngineInterface, id: string) => update($, view, (v) => selected(v, id))
+
+// In one update, so keys pressed in a row each step from where the last one left.
 async function step($: EngineInterface, by: number) {
-  const v = await read($, view)
-  const { list, row } = layout(await read($, data), v)
-  const to = row && list[Math.min(list.length - 1, Math.max(0, list.indexOf(row) + by))]
-  if (to && to.id !== row.id) await select($, to.id)
+  const d = await read($, data)
+  await update($, view, (v) => {
+    const { list, row } = layout(d, v)
+    const to = row && list[Math.min(list.length - 1, Math.max(0, list.indexOf(row) + by))]
+    return to && to.id !== row.id ? selected(v, to.id) : v
+  })
 }
 
-// The detail's last offset, as the last drawing wrapped it.
-let detailMax = 0
+type Drawn = { press: Record<string, () => unknown>; strip?: [number, number]; detailMax: number }
+
+/** The last drawing's hotkeys, strip rows and detail end: `ui.scroll` and the strip's posts see no drawing. */
+let drawn: Drawn = { press: {}, detailMax: 0 }
 
 const scrollDetail = ($: EngineInterface, by: number) =>
-  update($, view, (v) => ({ ...v, at: Math.min(detailMax, Math.max(0, (v.at ?? 0) + by)) }))
-
-/** What each hotkey drawn last presses, for the keys the cards strip hands on. */
-let pressers: Record<string, () => unknown> = {}
-
-/** The strip's rows in the body, as the last drawing laid it out. */
-let stripRows: [number, number] = [-1, -1]
+  update($, view, (v) => ({ ...v, at: Math.min(drawn.detailMax, Math.max(0, (v.at ?? 0) + by)) }))
 
 const MIN_CARD = 24
 const MAX_ROWS = 28
@@ -477,7 +461,8 @@ export const register: Register = (on) => {
   // The body fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
   on('ui.scroll', { requestId: PANE }, async ($, e) => {
     const r = e.pointer?.row
-    if (r !== undefined && r >= stripRows[0] && r <= stripRows[1]) await step($, Math.sign(e.by))
+    const [top, bottom] = drawn.strip ?? [-1, -1]
+    if (r !== undefined && r >= top && r <= bottom) await step($, Math.sign(e.by))
     else await scrollDetail($, e.by)
     return { deny: 'awaywork scrolls its own regions' }
   })
@@ -488,14 +473,16 @@ export const register: Register = (on) => {
     else if (m.key === 'up' || m.key === 'down') await scrollDetail($, m.key === 'up' ? -1 : 1)
     else if (m.key === 'pageup' || m.key === 'pagedown')
       await scrollDetail($, m.key === 'pageup' ? -5 : 5)
-    else if (m.key) await pressers[m.key]?.()
+    else if (m.key) await drawn.press[m.key]?.()
     return {}
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const { Box, Text, Button } = els
-    const Client = 'Client' in els ? els.Client : undefined
+    // Every surface's table names every tag, drawing the ones it lacks as nothing: narrow to find Client.
+    const Client =
+      e.surface === 'terminal' || e.surface === 'desktop' ? $.ui.resolve(e).Client : undefined
     const d = await read($, data)
     const v = await read($, view)
     const width = e.props.bodyColumns
@@ -576,8 +563,7 @@ export const register: Register = (on) => {
     )
 
     const done = (body?: RenderChildren) => {
-      pressers = press
-      stripRows = [-1, -1]
+      drawn = { press, detailMax: 0 }
       return (
         <Box flexDirection="column" rowGap={desktop ? 'xs' : 0}>
           {header}
@@ -616,20 +602,21 @@ export const register: Register = (on) => {
     const at = list.indexOf(row)
     const item = row.item && itemKey(row.item)
     const mark = item ? v.marks?.[item] : undefined
-    const wordOf = (r: Row) => {
-      const m = r.item && v.marks?.[itemKey(r.item)]
-      return m ? [m.skip, m.approved && 'approved'].filter(Boolean).join(', ') : r.word
-    }
     const { n, w } = cardsFit(width)
     // Client props are JSON: no undefined in them.
-    const cards = list.map((r) => {
-      const color = r.item && v.marks?.[itemKey(r.item)] ? 'warning' : r.color
-      const title = twoLines(r.item?.title ?? r.note, w - 4)
-      return { id: r.id, ref: r.ref, word: wordOf(r), title, ...(color && { color }) }
+    const cards = list.map((r): Card => {
+      const m = r.item && v.marks?.[itemKey(r.item)]
+      const word = m ? [m.skip, m.approved && 'approved'].filter(Boolean).join(', ') : r.word
+      const color = m ? 'warning' : r.color
+      return {
+        id: r.id,
+        ref: r.ref,
+        word,
+        title: twoLines(r.title, w - 4),
+        ...(color && { color }),
+      }
     })
 
-    press.h = () => step($, -1)
-    press.l = () => step($, 1)
     const nav = (
       <Box flexDirection="row" justifyContent="space-between">
         <Text>
@@ -640,8 +627,8 @@ export const register: Register = (on) => {
           </Text>
         </Text>
         <Box flexDirection="row" gap={1}>
-          <Button key="prev" plain hotkey="h" label="‹" onPress={() => step($, -1)} />
-          <Button key="nextCard" plain hotkey="l" label="›" onPress={() => step($, 1)} />
+          {button('prev', 'h', '‹', () => step($, -1))}
+          {button('nextCard', 'l', '›', () => step($, 1))}
         </Box>
       </Box>
     )
@@ -653,68 +640,43 @@ export const register: Register = (on) => {
         module="./cards.tsx"
         props={{ cards, at, n, w }}
         width={width}
-        height={5}
+        height={CARD_ROWS}
       />
     ) : (
-      <Box flexDirection="row" columnGap={1} height={5}>
-        {cards.slice(start, start + n).map((c, i) => {
-          const picked = start + i === at
-          return (
-            <Button
-              key={`card:${c.id}`}
-              label={`${c.ref} ${c.word}`}
-              onPress={() => select($, c.id)}
-            >
-              <Box
-                width={w}
-                height={5}
-                flexDirection="column"
-                paddingX={1}
-                borderStyle={picked ? 'bold' : 'round'}
-                borderColor={picked ? 'suggestion' : 'inactive'}
-              >
-                <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
-                  <Text bold={picked} wrap="truncate-end">
-                    {c.ref}
-                  </Text>
-                  <Box flexShrink={0}>
-                    <Text color={c.color} dimColor={!c.color}>
-                      {c.word}
-                    </Text>
-                  </Box>
-                </Box>
-                {c.title.map((line) => (
-                  <Text dimColor={!picked} wrap="truncate-end">
-                    {line}
-                  </Text>
-                ))}
-              </Box>
-            </Button>
-          )
-        })}
+      <Box flexDirection="row" columnGap={1} height={CARD_ROWS}>
+        {cards
+          .slice(start, start + n)
+          .map((c, i) =>
+            card(
+              els,
+              c,
+              start + i === at,
+              w,
+              <Button key={`card:${c.id}`} plain label={c.ref} onPress={() => select($, c.id)} />,
+            ),
+          )}
       </Box>
     )
 
     // The detail: rows the pane scrolls itself.
-    const reason = row.detail.length ? row.detail : [row.note]
     const body = v.reading
       ? [
           { text: v.reading.title, dim: true },
           ...wrap(v.reading.text, width).map((text) => ({ text, dim: false })),
         ]
       : [
-          ...wrap(row.item?.title ?? '', width).map((text) => ({ text, dim: false })),
-          ...[...reason, row.url]
+          ...wrap(row.title, width).map((text) => ({ text, dim: false })),
+          ...[...row.detail, row.url]
             .filter((l): l is string => !!l)
             .flatMap((l) => wrap(l, width))
             .map((text) => ({ text, dim: true })),
         ]
 
-    // header, tabs, rule, nav, strip (5), buttons (2), rule, body, status.
+    // header, tabs, rule, nav, strip, buttons (2), rule, body, status.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
-    const fixed = headRows + tabRows + 1 + 1 + 5 + 2 + 1 + 1
-    const room = Math.max(3, total - fixed)
-    detailMax = Math.max(0, body.length - room)
+    const top = headRows + tabRows + 2
+    const room = Math.max(3, total - top - CARD_ROWS - 4)
+    const detailMax = Math.max(0, body.length - room)
     const offset = Math.min(v.at ?? 0, detailMax)
     const shownBody = body.slice(offset, offset + room)
     const more = body.length - offset - room
@@ -771,12 +733,8 @@ export const register: Register = (on) => {
           )}
       </Box>
     )
-    if (row.report && !v.reading) press.return = () => readRow($, row.report as string[])
 
-    pressers = press
-    const top = headRows + tabRows + 2
-    stripRows = [top, top + 4]
-
+    drawn = { press, strip: [top, top + CARD_ROWS - 1], detailMax }
     return (
       <Box flexDirection="column" height={total} rowGap={desktop ? 'xs' : 0}>
         {header}
@@ -784,12 +742,14 @@ export const register: Register = (on) => {
         {rule}
         {nav}
         {strip}
-        <Box height={2}>{buttons}</Box>
+        <Box key="buttons" height={2}>
+          {buttons}
+        </Box>
         {rule}
-        <Box flexDirection="column" height={room}>
+        <Box key="detail" flexDirection="column" height={room}>
           {shownBody.map((l, i) => (
             <Text dimColor={l.dim} wrap="truncate-end">
-              {i === room - 1 && more > 0 ? `↓ ${more} more` : l.text}
+              {i === room - 1 && more > 0 ? `↓ ${more + 1} more` : l.text}
             </Text>
           ))}
         </Box>

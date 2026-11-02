@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { busyPlan, busyReport, emptyPlan, emptyReport } from './fixtures'
 
+// 100 columns: a page of four cards, 24 wide; 30 rows: the pane takes 28, a detail of 15.
 const PANE = {
   plugin: 'awaywork',
   component: 'Pane',
@@ -10,14 +11,17 @@ const PANE = {
   props: {
     title: 'awaywork',
     isFocused: true,
-    bodyColumns: 70,
+    bodyColumns: 100,
     placement: 'dock',
     scroll: { offset: 0, bodyRows: 30 },
     view: {},
   },
 } as const
 
+/** The surfaces that run the strip as a `Client`; vscode draws the cards as Buttons. */
 const SURFACES = ['terminal', 'desktop'] as const
+const ALL = [...SURFACES, 'vscode'] as const
+type Surface = (typeof ALL)[number]
 const NOW = Date.parse('2099-01-02T12:00:00Z')
 
 type On = Parameters<TestBody>[1]
@@ -29,21 +33,17 @@ const away = (args = '', command = 'away') => ({
   presentation: { isFullscreen: true, columns: 160 },
 })
 
-const focus = (element: string) =>
-  ({ component: 'Pane', requestId: 'away', element, origin: { kind: 'person' } }) as const
-
 type Reply = { exitCode?: number; stdout?: string; stderr?: string }
 
 /** Stands for the engine: a surface, the pane opening, and awaywork answering by subcommand. */
 function engine(
   on: On,
   replies: Record<string, Reply | (() => Reply | Promise<Reply>)>,
-  surfaces: (typeof SURFACES)[number][] = ['terminal'],
+  surfaces: Surface[] = ['terminal'],
 ) {
   const calls: string[][] = []
   const opened: string[] = []
   const clock = mock.clock(on, { now: NOW })
-  on('ui.focus', () => ({}))
   on('session.surfaces', () => ({ value: surfaces }))
   on('ui.open', (_, e) => {
     opened.push(e.id)
@@ -64,72 +64,412 @@ const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
 type Engine = Parameters<TestBody>[0]
 
 /** Draws the pane once the report /away started reading is in: a refresh settles with it. */
-async function mount($: Engine, surface: (typeof SURFACES)[number]) {
+async function mount<S extends Surface>($: Engine, surface: S) {
   const ui = await $.ui.mount({ ...PANE, surface })
   await ui.press({ key: 'refresh' })
   return ui
 }
 
-type Ui = Awaited<ReturnType<typeof mount>>
+/** What the reads below need of a drawing on any surface. */
+type Ui = Pick<Awaited<ReturnType<typeof mount<Surface>>>, 'surface' | 'find' | 'findAll'>
 
-/** A row as drawn: its ref and title, then its word at the end. */
-const line = async (ui: Ui, row: string) => (await ui.find({ key: `line:${row}` }))?.text
+type Node = string | { props?: { label?: string }; children?: Node[] }
 
-/** The rows in the order drawn, the open one by its shut key. */
-const rows = async (ui: Ui) =>
-  (await ui.findAll({ type: 'Button' }))
-    .map((b) => b.key?.replace(/^open:/, ''))
+/** What a node shows: its strings and its Buttons' labels. */
+const shown = (n: Node): string =>
+  typeof n === 'string' ? n : (n.props?.label ?? '') + (n.children ?? []).map(shown).join('')
+
+/** Where the cards are: what the strip's `Client` drew, or the pane's own tree. */
+const strip = (ui: Ui) => (ui.surface === 'vscode' ? {} : { in: 'cards' })
+
+/** A card as drawn: its ref and word, its title's lines, and whether it is the selected one. */
+async function card(ui: Ui, id: string) {
+  const box = await ui.find({ key: id, ...strip(ui) })
+  if (!box) return undefined
+  const [head, ...title] = box.children as Node[]
+  const [ref, word] = (typeof head === 'string' ? [] : (head?.children ?? [])).map(shown)
+  return { ref, word, title: title.map(shown), selected: box.props.borderStyle === 'bold' }
+}
+
+/** The cards of the page drawn, in order. */
+const page = async (ui: Ui) =>
+  (await ui.findAll({ type: 'Box', ...strip(ui) }))
+    .map((b) => b.key)
     .filter((key) => key?.startsWith('row:'))
+
+const selected = async (ui: Ui) => {
+  for (const id of await page(ui)) if (id && (await card(ui, id))?.selected) return id
+}
+
+/** The detail's lines as drawn. */
+const detail = async (ui: Ui) =>
+  ((await ui.find({ key: 'detail' }))?.children as Node[] | undefined)?.map(shown)
 
 const label = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.label
 
-const SHOP7 = 'row:needs:github:acme/shop#7'
-const SHOP8 = 'row:needs:github:acme/shop#8'
-const TICKET = 'row:needs:jira:SHOP-12'
+const hotkey = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.hotkey
 
-test('bare /away opens the pane on what needs you, by repo and action, reading only the report', async ($, on) => {
-  const { calls, opened } = engine(on, { 'report --json': ok(busyReport) })
+const text = async (ui: Ui, pattern: string | RegExp) =>
+  !!(await ui.find({ type: 'Text', text: pattern }))
+
+const SCROLL = {
+  component: 'Pane',
+  requestId: 'away',
+  offset: 0,
+  by: 1,
+  bodyRows: 30,
+  contentRows: 30,
+  origin: { kind: 'person' },
+} as const
+
+/** A wheel tick over a body row: the strip takes rows 4 to 8, the detail 12 on. */
+const wheel = ($: Engine, row: number, by = 1) =>
+  $.ui.scroll({ ...SCROLL, by, pointer: { column: 10, row } })
+
+const needs = (key: string) => `row:needs:${key}`
+const SHOP7 = needs('github:acme/shop#7')
+const SHOP8 = needs('github:acme/shop#8')
+const TICKET = needs('jira:SHOP-12')
+const API21 = needs('github:acme/api#21')
+const API22 = needs('github:acme/api#22')
+const WEB4 = needs('github:acme/web#4')
+
+const REPORT_TEXT = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n')
+
+test('bare /away lands on the first tab with something in it, reading only the report', async ($, on) => {
+  let report = busyReport
+  const { calls, opened } = engine(on, { 'report --json': () => ok(report) })
   await $.command.run(away())
   expect(opened).toEqual(['away'])
 
-  for (const surface of SURFACES) {
+  for (const surface of ALL) {
     const ui = await mount($, surface)
-    expect(await ui.find({ type: 'Text', text: /last run \d\d-\d\d \d\d:\d\d/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /3 need you/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /1 PR/ })).toBeTruthy()
-    expect(await label(ui, 'tab:needs')).toBe('Needs you (3)')
+    expect(await text(ui, /☾ awaywork/)).toBe(true)
+    expect(await text(ui, /last run \d\d-\d\d \d\d:\d\d · 1 PR/)).toBe(true)
+    expect(await text(ui, / · 6 need you/)).toBe(true)
+    expect(await label(ui, 'tab:needs')).toBe('Needs you (6)')
+    expect(await label(ui, 'tab:last')).toBe('Last run (2)')
     expect(await label(ui, 'tab:next')).toBe('Next run')
-    expect(await ui.find({ type: 'Text', text: 'acme/shop' })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: 'jira SHOP' })).toBeTruthy()
-    expect(await rows(ui)).toEqual([SHOP7, SHOP8, TICKET])
-    expect(await line(ui, SHOP7)).toMatch(/^▾ #7 {2}Retry webhooks on 5xx +review PR$/)
-    expect(await line(ui, SHOP8)).toMatch(/^#8 {2}Split the checkout service +approve plan$/)
-    expect(await line(ui, TICKET)).toMatch(/^SHOP-12 {2}Migrate billing webhooks +answer question$/)
-    expect(await ui.find({ type: 'Text', text: /waiting for your/ })).toBeFalsy()
-    expect(await ui.find({ key: 'row:needs:github:acme/shop#9' })).toBeFalsy()
+    expect(await label(ui, 'tab:skipped')).toBe('Skipped (5)')
+    expect(await page(ui)).toEqual([SHOP7, SHOP8, TICKET, API21])
+    expect(await selected(ui)).toBe(SHOP7)
+    await ui.unmount()
+  }
 
-    await ui.press({ key: 'tab:last' })
-    expect(await rows(ui)).toEqual(['row:last:acme-shop-3', 'row:last:acme-shop-5'])
-    expect(await line(ui, 'row:last:acme-shop-5')).toMatch(/^#5 {2}Dark mode toggle +failed$/)
-    expect(await ui.find({ type: 'Text', text: /implement · verify failed/ })).toBeTruthy()
+  const skipped = busyReport.plan.skipped.filter((s) => !('needsYou' in s))
+  report = { ...busyReport, plan: { ...busyReport.plan, skipped } }
+  const ui = await mount($, 'terminal')
+  expect(await ui.find({ key: 'tab:needs' })).toBeFalsy()
+  expect(await page(ui)).toEqual(['row:last:acme-shop-3', 'row:last:acme-shop-5'])
 
-    await ui.press({ key: 'tab:next' })
-    expect(
-      await ui.find({ type: 'Text', text: /plan probes quota \(one Haiku call\): press p/ }),
-    ).toBeTruthy()
+  report = { ...report, results: [] }
+  await ui.press({ key: 'refresh' })
+  expect(await page(ui)).toEqual([
+    'row:skipped:github:acme/shop#9',
+    'row:skipped:github:acme/shop#10',
+    'row:skipped:github:acme/api#30',
+    'row:skipped:github:acme/web#5',
+  ])
+  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
+})
+
+test('a card shows its ref and action on top and its title in two lines, the detail its reason and URL', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  for (const surface of ALL) {
+    const ui = await mount($, surface)
+    expect(await card(ui, SHOP7)).toEqual({
+      ref: '#7',
+      word: 'review PR',
+      title: ['Retry webhooks on', '5xx'],
+      selected: true,
+    })
+    expect(await card(ui, SHOP8)).toEqual({
+      ref: '#8',
+      word: 'approve plan',
+      title: ['Split the checkout', 'service into cart, …'],
+      selected: false,
+    })
+    expect(await card(ui, TICKET)).toMatchObject({ ref: 'SHOP-12', word: 'answer question' })
+
+    expect(await detail(ui)).toEqual([
+      'Retry webhooks on 5xx',
+      'waiting for review: awaywork PR is open',
+      'https://github.com/acme/shop/pull/31',
+    ])
+    expect(await label(ui, 'open')).toBe('open PR')
+    expect(await label(ui, 'skip')).toBe('skip')
+    expect(await ui.find({ key: 'approve' })).toBeFalsy()
+    expect(await ui.find({ key: 'report' })).toBeFalsy()
 
     await ui.press({ key: 'tab:skipped' })
-    expect(await rows(ui)).toEqual([
-      'row:skipped:github:acme/shop#9',
-      'row:skipped:github:acme/shop#10',
+    expect(await card(ui, 'row:skipped:github:acme/shop#10')).toMatchObject({
+      word: 'skipped by you',
+    })
+    expect(await detail(ui)).toEqual([
+      'Bump the linter',
+      'matched no rule; closest #1 fix: type is issue, wants pr',
+      'https://github.com/acme/shop/issues/9',
     ])
-    expect(await line(ui, 'row:skipped:github:acme/shop#10')).toMatch(/skipped by you$/)
-    expect(await ui.find({ type: 'Text', text: /not now/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /skipped with awaywork skip/ })).toBeFalsy()
+    expect(await label(ui, 'open')).toBe('open issue')
+    expect(await label(ui, 'approve')).toBe('mark approved')
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
-  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
+})
+
+test('h and l step card to card, a page at a time, the group line saying where', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  for (const surface of ALL) {
+    const ui = await mount($, surface)
+    expect([await hotkey(ui, 'prev'), await hotkey(ui, 'nextCard')]).toEqual(['h', 'l'])
+    expect(await label(ui, 'prev')).toBe('‹')
+    expect(await text(ui, /^acme\/shop {2}1\/6$/)).toBe(true)
+
+    await ui.press({ key: 'prev' })
+    expect(await selected(ui)).toBe(SHOP7)
+    // Keys pressed faster than the pane draws each step from the last.
+    await Promise.all([ui.press({ key: 'nextCard' }), ui.press({ key: 'nextCard' })])
+    expect(await selected(ui)).toBe(TICKET)
+    expect(await text(ui, /^jira SHOP {2}3\/6$/)).toBe(true)
+    expect((await detail(ui))?.[0]).toBe(
+      'Migrate the billing webhooks to the new event bus before the freeze',
+    )
+    expect(await label(ui, 'open')).toBe('open')
+
+    await ui.press({ key: 'nextCard' })
+    await ui.press({ key: 'nextCard' })
+    expect(await page(ui)).toEqual([API22, WEB4])
+    expect(await selected(ui)).toBe(API22)
+    expect(await text(ui, /^acme\/api {2}5\/6$/)).toBe(true)
+    await ui.press({ key: 'nextCard' })
+    await ui.press({ key: 'nextCard' })
+    expect(await selected(ui)).toBe(WEB4)
+
+    await ui.press({ key: 'prev' })
+    await ui.press({ key: 'prev' })
+    expect(await page(ui)).toEqual([SHOP7, SHOP8, TICKET, API21])
+    expect(await selected(ui)).toBe(API21)
+
+    // A tab starts on its first card.
+    await ui.press({ key: 'tab:last' })
+    await ui.press({ key: 'tab:needs' })
+    expect(await selected(ui)).toBe(SHOP7)
+    await ui.unmount()
+  }
+})
+
+test('the strip moves on a click or an arrow at once and hands every other key to the hotkeys', async ($, on) => {
+  const { calls } = engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    await ui.post({ select: API21 })
+    expect(await selected(ui)).toBe(API21)
+    expect((await detail(ui))?.[0]).toBe('Fix the N+1 query in the orders endpoint')
+
+    // A click on the second card of the page: 24 columns and a gap each.
+    await ui.pointer({ type: 'down', x: 30, y: 2, button: 'left', in: 'cards' })
+    expect(await selected(ui)).toBe(SHOP8)
+    await ui.key({ key: 'right', in: 'cards' })
+    expect(await selected(ui)).toBe(TICKET)
+    await ui.key({ key: 'left', in: 'cards' })
+    expect(await selected(ui)).toBe(SHOP8)
+
+    await ui.post({ key: 's' })
+    expect(await text(ui, /^skip github:acme\/shop#8 in the coming runs\?/)).toBe(true)
+    await ui.post({ key: 'n' })
+    expect(await text(ui, 'not skipped')).toBe(true)
+    expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
+    await ui.post({ key: 'l' })
+    expect(await selected(ui)).toBe(TICKET)
+    await ui.post({ key: '4' })
+    expect(await selected(ui)).toBe('row:skipped:github:acme/shop#9')
+    await ui.post({ key: '1' })
+    await ui.post({ key: 'q' })
+    expect(await selected(ui)).toBe(SHOP7)
+    await ui.unmount()
+  }
+})
+
+test('the wheel over the strip steps the cards, anywhere else it scrolls the detail', async ($, on) => {
+  engine(on, {
+    'report --json': ok(busyReport),
+    'report 20990101-050000 --unit acme-shop-3': { stdout: REPORT_TEXT },
+  })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect(await wheel($, 6)).toEqual({ deny: 'awaywork scrolls its own regions' })
+    expect(await selected(ui)).toBe(SHOP8)
+    await wheel($, 4, -3)
+    expect(await selected(ui)).toBe(SHOP7)
+
+    await ui.press({ key: 'tab:last' })
+    await ui.press({ key: 'report' })
+    const all = ['awaywork report 20990101-050000 --unit acme-shop-3', ...REPORT_TEXT.split('\n')]
+    expect(await detail(ui)).toEqual([...all.slice(0, 14), '↓ 17 more'])
+    await wheel($, 20, 2)
+    expect(await detail(ui)).toEqual([...all.slice(2, 16), '↓ 15 more'])
+    await ui.key({ key: 'down', in: 'cards' })
+    await ui.key({ key: 'pagedown', in: 'cards' })
+    expect((await detail(ui))?.[0]).toBe('line 8')
+    await wheel($, 20, 99)
+    expect(await detail(ui)).toEqual(all.slice(16))
+    await wheel($, 0, -99)
+    expect((await detail(ui))?.[0]).toBe(all[0])
+
+    // A scroll key, with no pointer, scrolls the detail too.
+    await $.ui.scroll({ ...SCROLL, by: 4 })
+    expect((await detail(ui))?.[0]).toBe('line 4')
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('s and a ask yes or no in the buttons row first, then mark the card', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
+    'approve github:acme/shop#8': { stdout: 'plan approved: replied approve on the issue' },
+    'approve github:acme/shop#9': {
+      stdout: 'github:acme/shop#9 is approved until a unit on it finishes',
+    },
+  })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+
+  await ui.press({ key: 'skip' })
+  expect(await text(ui, /skip github:acme\/shop#7 in the coming runs\?/)).toBe(true)
+  expect([await hotkey(ui, 'yes'), await hotkey(ui, 'no')]).toEqual(['y', 'n'])
+  expect(await ui.find({ key: 'open' })).toBeFalsy()
+  await ui.press({ key: 'no' })
+  expect(await text(ui, 'not skipped')).toBe(true)
+  expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
+
+  await ui.press({ key: 'skip' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'skip', 'github:acme/shop#7'])
+  expect(await text(ui, /is skipped until awaywork unskip/)).toBe(true)
+  expect((await card(ui, SHOP7))?.word).toBe('skipped')
+  expect(await label(ui, 'skip')).toBe('unskip')
+
+  // Another card drops the question.
+  await ui.press({ key: 'nextCard' })
+  await ui.press({ key: 'approve' })
+  expect(await text(ui, /approve the plan on github:acme\/shop#8\?/)).toBe(true)
+  await ui.press({ key: 'prev' })
+  expect(await ui.find({ key: 'yes' })).toBeFalsy()
+  await ui.press({ key: 'nextCard' })
+  await ui.press({ key: 'approve' })
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#8'])
+  expect((await card(ui, SHOP8))?.word).toBe('approved')
+  await ui.press({ key: 'approve' })
+  expect(await text(ui, 'already approved')).toBe(true)
+
+  await ui.press({ key: 'tab:skipped' })
+  await ui.press({ key: 'approve' })
+  expect(await text(ui, /mark github:acme\/shop#9 approved for approved: true rules/)).toBe(true)
+  await ui.press({ key: 'yes' })
+  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#9'])
+  expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
+})
+
+test('v shows the report in the detail and b goes back; o opens the URL; c hands the unit to the chat', async ($, on) => {
+  const { calls } = engine(on, {
+    'report --json': ok(busyReport),
+    'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
+  })
+  const prompts: string[] = []
+  on('prompt.submit', (_, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  await $.command.run(away())
+  for (const surface of ALL) {
+    const ui = await mount($, surface)
+    await ui.press({ key: 'tab:last' })
+    expect(await card(ui, 'row:last:acme-shop-5')).toMatchObject({ ref: '#5', word: 'failed' })
+    expect(await detail(ui)).toEqual([
+      'Flaky cart test',
+      'fix · Pinned the clock in the cart test',
+      'https://github.com/acme/shop/pull/40',
+    ])
+    expect(await label(ui, 'report')).toBe('view report')
+    expect([await hotkey(ui, 'report'), await hotkey(ui, 'here')]).toEqual(['v', 'c'])
+    expect(await label(ui, 'approve')).toBe('mark approved')
+
+    await ui.press({ key: 'report' })
+    expect(await detail(ui)).toEqual([
+      'awaywork report 20990101-050000 --unit acme-shop-3',
+      'acme-shop-3: Pinned the clock',
+    ])
+    expect(await ui.find({ key: 'open' })).toBeFalsy()
+    expect(await hotkey(ui, 'back')).toBe('b')
+    await ui.press({ key: 'back' })
+    expect((await detail(ui))?.[0]).toBe('Flaky cart test')
+
+    await ui.press({ key: 'open' })
+    expect(calls).toContainEqual(['xdg-open', 'https://github.com/acme/shop/pull/40'])
+    await ui.press({ key: 'nextCard' })
+    await ui.press({ key: 'here' })
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+  expect(prompts[0]).toBe(
+    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`',
+  )
+  expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
+})
+
+test('every region keeps its height while you browse, ask and read', async ($, on) => {
+  engine(on, {
+    'report --json': ok(busyReport),
+    'report 20990101-050000 --unit acme-shop-3': { stdout: REPORT_TEXT },
+  })
+  await $.command.run(away())
+  for (const surface of ALL) {
+    const ui = await mount($, surface)
+    const heights = async () => {
+      const box = await ui.find({ key: 'detail' })
+      expect((box?.children ?? []).length).toBeLessThanOrEqual(15)
+      return [
+        (await ui.find({ type: 'Box' }))?.props.height,
+        (await ui.find({ key: 'buttons' }))?.props.height,
+        box?.props.height,
+      ]
+    }
+    const fixed = [28, 2, 15]
+    for (let i = 0; i < 6; i++) {
+      expect(await heights()).toEqual(fixed)
+      await ui.press({ key: 'nextCard' })
+    }
+    await ui.press({ key: 'skip' })
+    expect(await heights()).toEqual(fixed)
+    await ui.press({ key: 'no' })
+    await ui.press({ key: 'tab:last' })
+    await ui.press({ key: 'report' })
+    expect(await heights()).toEqual(fixed)
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'tab:skipped' })
+    expect(await heights()).toEqual(fixed)
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('on a surface with no Client the cards are Buttons', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  const ui = await mount($, 'vscode')
+  expect(await ui.find({ type: 'Client' })).toBeFalsy()
+  expect(await label(ui, `card:${SHOP8}`)).toBe('#8')
+  await ui.press({ key: `card:${API21}` })
+  expect(await selected(ui)).toBe(API21)
+  expect((await detail(ui))?.[0]).toBe('Fix the N+1 query in the orders endpoint')
 })
 
 test('/away with a request goes to the skill', async ($, on) => {
@@ -146,7 +486,7 @@ test('bare /away opens the pane when typed before the desktop attaches, not unde
   await $.command.run(away('', 'awaywork:away'))
   expect(opened).toEqual(['away'])
   const ui = await mount($, 'desktop')
-  expect(await ui.find({ type: 'Text', text: /3 need you/ })).toBeTruthy()
+  expect(await text(ui, /6 need you/)).toBe(true)
   await ui.unmount()
   const ran = await $.command.run({ ...away('', 'awaywork:away'), origin: { kind: 'sdk' } })
   expect(ran.text).toBe('the skill ran')
@@ -165,27 +505,35 @@ test('p plans once however often it is pressed; r reads only the report', async 
   await $.command.run(away())
   const ui = await mount($, 'terminal')
 
+  await ui.press({ key: 'tab:next' })
+  expect(await text(ui, /plan probes quota \(one Haiku call\): press p/)).toBe(true)
   await ui.press({ key: 'plan' })
   await ui.press({ key: 'refresh' })
   await ui.press({ key: 'plan' })
-  expect(await ui.find({ type: 'Text', text: /· planning…/ })).toBeTruthy()
-  await ui.press({ key: 'tab:next' })
-  expect(await ui.find({ type: 'Text', text: /planning… it probes quota/ })).toBeTruthy()
+  expect(await text(ui, /· planning…/)).toBe(true)
+  expect(await text(ui, /planning… it probes quota/)).toBe(true)
   await clock.advance(1000)
   expect(plans()).toBe(1)
   await ui.unmount()
 
   await $.command.run(away())
-
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:next' })
-    expect(await rows(ui)).toEqual(['row:next:acme-shop-12'])
-    expect(await line(ui, 'row:next:acme-shop-12')).toMatch(/^▾ #12 {2}Coupon codes +implement$/)
-    expect(
-      await ui.find({ type: 'Text', text: /^deliver draft_pr · claude\ngithub:acme\/shop#12/ }),
-    ).toBeTruthy()
-    expect((await ui.find({ key: 'tab:skipped' }))?.props.hotkey).toBe('4')
+    expect(await page(ui)).toEqual(['row:next:acme-shop-12'])
+    expect(await card(ui, 'row:next:acme-shop-12')).toMatchObject({
+      ref: '#12',
+      word: 'implement',
+      title: ['Coupon codes'],
+    })
+    expect(await detail(ui)).toEqual([
+      'Coupon codes',
+      'deliver draft_pr · claude',
+      'github:acme/shop#12  Coupon codes',
+      'https://github.com/acme/shop/issues/12',
+    ])
+    expect(await label(ui, 'tab:next')).toBe('Next run (1)')
+    expect(await hotkey(ui, 'tab:skipped')).toBe('4')
     await ui.unmount()
   }
   expect(plans()).toBe(1)
@@ -195,10 +543,8 @@ test('a reply that is not JSON says so instead of reading for good', async ($, o
   engine(on, { 'report --json': { stdout: 'Debugger attached.\n{}' } })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
-  expect(
-    await ui.find({ type: 'Text', text: /awaywork report --json printed no JSON/ }),
-  ).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /reading the last run/ })).toBeFalsy()
+  expect(await text(ui, /awaywork report --json printed no JSON/)).toBe(true)
+  expect(await text(ui, /reading the last run/)).toBe(false)
 })
 
 test('with a plan loaded, a failed report still says why, and the plan clears the marks', async ($, on) => {
@@ -212,19 +558,17 @@ test('with a plan loaded, a failed report still says why, and the plan clears th
   const ui = await mount($, 'terminal')
   await ui.press({ key: 'skip' })
   await ui.press({ key: 'yes' })
-  expect(await line(ui, SHOP7)).toMatch(/ skipped$/)
+  expect((await card(ui, SHOP7))?.word).toBe('skipped')
 
   await ui.press({ key: 'plan' })
-  expect(await line(ui, SHOP7)).toMatch(/ review PR$/)
+  expect((await card(ui, SHOP7))?.word).toBe('review PR')
   report = { stdout: 'Debugger attached.\n{}' }
   await ui.press({ key: 'refresh' })
-  expect(
-    await ui.find({ type: 'Text', text: /awaywork report --json printed no JSON/ }),
-  ).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /no run yet/ })).toBeFalsy()
+  expect(await text(ui, /awaywork report --json printed no JSON/)).toBe(true)
+  expect(await text(ui, /no run yet/)).toBe(false)
 })
 
-test('reopening keeps the marks on the rows they correct', async ($, on) => {
+test('reopening keeps the marks on the cards they correct', async ($, on) => {
   engine(on, {
     'report --json': ok(busyReport),
     'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
@@ -237,74 +581,8 @@ test('reopening keeps the marks on the rows they correct', async ($, on) => {
 
   await $.command.run(away())
   const again = await mount($, 'terminal')
-  expect(await line(again, SHOP7)).toMatch(/ skipped$/)
+  expect((await card(again, SHOP7))?.word).toBe('skipped')
   expect(await label(again, 'skip')).toBe('unskip')
-})
-
-test('a click or Tab opens a row in place, with its reason and only the buttons it has', async ($, on) => {
-  engine(on, { 'report --json': ok(busyReport) })
-  await $.command.run(away())
-  for (const surface of SURFACES) {
-    const ui = await mount($, surface)
-    expect(
-      await ui.find({
-        type: 'Text',
-        text: 'waiting for review: awaywork PR is open',
-      }),
-    ).toBeTruthy()
-    expect(await label(ui, 'open')).toBe('open PR')
-    expect(await label(ui, 'skip')).toBe('skip')
-    expect(await ui.find({ key: 'approve' })).toBeFalsy()
-    expect(await ui.find({ key: 'here' })).toBeFalsy()
-
-    await ui.press({ key: SHOP8 })
-    expect(await line(ui, SHOP7)).toMatch(/^#7 /)
-    expect(await line(ui, SHOP8)).toMatch(/^▾ #8 /)
-    expect(await label(ui, 'open')).toBe('open issue')
-    expect(await label(ui, 'approve')).toBe('approve plan')
-
-    await $.ui.focus(focus(TICKET))
-    expect(await label(ui, 'open')).toBe('open')
-    expect(await ui.find({ key: 'approve' })).toBeFalsy()
-
-    // A rule takes `approved: true` items, so approving one it skipped can make it run.
-    await ui.press({ key: 'tab:skipped' })
-    expect(await label(ui, 'approve')).toBe('mark approved')
-    await ui.press({ key: 'tab:last' })
-    expect(await label(ui, 'report')).toBe('read report')
-    expect(await label(ui, 'here')).toBe('ask Claude here')
-    expect(await label(ui, 'approve')).toBe('mark approved')
-    await ui.press({ key: 'tab:needs' })
-    await ui.unmount()
-  }
-})
-
-test('Tab and the arrows go row to row, past the open row, whose buttons each have a hotkey', async ($, on) => {
-  engine(on, { 'report --json': ok(busyReport) })
-  await $.command.run(away())
-  const hotkey = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.hotkey
-  for (const surface of SURFACES) {
-    const ui = await mount($, surface)
-    expect([await hotkey(ui, 'open'), await hotkey(ui, 'skip')]).toEqual(['o', 's'])
-    await $.ui.focus(focus('open'))
-    expect(await line(ui, SHOP8)).toMatch(/^▾ #8 /)
-    expect(await hotkey(ui, 'approve')).toBe('a')
-
-    await ui.press({ key: 'approve' })
-    expect([await hotkey(ui, 'yes'), await hotkey(ui, 'no')]).toEqual(['y', 'n'])
-    await $.ui.focus(focus('yes'))
-    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
-    expect(await ui.find({ key: 'yes' })).toBeFalsy()
-
-    // The last row has none after it: the ring walks its buttons.
-    await $.ui.focus(focus('skip'))
-    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
-
-    await ui.press({ key: 'tab:last' })
-    expect(await hotkey(ui, 'here')).toBe('h')
-    await ui.press({ key: 'tab:needs' })
-    await ui.unmount()
-  }
 })
 
 test('mark approved shows only while a rule for the item takes approved items', async ($, on) => {
@@ -317,7 +595,7 @@ test('mark approved shows only while a rule for the item takes approved items', 
   await ui.press({ key: 'tab:skipped' })
   expect(await ui.find({ key: 'approve' })).toBeFalsy()
   await ui.press({ key: 'tab:needs' })
-  await ui.press({ key: SHOP8 })
+  await ui.press({ key: 'nextCard' })
   expect(await label(ui, 'approve')).toBe('approve plan')
 
   queue = [first, nested]
@@ -326,99 +604,19 @@ test('mark approved shows only while a rule for the item takes approved items', 
   expect(await label(ui, 'approve')).toBe('mark approved')
 })
 
-test('s and a ask under the row and mark it, ⏎ on an open unit reads its report, h works on it here', async ($, on) => {
-  const { calls } = engine(on, {
-    'report --json': ok(busyReport),
-    'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
-    'skip github:acme/shop#7': { stdout: 'github:acme/shop#7 is skipped until awaywork unskip' },
-    'approve github:acme/shop#8': { stdout: 'plan approved: replied approve on the issue' },
-    'approve github:acme/shop#9': {
-      stdout: 'github:acme/shop#9 is approved until a unit on it finishes',
-    },
-  })
-  const prompts: string[] = []
-  on('prompt.submit', (_, e) => {
-    prompts.push(e.text)
-    return { text: e.text }
-  })
-  await $.command.run(away())
-  const ui = await mount($, 'terminal')
-
-  await ui.press({ key: 'skip' })
-  expect(
-    await ui.find({ type: 'Text', text: /skip github:acme\/shop#7 in the coming runs\?/ }),
-  ).toBeTruthy()
-  expect(await ui.find({ key: 'open' })).toBeFalsy()
-  await ui.press({ key: 'no' })
-  expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
-  await ui.press({ key: 'skip' })
-  await ui.press({ key: 'yes' })
-  expect(calls).toContainEqual(['awaywork', 'skip', 'github:acme/shop#7'])
-  expect(await ui.find({ type: 'Text', text: /is skipped until awaywork unskip/ })).toBeTruthy()
-  expect(await line(ui, SHOP7)).toMatch(/ skipped$/)
-  expect(await label(ui, 'skip')).toBe('unskip')
-
-  await $.ui.focus(focus(SHOP8))
-  await ui.press({ key: 'approve' })
-  expect(
-    await ui.find({ type: 'Text', text: /approve the plan on github:acme\/shop#8\?/ }),
-  ).toBeTruthy()
-  await $.ui.focus(focus(SHOP7))
-  expect(await ui.find({ key: 'yes' })).toBeFalsy()
-  await $.ui.focus(focus(SHOP8))
-  await ui.press({ key: 'approve' })
-  await ui.press({ key: 'yes' })
-  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#8'])
-  expect(await line(ui, SHOP8)).toMatch(/ approved$/)
-  await ui.press({ key: 'approve' })
-  expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeTruthy()
-
-  await ui.press({ key: 'tab:skipped' })
-  expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeFalsy()
-  await $.ui.focus(focus('row:skipped:github:acme/shop#10'))
-  expect(await label(ui, 'skip')).toBe('unskip')
-  await $.ui.focus(focus('row:skipped:github:acme/shop#9'))
-  await ui.press({ key: 'approve' })
-  expect(
-    await ui.find({
-      type: 'Text',
-      text: /mark github:acme\/shop#9 approved for approved: true rules/,
-    }),
-  ).toBeTruthy()
-  await ui.press({ key: 'yes' })
-  expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#9'])
-  expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
-
-  await ui.press({ key: 'tab:last' })
-  await ui.press({ key: 'open:row:last:acme-shop-3' })
-  expect(await ui.find({ type: 'Text', text: 'acme-shop-3: Pinned the clock' })).toBeTruthy()
-  await ui.press({ key: 'back' })
-  await ui.press({ key: 'row:last:acme-shop-5' })
-  expect(calls.filter((argv) => argv[2] === '20990101-050000')).toHaveLength(1)
-  await ui.press({ key: 'here' })
-  expect(prompts).toEqual([
-    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`',
-  ])
-  expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
-})
-
 test('no run yet, and a run that found nothing, each say why and what next', async ($, on) => {
   let report: Reply = { exitCode: 1, stderr: 'no runs in /home/dev/.local/state/awaywork/runs' }
   engine(on, { 'report --json': () => report, 'plan --json': ok(emptyPlan) })
   await $.command.run(away())
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
-    expect(
-      await ui.find({ type: 'Text', text: /no run yet: `awaywork run`, or wait for the schedule/ }),
-    ).toBeTruthy()
+    expect(await text(ui, /no run yet: `awaywork run`, or wait for the schedule/)).toBe(true)
     expect(await ui.find({ key: 'tab:needs' })).toBeFalsy()
     await ui.unmount()
   }
   report = ok(emptyReport)
   const ui = await mount($, 'terminal')
-  expect(
-    await ui.find({ type: 'Text', text: /the last run found none of your items/ }),
-  ).toBeTruthy()
+  expect(await text(ui, /the last run found none of your items/)).toBe(true)
 })
 
 test('awaywork missing from PATH, or too old for --json, says the fix', async ($, on) => {
@@ -441,20 +639,12 @@ test('awaywork missing from PATH, or too old for --json, says the fix', async ($
   await $.command.run(away())
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
-    expect(
-      await ui.find({
-        type: 'Text',
-        text: "awaywork isn't on your PATH: npm i -g awaywork@latest",
-      }),
-    ).toBeTruthy()
+    expect(await text(ui, "awaywork isn't on your PATH: npm i -g awaywork@latest")).toBe(true)
     await ui.unmount()
   }
   old = true
   const ui = await mount($, 'terminal')
   expect(
-    await ui.find({
-      type: 'Text',
-      text: 'this awaywork is too old for the pane (no --json): npm i -g awaywork@latest',
-    }),
-  ).toBeTruthy()
+    await text(ui, 'this awaywork is too old for the pane (no --json): npm i -g awaywork@latest'),
+  ).toBe(true)
 })

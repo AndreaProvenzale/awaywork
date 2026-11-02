@@ -56,9 +56,9 @@ export type Mark = { skip?: 'skipped' | 'unskipped'; approved?: true }
 
 export type View = {
   tab?: Tab
-  /** The row the focus ring is on. */
+  /** The card selected. */
   row?: string
-  /** The detail's first row shown. */
+  /** The detail's first line shown. */
   at?: number
   confirm?: { action: Action; key: string; question: string }
   reading?: { title: string; text: string }
