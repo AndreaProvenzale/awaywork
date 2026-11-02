@@ -1,4 +1,4 @@
-import type { Color, EngineInterface, Register } from 'claude-code'
+import type { Color, EngineInterface, Register, RenderChildren } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 import type {
@@ -16,14 +16,15 @@ import type {
   View,
   Where,
 } from '../types'
+import { CARD_ROWS, type Card, card } from './cards'
 
 const PANE = 'away'
 const FIX = 'npm i -g awaywork@latest'
 
 const data = atom({ plugin: 'awaywork', key: 'data' } as const, {} as Data, { shape: 'data-2' })
-const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-2' })
+const view = atom({ plugin: 'awaywork', key: 'view' } as const, {} as View, { shape: 'view-3' })
 
-/** One row of a tab under its group, what it shows open, and the buttons it opens to. */
+/** One item of a tab under its group: its card, its detail, and the buttons it has. */
 type Row = {
   id: string
   group: string
@@ -33,12 +34,11 @@ type Row = {
   word: string
   color?: Color
   item?: ItemRef
-  /** The line under the shut row: what the word doesn't say. */
-  note: string
-  /** The open row's lines: the full reason, or the unit's items, and the links. */
+  title: string
+  /** The detail's lines under the title: the reason, or the unit's items and links. */
   detail: string[]
   url?: string
-  /** The CLI's read of a last-run unit: ⏎ on the open row, or its `read report`. */
+  /** The CLI's read of a last-run unit, what `v` shows. */
   report?: string[]
   skip?: 'skip' | 'unskip'
   approve?: 'plan' | 'mark'
@@ -85,7 +85,6 @@ async function readReport($: EngineInterface) {
         ? { noReport: got.failed }
         : { error: got.error }
   await update($, data, (d) => ({ plan: d.plan, planning: d.planning, ...patch }))
-  await keepRing($)
 }
 
 // plan probes quota and reads the forge, so it runs only when asked.
@@ -97,7 +96,6 @@ async function readPlan($: EngineInterface) {
   const patch: Data =
     'json' in got ? { plan: got.json } : 'error' in got ? { error: got.error } : {}
   await update($, data, (d) => ({ ...d, planning: undefined, ...patch }))
-  await keepRing($)
   // A fresh plan shows what the marks said, unless an act came in while it was planning.
   if ('json' in got)
     await update($, view, (v) => ({ ...v, marks: acts === before ? undefined : v.marks }))
@@ -168,21 +166,6 @@ const actions: Record<string, string> = {
 
 const ranks = Object.keys(actions)
 
-/** What a reason starts with that its kind's action already says, as the CLI's `kindSays`. */
-const kindSays: Record<string, RegExp> = {
-  waiting_for_review: /^waiting for review: (awaywork PR is open$)?/,
-  waiting_for_answer: /^waiting for your answer$/,
-  waiting_for_approval: /^waiting for your approval of the plan$/,
-  invalid_plan: /^plan refused: /,
-  all_tasks_done: /^all tasks done: close or move the card$/,
-  no_repo: /^no repo: no linked PR or repo field$/,
-  no_rule: /^matched no rule(; |$)/,
-  over_cap: /^over the cap: /,
-  unchanged: /^unchanged /,
-  skipped_by_you: /^skipped with awaywork skip \S+(: | |$)/,
-  fanned_out: /^fanned out: /,
-}
-
 /** Whether a where waits for the mark `awaywork approve` leaves: `approved: true`, or `[true]`, in it or an `any` under it. */
 const wantsApproval = ({ approved, any }: Where): boolean =>
   approved === true ||
@@ -202,7 +185,6 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
   const key = itemKey(s.item)
   const group = groupOf(s.item)
   const url = s.url ?? s.item.url ?? undefined
-  const reason = s.needsYou ? reasonOf(s).replace(/; closest #.*$/, '') : reasonOf(s)
   return {
     id: `row:${tab}:${key}`,
     group,
@@ -211,7 +193,7 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
     word: (s.kind && actions[s.kind]) || s.kind || 'skipped',
     color: s.needsYou ? 'warning' : undefined,
     item: s.item,
-    note: reason.replace((s.kind && kindSays[s.kind]) || '', ''),
+    title: s.item.title,
     detail: lines(reasonOf(s)),
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
@@ -241,7 +223,7 @@ function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean
     word: r.status,
     color: r.status === 'done' ? 'success' : r.status === 'failed' ? 'error' : undefined,
     item: top,
-    note,
+    title: top?.title ?? note,
     detail: lines(note),
     url,
     report: ['report', runId, '--unit', id],
@@ -262,7 +244,7 @@ function unitRow(p: Planned): Row {
     ref: top ? refIn(repo, top.key) : id,
     word: skill,
     item: top,
-    note,
+    title: top?.title ?? note,
     detail: lines(
       note,
       ...items.flatMap((i) => [`${itemKey(i)}  ${i.title}`, i === top ? undefined : i.url]),
@@ -304,20 +286,6 @@ function layout(d: Data, v: View) {
   return { report, heads, rows, tab, order, shown, list, row }
 }
 
-/** The open row's key: another element than the shut row's, so focusing it waits for the drawing that opens it. */
-const opened = (id: string) => `open:${id}`
-
-/** The keys of the buttons under the open row: ⏎ on the row reads its report, a hotkey presses each other one. */
-const rowButtons = ['open', 'report', 'skip', 'approve', 'here', 'yes', 'no']
-
-// The ring keeps its place, not its element, when a tab appears or a row opens: put it on the open row.
-async function keepRing($: EngineInterface) {
-  const v = await read($, view)
-  const { row } = layout(await read($, data), v)
-  if (row && !v.reading)
-    await $.ui.focus({ requestId: PANE, key: opened(row.id) }).catch(() => undefined)
-}
-
 const pad = (n: number) => String(n).padStart(2, '0')
 
 function when(iso: string, now: number) {
@@ -340,12 +308,11 @@ const titles: Record<Tab, string> = {
 }
 
 const questions = {
-  skip: (key: string) => `skip ${key} in the coming runs? awaywork unskip undoes it`,
-  unskip: (key: string) => `unskip ${key}? the coming runs can take it again`,
-  approvePlan: (key: string) =>
-    `approve the plan on ${key}? awaywork replies approve on it, no undo`,
-  approve: (key: string) =>
-    `mark ${key} approved for approved: true rules, until a unit on it finishes? no undo`,
+  skip: (ref: string) => `skip ${ref} in the coming runs? awaywork unskip undoes it`,
+  unskip: (ref: string) => `unskip ${ref}? the coming runs can take it again`,
+  approvePlan: (ref: string) => `approve ${ref}'s plan? awaywork replies approve on it, no undo`,
+  approve: (ref: string) =>
+    `mark ${ref} approved for approved: true rules, until a unit on it finishes? no undo`,
 }
 
 const marked: Record<Action, Mark> = {
@@ -378,13 +345,8 @@ async function readRow($: EngineInterface, what: string[]) {
     ...v,
     status: undefined,
     reading: { title: `awaywork ${what.join(' ')}`, text },
+    at: 0,
   }))
-}
-
-// The ring keeps its place across a redraw: move it onto the new tab's first row.
-async function showTab($: EngineInterface, tab: Tab, first?: string) {
-  await update($, view, (v) => ({ ...v, tab, row: first, status: undefined }))
-  if (first) await $.ui.focus({ requestId: PANE, key: opened(first) }).catch(() => undefined)
 }
 
 let opener: string | undefined
@@ -401,11 +363,159 @@ const opens = (url: string) =>
       ? 'open issue'
       : 'open'
 
-// The open row is the ring's: Tab opens the row it lands on, a click the row it hits, ⏎ on the open one reads its report.
-async function pressRow($: EngineInterface, r: Row, open: boolean) {
-  if (open) return r.report && readRow($, r.report)
-  await update($, view, (v) => ({ ...v, row: r.id, confirm: undefined, status: undefined }))
-  await $.ui.focus({ requestId: PANE, key: opened(r.id) }).catch(() => undefined)
+async function showTab($: EngineInterface, tab: Tab) {
+  await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
+}
+
+type Key = { key: string; hotkey: string; label: string; run: () => unknown }
+
+/** The selected card's buttons: the confirm's yes and no, back from a report, or what the card can do. */
+function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
+  const { confirm } = v
+  if (confirm)
+    return [
+      { key: 'yes', hotkey: 'y', label: 'yes', run: () => act($, confirm.action, confirm.key) },
+      {
+        key: 'no',
+        hotkey: 'n',
+        label: 'no',
+        run: () =>
+          update($, view, (x) => ({
+            ...x,
+            confirm: undefined,
+            status: `not ${confirm.action === 'approve' ? 'approved' : `${confirm.action}ped`}`,
+          })),
+      },
+    ]
+  if (v.reading)
+    return [
+      {
+        key: 'back',
+        hotkey: 'b',
+        label: 'back',
+        run: () => update($, view, (x) => ({ ...x, reading: undefined, at: 0 })),
+      },
+    ]
+  const { url, report, here, ref } = row
+  const item = row.item && itemKey(row.item)
+  const mark = item ? v.marks?.[item] : undefined
+  const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : row.skip
+  const ask = (action: Action, question: string) => () =>
+    item &&
+    update($, view, (x) =>
+      action === 'approve' && mark?.approved
+        ? { ...x, status: 'already approved' }
+        : { ...x, confirm: { action, key: item, question } },
+    )
+  const plan = row.approve === 'plan'
+  const keys: (Key | '' | undefined)[] = [
+    url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
+    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
+    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
+    row.approve &&
+      item && {
+        key: 'approve',
+        hotkey: 'a',
+        label: plan ? 'approve plan' : 'mark approved',
+        run: ask('approve', plan ? questions.approvePlan(ref) : questions.approve(ref)),
+      },
+    here && {
+      key: 'here',
+      hotkey: 'c',
+      label: 'ask Claude here',
+      run: () => $.prompt.submit({ text: here, asUser: true }),
+    },
+  ]
+  return keys.filter((b): b is Key => !!b)
+}
+
+const selected = (v: View, id: string): View => ({
+  ...v,
+  row: id,
+  at: 0,
+  confirm: undefined,
+  reading: undefined,
+  status: undefined,
+})
+
+// The card shown already keeps its question or report: the strip names it with every key it posts.
+async function select($: EngineInterface, id: string) {
+  const d = await read($, data)
+  await update($, view, (v) => (layout(d, v).row?.id === id ? v : selected(v, id)))
+}
+
+// In one update, so keys pressed in a row each step from where the last one left.
+async function step($: EngineInterface, by: number) {
+  const d = await read($, data)
+  await update($, view, (v) => {
+    const { list, row } = layout(d, v)
+    const to = row && list[Math.min(list.length - 1, Math.max(0, list.indexOf(row) + by))]
+    return to && to.id !== row.id ? selected(v, to.id) : v
+  })
+}
+
+/** No `strip` when the pane is too short for its regions: the engine scrolls it then. */
+type Drawn = { press: Record<string, () => unknown>; strip?: [number, number]; detailMax: number }
+
+/** The last drawing's hotkeys, strip rows and detail end: `ui.scroll` and the strip's posts see no drawing. */
+let drawn: Drawn = { press: {}, detailMax: 0 }
+
+const scrollDetail = ($: EngineInterface, by: number) =>
+  drawn.strip
+    ? update($, view, (v) => ({
+        ...v,
+        at: Math.min(drawn.detailMax, Math.max(0, (v.at ?? 0) + by)),
+      }))
+    : $.ui.scroll({ to: by < 0 ? 'start' : 'end', in: PANE })
+
+const MIN_CARD = 24
+const MAX_ROWS = 28
+const MIN_DETAIL = 3
+
+/** Cards a page and their width: as many as fit MIN_CARD wide, stretched to fill the row. */
+function cardsFit(columns: number) {
+  const n = Math.max(1, Math.floor((columns + 1) / (MIN_CARD + 1)))
+  return { n, w: Math.floor((columns + 1) / n) - 1 }
+}
+
+/** A title in at most two lines, the second cut with an ellipsis. */
+function twoLines(title: string, width: number) {
+  const [first = '', ...rest] = wrap(title, width)
+  return rest.length ? [first, clip(rest.join(' '), width)] : [first]
+}
+
+function wrap(text: string, width: number): string[] {
+  const out: string[] = []
+  for (const para of text.split('\n')) {
+    let line = ''
+    for (const word of para.split(' ')) {
+      if (line && line.length + 1 + word.length > width) {
+        out.push(line)
+        line = ''
+      }
+      line = line ? `${line} ${word}` : word
+      while (line.length > width) {
+        out.push(line.slice(0, width))
+        line = line.slice(width)
+      }
+    }
+    out.push(line)
+  }
+  return out
+}
+
+/** Rows a wrapping row of `parts` takes at `width`, `gap` apart. */
+function rowsOf(parts: string[], width: number, gap = 2) {
+  let rows = 1
+  let used = 0
+  for (const p of parts) {
+    if (used && used + gap + p.length > width) {
+      rows++
+      used = 0
+    }
+    used += (used ? gap : 0) + p.length
+  }
+  return rows
 }
 
 export const register: Register = (on) => {
@@ -421,27 +531,46 @@ export const register: Register = (on) => {
     return {}
   })
 
-  on('ui.focus', { requestId: PANE }, async ($, e, next) => {
-    const v = await read($, view)
-    const { list, row } = layout(await read($, data), v)
-    const after = row && list[list.indexOf(row) + 1]
-    // Tab and the arrows go row to row, past the open row's buttons: their hotkeys press them.
-    const past = e.origin.kind === 'person' && after && rowButtons.includes(e.element ?? '')
-    const moved = past ? { ...e, element: after.id } : e
-    const { element } = moved
-    if (!element?.startsWith('row:') || element === v.row) return next(moved)
-    await update($, view, (x) => ({ ...x, row: element, confirm: undefined, status: undefined }))
-    // Once this move is done, the ring goes onto the row it opened.
-    $.clock.after(0, () => void keepRing($))
-    return next(moved)
+  // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    if (!drawn.strip) return next(e)
+    const r = e.pointer?.row
+    const [top, bottom] = drawn.strip
+    if (r !== undefined && r >= top && r <= bottom) await step($, Math.sign(e.by))
+    else await scrollDetail($, e.by)
+    return { deny: 'awaywork scrolls its own regions' }
+  })
+
+  on('ui.message', { element: 'cards' }, async ($, e) => {
+    const m = e.data as { select?: string; key?: string }
+    if (m.select) await select($, m.select)
+    if (m.key === 'up' || m.key === 'down') await scrollDetail($, m.key === 'up' ? -1 : 1)
+    else if (m.key === 'pageup' || m.key === 'pagedown')
+      await scrollDetail($, m.key === 'pageup' ? -5 : 5)
+    else if (m.key) {
+      // The card's own keys as it is now: the select above may not be drawn yet.
+      const d = await read($, data)
+      const v = await read($, view)
+      const { row } = layout(d, v)
+      const own = row && cardButtons($, v, row).find((b) => b.hotkey === m.key)
+      await (own ? own.run() : drawn.press[m.key]?.())
+    }
+    return {}
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Text, Button } = els
+    // Every surface's table names every tag, drawing the ones it lacks as nothing.
+    const Client =
+      (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in els
+        ? els.Client
+        : undefined
     const d = await read($, data)
     const v = await read($, view)
     const width = e.props.bodyColumns
     const now = await $.clock.now()
+    const press: Record<string, () => unknown> = {}
 
     const { report, heads, rows, tab, order, shown, list, row } = layout(d, v)
 
@@ -462,250 +591,225 @@ export const register: Register = (on) => {
           d.planning && 'planning…',
         ].filter(Boolean)
 
+    /** A plain Button whose hotkey the strip can press too. */
+    const button = (key: string, hotkey: string | undefined, label: string, run: () => unknown) => {
+      if (hotkey) press[hotkey] = run
+      return <Button key={key} plain hotkey={hotkey} label={label} onPress={() => void run()} />
+    }
+
+    const gap = e.surface === 'desktop' ? 'xs' : 0
+    const needsYou = needs > 0 ? ` · ${needs} need you` : ''
+    const lead = `☾ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}${needsYou}`
+    // The buttons beside the line when both fit, else under it, the line cut: never a wrap to guess.
+    const headRows = lead.length + 2 + 'r: refresh p: plan'.length <= width ? 1 : 2
     const header = (
-      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        <Text>
-          <Text bold>awaywork</Text>
+      <Box
+        flexDirection={headRows === 1 ? 'row' : 'column'}
+        justifyContent="space-between"
+        columnGap={2}
+      >
+        <Text wrap="truncate-end">
+          <Text bold>☾ awaywork</Text>
           {facts.length > 0 && <Text dimColor> · {facts.join(' · ')}</Text>}
-          {needs > 0 && <Text color="warning"> · {needs} need you</Text>}
+          {needs > 0 && <Text color="warning">{needsYou}</Text>}
         </Text>
-        <Box flexDirection="row" gap={1}>
-          <Button
-            key="refresh"
-            plain
-            dimColor
-            hotkey="r"
-            label="refresh"
-            onPress={() => void refresh($)}
-          />
-          <Button
-            key="plan"
-            plain
-            dimColor
-            hotkey="p"
-            label="plan"
-            onPress={() => void loadPlan($)}
-          />
+        <Box flexDirection="row" gap={1} flexShrink={0}>
+          {button('refresh', 'r', 'refresh', () => refresh($))}
+          {button('plan', 'p', 'plan', () => loadPlan($))}
         </Box>
       </Box>
     )
 
-    if (d.error)
-      return (
-        <Box flexDirection="column" gap={1}>
-          {header}
-          <Text>{d.error}</Text>
-        </Box>
-      )
-
-    if (v.reading)
-      return (
-        <Box flexDirection="column" gap={1}>
-          <Text dimColor>{v.reading.title}</Text>
-          <Text>{v.reading.text}</Text>
-          <Button
-            key="back"
-            plain
-            dimColor
-            autoFocus
-            hotkey="b"
-            label="back"
-            onPress={async () => {
-              await update($, view, (x) => ({ ...x, reading: undefined }))
-              await keepRing($)
-            }}
-          />
-        </Box>
-      )
-
+    const label = (t: Tab) =>
+      t === 'next' && !d.plan ? titles[t] : `${titles[t]} (${rows[t].length})`
     const tabs = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        {shown.map((t) => (
-          <Button
-            key={`tab:${t}`}
-            plain
-            hotkey={String(order.indexOf(t) + 1)}
-            dimColor={t !== tab}
-            label={t === 'next' && !d.plan ? titles[t] : `${titles[t]} (${rows[t].length})`}
-            onPress={() => showTab($, t, rows[t][0]?.id)}
-          />
-        ))}
+        {shown.map((t) => {
+          const hotkey = String(order.indexOf(t) + 1)
+          press[hotkey] = () => showTab($, t)
+          return (
+            <Button
+              key={`tab:${t}`}
+              plain
+              hotkey={hotkey}
+              dimColor={t !== tab}
+              label={label(t)}
+              onPress={() => showTab($, t)}
+            />
+          )
+        })}
       </Box>
     )
+    const tabRows = rowsOf(
+      shown.map((t) => `${order.indexOf(t) + 1}: ${label(t)}`),
+      width,
+    )
+    const rule = (
+      <Text dimColor wrap="truncate">
+        {'─'.repeat(width)}
+      </Text>
+    )
 
-    const empty = () => {
-      if (d.loading) return <Text dimColor>reading the last run…</Text>
+    const done = (body?: RenderChildren) => {
+      drawn = { press, detailMax: 0 }
+      return (
+        <Box flexDirection="column" rowGap={gap}>
+          {header}
+          {tabs}
+          {rule}
+          {body}
+          {v.status && <Text dimColor>{v.status}</Text>}
+        </Box>
+      )
+    }
+
+    if (d.error) return done(<Text>{d.error}</Text>)
+    if (!tab) {
+      if (d.loading) return done(<Text dimColor>reading the last run…</Text>)
       if (noRunsYet)
-        return (
+        return done(
           <Text>
             no run yet: `awaywork run`, or wait for the schedule; p shows what the next one takes
-          </Text>
+          </Text>,
         )
-      if (d.noReport) return // the header says why
-      return (
+      if (d.noReport) return done(<Text>{d.noReport}</Text>)
+      return done(
         <Text>
           {d.plan ? 'the plan' : 'the last run'} found none of your items: `/away` and say what to
           hand over to set up sources and rules
-        </Text>
+        </Text>,
       )
     }
-
-    const next = () => {
-      if (d.planning) return <Text dimColor>planning… it probes quota</Text>
-      if (!d.plan) return <Text dimColor>plan probes quota (one Haiku call): press p</Text>
-      if (list.length === 0) return <Text dimColor>the next run takes nothing</Text>
+    if (tab === 'next' && list.length === 0) {
+      if (d.planning) return done(<Text dimColor>planning… it probes quota</Text>)
+      if (!d.plan) return done(<Text dimColor>plan probes quota (one Haiku call): press p</Text>)
+      return done(<Text dimColor>the next run takes nothing</Text>)
     }
+    if (!row) return done(undefined)
 
-    // The open row's buttons, or the question one of them asked.
-    const buttons = (r: Row) => {
-      if (v.confirm) {
-        const { action, key } = v.confirm
-        return (
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-            <Text>{v.confirm.question}</Text>
-            <Button
-              key="yes"
-              plain
-              hotkey="y"
-              label="yes"
-              onPress={() => void act($, action, key)}
-            />
-            <Button
-              key="no"
-              plain
-              hotkey="n"
-              label="no"
-              onPress={() =>
-                update($, view, (x) => ({
-                  ...x,
-                  confirm: undefined,
-                  status: `not ${action === 'approve' ? 'approved' : `${action}ped`}`,
-                }))
-              }
-            />
-          </Box>
-        )
+    const at = list.indexOf(row)
+    const { n, w } = cardsFit(width)
+    // Client props are JSON: no undefined in them.
+    const cards = list.map((r): Card => {
+      const m = r.item && v.marks?.[itemKey(r.item)]
+      const word = m ? [m.skip, m.approved && 'approved'].filter(Boolean).join(', ') : r.word
+      const color = m ? 'warning' : r.color
+      return {
+        id: r.id,
+        ref: r.ref,
+        word,
+        title: twoLines(r.title, w - 4),
+        ...(color && { color }),
       }
-      const item = r.item && itemKey(r.item)
-      const mark = item ? v.marks?.[item] : undefined
-      const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : r.skip
-      const ask = (action: Action, question: string) => () =>
-        item &&
-        update($, view, (x) =>
-          action === 'approve' && mark?.approved
-            ? { ...x, status: 'already approved' }
-            : { ...x, confirm: { action, key: item, question } },
-        )
-      return (
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {r.url && (
-            <Button
-              key="open"
-              plain
-              hotkey="o"
-              label={opens(r.url)}
-              onPress={() => openUrl($, r.url as string)}
-            />
-          )}
-          {r.report && (
-            <Button
-              key="report"
-              plain
-              label="read report"
-              onPress={() => readRow($, r.report as string[])}
-            />
-          )}
-          {skip && item && (
-            <Button
-              key="skip"
-              plain
-              hotkey="s"
-              label={skip}
-              onPress={ask(skip, questions[skip](item))}
-            />
-          )}
-          {r.approve && item && (
-            <Button
-              key="approve"
-              plain
-              hotkey="a"
-              label={r.approve === 'plan' ? 'approve plan' : 'mark approved'}
-              onPress={ask(
-                'approve',
-                r.approve === 'plan' ? questions.approvePlan(item) : questions.approve(item),
-              )}
-            />
-          )}
-          {r.here && (
-            <Button
-              key="here"
-              plain
-              hotkey="h"
-              label="ask Claude here"
-              onPress={() => $.prompt.submit({ text: r.here as string, asUser: true })}
-            />
-          )}
+    })
+
+    const nav = (
+      <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
+        <Text wrap="truncate-end">
+          <Text bold>{row.group}</Text>
+          <Text dimColor>
+            {'  '}
+            {at + 1}/{list.length}
+          </Text>
+        </Text>
+        <Box flexDirection="row" gap={1} flexShrink={0}>
+          {button('prev', 'h', '‹', () => step($, -1))}
+          {button('nextCard', 'l', '›', () => step($, 1))}
         </Box>
-      )
-    }
+      </Box>
+    )
 
-    const body = () => {
-      if (!tab) return empty()
-      if (tab === 'next' && list.length === 0) return next()
-      return list.map((r, i) => {
-        const open = r.id === row?.id
-        const lead = `${open ? '▾ ' : ''}${r.ref}`
-        const mark = r.item && v.marks?.[itemKey(r.item)]
-        const word = mark
-          ? [mark.skip, mark.approved && 'approved'].filter(Boolean).join(', ')
-          : r.word
-        // Two for the indent, two between ref and title, two before the word.
-        const title = clip(r.item?.title ?? '', width - lead.length - word.length - 6)
-        return (
-          <Box flexDirection="column">
-            {r.group !== list[i - 1]?.group && <Text bold>{r.group}</Text>}
-            <Box flexDirection="column" paddingLeft={2}>
-              <Box key={`line:${r.id}`} flexDirection="row" justifyContent="space-between">
-                <Button
-                  key={open ? opened(r.id) : r.id}
-                  plain
-                  autoFocus={i === 0 || undefined}
-                  onPress={() => void pressRow($, r, open)}
-                >
-                  {lead}
-                  {'  '}
-                  <Text dimColor>{title}</Text>
-                </Button>
-                <Text color={mark ? 'warning' : r.color} dimColor={!mark && !r.color}>
-                  {'  '}
-                  {word}
-                </Text>
-              </Box>
-              {open ? (
-                <Box flexDirection="column" paddingLeft={2}>
-                  <Text dimColor>{r.detail.join('\n')}</Text>
-                  {buttons(r)}
-                </Box>
-              ) : (
-                r.note && (
-                  <Text dimColor wrap="truncate-end">
-                    {'  '}
-                    {r.note}
-                  </Text>
-                )
-              )}
-            </Box>
-          </Box>
-        )
-      })
-    }
+    const start = Math.floor(at / n) * n
+    const strip = Client ? (
+      <Client
+        key="cards"
+        module="./cards.tsx"
+        props={{ cards, at, n, w }}
+        width={width}
+        height={CARD_ROWS}
+      />
+    ) : (
+      <Box flexDirection="row" columnGap={1} height={CARD_ROWS}>
+        {cards
+          .slice(start, start + n)
+          .map((c, i) =>
+            card(
+              els,
+              c,
+              start + i === at,
+              w,
+              <Button key={`card:${c.id}`} plain label={c.ref} onPress={() => select($, c.id)} />,
+            ),
+          )}
+      </Box>
+    )
 
+    // The detail: rows the pane scrolls itself.
+    const body = v.reading
+      ? [
+          { text: v.reading.title, dim: true },
+          ...wrap(v.reading.text, width).map((text) => ({ text, dim: false })),
+        ]
+      : [
+          ...wrap(row.title, width).map((text) => ({ text, dim: false })),
+          ...[...row.detail, row.url]
+            .filter((l): l is string => !!l)
+            .flatMap((l) => wrap(l, width))
+            .map((text) => ({ text, dim: true })),
+        ]
+
+    const confirm = v.confirm
+    const question = confirm ? wrap(confirm.question, width) : []
+    const buttonRows = confirm ? question.length + 1 : 2
+
+    // header, tabs, rule, nav, strip, buttons, rule, body, status; too short for that, the engine scrolls it all.
+    const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
+    const top = headRows + tabRows + 2
+    const fits = total - top - CARD_ROWS - buttonRows - 2 >= MIN_DETAIL
+    const room = fits ? total - top - CARD_ROWS - buttonRows - 2 : body.length
+    const detailMax = Math.max(0, body.length - room)
+    const offset = Math.min(v.at ?? 0, detailMax)
+    const shownBody = body.slice(offset, offset + room)
+    const more = body.length - offset - room
+
+    const keys = cardButtons($, v, row).map((b) => button(b.key, b.hotkey, b.label, b.run))
+    const buttons = confirm ? (
+      <Box flexDirection="column">
+        {question.map((line) => (
+          <Text wrap="truncate-end">{line}</Text>
+        ))}
+        <Box flexDirection="row" columnGap={2}>
+          {keys}
+        </Box>
+      </Box>
+    ) : (
+      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+        {keys}
+      </Box>
+    )
+
+    drawn = fits ? { press, strip: [top, top + CARD_ROWS - 1], detailMax } : { press, detailMax }
     return (
-      <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column" height={fits ? total : undefined} rowGap={gap}>
         {header}
         {tabs}
-        <Box flexDirection="column">{body()}</Box>
-        {v.status && <Text dimColor>{v.status}</Text>}
+        {rule}
+        {nav}
+        {strip}
+        <Box key="buttons" height={buttonRows}>
+          {buttons}
+        </Box>
+        {rule}
+        <Box key="detail" flexDirection="column" height={room}>
+          {shownBody.map((l, i) => (
+            <Text dimColor={l.dim} wrap="truncate-end">
+              {i === room - 1 && more > 0 ? `↓ ${more + 1} more` : l.text}
+            </Text>
+          ))}
+        </Box>
+        <Text dimColor wrap="truncate-end">
+          {v.status ?? ' '}
+        </Text>
       </Box>
     )
   })
