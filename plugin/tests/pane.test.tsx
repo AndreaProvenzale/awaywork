@@ -70,7 +70,24 @@ async function mount($: Engine, surface: (typeof SURFACES)[number]) {
   return ui
 }
 
-test('bare /away opens the pane on what needs you, reading only the report', async ($, on) => {
+type Ui = Awaited<ReturnType<typeof mount>>
+
+/** A row as drawn: its ref and title, then its word at the end. */
+const line = async (ui: Ui, row: string) => (await ui.find({ key: `line:${row}` }))?.text
+
+/** The rows in the order drawn, the open one by its shut key. */
+const rows = async (ui: Ui) =>
+  (await ui.findAll({ type: 'Button' }))
+    .map((b) => b.key?.replace(/^open:/, ''))
+    .filter((key) => key?.startsWith('row:'))
+
+const label = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.label
+
+const SHOP7 = 'row:needs:github:acme/shop#7'
+const SHOP8 = 'row:needs:github:acme/shop#8'
+const TICKET = 'row:needs:jira:SHOP-12'
+
+test('bare /away opens the pane on what needs you, by repo and action, reading only the report', async ($, on) => {
   const { calls, opened } = engine(on, { 'report --json': ok(busyReport) })
   await $.command.run(away())
   expect(opened).toEqual(['away'])
@@ -78,15 +95,23 @@ test('bare /away opens the pane on what needs you, reading only the report', asy
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
     expect(await ui.find({ type: 'Text', text: /last run \d\d-\d\d \d\d:\d\d/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /2 need you/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /3 need you/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /1 PR/ })).toBeTruthy()
-    expect(await ui.find({ key: 'row:needs:github:acme/shop#7' })).toBeTruthy()
+    expect(await label(ui, 'tab:needs')).toBe('Needs you (3)')
+    expect(await label(ui, 'tab:next')).toBe('Next run')
+    expect(await ui.find({ type: 'Text', text: 'acme/shop' })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: 'jira SHOP' })).toBeTruthy()
+    expect(await rows(ui)).toEqual([SHOP7, SHOP8, TICKET])
+    expect(await line(ui, SHOP7)).toMatch(/^▾ #7 {2}Retry webhooks on 5xx +review PR$/)
+    expect(await line(ui, SHOP8)).toMatch(/^#8 {2}Split the checkout service +approve plan$/)
+    expect(await line(ui, TICKET)).toMatch(/^SHOP-12 {2}Migrate billing webhooks +answer question$/)
+    expect(await ui.find({ type: 'Text', text: /waiting for your/ })).toBeFalsy()
     expect(await ui.find({ key: 'row:needs:github:acme/shop#9' })).toBeFalsy()
 
     await ui.press({ key: 'tab:last' })
-    expect(await ui.find({ key: 'row:last:acme-shop-3' })).toBeTruthy()
-    expect(await ui.find({ key: 'row:last:acme-shop-3-2' })).toBeFalsy()
-    expect(await ui.find({ type: 'Text', text: /verify failed/ })).toBeTruthy()
+    expect(await rows(ui)).toEqual(['row:last:acme-shop-3', 'row:last:acme-shop-5'])
+    expect(await line(ui, 'row:last:acme-shop-5')).toMatch(/^#5 {2}Dark mode toggle +failed$/)
+    expect(await ui.find({ type: 'Text', text: /implement · verify failed/ })).toBeTruthy()
 
     await ui.press({ key: 'tab:next' })
     expect(
@@ -94,9 +119,13 @@ test('bare /away opens the pane on what needs you, reading only the report', asy
     ).toBeTruthy()
 
     await ui.press({ key: 'tab:skipped' })
-    expect(await ui.find({ key: 'row:skipped:github:acme/shop#9' })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /closest #1 fix/ })).toBeTruthy()
-    expect(await ui.find({ type: 'Text', text: /matched no rule/ })).toBeFalsy()
+    expect(await rows(ui)).toEqual([
+      'row:skipped:github:acme/shop#9',
+      'row:skipped:github:acme/shop#10',
+    ])
+    expect(await line(ui, 'row:skipped:github:acme/shop#10')).toMatch(/skipped by you$/)
+    expect(await ui.find({ type: 'Text', text: /not now/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /skipped with awaywork skip/ })).toBeFalsy()
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
@@ -117,7 +146,7 @@ test('bare /away opens the pane when typed before the desktop attaches, not unde
   await $.command.run(away('', 'awaywork:away'))
   expect(opened).toEqual(['away'])
   const ui = await mount($, 'desktop')
-  expect(await ui.find({ type: 'Text', text: /2 need you/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /3 need you/ })).toBeTruthy()
   await ui.unmount()
   const ran = await $.command.run({ ...away('', 'awaywork:away'), origin: { kind: 'sdk' } })
   expect(ran.text).toBe('the skill ran')
@@ -151,10 +180,10 @@ test('p plans once however often it is pressed; r reads only the report', async 
   for (const surface of SURFACES) {
     const ui = await mount($, surface)
     await ui.press({ key: 'tab:next' })
-    expect(await ui.find({ key: 'row:next:acme-shop-12' })).toBeTruthy()
-    expect(await ui.find({ key: 'row:next:acme-shop-12-2' })).toBeFalsy()
+    expect(await rows(ui)).toEqual(['row:next:acme-shop-12'])
+    expect(await line(ui, 'row:next:acme-shop-12')).toMatch(/^▾ #12 {2}Coupon codes +implement$/)
     expect(
-      await ui.find({ type: 'Text', text: /acme\/shop · deliver draft_pr · claude/ }),
+      await ui.find({ type: 'Text', text: /^deliver draft_pr · claude\ngithub:acme\/shop#12/ }),
     ).toBeTruthy()
     expect((await ui.find({ key: 'tab:skipped' }))?.props.hotkey).toBe('4')
     await ui.unmount()
@@ -183,12 +212,10 @@ test('with a plan loaded, a failed report still says why, and the plan clears th
   const ui = await mount($, 'terminal')
   await ui.press({ key: 'skip' })
   await ui.press({ key: 'yes' })
-  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(/^skipped shop#7/)
+  expect(await line(ui, SHOP7)).toMatch(/ skipped$/)
 
   await ui.press({ key: 'plan' })
-  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
-    /^waiting_for_review shop#7/,
-  )
+  expect(await line(ui, SHOP7)).toMatch(/ review PR$/)
   report = { stdout: 'Debugger attached.\n{}' }
   await ui.press({ key: 'refresh' })
   expect(
@@ -210,13 +237,96 @@ test('reopening keeps the marks on the rows they correct', async ($, on) => {
 
   await $.command.run(away())
   const again = await mount($, 'terminal')
-  expect((await again.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
-    /^skipped shop#7/,
-  )
-  expect((await again.find({ key: 'skip' }))?.text).toMatch(/unskip/)
+  expect(await line(again, SHOP7)).toMatch(/ skipped$/)
+  expect(await label(again, 'skip')).toBe('unskip')
 })
 
-test('⏎ reads what the JSON says, s and a ask first and mark the row, h works on it here', async ($, on) => {
+test('a click or Tab opens a row in place, with its reason and only the buttons it has', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect(
+      await ui.find({
+        type: 'Text',
+        text: 'waiting for review: awaywork PR is open',
+      }),
+    ).toBeTruthy()
+    expect(await label(ui, 'open')).toBe('open PR')
+    expect(await label(ui, 'skip')).toBe('skip')
+    expect(await ui.find({ key: 'approve' })).toBeFalsy()
+    expect(await ui.find({ key: 'here' })).toBeFalsy()
+
+    await ui.press({ key: SHOP8 })
+    expect(await line(ui, SHOP7)).toMatch(/^#7 /)
+    expect(await line(ui, SHOP8)).toMatch(/^▾ #8 /)
+    expect(await label(ui, 'open')).toBe('open issue')
+    expect(await label(ui, 'approve')).toBe('approve plan')
+
+    await $.ui.focus(focus(TICKET))
+    expect(await label(ui, 'open')).toBe('open')
+    expect(await ui.find({ key: 'approve' })).toBeFalsy()
+
+    // A rule takes `approved: true` items, so approving one it skipped can make it run.
+    await ui.press({ key: 'tab:skipped' })
+    expect(await label(ui, 'approve')).toBe('mark approved')
+    await ui.press({ key: 'tab:last' })
+    expect(await label(ui, 'report')).toBe('read report')
+    expect(await label(ui, 'here')).toBe('ask Claude here')
+    expect(await label(ui, 'approve')).toBe('mark approved')
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('Tab and the arrows go row to row, past the open row, whose buttons each have a hotkey', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  const hotkey = async (ui: Ui, key: string) => (await ui.find({ key }))?.props.hotkey
+  for (const surface of SURFACES) {
+    const ui = await mount($, surface)
+    expect([await hotkey(ui, 'open'), await hotkey(ui, 'skip')]).toEqual(['o', 's'])
+    await $.ui.focus(focus('open'))
+    expect(await line(ui, SHOP8)).toMatch(/^▾ #8 /)
+    expect(await hotkey(ui, 'approve')).toBe('a')
+
+    await ui.press({ key: 'approve' })
+    expect([await hotkey(ui, 'yes'), await hotkey(ui, 'no')]).toEqual(['y', 'n'])
+    await $.ui.focus(focus('yes'))
+    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
+    expect(await ui.find({ key: 'yes' })).toBeFalsy()
+
+    // The last row has none after it: the ring walks its buttons.
+    await $.ui.focus(focus('skip'))
+    expect(await line(ui, TICKET)).toMatch(/^▾ SHOP-12 /)
+
+    await ui.press({ key: 'tab:last' })
+    expect(await hotkey(ui, 'here')).toBe('h')
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('mark approved shows only while a rule for the item takes approved items', async ($, on) => {
+  const [first] = busyReport.plan.queue
+  const nested = { skill: 'implement', where: { any: [{ any: [{ approved: [true] }] }] } }
+  let queue: unknown[] = [first, { ...nested, source: 'jira' }]
+  engine(on, { 'report --json': () => ok({ ...busyReport, plan: { ...busyReport.plan, queue } }) })
+  await $.command.run(away())
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'tab:skipped' })
+  expect(await ui.find({ key: 'approve' })).toBeFalsy()
+  await ui.press({ key: 'tab:needs' })
+  await ui.press({ key: SHOP8 })
+  expect(await label(ui, 'approve')).toBe('approve plan')
+
+  queue = [first, nested]
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'tab:skipped' })
+  expect(await label(ui, 'approve')).toBe('mark approved')
+})
+
+test('s and a ask under the row and mark it, ⏎ on an open unit reads its report, h works on it here', async ($, on) => {
   const { calls } = engine(on, {
     'report --json': ok(busyReport),
     'report 20990101-050000 --unit acme-shop-3': { stdout: 'acme-shop-3: Pinned the clock' },
@@ -233,48 +343,40 @@ test('⏎ reads what the JSON says, s and a ask first and mark the row, h works 
   })
   await $.command.run(away())
   const ui = await mount($, 'terminal')
-  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(
-    /^waiting_for_review shop#7 Retry webhooks/,
-  )
-
-  await ui.press({ key: 'row:needs:github:acme/shop#8' })
-  expect(
-    await ui.find({ type: 'Text', text: /waiting for your approval of the plan awaywork posted/ }),
-  ).toBeTruthy()
-  expect(
-    await ui.find({ type: 'Text', text: /https:\/\/github.com\/acme\/shop\/issues\/8/ }),
-  ).toBeTruthy()
-  await ui.press({ key: 'back' })
-  expect(calls.every((argv) => argv[1] === 'report')).toBe(true)
 
   await ui.press({ key: 'skip' })
   expect(
     await ui.find({ type: 'Text', text: /skip github:acme\/shop#7 in the coming runs\?/ }),
   ).toBeTruthy()
+  expect(await ui.find({ key: 'open' })).toBeFalsy()
   await ui.press({ key: 'no' })
   expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
   await ui.press({ key: 'skip' })
   await ui.press({ key: 'yes' })
   expect(calls).toContainEqual(['awaywork', 'skip', 'github:acme/shop#7'])
   expect(await ui.find({ type: 'Text', text: /is skipped until awaywork unskip/ })).toBeTruthy()
-  expect((await ui.find({ key: 'row:needs:github:acme/shop#7' }))?.text).toMatch(/^skipped shop#7/)
-  expect((await ui.find({ key: 'skip' }))?.text).toMatch(/unskip/)
+  expect(await line(ui, SHOP7)).toMatch(/ skipped$/)
+  expect(await label(ui, 'skip')).toBe('unskip')
 
-  await $.ui.focus(focus('row:needs:github:acme/shop#8'))
+  await $.ui.focus(focus(SHOP8))
   await ui.press({ key: 'approve' })
   expect(
     await ui.find({ type: 'Text', text: /approve the plan on github:acme\/shop#8\?/ }),
   ).toBeTruthy()
+  await $.ui.focus(focus(SHOP7))
+  expect(await ui.find({ key: 'yes' })).toBeFalsy()
+  await $.ui.focus(focus(SHOP8))
+  await ui.press({ key: 'approve' })
   await ui.press({ key: 'yes' })
   expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#8'])
-  expect((await ui.find({ key: 'row:needs:github:acme/shop#8' }))?.text).toMatch(/^approved/)
+  expect(await line(ui, SHOP8)).toMatch(/ approved$/)
   await ui.press({ key: 'approve' })
   expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeTruthy()
 
   await ui.press({ key: 'tab:skipped' })
   expect(await ui.find({ type: 'Text', text: 'already approved' })).toBeFalsy()
   await $.ui.focus(focus('row:skipped:github:acme/shop#10'))
-  expect((await ui.find({ key: 'skip' }))?.text).toMatch(/unskip/)
+  expect(await label(ui, 'skip')).toBe('unskip')
   await $.ui.focus(focus('row:skipped:github:acme/shop#9'))
   await ui.press({ key: 'approve' })
   expect(
@@ -288,12 +390,14 @@ test('⏎ reads what the JSON says, s and a ask first and mark the row, h works 
   expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
 
   await ui.press({ key: 'tab:last' })
-  await ui.press({ key: 'row:last:acme-shop-3' })
+  await ui.press({ key: 'open:row:last:acme-shop-3' })
   expect(await ui.find({ type: 'Text', text: 'acme-shop-3: Pinned the clock' })).toBeTruthy()
   await ui.press({ key: 'back' })
+  await ui.press({ key: 'row:last:acme-shop-5' })
+  expect(calls.filter((argv) => argv[2] === '20990101-050000')).toHaveLength(1)
   await ui.press({ key: 'here' })
   expect(prompts).toEqual([
-    'continue awaywork unit acme-shop-3 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-3`',
+    'continue awaywork unit acme-shop-5 of run 20990101-050000; start with `awaywork report 20990101-050000 --unit acme-shop-5`',
   ])
   expect(calls.some((argv) => argv[1] === 'plan')).toBe(false)
 })

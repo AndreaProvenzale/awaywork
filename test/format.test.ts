@@ -10,11 +10,13 @@ import {
   formatSkipped,
   formatUnit,
   formatWhy,
+  groupOf,
   listedUnits,
   namedItems,
-  needsYouRows,
   pad,
   reportJson,
+  type SkipRow,
+  skipRows,
   statusMarker,
   warningLines,
   width,
@@ -26,7 +28,13 @@ import { formatReport, type RunReport, summaryOf, type UnitResult } from '../src
 import { builtinSkills } from '../src/core/skills.js'
 import type { Rule } from '../src/core/types.js'
 import { acmePlan, acmeRun, waitingSkip } from './fakes/acme.js'
-import { asanaTask, githubPr } from './fakes/items.js'
+import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
+
+/** The row of `acme/api#31` among the skips. */
+const row = (skipped: RunPlan['skipped'], clipAt?: number): SkipRow | undefined =>
+  skipRows(skipped, clipAt)
+    .flatMap(([, list]) => list)
+    .find((r) => r.ref === '#31')
 
 describe('clip', () => {
   it.each(['⌚️', '🇮🇹', '👍🏽'])('counts %s as one grapheme of two columns, never cut', (emoji) => {
@@ -264,8 +272,8 @@ describe('plan views', () => {
         1  api#1  #1    fix (built-in)  claude    draft_pr  PR 1
 
       Needs you 1
-        T-4  no repo: no linked PR or repo field
-             Task 4
+        asana T
+          T-4  Task 4  add repo
 
       Skipped 2: 1 no_rule, 1 over_cap
 
@@ -274,12 +282,10 @@ describe('plan views', () => {
     `)
   })
 
-  it('keeps a Needs you reason but the closest rule, and the rest, with the URL once, under --why', () => {
+  it('says review PR for an open awaywork PR, and the rest, with the URL once, under --why', () => {
     const plan = acmePlan()
     plan.skipped.push(waitingSkip())
-    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
-      'api#31  waiting for review: awaywork PR is open',
-    )
+    expect(row(plan.skipped)).toMatchObject({ ref: '#31', action: 'review PR', note: '' })
     expect(formatWhy(plan, githubPr(31))).toMatchInlineSnapshot(`
       "github acme/api#31  PR 31
         https://github.com/acme/api/pull/31
@@ -288,11 +294,21 @@ describe('plan views', () => {
     `)
   })
 
+  it('lines up Needs you within each group, so one long key leaves the other titles be', () => {
+    const plan = acmePlan()
+    const key = 'dep-api--opentelemetry-instrumentation-mongoose'
+    const item = fakeItem({ source: 'deps', key, title: 'Bump mongoose instrumentation' })
+    plan.skipped.push({ item, kind: 'gave_up', reason: 'gave up after 3 attempts' })
+    const text = formatPlan(plan)
+    expect(text).toContain('\n    T-4  Task 4  add repo\n')
+    expect(text).toContain(`\n    ${key}  Bump mongoose instrumentation  read logs\n`)
+  })
+
   it('keeps the date a gave_up reason gives in Needs you', () => {
     const plan = acmePlan()
     const reason = 'gave up after 3 attempts; next try on 2026-01-15'
     plan.skipped.push({ item: githubPr(31), kind: 'gave_up', reason })
-    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(`api#31  ${reason}`)
+    expect(row(plan.skipped)).toMatchObject({ action: 'read logs', note: reason })
   })
 
   it('names the PR awaywork pushed onto without its URL, and with it under --why', () => {
@@ -300,9 +316,7 @@ describe('plan views', () => {
     const url = 'https://github.com/acme/api/pull/31'
     const reason = `waiting for review: awaywork pushed onto your PR ${url}`
     plan.skipped.push({ item: githubPr(31), kind: 'waiting_for_review', reason, url })
-    expect(needsYouRows(plan.skipped)[1]?.lines[0]).toBe(
-      'api#31  waiting for review: awaywork pushed onto your PR',
-    )
+    expect(row(plan.skipped)?.note).toBe('awaywork pushed onto your PR')
     expect(formatWhy(plan, githubPr(31))).toBe(
       `github acme/api#31  PR 31\n  ${url}\n  skipped: waiting_for_review\n    waiting for review: awaywork pushed onto your PR`,
     )
@@ -318,14 +332,18 @@ describe('plan views', () => {
     )
   })
 
-  it("clips a Needs you row's reason and title at the given width, as the view asks", () => {
+  it("clips a skip row's note at the given width, as the view asks", () => {
     const plan = acmePlan()
-    const long = { ...waitingSkip(), reason: `no repo: ${'x'.repeat(80)}` }
+    const long = { ...waitingSkip(), reason: 'x'.repeat(80) }
     plan.skipped.push({ ...long, kind: 'no_repo' })
-    const [, row] = needsYouRows(plan.skipped)
-    expect(row?.lines[0]).toBe(`api#31  no repo: ${'x'.repeat(50)}…`)
-    const [, whole] = needsYouRows(plan.skipped, undefined, Number.POSITIVE_INFINITY)
-    expect(whole?.lines[0]).toBe(`api#31  no repo: ${'x'.repeat(80)}`)
+    expect(row(plan.skipped)?.note).toBe(`${'x'.repeat(59)}…`)
+    expect(row(plan.skipped, Number.POSITIVE_INFINITY)?.note).toBe('x'.repeat(80))
+  })
+
+  it('groups an item under the repo its key names, else its source and project key, else its source', () => {
+    expect(groupOf({ source: 'github', key: 'acme/api#7' })).toBe('acme/api')
+    expect(groupOf({ source: 'jira', key: 'PROJ-12' })).toBe('jira PROJ')
+    expect(groupOf({ source: 'asana', key: '1209876543' })).toBe('asana')
   })
 
   it('lists every skipped item, or those of one kind', () => {
@@ -441,8 +459,8 @@ describe('report views', () => {
            Retries the flaky upload test instead of sleeping.
 
       Needs you 1
-        T-4  no repo: no linked PR or repo field
-             Task 4
+        asana T
+          T-4  Task 4  add repo
 
       Skipped 2: 1 no_rule, 1 over_cap
 

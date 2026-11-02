@@ -1,7 +1,6 @@
 import { styleText } from 'node:util'
 import type { RunPlan } from '../core/foreman.js'
 import {
-  byKind,
   chains,
   needsYouOn,
   quotaLines,
@@ -10,19 +9,20 @@ import {
 } from '../core/report.js'
 import type { Item } from '../core/types.js'
 import {
+  byGroup,
   columns,
   formatWhy,
   graphemes,
   heading,
   listedUnits,
-  needsYouRows,
   pad,
   planUnitTable,
   providerLines,
   reportUnitTable,
   runHeader,
+  type SkipRow,
   skippedHeading,
-  skippedRows,
+  skipRows,
   warningBlock,
   width,
 } from './format.js'
@@ -33,6 +33,8 @@ export type Action = 'read' | 'open' | 'log' | 'diff' | 'skip' | 'approve'
 export interface Row {
   id: string
   text: string
+  /** Kept on screen at the row's end, in line with the other rows': an item's action. */
+  tail?: string
   /** Lines under the row, shown unless it's folded: a unit's summary, a section's column header. */
   more?: string[]
   children?: Row[]
@@ -95,24 +97,22 @@ const footerKeys: [string, Action, string][] = [
 
 const itemKey = (item: Item) => `${item.source}:${item.key}`
 
-const section = (id: string, title: string, children: Row[], more?: string[]): Row => ({
+const section = (id: string, title: string, n: number, children: Row[], more?: string[]): Row => ({
   id,
-  text: heading(title, children.length, style),
+  text: heading(title, n, style),
   children,
   more,
 })
 
-function skipRow(
-  plan: RunReport['plan'],
-  s: ReportedSkip,
-  [text = '', ...more]: string[],
-  id: string,
-): Row {
+/** A skip's row: its ref, padded to `refs`, its title and action, and the note under the title. */
+function skipRow(plan: RunReport['plan'], r: SkipRow, refs: number, id: string): Row {
+  const s = r.skipped
   const key = itemKey(s.item)
   return {
     id,
-    text,
-    more,
+    text: `${pad(r.ref, refs)}  ${r.title}`,
+    tail: style(needsYouOn(s) ? 'yellow' : 'dim', r.action),
+    more: r.note ? [style('dim', `${' '.repeat(refs + 2)}${r.note}`)] : undefined,
     act: {
       read: formatWhy(plan, s.item),
       open: s.url ?? s.item.url,
@@ -133,7 +133,7 @@ function warningSection(warnings: string[]): Row[] {
     const [text = '', ...more] = warningBlock(w)
     return { id: `warnings/${i}`, text, more }
   })
-  return [section('warnings', 'Warnings', rows)]
+  return [section('warnings', 'Warnings', rows.length, rows)]
 }
 
 // The view clips each line to the terminal, not each cell.
@@ -142,34 +142,35 @@ const whole = Infinity
 const nothing =
   'Nothing to run and nothing skipped; awaywork sources lists what your sources can see'
 
-/** Warnings, what needs you, the units, then the other skipped items: by kind, each kind folded, when there are several; a section only when it has rows. */
+/** Skips under a heading per repo or project, by action, their titles in line within each group. */
+function skipGroups(plan: RunReport['plan'], skipped: ReportedSkip[], id: string): Row[] {
+  return skipRows(skipped, whole).map(([group, list], g) => {
+    const refs = Math.max(...list.map((r) => width(r.ref)))
+    return {
+      id: `${id}/${group}`,
+      text: `${group} ${list.length}`,
+      children: list.map((r, i) => skipRow(plan, r, refs, `${id}/${g}/${i}`)),
+    }
+  })
+}
+
+/** Warnings, what needs you, the units, then the other skipped items, folded: each under a heading per repo; a section only when it has rows. */
 function sectionsOf(
   plan: RunReport['plan'],
   warnings: string[],
   units: Row[],
   empty = nothing,
 ): Row[] {
-  const needs = needsYouRows(plan.skipped, style, whole).map(({ skipped, lines }, i) =>
-    skipRow(plan, skipped, lines, `needs/${i}`),
-  )
+  const waiting = plan.skipped.filter(needsYouOn)
   const rest = plan.skipped.filter((s) => !needsYouOn(s))
-  const rows = (list: ReportedSkip[], id: string) =>
-    skippedRows(list, style, whole).map(({ skipped, lines }, i) =>
-      skipRow(plan, skipped, lines, `${id}/${i}`),
-    )
-  const kinds = byKind(rest) ?? []
-  const children =
-    kinds.length > 1
-      ? kinds.map(([kind, list]) => ({
-          id: `skipped/${kind}`,
-          text: `${kind} ${list.length}`,
-          children: rows(list, `skipped/${kind}`),
-        }))
-      : rows(rest, 'skipped')
+  const needs = skipGroups(plan, waiting, 'needs')
+  const skipped = skipGroups(plan, rest, 'skipped')
   const items = [
-    ...(needs.length ? [section('needs', 'Needs you', needs)] : []),
+    ...(waiting.length ? [section('needs', 'Needs you', waiting.length, needs)] : []),
     ...units,
-    ...(rest.length ? [{ id: 'skipped', text: skippedHeading(rest, style), children }] : []),
+    ...(rest.length
+      ? [{ id: 'skipped', text: skippedHeading(rest, style), children: skipped }]
+      : []),
   ]
   return [
     ...warningSection(warnings),
@@ -177,8 +178,16 @@ function sectionsOf(
   ]
 }
 
-const unitSection = (header: string, rows: Row[]) =>
-  rows.length ? [section('units', 'Units', rows, [header])] : []
+/** The units under a heading per repo, the table's header above them. */
+function unitSection(header: string, units: [repo: string, row: Row][]): Row[] {
+  if (units.length === 0) return []
+  const groups = byGroup(units, ([repo]) => repo).map(([repo, list]) => ({
+    id: `units/${repo}`,
+    text: `${repo} ${list.length}`,
+    children: list.map(([, row]) => row),
+  }))
+  return [section('units', 'Units', units.length, groups, [`  ${header}`])]
+}
 
 /** The first row under `row` that is no heading, and the headings to unfold to show it. */
 function firstLeaf(row: Row, path: string[] = []): { id: string; path: string[] } | undefined {
@@ -197,26 +206,29 @@ function triage(
   const items = sections.find((s) => s.id !== 'warnings')
   const first = items && firstLeaf(items)
   const open = new Set([
-    ...sections.filter((s) => s.id !== 'skipped').map((s) => s.id),
+    ...sections
+      .filter((s) => s.id !== 'skipped')
+      .flatMap((s) => [s.id, ...(s.children ?? []).filter((c) => c.children).map((c) => c.id)]),
     ...(first?.path ?? []),
   ])
   const selected = first?.id ?? ''
   return follow({ header, sections, actions, open, selected, top: 0, rows, marks: {} })
 }
 
-/** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items by kind. */
+/** The plan to browse: providers on top, then warnings, what needs you, the units and the skipped items, each under its repo. */
 export function planTriage(plan: RunPlan, warnings: string[], rows: number, empty?: string): State {
-  const { header, units } = planUnitTable(plan, style, whole)
+  const { header, units } = planUnitTable(plan, style, whole, true)
   const listed = listedUnits(plan)
-  const unitRows = units.map(([text = '', ...more], i): Row => {
+  const unitRows = units.map(([text = '', ...more], i): [string, Row] => {
     const top = listed[i]?.unit.items[0]
     const key = top && itemKey(top)
-    return {
+    const row = {
       id: `units/${i}`,
       text,
       more,
       act: { read: top && formatWhy(plan, top), open: top?.url, skip: key, approve: key },
     }
+    return [listed[i]?.unit.repo ?? '', row]
   })
   return triage(
     providerLines(plan, style),
@@ -233,7 +245,7 @@ export interface UnitFiles {
   diff?: string
 }
 
-/** A run to browse: its headline and quota on top, then warnings, what needs you, the units and the skipped items by kind. */
+/** A run to browse: its headline and quota on top, then warnings, what needs you, the units and the skipped items, each under its repo. */
 export function runTriage(
   r: RunReport,
   warnings: string[],
@@ -241,15 +253,15 @@ export function runTriage(
   rows: number,
   remote = false,
 ): State {
-  const { header, units } = reportUnitTable(r, true, whole)
+  const { header, units } = reportUnitTable(r, true, whole, true)
   const missing = (file: string) =>
     remote ? 'a run fetched from GitHub keeps only its report' : `this unit left no ${file}`
-  const unitRows = chains(r).map(({ head }, i): Row => {
+  const unitRows = chains(r).map(({ head }, i): [string, Row] => {
     const top = head.planned.unit.items[0]
     const key = top && itemKey(top)
     const pr = head.outcome && 'url' in head.outcome ? head.outcome.url : undefined
     const [text = '', ...more] = units[i] ?? []
-    return {
+    const row = {
       id: `units/${i}`,
       text,
       more,
@@ -263,6 +275,7 @@ export function runTriage(
       },
       why: { log: missing('worker.log'), diff: missing('diff') },
     }
+    return [head.planned.unit.repo, row]
   })
   return triage(
     [...runHeader(r, style), ...quotaLines(r)],
@@ -297,17 +310,30 @@ interface Line {
   /** The visible row the line belongs to. */
   at: number
   lead?: true
+  /** Kept on screen after the text: a row's tail, then its marks. */
+  tail?: string
+  /** The heading whose rows' tails line up. */
+  group?: string
 }
 
 function layout(s: State): Line[] {
   const lines: Line[] = []
-  visible(s).forEach(({ row, depth }, at) => {
+  visible(s).forEach(({ row, depth, parent }, at) => {
     if (depth === 0 && at > 0) lines.push({ text: '', at })
     const indent = '  '.repeat(depth)
     const fold = row.children ? (isOpen(s, row) ? '▾ ' : '▸ ') : ''
     const marks = s.marks[row.id] ?? []
-    const mark = marks.length ? `  ${style('yellow', marks.join(', '))}` : ''
-    lines.push({ text: `${indent}${fold}${row.text}${mark}`, at, lead: true })
+    const mark = marks.length ? style('yellow', marks.join(', ')) : ''
+    const text = `${indent}${fold}${row.text}`
+    if (row.tail)
+      lines.push({
+        text,
+        at,
+        lead: true,
+        tail: [row.tail, mark].filter(Boolean).join('  '),
+        group: parent,
+      })
+    else lines.push({ text: mark ? `${text}  ${mark}` : text, at, lead: true })
     if (!isOpen(s, row)) return
     const under = '  '.repeat(depth + (row.children ? 1 : 0))
     for (const more of row.more ?? []) lines.push({ text: `${under}${more}`, at })
@@ -451,14 +477,24 @@ export function settle(s: State, effect: Effect, outcome: { ok: boolean; message
 export function view(s: State, cols: number, rows: number): string[] {
   const height = bodyHeight(s, rows)
   const list = visible(s)
+  const lines = layout(s)
+  // Tails line up after the widest text of their group, and stay on screen when it's wider than the terminal.
+  const tailAt = new Map<string | undefined, number>()
+  for (const l of lines.filter((l) => l.tail))
+    tailAt.set(l.group, Math.max(tailAt.get(l.group) ?? 0, width(l.text) + 2))
+  const withTail = ({ text, tail, group }: Line) => {
+    if (!tail) return text
+    const at = Math.min(tailAt.get(group) ?? 0, cols - width(tail))
+    return `${pad(clipLine(text, at - 2), at)}${tail}`
+  }
   const body = s.help
     ? keyLines(s)
-    : layout(s)
-        .slice(s.top, s.top + height)
-        .map((line) => {
-          const selected = line.lead && list[line.at]?.row.id === s.selected
-          return selected ? `\u001b[7m${pad(clipLine(line.text, cols), cols)}\u001b[27m` : line.text
-        })
+    : lines.slice(s.top, s.top + height).map((line) => {
+        const selected = line.lead && list[line.at]?.row.id === s.selected
+        return selected
+          ? `\u001b[7m${pad(clipLine(withTail(line), cols), cols)}\u001b[27m`
+          : withTail(line)
+      })
   const filler = Array<string>(Math.max(0, height - body.length)).fill('')
   const status = s.help ? style('dim', 'any key closes the help') : (s.status ?? '')
   return [...headerLines(s, rows), '', ...body.slice(0, height), ...filler, footer(s), status]

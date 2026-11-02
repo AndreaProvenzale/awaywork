@@ -157,8 +157,8 @@ Reply here to answer: awaywork's next run takes this up again with your reply.
 
   ```
   Needs you 1
-    api#5  waiting for your answer
-           Add rate limits
+    acme/api
+      #5  Add rate limits  answer question
   ```
 
 - Any comment after it that the agent would see ends the wait: yours, or a teammate's. On GitHub that's an owner, member or collaborator of the repo; a tracker shows every comment on an item assigned to you. Bots don't count (GitHub's bots, Jira's apps, Linear's apps and integrations): a coverage report or an automation's comment after the questions shows in `item.md` but leaves the unit waiting. Asana and custom sources don't mark bots, so there an integration's comment ends the wait too. The next run takes the unit with the same rule, and `item.md` shows awaywork's comment headed `awaywork's questions`, the replies after it. On a rule with [`run: soon`](./configuration.md#run-soon) that's within minutes of your reply, not at the next window. A step that still can't go on asks again.
@@ -239,8 +239,9 @@ When awaywork won't go on, the run's report says `<why>: finish <PR> by hand`, t
 
 ```text
 Needs you 1
-  web#7  awaywork's draft says continue, but it moved from 1f8a231,…
-         Export screen
+  acme/web
+    #7  Export screen  finish by hand
+        awaywork's draft says continue, but it moved from 1f8a231,…
 ```
 
 The whys are `a stacked slice can't go on`, `awaywork goes on with its own draft on GitHub only`, `someone else opened or edited it last`, `it moved from <sha>, where awaywork left it` and `it continued 3 times`. The footer still holds the draft's [dependents](#tasks) back. Mark it ready to take it over: a ready PR, or a draft without a status in its footer, waits for your review like any awaywork PR. A `run: soon` run skips a `continue` as `goes on from <PR> in the next window run`.
@@ -304,8 +305,8 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 
   ```
   Needs you 1
-    ENG-2101  waiting for your approval of the plan
-              Export VAT report
+    tracker ENG
+      ENG-2101  Export VAT report  approve plan
   ```
 
 - **Approve** with a reply from your own account whose first line is `approve`, in any case; the lines below it are notes for the tasks. `awaywork approve <source:key> [notes]`, or `a` in the report, posts that reply for you, marked like every comment awaywork writes, through the same ownership check, and refuses a plan someone already answered:
@@ -703,7 +704,7 @@ On Bitbucket, checks are the build statuses on the PR's head commit, by name, re
 
 ## The morning report
 
-`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items folded by kind (right under Skipped when there's one kind, or none in a run from before skips had kinds), under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), the skipped kinds are unfolded one level, and `d` just said why it did nothing:
+`awaywork report` opens the last run from its `report.json`: a row per unit with its result and a line of what it concluded, what needs you, and the skipped items, folded, each under its repo, under each provider's long window before and after against the ceiling. Arrow through it, unfold what you care about, and read, open or skip things with one key. Here `web#3` is selected (it's in reverse video on your screen), Skipped is unfolded one level, and `d` just said why it did nothing:
 
 ```
 ☾ >_ awaywork  You're away, your agents work
@@ -714,27 +715,29 @@ away run (inside a window): session_max
 claude: seven_day 5% to 17%, ceiling 42.9%; session 2% to 31%, stop at 90%
 
 ▾ Needs you 1
-  T-4  no repo: no linked PR or repo field
-       Export invoices as CSV
+  ▾ tracker T 1
+    T-4  Export invoices as CSV  add repo
 
 ▾ Units 3
-     item   skill   status          result
-  1  api#1  fix     done, 14 turns  https://github.com/acme/api/pull/14
-     Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a 5…
-  2  web#3  fix     done, 9 turns   nothing
-     No code changes: the red check is the visual diff job, which fails on main too since #212.
-  3  api#2  review  done, 6 turns   report, verdict approve
-     Approve: the session cache keys on the user id and expires with the token.
+       item  skill   status          result
+  ▾ acme/api 2
+    1  #1    fix     done, 14 turns  https://github.com/acme/api/pull/14
+       Rate limits the public API with a token bucket per client key; bursts get a 429 instead of a…
+    3  #2    review  done, 6 turns   report, verdict approve
+       Approve: the session cache keys on the user id and expires with the token.
+  ▾ acme/web 1
+    2  #3    fix     done, 9 turns   nothing
+       No code changes: the red check is the visual diff job, which fails on main too since #212.
 
 ▾ Skipped 2: 1 no_rule, 1 over_cap
-  ▸ no_rule 1
-  ▸ over_cap 1
+  ▸ tracker T 1
+  ▸ acme/api 1
 
 ⏎ read  o open  l log  d diff  s skip  a approve  ? help  q quit
 diff: this unit left no diff
 ```
 
-The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run, without `l` and `d`: a plan has no logs or diffs yet. Rows run to the terminal's width; Needs you leaves out the closest rule, and `⏎` has it. It opens on the first Needs you item, else the first unit, else the first skipped one, and leaves out a section with nothing in it; when there's nothing at all, it says why instead. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
+The footer dims the keys the selected row has nothing behind, like `d` on a unit that committed nothing, or `l` on a run [from the runner](./scheduling.md#reports-from-the-runner), which keeps no logs. `awaywork plan` opens the same view on the next run, without `l` and `d`: a plan has no logs or diffs yet. Items sit under their repo, or their tracker and project key, so a row shows just `#3`. A skipped one ends on what it asks of you (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why it waits (`no rule`, `over cap`, ...), and Needs you lists a repo's items by that, so the PRs to review sit together. The line under it is what the reason says beyond that word, if anything, without the closest rule in Needs you; `⏎` has the whole of it. Rows run to the terminal's width, keeping that word on screen. It opens on the first Needs you item, else the first unit, else the first skipped one, and leaves out a section with nothing in it; when there's nothing at all, it says why instead. Both open at once, with a line per step while they load: a run fetched from GitHub, or for `plan` each source and provider, as in [Getting started](./getting-started.md#preview-the-next-run).
 
 | Key | Does |
 | --- | --- |
@@ -768,8 +771,8 @@ Units 3
      Approve: the session cache keys on the user id and expires with the token.
 
 Needs you 1
-  T-4  no repo: no linked PR or repo field
-       Export invoices as CSV
+  tracker T
+    T-4  Export invoices as CSV  add repo
 
 Skipped 2: 1 no_rule, 1 over_cap
 

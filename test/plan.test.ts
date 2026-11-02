@@ -114,8 +114,8 @@ describe('plan', () => {
         3  api#2  #3    review (built-in)     claude    report    PR 2
 
       Needs you 1
-        T-8  no repo: no linked PR or repo field
-             Task 8
+        asana T
+          T-8  Task 8  add repo
 
       Skipped 1: 1 no_rule
 
@@ -1336,7 +1336,7 @@ queue:
       },
     ])
     expect(needsYou.waiting_for_answer).toBe(true)
-    expect(formatPlan(waiting)).toContain('api#5  waiting for your answer\n')
+    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* answer question\n/)
   })
 
   it('runs again once a trusted comment replies after the questions', () => {
@@ -1399,7 +1399,7 @@ queue:
       },
     ])
     expect(needsYou.waiting_for_approval).toBe(true)
-    expect(formatPlan(waiting)).toContain('api#5  waiting for your approval of the plan\n')
+    expect(formatPlan(waiting)).toMatch(/ {4}#5 .* approve plan\n/)
   })
 
   it('fans an approved plan out into tasks, the card skipped with their states', () => {
