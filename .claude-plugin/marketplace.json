@@ -6,7 +6,7 @@
     {
       "name": "awaywork",
       "source": "./plugin",
-      "description": "Set up and tweak your awaywork queue: say what to offload, or have it suggested from your recent sessions, check the rules on your real PRs, issues and tasks, then write them"
+      "description": "/away: what awaywork did and what needs you, why an item did or didn't run, queue rules checked on your real items, and rules suggested from your recent sessions"
     }
   ]
 }

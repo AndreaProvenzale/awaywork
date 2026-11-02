@@ -1,26 +1,17 @@
 ---
 name: queue
-description: "Set up or tweak the developer's awaywork queue: the rules that pick which of their PRs, issues and tracker tasks coding agents work on while they're away. Use when they want awaywork to take on or stop some kind of work, or ask why it did or didn't run on an item."
+description: "Writes the developer's awaywork queue rules and checks them on their real items. Reached through the away skill, which routes here."
+user-invocable: false
 ---
 
 # awaywork queue
 
-awaywork runs coding agents headless on the developer's items, picked by the `queue` rules in its config. Turn what the developer wants offloaded into rules, check them on their real items, and write only what they accept. Docs: https://andreaprovenzale.github.io/awaywork/llms.txt
-
-## Ground rules
-
-- **No credentials through you.** Never ask for, print, read or write a token, nor open `~/.config/awaywork/env`. A source that isn't configured or can't authenticate is the developer's to fix: tell them to run `awaywork init`, or to set the variable the error names in that env file, and wait.
-- **No runs.** Never run `awaywork run`, `watch`, `schedule`, `approve`, `skip` or `unskip`; say the command instead.
-- **Real names only.** Projects, sections and statuses come from `awaywork sources`, labels and repos from the items or the developer, never from a guess.
-- **Check before writing.** The config changes only after `plan --rules --json` shows each rule takes what the developer described. Show them and wait for their yes; when they can't answer, write only the rules they asked for whose check holds no surprise, and say what you left out.
-- **Widening is shown on its own** (below). awaywork's guardrails are not config: it never merges, force-pushes, approves or touches someone else's branch, and writes only on the developer's own items. Don't look for a way around them.
-
-Pass `--config <path>` to every command when the developer uses one; otherwise awaywork reads `$AWAYWORK_CONFIG`, then `~/.config/awaywork/config.yml`.
+Turn what the developer wants offloaded into rules, check them on their real items, and write only what they accept. The ground rules in the [`away`](../away/SKILL.md#ground-rules) skill hold throughout: invoke it first if it isn't loaded.
 
 ## Set up
 
-1. **Find the config.** `awaywork` not on PATH: tell them `npm i -g awaywork`. No config: tell them to run `awaywork init` and come back. Read it. Queue rules are in https://andreaprovenzale.github.io/awaywork/guide/configuration.md#queue-rules, every key in https://andreaprovenzale.github.io/awaywork/reference/config.md. `awaywork config schema` is 120 KB: search it, don't read it whole.
-2. **Ask what to offload,** in their words: "my PRs with red CI", "bugs in QA", "review requests from my team". Don't make them speak YAML. On a first setup, when the `queue` is missing, empty or holds only rules of the default queue as `awaywork init` writes it (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#the-queue, a section or status maybe renamed), offer once before asking: you can read their recent agent sessions and PRs for work they already hand off by reflex and suggest rules from it, asking first what to read. On a yes, follow the suggest skill (`/awaywork:suggest`, or `../suggest/SKILL.md` beside this file); its picks come back to step 4.
+1. **Find the config.** No config: tell them to run `awaywork init` and come back. Read it. Queue rules are in https://andreaprovenzale.github.io/awaywork/guide/configuration.md#queue-rules, every key in https://andreaprovenzale.github.io/awaywork/reference/config.md. `awaywork config schema` is 120 KB: search it, don't read it whole.
+2. **Ask what to offload,** in their words: "my PRs with red CI", "bugs in QA", "review requests from my team". Don't make them speak YAML. On a first setup, when the `queue` is missing, empty or holds only rules of the default queue as `awaywork init` writes it (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#the-queue, a section or status maybe renamed), offer once before asking: you can read their recent agent sessions and PRs for work they already hand off by reflex and suggest rules from it, asking first what to read. On a yes, invoke the [`suggest`](../suggest/SKILL.md) skill; its picks come back to step 4.
 3. **Learn the names.** `awaywork sources --json`, or `awaywork sources <id> --json`, prints one object keyed by source id: `github` `login` and `orgs`; `asana` `workspaces` with `gid`, `name`, `projects` (`gid`, `name`) and `sections`; `linear` `teams` with `key`, `name`, `states`; `jira` `projects` (`key`, `name`) and `statuses`. A source it can't read goes to stderr as `<id>: <why>` and exits 1; a missing token is the first ground rule. The fields a `where` takes differ per source (`label` on GitHub, `labels` on Linear and Jira): https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#items, and an unknown key's config error lists them.
 4. **Draft on a copy.** Copy the config to `config.draft.yml` in the same folder (relative paths in it resolve from there) and edit the queue there. The first rule an item matches takes it, so order matters. With no `queue` key the default queue applies; a `queue` you write replaces it whole, so carry over the default rules the developer keeps. A rule looks like:
 

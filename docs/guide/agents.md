@@ -1,31 +1,31 @@
 ---
-description: Let a coding agent write your awaywork queue, with the Claude Code plugin or the skill it ships for Codex and friends, plus which commands are safe to run unattended and the machine-readable docs to read.
+description: Ask a coding agent what awaywork did and why, and let it write your awaywork queue, with the Claude Code plugin or the skill it ships for Codex and friends, plus which commands are safe to run unattended and the machine-readable docs to read.
 ---
 
 # With an AI agent
 
-You know what you want off your plate: red CI on your PRs, the bugs QA bounces back. Turning that into `where` clauses means learning every source's field names and your tracker's exact spelling of `In Progress`. Let your coding agent do it: the queue skill asks what you want offloaded, tries its rules on your real PRs, issues and tasks, shows you what each would take tonight, and writes only what you say yes to.
+You know what you want off your plate: red CI on your PRs, the bugs QA bounces back. Turning that into `where` clauses means learning every source's field names and your tracker's exact spelling of `In Progress`. Let your coding agent do it: the `away` skill asks what you want offloaded, tries its rules on your real PRs, issues and tasks, shows you what each would take tonight, and writes only what you say yes to.
 
 ## Claude Code
 
 ```text
 /plugin marketplace add AndreaProvenzale/awaywork
 /plugin install awaywork@awaywork
-/awaywork:queue
+/away
 ```
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces.
 
-Then say what you want in your own words, or ask about an item: "fix my PRs when CI goes red", "why didn't acme/api#12 run last night?". The skill:
+Bare `/away` is a short status: the last run's units and PRs, and what needs you. `/awaywork:away` is the same skill, for when another command already has the name. Then say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 
 - reads your config and learns real names with `awaywork sources --json`, so a section is spelled the way Asana spells it;
 - drafts rules on a copy beside your config and runs `awaywork plan --rules --json` on it, showing you the items each rule takes now, the ones another rule takes first, and the near misses with the condition they failed;
 - writes the rules you accept into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
 - starts a tweak from the item, with `awaywork plan --why <key>`, and shows the before and after.
 
-What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
+What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
 
-Not sure what to hand over? `/awaywork:suggest` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The queue skill offers it once, on a first setup.
+Not sure what to hand over? `/away what could you take off my plate?` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The skill offers it once, on a first setup.
 
 Asked to "fix my PRs when CI goes red, and implement my issues labelled skill-smoke" on a sandbox repo, it ran `sources`, tried the rules on a draft, hit `labels` (that's Linear's and Jira's field; GitHub's is `label`), fixed it from the config error, wrote the two rules under the existing one and ended with, trimmed:
 
@@ -54,24 +54,23 @@ To try it:
 
 ## Codex and friends
 
-The same skill ships in the npm package, at `plugin/skills/queue/SKILL.md`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
+The same skills ship in the npm package, in `plugin/skills/`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
 
 ```sh
 codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:queue`, next to `awaywork:suggest`; ask Codex to use one by name.
+It shows up in Codex's skill list as `awaywork:away`, next to `awaywork:queue` and `awaywork:suggest`, which it routes to; ask Codex to use it by name.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
 ```sh
 mkdir -p ~/.agents/skills
-ln -s "$(npm root -g)/awaywork/plugin/skills/queue" ~/.agents/skills/queue
-ln -s "$(npm root -g)/awaywork/plugin/skills/suggest" ~/.agents/skills/suggest
+for s in away queue suggest; do ln -s "$(npm root -g)/awaywork/plugin/skills/$s" ~/.agents/skills/$s; done
 ```
 
-No skills support? Tell the agent to read that `SKILL.md` and follow it.
+No skills support? Tell the agent to read `away/SKILL.md` and follow it.
 
 ## Prompt to paste
 
@@ -97,8 +96,9 @@ Machine-readable docs:
 | [`llms-full.txt`](https://andreaprovenzale.github.io/awaywork/llms-full.txt) | All pages in one file |
 | `<page>.md` | Any page as Markdown, e.g. [`guide/configuration.md`](https://andreaprovenzale.github.io/awaywork/guide/configuration.md) |
 | [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json) | The config's JSON Schema; `awaywork config schema` prints the installed version's |
-| [`SKILL.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | The queue skill: writing and checking rules on real items |
-| [`suggest/SKILL.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | The suggest skill: candidate rules from the user's own sessions and PRs, asked for every run |
+| [`away`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `/away` skill: status, why an item did or didn't run, and which skill handles the rest |
+| [`queue`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | Writing and checking rules on real items |
+| [`suggest`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
 
 Setting up:
 

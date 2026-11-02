@@ -122,7 +122,7 @@ Rather not write YAML? Tell your agent what to offload and it writes the rules, 
 ```text
 /plugin marketplace add AndreaProvenzale/awaywork
 /plugin install awaywork@awaywork
-/awaywork:queue
+/away fix my PRs when CI goes red
 ```
 
 Codex and friends get the same skill too: [With an AI agent](docs/guide/agents.md).
