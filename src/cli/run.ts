@@ -411,7 +411,13 @@ export async function printReport(
       console.log(`Running (or cut short): ${running.name}`)
       console.log(`Its stream: ${running.log}`)
     }
-  } else console.log(text)
+  } else console.log(json ? reflagged(text) : text)
+}
+
+/** A report.json through `reportJson` again, so a run an older awaywork wrote gets `needsYou` too. */
+function reflagged(text: string) {
+  const report = JSON.parse(text)
+  return reportJson(report, report.warnings)
 }
 
 /** A run from its report.json: the whole run, browsed or printed, one unit with the files it left, or its skipped items. */
