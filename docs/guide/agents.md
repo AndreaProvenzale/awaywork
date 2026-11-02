@@ -16,7 +16,32 @@ You know what you want off your plate: red CI on your PRs, the bugs QA bounces b
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces.
 
-Bare `/away` is a short status: the last run's units and PRs, and what needs you. `/awaywork:away` is the same skill, for when another command already has the name. Then say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
+Bare `/away` opens a pane beside the chat, straight from `awaywork report --json`:
+
+```text
+awaywork · last run 06:10 · 1 PR · 2 need you  r: refresh p: plan
+
+1: Needs you 2  2: Last run 2  3: Next run  4: Skipped 2
+
+waiting_for_review shop#7 Retry webhooks on 5xx
+  waiting for your review of awaywork PR #31
+waiting_for_approval shop#8 Split the checkout service
+  waiting for your approval of the plan awaywork posted
+
+⏎ read  o: open  s: skip  a: approve
+```
+
+It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else. Tab walks the rows, and on a row:
+
+- `⏎` reads it, from what's loaded: an item's skip reason as awaywork wrote it, with its link, a unit of the next run's items with their full titles and links, or `awaywork report <run> --unit <id>` for a unit of the last run. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
+- `o` opens its PR, or the item;
+- `s` skips the item in the coming runs, or unskips one you skipped;
+- `a` approves it: replies approve on the plan it waits on, or marks it approved for `approved: true` rules;
+- `h` hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
+
+`s` and `a` ask `y`/`n` first, saying what they'll do, then mark the row `skipped`, `unskipped` or `approved`: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+
+`/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 
 - reads your config and learns real names with `awaywork sources --json`, so a section is spelled the way Asana spells it;
 - drafts rules on a copy beside your config and runs `awaywork plan --rules --json` on it, showing you the items each rule takes now, the ones another rule takes first, and the near misses with the condition they failed;

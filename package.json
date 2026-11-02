@@ -45,6 +45,7 @@
     "format": "biome check --write . && prettier --write \"**/*.{md,yml,yaml}\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:plugin": "claude plugin validate plugin && claude plugin test plugin",
     "docs:gen": "node scripts/gen-docs.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs"
