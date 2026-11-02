@@ -308,12 +308,11 @@ const titles: Record<Tab, string> = {
 }
 
 const questions = {
-  skip: (key: string) => `skip ${key} in the coming runs? awaywork unskip undoes it`,
-  unskip: (key: string) => `unskip ${key}? the coming runs can take it again`,
-  approvePlan: (key: string) =>
-    `approve the plan on ${key}? awaywork replies approve on it, no undo`,
-  approve: (key: string) =>
-    `mark ${key} approved for approved: true rules, until a unit on it finishes? no undo`,
+  skip: (ref: string) => `skip ${ref} in the coming runs? awaywork unskip undoes it`,
+  unskip: (ref: string) => `unskip ${ref}? the coming runs can take it again`,
+  approvePlan: (ref: string) => `approve ${ref}'s plan? awaywork replies approve on it, no undo`,
+  approve: (ref: string) =>
+    `mark ${ref} approved for approved: true rules, until a unit on it finishes? no undo`,
 }
 
 const marked: Record<Action, Mark> = {
@@ -346,6 +345,7 @@ async function readRow($: EngineInterface, what: string[]) {
     ...v,
     status: undefined,
     reading: { title: `awaywork ${what.join(' ')}`, text },
+    at: 0,
   }))
 }
 
@@ -367,6 +367,68 @@ async function showTab($: EngineInterface, tab: Tab) {
   await update($, view, (v) => ({ ...v, tab, row: undefined, at: 0, status: undefined }))
 }
 
+type Key = { key: string; hotkey: string; label: string; run: () => unknown }
+
+/** The selected card's buttons: the confirm's yes and no, back from a report, or what the card can do. */
+function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
+  const { confirm } = v
+  if (confirm)
+    return [
+      { key: 'yes', hotkey: 'y', label: 'yes', run: () => act($, confirm.action, confirm.key) },
+      {
+        key: 'no',
+        hotkey: 'n',
+        label: 'no',
+        run: () =>
+          update($, view, (x) => ({
+            ...x,
+            confirm: undefined,
+            status: `not ${confirm.action === 'approve' ? 'approved' : `${confirm.action}ped`}`,
+          })),
+      },
+    ]
+  if (v.reading)
+    return [
+      {
+        key: 'back',
+        hotkey: 'b',
+        label: 'back',
+        run: () => update($, view, (x) => ({ ...x, reading: undefined, at: 0 })),
+      },
+    ]
+  const { url, report, here, ref } = row
+  const item = row.item && itemKey(row.item)
+  const mark = item ? v.marks?.[item] : undefined
+  const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : row.skip
+  const ask = (action: Action, question: string) => () =>
+    item &&
+    update($, view, (x) =>
+      action === 'approve' && mark?.approved
+        ? { ...x, status: 'already approved' }
+        : { ...x, confirm: { action, key: item, question } },
+    )
+  const plan = row.approve === 'plan'
+  const keys: (Key | '' | undefined)[] = [
+    url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
+    report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
+    skip && item && { key: 'skip', hotkey: 's', label: skip, run: ask(skip, questions[skip](ref)) },
+    row.approve &&
+      item && {
+        key: 'approve',
+        hotkey: 'a',
+        label: plan ? 'approve plan' : 'mark approved',
+        run: ask('approve', plan ? questions.approvePlan(ref) : questions.approve(ref)),
+      },
+    here && {
+      key: 'here',
+      hotkey: 'c',
+      label: 'ask Claude here',
+      run: () => $.prompt.submit({ text: here, asUser: true }),
+    },
+  ]
+  return keys.filter((b): b is Key => !!b)
+}
+
 const selected = (v: View, id: string): View => ({
   ...v,
   row: id,
@@ -376,7 +438,11 @@ const selected = (v: View, id: string): View => ({
   status: undefined,
 })
 
-const select = ($: EngineInterface, id: string) => update($, view, (v) => selected(v, id))
+// The card shown already keeps its question or report: the strip names it with every key it posts.
+async function select($: EngineInterface, id: string) {
+  const d = await read($, data)
+  await update($, view, (v) => (layout(d, v).row?.id === id ? v : selected(v, id)))
+}
 
 // In one update, so keys pressed in a row each step from where the last one left.
 async function step($: EngineInterface, by: number) {
@@ -388,16 +454,23 @@ async function step($: EngineInterface, by: number) {
   })
 }
 
+/** No `strip` when the pane is too short for its regions: the engine scrolls it then. */
 type Drawn = { press: Record<string, () => unknown>; strip?: [number, number]; detailMax: number }
 
 /** The last drawing's hotkeys, strip rows and detail end: `ui.scroll` and the strip's posts see no drawing. */
 let drawn: Drawn = { press: {}, detailMax: 0 }
 
 const scrollDetail = ($: EngineInterface, by: number) =>
-  update($, view, (v) => ({ ...v, at: Math.min(drawn.detailMax, Math.max(0, (v.at ?? 0) + by)) }))
+  drawn.strip
+    ? update($, view, (v) => ({
+        ...v,
+        at: Math.min(drawn.detailMax, Math.max(0, (v.at ?? 0) + by)),
+      }))
+    : $.ui.scroll({ to: by < 0 ? 'start' : 'end', in: PANE })
 
 const MIN_CARD = 24
 const MAX_ROWS = 28
+const MIN_DETAIL = 3
 
 /** Cards a page and their width: as many as fit MIN_CARD wide, stretched to fill the row. */
 function cardsFit(columns: number) {
@@ -458,10 +531,11 @@ export const register: Register = (on) => {
     return {}
   })
 
-  // The body fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
-  on('ui.scroll', { requestId: PANE }, async ($, e) => {
+  // A body that fits its window: the wheel over the strip steps the cards, anything else scrolls the detail.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    if (!drawn.strip) return next(e)
     const r = e.pointer?.row
-    const [top, bottom] = drawn.strip ?? [-1, -1]
+    const [top, bottom] = drawn.strip
     if (r !== undefined && r >= top && r <= bottom) await step($, Math.sign(e.by))
     else await scrollDetail($, e.by)
     return { deny: 'awaywork scrolls its own regions' }
@@ -470,19 +544,28 @@ export const register: Register = (on) => {
   on('ui.message', { element: 'cards' }, async ($, e) => {
     const m = e.data as { select?: string; key?: string }
     if (m.select) await select($, m.select)
-    else if (m.key === 'up' || m.key === 'down') await scrollDetail($, m.key === 'up' ? -1 : 1)
+    if (m.key === 'up' || m.key === 'down') await scrollDetail($, m.key === 'up' ? -1 : 1)
     else if (m.key === 'pageup' || m.key === 'pagedown')
       await scrollDetail($, m.key === 'pageup' ? -5 : 5)
-    else if (m.key) await drawn.press[m.key]?.()
+    else if (m.key) {
+      // The card's own keys as it is now: the select above may not be drawn yet.
+      const d = await read($, data)
+      const v = await read($, view)
+      const { row } = layout(d, v)
+      const own = row && cardButtons($, v, row).find((b) => b.hotkey === m.key)
+      await (own ? own.run() : drawn.press[m.key]?.())
+    }
     return {}
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const { Box, Text, Button } = els
-    // Every surface's table names every tag, drawing the ones it lacks as nothing: narrow to find Client.
+    // Every surface's table names every tag, drawing the ones it lacks as nothing.
     const Client =
-      e.surface === 'terminal' || e.surface === 'desktop' ? $.ui.resolve(e).Client : undefined
+      (e.surface === 'terminal' || e.surface === 'desktop') && 'Client' in els
+        ? els.Client
+        : undefined
     const d = await read($, data)
     const v = await read($, view)
     const width = e.props.bodyColumns
@@ -514,23 +597,28 @@ export const register: Register = (on) => {
       return <Button key={key} plain hotkey={hotkey} label={label} onPress={() => void run()} />
     }
 
-    const desktop = e.surface !== 'terminal'
-    const lead = `☾ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}`
+    const gap = e.surface === 'desktop' ? 'xs' : 0
     const needsYou = needs > 0 ? ` · ${needs} need you` : ''
+    const lead = `☾ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}${needsYou}`
+    // The buttons beside the line when both fit, else under it, the line cut: never a wrap to guess.
+    const headRows = lead.length + 2 + 'r: refresh p: plan'.length <= width ? 1 : 2
     const header = (
-      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        <Text>
+      <Box
+        flexDirection={headRows === 1 ? 'row' : 'column'}
+        justifyContent="space-between"
+        columnGap={2}
+      >
+        <Text wrap="truncate-end">
           <Text bold>☾ awaywork</Text>
           {facts.length > 0 && <Text dimColor> · {facts.join(' · ')}</Text>}
           {needs > 0 && <Text color="warning">{needsYou}</Text>}
         </Text>
-        <Box flexDirection="row" gap={1}>
+        <Box flexDirection="row" gap={1} flexShrink={0}>
           {button('refresh', 'r', 'refresh', () => refresh($))}
           {button('plan', 'p', 'plan', () => loadPlan($))}
         </Box>
       </Box>
     )
-    const headRows = rowsOf([lead + needsYou, 'r: refresh p: plan'], width)
 
     const label = (t: Tab) =>
       t === 'next' && !d.plan ? titles[t] : `${titles[t]} (${rows[t].length})`
@@ -565,7 +653,7 @@ export const register: Register = (on) => {
     const done = (body?: RenderChildren) => {
       drawn = { press, detailMax: 0 }
       return (
-        <Box flexDirection="column" rowGap={desktop ? 'xs' : 0}>
+        <Box flexDirection="column" rowGap={gap}>
           {header}
           {tabs}
           {rule}
@@ -584,7 +672,7 @@ export const register: Register = (on) => {
             no run yet: `awaywork run`, or wait for the schedule; p shows what the next one takes
           </Text>,
         )
-      if (d.noReport) return done(undefined) // the header says why
+      if (d.noReport) return done(<Text>{d.noReport}</Text>)
       return done(
         <Text>
           {d.plan ? 'the plan' : 'the last run'} found none of your items: `/away` and say what to
@@ -600,8 +688,6 @@ export const register: Register = (on) => {
     if (!row) return done(undefined)
 
     const at = list.indexOf(row)
-    const item = row.item && itemKey(row.item)
-    const mark = item ? v.marks?.[item] : undefined
     const { n, w } = cardsFit(width)
     // Client props are JSON: no undefined in them.
     const cards = list.map((r): Card => {
@@ -618,15 +704,15 @@ export const register: Register = (on) => {
     })
 
     const nav = (
-      <Box flexDirection="row" justifyContent="space-between">
-        <Text>
+      <Box flexDirection="row" justifyContent="space-between" columnGap={2}>
+        <Text wrap="truncate-end">
           <Text bold>{row.group}</Text>
           <Text dimColor>
             {'  '}
             {at + 1}/{list.length}
           </Text>
         </Text>
-        <Box flexDirection="row" gap={1}>
+        <Box flexDirection="row" gap={1} flexShrink={0}>
           {button('prev', 'h', '‹', () => step($, -1))}
           {button('nextCard', 'l', '›', () => step($, 1))}
         </Box>
@@ -672,77 +758,45 @@ export const register: Register = (on) => {
             .map((text) => ({ text, dim: true })),
         ]
 
-    // header, tabs, rule, nav, strip, buttons (2), rule, body, status.
+    const confirm = v.confirm
+    const question = confirm ? wrap(confirm.question, width) : []
+    const buttonRows = confirm ? question.length + 1 : 2
+
+    // header, tabs, rule, nav, strip, buttons, rule, body, status; too short for that, the engine scrolls it all.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
     const top = headRows + tabRows + 2
-    const room = Math.max(3, total - top - CARD_ROWS - 4)
+    const fits = total - top - CARD_ROWS - buttonRows - 2 >= MIN_DETAIL
+    const room = fits ? total - top - CARD_ROWS - buttonRows - 2 : body.length
     const detailMax = Math.max(0, body.length - room)
     const offset = Math.min(v.at ?? 0, detailMax)
     const shownBody = body.slice(offset, offset + room)
     const more = body.length - offset - room
 
-    const skip = mark?.skip ? (mark.skip === 'skipped' ? 'unskip' : 'skip') : row.skip
-    const ask = (action: Action, question: string) => () =>
-      item &&
-      update($, view, (x) =>
-        action === 'approve' && mark?.approved
-          ? { ...x, status: 'already approved' }
-          : { ...x, confirm: { action, key: item, question } },
-      )
-    const confirm = v.confirm
+    const keys = cardButtons($, v, row).map((b) => button(b.key, b.hotkey, b.label, b.run))
     const buttons = confirm ? (
       <Box flexDirection="column">
-        <Text wrap="truncate-end">{confirm.question}</Text>
+        {question.map((line) => (
+          <Text wrap="truncate-end">{line}</Text>
+        ))}
         <Box flexDirection="row" columnGap={2}>
-          {button('yes', 'y', 'yes', () => act($, confirm.action, confirm.key))}
-          {button('no', 'n', 'no', () =>
-            update($, view, (x) => ({
-              ...x,
-              confirm: undefined,
-              status: `not ${confirm.action === 'approve' ? 'approved' : `${confirm.action}ped`}`,
-            })),
-          )}
+          {keys}
         </Box>
-      </Box>
-    ) : v.reading ? (
-      <Box flexDirection="row">
-        {button('back', 'b', 'back', () =>
-          update($, view, (x) => ({ ...x, reading: undefined, at: 0 })),
-        )}
       </Box>
     ) : (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        {row.url && button('open', 'o', opens(row.url), () => openUrl($, row.url as string))}
-        {row.report &&
-          button('report', 'v', 'view report', () => readRow($, row.report as string[]))}
-        {skip && item && button('skip', 's', skip, ask(skip, questions[skip](item)))}
-        {row.approve &&
-          item &&
-          button(
-            'approve',
-            'a',
-            row.approve === 'plan' ? 'approve plan' : 'mark approved',
-            ask(
-              'approve',
-              row.approve === 'plan' ? questions.approvePlan(item) : questions.approve(item),
-            ),
-          )}
-        {row.here &&
-          button('here', 'c', 'ask Claude here', () =>
-            $.prompt.submit({ text: row.here as string, asUser: true }),
-          )}
+        {keys}
       </Box>
     )
 
-    drawn = { press, strip: [top, top + CARD_ROWS - 1], detailMax }
+    drawn = fits ? { press, strip: [top, top + CARD_ROWS - 1], detailMax } : { press, detailMax }
     return (
-      <Box flexDirection="column" height={total} rowGap={desktop ? 'xs' : 0}>
+      <Box flexDirection="column" height={fits ? total : undefined} rowGap={gap}>
         {header}
         {tabs}
         {rule}
         {nav}
         {strip}
-        <Box key="buttons" height={2}>
+        <Box key="buttons" height={buttonRows}>
           {buttons}
         </Box>
         {rule}

@@ -51,7 +51,7 @@ export type Tab = 'needs' | 'last' | 'next' | 'skipped'
 
 export type Action = 'skip' | 'unskip' | 'approve'
 
-/** What the pane did to an item, drawn on its rows since the loaded JSON can't show it. */
+/** What the pane did to an item, drawn on its cards since the loaded JSON can't show it. */
 export type Mark = { skip?: 'skipped' | 'unskipped'; approved?: true }
 
 export type View = {

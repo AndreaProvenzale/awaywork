@@ -63,9 +63,18 @@ const ok = (json: unknown) => ({ stdout: JSON.stringify(json) })
 
 type Engine = Parameters<TestBody>[0]
 
+type Size = { bodyColumns?: number; bodyRows?: number; placement?: 'dock' | 'inline' }
+
+const sized = ({ bodyColumns = 100, bodyRows = 30, placement = 'dock' }: Size = {}) => ({
+  ...PANE.props,
+  bodyColumns,
+  placement,
+  scroll: { offset: 0, bodyRows },
+})
+
 /** Draws the pane once the report /away started reading is in: a refresh settles with it. */
-async function mount<S extends Surface>($: Engine, surface: S) {
-  const ui = await $.ui.mount({ ...PANE, surface })
+async function mount<S extends Surface>($: Engine, surface: S, size?: Size) {
+  const ui = await $.ui.mount({ ...PANE, props: sized(size), surface })
   await ui.press({ key: 'refresh' })
   return ui
 }
@@ -277,10 +286,22 @@ test('the strip moves on a click or an arrow at once and hands every other key t
     await ui.key({ key: 'left', in: 'cards' })
     expect(await selected(ui)).toBe(SHOP8)
 
-    await ui.post({ key: 's' })
-    expect(await text(ui, /^skip github:acme\/shop#8 in the coming runs\?/)).toBe(true)
-    await ui.post({ key: 'n' })
+    await ui.post({ select: SHOP8, key: 's' })
+    expect(await text(ui, /^skip #8 in the coming runs\?/)).toBe(true)
+    await ui.post({ select: SHOP8, key: 'n' })
     expect(await text(ui, 'not skipped')).toBe(true)
+
+    // A move and a key in one frame are one post: the key acts on the card it names.
+    await ui.post({ select: API21, key: 's' })
+    expect(await selected(ui)).toBe(API21)
+    expect(await text(ui, /^skip #21 in the coming runs\?/)).toBe(true)
+    await ui.post({ select: API21, key: 'n' })
+
+    // A click past the last card of the last page picks nothing.
+    await ui.post({ select: API22 })
+    await ui.pointer({ type: 'down', x: 60, y: 2, button: 'left', in: 'cards' })
+    expect(await selected(ui)).toBe(API22)
+    await ui.post({ select: SHOP8 })
     expect(calls.some((argv) => argv[1] === 'skip')).toBe(false)
     await ui.post({ key: 'l' })
     expect(await selected(ui)).toBe(TICKET)
@@ -342,7 +363,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   const ui = await mount($, 'terminal')
 
   await ui.press({ key: 'skip' })
-  expect(await text(ui, /skip github:acme\/shop#7 in the coming runs\?/)).toBe(true)
+  expect(await text(ui, 'skip #7 in the coming runs? awaywork unskip undoes it')).toBe(true)
   expect([await hotkey(ui, 'yes'), await hotkey(ui, 'no')]).toEqual(['y', 'n'])
   expect(await ui.find({ key: 'open' })).toBeFalsy()
   await ui.press({ key: 'no' })
@@ -359,7 +380,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   // Another card drops the question.
   await ui.press({ key: 'nextCard' })
   await ui.press({ key: 'approve' })
-  expect(await text(ui, /approve the plan on github:acme\/shop#8\?/)).toBe(true)
+  expect(await text(ui, /approve #8's plan\? .* no undo$/)).toBe(true)
   await ui.press({ key: 'prev' })
   expect(await ui.find({ key: 'yes' })).toBeFalsy()
   await ui.press({ key: 'nextCard' })
@@ -372,7 +393,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
 
   await ui.press({ key: 'tab:skipped' })
   await ui.press({ key: 'approve' })
-  expect(await text(ui, /mark github:acme\/shop#9 approved for approved: true rules/)).toBe(true)
+  expect(await text(ui, /mark #9 approved for approved: true rules, .* no undo$/)).toBe(true)
   await ui.press({ key: 'yes' })
   expect(calls).toContainEqual(['awaywork', 'approve', 'github:acme/shop#9'])
   expect(calls.filter((argv) => argv[1] === 'approve')).toHaveLength(2)
@@ -459,6 +480,110 @@ test('every region keeps its height while you browse, ask and read', async ($, o
     await ui.press({ key: 'tab:needs' })
     await ui.unmount()
   }
+})
+
+test('the confirm shows its whole question, taking its rows from the detail', async ($, on) => {
+  engine(on, { 'report --json': ok(busyReport) })
+  await $.command.run(away())
+  for (const surface of ALL) {
+    // 26 columns: one card a page, the header on two rows, the tabs on four.
+    const ui = await mount($, surface, { bodyColumns: 26, bodyRows: 24 })
+    const heights = async () => [
+      (await ui.find({ type: 'Box' }))?.props.height,
+      (await ui.find({ key: 'buttons' }))?.props.height,
+      (await ui.find({ key: 'detail' }))?.props.height,
+    ]
+    expect(await heights()).toEqual([24, 2, 7])
+    await ui.press({ key: 'tab:skipped' })
+    await ui.press({ key: 'approve' })
+    const [asked] = ((await ui.find({ key: 'buttons' }))?.children ?? []) as { children: Node[] }[]
+    expect(asked?.children.slice(0, -1).map(shown)).toEqual([
+      'mark #9 approved for',
+      'approved: true rules,',
+      'until a unit on it',
+      'finishes? no undo',
+    ])
+    expect(await heights()).toEqual([24, 5, 4])
+    await ui.press({ key: 'no' })
+    expect(await heights()).toEqual([24, 2, 7])
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('v and b each show the detail from its top, wherever it was scrolled', async ($, on) => {
+  engine(on, {
+    'report --json': ok(busyReport),
+    'report 20990101-050000 --unit acme-shop-3': { stdout: REPORT_TEXT },
+  })
+  await $.command.run(away())
+  for (const surface of SURFACES) {
+    // The header takes two rows and the tabs four: the strip is rows 8 to 12, the detail four from 16.
+    const ui = await mount($, surface, { bodyColumns: 26, bodyRows: 21 })
+    await ui.press({ key: 'tab:last' })
+    expect(await detail(ui)).toEqual([
+      'Flaky cart test',
+      'fix · Pinned the clock in',
+      'the cart test',
+      '↓ 2 more',
+    ])
+    await wheel($, 7)
+    expect((await detail(ui))?.[0]).toBe('fix · Pinned the clock in')
+    await wheel($, 8)
+    expect(await selected(ui)).toBe('row:last:acme-shop-5')
+    await wheel($, 12, -1)
+    expect(await selected(ui)).toBe('row:last:acme-shop-3')
+
+    await wheel($, 13)
+    expect((await detail(ui))?.[0]).toBe('fix · Pinned the clock in')
+    await ui.press({ key: 'report' })
+    expect((await detail(ui))?.[0]).toBe('awaywork report 20990101-050000 --unit acme-shop-3')
+    await wheel($, 16, 3)
+    expect((await detail(ui))?.[0]).toBe('line 3')
+    await ui.press({ key: 'back' })
+    expect((await detail(ui))?.[0]).toBe('Flaky cart test')
+    await ui.press({ key: 'tab:needs' })
+    await ui.unmount()
+  }
+})
+
+test('a pane too short for the fixed regions draws them all and lets the engine scroll it', async ($, on) => {
+  engine(on, {
+    'report --json': ok(busyReport),
+    'report 20990101-050000 --unit acme-shop-3': { stdout: REPORT_TEXT },
+  })
+  const scrolled: number[] = []
+  on('ui.scroll', (_, e) => {
+    scrolled.push(e.by)
+    return {}
+  })
+  await $.command.run(away())
+  for (const surface of SURFACES)
+    for (const size of [
+      { bodyRows: 15 },
+      { bodyColumns: 76, bodyRows: 14, placement: 'inline' as const },
+    ]) {
+      const ui = await mount($, surface, size)
+      expect((await ui.find({ type: 'Box' }))?.props.height).toBeUndefined()
+      expect(await label(ui, 'tab:skipped')).toBe('Skipped (5)')
+      expect(await text(ui, /^acme\/shop {2}1\/6$/)).toBe(true)
+      expect(await wheel($, 6)).toEqual({})
+      expect(await selected(ui)).toBe(SHOP7)
+
+      await ui.press({ key: 'tab:last' })
+      await ui.press({ key: 'report' })
+      expect(await detail(ui)).toEqual([
+        'awaywork report 20990101-050000 --unit acme-shop-3',
+        ...REPORT_TEXT.split('\n'),
+      ])
+      await ui.press({ key: 'back' })
+      await ui.redraw(sized({ ...size, bodyRows: 30 }))
+      expect((await ui.find({ type: 'Box' }))?.props.height).toBe(28)
+      expect(await wheel($, 20)).toEqual({ deny: 'awaywork scrolls its own regions' })
+      await ui.press({ key: 'tab:needs' })
+      await ui.unmount()
+    }
+  expect(scrolled).toEqual([1, 1, 1, 1])
 })
 
 test('on a surface with no Client the cards are Buttons', async ($, on) => {

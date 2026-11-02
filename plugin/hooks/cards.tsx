@@ -63,17 +63,19 @@ const Cards: ClientModule<Props, true> = (p, s) => {
       const c = live.cards[i]
       if (i === live.at || !c) return
       moved = { at: i, from: live.from }
+      live.at = i
       s.setState(true)
       s.post({ select: c.id })
     }
     s.onKey((k) => {
       if (k.key === 'left' || (k.key === 'tab' && k.shift)) go(live.at - 1)
       else if (k.key === 'right' || k.key === 'tab') go(live.at + 1)
-      else s.post({ key: k.key })
+      // One post a frame, the later winning: each key names the card it is for.
+      else s.post({ select: live.cards[live.at]?.id ?? '', key: k.key })
     })
     s.onPointer((e) => {
-      if (e.type === 'down' && e.x % (live.w + 1) < live.w)
-        go(live.start + Math.floor(e.x / (live.w + 1)))
+      const i = live.start + Math.floor(e.x / (live.w + 1))
+      if (e.type === 'down' && e.x % (live.w + 1) < live.w && i < live.cards.length) go(i)
     })
     s.setState(true)
   }
