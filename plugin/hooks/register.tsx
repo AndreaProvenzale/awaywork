@@ -412,10 +412,20 @@ let pressers: Record<string, () => unknown> = {}
 /** The strip's rows in the body, as the last drawing laid it out. */
 let stripRows: [number, number] = [-1, -1]
 
-const CARD = 18
-const MAX_ROWS = 26
+const MIN_CARD = 24
+const MAX_ROWS = 28
 
-const perPage = (columns: number) => Math.max(1, Math.floor((columns + 1) / (CARD + 1)))
+/** Cards a page and their width: as many as fit MIN_CARD wide, stretched to fill the row. */
+function cardsFit(columns: number) {
+  const n = Math.max(1, Math.floor((columns + 1) / (MIN_CARD + 1)))
+  return { n, w: Math.floor((columns + 1) / n) - 1 }
+}
+
+/** A title in at most two lines, the second cut with an ellipsis. */
+function twoLines(title: string, width: number) {
+  const [first = '', ...rest] = wrap(title, width)
+  return rest.length ? [first, clip(rest.join(' '), width)] : [first]
+}
 
 function wrap(text: string, width: number): string[] {
   const out: string[] = []
@@ -517,12 +527,13 @@ export const register: Register = (on) => {
       return <Button key={key} plain hotkey={hotkey} label={label} onPress={() => void run()} />
     }
 
-    const lead = `awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}`
+    const desktop = e.surface !== 'terminal'
+    const lead = `☾ awaywork${facts.length ? ` · ${facts.join(' · ')}` : ''}`
     const needsYou = needs > 0 ? ` · ${needs} need you` : ''
     const header = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         <Text>
-          <Text bold>awaywork</Text>
+          <Text bold>☾ awaywork</Text>
           {facts.length > 0 && <Text dimColor> · {facts.join(' · ')}</Text>}
           {needs > 0 && <Text color="warning">{needsYou}</Text>}
         </Text>
@@ -558,14 +569,20 @@ export const register: Register = (on) => {
       shown.map((t) => `${order.indexOf(t) + 1}: ${label(t)}`),
       width,
     )
+    const rule = (
+      <Text dimColor wrap="truncate">
+        {'─'.repeat(width)}
+      </Text>
+    )
 
     const done = (body?: RenderChildren) => {
       pressers = press
       stripRows = [-1, -1]
       return (
-        <Box flexDirection="column" gap={1}>
+        <Box flexDirection="column" rowGap={desktop ? 'xs' : 0}>
           {header}
           {tabs}
+          {rule}
           {body}
           {v.status && <Text dimColor>{v.status}</Text>}
         </Box>
@@ -603,10 +620,12 @@ export const register: Register = (on) => {
       const m = r.item && v.marks?.[itemKey(r.item)]
       return m ? [m.skip, m.approved && 'approved'].filter(Boolean).join(', ') : r.word
     }
+    const { n, w } = cardsFit(width)
     // Client props are JSON: no undefined in them.
     const cards = list.map((r) => {
       const color = r.item && v.marks?.[itemKey(r.item)] ? 'warning' : r.color
-      return { id: r.id, ref: r.ref, word: wordOf(r), ...(color && { color }) }
+      const title = twoLines(r.item?.title ?? r.note, w - 4)
+      return { id: r.id, ref: r.ref, word: wordOf(r), title, ...(color && { color }) }
     })
 
     press.h = () => step($, -1)
@@ -627,56 +646,73 @@ export const register: Register = (on) => {
       </Box>
     )
 
-    const n = perPage(width)
     const start = Math.floor(at / n) * n
     const strip = Client ? (
       <Client
         key="cards"
         module="./cards.tsx"
-        props={{ cards, at, width }}
+        props={{ cards, at, n, w }}
         width={width}
-        height={4}
+        height={5}
       />
     ) : (
-      <Box flexDirection="row" columnGap={1} height={4}>
-        {cards.slice(start, start + n).map((c, i) => (
-          <Button key={`card:${c.id}`} label={`${c.ref} ${c.word}`} onPress={() => select($, c.id)}>
-            <Box
-              width={CARD}
-              height={4}
-              flexDirection="column"
-              paddingX={1}
-              borderStyle={start + i === at ? 'bold' : 'round'}
-              borderColor={start + i === at ? 'suggestion' : undefined}
-              borderDimColor={start + i !== at}
+      <Box flexDirection="row" columnGap={1} height={5}>
+        {cards.slice(start, start + n).map((c, i) => {
+          const picked = start + i === at
+          return (
+            <Button
+              key={`card:${c.id}`}
+              label={`${c.ref} ${c.word}`}
+              onPress={() => select($, c.id)}
             >
-              <Text bold={start + i === at} wrap="truncate-end">
-                {c.ref}
-              </Text>
-              <Text color={c.color} dimColor={!c.color} wrap="truncate-end">
-                {c.word}
-              </Text>
-            </Box>
-          </Button>
-        ))}
+              <Box
+                width={w}
+                height={5}
+                flexDirection="column"
+                paddingX={1}
+                borderStyle={picked ? 'bold' : 'round'}
+                borderColor={picked ? 'suggestion' : 'inactive'}
+              >
+                <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
+                  <Text bold={picked} wrap="truncate-end">
+                    {c.ref}
+                  </Text>
+                  <Box flexShrink={0}>
+                    <Text color={c.color} dimColor={!c.color}>
+                      {c.word}
+                    </Text>
+                  </Box>
+                </Box>
+                {c.title.map((line) => (
+                  <Text dimColor={!picked} wrap="truncate-end">
+                    {line}
+                  </Text>
+                ))}
+              </Box>
+            </Button>
+          )
+        })}
       </Box>
     )
 
-    // The detail: a line that stays, then rows the pane scrolls itself.
-    const title = v.reading ? v.reading.title : `${row.ref} · ${wordOf(row)}`
+    // The detail: rows the pane scrolls itself.
+    const reason = row.detail.length ? row.detail : [row.note]
     const body = v.reading
-      ? wrap(v.reading.text, width).map((text) => ({ text, dim: false }))
+      ? [
+          { text: v.reading.title, dim: true },
+          ...wrap(v.reading.text, width).map((text) => ({ text, dim: false })),
+        ]
       : [
           ...wrap(row.item?.title ?? '', width).map((text) => ({ text, dim: false })),
-          ...(row.detail.length ? row.detail : [row.note])
-            .filter(Boolean)
+          ...[...reason, row.url]
+            .filter((l): l is string => !!l)
             .flatMap((l) => wrap(l, width))
             .map((text) => ({ text, dim: true })),
         ]
 
-    // header, tabs, gap, nav, strip (4), gap, title, body, gap, buttons (2), status.
+    // header, tabs, rule, nav, strip (5), buttons (2), rule, body, status.
     const total = Math.min(e.props.scroll.bodyRows, MAX_ROWS)
-    const fixed = headRows + tabRows + 1 + 1 + 4 + 1 + 1 + 1 + 2 + 1
+    const fixed = headRows + tabRows + 1 + 1 + 5 + 2 + 1 + 1
     const room = Math.max(3, total - fixed)
     detailMax = Math.max(0, body.length - room)
     const offset = Math.min(v.at ?? 0, detailMax)
@@ -738,20 +774,18 @@ export const register: Register = (on) => {
     if (row.report && !v.reading) press.return = () => readRow($, row.report as string[])
 
     pressers = press
-    const top = headRows + tabRows + 1 + 1
-    stripRows = [top, top + 3]
+    const top = headRows + tabRows + 2
+    stripRows = [top, top + 4]
 
     return (
-      <Box flexDirection="column" height={total}>
+      <Box flexDirection="column" height={total} rowGap={desktop ? 'xs' : 0}>
         {header}
         {tabs}
-        <Text> </Text>
+        {rule}
         {nav}
         {strip}
-        <Text> </Text>
-        <Text wrap="truncate-end">
-          <Text bold>{clip(title, width)}</Text>
-        </Text>
+        <Box height={2}>{buttons}</Box>
+        {rule}
         <Box flexDirection="column" height={room}>
           {shownBody.map((l, i) => (
             <Text dimColor={l.dim} wrap="truncate-end">
@@ -759,8 +793,6 @@ export const register: Register = (on) => {
             </Text>
           ))}
         </Box>
-        <Text> </Text>
-        <Box height={2}>{buttons}</Box>
         <Text dimColor wrap="truncate-end">
           {v.status ?? ' '}
         </Text>
