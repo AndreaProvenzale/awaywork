@@ -19,34 +19,38 @@ On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaP
 Bare `/away` opens a pane beside the chat, straight from `awaywork report --json`:
 
 ```text
-awaywork · last run 06:10 · 1 PR · 5 need you  r: refresh p: plan
+☾ awaywork · last run 01:00 · 9 PRs · 14 need you
+r: refresh p: plan
+1: Needs you (14)  2: Last run (12)  3: Next run
+4: Skipped (30)
+──────────────────────────────────────────────────────────────
+acme/shop  1/14                                      h: ‹ l: ›
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ╭────────────────────────────╮
+┃ #101             review PR ┃ │ #109          approve plan │
+┃ Coupon codes with          ┃ │ Split the checkout service │
+┃ per-customer limits        ┃ │                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ╰────────────────────────────╯
+o: open PR  s: skip
 
-1: Needs you (5)  2: Last run (1)  3: Next run  4: Skipped (2)
-
-acme/sandbox
-  ▾ #169  Add codex model flag to the provider config      review PR
-    waiting for review: awaywork PR is open
-    o: open PR  s: skip
-  #168  Round cart discounts to the cent                   review PR
-  #167  Add toMinutes and toHours                          review PR
-  #166  Split the checkout service                      approve plan
-jira SHOP
-  SHOP-12  Migrate billing webhooks                  answer question
+──────────────────────────────────────────────────────────────
+Coupon codes with per-customer limits
+waiting for review: awaywork PR is open
+https://github.com/acme/shop/pull/401
 ```
 
 It lands on the first tab with something in it. Next run stays empty until you press `p`: `awaywork plan` probes your quota (one Haiku call) and reads your forge, so it waits to be asked; `r` reads the last run again, and nothing else.
 
-Items sit under their repo, or their tracker and project key, a line each: the ref, the title, and what the item asks of you (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why it waits (`no rule`, `over cap`, `skipped by you`, ...). Needs you lists a repo's items by that word, so the PRs to review sit together. A second line shows up only when the reason says more than the word, like the cap that's full.
+A tab is a strip of cards, a page at a time: items under their repo, or their tracker and project key, and Needs you lists a repo's by what they ask of you, so the PRs to review sit together. A card has the ref and that word (`review PR`, `answer question`, `approve plan`, `add repo`, ...) or why the item waits (`no rule`, `over cap`, `skipped by you`, ...), then the title. The line above it says whose card you're on and where (`acme/shop  1/14`). Under the strip sit the card's buttons, and under the rule its detail: the title, the whole reason and the link. Every part keeps its height, so nothing jumps while you browse. The wheel over the cards steps through them; anywhere else it scrolls the detail.
 
-One row is open at a time, with its whole reason and only the buttons it has. Click a row to open it: that's all the desktop app needs, where the prompt keeps the keyboard. In the terminal, Tab and the arrows go row to row, opening the one they land on, and its keys work right away:
+`h` and `l` step card to card while the pane has the keyboard, as it does when it opens. Click a card and the strip takes every key: ←/→ (or Tab) move at once, ↑/↓ scroll the detail and the letters still press their buttons, until Esc hands the keyboard back to the prompt. That's how the desktop app gets keys too, where the prompt keeps them otherwise. VS Code's cards take no keys: click a card's ref to pick it. The buttons are the card's own:
 
 - `o` opens its PR, issue or tracker item;
 - `s` skips the item in the coming runs, or unskips one you skipped;
 - `a` approves the plan the item waits on (`approve plan`), or, when one of your rules has `approved: true`, marks a last-run unit or a skipped item approved (`mark approved`);
-- `h` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`;
-- `⏎` on an open unit of the last run, or its `read report`, reads `awaywork report <run> --unit <id>`. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all.
+- `v` (`view report`) shows a last-run unit's `awaywork report <run> --unit <id>` in the detail, and `b` goes back. `/away why didn't <key> run?` gets the full `plan --why`, quota probe and all;
+- `c` (`ask Claude here`) hands a unit of the last run to this chat, which carries on from `awaywork report <run> --unit <id>`.
 
-`s` and `a` ask `yes`/`no` under the row first (`y` or `n`), saying what they'll do, then mark the row `skipped`, `unskipped` or `approved` in place of its word: the rows are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
+`s` and `a` ask `yes`/`no` in place of the buttons first (`y` or `n`), saying what they'll do, then mark the card `skipped`, `unskipped` or `approved` in place of its word: the cards are what the last run or `p` saw, so the next `p` is what shows the change. The pane never runs or schedules anything. No `awaywork` on your `PATH`, or one too old for `--json`, and it says so, with `npm i -g awaywork@latest`. Under `claude -p`, where nothing draws a pane, bare `/away` goes to the skill instead.
 
 `/away` with anything after it goes to the skill; `/awaywork:away` works the same, for when another command already has the name. Say what you want in your own words, or ask about an item: `/away fix my PRs when CI goes red`, `/away why didn't acme/api#12 run last night?`. The skill:
 
