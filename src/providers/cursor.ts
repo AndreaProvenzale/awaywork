@@ -9,7 +9,7 @@ import type { Job, McpServer, Provider, WorkerEvent } from '../core/types.js'
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
 const TOOLS = ['Shell(*)', 'Read(**)', 'Write(**)']
-/** Outside the runner's home, which the worker user can't enter; Cursor's installer won't run as root (docs/providers.md). */
+/** As the runner's user, not root, outside its home, which the worker user can't enter (docs/providers.md). */
 const INSTALL = [
   'sudo install -d -o "$USER" /opt/cursor',
   "HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'",

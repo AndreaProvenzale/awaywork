@@ -255,7 +255,7 @@ On a self-hosted runner the job runs on your machine, so the action keeps its ha
 
 ### Running Cursor
 
-Cursor's CLI has no npm package, so on a GitHub-hosted runner the action installs it with Cursor's own installer, which won't run as root: into `/opt/cursor`, which the worker user can read but not write, linked as `/usr/local/bin/agent`. `schedule install` puts that script in the workflow's `scripts` input, next to `packages`, and names `CURSOR_API_KEY` among the secrets:
+Cursor's CLI has no npm package, so on a GitHub-hosted runner the action installs it with Cursor's own installer, as the runner's user rather than root: into `/opt/cursor`, which the worker user can read but not write, linked as `/usr/local/bin/agent`. `schedule install` puts that script in the workflow's `scripts` input, next to `packages`, and names `CURSOR_API_KEY` among the secrets:
 
 ```yaml
 packages: "@anthropic-ai/claude-code"
