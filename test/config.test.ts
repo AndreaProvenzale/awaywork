@@ -745,6 +745,22 @@ repos: { acme/web: { instructions: mine.md } }
     }
   })
 
+  it('refuses a base that is not a map, naming the base', async () => {
+    const dir = await files({
+      'list/base.yml': '- providers: [claude]\n',
+      'list.yml': `extends: list/base.yml\n${base}`,
+      'empty/base.yml': '',
+      'empty.yml': `extends: empty/base.yml\n${base}`,
+    })
+    for (const name of ['list', 'empty']) {
+      const e = await error(join(dir, `${name}.yml`))
+      expect([e.path, e.problems]).toEqual([
+        join(dir, name, 'base.yml'),
+        ['expected a map of config keys'],
+      ])
+    }
+  })
+
   it('names the file each problem comes from', async () => {
     const dir = await files({
       'broken/base.yml': 'providers: [claude\n',

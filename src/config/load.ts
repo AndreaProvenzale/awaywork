@@ -68,11 +68,12 @@ function layers(text: string, path: string): [Layer, Layer?] {
     ])
   }
   const raw = yaml(baseText, basePath)
-  if (isRaw(raw) && raw.extends !== undefined)
+  if (!isRaw(raw)) throw new ConfigError(basePath, ['expected a map of config keys'])
+  if (raw.extends !== undefined)
     throw new ConfigError(path, [
       `extends: ${base} has an extends of its own; a base can't extend another config`,
     ])
-  if (isRaw(raw)) absolute(raw, dirname(basePath))
+  absolute(raw, dirname(basePath))
   return [config, { path: basePath, raw }]
 }
 
