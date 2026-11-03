@@ -9,8 +9,13 @@ import type { Job, McpServer, Provider, WorkerEvent } from '../core/types.js'
 /** Never `--force` or `--approve-mcps`: the allowlist in `cli-config.json` decides, and the clone's `.cursor/mcp.json` stays off. */
 const PRINT = ['-p', '--output-format', 'stream-json', '--trust']
 const TOOLS = ['Shell(*)', 'Read(**)', 'Write(**)']
-const HOSTED_RUNNER =
-  "Cursor's CLI has no npm package to install on a GitHub-hosted runner yet; run it locally or on a self-hosted runner"
+/** As the runner's user, not root, outside its home, which the worker user can't enter (docs/providers.md). */
+const INSTALL = [
+  'sudo install -d -o "$USER" /opt/cursor',
+  'curl -fsS https://cursor.com/install | HOME=/opt/cursor bash',
+  'sudo ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent',
+  'agent --version',
+].join('\n')
 
 /** The `HOME` of a run, fresh each time: with yours, Cursor loads your skills, MCP servers, hooks and rules. */
 const homeOf = (job: Job) => join(job.dir, AGENT_HOME)
@@ -24,10 +29,8 @@ export function cursorProvider(bin = 'agent'): Provider {
     credential: 'static',
     quota: 'credits',
     unattended: 'allowed',
-    package: '',
+    install: { script: INSTALL },
     secrets: ['CURSOR_API_KEY'],
-
-    unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
       const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()

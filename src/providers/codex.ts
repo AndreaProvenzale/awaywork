@@ -81,7 +81,7 @@ export function codexProvider(
     credential: 'rotating',
     quota: 'window',
     unattended: 'grey',
-    package: '@openai/codex',
+    install: { npm: '@openai/codex' },
     secrets: [],
 
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),

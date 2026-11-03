@@ -14,6 +14,9 @@ inputs:
   packages:
     description: Extra npm packages to install on a GitHub-hosted runner, such as the providers' CLIs, space-separated
     default: ""
+  scripts:
+    description: Bash scripts that install the providers' CLIs without an npm package on a GitHub-hosted runner, as the runner's user
+    default: ""
   unit:
     description: Item key to run alone, ignoring the windows; empty runs the plan
     default: ""
@@ -45,6 +48,13 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         PACKAGES: ${{ inputs.packages }}
+    # Through env, so a script is never part of an expression.
+    - name: Install by script
+      if: runner.environment == 'github-hosted'
+      shell: bash
+      run: bash -eo pipefail -c "$SCRIPTS"
+      env:
+        SCRIPTS: ${{ inputs.scripts }}
     # The machine's own installs and logins stay as they are; this folder is emptied every job.
     - name: Install for this job
       if: runner.environment != 'github-hosted'

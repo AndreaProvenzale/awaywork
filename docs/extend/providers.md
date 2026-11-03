@@ -30,7 +30,7 @@ interface Provider {
   credential: 'static' | 'rotating'         // a token, or a login file the CLI rewrites
   quota: 'window' | 'credits'               // expires unused, or monthly credits
   unattended: 'allowed' | 'grey' | 'forbidden'
-  package: string                           // npm package with the binary, for runners
+  install?: { npm: string } | { script: string }  // how a GitHub-hosted runner gets the binary
   secrets: string[]                         // env var names it reads unattended
   unavailable?(env): string | undefined     // why it can't run here, if it can't
   detect(): Promise<{ installed: boolean; version?: string }>
@@ -49,7 +49,8 @@ interface Provider {
 - `repoConfig` names files in the clone that make the binary run commands or allow it more, like Cursor's `.cursor/hooks.json`: on someone else's PR awaywork removes them before the run, git keeping their committed version. A gate's judge gets the same, since an agent wrote its clone, and on your own PR awaywork puts them back once the judge is done.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h session and `long` for the week or month. Return `null` when the quota can't be read; awaywork then applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and aborting, as `codex.ts` does.
-- `unavailable` returns a one-line reason where the provider can't run, as Codex and Cursor on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
+- `install` is how the action puts the binary on a GitHub-hosted runner: an npm package goes into its one `npm install -g`, a bash `script` runs as the runner's user, with sudo, before the worker user is made, as Cursor's does. Install outside the runner's home, which the worker can't enter, and nowhere the worker can write. A provider has an `install`, or is `unavailable` on a GitHub-hosted runner.
+- `unavailable` returns a one-line reason where the provider can't run, as Codex and a command provider on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
 
 [`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts) is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts) shows a rotating credential and a per-machine lock; [`cursor.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/cursor.ts) a `HOME` of its own, written by `prepare`.
 
@@ -64,7 +65,7 @@ The config schema, `init`, `doctor`, `plan` and `schedule install --with github-
 
 ## Test it
 
-- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`. A check that can't apply goes in its third argument, `exempt` (the command provider has no npm `package`, for one).
+- A fake binary in `test/fakes/<id>.mjs` that replays recorded output from `test/fixtures/<id>/`, and `providerContract(yourProvider(fakeBin), job)` from `test/contracts/provider.contract.ts`. A check that can't apply goes in its third argument, `exempt` (the command provider's config can't be empty, for one).
 - Unit tests for the event parser against the recorded streams.
 - A `test/real-<id>.test.ts` that spends a few turns of a real subscription, skipped unless `AWAYWORK_REAL=1`.
 

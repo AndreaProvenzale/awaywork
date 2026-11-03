@@ -98,7 +98,6 @@ export function commandProvider(
     credential: 'static',
     quota: 'window',
     unattended: 'grey',
-    package: '',
     secrets: cfg.secrets,
 
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
