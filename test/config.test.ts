@@ -217,6 +217,11 @@ describe('config', () => {
     expect(problems('providers: [gemini]\nsources: { github: { repos: [a/b] } }')).toEqual([
       'providers[0]: unknown provider "gemini"',
     ])
+    const named =
+      'providers: [cursor: { command: agent -p }]\nsources: { github: { repos: [a/b] } }'
+    expect(problems(named)).toEqual([
+      'providers[0].cursor: built in, so it takes no command; give your own provider another name',
+    ])
     expect(problems(`${minimal}queue: [{ skill: fix, provider: codex, source: asana }]`)).toEqual([
       'queue[0].source: source "asana" is not configured',
       'queue[0].provider: provider "codex" is not configured',

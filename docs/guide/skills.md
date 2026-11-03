@@ -4,7 +4,7 @@ description: The built-in awaywork skills, how skills are resolved, ejecting one
 
 # Skills
 
-A skill tells the worker what to do with a unit. Every skill is an [Agent Skills](https://agentskills.io) folder with a `SKILL.md`, so the same folder works for Claude Code and Codex.
+A skill tells the worker what to do with a unit. Every skill is an [Agent Skills](https://agentskills.io) folder with a `SKILL.md`, so the same folder works for Claude Code, Codex and Cursor.
 
 ## Built-in skills
 
@@ -37,7 +37,7 @@ A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`) uses its 
 
 On a runner, yours are the copy `schedule install --with github-actions` puts next to the repo's config: `.awaywork/skills/`.
 
-Claude Code gets the unit's skills as a plugin outside the clone (`--plugin-dir`), named `awaywork:<name>`, so they are callable on every unit, someone else's PR included. Codex gets them copied into the clone's `.agents/skills/`: a repo that already has a skill of that name there keeps it, except on someone else's PR, where awaywork's copy replaces it. `doctor` and `config edit` see user and built-in skills only, so they warn about a name they can't find; an in-repo skill resolves at run time, and a unit naming a skill that's nowhere fails with `unknown skill`.
+Claude Code gets the unit's skills as a plugin outside the clone (`--plugin-dir`), named `awaywork:<name>`, so they are callable on every unit, someone else's PR included; Cursor gets the same plugin through its own `--plugin-dir`. Codex gets them copied into the clone's `.agents/skills/`: a repo that already has a skill of that name there keeps it, except on someone else's PR, where awaywork's copy replaces it. `doctor` and `config edit` see user and built-in skills only, so they warn about a name they can't find; an in-repo skill resolves at run time, and a unit naming a skill that's nowhere fails with `unknown skill`.
 
 ## Tweak a built-in
 
@@ -50,7 +50,7 @@ The ejected copy shadows the built-in from then on.
 
 ## Bring your repo's skills
 
-Your repo already has skills for Claude Code or Codex? Name them in a rule scoped to that repo, no ejecting or copying. They only resolve at run time, so `doctor` and `config edit` warn about them; `config edit` saves anyway.
+Your repo already has skills for Claude Code, Codex or Cursor? Name them in a rule scoped to that repo, no ejecting or copying. They only resolve at run time, so `doctor` and `config edit` warn about them; `config edit` saves anyway.
 
 ```yaml
 queue:
@@ -61,9 +61,9 @@ queue:
 
 Not in top-level `skills`: that list joins every unit, on your other repos and on PRs someone else opened too, and there they fail with `unknown skill`.
 
-An extra skill that isn't yours, in `.awaywork/skills/` or built in, is looked up in the clone's `.claude/skills/`, then `.agents/skills/`. Those folders only fill in names: a rule's main skill never comes from them, so a repo's own `.claude/skills/implement` doesn't replace the built-in. To make one a main skill, move it to `.awaywork/skills/`. Like `.awaywork/skills/`, they are skipped on a PR someone else opened, where a unit naming one fails with `unknown skill`.
+An extra skill that isn't yours, in `.awaywork/skills/` or built in, is looked up in the clone's `.claude/skills/`, then `.agents/skills/`, then `.cursor/skills/`. Those folders only fill in names: a rule's main skill never comes from them, so a repo's own `.claude/skills/implement` doesn't replace the built-in. To make one a main skill, move it to `.awaywork/skills/`. Like `.awaywork/skills/`, they are skipped on a PR someone else opened, where a unit naming one fails with `unknown skill`.
 
-Claude Code loads `.claude/skills/` on its own anyway, so naming one there mostly matters for Codex, which gets a copy in `.agents/skills/`.
+Claude Code loads `.claude/skills/` on its own anyway, and Cursor all three, so naming one there mostly matters for Codex, which gets a copy in `.agents/skills/`.
 
 Skills the model reaches for by itself port fine: a TDD loop, a migration checklist, the rules for a tricky domain. Workflow skills don't: one that waits for your approval, fetches or posts through `gh`, or is marked `disable-model-invocation` has nobody to approve, no forge login, or can't be called at all. Keep the built-in for the job and port the standard instead, e.g. a rule's instruction file saying "review against `.claude/skills/pr-review/references/review-standard.md`".
 

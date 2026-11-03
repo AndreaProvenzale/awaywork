@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,9 +80,36 @@ describe('doctor', () => {
     expect(checks).toContainEqual({
       status: 'warn',
       what: path,
-      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills or .agents/skills; a run fails wherever it is missing`,
+      detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills, .agents/skills or .cursor/skills; a run fails wherever it is missing`,
     })
     expect(checks.at(-1)?.what).toBe('github')
+  })
+
+  it('fails Cursor without CURSOR_API_KEY, even with your login', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'providers: [cursor]\nsources: { github: { repos: [a/b] } }\n')
+    await symlink(join(import.meta.dirname, 'fakes', 'cursor.mjs'), join(dir, 'agent'))
+    vi.stubEnv('PATH', `${dir}:${process.env.PATH}`)
+    vi.stubEnv('CURSOR_API_KEY', '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', '')
+    const unset = await runChecks(path, () => {})
+    vi.stubEnv('CURSOR_API_KEY', 'key')
+    const set = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    const fail = {
+      status: 'FAIL',
+      what: 'cursor',
+      detail:
+        "2026.10.22-27dcf5f, CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
+    }
+    expect(unset.filter((c) => c.what === 'cursor')).toEqual([fail])
+    expect(set).not.toContainEqual(fail)
+    expect(set).toContainEqual({
+      status: 'ok',
+      what: 'cursor',
+      detail: '2026.10.22-27dcf5f, unattended: allowed, CURSOR_API_KEY set',
+    })
   })
 
   it("warns when a rule's on_done may meet a source that can't write", async () => {
@@ -320,6 +347,30 @@ describe('doctor on isolation', () => {
     expect(mounted.startsWith(join(runsDir, '.mount-check-'))).toBe(true)
     expect(await readFile(join(fakes, 'docker.ls'), 'utf8')).toBe('')
     expect(existsSync(mounted)).toBe(false)
+  })
+
+  it("checks the image for a provider's binary by its name, Cursor's agent", async () => {
+    const fakes = await mkdtemp(join(tmpdir(), 'awaywork-docker-'))
+    const docker = [
+      '#!/bin/sh',
+      'case "$*" in',
+      '  version*) echo 27.4.0;;',
+      '  *" agent --version") echo 2026.10.22-27dcf5f;;',
+      '  *--version) exit 127;;',
+      'esac',
+    ]
+    await writeFile(join(fakes, 'docker'), `${docker.join('\n')}\n`, { mode: 0o755 })
+    vi.stubEnv('FAKE_DOCKER', join(fakes, 'docker'))
+    const config = parseConfig(
+      'isolation: container\nproviders: [cursor]\nsources: { github: { repos: [acme/api] } }\nrepos: { acme/api: { image: acme/api:dev } }',
+    )
+    const checks = await containerChecks(config, process.env)
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'ok',
+      what: 'isolation',
+      detail: 'acme/api: acme/api:dev has cursor 2026.10.22-27dcf5f',
+    })
   })
 
   // Where the worker user exists, real-isolation.test.ts runs.

@@ -1,6 +1,6 @@
 ---
 layout: home
-description: awaywork spends idle AI coding-subscription quota while you sleep, running Claude Code, Codex and friends headless on red CI, review threads, QA feedback and plans, and leaves draft PRs and a morning report.
+description: awaywork spends idle AI coding-subscription quota while you sleep, running Claude Code, Codex, Cursor and friends headless on red CI, review threads, QA feedback and plans, and leaves draft PRs and a morning report.
 hero:
   name: awaywork
   text: You're away, your agents work
@@ -25,7 +25,7 @@ features:
   - title: Won't eat your morning
     details: Reads each agent's remaining quota before and during each run and stops at a ceiling you set, so the morning still has room.
   - title: Vendor binaries, your login
-    details: Runs the stock agent CLIs (Claude Code, Codex, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
+    details: Runs the stock agent CLIs (Claude Code, Codex, Cursor, more coming) headless with your own credentials. No API calls with a subscription token, no proxying.
   - title: Drafts, never merges
     details: Workers get no forge token. awaywork pushes only new branches and opens draft PRs, unless you opt in to ready ones or to fast-forward your own PR, and goes on with its own draft only from where it left it; it never force-pushes or merges, and comments only to ask questions or post a plan on your own items.
 ---

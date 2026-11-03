@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-> Your AI coding subscription resets every week, used or not. While you're away, awaywork puts Claude Code, Codex and friends to work.
+> Your AI coding subscription resets every week, used or not. While you're away, awaywork puts Claude Code, Codex, Cursor and friends to work.
 
 You log off with red CI, 11 PR comments and a QA ticket that just says "broken on Safari". Your coding agent logs off with 60% of its weekly quota unused. Both are a waste.
 
@@ -154,7 +154,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 | --- | --- | --- |
-| Claude Code, Codex (experimental, not on hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions, Docker |
+| Claude Code, Cursor (with a `CURSOR_API_KEY`, even locally), Codex (experimental, not on GitHub-hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions, Docker |
 
 More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/configuration.md#bitbucket-and-jira).
 

@@ -55,7 +55,7 @@ Daemon log: ~/.local/state/awaywork/watch.log
 - One opening, one run. A run that finishes early isn't started again in the same window; one started inside a window, after a reboot say, picks up there, and items it already worked on don't run again.
 - One daemon at a time: another copy exits right away with `awaywork watch is already running (pid 67014)`. That's what makes cron's restart line harmless.
 - Your manual run or the daemon's, not both: a manual `awaywork run` while the daemon has a run in progress exits 1 with `awaywork watch holds the run lock (pid 67014); try again once its runs end, awaywork schedule status lists them`. The other way round, a window opening during your manual run waits for it, checking every minute, and says so once in its log; a soon run waits for the next poll. A lock left by a dead process is taken over; `--dry-run` doesn't take it.
-- The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
+- The job keeps the `PATH` of the shell that installed it, so it finds the same `claude`, `codex`, Cursor's `agent` and `gh`. It runs the binary on that `PATH`, not a shell alias or function wrapping it.
 - Secrets come from `~/.config/awaywork/env`, since a scheduled job starts without your login shell's variables.
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
 - systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
@@ -235,6 +235,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
+| Cursor | `CURSOR_API_KEY` | A key from Cursor's dashboard |
 | [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
@@ -250,7 +251,22 @@ So run it one of two ways:
 - **Locally**, with launchd, systemd or cron, as in [On your machine](#on-your-machine).
 - **On a self-hosted runner**: a machine of yours [added as the control repo's runner](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners), logged in with `codex login` as the user the runner runs as. On a headless box, `codex login --device-auth` does it without a browser ([Codex's docs](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)). Pick self-hosted at _Which runner?_: the workflow says `runs-on: self-hosted` and keeps Codex, with no secret for it. Every self-hosted runner the repo can use matches that, an organization's too, so a colleague's box could pick up your job: give your runner a [label of its own](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/apply-labels) and add it, as in `runs-on: [self-hosted, alice-mac]`. Install says so while it's plain `self-hosted`, and keeps the labels on a re-run.
 
-On a self-hosted runner the job runs on your machine, so the action keeps its hands off it: no freeing disk, no provider CLIs installed over yours, no git config written. It installs awaywork alone into the job's temp dir, which the runner empties every job, and runs the `codex` and `claude` already on the runner's `PATH`, next to `git` and `gh`. A runner installed [as a service](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application) doesn't read your shell profile: its `PATH` is the one `./config.sh` saved to `.path` in the runner's folder, which [`runsvc.sh`](https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh) exports, and other variables sit in `.env` next to it. So a `codex` or `claude` from nvm or Homebrew can be missing there: configure the runner from a shell where `codex --version` works, or add their folders to `.path` and restart the service (`./svc.sh stop`, then `./svc.sh start`). Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub recommends self-hosted runners only for private repos, since a fork's pull request could otherwise run code on your machine: keep the control repo private.
+On a self-hosted runner the job runs on your machine, so the action keeps its hands off it: no freeing disk, no provider CLIs installed over yours, no git config written. It installs awaywork alone into the job's temp dir, which the runner empties every job, and runs the `codex`, `claude` and `agent` already on the runner's `PATH`, next to `git` and `gh`. A runner installed [as a service](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application) doesn't read your shell profile: its `PATH` is the one `./config.sh` saved to `.path` in the runner's folder, which [`runsvc.sh`](https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh) exports, and other variables sit in `.env` next to it. So a `codex` or `claude` from nvm or Homebrew can be missing there: configure the runner from a shell where `codex --version` works, or add their folders to `.path` and restart the service (`./svc.sh stop`, then `./svc.sh start`). Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub recommends self-hosted runners only for private repos, since a fork's pull request could otherwise run code on your machine: keep the control repo private.
+
+### Running Cursor
+
+Cursor's CLI has no npm package, so on a GitHub-hosted runner the action installs it with Cursor's own installer, as the runner's user rather than root: into `/opt/cursor`, which the worker user can read but not write, linked as `/usr/local/bin/agent`. `schedule install` puts that script in the workflow's `scripts` input, next to `packages`, and names `CURSOR_API_KEY` among the secrets:
+
+```yaml
+packages: "@anthropic-ai/claude-code"
+scripts: |
+  sudo install -d -o "$USER" /opt/cursor
+  curl -fsS https://cursor.com/install | HOME=/opt/cursor bash
+  sudo ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent
+  agent --version
+```
+
+On a self-hosted runner it runs the `agent` already on the runner's `PATH` instead. Either way it gets the `CURSOR_API_KEY` secret the workflow passes, as it needs one everywhere: a login on the machine doesn't reach the fresh `HOME` it runs in.
 
 ## In a container
 

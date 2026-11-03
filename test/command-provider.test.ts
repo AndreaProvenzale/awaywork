@@ -48,7 +48,7 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 }
 
 // Its config is its command, and it installs nothing: the CLI is your own.
-providerContract(commandProvider('x', cfg()), job, ['emptyConfig', 'package'])
+providerContract(commandProvider('x', cfg()), job, ['emptyConfig'])
 
 describe('command provider config', () => {
   it('takes a name of your own with a command and budget', () => {

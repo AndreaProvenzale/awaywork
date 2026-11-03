@@ -22,6 +22,8 @@ export interface Workflow {
   /** The awaywork version the runner installs; the action is pinned to its release tag. */
   version: string
   packages: string[]
+  /** Bash scripts installing the providers' CLIs that have no npm package. */
+  scripts?: string[]
   secrets: string[]
   /** Command sources' setup scripts, run in the config's folder. */
   setup: string[]
@@ -39,6 +41,9 @@ export function workflow(w: Workflow): string {
     (script) =>
       `      - working-directory: ${dirname(w.config)}\n        run: |\n${indent(script, 10)}\n`,
   )
+  const scripts = w.scripts?.length
+    ? `          scripts: |\n${indent(w.scripts.join('\n'), 12)}\n`
+    : ''
   const runsOn = w.runsOn ?? 'ubuntu-latest'
   const timeout = runsOn === 'ubuntu-latest' ? HOSTED_JOB_MINUTES : SELF_HOSTED_JOB_MINUTES
   const crons = utcStarts(w.starts, w.timezone).map(
@@ -73,7 +78,7 @@ ${secrets.length ? `        env:${secrets.join('')}\n` : ''}        with:
           config: ${w.config}
           version: ${w.version}
           packages: ${JSON.stringify(w.packages.join(' '))}
-          unit: \${{ inputs.unit }}
+${scripts}          unit: \${{ inputs.unit }}
 `
 }
 

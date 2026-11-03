@@ -58,6 +58,24 @@ describe('worker', () => {
     expect(result.lines).toEqual(['turn 1', 'turn 2', 'turn 3'])
   })
 
+  it('prepares the job before the run', async () => {
+    const order: string[] = []
+    const fake = fakeProvider()
+    const provider = {
+      ...fake,
+      prepare: async () => void order.push('prepare'),
+      async *run(j: typeof job, signal: AbortSignal) {
+        order.push('run')
+        yield* fake.run(j, signal)
+      },
+    }
+    await runWorker(provider, job, allowance(budget, quota, now, windows), {
+      log: () => {},
+      watch: () => idle,
+    })
+    expect(order).toEqual(['prepare', 'run'])
+  })
+
   it("stops once the long window reaches the run's ceiling", async () => {
     const result = await run(allowance({ ...budget, per_run: 0 }, quota, now, windows))
     expect(result).toMatchObject({

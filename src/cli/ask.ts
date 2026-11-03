@@ -61,8 +61,12 @@ export const terminalAsk: Ask = {
  */
 export function defaultAsk(presets: [RegExp, unknown][], note: (message: string) => void): Ask {
   const asked = new Set<string>()
-  const answer = <T>(message: string, fallback: T): T => {
-    if (asked.has(message)) throw new Cancelled(`no default for "${message}"`)
+  const answer = <T>(message: string, fallback: T, choices: Choice[] = []): T => {
+    const hints = choices.flatMap((c) => (c.hint ? [`${c.value} ${c.hint}`] : []))
+    if (asked.has(message))
+      throw new Cancelled(
+        `no default for "${message}"${hints.length ? `: ${hints.join(', ')}` : ''}`,
+      )
     asked.add(message)
     const preset = presets.find(([pattern]) => pattern.test(message))
     return preset ? (preset[1] as T) : fallback
@@ -71,7 +75,7 @@ export function defaultAsk(presets: [RegExp, unknown][], note: (message: string)
     text: async (message, opts = {}) => answer(message, opts.initial ?? ''),
     select: async (message, choices, initial) =>
       answer(message, initial ?? (choices[0]?.value as never)),
-    multiselect: async (message, _, initial) => answer(message, initial ?? []),
+    multiselect: async (message, choices, initial) => answer(message, initial ?? [], choices),
     confirm: async (message, initial = true) => answer(message, initial),
     secret: async (name) => {
       throw new Error(`${name} is not set`)

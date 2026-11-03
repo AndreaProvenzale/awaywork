@@ -41,10 +41,13 @@ export const AWAYWORK_ENV = [
   'ENABLE_CLAUDEAI_MCP_SERVERS',
   'AWAYWORK_PROMPT',
   'AWAYWORK_FROM',
+  'AGENT_CLI_CREDENTIAL_STORE',
 ]
 
 /** The container's `HOME`, in the clone and gone with it: what setup installs there reaches the chain's agents and checks, never another chain. */
 export const CONTAINER_HOME = '.away/home'
+/** A provider's own `HOME` for its binary, written afresh before each run, whatever the isolation; see `LaunchOptions`. */
+export const AGENT_HOME = '.away/agent-home'
 
 let worker: string | undefined
 /** The worker's `HOME` in the phase that runs now. */
@@ -62,6 +65,9 @@ let dockerTimeout = DOCKER_TIMEOUT_MS
 /** Containers a removal of timed out on. */
 const unanswered = new Set<string>()
 
+/** With `home`, the process runs with that `HOME` whatever the isolation; unset, the isolation's. */
+export type LaunchOptions = Options & { home?: string }
+
 export interface Box {
   /** The repo's image, with the agent CLIs and its toolchain. */
   image: string
@@ -78,7 +84,7 @@ export interface Box {
  * `container` starts it in a fresh container, removed once its client exits, since killing that stops nothing inside.
  * Once it's both stopped by its `cancelSignal` and exited, its output closes a moment later, whatever still holds it.
  */
-export function launch<O extends Options>(file: string, args: readonly string[], options: O) {
+export function launch<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
   const subprocess = start(file, args, options)
   const { pid } = subprocess
   if (pid) {
@@ -111,11 +117,13 @@ function closeOutputOnceStopped(child: ChildProcess, signal?: AbortSignal): void
   )
 }
 
-function start<O extends Options>(file: string, args: readonly string[], options: O) {
+function start<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
   if (boxed) return inContainer(file, args, options)
-  if (!worker) return execa(file, args, options)
+  const { home, ...rest } = options
+  if (!worker)
+    return execa(file, args, (home ? { ...rest, env: { ...rest.env, HOME: home } } : rest) as O)
   const subprocess = execa(bin('sudo'), sudoArgs(worker, file, args, options), {
-    ...options,
+    ...rest,
     shell: false,
   } as O)
   subprocess.nodeChildProcess.once('exit', () => void killWorker())
@@ -124,7 +132,8 @@ function start<O extends Options>(file: string, args: readonly string[], options
 
 export type Launch = typeof launch
 
-function inContainer<O extends Options>(file: string, args: readonly string[], options: O) {
+function inContainer<O extends LaunchOptions>(file: string, args: readonly string[], options: O) {
+  const { home: _, ...rest } = options
   const dir = String(options.cwd)
   const box = boxes.get(dir)
   if (!box) throw new Error(`no container for ${dir}`)
@@ -132,7 +141,7 @@ function inContainer<O extends Options>(file: string, args: readonly string[], o
   const env = options.extendEnv === false ? options.env : { ...process.env, ...options.env }
   started.add(name)
   const subprocess = execa(bin('docker'), dockerArgs(name, box, file, args, options), {
-    ...options,
+    ...rest,
     shell: false,
     env: { ...process.env, ...env },
     extendEnv: false,
@@ -189,7 +198,7 @@ export function dockerArgs(
   box: Box,
   file: string,
   args: readonly string[],
-  options: Options,
+  options: LaunchOptions,
 ): string[] {
   const dir = String(options.cwd)
   const env = (options.extendEnv === false ? options.env : { ...process.env, ...options.env }) ?? {}
@@ -216,7 +225,7 @@ export function dockerArgs(
     ...mount(dir),
     ...plugin,
     '-e',
-    `HOME=${join(dir, CONTAINER_HOME)}`,
+    `HOME=${options.home ?? join(dir, CONTAINER_HOME)}`,
     ...names.flatMap((name) => ['-e', name]),
     box.image,
     ...command,
@@ -276,7 +285,12 @@ function removeContainers(names: string[]): Promise<boolean> {
 export const stopContainers = () => removeContainers([...started])
 
 /** sudo's argv running `file` as `user`: the env's names go on it, its values stay in sudo's env, which no other user can read. */
-export function sudoArgs(user: string, file: string, args: readonly string[], options: Options) {
+export function sudoArgs(
+  user: string,
+  file: string,
+  args: readonly string[],
+  options: LaunchOptions,
+) {
   const env = options.extendEnv === false ? options.env : { ...process.env, ...options.env }
   const names = Object.keys(env ?? {}).filter(
     (name) =>
@@ -284,10 +298,11 @@ export function sudoArgs(user: string, file: string, args: readonly string[], op
       !sudoSets.includes(name) &&
       !developerFolders.includes(name),
   )
+  const home = options.home ?? phaseHome
   const unset = [
     '/usr/bin/env',
     ...developerFolders.flatMap((name) => ['-u', name]),
-    ...(phaseHome ? [`HOME=${phaseHome}`] : []),
+    ...(home ? [`HOME=${home}`] : []),
   ]
   // sudo looks a bare name up on its own secure_path, not the env's PATH.
   const command = options.shell
