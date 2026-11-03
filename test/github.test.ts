@@ -422,7 +422,8 @@ describe('github source', () => {
       mine: true,
       trusted: true,
     }
-    expect(pr1?.linkedPrs).toEqual([link])
+    // Only a PR's own search reads its base's head.
+    expect(pr1?.linkedPrs).toEqual([{ ...link, intoHead: 'def5678' }])
     expect(issue5?.linkedPrs).toEqual([link])
     expect(issue6?.linkedPrs).toEqual([])
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })

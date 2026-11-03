@@ -522,7 +522,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let cut = false
     let previous: Previous | undefined
     let verdict: string | undefined
-    // The base's head awaywork's own merge brought in, the one merge publishing lets through.
+    // The merge commit awaywork made itself, the one head a merging unit may push.
     let merged: string | undefined
     let ran = false
     let interrupted = false
@@ -650,7 +650,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
 
     /**
      * A merging skill's one step: awaywork merges the PR's base `into` the clone itself, with no worker or
-     * provider. Setup runs only when there's a `verify` to need it; a clean merge publishes as a push.
+     * provider, before setup runs. Setup runs then only when there's a `verify` to need it; a clean merge publishes as a push.
      */
     const mergeStep = async (p: PlannedUnit, into: string) => {
       const unit = { ...p.unit, ...shape }
@@ -670,8 +670,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         cloned = from = original = await head(dir)
         rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
         if (input.dryRun) return
+        // Before setup runs, on a fresh git config as a gate's: only the branch and its base, as cloned, steer the merge.
+        const env = await gateEnv(input.ctx.env, dir, secrets)
+        const merge = await mergeBase(dir, into, unit.base, env, log)
         const settings = input.config.repos[unit.repo]
-        if (unit.verify && settings?.setup && !unit.untrusted) {
+        if (merge.kind === 'merged' && unit.verify && settings?.setup && !unit.untrusted) {
           const own = unit.foreign || pickedUp ? [] : settings.secrets
           const env = setupEnv(input.ctx.env, dir, secrets, own)
           const options = { secrets: own, signal: input.signal, until: input.until }
@@ -685,12 +688,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           await restoreGit(dir)
         }
         await baseline(dir)
-        // Setup may have written the clone's `.away/gitconfig`: the merge reads a fresh one, as a gate does.
-        const env = await gateEnv(input.ctx.env, dir, secrets)
-        const merge = await mergeBase(dir, into, unit.base, env, log)
         result.status = 'done'
         if (merge.kind === 'merged') {
-          merged = merge.head
+          merged = merge.commit
           ran = true
           result.made = `a merge of ${counted(merge.commits, 'commit')}`
         } else

@@ -62,7 +62,7 @@ const git = async (dir: string, ...args: string[]) =>
  * Delivers a finished unit: a PR only with commits, a PR body and a branch new to the remote, a draft
  * unless it's `deliver: pr` and nothing left it `notReady`, its footer recording what it left a later run when `held`;
  * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch;
- * no merge among the commits, but the one of the PR's base awaywork made itself, the unit's `merged`;
+ * no merge among the commits, but on a merging unit only the merge of the PR's base awaywork made itself, the unit's `merged`;
  * on a unit that resumes awaywork's own draft, a fast-forward onto its branch, with or without commits, its body
  * rewritten from `pr.md` and the draft marked ready once nothing holds it, as a new PR would open.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
@@ -138,18 +138,18 @@ async function deliver(
       reason: `the branch no longer holds ${start.slice(0, 7)}, where the clone started, not pushed`,
       unpublished: true,
     }
-  const merges = (await git(repo, 'rev-list', '--merges', 'work', `^${start}`))
-    .split('\n')
-    .filter(Boolean)
-  // awaywork's own merge of the PR's base, onto where the clone started: the base's commits stay as they are.
-  const own =
-    !!unit.merged &&
-    merges.length === 1 &&
-    (await git(repo, 'rev-parse', `${merges[0]}^@`)) === `${start}\n${unit.merged}`
+  // A merging unit pushes the merge awaywork made itself, nothing in its place or on top of it.
+  if (unit.merged && (await git(repo, 'rev-parse', 'work')) !== unit.merged)
+    return {
+      kind: 'none',
+      reason: `the clone's head isn't awaywork's merge ${unit.merged.slice(0, 7)} any more, not pushed`,
+      unpublished: true,
+    }
+  // That merge sits on where the clone started: its first parent only, so the base's commits stay as they are.
   const log = await git(
     repo,
     'rev-list',
-    ...(own ? ['--first-parent'] : []),
+    ...(unit.merged ? ['--first-parent'] : []),
     '--topo-order',
     '--reverse',
     'work',
@@ -174,7 +174,7 @@ async function deliver(
       unpublished: true,
     }
   // Any other merge would carry other people's commits onto the PR, with awaywork's trailer.
-  if (merges.length > 0 && !own)
+  if (!unit.merged && (await git(repo, 'rev-list', '--merges', 'work', `^${start}`)))
     return {
       kind: 'none',
       reason: `${counted(commits.length, 'commit')} include a merge, not pushed`,

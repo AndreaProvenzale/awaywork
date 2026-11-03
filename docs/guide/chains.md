@@ -250,11 +250,11 @@ Your PR is green, but `main` moved on, and you'd rather it stayed mergeable with
 ```yaml
 queue:
   - skill: sync
-    where: { type: pr, mine: true, behind: { gt: 0 }, conflicts: false }
+    where: { type: pr, mine: true, behind: { gt: 0 } }
     deliver: push
 ```
 
-`behind` counts the commits on the PR's base that its branch doesn't have, and `conflicts` is GitHub's own "this branch has conflicts" flag; both are [GitHub fields](./how-it-works.md#items). `awaywork plan` lists the unit with no provider, since none runs:
+`behind` counts the commits on the PR's base that its branch doesn't have, a [GitHub field](./how-it-works.md#items). There's a `conflicts` field too, GitHub's own "this branch has conflicts" flag, but it's no use here: GitHub resets it to unknown right after a push to the base, so `conflicts: false` would miss exactly the PRs that just fell behind, and a sync that conflicts costs nothing anyway. `awaywork plan` lists the unit with no provider, since none runs:
 
 ```
 Units 1
@@ -271,9 +271,10 @@ Run 20261103-193652: 0 draft PRs, 0 reports, 1 unit
      Merge awaywork-sync-base into awaywork-sync-feature: 2 commits, awaywork-sync-base at f25506b.
 ```
 
-- The clone is on your PR's branch, and awaywork runs `git merge --no-ff` of the base as the clone fetched it, with your commit identity and none of your signing config. No worker, no provider, no quota spent or reserved, and no gates: they check what a model wrote, and nothing did.
-- A clean merge isn't always a correct one: git happily merges two branches that each added the same block, and you get it twice. So the repo's [`verify`](./configuration.md#repos-and-instructions) still runs before the push, `setup` first (and only then: nothing else here runs repo code), and a failure goes into the morning report while the push still happens. Your `fix` rule on `checks: failing` picks up whatever broke.
-- A merge that conflicts is aborted, and nothing is pushed. The morning report says where: `conflicts with awaywork-sync-base in sync-probe/feature.txt: merge it by hand`. It counts as a finished attempt, so the PR is skipped as unchanged until it changes; by then GitHub flags it `conflicts: true` anyway, and the rule above leaves it alone.
+- The clone is on your PR's branch, and awaywork runs `git merge --no-ff` of the base as the clone fetched it, first thing, before anything of the repo's runs, with your commit identity and none of your signing config. No worker, no provider, no quota spent or reserved, and no gates: they check what a model wrote, and nothing did.
+- A clean merge isn't always a correct one: git happily merges two branches that each added the same block, and you get it twice. So the repo's [`verify`](./configuration.md#repos-and-instructions) still runs before the push, `setup` first, on the merged tree (and only then: nothing else here runs repo code), and a failure goes into the morning report while the push still happens. Your `fix` rule on `checks: failing` picks up whatever broke.
+- What's pushed is that merge commit and nothing else. If `setup` or `verify` amend it, commit on top or move the branch, nothing is pushed, and the report says the clone's head isn't awaywork's merge any more.
+- A merge that conflicts is aborted, and nothing is pushed. The morning report says where: `conflicts with awaywork-sync-base in sync-probe/feature.txt: merge it by hand`. It counts as a finished attempt, so the PR is skipped as unchanged until it or its base changes: a push to the base doesn't touch the PR's `updated`, so awaywork keeps the base's head it tried and syncs again once it moved.
 - A branch already up to date pushes nothing, and says `already up to date with <base>`.
 - No review hold afterwards: there's nothing of a model's to review, so the next `sync`, once the base moves again, or a `fix` on the CI the merge started, can take the PR right away.
 - It's a rule of its own: it must say `deliver: push`, and a `then` or a `when` on it, or `sync` as a step of another rule, is a config error. Everything `push` checks still holds, and it's GitHub only, like `push`.

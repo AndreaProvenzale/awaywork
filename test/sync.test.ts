@@ -21,20 +21,22 @@ const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]))
     .stdout
 
-const config = parseConfig(`
+const withRepo = (setup: string, verify: string) =>
+  parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
 queue:
   - skill: sync
-    where: { type: pr, mine: true, behind: { gt: 0 }, conflicts: false }
+    where: { type: pr, mine: true, behind: { gt: 0 } }
     deliver: push
 gates:
   anything: { changed: ["**"] }
 repos:
   acme/api:
-    setup: 'echo ran >> .away/setup.txt'
-    verify: 'test -f base-2.txt'
+    setup: '${setup}'
+    verify: '${verify}'
 `)
+const config = withRepo('echo ran >> .away/setup.txt', 'test -f base-2.txt')
 
 /** A worker would spend quota: none may run. */
 const noWorker: Provider = {
@@ -53,6 +55,12 @@ const pr = (fields: Item['fields'] = {}): Item => {
     ...fields,
   })
   return { ...item, linkedPrs: item.linkedPrs.map((p) => ({ ...p, into: 'main' })) }
+}
+
+/** That PR, its base `main` read at `head`. */
+const onBase = (head: string): Item => {
+  const item = pr()
+  return { ...item, linkedPrs: item.linkedPrs.map((p) => ({ ...p, intoHead: head })) }
 }
 
 /** An origin with `main` and your `feature-1` off it, `main` then moved on by `base`'s commits, each a file. */
@@ -91,15 +99,15 @@ async function origin(base: Record<string, string>, feature: Record<string, stri
   return { root, origin, forge, fastForwards, feature1, main }
 }
 
-async function sync(at: Awaited<ReturnType<typeof origin>>, item = pr()) {
+async function sync(at: Awaited<ReturnType<typeof origin>>, item = pr(), settings = config) {
   const plan = planRun({
-    config,
+    config: settings,
     items: [item],
-    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    allowances: { claude: allowance(settings.budget, null, 0, settings.windows) },
     skills: { builtin: builtinSkills },
   })
   const report = await runUnits({
-    config,
+    config: settings,
     configDir: at.root,
     plan,
     runId: 'r1',
@@ -152,7 +160,7 @@ queue: [{ skill: catch-up, where: { type: pr } }]
       config: own,
       items: [pr()],
       allowances: {},
-      skills: { user: { 'catch-up': { merge: 'base' } }, builtin: builtinSkills },
+      skills: { user: { 'catch-up': { merge: true } }, builtin: builtinSkills },
     })
     expect(skipped.map((s) => s.reason)).toEqual([
       "catch-up merges your PR's base: it needs deliver: push, no then",
@@ -203,12 +211,14 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     expect(plan.units).toHaveLength(1)
   })
 
-  it('aborts a merge that conflicts, pushes nothing and reports the paths, once until the PR changes', async () => {
+  it('aborts a merge that conflicts, pushes nothing and reports the paths, once until the PR or its base changes', async () => {
     const at = await origin(
       { 'a.txt': 'theirs', 'b.txt': 'theirs' },
       { 'a.txt': 'mine', 'b.txt': 'mine' },
     )
-    const { report } = await sync(at)
+    // Setup runs after the merge: attributes it writes can't turn the conflict into a clean merge.
+    const union = withRepo('echo "* merge=union" > .gitattributes', 'true')
+    const { report } = await sync(at, onBase(at.main), union)
     expect(report.results.map((r) => [r.status, r.outcome])).toEqual([
       ['done', { kind: 'none', reason: 'conflicts with main in a.txt, b.txt: merge it by hand' }],
     ])
@@ -221,7 +231,9 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     )
     const attempts = recordAttempts({}, report)
     expect(attempts['github:acme/api#1']).not.toHaveProperty('failed')
-    expect(unchangedSince(pr(), 'sync', attempts)).toBe('r1')
+    expect(unchangedSince(onBase(at.main), 'sync', attempts)).toBe('r1')
+    // A base push leaves the PR's updated time as it was.
+    expect(unchangedSince(onBase('f00d'), 'sync', attempts)).toBeUndefined()
   })
 
   it('pushes nothing on a branch already up to date with its base', async () => {
@@ -231,5 +243,30 @@ queue: [{ skill: catch-up, where: { type: pr } }]
       ['done', { kind: 'none', reason: 'already up to date with main' }],
     ])
     expect(at.fastForwards).toEqual([])
+  })
+
+  it.each([
+    ['amends the merge', 'git commit -q --amend --no-edit'],
+    ['commits on top of the merge', 'git commit -qm sneaky'],
+  ])('pushes nothing when verify %s', async (_, how) => {
+    const verify = `echo evil > evil.txt && git add evil.txt && ${how}`
+    const at = await origin({ 'base-1.txt': '1', 'verify.sh': verify })
+    const { report } = await sync(at, pr(), withRepo('true', 'sh verify.sh'))
+    expect(report.results.map((r) => [r.status, r.outcome?.kind])).toEqual([['done', 'none']])
+    expect(report.results[0]?.outcome).toMatchObject({
+      reason: expect.stringMatching(/^the clone's head isn't awaywork's merge \w{7} any more/),
+    })
+    expect(at.fastForwards).toEqual([])
+    expect(await git(at.origin, 'rev-parse', 'feature-1')).toBe(at.feature1)
+  })
+
+  it('says a base gone before the clone is gone', async () => {
+    const at = await origin({ 'base-1.txt': '1' })
+    const item = pr()
+    const gone = { ...item, linkedPrs: item.linkedPrs.map((p) => ({ ...p, into: 'gone' })) }
+    const { report } = await sync(at, gone)
+    expect(report.results.map((r) => [r.status, r.reason])).toEqual([
+      ['error', 'base gone is gone: nothing to merge'],
+    ])
   })
 })

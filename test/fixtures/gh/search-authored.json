@@ -33,6 +33,7 @@
           "headRefName": "rate-limits",
           "headRefOid": "abc1234",
           "baseRefName": "main",
+          "baseRef": { "target": { "oid": "def5678" } },
           "mergeable": "MERGEABLE",
           "viewerDidAuthor": true,
           "editor": null,

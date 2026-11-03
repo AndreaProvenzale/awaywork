@@ -281,9 +281,9 @@ describe('publish', () => {
     await git(dir, 'checkout', '-q', 'away/FAKE-1')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge main into feature-1', base)
     await body('Merge main into feature-1: 2 commits.\n')
-    const synced = { ...unit('push'), merged: base }
-    // A merge of any other head than the one awaywork merged is a worker's.
-    expect(await publish({ ...synced, merged: start }, dir, forge, 'r1', start)).toEqual({
+    const synced = { ...unit('push'), merged: await git(dir, 'rev-parse', 'HEAD') }
+    // A merge other than the one awaywork made is a worker's.
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '3 commits include a merge, not pushed',
       unpublished: true,
@@ -302,10 +302,15 @@ describe('publish', () => {
     await commit('side')
     await git(dir, 'checkout', '-q', 'away/FAKE-1')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
-    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({
+    const moved = {
       kind: 'none',
-      reason: '5 commits include a merge, not pushed',
-    })
+      reason: `the clone's head isn't awaywork's merge ${synced.merged.slice(0, 7)} any more, not pushed`,
+    }
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    await git(dir, 'reset', '-q', '--hard', synced.merged)
+    await git(dir, 'commit', '-q', '--amend', '-m', 'Merge main into feature-1, amended')
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    expect(forge.pushed).toHaveLength(1)
   })
 
   it('refuses a branch that no longer holds the commit the clone started from', async () => {

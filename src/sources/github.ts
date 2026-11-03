@@ -61,7 +61,7 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName headRefOid baseRefName isCrossRepository viewerDidAuthor editor { login }
+        isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository viewerDidAuthor editor { login }
         additions deletions mergeable
         files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
@@ -148,6 +148,7 @@ type PrLink = Edited & {
   headRefName: string
   headRefOid: string
   baseRefName?: string
+  baseRef?: { target: { oid: string } | null } | null
   isCrossRepository: boolean
   body: string
   authorAssociation: string
@@ -570,6 +571,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   branch: pr.headRefName,
   head: pr.headRefOid,
   ...(pr.baseRefName && { into: pr.baseRefName }),
+  ...(pr.baseRef?.target && { intoHead: pr.baseRef.target.oid }),
   ours: isOurs(pr.body),
   ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,

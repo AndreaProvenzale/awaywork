@@ -25,6 +25,8 @@ export type Attempts = Record<
     failed?: number
     failedAt?: string
     pushed?: string
+    /** A merging skill's: the head of the PR's base it tried, which moves without touching the PR's `updated`. */
+    base?: string
     /** The last report a chain on the item left, in `runs/<runId>/units/<unit>/<step>/out/`. */
     report?: { runId: string; unit: string; step: string; skill: string }
   }
@@ -45,11 +47,12 @@ export async function saveAttempts(path: string, attempts: Attempts): Promise<vo
   await rename(`${path}.tmp`, path)
 }
 
-/** The run that last attempted the item with this skill, when the item hasn't been updated, merged or closed since. */
+/** The run that last attempted the item with this skill, when the item hasn't been updated, merged or closed since, nor the base a merge tried moved. */
 export function unchangedSince(item: Item, skill: string, attempts: Attempts): string | undefined {
   const last = attempts[attemptKey(item)]
   return last?.skill === skill &&
     item.fields.updated === last.updated &&
+    (!last.base || last.base === item.linkedPrs[0]?.intoHead) &&
     itemState(item) === (last.state ?? 'open') &&
     !last.failed
     ? last.runId
@@ -136,6 +139,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
         }
       else {
         const state = itemState(item)
+        const base = head.unit.merge && item.linkedPrs[0]?.intoHead
         next[key] = {
           runId: report.runId,
           skill,
@@ -146,6 +150,7 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
             failedAt: report.startedAt.toISOString(),
           }),
           ...(pushed && { pushed }),
+          ...(base && { base }),
           ...(latest && { report: latest }),
         }
       }
