@@ -44,6 +44,7 @@
                 "isDraft": false,
                 "headRefName": "rate-limits",
                 "headRefOid": "abc1234",
+                "baseRefName": "main",
                 "viewerDidAuthor": true,
                 "author": { "login": "dev" },
                 "editor": null,

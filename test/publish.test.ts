@@ -266,6 +266,48 @@ describe('publish', () => {
     expect(forge.branches.size).toBe(0)
   })
 
+  it("lets through only awaywork's own merge of the base, with the trailer on it alone", async () => {
+    const forge = pushingForge()
+    const parents: string[] = []
+    const { fastForward } = forge
+    forge.fastForward = async (...args) => {
+      parents.push(await git(args[0], 'rev-parse', 'HEAD^@'))
+      return fastForward(...args)
+    }
+    await git(dir, 'checkout', '-qb', 'main', start)
+    await commit('base-1')
+    await commit('base-2')
+    const base = await git(dir, 'rev-parse', 'HEAD')
+    await git(dir, 'checkout', '-q', 'away/FAKE-1')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge main into feature-1', base)
+    await body('Merge main into feature-1: 2 commits.\n')
+    const synced = { ...unit('push'), merged: base }
+    // A merge of any other head than the one awaywork merged is a worker's.
+    expect(await publish({ ...synced, merged: start }, dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: '3 commits include a merge, not pushed',
+      unpublished: true,
+    })
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({
+      kind: 'pushed',
+      commits: 1,
+      text: 'Merge main into feature-1: 2 commits.',
+    })
+    expect(forge.pushed.map((p) => p.sort())).toEqual([
+      ['Merge main into feature-1|r1', 'base-1|', 'base-2|', 'init|'],
+    ])
+    expect(parents).toEqual([`${start}\n${base}`])
+
+    await git(dir, 'checkout', '-qb', 'side', start)
+    await commit('side')
+    await git(dir, 'checkout', '-q', 'away/FAKE-1')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({
+      kind: 'none',
+      reason: '5 commits include a merge, not pushed',
+    })
+  })
+
   it('refuses a branch that no longer holds the commit the clone started from', async () => {
     const forge = fakeForge()
     await commit('first')

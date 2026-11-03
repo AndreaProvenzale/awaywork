@@ -12,8 +12,8 @@ const GAVE_UP_MS = (7 * 24 - 3) * 3600_000
  * Per item (`source:key`), the run that last attempted it, its skill, and the item's updated time
  * and, once merged or closed, its `state` then; `failed` counts the attempts in a row with this
  * skill that didn't finish, however the item changed, absent once one did, and `failedAt` is when
- * the last of them started; `pushed` is the head a `push` left on a PR branch; `report` is where
- * the item's latest report is.
+ * the last of them started; `pushed` is the head a `push` left on a PR branch, unless it only
+ * carried awaywork's own merge; `report` is where the item's latest report is.
  */
 export type Attempts = Record<
   string,
@@ -104,7 +104,8 @@ export function recordAttempts(attempts: Attempts, report: RunReport): Attempts 
     if (chain[0]?.passedOver) continue
     // Each slice's outcome is on its first step.
     const push = chain.find((r) => r.outcome?.kind === 'pushed')?.outcome
-    const pushed = push?.kind === 'pushed' ? push.head : undefined
+    // A merge awaywork made itself holds nothing for review: the next sync, or a fix, can take the PR.
+    const pushed = push?.kind === 'pushed' && !head.unit.merge ? push.head : undefined
     const done = finished(chain)
     const aborted = !done && !counts(unfinishedBy(chain) ?? chain[0])
     // A push stays recorded even when a step after it didn't run.

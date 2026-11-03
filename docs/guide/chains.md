@@ -1,5 +1,5 @@
 ---
-description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, stacked PRs and pushing onto your own PR.
+description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, stacked PRs, pushing onto your own PR and keeping it in line with its base.
 ---
 
 # Chains
@@ -237,8 +237,43 @@ queue:
 
 - Only onto an open PR you authored, awaywork's own included (they are opened with your login). On someone else's PR, a PR from a fork, or an item with no PR of yours, a chain that could commit is skipped with the reason.
 - The chain pushes once, when it ends: every step's commits, a [loop](#loops)'s rounds included.
-- A fast-forward only: awaywork pushes only commits on top of where the clone started, and refuses when the branch moved since, so it never rewrites history. It reads the PR again right before the push and refuses when it is no longer yours or open, or has auto-merge on, which would merge unreviewed commits, and when its branch lives on a fork, is the default branch, is protected, or also backs someone else's open PR in the repo. New commits that include a merge aren't pushed either. The commits get the `Awaywork:` trailer, which drops a commit's signature.
+- A fast-forward only: awaywork pushes only commits on top of where the clone started, and refuses when the branch moved since, so it never rewrites history. It reads the PR again right before the push and refuses when it is no longer yours or open, or has auto-merge on, which would merge unreviewed commits, and when its branch lives on a fork, is the default branch, is protected, or also backs someone else's open PR in the repo. New commits that include a merge aren't pushed either, but for [`sync`](#sync)'s own merge of the PR's base. The commits get the `Awaywork:` trailer, which drops a commit's signature.
 - The agent writes `.away/out/pr.md`, as for a PR, and the steps keep it current; without it nothing is pushed. The PR body stays as it is: `pr.md`, with the chain's notes, goes into the morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
-- After a push, the PR waits for your review: no rule takes it while its head is still the commit awaywork pushed. Any commit on top releases it, yours or a bot's, and so does a rebase or an amend. Without that, the push itself would update the PR and run the rule again every run. The pushed head is kept in awaywork's state dir, which a [GitHub Actions runner](./scheduling.md#in-github-actions) doesn't keep: there, a push rule pushes again every run its `where` holds.
+- After a push, the PR waits for your review: no rule takes it while its head is still the commit awaywork pushed, unless the push was a [`sync`](#sync). Any commit on top releases it, yours or a bot's, and so does a rebase or an amend. Without that, the push itself would update the PR and run the rule again every run. The pushed head is kept in awaywork's state dir, which a [GitHub Actions runner](./scheduling.md#in-github-actions) doesn't keep: there, a push rule pushes again every run its `where` holds.
 - Got a bot that commits on every push, like an autofixer or a snapshot updater? Its commit lands right on top of awaywork's and releases the hold, so the rule pushes again every run its `where` holds: keep that repo out of the rule's `where`, e.g. `repo: { not: acme/web }`.
+
+## `sync`
+
+Your PR is green, but `main` moved on, and you'd rather it stayed mergeable without clicking "Update branch" every morning. `sync` is a built-in skill with no model behind it: awaywork merges the PR's base into its branch itself and pushes the merge onto your PR, the way a `push` rule pushes.
+
+```yaml
+queue:
+  - skill: sync
+    where: { type: pr, mine: true, behind: { gt: 0 }, conflicts: false }
+    deliver: push
+```
+
+`behind` counts the commits on the PR's base that its branch doesn't have, and `conflicts` is GitHub's own "this branch has conflicts" flag; both are [GitHub fields](./how-it-works.md#items). `awaywork plan` lists the unit with no provider, since none runs:
+
+```
+Units 1
+     item                  rule  skill            provider  deliver  title
+  1  awaywork-sandbox#188  #1    sync (built-in)  -         push     sync probe: clean merge
+```
+
+The run pushes one merge commit, `Merge <base> into <branch>` with the `Awaywork:` trailer:
+
+```
+Run 20261103-193652: 0 draft PRs, 0 reports, 1 unit
+     item                  skill  status  result
+  1  awaywork-sandbox#188  sync   done    pushed onto https://github.com/AndreaProvenzale/awaywork-sandbox/pull/188
+     Merge awaywork-sync-base into awaywork-sync-feature: 2 commits, awaywork-sync-base at f25506b.
+```
+
+- The clone is on your PR's branch, and awaywork runs `git merge --no-ff` of the base as the clone fetched it, with your commit identity and none of your signing config. No worker, no provider, no quota spent or reserved, and no gates: they check what a model wrote, and nothing did.
+- A clean merge isn't always a correct one: git happily merges two branches that each added the same block, and you get it twice. So the repo's [`verify`](./configuration.md#repos-and-instructions) still runs before the push, `setup` first (and only then: nothing else here runs repo code), and a failure goes into the morning report while the push still happens. Your `fix` rule on `checks: failing` picks up whatever broke.
+- A merge that conflicts is aborted, and nothing is pushed. The morning report says where: `conflicts with awaywork-sync-base in sync-probe/feature.txt: merge it by hand`. It counts as a finished attempt, so the PR is skipped as unchanged until it changes; by then GitHub flags it `conflicts: true` anyway, and the rule above leaves it alone.
+- A branch already up to date pushes nothing, and says `already up to date with <base>`.
+- No review hold afterwards: there's nothing of a model's to review, so the next `sync`, once the base moves again, or a `fix` on the CI the merge started, can take the PR right away.
+- It's a rule of its own: it must say `deliver: push`, and a `then` or a `when` on it, or `sync` as a step of another rule, is a config error. Everything `push` checks still holds, and it's GitHub only, like `push`.

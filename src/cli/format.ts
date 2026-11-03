@@ -266,7 +266,7 @@ export function planUnitTable(
     const waits = waitLine(p)
     if (waits) out.push(`   waits for ${waits}`)
     for (const check of checkLines(p)) out.push(`   after ${check}`)
-    if (p.passed.length > 0 || !p.provider)
+    if (p.passed.length > 0 || (!p.provider && !p.unit.merge))
       out.push(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
       )
@@ -481,7 +481,10 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['unit', `${i + 1}, ${p.unit.id}`],
       ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
       ['skill', describeSkill(p)],
-      ['provider', `${p.provider ?? 'none left'}${passed}`],
+      [
+        'provider',
+        `${p.provider ?? (p.unit.merge ? 'none, awaywork merges' : 'none left')}${passed}`,
+      ],
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
       ...(goes ? [['goes on', goes]] : []),

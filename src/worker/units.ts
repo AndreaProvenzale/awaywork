@@ -38,6 +38,7 @@ import {
 } from '../core/plan.js'
 import {
   type Commented,
+  counted,
   type Moved,
   type PlanPost,
   type Posted,
@@ -88,6 +89,7 @@ import {
   setupEnv,
   snapshot,
 } from './steps.js'
+import { mergeBase } from './sync.js'
 import { shortage } from './watchdog.js'
 import {
   configSecrets,
@@ -520,6 +522,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let cut = false
     let previous: Previous | undefined
     let verdict: string | undefined
+    // The base's head awaywork's own merge brought in, the one merge publishing lets through.
+    let merged: string | undefined
     let ran = false
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
@@ -631,6 +635,84 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       return why
     }
 
+    /** Copies the clone's `.away/` to a step's folder, but for gh's, twg's and the container's homes. */
+    const copyStep = (unitDir: string) =>
+      copyOut(join(dir, WORK_DIR), unitDir, {
+        // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
+        force: false,
+        filter: async (src) =>
+          ![
+            join(dir, WORK_DIR, 'gh'),
+            join(dir, WORK_DIR, 'twg'),
+            join(dir, CONTAINER_HOME),
+          ].includes(src) && (await notSymlink(src)),
+      }).catch(() => {})
+
+    /**
+     * A merging skill's one step: awaywork merges the PR's base `into` the clone itself, with no worker or
+     * provider. Setup runs only when there's a `verify` to need it; a clean merge publishes as a push.
+     */
+    const mergeStep = async (p: PlannedUnit, into: string) => {
+      const unit = { ...p.unit, ...shape }
+      const step = `1-${slug(unit.skill)}`
+      const unitDir = join(chainDir, step)
+      const plugin = join(root, 'plugins', unit.id)
+      const image = input.config.repos[unit.repo]?.image
+      if (contained() && image) contain(dir, { image, plugin, secrets })
+      await mkdir(unitDir, { recursive: true })
+      const logFile = createWriteStream(join(unitDir, 'worker.log'))
+      const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
+      const result: UnitResult = { planned: p, status: 'prepared', step }
+      done.push(result)
+      event(`${unit.id}: ${unit.skill}, merging ${into} with no model`)
+      try {
+        await prepareWorkspace({ ...input, unit, dir, plugin, ctx: { ...input.ctx, log } })
+        cloned = from = original = await head(dir)
+        rememberGitConfig(dir, await readFile(join(dir, '.git', 'config'), 'utf8'))
+        if (input.dryRun) return
+        const settings = input.config.repos[unit.repo]
+        if (unit.verify && settings?.setup && !unit.untrusted) {
+          const own = unit.foreign || pickedUp ? [] : settings.secrets
+          const env = setupEnv(input.ctx.env, dir, secrets, own)
+          const options = { secrets: own, signal: input.signal, until: input.until }
+          const failed = await runSetup(settings.setup, dir, env, log, options)
+          if (failed) {
+            Object.assign(result, { status: 'skipped', reason: failed })
+            event(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
+            ended = { reason: `${unit.id} setup failed` }
+            return
+          }
+          await restoreGit(dir)
+        }
+        await baseline(dir)
+        // Setup may have written the clone's `.away/gitconfig`: the merge reads a fresh one, as a gate does.
+        const env = await gateEnv(input.ctx.env, dir, secrets)
+        const merge = await mergeBase(dir, into, unit.base, env, log)
+        result.status = 'done'
+        if (merge.kind === 'merged') {
+          merged = merge.head
+          ran = true
+          result.made = `a merge of ${counted(merge.commits, 'commit')}`
+        } else
+          result.outcome = {
+            kind: 'none',
+            reason:
+              merge.kind === 'current'
+                ? `already up to date with ${into}`
+                : `conflicts with ${into} in ${merge.paths.join(', ')}: merge it by hand`,
+          }
+      } catch (e) {
+        Object.assign(result, { status: 'error', reason: (e as Error).message })
+        log(`error: ${(e as Error).stack}`)
+        ended = { reason: `${unit.id} error: ${(e as Error).message}` }
+      } finally {
+        await new Promise((done) => logFile.end(done))
+        if (cloned !== undefined && !lostToWorker(dir)) await copyStep(unitDir)
+        if (!input.dryRun) await rm(plugin, { recursive: true, force: true })
+      }
+      event(`${unit.id}: ${result.status}`)
+    }
+
     /** Publishes the open slice once its last step ended; after its PR, the next slice is cut at the clone's tip. */
     const endSlice = async (last: boolean) => {
       const lead = done.find(
@@ -663,7 +745,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
                 { ...publisher, judge },
-                { ...first.unit, ...shape, deliver },
+                { ...first.unit, ...shape, deliver, ...(merged && { merged }) },
                 dir,
                 from,
                 original ?? from,
@@ -762,6 +844,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const image = input.config.repos[p.unit.repo]?.image
       if (contained() && !image) {
         end(`no image for ${p.unit.repo}: isolation: container needs one in its repos entry`)
+        continue
+      }
+      if (p.unit.merge) {
+        await mergeStep(p, p.unit.merge)
         continue
       }
       const unit = { ...p.unit, ...shape }
@@ -1047,17 +1133,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         await new Promise((done) => logFile.end(done))
         const lost = lostToWorker(dir)
         // Before a first step's workspace is prepared, the clone's `.away` may be the branch's.
-        if (cloned !== undefined && !lost)
-          await copyOut(join(dir, WORK_DIR), unitDir, {
-            // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
-            force: false,
-            filter: async (src) =>
-              ![
-                join(dir, WORK_DIR, 'gh'),
-                join(dir, WORK_DIR, 'twg'),
-                join(dir, CONTAINER_HOME),
-              ].includes(src) && (await notSymlink(src)),
-          }).catch(() => {})
+        if (cloned !== undefined && !lost) await copyStep(unitDir)
         if (start && !lost)
           try {
             await restoreGit(dir)

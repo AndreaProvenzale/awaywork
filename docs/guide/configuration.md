@@ -514,6 +514,8 @@ where:
   updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
   label: awaywork                # on a list field: contains; GitHub issues must also be assigned to you
+  behind: { gt: 0 }                 # GitHub: your PR's base has commits its branch lacks; see sync
+  conflicts: false                  # GitHub: it merges cleanly into its base
   "fields.Priority": High           # an Asana custom field
   blocked: false                    # Linear, Jira, Asana: no open blocker
   any:                              # at least one entry holds; each is a where, ANDed with the keys above

@@ -15,6 +15,8 @@ export interface PrRef {
   branch: string
   /** Its branch's head commit, when the source reads it. */
   head?: string
+  /** The branch it merges into, when the source reads it. */
+  into?: string
   /** Opened by awaywork: its body carries the footer. */
   ours: boolean
   /** Opened by the developer, by hand or through awaywork. */
@@ -410,6 +412,10 @@ export interface Unit {
   deliver: Deliver
   /** A `deliver: plan` unit's: what its card's plan is checked against. */
   planLimits?: PlanLimits
+  /** A merging skill's unit: the PR's base branch, which awaywork merges into `base` itself, with no worker. */
+  merge?: string
+  /** Set once that merge is made: the base's head it merged, the one merge publishing lets through. */
+  merged?: string
 }
 
 /** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */

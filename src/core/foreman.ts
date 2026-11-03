@@ -313,12 +313,25 @@ export function planRun(input: {
     const base = pr?.branch ?? ontoPr?.branch ?? ''
     const foreign = pr ? !pr.mine : false
     const fork = pr?.fork ? { number: pr.number, head: pr.head } : undefined
+    // A merging skill named otherwise than the built-in, which the config can't check.
+    const merging = resolveSkill(rule.skill, input.skills)?.meta.merge
+    if (merging && (rule.deliver !== 'push' || rule.then?.length)) {
+      skip(
+        'refused_delivery',
+        `${rule.skill} merges your PR's base: it needs deliver: push, no then`,
+      )
+      continue
+    }
     const refused = committing && deliveryRefusal(deliver, base, foreign, !!fork)
     if (refused) {
       skip(
         'refused_delivery',
         committing === rule ? refused : `${refused}, and ${committing.skill} commits`,
       )
+      continue
+    }
+    if (merging && !pr?.into) {
+      skip('refused_delivery', `${rule.skill}: ${pr?.url} names no base branch to merge`)
       continue
     }
     const unstackable = stackRefusal(rule, reports)
@@ -354,6 +367,7 @@ export function planRun(input: {
       foreign,
       untrusted: pr ? !pr.trusted : false,
       fork,
+      ...(merging && { merge: pr?.into }),
       branch: draft ? base : branch,
       ...(stackedOn && { stackedOn }),
       ...(draft &&
@@ -373,15 +387,16 @@ export function planRun(input: {
       const step = written === rule ? rule : inherit(rule, written)
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      // Every step is routed, as the run does, so the plan holds fallback units for all of them.
-      const { provider, passed } = route(providers, allowances, routed)
+      // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes no provider.
+      const { provider, passed } = at.merge ? { passed: [] } : route(providers, allowances, routed)
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
         id: unitId,
         verify: config.repos[repo]?.verify,
-        gates: gatesFor(config, repo),
+        // Gates check what a model wrote, and a merge has nothing of its.
+        gates: at.merge ? undefined : gatesFor(config, repo),
         items,
         repo,
         rule: step,
@@ -411,11 +426,11 @@ export function planRun(input: {
         ...(written === rule && after && { after: after.unit.id }),
         ...(written === rule && waitsFor.length > 0 && { waitsFor }),
       })
-      return provider
+      return !!provider || !!at.merge
     }
-    // A slice publishes once, so it counts once, when its first step routes.
-    const count = (routed: string | undefined) => {
-      if (!routed) return
+    // A slice publishes once, so it counts once, when its first step runs.
+    const count = (runs: boolean) => {
+      if (!runs) return
       counted++
       perRepo[repo] = (perRepo[repo] ?? 0) + 1
       perRule[ruleIndex] = (perRule[ruleIndex] ?? 0) + 1

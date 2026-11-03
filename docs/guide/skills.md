@@ -15,6 +15,7 @@ A skill tells the worker what to do with a unit. Every skill is an [Agent Skills
 | `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted, unless a rule's `deliver: pending_review` leaves it as your pending review. Writes a verdict: `approve`, `comments` or `changes`, and under `pending_review` its line comments to `review.json` | report |
 | `plan` | A task with no PR: an implementation plan, no code, or [questions](./how-it-works.md#questions) when none of its readings is likely enough to plan on; under `deliver: plan`, its tasks in `plan.yml` too ([Plans](./how-it-works.md#plans)) | report |
 | `judge` | A slice about to be published, as a [gate's judge](./configuration.md#judges): writes the verdict `fires` when it holds a change a human must decide on, one line per decision in its report | report |
+| `sync` | Your own PR behind its base: awaywork merges the base itself, no model, and pushes a clean merge onto the PR; a rule naming it must say `deliver: push` ([`sync`](./chains.md#sync)) | push |
 
 ```sh
 awaywork skills list   # every skill a rule can name, and where it comes from

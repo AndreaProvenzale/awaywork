@@ -82,7 +82,8 @@ interface WorkspaceInput {
   configDir: string
   forge: Forge
   sources: Record<string, Source>
-  provider: Provider
+  /** None for awaywork's own merge, which runs no worker. */
+  provider?: Provider
   ctx: Ctx
   skillDirs?: { user: string; builtin: string }
   /** Where the skills go as a plugin, outside the clone, for a provider without `skillsDir`. */
@@ -153,7 +154,12 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   }
   const work = join(dir, WORK_DIR)
   await mkdir(join(work, 'out'), { recursive: true })
-  if (!w.reuse) await writeGitConfig(dir, w.ctx.env)
+  if (!w.reuse) {
+    await writeGitConfig(dir, w.ctx.env)
+    await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
+  }
+  // awaywork's own merge needs the clone alone: no skills, context or prompt.
+  if (!provider) return ''
 
   const { user, builtin } = w.skillDirs ?? {
     user: skillsDirIn(w.configDir),
@@ -167,7 +173,6 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   )
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, sources)
   else await buildPlugin(w.plugin, dir, sources)
-  if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
   if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
   const items: string[] = []

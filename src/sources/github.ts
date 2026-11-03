@@ -57,12 +57,12 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url isDraft headRefName headRefOid isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid baseRefName isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
-        isDraft headRefName headRefOid isCrossRepository viewerDidAuthor editor { login }
-        additions deletions
+        isDraft headRefName headRefOid baseRefName isCrossRepository viewerDidAuthor editor { login }
+        additions deletions mergeable
         files(first: ${PAGE}) { pageInfo { hasNextPage endCursor } nodes { path } }
         reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
         reviewThreads(first: 100) { nodes { isResolved } }
@@ -80,6 +80,11 @@ const threadStartersQuery = (ids: string[]) => `{
       reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { ${BY} } } } }
     }
   }
+}`
+
+/** The commits each PR's base has that its head doesn't, which `headRef.compare` counts as `aheadBy`. */
+const behindQuery = (prs: { id: string; base: string }[]) => `{
+  ${prs.map((p, i) => `pr${i}: node(id: ${JSON.stringify(p.id)}) { ... on PullRequest { id headRef { compare(headRef: ${JSON.stringify(p.base)}) { aheadBy } } } }`).join('\n  ')}
 }`
 
 /** An issue's or PR's comments before `before`: a plan awaywork posted can sit far up a long thread. */
@@ -142,6 +147,7 @@ type PrLink = Edited & {
   isDraft: boolean
   headRefName: string
   headRefOid: string
+  baseRefName?: string
   isCrossRepository: boolean
   body: string
   authorAssociation: string
@@ -163,6 +169,7 @@ interface Node extends PrLink {
   closedByPullRequestsReferences?: Nodes<PrLink>
   additions?: number
   deletions?: number
+  mergeable?: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
   files?: Files
   reviewRequests?: Nodes<{ requestedReviewer: { login?: string; slug?: string } | null }>
   reviewThreads?: Nodes<{ isResolved: boolean }>
@@ -212,6 +219,8 @@ export function githubSource(base: Exec = exec): Source<Config> {
       unresolved_threads: z.number().int().min(0),
       files: z.string(),
       changed_lines: z.number().int().min(0),
+      conflicts: z.boolean(),
+      behind: z.number().int().min(0),
       my_unresolved_threads: z.number().int().min(0),
       review_requested: z.boolean(),
       created: z.iso.datetime(),
@@ -251,6 +260,7 @@ export function githubSource(base: Exec = exec): Source<Config> {
         }
       }
       await countThreads(run, byId, ctx.log)
+      await countBehind(run, byId, ctx.log)
       await readFiles(run, byId, ctx.log)
       await readComments(run, byId, ctx.log)
       return [...byId.values()]
@@ -415,6 +425,33 @@ async function countThreads(
   }
 }
 
+/**
+ * Sets `behind` on your open PRs in the repo, in one query per page; a fork's head isn't in the repo,
+ * so it gets none, and neither does a page that fails, or a PR whose branch is gone.
+ */
+async function countBehind(
+  run: Exec,
+  byId: Map<string, Item>,
+  log: (line: string) => void,
+): Promise<void> {
+  const prs = [...byId]
+    .map(([id, item]) => ({ id, node: item.raw as Node }))
+    .filter(({ node }) => node.viewerDidAuthor && node.state === 'OPEN' && !node.isCrossRepository)
+    .flatMap(({ id, node }) => (node.baseRefName ? [{ id, base: node.baseRefName }] : []))
+  for (let i = 0; i < prs.length; i += PAGE) {
+    const page = await graphql<
+      Record<string, { id: string; headRef: { compare: { aheadBy: number } | null } | null } | null>
+    >(run, behindQuery(prs.slice(i, i + PAGE)), {}).catch((e: Error) => {
+      log(`github: couldn't read how far your PRs are behind their base: ${e.message}`)
+    })
+    for (const node of Object.values(page ?? {})) {
+      const item = node && byId.get(node.id)
+      const behind = node?.headRef?.compare?.aheadBy
+      if (item && behind !== undefined) item.fields.behind = behind
+    }
+  }
+}
+
 /** Sets `files` on each PR, following pages past the first until MAX_FILES; a PR whose next page fails keeps the paths read. */
 async function readFiles(
   run: Exec,
@@ -497,6 +534,8 @@ function toItem(node: Node): Item {
         changed_lines: node.additions + (node.deletions ?? 0),
       }),
       ...(checks && { checks }),
+      ...(node.mergeable === 'CONFLICTING' && { conflicts: true }),
+      ...(node.mergeable === 'MERGEABLE' && { conflicts: false }),
     })
   }
   // A finished item links no PR: it never joins an open PR's unit, nor works on a branch that may be gone.
@@ -530,6 +569,7 @@ const toPrRef = (pr: PrLink): PrRef => ({
   url: pr.url,
   branch: pr.headRefName,
   head: pr.headRefOid,
+  ...(pr.baseRefName && { into: pr.baseRefName }),
   ours: isOurs(pr.body),
   ...leftIn(pr.body, pr.isDraft, notYours(pr)),
   mine: pr.viewerDidAuthor,
