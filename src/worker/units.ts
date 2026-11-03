@@ -19,6 +19,7 @@ import {
   taskChain,
 } from '../core/foreman.js'
 import {
+  AGENT_HOME,
   CONTAINER_HOME,
   contain,
   contained,
@@ -1056,6 +1057,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 join(dir, WORK_DIR, 'gh'),
                 join(dir, WORK_DIR, 'twg'),
                 join(dir, CONTAINER_HOME),
+                join(dir, AGENT_HOME),
               ].includes(src) && (await notSymlink(src)),
           }).catch(() => {})
         if (start && !lost)

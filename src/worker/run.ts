@@ -66,6 +66,7 @@ export async function runWorker(
   const result: WorkerResult = { status: 'failed', turns: 0 }
   const { login } = provider
   try {
+    await provider.prepare?.(job)
     await asWorker(
       job.dir,
       async () => {

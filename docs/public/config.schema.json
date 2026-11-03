@@ -178,7 +178,8 @@
             "type": "string",
             "enum": [
               "claude",
-              "codex"
+              "codex",
+              "cursor"
             ]
           },
           {
@@ -265,6 +266,64 @@
                       ]
                     }
                   },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Model passed to the provider's binary; default the binary's"
+                  },
+                  "budget": {
+                    "type": "object",
+                    "properties": {
+                      "reserve": {
+                        "description": "Never go past 1 - reserve of any window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "per_run": {
+                        "description": "At most this share of the long window per run",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "session_max": {
+                        "description": "Stop a worker past this share of the short window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "present_session_max": {
+                        "description": "Stop a worker past this share of the short window in a run started outside every window",
+                        "type": "string",
+                        "pattern": "^(100|\\d{1,2}(\\.\\d+)?)%$"
+                      },
+                      "fallback": {
+                        "type": "object",
+                        "properties": {
+                          "units": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Units per run"
+                          },
+                          "turns": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Turns per unit"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "description": "Caps when the provider's quota can't be read"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "Overrides the top-level budget for this provider"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "cursor": {
+                "description": "cursor settings",
+                "type": "object",
+                "properties": {
                   "model": {
                     "type": "string",
                     "minLength": 1,
@@ -1016,7 +1075,7 @@
     },
     "skills": {
       "default": [],
-      "description": "Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills",
+      "description": "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
       "type": "array",
       "items": {
         "type": "string"
@@ -1155,7 +1214,7 @@
           },
           "skills": {
             "default": [],
-            "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+            "description": "Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
             "type": "array",
             "items": {
               "type": "string"

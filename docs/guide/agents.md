@@ -114,8 +114,8 @@ For a setup from scratch, before there's a config:
 
 ```text
 Set up awaywork (https://andreaprovenzale.github.io/awaywork/llms.txt)
-for me. Read the docs first. Find which of claude and codex I have
-installed and logged in, and which GitHub repos I work on (gh). Ask me
+for me. Read the docs first. Find which of claude, codex and agent
+(Cursor) I have installed and logged in, and which GitHub repos I work on (gh). Ask me
 which repos and which Asana workspace to include and how much quota a
 run may use, then write the config, validate it and show me the plan.
 If a source needs a token, tell me to run awaywork init instead of
@@ -138,7 +138,7 @@ Machine-readable docs:
 
 Setting up:
 
-1. `npm install -g awaywork`; check `claude --version`, `codex --version`, `gh auth status`.
+1. `npm install -g awaywork`; check `claude --version`, `codex --version`, `agent --version` (Cursor, which also needs `CURSOR_API_KEY` in the env file), `gh auth status`.
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. Override with `--provider claude codex` (first takes units first), `--source github asana` and `--window 23:00-06:00`. Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear is likewise skipped unless `LINEAR_API_KEY` is set. Jira is skipped: it needs a site and an email. It refuses to replace an existing config without `--force`. To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). `awaywork sources asana --json` gives the Asana workspace and project gids and the real section names for `where`; `sources linear`, `sources jira` (once the config has its `site` and `email`) and `sources github` do the same for theirs, without you ever seeing the token.
 3. Secrets go in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. They're the user's to put there, or to type into `awaywork init`: don't ask for them in the chat, and don't read them from that file or other tools' files.
 4. `awaywork doctor` until the config's line isn't `FAIL`.

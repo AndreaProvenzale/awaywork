@@ -3,8 +3,9 @@ import type { Provider } from '../core/types.js'
 import { claude } from './claude.js'
 import { codex } from './codex.js'
 import { commandProvider, isCommandProvider } from './command.js'
+import { cursor } from './cursor.js'
 
-export const providers: Record<string, Provider> = { claude, codex }
+export const providers: Record<string, Provider> = { claude, codex, cursor }
 
 /** The built-in provider with this id, else the command provider its config describes. */
 export function providerFor(id: string, cfg: unknown): Provider | undefined {

@@ -164,7 +164,7 @@ Before the first run:
   GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` scopes (…)
 ```
 
-The runner is GitHub-hosted by default: a fresh VM each run, with no Codex. Self-hosted is a machine of yours, see [Running Codex](#running-codex). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
+The runner is GitHub-hosted by default: a fresh VM each run, with no Codex or Cursor. Self-hosted is a machine of yours, see [Running Codex](#running-codex) and [Running Cursor](#running-cursor). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
 
 This writes `.github/workflows/awaywork.yml`: a cron at each window's start (none with `windows: []`), plus `workflow_dispatch` for a manual run. There's no daemon there, so [`run: soon`](#soon-runs) rules run in the windows like the rest, which install says once. `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
 
@@ -235,6 +235,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
+| Cursor | `CURSOR_API_KEY` | Self-hosted runners only for now; a key from Cursor's dashboard |
 | [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
@@ -250,4 +251,14 @@ So run it one of two ways:
 - **Locally**, with launchd, systemd or cron, as in [On your machine](#on-your-machine).
 - **On a self-hosted runner**: a machine of yours [added as the control repo's runner](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/add-runners), logged in with `codex login` as the user the runner runs as. On a headless box, `codex login --device-auth` does it without a browser ([Codex's docs](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)). Pick self-hosted at _Which runner?_: the workflow says `runs-on: self-hosted` and keeps Codex, with no secret for it. Every self-hosted runner the repo can use matches that, an organization's too, so a colleague's box could pick up your job: give your runner a [label of its own](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/apply-labels) and add it, as in `runs-on: [self-hosted, alice-mac]`. Install says so while it's plain `self-hosted`, and keeps the labels on a re-run.
 
-On a self-hosted runner the job runs on your machine, so the action keeps its hands off it: no freeing disk, no provider CLIs installed over yours, no git config written. It installs awaywork alone into the job's temp dir, which the runner empties every job, and runs the `codex` and `claude` already on the runner's `PATH`, next to `git` and `gh`. A runner installed [as a service](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application) doesn't read your shell profile: its `PATH` is the one `./config.sh` saved to `.path` in the runner's folder, which [`runsvc.sh`](https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh) exports, and other variables sit in `.env` next to it. So a `codex` or `claude` from nvm or Homebrew can be missing there: configure the runner from a shell where `codex --version` works, or add their folders to `.path` and restart the service (`./svc.sh stop`, then `./svc.sh start`). Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub recommends self-hosted runners only for private repos, since a fork's pull request could otherwise run code on your machine: keep the control repo private.
+On a self-hosted runner the job runs on your machine, so the action keeps its hands off it: no freeing disk, no provider CLIs installed over yours, no git config written. It installs awaywork alone into the job's temp dir, which the runner empties every job, and runs the `codex`, `claude` and `agent` already on the runner's `PATH`, next to `git` and `gh`. A runner installed [as a service](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/configure-the-application) doesn't read your shell profile: its `PATH` is the one `./config.sh` saved to `.path` in the runner's folder, which [`runsvc.sh`](https://github.com/actions/runner/blob/main/src/Misc/layoutbin/runsvc.sh) exports, and other variables sit in `.env` next to it. So a `codex` or `claude` from nvm or Homebrew can be missing there: configure the runner from a shell where `codex --version` works, or add their folders to `.path` and restart the service (`./svc.sh stop`, then `./svc.sh start`). Claude still reads `CLAUDE_CODE_OAUTH_TOKEN` there. GitHub recommends self-hosted runners only for private repos, since a fork's pull request could otherwise run code on your machine: keep the control repo private.
+
+### Running Cursor
+
+Cursor doesn't run on GitHub-hosted runners yet: its CLI has no npm package for the action to install. `schedule install` leaves it out there, as it does Codex:
+
+```
+cursor won't run in this workflow: Cursor's CLI has no npm package to install on a GitHub-hosted runner yet; run it locally or on a self-hosted runner
+```
+
+On a self-hosted runner it runs the `agent` on the runner's `PATH` with the `CURSOR_API_KEY` secret the workflow passes, as it needs one everywhere: a login on the machine doesn't reach the fresh `HOME` it runs in.

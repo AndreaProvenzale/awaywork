@@ -133,7 +133,13 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     ]
     report(provider.unattended === 'allowed' ? 'ok' : 'warn', id, facts.filter(Boolean).join(', '))
     const unset = provider.secrets.filter((name) => !process.env[name])
-    if (asWorker && !provider.login && unset.length > 0)
+    if (id === 'cursor' && unset.length > 0)
+      report(
+        'FAIL',
+        id,
+        "CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
+      )
+    else if (asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
     await provider.probe(ctx).then(
       (quota) => {
@@ -311,7 +317,7 @@ export async function containerChecks(
   const clis = config.providers.map(({ id, config: cfg }) =>
     isCommandProvider(cfg)
       ? { id, command: ['/bin/sh', '-c', 'command -v "$0"', commandBinary(cfg.command)] }
-      : { id, command: [id, '--version'] },
+      : { id, command: [providerFor(id, cfg)?.bin ?? id, '--version'] },
   )
   let mounted = false
   for (const [repo, { image }] of Object.entries(config.repos)) {

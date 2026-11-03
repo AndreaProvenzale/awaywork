@@ -18,6 +18,7 @@ import type { Job, Unit } from '../src/core/types.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
 import { commandProvider } from '../src/providers/command.js'
+import { cursorProvider } from '../src/providers/cursor.js'
 import { createChecks } from '../src/worker/checks.js'
 import { fetchContexts } from '../src/worker/context.js'
 import { runSetup } from '../src/worker/setup.js'
@@ -166,6 +167,9 @@ describe('the launcher', () => {
       shell: true,
     })
     expect(shell.slice(-3)).toEqual(['/bin/sh', '-c', 'npm ci && npm test'])
+    const home = '/tmp/awaywork-abc123/.away/agent-home'
+    const own = sudoArgs('awaywork', '/usr/local/bin/agent', ['-p'], { env, home })
+    expect(own.slice(-3)).toEqual([`HOME=${home}`, '/usr/local/bin/agent', '-p'])
   })
 
   it('runs in a container with the clone and the plugin only, and the env’s names on docker’s argv, never its values', () => {
@@ -209,6 +213,9 @@ describe('the launcher', () => {
     })
     expect(shell.filter((arg) => arg === '--mount')).toHaveLength(1)
     expect(shell.slice(-4)).toEqual(['acme/api:dev', '/bin/sh', '-c', 'npm ci'])
+    const home = `${dir}/.away/agent-home`
+    const own = dockerArgs('awaywork-3', box, 'agent', ['-p'], { ...options, home })
+    expect(own.slice(own.indexOf('-e'), own.indexOf('-e') + 2)).toEqual(['-e', `HOME=${home}`])
   })
 
   it('names every variable awaywork sets in a phase’s env in AWAYWORK_ENV', async () => {
@@ -217,6 +224,7 @@ describe('the launcher', () => {
     await drain(claudeProvider(fake('claude')).run(phase, new AbortController().signal))
     const command = { command: 'true', secrets: [], skills_dir: '.agents/skills' }
     await drain(commandProvider('mine', command).run(phase, new AbortController().signal))
+    await drain(cursorProvider(fake('cursor')).run(phase, new AbortController().signal))
     await mkdir(join(dir, '.away'), { recursive: true })
     const envs = [
       commandEnv(base, dir, []),

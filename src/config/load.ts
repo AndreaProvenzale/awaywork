@@ -52,6 +52,10 @@ function formatIssue(issue: z.core.$ZodIssue): string {
   const at = issue.path
     .map((p, i) => (typeof p === 'number' ? `[${p}]` : i === 0 ? String(p) : `.${String(p)}`))
     .join('')
+  // A command provider named like a built-in one, e.g. one written before it was built in.
+  const builtIn = issue.path[0] === 'providers' && issue.path.length === 3
+  if (builtIn && issue.code === 'unrecognized_keys' && issue.keys.includes('command'))
+    return `${at}: built in, so it takes no command; give your own provider another name`
   // A record key's own message, e.g. `expected owner/name`, sits under zod's generic one.
   const message =
     issue.code === 'invalid_key' ? (issue.issues[0]?.message ?? issue.message) : issue.message

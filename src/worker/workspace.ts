@@ -42,8 +42,8 @@ export const outputFile: Record<Deliver, string> = {
 export const reportsOnly = (deliver: Deliver) =>
   deliver === 'report' || deliver === 'pending_review' || deliver === 'plan'
 
-/** Where a repo keeps skills for Claude Code and Codex, searched for extra skills after the built-ins. */
-const repoSkillDirs = ['.claude/skills', '.agents/skills']
+/** Where a repo keeps skills for Claude Code, Codex and Cursor, searched for extra skills after the built-ins. */
+const repoSkillDirs = ['.claude/skills', '.agents/skills', '.cursor/skills']
 const forgeTokens = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 /** Credentials that aren't tokens: askpass helpers, the ssh agent and git config set through the env. */
 const credentialPlumbing = [
@@ -167,6 +167,7 @@ export async function prepareWorkspace(w: WorkspaceInput): Promise<string> {
   )
   if (provider.skillsDir) await copySkills(w, provider.skillsDir, sources)
   else await buildPlugin(w.plugin, dir, sources)
+  if (foreign && provider.repoConfig) await hideAuthorConfig(dir, provider.repoConfig)
   if (!w.reuse) await appendFile(join(dir, '.git', 'info', 'exclude'), `/${WORK_DIR}/\n`)
 
   if (w.replay) await cp(w.replay.context, join(work, 'context'), { recursive: true })
@@ -476,6 +477,13 @@ async function copySkills(w: WorkspaceInput, skillsDir: string, sources: Map<str
   if (excluded.length > 0)
     await writeOutput(join(w.dir, '.git', 'info', 'exclude'), `${excluded.join('\n')}\n`, true)
   if (replaced.length > 0) await hideFromGit(w.dir, replaced)
+}
+
+/** Removes the PR author's config files from the clone, git keeping their committed version; a linked folder holding one is refused. */
+async function hideAuthorConfig(dir: string, paths: string[]) {
+  await refuseSymlinks(dir, paths.map(dirname))
+  for (const path of paths) await rm(join(dir, path), { recursive: true, force: true })
+  await hideFromGit(dir, paths)
 }
 
 /** A plugin named `awaywork` holding the skills, so they load as `awaywork:<name>`. */

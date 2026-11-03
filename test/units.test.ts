@@ -2742,6 +2742,28 @@ it("keeps awaywork's replay.json and worker.log in the unit dir over the ones a 
   expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
 })
 
+it("leaves an agent's own HOME in the clone, out of the unit dir", async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-agent-home-')), 'run')
+  const provider = looper({})
+  await loopRun(
+    'queue:\n  - skill: implement\n',
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        await mkdir(join(job.dir, '.away/agent-home/.cursor'), { recursive: true })
+        await writeFile(join(job.dir, '.away/agent-home/.cursor/chats'), 'TRANSCRIPT')
+      },
+    },
+    { runDir },
+  )
+
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
+  expect(existsSync(join(unitDir, 'agent-home'))).toBe(false)
+})
+
 it('copies nothing from the .away a branch ships into the unit dir', async () => {
   const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
   const { report } = await loopRun('queue:\n  - skill: implement\n', [issue(1)], looper({}), {
