@@ -236,6 +236,29 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     expect(unchangedSince(onBase('f00d'), 'sync', attempts)).toBeUndefined()
   })
 
+  it("retries a conflict reached through your issue once its PR's base moves", async () => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const byIssue = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: sync, where: { type: issue }, deliver: push }]
+`)
+    const issue = (head: string): Item => ({
+      ...onBase(head),
+      type: 'issue',
+      key: 'acme/api#9',
+      url: 'https://github.com/acme/api/issues/9',
+    })
+    const { report } = await sync(at, issue(at.main), byIssue)
+    expect(report.results.map((r) => r.outcome)).toEqual([
+      { kind: 'none', reason: 'conflicts with main in a.txt: merge it by hand' },
+    ])
+    const attempts = recordAttempts({}, report)
+    expect(attempts['github:acme/api#9']).toMatchObject({ base: at.main })
+    expect(unchangedSince(issue(at.main), 'sync', attempts)).toBe('r1')
+    expect(unchangedSince(issue('f00d'), 'sync', attempts)).toBeUndefined()
+  })
+
   it('pushes nothing on a branch already up to date with its base', async () => {
     const at = await origin({})
     const { report } = await sync(at)

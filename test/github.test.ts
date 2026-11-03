@@ -418,12 +418,12 @@ describe('github source', () => {
       branch: 'rate-limits',
       head: 'abc1234',
       into: 'main',
+      intoHead: 'def5678',
       ours: false,
       mine: true,
       trusted: true,
     }
-    // Only a PR's own search reads its base's head.
-    expect(pr1?.linkedPrs).toEqual([{ ...link, intoHead: 'def5678' }])
+    expect(pr1?.linkedPrs).toEqual([link])
     expect(issue5?.linkedPrs).toEqual([link])
     expect(issue6?.linkedPrs).toEqual([])
     expect(pr2?.linkedPrs[0]).toMatchObject({ mine: false, trusted: false })

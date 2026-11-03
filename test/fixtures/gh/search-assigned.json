@@ -45,6 +45,7 @@
                 "headRefName": "rate-limits",
                 "headRefOid": "abc1234",
                 "baseRefName": "main",
+                "baseRef": { "target": { "oid": "def5678" } },
                 "viewerDidAuthor": true,
                 "author": { "login": "dev" },
                 "editor": null,

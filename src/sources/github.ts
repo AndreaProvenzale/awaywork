@@ -57,7 +57,7 @@ const searchQuery = `query($q: String!, $first: Int!, $after: String) {
       __typename
       ... on Issue { ${common}
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
-          nodes { number url isDraft headRefName headRefOid baseRefName isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
+          nodes { number url isDraft headRefName headRefOid baseRefName baseRef { target { oid } } isCrossRepository body ${EDITED} authorAssociation repository { nameWithOwner } }
         }
       }
       ... on PullRequest { ${common}
