@@ -137,12 +137,15 @@ export async function initConfig(input: InitInput): Promise<string> {
   const registry = { providers: input.providers ?? providers, sources: input.sources ?? sources }
 
   const ids = Object.keys(registry.providers)
+  const keyless = (id: string) => id === 'cursor' && !ctx.env.CURSOR_API_KEY
+  const hint = (id: string) =>
+    !installed.includes(id) ? 'not installed' : keyless(id) ? 'needs CURSOR_API_KEY' : undefined
   let picked: string[] = []
   while (picked.length === 0)
     picked = await ask.multiselect(
       'Providers (pick at least one)',
-      ids.map((id) => ({ value: id, hint: installed.includes(id) ? undefined : 'not installed' })),
-      ids.filter((id) => installed.includes(id)),
+      ids.map((id) => ({ value: id, hint: hint(id) })),
+      ids.filter((id) => installed.includes(id) && !keyless(id)),
     )
   if (picked.length > 1) {
     const first = await ask.select(

@@ -221,11 +221,17 @@ export interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx: Ctx): Promise<Quota | null>
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
+  /** Writes what `run` reads in the clone, before the worker user or a container gets it. */
+  prepare?(job: Job): Promise<void>
   /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
   login?: Login
   /** Where the binary finds skills in the clone; unset, they come in `Job.plugin`. */
   skillsDir?: string
   instructionsFile: string
+  /** The binary's name, when it isn't the id. */
+  bin?: string
+  /** Files in the clone that make the binary run commands or allow it more, like hooks: on someone else's PR they're the author's, so it doesn't see them. */
+  repoConfig?: string[]
 }
 
 export interface Forge {

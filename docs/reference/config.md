@@ -29,13 +29,13 @@ with:
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |
 | `isolation` | "none" \| "user" \| "container" | `"none"` | Who setup, the agent and the checks run as: none, you; user, the awaywork user (Linux, set up as doctor shows); container, a fresh container of the repo's image each; always user on a GitHub-hosted runner |
 | `budget` | object | `{}` | Quota shares; any provider can override them |
-| `providers` (required) | ("claude" \| "codex" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
+| `providers` (required) | ("claude" \| "codex" \| "cursor" \| object)[] |  | Providers to use, a name or a map to override; order = routing preference |
 | `sources` (required) | object |  | Where work comes from: built-in sources or your own commands; at least one |
 | `branch` | string | `"away/{key}"` | Branch name template; {key} or {title} is required, {type} is the conventional-commit type |
 | `repos` | map | `{}` | Per-repo settings, keyed by owner/name |
 | `gates` | map | `{}` | Checks on every slice that publishes commits, run before it's published; one that fires opens a deliver: pr PR as a draft and puts its line in a decision card on top of the PR body |
 | `instructions` | string \| string[] |  | Instruction files added to every unit |
-| `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills |
+| `skills` | string[] | `[]` | Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
 | `mcp` | map | `{}` | MCP servers a rule or step names in its mcp |
 | `queue` | object[] |  | Rules mapping items to skills; default the built-in queue |
 | `notify` | object |  | Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged |
@@ -96,6 +96,7 @@ Caps when the provider's quota can't be read.
 |---|---|---|---|
 | `claude` | object |  | claude settings |
 | `codex` | object |  | codex settings |
+| `cursor` | object |  | cursor settings |
 
 ## `providers[].claude`
 
@@ -143,6 +144,23 @@ codex settings.
 Same keys as `providers[].claude.budget`.
 
 ## `providers[].codex.budget.fallback`
+
+Same keys as `providers[].claude.budget.fallback`.
+
+## `providers[].cursor`
+
+cursor settings.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `model` | string |  | Model passed to the provider's binary; default the binary's |
+| `budget` | object |  | Overrides the top-level budget for this provider |
+
+## `providers[].cursor.budget`
+
+Same keys as `providers[].claude.budget`.
+
+## `providers[].cursor.budget.fallback`
 
 Same keys as `providers[].claude.budget.fallback`.
 
@@ -353,7 +371,7 @@ First matching rule wins; top = highest priority.
 | `where` | object | `{}` | Item facts to match: type or a source field; a list means any of, {not} negates, {gt,gte,lt,lte} compare numbers, {older_than,newer_than} compare dates to now, {matches} tests text against a case-insensitive regex, any: [{...}] holds when one entry does; title, description, approved, state (open, merged, closed) and closed (when it finished) are on every source; a where, or an any entry under one, that never names state matches open items only |
 | `provider` | string \| string[] |  | Providers for this rule, in order; default the providers order |
 | `model` | map |  | Model per provider for this rule, e.g. { claude: sonnet } or { claude: [sonnet, opus] }; default the provider's |
-| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills |
+| `skills` | string[] | `[]` | Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills |
 | `mcp` | string[] |  | MCP servers the worker gets, by their name under the top-level mcp |
 | `instructions` | string \| string[] |  | Instruction files added for this rule |
 | `with` | map |  | Parameters for the skill, listed in its prompt; a skill's metadata says which it reads |

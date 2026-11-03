@@ -95,7 +95,7 @@ While `implement`'s draft PR is open the task waits for review; once you merge i
 
 ## Budget
 
-Each provider gets a ceiling for the run on its long window (the week for Claude, the week or month for Codex). The ceiling is the lowest of:
+Each provider gets a ceiling for the run on its long window (the week for Claude, the week or month for Codex; Cursor's usage shows in its dashboard only, so it runs on the fallback). The ceiling is the lowest of:
 
 - `used + per_run`, when `per_run` is set;
 - `1 - reserve` (default reserve 10%);
@@ -114,7 +114,7 @@ A rule's `provider` list, else the global `providers` order. The first provider 
 Each unit runs in a fresh clone on a new branch cut from its base: the linked PR's branch, else the default branch. A PR from a fork is fetched from the repo's `refs/pull/<number>/head`, and the unit fails if that is no longer the head commit its source read. A branch name that's taken on the remote gets a `-2` to `-10` suffix, unless awaywork already tried there ([Branch names](./configuration.md#branch-names)). `setup` runs there once, before any agent, and every step of the unit's chain then works in that clone, on that branch.
 
 - `.away/context/` holds the prefetched item: PR view, diff, unresolved threads and failed-check logs, or the issue or task with its comments.
-- The skills go where the agent looks for them (`.claude/skills/`, `.agents/skills/`).
+- The skills go where the agent looks for them (`.agents/skills/` for Codex, a plugin for Claude Code and Cursor).
 - The prompt is, in order: the fixed [harness](https://github.com/AndreaProvenzale/awaywork/blob/main/harness.md), the skill, then your instructions (global, per repo, in-repo `.awaywork/instructions.md` unless someone else opened the PR, per rule).
 - The agent has no forge token, no source's or other provider's secret, an empty `GH_CONFIG_DIR` with placeholder `GH_TOKEN` and `GH_ENTERPRISE_TOKEN`, an empty `TWG_CONFIG_DIR` and no other `TWG_` variable, no ssh agent, no system git config, and a global one with only your commit identity and git-lfs's filter ([Safety](./safety.md#what-the-agent-can-reach)). On a GitHub-hosted runner it runs as a user of its own, and so do setup and the checks ([Safety](./safety.md#a-worker-user-on-github-hosted-runners)).
 - A turn cap bounds the run (200, or `fallback.turns` without a quota reading), `limits.unit_minutes` caps its wall-clock time when set (status `stopped: time`), and a watchdog stops it below 1.5 GB of free memory or 2 GB of disk, then kills every process it left behind. The same floors are checked before each unit: a machine that's short skips the unit with the reason (`disk below 2 GB`), and every later one while it stays short, spending no quota; the next scheduled run picks up once there's room.

@@ -23,6 +23,7 @@ import { builtinSkills } from '../src/core/skills.js'
 import type { Provider, Source } from '../src/core/types.js'
 import { claude } from '../src/providers/claude.js'
 import { codex } from '../src/providers/codex.js'
+import { cursor } from '../src/providers/cursor.js'
 import {
   copyOut,
   gateEnv,
@@ -484,6 +485,12 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
           if (away) {
             await mkdir(dirname(join(into, away.at)), { recursive: true })
             await symlink(away.to, join(into, away.at))
+          } else {
+            await mkdir(join(into, '.cursor'))
+            await writeFile(join(into, '.cursor/hooks.json'), 'AUTHOR HOOKS')
+            await writeFile(join(into, '.cursor/cli.json'), 'AUTHOR PERMISSIONS')
+            await writeFile(join(into, '.claude/settings.json'), 'AUTHOR CLAUDE HOOKS')
+            await writeFile(join(into, '.claude/settings.local.json'), 'AUTHOR LOCAL HOOKS')
           }
           await git(into, 'add', '.')
           await git(into, 'commit', '-qm', 'init')
@@ -546,6 +553,32 @@ repos: { acme/api: { setup: pnpm install, instructions: api.md } }
       )
       expect(existsSync(join(dir, '.agents/skills/review/extra.md'))).toBe(false)
       expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+    })
+
+    it("hides the author's Cursor and Claude Code hooks and permissions from Cursor, git still seeing them", async () => {
+      const { dir } = await review(false, cursor)
+      for (const file of [
+        '.cursor/hooks.json',
+        '.cursor/cli.json',
+        '.claude/settings.json',
+        '.claude/settings.local.json',
+      ])
+        expect(existsSync(join(dir, file))).toBe(false)
+      expect((await git(dir, 'status', '--porcelain')).stdout).toBe('')
+      const own = await review(true, cursor)
+      expect(await readFile(join(own.dir, '.cursor/hooks.json'), 'utf8')).toBe('AUTHOR HOOKS')
+      expect(await readFile(join(own.dir, '.claude/settings.json'), 'utf8')).toBe(
+        'AUTHOR CLAUDE HOOKS',
+      )
+    })
+
+    it('refuses a .cursor the branch links outside the clone', async () => {
+      const outside = await mkdtemp(join(tmpdir(), 'awaywork-outside-'))
+      await writeFile(join(outside, 'hooks.json'), 'KEEP')
+      await expect(
+        review(false, cursor, undefined, true, { at: '.cursor', to: outside }),
+      ).rejects.toThrow('.cursor in the clone is a symlink')
+      expect(await readFile(join(outside, 'hooks.json'), 'utf8')).toBe('KEEP')
     })
 
     it('refuses to write through a linked .agents/skills that leaves the clone', async () => {

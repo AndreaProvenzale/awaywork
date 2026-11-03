@@ -36,23 +36,28 @@ interface Provider {
   detect(): Promise<{ installed: boolean; version?: string }>
   probe(ctx): Promise<Quota | null>         // null = fixed budget (fallback)
   run(job: Job, signal: AbortSignal): AsyncIterable<WorkerEvent>
+  prepare?(job: Job): Promise<void>         // writes what run reads in the clone, first
   skillsDir?: string                        // where skills go in the clone; unset: job.plugin
   instructionsFile: string                  // CLAUDE.md, AGENTS.md, …
+  bin?: string                              // the binary's name, when it isn't the id
+  repoConfig?: string[]                     // clone files hidden on someone else's PR
 }
 ```
 
 - `run` spawns the binary in `job.dir` with `job.prompt`, under `job.maxTurns`, with `job.env` as its whole environment (`extendEnv: false`): awaywork has already removed the forge tokens and the other providers' and sources' secrets. It yields `log` lines, `quota` whenever the stream reports one, and exactly one `done`. It stops when `signal` aborts: pass it to `launch` as `cancelSignal`, which closes the binary's output a second after it's stopped and exited, so a process that left its group can't keep your loop reading. `job.config` is the provider's entry in the config, its paths relative to `job.configDir`; without a `skillsDir`, the unit's skills come as a plugin folder in `job.plugin`. Spawn the binary with `launch` (`src/core/launch.ts`), not `execa`: every process that runs repo code starts through it, so it gets the isolation the run is under. On a GitHub-hosted runner that's another user with its own `HOME`, which reaches `job.env`, the clone and `job.plugin`, not the runner's home; under `isolation: container` it's a container of the repo's image, which mounts only the clone and `job.plugin` and gets only the unit's secrets and the env names in `AWAYWORK_ENV` (`src/core/launch.ts`), so a variable your provider sets for its binary goes on that list. Pass what the binary needs through those.
+- `prepare` runs before each `run`, while the clone is still yours under every isolation: under `user` and `container` it's the worker's or a container's once `run` starts, so a file the binary reads there, like Cursor's `HOME` in `.away/agent-home`, is written here. `launch`'s `home` option then runs the binary with that `HOME` whatever the isolation, where it would otherwise get the worker's or the container's.
+- `repoConfig` names files in the clone that make the binary run commands or allow it more, like Cursor's `.cursor/hooks.json`: on someone else's PR awaywork removes them before the run, git keeping their committed version. A gate's judge gets the same, since an agent wrote its clone, and on your own PR awaywork puts them back once the judge is done.
 - `probe` reads the windows as shares from 0 to 1, `short` for the ~5 h session and `long` for the week or month. Return `null` when the quota can't be read; awaywork then applies `fallback`.
 - A turn cap the CLI lacks is enforced by counting tool calls and aborting, as `codex.ts` does.
-- `unavailable` returns a one-line reason where the provider can't run, as Codex on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
+- `unavailable` returns a one-line reason where the provider can't run, as Codex and Cursor on a GitHub-hosted runner: `plan` and `run` route around it, `doctor` says why, and `schedule install --with github-actions` leaves it out of the workflow.
 
-[`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts) is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts) shows a rotating credential and a per-machine lock.
+[`claude.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/claude.ts) is the shortest example; [`codex.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/codex.ts) shows a rotating credential and a per-machine lock; [`cursor.ts`](https://github.com/AndreaProvenzale/awaywork/blob/main/src/providers/cursor.ts) a `HOME` of its own, written by `prepare`.
 
 ## Register it
 
 ```ts
 // src/providers/index.ts
-export const providers: Record<string, Provider> = { claude, codex, mine }
+export const providers: Record<string, Provider> = { claude, codex, cursor, mine }
 ```
 
 The config schema, `init`, `doctor`, `plan` and `schedule install --with github-actions` pick it up from the registry.

@@ -216,7 +216,7 @@ const stepSettings = {
     .array(z.string())
     .default([])
     .describe(
-      "Extra skills available to the worker; also looked up in the repo's .claude/skills and .agents/skills",
+      "Extra skills available to the worker; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
     ),
   mcp: z
     .array(z.string())
@@ -641,7 +641,7 @@ export const configSchema = z
       .array(z.string())
       .default([])
       .describe(
-        "Extra skills available to every unit; also looked up in the repo's .claude/skills and .agents/skills",
+        "Extra skills available to every unit; also looked up in the repo's .claude/skills, .agents/skills and .cursor/skills",
       ),
     mcp: z
       .record(z.string(), mcpServer)

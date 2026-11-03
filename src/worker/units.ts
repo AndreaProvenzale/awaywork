@@ -19,6 +19,7 @@ import {
   taskChain,
 } from '../core/foreman.js'
 import {
+  AGENT_HOME,
   CONTAINER_HOME,
   contain,
   contained,
@@ -110,6 +111,7 @@ import {
   readOutput,
   refuseSymlinks,
   reportsOnly,
+  revealHidden,
   type Shipped,
   WORK_DIR,
   workerEnv,
@@ -598,6 +600,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         },
       }
       let why: string | undefined
+      // The judge's workspace hides the repo's config and skill from it; a clone that isn't foreign gets them back after.
+      const hides = !unit.foreign && (provider.skillsDir || provider.repoConfig?.length)
+      const found = hides ? await snapshot(dir) : undefined
       try {
         if (contained() && image) contain(dir, { image, plugin, secrets })
         const prompt = await prepareWorkspace({
@@ -644,10 +649,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       if (lostToWorker(dir)) throw new Error('the clone is lost to the worker user')
       await restoreGit(dir)
+      if (found) await revealHidden(dir, provider, skill, found.tree)
       return why
     }
 
-    /** Copies the clone's `.away/` to a step's folder, but for gh's, twg's and the container's homes. */
+    /** Copies the clone's `.away/` to a step's folder, but for gh's, twg's, the container's and the agent's homes. */
     const copyStep = (unitDir: string) =>
       copyOut(join(dir, WORK_DIR), unitDir, {
         // The unit dir's replay.json and worker.log are awaywork's: the clone's never replace them.
@@ -657,6 +663,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             join(dir, WORK_DIR, 'gh'),
             join(dir, WORK_DIR, 'twg'),
             join(dir, CONTAINER_HOME),
+            join(dir, AGENT_HOME),
           ].includes(src) && (await notSymlink(src)),
       }).catch(() => {})
 

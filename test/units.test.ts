@@ -2742,6 +2742,28 @@ it("keeps awaywork's replay.json and worker.log in the unit dir over the ones a 
   expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
 })
 
+it("leaves an agent's own HOME in the clone, out of the unit dir", async () => {
+  const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-agent-home-')), 'run')
+  const provider = looper({})
+  await loopRun(
+    'queue:\n  - skill: implement\n',
+    [issue(1)],
+    {
+      ...provider,
+      async *run(job, signal) {
+        yield* provider.run(job, signal)
+        await mkdir(join(job.dir, '.away/agent-home/.cursor'), { recursive: true })
+        await writeFile(join(job.dir, '.away/agent-home/.cursor/chats'), 'TRANSCRIPT')
+      },
+    },
+    { runDir },
+  )
+
+  const unitDir = join(runDir, 'units/acme-api-1/1-implement')
+  expect(existsSync(join(unitDir, 'out/pr.md'))).toBe(true)
+  expect(existsSync(join(unitDir, 'agent-home'))).toBe(false)
+})
+
 it('copies nothing from the .away a branch ships into the unit dir', async () => {
   const runDir = join(await mkdtemp(join(tmpdir(), 'awaywork-forged-')), 'run')
   const { report } = await loopRun('queue:\n  - skill: implement\n', [issue(1)], looper({}), {
@@ -3746,7 +3768,7 @@ queue: [{ skill: fix, deliver: push }]
 /**
  * Runs `yaml` on an origin whose `scripts/gate.sh` is `script`, firing by default, each step's worker doing `act`,
  * which may return its PR body. `items` may add to the origin first; `fallback` gives the providers, in order, and
- * their fallback units, else claude has a quota reading.
+ * their fallback units, else claude has a quota reading; `provider` overrides the providers' fields.
  */
 async function gated(
   yaml: string,
@@ -3755,10 +3777,12 @@ async function gated(
     script = 'echo "+ GET /exports/vat"; exit 1\n',
     items = async () => [issue(1)],
     fallback,
+    provider,
   }: {
     script?: string
     items?: (origin: string) => Promise<Item[]>
     fallback?: Record<string, number>
+    provider?: Partial<Provider>
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-gated-'))
@@ -3788,6 +3812,7 @@ async function gated(
   const runs: string[] = []
   const worker = (id: string): Provider => ({
     ...fakeProvider(id),
+    ...provider,
     async *run(job) {
       runs.push(`${id}:${job.unit.skill}:${job.unit.items[0]?.id}`)
       const body = await act(job.dir, job.unit.skill, job.env)
@@ -4059,6 +4084,75 @@ it('drops what the judge changed and fires its gate, publishing the steps’ com
   expect(files).not.toContain('src/judged.ts')
   expect((await git(origin, 'show', `${tip}:src/app.ts`)).stdout).toBe('x')
 })
+
+it("gives the slice stacked after a judge the repo's config and skill the judge hid", async () => {
+  const seen: string[] = []
+  const { origin, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
+    async (dir, skill) => {
+      if (skill === 'judge') return verdict('clear')(dir)
+      const read = (file: string) => readFile(join(dir, file), 'utf8').catch(() => '-')
+      const files = ['.claude/settings.json', '.cursor/hooks.json', judgeSkill]
+      seen.push(`${skill}: ${(await Promise.all(files.map(read))).join(' ')}`)
+      await commitFile(dir, '.claude/settings.json', skill)
+      await commitFile(dir, judgeSkill, skill)
+      await mkdir(join(dir, '.cursor'), { recursive: true })
+      await writeFile(join(dir, '.cursor/hooks.json'), 'uncommitted')
+    },
+    {
+      provider: { repoConfig: ['.claude/settings.json', '.cursor/hooks.json'] },
+      items: async (origin) => {
+        await commitFile(origin, judgeSkill, 'mine')
+        return [issue(1)]
+      },
+    },
+  )
+  expect(seen).toEqual(['implement: - - mine', 'fix: implement uncommitted implement'])
+  expect(outcomes).toMatchObject([{ ready: true }, { ready: true }])
+  const tip = outcomes[1]?.kind === 'pr' ? outcomes[1].head : ''
+  for (const file of ['.claude/settings.json', judgeSkill])
+    expect((await git(origin, 'show', `${tip}:${file}`)).stdout).toBe('fix')
+})
+
+it('fires the gate of a judge that rewrites a config it hid, keeping each slice its own', async () => {
+  const seen: string[] = []
+  const { origin, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
+    async (dir, skill) => {
+      const settings = join(dir, '.claude/settings.json')
+      if (skill === 'judge') {
+        await mkdir(join(dir, '.claude'), { recursive: true })
+        await writeFile(settings, 'JUDGE')
+        return verdict('clear')(dir)
+      }
+      seen.push(`${skill}: ${await readFile(settings, 'utf8').catch(() => '-')}`)
+      await commitFile(dir, '.claude/settings.json', skill)
+    },
+    { provider: { repoConfig: ['.claude/settings.json'] } },
+  )
+  expect(seen).toEqual(['implement: -', 'fix: implement'])
+  expect(outcomes).toMatchObject([{ draft: 'gate risk fired' }, { draft: 'gate risk fired' }])
+  for (const [i, own] of ['implement', 'fix'].entries()) {
+    const tip = outcomes[i]?.kind === 'pr' ? outcomes[i].head : ''
+    expect((await git(origin, 'show', `${tip}:.claude/settings.json`)).stdout).toBe(own)
+  }
+})
+
+it('fires the gate of a judge that turns the folder of a config it hid into a file', async () => {
+  const { outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir, skill) => {
+      if (skill !== 'judge') return commitFile(dir, '.claude/settings.json', skill)
+      await rm(join(dir, '.claude'), { recursive: true, force: true })
+      await writeFile(join(dir, '.claude'), 'JUDGE')
+      return verdict('clear')(dir)
+    },
+    { provider: { repoConfig: ['.claude/settings.json'] } },
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
+})
+
+const judgeSkill = '.fake/skills/judge/SKILL.md'
 
 it("fires the gate when its judge can't run", async () => {
   const { opened, outcomes } = await gated(
