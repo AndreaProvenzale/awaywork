@@ -132,6 +132,8 @@ export async function concludeMerge(
   branch: string,
   env: NodeJS.ProcessEnv,
 ): Promise<{ commit: string; untracked: string[]; also: string[] } | { refused: string }> {
+  if (r.paths.some((p) => p.includes('\uFFFD')))
+    return { refused: 'a conflicted path is not valid UTF-8, not pushed' }
   let untracked: string[] = []
   const tree = await worktreeTree(dir, env, '-u', async (index) => {
     const staging = { ...env, GIT_INDEX_FILE: index }
@@ -144,9 +146,9 @@ export async function concludeMerge(
       '--directory',
       '--no-empty-directory',
     ]
-    untracked = (await run(dir, staging, others)).stdout
-      .split('\0')
-      .filter((p) => p && !`${p}/`.startsWith(`${WORK_DIR}/`))
+    untracked = names((await run(dir, staging, others)).stdout).filter(
+      (p) => !`${p}/`.startsWith(`${WORK_DIR}/`),
+    )
   })
   if (tree === (await git(dir, 'rev-parse', `${r.start}^{tree}`)))
     return { refused: `the resolution keeps nothing of ${r.into}, not pushed` }
