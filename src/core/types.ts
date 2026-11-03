@@ -413,12 +413,14 @@ export interface Unit {
   deliver: Deliver
   /** A `deliver: plan` unit's: what its card's plan is checked against. */
   planLimits?: PlanLimits
-  /** A merging skill's unit: the PR's base branch, which awaywork merges into `base` itself, with no worker. */
+  /** A merging skill's unit: the PR's base branch, which awaywork merges into `base` itself, a worker only resolving its conflicts. */
   merge?: string
   /** Set once that merge is made: the merge commit itself, the one head publishing pushes for this unit. */
   merged?: string
   /** Set when a worker resolved that merge's conflicts: git's automatic merge, markers included, which gates and judges read the resolution from. */
   automatic?: string
+  /** The paths that merge's conflicts were in, which gates count as changed whatever the worker left in them. */
+  conflicted?: string[]
 }
 
 /** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */

@@ -193,7 +193,11 @@ export async function publishSlice(
 }
 
 /** Puts the gates' section first in the PR body, under its title line, or atop a push's summary. */
-async function prependSection(file: string, section: string, titled: boolean): Promise<void> {
+export async function prependSection(
+  file: string,
+  section: string,
+  titled: boolean,
+): Promise<void> {
   const body = (await readOutput(file)).trim()
   if (!body) return
   const cut = titled ? body.indexOf('\n') + 1 || body.length : 0

@@ -13,8 +13,9 @@ export type Merge =
   | { kind: 'conflicts'; paths: string[]; head: string; commits: number }
   | { kind: 'current' }
 
-/** A merge awaywork left conflicted for a worker: the base `into` at `head`, its conflicted `paths`, and `automatic`, git's own merge of them as a local commit. */
+/** A merge awaywork left conflicted for a worker on the clone's `start`: the base `into` at `head`, its conflicted `paths`, and `automatic`, git's own merge of them as a local commit. */
 export interface Resolving {
+  start: string
   into: string
   head: string
   commits: number
@@ -85,7 +86,7 @@ export async function leaveConflicts(
 ): Promise<Resolving> {
   const start = await git(dir, 'rev-parse', 'HEAD')
   // The index git's merge just wrote holds the base's new files, ignored or not.
-  const tree = await worktreeTree(dir, env, (index) => cp(join(dir, '.git', 'index'), index))
+  const tree = await worktreeTree(dir, env, '-A', (index) => cp(join(dir, '.git', 'index'), index))
   const automatic = await commitTree(dir, env, tree, [start], `git's automatic merge of ${into}`)
   const touching = await git(
     dir,
@@ -111,26 +112,40 @@ export async function leaveConflicts(
       '',
     ].join('\n'),
   )
-  return { into, head: merge.head, commits: merge.commits, paths: merge.paths, automatic }
+  return { start, into, head: merge.head, commits: merge.commits, paths: merge.paths, automatic }
 }
 
 /**
- * Makes the merge a worker resolved: its working tree, `.away/` left out, staged on git's automatic merge and
- * committed on exactly `start` and the base's head, whatever `.git` says now. Refused while a conflicted path
- * still holds a conflict marker.
+ * Makes the merge a worker resolved: the files of git's automatic merge as its working tree holds them, `.away/`
+ * left out, committed on exactly the clone's start and the base's head, whatever `.git` says now; it lists the
+ * untracked files it left out. Refused while a conflicted path holds a conflict marker, or when nothing of the base came in.
  */
 export async function concludeMerge(
   dir: string,
   r: Resolving,
-  start: string,
   branch: string,
   env: NodeJS.ProcessEnv,
-): Promise<{ commit: string } | { markers: string[] }> {
-  const tree = await worktreeTree(dir, env, (index) =>
-    run(dir, { ...env, GIT_INDEX_FILE: index }, ['read-tree', r.automatic]),
-  )
-  // As text, whatever attributes the worker wrote say.
-  const marker = ['grep', '-a', '-l', '-E', '^(<{7}|>{7})( |$)', tree, '--', ...literal(r.paths)]
+): Promise<{ commit: string; untracked: string[] } | { refused: string }> {
+  let untracked: string[] = []
+  const tree = await worktreeTree(dir, env, '-u', async (index) => {
+    const staging = { ...env, GIT_INDEX_FILE: index }
+    await run(dir, staging, ['read-tree', r.automatic])
+    const others = [
+      'ls-files',
+      '-z',
+      '-o',
+      '--exclude-standard',
+      '--directory',
+      '--no-empty-directory',
+    ]
+    untracked = (await run(dir, staging, others)).stdout
+      .split('\0')
+      .filter((p) => p && !`${p}/`.startsWith(`${WORK_DIR}/`))
+  })
+  if (tree === (await git(dir, 'rev-parse', `${r.start}^{tree}`)))
+    return { refused: `the resolution keeps nothing of ${r.into}, not pushed` }
+  // As text, whatever attributes the worker wrote say; `conflict-marker-size` makes markers longer.
+  const marker = ['grep', '-a', '-l', '-E', '^(<{7,}|>{7,})( |$)', tree, '--', ...literal(r.paths)]
   const grep = await execa(bin('git'), [...inClone(dir), ...marker], {
     env,
     extendEnv: false,
@@ -141,16 +156,19 @@ export async function concludeMerge(
     .split('\n')
     .filter(Boolean)
     .map((line) => line.slice(tree.length + 1))
-  if (markers.length) return { markers }
-  const commit = await commitTree(dir, env, tree, [start, r.head], `Merge ${r.into} into ${branch}`)
+  if (markers.length)
+    return { refused: `conflict markers left in ${markers.join(', ')}, not pushed` }
+  const message = `Merge ${r.into} into ${branch}`
+  const commit = await commitTree(dir, env, tree, [r.start, r.head], message)
   await run(dir, env, ['reset', '-q', commit])
-  return { commit }
+  return { commit, untracked }
 }
 
-/** The clone's working tree as a tree, staged on what `seed` puts in a fresh index of awaywork's, `.away/` left out. */
+/** The clone's working tree as a tree, `git add <flag>`ed on what `seed` puts in a fresh index of awaywork's, `.away/` left out. */
 async function worktreeTree(
   dir: string,
   env: NodeJS.ProcessEnv,
+  flag: '-A' | '-u',
   seed: (index: string) => Promise<unknown>,
 ): Promise<string> {
   const index = join(dir, '.git', 'away-merge-index')
@@ -158,7 +176,7 @@ async function worktreeTree(
   try {
     const staging = { ...env, GIT_INDEX_FILE: index }
     await seed(index)
-    await addTo(dir, index, '-A', ['.'], env)
+    await addTo(dir, index, flag, ['.'], env)
     // Git ignores `.away/` through `.git/info/exclude`, which the worker could edit.
     await run(dir, staging, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '--', WORK_DIR])
     return (await run(dir, staging, ['write-tree'])).stdout

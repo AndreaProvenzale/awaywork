@@ -74,6 +74,7 @@ import {
   type Held,
   type OpenLoop,
   type Publisher,
+  prependSection,
   publishSlice,
   type StepReport,
 } from './slices.js'
@@ -616,7 +617,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           prompt,
           maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
           model,
-          env: await gateEnv(input.ctx.env, dir, withheld, from, original),
+          // Attributes as the gates read them: a resolved merge's from git's automatic merge.
+          env: await gateEnv(input.ctx.env, dir, withheld, from, unit.automatic ?? original),
           config: entry?.config,
           configDir: input.configDir,
           plugin,
@@ -776,7 +778,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                   // A clean merge has nothing of a model's for gates to check.
                   ...(merged &&
                     (resolving
-                      ? { merged, automatic: resolving.automatic }
+                      ? { merged, automatic: resolving.automatic, conflicted: resolving.paths }
                       : { merged, gates: undefined })),
                 },
                 dir,
@@ -1119,17 +1121,27 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         // Unless it says it asks, a step that committed went on: its questions aren't the chain's to ask.
         const asks = !!questions && (status === 'ask' || reportsOnly(unit.deliver) || commits === 0)
         result.made = made(commits, report, asks ? questions : '')
-        // awaywork concludes the merge the worker resolved, from its working tree, and nothing it committed.
-        if (resolving && (await head(dir)) !== start)
-          unmerged = `the worker moved HEAD: awaywork makes the merge, not pushed`
+        // awaywork concludes the merge the worker resolved, from its working tree, and nothing setup or it committed.
+        if (resolving && (await head(dir)) !== resolving.start)
+          unmerged = `HEAD moved since the clone: awaywork makes the merge, not pushed`
         else if (resolving && worker.status === 'done' && !asks) {
           const env = await gateEnv(input.ctx.env, dir, secrets)
-          const concluded = await concludeMerge(dir, resolving, start, unit.base, env)
-          if ('markers' in concluded)
-            unmerged = `conflict markers left in ${concluded.markers.join(', ')}, not pushed`
+          const concluded = await concludeMerge(dir, resolving, unit.base, env)
+          if ('refused' in concluded) unmerged = concluded.refused
           else {
             merged = concluded.commit
             result.made = `a merge of ${counted(resolving.commits, 'commit')}, its conflicts resolved`
+            const { untracked } = concluded
+            const lines = [
+              `Resolved: ${resolving.paths.join(', ')}`,
+              ...(untracked.length ? [`Left out, untracked: ${untracked.join(', ')}`] : []),
+            ]
+            await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.push}`])
+            await prependSection(
+              join(dir, WORK_DIR, 'out', outputFile.push),
+              lines.join('\n\n'),
+              false,
+            )
           }
         }
         if (worker.status === 'failed' && saved && !input.signal?.aborted) {

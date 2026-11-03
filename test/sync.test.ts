@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
+import { formatWhy } from '../src/cli/format.js'
 import { parseConfig } from '../src/config/load.js'
 import { bin, builtinSkillsDir } from '../src/config/paths.js'
 import { pushedOnto, recordAttempts, unchangedSince } from '../src/core/attempts.js'
@@ -16,6 +17,8 @@ import { fakeForge } from './fakes/forge.js'
 import { githubPr } from './fakes/items.js'
 import { fakeProvider } from './fakes/provider.js'
 import { fakeSource } from './fakes/source.js'
+
+const skills = { builtin: builtinSkills }
 
 const git = async (dir: string, ...args: string[]) =>
   (await execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args]))
@@ -99,20 +102,28 @@ repos:
     verify: 'test -f db/schema.sql'
 `)
 
-/** An origin with `main` and your `feature-1` off it, `main` then moved on by `base`'s commits, each a file. */
-async function origin(base: Record<string, string>, feature: Record<string, string> = {}) {
+/** An origin with `main` holding `common` and your `feature-1` off it, `main` then moved on by `base`'s commits, each a file, deleted when null. */
+async function origin(
+  base: Record<string, string | null>,
+  feature: Record<string, string> = {},
+  common: Record<string, string> = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-sync-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
-  const commit = async (files: Record<string, string>) => {
+  const commit = async (files: Record<string, string | null>) => {
     for (const [name, text] of Object.entries(files)) {
-      await mkdir(dirname(join(origin, name)), { recursive: true })
-      await writeFile(join(origin, name), text)
-      await git(origin, 'add', name)
+      if (text === null) await git(origin, 'rm', '-q', name)
+      else {
+        await mkdir(dirname(join(origin, name)), { recursive: true })
+        await writeFile(join(origin, name), text)
+        await git(origin, 'add', name)
+      }
       await git(origin, 'commit', '-qm', name)
     }
   }
+  await commit(common)
   await git(origin, 'checkout', '-qb', 'feature-1')
   await commit({ 'feature.txt': 'mine', ...feature })
   await git(origin, 'checkout', '-q', 'main')
@@ -180,6 +191,13 @@ describe('sync', () => {
     expect(plan(pr({ conflicts: true }))).toEqual([
       ['main', 'push', 'claude', { anything: { changed: ['**'], commands: [], skills: [] } }],
     ])
+    const why = (item: Item) =>
+      formatWhy(planRun({ config, items: [item], allowances: {}, skills }), item)
+    expect(why(pr())).toContain('provider  none, awaywork merges')
+    // With no quota left, the run merges what's clean and skips a conflict.
+    expect(why(pr({ conflicts: true }))).toContain(
+      'provider  none left: the merge runs, a conflict waits',
+    )
     const unread = { ...pr(), linkedPrs: pr().linkedPrs.map(({ into: _, ...p }) => p) }
     const skipped = planRun({
       config,
@@ -333,7 +351,7 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       outcome: { kind: 'pushed', branch: 'feature-1', commits: 1, gated: 'gate resolved fired' },
     })
     expect(result?.outcome).toMatchObject({
-      text: '## Needs a decision\n\n### Gates (from scripts)\n\n- resolved: a.txt\n\n---\n\na.txt: kept both lines.',
+      text: '## Needs a decision\n\n### Gates (from scripts)\n\n- resolved: a.txt\n\n---\n\nResolved: a.txt\n\na.txt: kept both lines.',
     })
     const head = await git(at.origin, 'rev-parse', 'feature-1')
     expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
@@ -373,28 +391,33 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     expect(recordAttempts({}, report)['github:acme/api#1']).not.toHaveProperty('pushed')
   })
 
+  const moved = 'HEAD moved since the clone: awaywork makes the merge, not pushed'
   it.each([
     [
-      'commits',
+      'the worker commits',
       async (dir: string) => {
         await bothSides(dir)
         await git(dir, 'commit', '-qam', 'resolved')
       },
-      'the worker moved HEAD: awaywork makes the merge, not pushed',
+      moved,
     ],
+    ['setup commits', bothSides, moved, withRepo('git add -A && git commit -qm setup', 'true')],
     [
-      'leaves markers',
+      'the worker leaves markers',
       (dir: string) => writeFile(join(dir, '.away/out/pr.md'), 'Done.\n'),
       'conflict markers left in a.txt, not pushed',
     ],
-  ])('pushes nothing when the worker %s', async (_, act, reason) => {
-    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
-    const { report } = await sync(
-      at,
-      onBase(at.main, { conflicts: true }),
-      resolving,
-      resolver(act),
-    )
+    [
+      'the worker drops the base',
+      async (dir: string) => {
+        await git(dir, 'merge', '--abort')
+        await writeFile(join(dir, '.away/out/pr.md'), 'Kept mine.\n')
+      },
+      'the resolution keeps nothing of main, not pushed',
+    ],
+  ])('pushes nothing when %s', async (_, act, reason, settings = resolving) => {
+    const at = await origin({ 'a.txt': 'theirs', 'b.txt': 'base work' }, { 'a.txt': 'mine' })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, resolver(act))
     expect(report.results.map((r) => [r.status, r.outcome])).toEqual([
       ['done', { kind: 'none', reason, unpublished: true }],
     ])
@@ -414,7 +437,83 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     expect(report.results[0]?.outcome?.kind).toBe('pushed')
     const head = await git(at.origin, 'rev-parse', 'feature-1')
     expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
-    expect(await git(at.origin, 'ls-tree', '--name-only', head)).not.toContain('.away')
+    // Neither `.away/` nor awaywork's skill copy, which the emptied exclude no longer ignores.
+    expect(await git(at.origin, 'ls-tree', '-r', '--name-only', head)).toBe('a.txt\nfeature.txt')
+  })
+
+  it("pushes only the files of git's merge, listing the untracked ones setup and the worker left out", async () => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const worker = resolver(async (dir) => {
+      await bothSides(dir)
+      await writeFile(join(dir, 'scratch.log'), 'checks ran\n')
+    })
+    const settings = withRepo('echo gen > generated.txt', 'true')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
+    expect(report.results[0]?.outcome).toMatchObject({
+      kind: 'pushed',
+      text: expect.stringContaining(
+        'Resolved: a.txt\n\nLeft out, untracked: generated.txt, scratch.log\n\na.txt: kept both lines.',
+      ),
+    })
+    const head = await git(at.origin, 'rev-parse', 'feature-1')
+    expect(await git(at.origin, 'ls-tree', '-r', '--name-only', head)).toBe('a.txt\nfeature.txt')
+  })
+
+  it('refuses markers longer than the default, as conflict-marker-size makes them', async () => {
+    const at = await origin(
+      { 'a.txt': 'theirs' },
+      { '.gitattributes': 'a.txt conflict-marker-size=10\n', 'a.txt': 'mine' },
+    )
+    let seen = ''
+    const worker = resolver(async (dir) => {
+      seen = await readFile(join(dir, 'a.txt'), 'utf8')
+      await writeFile(join(dir, '.away/out/pr.md'), 'Done.\n')
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), config, worker)
+    expect(seen).toMatch(/^<{10} HEAD\n/)
+    expect(report.results[0]?.outcome).toEqual({
+      kind: 'none',
+      reason: 'conflict markers left in a.txt, not pushed',
+      unpublished: true,
+    })
+  })
+
+  it.each([
+    ['a binary file both sides added', { 'b.bin': 'theirs\0' }, { 'b.bin': 'mine\0' }, {}, 'b.bin'],
+    [
+      'a file the base deleted',
+      { 'm.txt': null },
+      { 'm.txt': 'mine' },
+      { 'm.txt': 'old' },
+      'm.txt',
+    ],
+  ])(
+    'gates the conflicted paths the worker left as git did: %s',
+    async (_, base, feature, common, path) => {
+      const at = await origin({ ...base, 'base-2.txt': '2' }, feature, common)
+      const worker = resolver((dir) =>
+        writeFile(join(dir, '.away/out/pr.md'), `${path}: kept mine.\n`),
+      )
+      const { report } = await sync(at, onBase(at.main, { conflicts: true }), config, worker)
+      expect(report.results[0]?.outcome).toMatchObject({
+        kind: 'pushed',
+        gated: 'gate anything fired',
+        text: `## Needs a decision\n\n### Gates (from scripts)\n\n- anything: ${path}\n\n---\n\nResolved: ${path}\n\n${path}: kept mine.`,
+      })
+    },
+  )
+
+  it('gates a base change the resolution reverts', async () => {
+    const at = await origin({ 'a.txt': 'theirs', 'db/schema.sql': 'v2' }, { 'a.txt': 'mine' })
+    const worker = resolver(async (dir) => {
+      await bothSides(dir)
+      await rm(join(dir, 'db/schema.sql'))
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    expect(report.results[0]?.outcome).toMatchObject({
+      kind: 'pushed',
+      text: expect.stringContaining('- db: db/schema.sql\n'),
+    })
   })
 
   it('lets the worker resolve a merge whose conflicted tree fails setup', async () => {
@@ -448,6 +547,7 @@ gates: { risk: { skill: judge } }
     expect(report.results[0]?.outcome?.kind).toBe('pushed')
     const automatic = /`([0-9a-f]{40})` is git's automatic merge/.exec(prompts[1] ?? '')?.[1]
     expect(prompts[1]).toContain(`\`git diff ${automatic} HEAD\` is what that agent wrote`)
+    expect(prompts[1]).toContain('The conflicts were in `a.txt`: what HEAD holds there is')
     // A local commit of awaywork's, never pushed.
     await expect(git(at.origin, 'cat-file', '-e', `${automatic}`)).rejects.toThrow()
   })
