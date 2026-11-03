@@ -281,11 +281,17 @@ describe('publish', () => {
     await git(dir, 'checkout', '-q', 'away/FAKE-1')
     await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge main into feature-1', base)
     await body('Merge main into feature-1: 2 commits.\n')
-    const synced = { ...unit('push'), merged: await git(dir, 'rev-parse', 'HEAD') }
+    const merging = { ...unit('push'), merge: 'main' }
+    const synced = { ...merging, merged: await git(dir, 'rev-parse', 'HEAD') }
     // A merge other than the one awaywork made is a worker's.
     expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
       kind: 'none',
       reason: '3 commits include a merge, not pushed',
+      unpublished: true,
+    })
+    expect(await publish(merging, dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: 'awaywork made no merge of main, not pushed',
       unpublished: true,
     })
     expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({

@@ -139,10 +139,12 @@ async function deliver(
       unpublished: true,
     }
   // A merging unit pushes the merge awaywork made itself, nothing in its place or on top of it.
-  if (unit.merged && (await git(repo, 'rev-parse', 'work')) !== unit.merged)
+  if (unit.merge && (await git(repo, 'rev-parse', 'work')) !== unit.merged)
     return {
       kind: 'none',
-      reason: `the clone's head isn't awaywork's merge ${unit.merged.slice(0, 7)} any more, not pushed`,
+      reason: unit.merged
+        ? `the clone's head isn't awaywork's merge ${unit.merged.slice(0, 7)} any more, not pushed`
+        : `awaywork made no merge of ${unit.merge}, not pushed`,
       unpublished: true,
     }
   // That merge sits on where the clone started: its first parent only, so the base's commits stay as they are.

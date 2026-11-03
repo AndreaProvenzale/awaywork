@@ -365,7 +365,7 @@ describe('config', () => {
       ),
     ).toEqual([
       "queue[0].then: sync is awaywork's own merge, not a model's step: it takes no then",
-      'queue[0].when: sync runs no model and spends no quota: drop when',
+      "queue[0].when: sync is awaywork's own merge, which only spends quota on a conflict: drop when",
     ])
     expect(problems(`${minimal}queue: [{ skill: fix, deliver: push, then: sync }]`)).toEqual([
       "queue[0].then[0].skill: sync is awaywork's own merge, a rule of its own: not a then step",

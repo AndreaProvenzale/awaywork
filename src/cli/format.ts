@@ -481,10 +481,7 @@ export function formatWhy(plan: RunReport['plan'], named: Item): string {
       ['unit', `${i + 1}, ${p.unit.id}`],
       ['rule', `#${p.rule + 1} ${rule ? describeRule(rule) : ''}`],
       ['skill', describeSkill(p)],
-      [
-        'provider',
-        `${p.provider ?? (p.unit.merge ? 'none, awaywork merges' : 'none left')}${passed}`,
-      ],
+      ['provider', `${p.provider ?? noProvider(p)}${passed}`],
       ['deliver', deliverOf(plan, p)],
       ['branch', deliverOf(plan, p) === 'push' ? p.unit.base : p.unit.branch],
       ...(goes ? [['goes on', goes]] : []),
@@ -548,6 +545,13 @@ function taskRepo(item: Item | undefined): string | undefined {
   return item?.task && typeof repo === 'string' && repo !== cardRepo(item.task.parent)
     ? repo
     : undefined
+}
+
+/** What a unit with no provider does: a merge still runs, and a conflict it read waits for one. */
+function noProvider({ unit }: PlannedUnit): string {
+  if (!unit.merge) return 'none left'
+  const conflicts = unit.items.some((i) => i.fields.conflicts === true)
+  return conflicts ? 'none left: the merge runs, a conflict waits' : 'none, awaywork merges'
 }
 
 /** The PRs in other repos a task's chain waits for in this run, e.g. `api's PR in acme/backend`. */
