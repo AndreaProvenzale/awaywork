@@ -92,6 +92,7 @@ describe('doctor', () => {
     await symlink(join(import.meta.dirname, 'fakes', 'cursor.mjs'), join(dir, 'agent'))
     vi.stubEnv('PATH', `${dir}:${process.env.PATH}`)
     vi.stubEnv('CURSOR_API_KEY', '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', '')
     const unset = await runChecks(path, () => {})
     vi.stubEnv('CURSOR_API_KEY', 'key')
     const set = await runChecks(path, () => {})
