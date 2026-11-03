@@ -6,6 +6,8 @@ export interface SkillMeta {
   deliver?: Deliver
   type?: CommitType
   description?: string
+  /** awaywork merges the PR's base into its branch itself, as `sync` does. */
+  merge?: true
 }
 export type Origin = 'user' | 'repo' | 'builtin'
 export type SkillCatalog = Partial<Record<Origin, Record<string, SkillMeta>>>
@@ -16,6 +18,7 @@ export const builtinSkills: Record<string, SkillMeta> = {
   implement: { type: 'feat' },
   review: { deliver: 'report' },
   judge: { deliver: 'report' },
+  sync: { merge: true },
 }
 
 const lookupOrder: Origin[] = ['user', 'repo', 'builtin']
@@ -31,7 +34,7 @@ export function resolveSkill(
   }
 }
 
-/** Reads `description`, `metadata.deliver` and `metadata.type` from a SKILL.md frontmatter. */
+/** Reads `description`, `metadata.deliver`, `metadata.type` and `metadata.merge` from a SKILL.md frontmatter. */
 export function parseSkill(text: string): SkillMeta {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
   const { description, metadata } = (frontmatter && parse(frontmatter)) || {}
@@ -40,6 +43,7 @@ export function parseSkill(text: string): SkillMeta {
   return {
     ...((deliver === 'draft_pr' || deliver === 'report') && { deliver }),
     ...(type && { type }),
+    ...(metadata?.merge === 'base' && { merge: true as const }),
     ...(typeof description === 'string' && { description }),
   }
 }

@@ -190,6 +190,8 @@ describe('github source', () => {
       my_unresolved_threads: 1,
       files: ['src/auth/token.ts', 'README.md'],
       changed_lines: 42,
+      conflicts: false,
+      behind: 3,
       review_requested: false,
       created: '2026-01-03T08:00:00Z',
       updated: '2026-02-03T08:00:00Z',
@@ -197,6 +199,9 @@ describe('github source', () => {
     })
     expect(pr3?.fields).toMatchObject({ draft: true, mine: true })
     expect(pr3?.fields).not.toHaveProperty('checks')
+    // GitHub hadn't worked out mergeable yet, and the branch was gone for the compare.
+    expect(pr3?.fields).not.toHaveProperty('conflicts')
+    expect(pr3?.fields).not.toHaveProperty('behind')
     expect(pr2?.fields).toMatchObject({
       mine: false,
       trusted: false,
@@ -277,6 +282,55 @@ describe('github source', () => {
     const run = recorded([[/nodes\(ids:/, JSON.stringify(starters)], ...githubRoutes()])
     const [pr1] = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
     expect(pr1?.fields).toMatchObject({ unresolved_threads: 0, my_unresolved_threads: 0 })
+  })
+
+  it('compares only your own open PRs in the repo with their base, and reads conflicts off mergeable', async () => {
+    const [base] = JSON.parse(fixture('search-authored.json')).data.search.nodes
+    const pr = (n: number, more: Record<string, unknown>) => ({
+      ...base,
+      id: `PR_${n}`,
+      number: n,
+      url: `https://github.com/acme/api/pull/${n}`,
+      baseRefName: n === 3 ? 'release/1.x' : 'main',
+      mergeable: 'CONFLICTING',
+      ...more,
+    })
+    const authored = (...nodes: unknown[]) => JSON.stringify({ data: { search: { nodes } } })
+    const run = recorded([
+      [
+        /author:@me/,
+        authored(
+          pr(1, {}),
+          pr(2, { isCrossRepository: true }),
+          pr(3, {}),
+          pr(4, { viewerDidAuthor: false }),
+        ),
+      ],
+      [/compare\(headRef:/, JSON.stringify({ data: { pr0: null, pr1: null } })],
+      ...githubRoutes(),
+    ])
+    const found = await githubSource(run).items({ repos: ['acme/*'] }, ctx)
+    const compares = run.calls.map((c) => c.join(' ')).filter((c) => c.includes('compare('))
+    expect(compares).toHaveLength(1)
+    expect(compares[0]).toContain('pr0: node(id: "PR_1")')
+    expect(compares[0]).toContain(
+      'pr1: node(id: "PR_3") { ... on PullRequest { id headRef { compare(headRef: "release/1.x")',
+    )
+    expect(compares[0]).not.toContain('PR_2')
+    expect(compares[0]).not.toContain('PR_4')
+    expect(found.find((i) => i.key === 'acme/api#1')?.fields).toMatchObject({ conflicts: true })
+    expect(found.find((i) => i.key === 'acme/api#1')?.fields).not.toHaveProperty('behind')
+    expect(found.find((i) => i.key === 'acme/api#1')?.linkedPrs[0]?.into).toBe('main')
+
+    log.length = 0
+    const routes = recorded([[/author:@me/, authored(pr(1, {}))], ...githubRoutes()])
+    const failing: Exec = async (cmd, args) => {
+      if (args.join(' ').includes('compare(')) throw new Error('HTTP 502')
+      return routes(cmd, args)
+    }
+    const [pr1] = await githubSource(failing).items({ repos: ['acme/*'] }, ctx)
+    expect(pr1?.fields).not.toHaveProperty('behind')
+    expect(log).toContain("github: couldn't read how far your PRs are behind their base: HTTP 502")
   })
 
   it('follows the files of a large PR page by page and stops at the cap', async () => {
@@ -363,6 +417,8 @@ describe('github source', () => {
       url: 'https://github.com/acme/api/pull/1',
       branch: 'rate-limits',
       head: 'abc1234',
+      into: 'main',
+      intoHead: 'def5678',
       ours: false,
       mine: true,
       trusted: true,
