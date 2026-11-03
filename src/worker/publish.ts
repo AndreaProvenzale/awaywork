@@ -62,6 +62,7 @@ const git = async (dir: string, ...args: string[]) =>
  * Delivers a finished unit: a PR only with commits, a PR body and a branch new to the remote, a draft
  * unless it's `deliver: pr` and nothing left it `notReady`, its footer recording what it left a later run when `held`;
  * a push only with commits, a summary in `pr.md`, and a fast-forward onto the developer's own PR branch;
+ * no merge among the commits, but on a merging unit only the merge of the PR's base awaywork made itself, the unit's `merged`;
  * on a unit that resumes awaywork's own draft, a fast-forward onto its branch, with or without commits, its body
  * rewritten from `pr.md` and the draft marked ready once nothing holds it, as a new PR would open.
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
@@ -137,7 +138,25 @@ async function deliver(
       reason: `the branch no longer holds ${start.slice(0, 7)}, where the clone started, not pushed`,
       unpublished: true,
     }
-  const log = await git(repo, 'rev-list', '--topo-order', '--reverse', 'work', `^${start}`)
+  // A merging unit pushes the merge awaywork made itself, nothing in its place or on top of it.
+  if (unit.merge && (await git(repo, 'rev-parse', 'work')) !== unit.merged)
+    return {
+      kind: 'none',
+      reason: unit.merged
+        ? `the clone's head isn't awaywork's merge ${unit.merged.slice(0, 7)} any more, not pushed`
+        : `awaywork made no merge of ${unit.merge}, not pushed`,
+      unpublished: true,
+    }
+  // That merge sits on where the clone started: its first parent only, so the base's commits stay as they are.
+  const log = await git(
+    repo,
+    'rev-list',
+    ...(unit.merged ? ['--first-parent'] : []),
+    '--topo-order',
+    '--reverse',
+    'work',
+    `^${start}`,
+  )
   const commits = log.split('\n').filter(Boolean)
   const oldest = commits[0]
   if (!oldest && !resume) return { kind: 'none', reason: 'nothing' }
@@ -156,8 +175,8 @@ async function deliver(
       reason: `push goes only onto your own PR's branch, not pushed`,
       unpublished: true,
     }
-  // Merged history would carry other people's commits onto the PR, with awaywork's trailer.
-  if (await git(repo, 'rev-list', '--merges', 'work', `^${start}`))
+  // Any other merge would carry other people's commits onto the PR, with awaywork's trailer.
+  if (!unit.merged && (await git(repo, 'rev-list', '--merges', 'work', `^${start}`)))
     return {
       kind: 'none',
       reason: `${counted(commits.length, 'commit')} include a merge, not pushed`,

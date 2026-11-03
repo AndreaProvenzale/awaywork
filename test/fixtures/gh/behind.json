@@ -1,0 +1,12 @@
+{
+  "data": {
+    "pr0": {
+      "id": "PR_kwDOAAAAAc4AAAA1",
+      "headRef": { "compare": { "aheadBy": 3 } }
+    },
+    "pr1": {
+      "id": "PR_kwDOAAAAAc4AAAA3",
+      "headRef": null
+    }
+  }
+}

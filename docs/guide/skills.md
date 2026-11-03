@@ -15,6 +15,7 @@ A skill tells the worker what to do with a unit. Every skill is an [Agent Skills
 | `review` | A PR awaiting your review, or this run's work as a `then` step; nothing is posted, unless a rule's `deliver: pending_review` leaves it as your pending review. Writes a verdict: `approve`, `comments` or `changes`, and under `pending_review` its line comments to `review.json` | report |
 | `plan` | A task with no PR: an implementation plan, no code, or [questions](./how-it-works.md#questions) when none of its readings is likely enough to plan on; under `deliver: plan`, its tasks in `plan.yml` too ([Plans](./how-it-works.md#plans)) | report |
 | `judge` | A slice about to be published, as a [gate's judge](./configuration.md#judges): writes the verdict `fires` when it holds a change a human must decide on, one line per decision in its report | report |
+| `sync` | Your own PR behind its base: awaywork merges the base itself and pushes the merge onto the PR, with no model unless the PR reads `conflicts: true`, when one resolves them; a rule naming it must say `deliver: push` ([`sync`](./chains.md#sync)) | push |
 
 ```sh
 awaywork skills list   # every skill a rule can name, and where it comes from
@@ -110,6 +111,7 @@ queue:
 
 - `metadata.deliver: report` makes the skill report instead of commit; without it, it commits. Where its commits go is the rule's [`deliver`](./chains.md#then): a draft PR unless the rule opts in to a ready one or a `push`.
 - `metadata.type` is the conventional-commit type (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style` or `revert`) that fills `{type}` in a [branch name](./configuration.md#branch-names), e.g. `{type}/{key}-{title}` gives `feat/ENG-12-login-with-sso` for `implement` and `fix/ENG-14-null-token` for `fix`. The first skill that commits decides, and a [stacked slice](./chains.md#stack) takes its own first skill's; without one, or with any other word, it's `chore`. It's read at plan time, before the clone, so `.awaywork/skills/` in the repo doesn't set it: a repo skill that replaces a built-in gets the built-in's type, any other `chore`.
+- `metadata.merge: base` makes awaywork merge the PR's base into its branch itself, before setup, and push the merge, as [`sync`](./chains.md#sync) does. The skill's body only matters on a [conflict](./chains.md#conflicts): it's what the worker that resolves it reads, and that worker can edit or delete the merge's files but not add one, which awaywork leaves out. The rule must be a single step with `deliver: push`; otherwise awaywork skips it.
 - `with: { key: value }` on a rule or step lists those values in a Parameters section of the prompt, after the skill; a multi-line value comes JSON-quoted on one line. Document the keys your skill reads under `metadata`, e.g. `metadata: { depth: "quick or thorough" }`; awaywork doesn't check them.
 
 - A skill that judges can write one lowercase word to `.away/out/verdict`, such as `pass` or `fail`. The report shows it, and a [loop](./chains.md#loops)'s `until` can match it.

@@ -351,6 +351,34 @@ describe('config', () => {
       ).toEqual([`queue[0].then: Unrecognized key: "${key.split(':')[0]}"`])
   })
 
+  it('takes sync only as a rule of its own that says deliver: push', () => {
+    const where = 'where: { type: pr, mine: true, behind: { gt: 0 }, conflicts: false }'
+    expect(
+      parseConfig(`${minimal}queue: [{ skill: sync, ${where}, deliver: push }]`).queue,
+    ).toEqual([expect.objectContaining({ skill: 'sync', deliver: 'push' })])
+    expect(problems(`${minimal}queue: [{ skill: sync, ${where} }]`)).toEqual([
+      "queue[0].deliver: sync merges your PR's base and pushes the merge onto your PR: it needs deliver: push",
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: sync, deliver: push, then: fix, when: { headroom: "20%" } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then: sync is awaywork's own merge, not a model's step: it takes no then",
+      "queue[0].when: sync is awaywork's own merge, which only spends quota on a conflict: drop when",
+    ])
+    expect(problems(`${minimal}queue: [{ skill: fix, deliver: push, then: sync }]`)).toEqual([
+      "queue[0].then[0].skill: sync is awaywork's own merge, a rule of its own: not a then step",
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: fix, then: { loop: [review, sync], until: { verdict: approve }, max: 2 } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then[0].loop[1].skill: sync is awaywork's own merge, a rule of its own: not a then step",
+    ])
+  })
+
   it('takes a loop in then, with its steps once across loops, a verdict word and a bounded max', () => {
     const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
   - skill: implement
