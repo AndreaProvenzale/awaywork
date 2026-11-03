@@ -9,7 +9,8 @@ import { runCommand } from './setup.js'
 import { setupEnv } from './steps.js'
 import { WORK_DIR } from './workspace.js'
 
-export type ContextSource = { context?: { command: string; secrets: string[] } }
+/** `dir` is the folder of the config file that set the command, set when the config loads. */
+export type ContextSource = { context?: { command: string; secrets: string[]; dir?: string } }
 
 /** The secrets of every source's context command. */
 export const contextSecrets = (config: Config): string[] =>
@@ -52,7 +53,7 @@ export async function fetchContexts(items: Item[], dir: string, f: FetchInput): 
         AWAYWORK_ITEM_FILE: itemFile,
         AWAYWORK_CONTEXT_DIR: out,
       }
-      const { output, failed } = await runCommand(fetch.command, f.configDir, env, {
+      const { output, failed } = await runCommand(fetch.command, fetch.dir ?? f.configDir, env, {
         secrets: fetch.secrets,
         signal: f.signal,
         until: f.until,

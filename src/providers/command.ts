@@ -36,7 +36,7 @@ export const commandProviderConfig = z
   })
   .describe('A custom provider: any agent CLI, run by a command')
 
-/** `dir` is the config file's folder, set when the config loads. */
+/** `dir` is the folder of the config file that set it, set when the config loads. */
 export type CommandProviderConfig = z.output<typeof commandProviderConfig> & { dir?: string }
 
 const quotaSchema = z.object({

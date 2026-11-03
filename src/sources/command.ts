@@ -82,7 +82,7 @@ export const commandConfig = z
   })
   .describe('A custom source: any command that prints your open items as JSON')
 
-/** `dir` is the config file's folder, set when the config loads. */
+/** `dir` is the folder of the config file that set it, set when the config loads. */
 export type CommandConfig = z.output<typeof commandConfig> & { dir?: string }
 
 const TIMEOUT_MS = 10 * 60_000

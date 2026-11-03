@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { parse } from 'yaml'
-import { configPath, loadConfig } from '../config/load.js'
+import { ConfigError, configPath, loadConfig } from '../config/load.js'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import { type Config, canMatch } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
@@ -93,7 +93,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     )
 
   if (loaded instanceof Error) {
-    report('FAIL', path, loaded.message.split('\n').slice(1).join('; ').trim())
+    const what = loaded instanceof ConfigError ? loaded.path : path
+    report('FAIL', what, loaded.message.split('\n').slice(1).join('; ').trim())
     return checks
   }
   const config = loaded

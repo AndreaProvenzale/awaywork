@@ -143,7 +143,7 @@ A sleeping machine runs nothing. The daemon holds nothing while idle; while a ru
 
 ## In GitHub Actions
 
-Run it from a repo of your own instead (a private "awaywork" repo works well), on GitHub's runners or on a machine of yours. On a team, each person keeps their own control repo, so nobody's token sits in a repo a teammate can write to. Teammates can point theirs at the same repos, since each run only sees its own token's `@me`. A team base config those repos extend is an open issue, [#119](https://github.com/AndreaProvenzale/awaywork/issues/119). It's GitHub only: on a [Bitbucket](./configuration.md#bitbucket-and-jira) config, install refuses it, so use launchd, systemd or cron.
+Run it from a repo of your own instead (a private "awaywork" repo works well), on GitHub's runners or on a machine of yours. On a team, each person keeps their own control repo, so nobody's token sits in a repo a teammate can write to. Teammates can point theirs at the same repos, since each run only sees its own token's `@me`. It's GitHub only, and one file: on a [Bitbucket](./configuration.md#bitbucket-and-jira) config, or one that [extends a base](./configuration.md#a-base-config), install refuses it, so use launchd, systemd or cron.
 
 ```
 $ cd my-awaywork-repo
