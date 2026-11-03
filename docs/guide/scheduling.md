@@ -164,7 +164,7 @@ Before the first run:
   GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` scopes (…)
 ```
 
-The runner is GitHub-hosted by default: a fresh VM each run, with no Codex or Cursor. Self-hosted is a machine of yours, see [Running Codex](#running-codex) and [Running Cursor](#running-cursor). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
+The runner is GitHub-hosted by default: a fresh VM each run, with no Codex. Self-hosted is a machine of yours, see [Running Codex](#running-codex). Without a terminal, `awaywork schedule install --with github-actions` asks nothing: it keeps the runner the workflow already has, GitHub-hosted for a new one, and offers no secret.
 
 This writes `.github/workflows/awaywork.yml`: a cron at each window's start (none with `windows: []`), plus `workflow_dispatch` for a manual run. There's no daemon there, so [`run: soon`](#soon-runs) rules run in the windows like the rest, which install says once. `awaywork schedule remove` deletes it. It also copies your config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/` next to it, so your personal skills reach the runner. It offers to set each repository secret the config needs whose value is in your environment or `~/.config/awaywork/env`, with `gh secret set`. Values are never printed. Then:
 
@@ -235,7 +235,7 @@ $ awaywork report --list
 | --- | --- | --- |
 | Claude Code | `CLAUDE_CODE_OAUTH_TOKEN` | From `claude setup-token`; lasts a year |
 | Codex | none | Self-hosted runners only, on the machine's own login |
-| Cursor | `CURSOR_API_KEY` | Self-hosted runners only for now; a key from Cursor's dashboard |
+| Cursor | `CURSOR_API_KEY` | A key from Cursor's dashboard |
 | [Your own CLI](./configuration.md#bring-your-own-cli) | its `secrets` | Self-hosted runners only: nothing installs it on a GitHub-hosted one |
 
 ### Running Codex
@@ -255,10 +255,15 @@ On a self-hosted runner the job runs on your machine, so the action keeps its ha
 
 ### Running Cursor
 
-Cursor doesn't run on GitHub-hosted runners yet: its CLI has no npm package for the action to install. `schedule install` leaves it out there, as it does Codex:
+Cursor's CLI has no npm package, so on a GitHub-hosted runner the action installs it with Cursor's own installer, which won't run as root: into `/opt/cursor`, which the worker user can read but not write, linked as `/usr/local/bin/agent`. `schedule install` puts that script in the workflow's `scripts` input, next to `packages`, and names `CURSOR_API_KEY` among the secrets:
 
-```
-cursor won't run in this workflow: Cursor's CLI has no npm package to install on a GitHub-hosted runner yet; run it locally or on a self-hosted runner
+```yaml
+packages: "@anthropic-ai/claude-code"
+scripts: |
+  sudo install -d -o "$USER" /opt/cursor
+  HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'
+  sudo ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent
+  agent --version
 ```
 
-On a self-hosted runner it runs the `agent` on the runner's `PATH` with the `CURSOR_API_KEY` secret the workflow passes, as it needs one everywhere: a login on the machine doesn't reach the fresh `HOME` it runs in.
+On a self-hosted runner it runs the `agent` already on the runner's `PATH` instead. Either way it gets the `CURSOR_API_KEY` secret the workflow passes, as it needs one everywhere: a login on the machine doesn't reach the fresh `HOME` it runs in.

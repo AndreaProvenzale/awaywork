@@ -364,12 +364,14 @@ export async function installWorkflow(
       if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
       return provider && !unavailable ? [provider] : []
     })
+    // A self-hosted runner keeps the machine's own CLIs and their logins.
+    const installs = selfHosted ? [] : used.flatMap((p) => p.install ?? [])
     const base = {
       starts: startsOf(loaded.windows),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       version: packageVersion,
-      // A self-hosted runner keeps the machine's own CLIs and their logins.
-      packages: selfHosted ? [] : used.map((p) => p.package),
+      packages: installs.flatMap((i) => ('npm' in i ? [i.npm] : [])),
+      scripts: installs.flatMap((i) => ('script' in i ? [i.script] : [])),
       setup: Object.values(loaded.sources).flatMap((cfg) =>
         isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
       ),

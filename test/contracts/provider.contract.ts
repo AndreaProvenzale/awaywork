@@ -17,7 +17,7 @@ async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[
 export function providerContract(
   provider: Provider,
   job: () => Job,
-  exempt: ('emptyConfig' | 'package')[] = [],
+  exempt: 'emptyConfig'[] = [],
 ): void {
   describe(`provider contract: ${provider.id}`, () => {
     it('declares a usable id, config and file locations', () => {
@@ -26,8 +26,13 @@ export function providerContract(
         expect(provider.configSchema.safeParse({}).success).toBe(true)
       if (provider.skillsDir) expect(isAbsolute(provider.skillsDir)).toBe(false)
       expect(provider.instructionsFile).not.toBe('')
-      if (!exempt.includes('package')) expect(provider.package).not.toBe('')
       for (const name of provider.secrets) expect(name).toMatch(/^[A-Z][A-Z0-9_]*$/)
+    })
+
+    it('installs on a GitHub-hosted runner, or says why it is unavailable there', () => {
+      const install = provider.install && Object.values(provider.install)[0]
+      if (install) expect(install).not.toBe('')
+      else expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toBeTruthy()
     })
 
     it('detects its binary', async () => {

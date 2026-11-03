@@ -209,8 +209,8 @@ export interface Provider {
   credential: 'static' | 'rotating'
   quota: 'window' | 'credits'
   unattended: 'allowed' | 'grey' | 'forbidden'
-  /** The npm package that installs the binary on a runner. */
-  package: string
+  /** How a GitHub-hosted runner installs the binary: an npm package, or a bash script run as the runner's user. Without one, `unavailable` says so there. */
+  install?: { npm: string } | { script: string }
   /** Env var names it reads unattended; locally a login may stand in. */
   secrets: string[]
   /** Why it can't run in this environment, if it can't; routing then skips it. */

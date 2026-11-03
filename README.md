@@ -56,7 +56,7 @@ Then schedule it for when you're away:
 awaywork schedule install    # asks: this machine (launchd, systemd or cron) or GitHub Actions
 ```
 
-GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex and Cursor run there; add the secrets it lists.
+GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists.
 
 Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
 
@@ -154,7 +154,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 | --- | --- | --- |
-| Claude Code, plus Codex and Cursor (experimental, not on hosted runners; Cursor needs a `CURSOR_API_KEY` even locally) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
+| Claude Code, plus Codex and Cursor (experimental; Codex not on hosted runners, Cursor needs a `CURSOR_API_KEY` even locally) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/configuration.md#bitbucket-and-jira).
 

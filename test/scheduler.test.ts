@@ -275,7 +275,7 @@ it('writes a workflow with a UTC cron that calls the action with a pinned versio
 
 it('ships an action that installs the pinned version and runs awaywork once', async () => {
   const action = parse(await readFile(new URL('../action.yml', import.meta.url), 'utf8'))
-  expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages', 'unit'])
+  expect(Object.keys(action.inputs)).toEqual(['config', 'version', 'packages', 'scripts', 'unit'])
   expect(action.runs.using).toBe('composite')
   const runs = action.runs.steps.map((s: { run?: string }) => s.run ?? '')
   expect(runs[0]).toContain('if [ -z "$GH_TOKEN" ]; then')
@@ -298,6 +298,11 @@ it("touches a self-hosted machine's disk, global installs and git config not at 
   expect(step('Install')).toMatchObject({
     if: hosted,
     run: 'npm install -g "awaywork@$VERSION" $PACKAGES',
+  })
+  expect(step('Install by script')).toMatchObject({
+    if: hosted,
+    run: 'bash -eo pipefail -c "$SCRIPTS"',
+    env: { SCRIPTS: '${{ inputs.scripts }}' },
   })
   const local = step('Install for this job')
   expect(local.if).toBe("runner.environment != 'github-hosted'")
@@ -442,6 +447,21 @@ describe('schedule install --with github-actions', () => {
     expect(Object.keys(steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
   })
 
+  it('installs cursor by script on the hosted runner, and names its key', async () => {
+    const { root, config, install } = await setup()
+    await writeFile(config, CONFIG.replace('[claude]', '[claude, cursor]'))
+    await install()
+    expect(out.join('\n')).not.toMatch(/won't run/)
+    const hosted = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps.at(-1)
+    expect(hosted.with.packages).toBe('@anthropic-ai/claude-code')
+    expect(hosted.with.scripts).toContain('HOME=/opt/cursor bash -c')
+    expect(Object.keys(hosted.env)).toEqual([
+      'GH_TOKEN',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+      'CURSOR_API_KEY',
+    ])
+  })
+
   it('names each secret the config needs once', async () => {
     const { root, config, install } = await setup()
     await writeFile(
@@ -475,6 +495,7 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     expect(job['runs-on']).toBe('self-hosted')
     expect(job['timeout-minutes']).toBe(1440)
     expect(job.steps.at(-1).with.packages).toBe('')
+    expect(job.steps.at(-1).with.scripts).toBeUndefined()
     expect(Object.keys(job.steps.at(-1).env)).toEqual(['GH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'])
     const labelHint = /^`runs-on: self-hosted` matches any self-hosted runner .* a label of its own/
     expect(out[0]).toMatch(labelHint)

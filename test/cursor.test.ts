@@ -40,7 +40,7 @@ const job = (env: NodeJS.ProcessEnv = {}, maxTurns = 10): Job => ({
   env: { ...process.env, ...env },
 })
 
-providerContract(provider, job, ['package'])
+providerContract(provider, job)
 
 async function collect(events: AsyncIterable<WorkerEvent>): Promise<WorkerEvent[]> {
   const all: WorkerEvent[] = []
@@ -213,14 +213,15 @@ describe('cursor provider', () => {
     expect(await readFile(join(outside, 'agent-home/keep.txt'), 'utf8')).toBe('KEEP')
   })
 
-  it('reads the version, probes nothing and is unavailable on a GitHub-hosted runner only', async () => {
+  it('reads the version, probes nothing and installs by script on a GitHub-hosted runner', async () => {
     expect(await provider.detect()).toEqual({ installed: true, version: '2026.10.22-27dcf5f' })
     expect(await cursorProvider('/nonexistent/agent').detect()).toEqual({ installed: false })
     // Some other `agent` that answers --version.
     expect(await cursorProvider('/bin/echo').detect()).toEqual({ installed: false })
     expect(await provider.probe({ env: {}, log: () => {} })).toBeNull()
-    expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toMatch(/self-hosted/)
-    expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
-    expect(provider.unavailable?.({})).toBeUndefined()
+    expect(provider.unavailable).toBeUndefined()
+    expect(provider.install).toEqual({
+      script: expect.stringContaining('HOME=/opt/cursor bash -c'),
+    })
   })
 })
