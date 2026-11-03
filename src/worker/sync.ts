@@ -128,7 +128,7 @@ export async function leaveConflicts(
  * Makes the merge a worker resolved: the files of git's automatic merge as its working tree holds them, `.away/`
  * left out, committed on exactly the clone's start and the base's head, whatever `.git` says now; it lists the
  * untracked files it left out and the other paths it changed on git's merge. Refused while a conflicted path holds a
- * conflict marker, when nothing of the base came in, or when a path the base changed outside the conflicts is back as it was.
+ * conflict marker it had on neither side, when nothing of the base came in, or when a path the base changed outside the conflicts is back as it was.
  */
 export async function concludeMerge(
   dir: string,
@@ -163,22 +163,46 @@ export async function concludeMerge(
     return {
       refused: `the resolution undoes ${r.into}'s change to ${undone.join(', ')}, not pushed`,
     }
-  // As text, whatever attributes the worker wrote say; `conflict-marker-size` makes markers longer.
-  const pattern = '^(<{7,}|>{7,})( |$)'
-  const marker = ['grep', '-z', '-a', '-l', '-E', pattern, tree, '--', ...literal(r.paths)]
-  const grep = await execa(bin('git'), [...inClone(dir), ...marker], {
-    env,
-    extendEnv: false,
-    reject: false,
-  })
-  if (grep.exitCode !== 0 && grep.exitCode !== 1) throw new Error(`git grep failed: ${grep.stderr}`)
-  const markers = names(grep.stdout).map((line) => line.slice(tree.length + 1))
+  const markers = await leftMarkers(dir, env, tree, r)
   if (markers.length)
     return { refused: `conflict markers left in ${markers.join(', ')}, not pushed` }
   const message = `Merge ${r.into} into ${branch}`
   const commit = await commitTree(dir, env, tree, [r.start, r.head], message)
   await run(dir, env, ['reset', '-q', commit])
   return { commit, untracked, also: await changed(r.automatic, tree) }
+}
+
+/** The conflicted paths whose marker lines in `tree` outnumber those of the clone's start and of the base: ones the resolution left. */
+async function leftMarkers(
+  dir: string,
+  env: NodeJS.ProcessEnv,
+  tree: string,
+  r: Resolving,
+): Promise<string[]> {
+  // As text, whatever attributes the worker wrote say; `conflict-marker-size` makes markers longer.
+  const pattern = '^(<{7,}|>{7,})( |$)'
+  const revs = [tree, r.start, r.head]
+  const marker = ['grep', '-z', '-a', '-E', pattern, ...revs, '--', ...literal(r.paths)]
+  const grep = await execa(bin('git'), [...inClone(dir), ...marker], {
+    env,
+    extendEnv: false,
+    reject: false,
+  })
+  if (grep.exitCode !== 0 && grep.exitCode !== 1) throw new Error(`git grep failed: ${grep.stderr}`)
+  // Each match reads `<rev>:<path>\0<line>\n`, a path free of NUL and a line free of newlines.
+  const counts = new Map<string, number>()
+  const out = grep.stdout
+  for (let at = 0; at < out.length; ) {
+    const end = out.indexOf('\n', out.indexOf('\0', at))
+    const match = out.slice(at, end === -1 ? out.length : end)
+    counts.set(match, (counts.get(match) ?? 0) + 1)
+    at = end === -1 ? out.length : end + 1
+  }
+  const had = (rev: string, match: string) => counts.get(rev + match.slice(tree.length)) ?? 0
+  const left = [...counts]
+    .filter(([m, n]) => m.startsWith(`${tree}:`) && n > Math.max(had(r.start, m), had(r.head, m)))
+    .map(([m]) => m.slice(tree.length + 1, m.indexOf('\0')))
+  return [...new Set(left)]
 }
 
 /** The clone's working tree as a tree, `git add <flag>`ed on what `seed` puts in a fresh index of awaywork's, `.away/` left out. */

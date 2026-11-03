@@ -487,6 +487,35 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     })
   })
 
+  const refused = { kind: 'none', reason: 'conflict markers left in a.txt, not pushed' }
+  it.each([
+    [
+      'pushes the markers a.txt already had',
+      'fixture',
+      { text: expect.stringContaining('Resolved: a.txt') },
+    ],
+    ['refuses a marker repeated past what a.txt had', 'fixture\n<<<<<<< ours', refused],
+    [
+      'refuses the conflict left beside them',
+      '<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> main',
+      refused,
+    ],
+  ])('%s', async (_, kept, outcome) => {
+    const fixture = '<<<<<<< ours\nfixture\n>>>>>>> theirs\n'
+    const at = await origin(
+      { 'a.txt': `${fixture}theirs\n` },
+      { 'a.txt': `${fixture}mine\n` },
+      { 'a.txt': `${fixture}line\n` },
+    )
+    const worker = resolver(async (dir) => {
+      const resolved = `<<<<<<< ours\n${kept}\n>>>>>>> theirs\nmine\ntheirs\n`
+      await writeFile(join(dir, 'a.txt'), resolved)
+      await writeFile(join(dir, '.away/out/pr.md'), 'a.txt: kept both lines.\n')
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), config, worker)
+    expect(report.results[0]?.outcome).toMatchObject(outcome)
+  })
+
   it.each([
     ['a binary file both sides added', { 'b.bin': 'theirs\0' }, { 'b.bin': 'mine\0' }, {}, 'b.bin'],
     [
