@@ -51,7 +51,7 @@ export function parseConfig(text: string, path = '<config>'): Config {
   return validate(layers(text, path))
 }
 
-function layers(text: string, path: string): Layer[] {
+function layers(text: string, path: string): [Layer, Layer?] {
   const config = { path, raw: yaml(text, path) }
   const base = isRaw(config.raw) ? config.raw.extends : undefined
   if (typeof base !== 'string' || !base) return [config]
@@ -86,15 +86,25 @@ function yaml(text: string, path: string): unknown {
   return doc.toJS()
 }
 
-function validate(files: Layer[]): Config {
-  const [config, base] = files as [Layer, Layer?]
+function validate(files: [Layer, Layer?]): Config {
+  const [config, base] = files
   const result = configSchema.safeParse(base ? merge(base.raw, config.raw) : config.raw)
   if (!result.success) {
-    const problems = result.error.issues.map((issue) => {
-      const keys =
-        issue.code === 'unrecognized_keys' ? [...issue.path, ...issue.keys.slice(0, 1)] : issue.path
-      return { file: fileOf(files, keys), problem: formatIssue(issue) }
-    })
+    const problems = result.error.issues
+      .flatMap((issue) =>
+        issue.code === 'unrecognized_keys' && base
+          ? issue.keys.map((key) => ({
+              ...issue,
+              keys: [key],
+              message: `Unrecognized key: "${key}"`,
+            }))
+          : [issue],
+      )
+      .map((issue) => {
+        const keys =
+          issue.code === 'unrecognized_keys' ? [...issue.path, ...issue.keys] : issue.path
+        return { file: fileOf(files, keys), problem: formatIssue(issue) }
+      })
     const { file } = problems[0] as { file: string }
     throw new ConfigError(
       file,
@@ -113,20 +123,17 @@ function merge(base: unknown, over: unknown): unknown {
   return merged
 }
 
-/** The file that sets `keys`: the config's own, unless its base sets more of the path. */
-function fileOf(files: Layer[], keys: readonly PropertyKey[]): string {
-  return files.reduce((best, f) => (depth(f.raw, keys) > depth(best.raw, keys) ? f : best)).path
-}
-
-/** How many of `keys`, from the first, `raw` has. */
-function depth(raw: unknown, keys: readonly PropertyKey[]): number {
-  let found = 0
+/** The file whose value at `keys` the merge kept: the base's where the config's maps stop short of it and the base's don't. */
+function fileOf([config, base]: [Layer, Layer?], keys: readonly PropertyKey[]): string {
+  let [over, under] = [config.raw, base?.raw]
   for (const key of keys) {
-    if (typeof raw !== 'object' || raw === null || !Object.hasOwn(raw, key)) break
-    raw = (raw as Record<PropertyKey, unknown>)[key]
-    found++
+    if (!isRaw(over)) break
+    if (!Object.hasOwn(over, key))
+      return base && isRaw(under) && Object.hasOwn(under, key) ? base.path : config.path
+    over = over[key as string]
+    under = isRaw(under) ? under[key as string] : undefined
   }
-  return found
+  return config.path
 }
 
 /** Makes a base's instruction and settings files absolute, so they resolve against its own folder. */

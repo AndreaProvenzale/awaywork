@@ -781,6 +781,34 @@ repos: { acme/web: { instructions: mine.md } }
     ])
   })
 
+  it("names the role for an item of a list it replaced, though the base's item sets that key", async () => {
+    const dir = await files({
+      'team/base.yml': `${base}queue: [{ skill: fix, source: github, where: { type: pr } }]\n`,
+      'rule.yml': 'extends: team/base.yml\nqueue: [{ source: github, where: { type: pr } }]\n',
+      'window.yml': "extends: team/base.yml\nwindows: [{ start: '02:00' }]\n",
+    })
+    for (const file of ['rule.yml', 'window.yml'])
+      expect((await error(join(dir, file))).path).toBe(join(dir, file))
+  })
+
+  it('names the file of each unknown key in one map', async () => {
+    const dir = await files({
+      'typo/base.yml': base.replace('limits: {', 'foo: 1\nlimits: { unitz: 2,'),
+      'typo.yml': 'extends: typo/base.yml\nbar: 2\nlimits: { units: 3, unitx: 4 }\n',
+    })
+    const e = await error(join(dir, 'typo.yml'))
+    const role = join(dir, 'typo.yml')
+    expect([e.path, e.problems.toSorted()]).toEqual([
+      join(dir, 'typo/base.yml'),
+      [
+        `${role}: Unrecognized key: "bar"`,
+        `${role}: limits: Unrecognized key: "unitx"`,
+        'Unrecognized key: "foo"',
+        'limits: Unrecognized key: "unitz"',
+      ].toSorted(),
+    ])
+  })
+
   it('validates a draft of the role file merged with its base', async () => {
     const dir = await files({ 'base.yml': base, 'dev.yml': 'extends: base.yml\n' })
     const path = join(dir, 'dev.yml')

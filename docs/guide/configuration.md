@@ -110,9 +110,9 @@ queue:
     where: { type: pr, mine: true, checks: failing }
 ```
 
-`extends` is a path relative to the role file. Maps merge key by key with the role winning, so `limits` above ends up with all three keys and `sources: { github: { every: 15m } }` would keep the base's `repos`. A list replaces the base's whole, `queue` and `windows` included, since rule order matters. There's no unsetting what the base sets: `null` is just an invalid value. It's one level deep and local: a base with an `extends` of its own is an error, and so is a URL.
+`extends` is a path relative to the role file. Maps merge key by key with the role winning, so `limits` above ends up with all three keys and `sources: { github: { every: 15m } }` would keep the base's `repos`. A list replaces the base's list outright, `queue` and `windows` included, since rule order matters. There's no unsetting what the base sets: `null` is just an invalid value. It's one level deep and local: a base with an `extends` of its own is an error, and so is a URL.
 
-Relative paths resolve against the file they're written in, so `notes/team.md` is `team/notes/team.md` whoever extends it. The same goes for the folder a custom source's `command`, a `context` command or a custom provider's `probe` runs in, and for `claude: { settings }`. Skills stay next to the file you pass to `--config`. An error names the file it comes from, the base when only the base sets that key:
+Relative paths resolve against the file they're written in, so `notes/team.md` is `team/notes/team.md` whoever extends it. The same goes for the folder a custom source's `command`, a `context` command or a custom provider's `probe` runs in, and for `claude: { settings }`. A custom source's other commands, `write` and `setup`, run in the folder of the file that sets its `command`. Skills stay next to the file you pass to `--config`. An error names the file it comes from: the base when only the base sets that key, the role for anything inside a list the role sets:
 
 ```text
 $ awaywork doctor --config roles/developer.yml
