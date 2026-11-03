@@ -604,6 +604,31 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     expect(recordAttempts({}, report)['github:acme/api#1']).not.toHaveProperty('failed')
   })
 
+  // BADBYTE is `b\xff`, a name APFS refuses; `b�` is how git's listing of it reads.
+  it.each([['b�'], ...(process.platform === 'linux' ? [['BADBYTE']] : [])])(
+    'leaves a conflict in a file named %j to you, with no worker and no attempt',
+    async (name) => {
+      const at = await origin({})
+      const both = `n=$1; [ "$n" = BADBYTE ] && n=$'b\\xff'
+for b in main feature-1; do git checkout -q $b && echo $b > "$n" && git add -A && git -c user.name=t -c user.email=t@t commit -qm "$b"; done`
+      await execa('bash', ['-c', both, 'bash', name], { cwd: at.origin })
+      const main = await git(at.origin, 'rev-parse', 'main')
+      const { report } = await sync(at, onBase(main, { conflicts: true }), config, noWorker)
+      expect(report.results.map((r) => [r.status, r.provider, r.outcome])).toEqual([
+        [
+          'done',
+          undefined,
+          {
+            kind: 'none',
+            reason: "conflicts with main in a file whose name isn't UTF-8: merge it by hand",
+          },
+        ],
+      ])
+      expect(at.fastForwards).toEqual([])
+      expect(recordAttempts({}, report)['github:acme/api#1']).not.toHaveProperty('failed')
+    },
+  )
+
   it('lets the worker resolve a merge whose conflicted tree fails setup', async () => {
     const at = await origin({ 'a.txt': 'theirs', 'db/schema.sql': 'v2' }, { 'a.txt': 'mine' })
     let context = ''

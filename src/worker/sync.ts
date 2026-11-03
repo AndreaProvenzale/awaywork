@@ -7,10 +7,10 @@ import { git } from './checks.js'
 import { addTo } from './steps.js'
 import { inClone, outputFile, WORK_DIR, writeOutput } from './workspace.js'
 
-/** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `submodules` among them, or found nothing to merge. */
+/** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `byHand` naming what of them no worker can resolve, or found nothing to merge. */
 export type Merge =
   | { kind: 'merged'; commit: string; commits: number }
-  | { kind: 'conflicts'; paths: string[]; submodules: string[]; head: string; commits: number }
+  | { kind: 'conflicts'; paths: string[]; byHand?: string; head: string; commits: number }
   | { kind: 'current' }
 
 /** A merge awaywork left conflicted for a worker on the clone's `start`: the base `into` at `head`, its conflicted `paths`, and `automatic`, git's own merge of them as a local commit. */
@@ -74,8 +74,12 @@ export async function mergeBase(
     l.startsWith('160000 '),
   )
   const submodules = [...new Set(gitlinks.map((l) => l.slice(l.indexOf('\t') + 1)))]
-  if (!keep || submodules.length) await git(dir, 'merge', '--abort')
-  return { kind: 'conflicts', paths, submodules, head, commits }
+  const what = submodules.length > 1 ? 'submodules' : 'a submodule'
+  let byHand = submodules.length ? `${submodules.join(', ')} (${what})` : undefined
+  // A name that isn't UTF-8 reads back mangled, and its pathspec matches no file.
+  if (!byHand && paths.some((p) => p.includes('�'))) byHand = "a file whose name isn't UTF-8"
+  if (!keep || byHand) await git(dir, 'merge', '--abort')
+  return { kind: 'conflicts', paths, byHand, head, commits }
 }
 
 /**
@@ -144,9 +148,9 @@ export async function concludeMerge(
       '--directory',
       '--no-empty-directory',
     ]
-    untracked = (await run(dir, staging, others)).stdout
-      .split('\0')
-      .filter((p) => p && !`${p}/`.startsWith(`${WORK_DIR}/`))
+    untracked = names((await run(dir, staging, others)).stdout).filter(
+      (p) => !`${p}/`.startsWith(`${WORK_DIR}/`),
+    )
   })
   if (tree === (await git(dir, 'rev-parse', `${r.start}^{tree}`)))
     return { refused: `the resolution keeps nothing of ${r.into}, not pushed` }

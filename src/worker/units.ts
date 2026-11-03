@@ -663,7 +663,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     /**
      * What follows awaywork's own merge when no worker resolves it: setup only when there's a `verify` to need it,
      * then a clean merge publishes as a push. A conflict isn't an attempt: the next run, reading it, plans a provider.
-     * One in a submodule is the developer's.
+     * One no worker can resolve is the developer's.
      */
     const settle = async (
       unit: Unit,
@@ -687,12 +687,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       await baseline(dir)
       const into = unit.merge as string
-      if (merge.kind === 'conflicts' && merge.submodules.length) {
-        const what = merge.submodules.length > 1 ? 'submodules' : 'a submodule'
+      if (merge.kind === 'conflicts' && merge.byHand) {
         result.status = 'done'
         result.outcome = {
           kind: 'none',
-          reason: `conflicts with ${into} in ${merge.submodules.join(', ')} (${what}): merge it by hand`,
+          reason: `conflicts with ${into} in ${merge.byHand}: merge it by hand`,
         }
       } else if (merge.kind === 'conflicts')
         Object.assign(result, {
@@ -989,7 +988,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           // Before anything else runs, as with no provider; a merge that turns out clean spends nothing.
           const env = await gateEnv(input.ctx.env, dir, secrets)
           const merge = await mergeBase(dir, unit.merge, unit.base, env, log, true)
-          if (merge.kind !== 'conflicts' || merge.submodules.length) {
+          if (merge.kind !== 'conflicts' || merge.byHand) {
             routed[id] = (routed[id] ?? 1) - 1
             delete result.provider
             await settle(unit, merge, result, log)
