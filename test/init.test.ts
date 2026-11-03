@@ -303,10 +303,15 @@ describe('init --yes', () => {
     expect(notes).toEqual(['Skipping asana: ASANA_TOKEN is not set'])
   })
 
-  it('fails instead of asking again when a default is not enough', async () => {
+  it('fails instead of asking again when a default is not enough, saying why', async () => {
     const ask = defaultAsk([], () => {})
-    await expect(initConfig({ ask, installed: [], ghLogin: true, ...registry() })).rejects.toThrow(
-      new Cancelled('no default for "Providers (pick at least one)"'),
+    const providers = { claude: fakeProvider('claude'), cursor: fakeProvider('cursor') }
+    await expect(
+      initConfig({ ask, installed: ['cursor'], ghLogin: true, ...registry(), providers }),
+    ).rejects.toThrow(
+      new Cancelled(
+        'no default for "Providers (pick at least one)": claude not installed, cursor needs CURSOR_API_KEY',
+      ),
     )
   })
 })
