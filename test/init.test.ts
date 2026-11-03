@@ -257,6 +257,33 @@ describe('init --yes', () => {
     expect(cfg.windows).toEqual([{ start: '01:00', end: '07:00' }])
   })
 
+  it('takes an installed Cursor only with CURSOR_API_KEY set, else says it needs one', async () => {
+    const providers = { claude: fakeProvider('claude'), cursor: fakeProvider('cursor') }
+    const hints: unknown[] = []
+    const init = async (env: Ctx['env']) => {
+      const ask = defaultAsk([], () => {})
+      const multiselect = ask.multiselect
+      ask.multiselect = (message, choices, initial) => {
+        if (message.startsWith('Providers')) hints.push(choices.map((c) => c.hint))
+        return multiselect(message, choices, initial)
+      }
+      const text = await initConfig({
+        ask,
+        installed: ['claude', 'cursor'],
+        ghLogin: true,
+        ...registry(env),
+        providers,
+      })
+      return parseConfig(text).providers.map((p) => p.id)
+    }
+    expect(await init({})).toEqual(['claude'])
+    expect(await init({ CURSOR_API_KEY: 'key' })).toEqual(['claude', 'cursor'])
+    expect(hints).toEqual([
+      [undefined, 'needs CURSOR_API_KEY'],
+      [undefined, undefined],
+    ])
+  })
+
   it('answers from the presets and skips a source whose secret is unset', async () => {
     const notes: string[] = []
     const ask = defaultAsk(

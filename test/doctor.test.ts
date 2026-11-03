@@ -101,9 +101,9 @@ describe('doctor', () => {
       status: 'FAIL',
       what: 'cursor',
       detail:
-        "CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
+        "2026.10.22-27dcf5f, CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
     }
-    expect(unset).toContainEqual(fail)
+    expect(unset.filter((c) => c.what === 'cursor')).toEqual([fail])
     expect(set).not.toContainEqual(fail)
     expect(set).toContainEqual({
       status: 'ok',

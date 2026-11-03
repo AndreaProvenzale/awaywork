@@ -154,7 +154,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 | --- | --- | --- |
-| Claude Code, plus Codex and Cursor (experimental, not on hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
+| Claude Code, plus Codex and Cursor (experimental, not on hosted runners; Cursor needs a `CURSOR_API_KEY` even locally) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
 
 More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/configuration.md#bitbucket-and-jira).
 
