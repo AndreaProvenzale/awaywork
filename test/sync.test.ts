@@ -454,13 +454,14 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     const worker = resolver(async (dir) => {
       await bothSides(dir)
       await writeFile(join(dir, 'scratch.log'), 'checks ran\n')
+      await writeFile(join(dir, 'über.log'), 'checks ran\n')
     })
     const settings = withRepo('echo gen > generated.txt', 'true')
     const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
     expect(report.results[0]?.outcome).toMatchObject({
       kind: 'pushed',
       text: expect.stringContaining(
-        'Resolved: a.txt\n\nLeft out, untracked: generated.txt, scratch.log\n\na.txt: kept both lines.',
+        'Resolved: a.txt\n\nLeft out, untracked: generated.txt, scratch.log, über.log\n\na.txt: kept both lines.',
       ),
     })
     const head = await git(at.origin, 'rev-parse', 'feature-1')
@@ -489,6 +490,13 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
   it.each([
     ['a binary file both sides added', { 'b.bin': 'theirs\0' }, { 'b.bin': 'mine\0' }, {}, 'b.bin'],
     [
+      'a name git would quote',
+      { 'café.bin': 'theirs\0' },
+      { 'café.bin': 'mine\0' },
+      {},
+      'café.bin',
+    ],
+    [
       'a file the base deleted',
       { 'm.txt': null },
       { 'm.txt': 'mine' },
@@ -510,6 +518,33 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       })
     },
   )
+
+  it.each([
+    [
+      'refuses markers left',
+      false,
+      { kind: 'none', reason: 'conflict markers left in café.txt, not pushed' },
+    ],
+    [
+      'pushes your side kept',
+      true,
+      {
+        kind: 'pushed',
+        text: expect.stringContaining('- anything: café.txt\n\n---\n\nResolved: café.txt\n'),
+      },
+    ],
+  ])('reads a conflicted name git would quote, and %s', async (_, keep, outcome) => {
+    const at = await origin({ 'café.txt': 'theirs', 'base-2.txt': '2' }, { 'café.txt': 'mine' })
+    let context = ''
+    const worker = resolver(async (dir) => {
+      context = await readFile(join(dir, '.away/context/merge.md'), 'utf8')
+      await writeFile(join(dir, '.away/out/pr.md'), 'Done.\n')
+      if (keep) await writeFile(join(dir, 'café.txt'), 'mine')
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), config, worker)
+    expect(context).toMatch(/- café\.txt\n\n.*\n\n- \w+ café\.txt\n/)
+    expect(report.results[0]?.outcome).toMatchObject(outcome)
+  })
 
   it('refuses a resolution that puts back what the base changed outside the conflicts', async () => {
     const at = await origin(

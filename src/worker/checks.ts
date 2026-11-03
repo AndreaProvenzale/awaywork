@@ -148,8 +148,8 @@ async function uncommitted(dir: string): Promise<string[]> {
 export async function changedPaths(dir: string, from: string, globs: string[], exact = false) {
   const paths = globs.map((glob) => `:(glob)${glob}`)
   const range = exact ? [from, 'HEAD'] : [`${from}...HEAD`]
-  const diff = await git(dir, 'diff', '--name-only', '--no-renames', ...range, '--', ...paths)
-  return diff.split('\n').filter(Boolean)
+  const diff = await git(dir, 'diff', '-z', '--name-only', '--no-renames', ...range, '--', ...paths)
+  return diff.split('\0').filter(Boolean)
 }
 
 /** The command and the tail of its output. */

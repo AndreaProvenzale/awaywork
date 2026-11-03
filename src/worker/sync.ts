@@ -29,6 +29,8 @@ export const conflictsFile = join(WORK_DIR, 'context', 'merge.md')
 const run = (dir: string, env: NodeJS.ProcessEnv, args: string[], input?: string) =>
   execa(bin('git'), [...inClone(dir), ...args], { env, extendEnv: false, input })
 
+const names = (listing: string) => listing.split('\0').filter(Boolean)
+
 const literal = (paths: string[]) => paths.map((p) => `:(literal)${p}`)
 
 /**
@@ -65,14 +67,12 @@ export async function mergeBase(
     await writeOutput(join(dir, WORK_DIR, 'out', outputFile.push), `${summary}\n`)
     return { kind: 'merged', commit: await git(dir, 'rev-parse', 'HEAD'), commits }
   }
-  const paths = (await git(dir, 'diff', '--name-only', '--diff-filter=U'))
-    .split('\n')
-    .filter(Boolean)
+  const paths = names(await git(dir, 'diff', '-z', '--name-only', '--diff-filter=U'))
   if (paths.length === 0) throw new Error(`git merge ${into} failed: ${merge.all}`)
   // A submodule's pointer is no file a worker can resolve.
-  const gitlinks = (await git(dir, 'ls-files', '-u'))
-    .split('\n')
-    .filter((l) => l.startsWith('160000 '))
+  const gitlinks = names(await git(dir, 'ls-files', '-z', '-u')).filter((l) =>
+    l.startsWith('160000 '),
+  )
   const submodules = [...new Set(gitlinks.map((l) => l.slice(l.indexOf('\t') + 1)))]
   if (!keep || submodules.length) await git(dir, 'merge', '--abort')
   return { kind: 'conflicts', paths, submodules, head, commits }
@@ -152,9 +152,7 @@ export async function concludeMerge(
     return { refused: `the resolution keeps nothing of ${r.into}, not pushed` }
   const outside = ['.', ...r.paths.map((p) => `:(exclude,literal)${p}`)]
   const changed = async (from: string, to: string) =>
-    (await git(dir, 'diff', '--name-only', '--no-renames', from, to, '--', ...outside))
-      .split('\n')
-      .filter(Boolean)
+    names(await git(dir, 'diff', '-z', '--name-only', '--no-renames', from, to, '--', ...outside))
   const kept = new Set(await changed(r.start, tree))
   const undone = (await changed(r.start, r.automatic)).filter((p) => !kept.has(p))
   if (undone.length)
@@ -162,17 +160,15 @@ export async function concludeMerge(
       refused: `the resolution undoes ${r.into}'s change to ${undone.join(', ')}, not pushed`,
     }
   // As text, whatever attributes the worker wrote say; `conflict-marker-size` makes markers longer.
-  const marker = ['grep', '-a', '-l', '-E', '^(<{7,}|>{7,})( |$)', tree, '--', ...literal(r.paths)]
+  const pattern = '^(<{7,}|>{7,})( |$)'
+  const marker = ['grep', '-z', '-a', '-l', '-E', pattern, tree, '--', ...literal(r.paths)]
   const grep = await execa(bin('git'), [...inClone(dir), ...marker], {
     env,
     extendEnv: false,
     reject: false,
   })
   if (grep.exitCode !== 0 && grep.exitCode !== 1) throw new Error(`git grep failed: ${grep.stderr}`)
-  const markers = grep.stdout
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => line.slice(tree.length + 1))
+  const markers = names(grep.stdout).map((line) => line.slice(tree.length + 1))
   if (markers.length)
     return { refused: `conflict markers left in ${markers.join(', ')}, not pushed` }
   const message = `Merge ${r.into} into ${branch}`
