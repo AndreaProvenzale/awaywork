@@ -348,6 +348,13 @@ export async function installWorkflow(
       process.exitCode = 1
       return
     }
+    if (loaded.extends) {
+      console.error(
+        `GitHub Actions gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`,
+      )
+      process.exitCode = 1
+      return
+    }
     const soon = (loaded.queue ?? []).flatMap((r, i) => (r.run === 'soon' ? [`#${i + 1}`] : []))
     if (soon.length)
       console.log(

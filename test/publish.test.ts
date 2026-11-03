@@ -266,6 +266,59 @@ describe('publish', () => {
     expect(forge.branches.size).toBe(0)
   })
 
+  it("lets through only awaywork's own merge of the base, with the trailer on it alone", async () => {
+    const forge = pushingForge()
+    const parents: string[] = []
+    const { fastForward } = forge
+    forge.fastForward = async (...args) => {
+      parents.push(await git(args[0], 'rev-parse', 'HEAD^@'))
+      return fastForward(...args)
+    }
+    await git(dir, 'checkout', '-qb', 'main', start)
+    await commit('base-1')
+    await commit('base-2')
+    const base = await git(dir, 'rev-parse', 'HEAD')
+    await git(dir, 'checkout', '-q', 'away/FAKE-1')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge main into feature-1', base)
+    await body('Merge main into feature-1: 2 commits.\n')
+    const merging = { ...unit('push'), merge: 'main' }
+    const synced = { ...merging, merged: await git(dir, 'rev-parse', 'HEAD') }
+    // A merge other than the one awaywork made is a worker's.
+    expect(await publish(unit('push'), dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: '3 commits include a merge, not pushed',
+      unpublished: true,
+    })
+    expect(await publish(merging, dir, forge, 'r1', start)).toEqual({
+      kind: 'none',
+      reason: 'awaywork made no merge of main, not pushed',
+      unpublished: true,
+    })
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject({
+      kind: 'pushed',
+      commits: 1,
+      text: 'Merge main into feature-1: 2 commits.',
+    })
+    expect(forge.pushed.map((p) => p.sort())).toEqual([
+      ['Merge main into feature-1|r1', 'base-1|', 'base-2|', 'init|'],
+    ])
+    expect(parents).toEqual([`${start}\n${base}`])
+
+    await git(dir, 'checkout', '-qb', 'side', start)
+    await commit('side')
+    await git(dir, 'checkout', '-q', 'away/FAKE-1')
+    await git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
+    const moved = {
+      kind: 'none',
+      reason: `the clone's head isn't awaywork's merge ${synced.merged.slice(0, 7)} any more, not pushed`,
+    }
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    await git(dir, 'reset', '-q', '--hard', synced.merged)
+    await git(dir, 'commit', '-q', '--amend', '-m', 'Merge main into feature-1, amended')
+    expect(await publish(synced, dir, forge, 'r1', start)).toMatchObject(moved)
+    expect(forge.pushed).toHaveLength(1)
+  })
+
   it('refuses a branch that no longer holds the commit the clone started from', async () => {
     const forge = fakeForge()
     await commit('first')

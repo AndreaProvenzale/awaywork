@@ -4,7 +4,7 @@ import { dirname, join, relative } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
 import type { Unit } from '../core/types.js'
-import { changedPaths, head } from './checks.js'
+import { changedPaths, git, head } from './checks.js'
 import type { Publisher } from './slices.js'
 import { discard, readVerdict, snapshot } from './steps.js'
 import { inClone, outputFile, readOutput, refuseSymlinks, WORK_DIR } from './workspace.js'
@@ -38,7 +38,7 @@ export async function runGates(
   const fired: Fired[] = []
   for (const [name, gate] of Object.entries(unit.gates)) {
     const lines: string[] = []
-    const matched = gate.changed.length ? await changedPaths(dir, from, gate.changed) : []
+    const matched = gate.changed.length ? await gatedPaths(dir, unit, from, gate.changed) : []
     if (matched.length) lines.push(listed(matched))
     for (const command of gate.commands) {
       const swapped = await swappedFile(dir, start, command)
@@ -54,6 +54,19 @@ export async function runGates(
     if (lines.length) fired.push({ name, line: oneLine(lines.join('; ')) })
   }
   return fired
+}
+
+/**
+ * The paths matching `globs` that differ between `from` itself and HEAD, as a resolved merge's `from`, git's automatic
+ * merge, sits beside HEAD rather than under it; and the conflicted ones HEAD holds, the resolution whatever the worker left there.
+ */
+async function gatedPaths(dir: string, unit: Unit, from: string, globs: string[]) {
+  const changed = await changedPaths(dir, from, globs, true)
+  if (!unit.conflicted?.length) return changed
+  const empty = await git(dir, 'hash-object', '-t', 'tree', '/dev/null')
+  const held = await changedPaths(dir, empty, globs, true)
+  const conflicted = held.filter((p) => unit.conflicted?.includes(p))
+  return [...new Set([...conflicted, ...changed])]
 }
 
 /** The first word of `command` naming a file that differs from the one at `start`: edited, added or gone. */
