@@ -60,7 +60,7 @@ Daemon log: ~/.local/state/awaywork/watch.log
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
 - systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
 - `windows: []` is fine: the daemon idles, and install sets no wake.
-- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes what it has, as in the log below. One still running after that makes install change nothing and say so; run it again once it's gone. Run from inside the daemon, by a notify hook or a worker, they refuse instead of stopping it.
+- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes nothing, as in the log below, and doesn't count as an attempt, so the next run takes it again. One still running after that makes install change nothing and say so; run it again once it's gone. Run from inside the daemon, by a notify hook or a worker, they refuse instead of stopping it.
 - launchd and systemd bring it back only after a crash. One you stop with a SIGTERM of your own stays down until your next login or `schedule install`; under cron it's back within 5 minutes.
 
 The daemon's log, `~/.local/state/awaywork/watch.log`, has events only: start and stop, each run and unit starting and ending, and what went wrong, never a line per minute. Past 5 MB it moves to `watch.log.1`. Here a SIGTERM stopped it a few seconds into a unit:
@@ -270,9 +270,9 @@ git add . && git commit -m "awaywork in a container" && git push
 | --- | --- |
 | `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and Claude Code, pinned to the awaywork you copied it from; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](./configuration.md#isolation) needs |
 | `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and the env vars it reads |
-| `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch` |
+| `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, with its log on the container's output |
 
-The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there.
+The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, an `extends` base or a script, lives in it too.
 
 ### On Coolify
 
@@ -329,7 +329,17 @@ After a `git pull`, `docker compose up -d --build` again.
   The stop took a second; `stop_grace_period: 2m` gives a slower one the 2 minutes `schedule install` gives the daemon on your machine, where Docker's default would kill it after 10 s.
 
 - **Memory.** `compose.yml` caps the container at 4 GB, and the watchdog starts no unit under 1.5 GB free, counted against that cap: `process.availableMemory()` was 2.99 GB in a container with `-m 3g`, 7.19 GB without. A big repo's build next to the agent may want more: raise `mem_limit`.
-- **Reaching it** is `docker exec`, or ssh to the host first; Coolify has a terminal for it too. The daemon logs to `watch.log` in the state dir, not to the container's output:
+- **Reaching it** is `docker exec`, or ssh to the host first; Coolify has a terminal for it too. The daemon's log, `watch.log` in the state dir, is also the container's output, so `docker logs -f <container>` follows it, as does Coolify's Logs tab:
+
+  ```
+  $ docker logs -f <container>
+  2026-11-03 23:43:59 awaywork watch started, pid 7, config /home/away/.awaywork/config.yml
+  2026-11-03 23:43:59 window run 20261103-234359 started, until 2026-11-04 05:00:00
+  2026-11-03 23:44:04 Run 20261103-234359: 1 unit planned, state in /home/away/.local/state/awaywork/runs/20261103-234359
+  2026-11-03 23:44:05   andreaprovenzale-awaywork-sandbox-199: implement on fake
+  ```
+
+  And `docker exec` runs awaywork's own commands in it:
 
   ```
   $ docker exec <container> awaywork schedule status
@@ -349,4 +359,4 @@ After a `git pull`, `docker compose up -d --build` again.
   ok    github: 3 open items
   ```
 
-  "No scheduled job" is right: the container is what keeps `watch` running. `docker exec <container> awaywork report` prints the morning report, and `tail -f ~/.local/state/awaywork/watch.log` follows the daemon.
+  "No scheduled job" is right: the container is what keeps `watch` running. `docker exec <container> awaywork report` prints the morning report.
