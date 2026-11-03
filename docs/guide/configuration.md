@@ -401,7 +401,7 @@ repos:
       queues: { changed: ["src/jobs/**"] } # only this repo has it
 ```
 
-A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from:
+A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved:
 
 ```sh
 #!/bin/sh
