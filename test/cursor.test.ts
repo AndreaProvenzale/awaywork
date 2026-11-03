@@ -64,6 +64,25 @@ describe('cursor provider', () => {
       { type: 'log', line: 'mcp_tool_call: awayEcho/echo: {"text":"yo"}' },
       { type: 'log', line: 'result: success' },
     ])
+    const completed = (call: object) => ({
+      type: 'tool_call',
+      subtype: 'completed',
+      tool_call: call,
+    })
+    expect(
+      [
+        {
+          taskToolCall: {
+            args: { description: 'Run three echo commands' },
+            result: { success: {} },
+          },
+        },
+        { deleteToolCall: { args: { path: 'a.txt' }, result: { success: {} } } },
+      ].flatMap((call) => toEvents(completed(call))),
+    ).toEqual([
+      { type: 'log', line: 'task: Run three echo commands' },
+      { type: 'log', line: 'deleteToolCall: {"path":"a.txt"}' },
+    ])
     const sandboxed = recorded('sandboxed').flatMap(toEvents)
     expect(sandboxed.slice(0, 2)).toEqual([
       { type: 'log', line: expect.stringMatching(/^command: curl .* \(rejected\)$/) },
@@ -197,6 +216,8 @@ describe('cursor provider', () => {
   it('reads the version, probes nothing and is unavailable on a GitHub-hosted runner only', async () => {
     expect(await provider.detect()).toEqual({ installed: true, version: '2026.10.22-27dcf5f' })
     expect(await cursorProvider('/nonexistent/agent').detect()).toEqual({ installed: false })
+    // Some other `agent` that answers --version.
+    expect(await cursorProvider('/bin/echo').detect()).toEqual({ installed: false })
     expect(await provider.probe({ env: {}, log: () => {} })).toBeNull()
     expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toMatch(/self-hosted/)
     expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()

@@ -30,8 +30,11 @@ export function cursorProvider(bin = 'agent'): Provider {
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 
     async detect() {
-      const out = await execa(bin, ['--version']).catch(() => undefined)
-      return out ? { installed: true, version: out.stdout.trim() } : { installed: false }
+      const version = (await execa(bin, ['--version']).catch(() => undefined))?.stdout.trim()
+      // `agent` is a generic name: Cursor's versions look like 2026.10.22-27dcf5f.
+      return version && /^\d{4}\.\d+\.\d+-/.test(version)
+        ? { installed: true, version }
+        : { installed: false }
     },
 
     /** Usage shows in the dashboard only. */
@@ -90,7 +93,13 @@ export function cursorProvider(bin = 'agent'): Provider {
     },
 
     instructionsFile: 'AGENTS.md',
-    repoConfig: ['.cursor/hooks.json', '.cursor/cli.json'],
+    // Cursor also runs Claude Code's project hooks, and takes permissions from its settings.
+    repoConfig: [
+      '.cursor/hooks.json',
+      '.cursor/cli.json',
+      '.claude/settings.json',
+      '.claude/settings.local.json',
+    ],
   }
 }
 
@@ -154,8 +163,12 @@ export function toEvents(
     globToolCall: () => `glob: ${args.globPattern ?? args.pattern}${refused}`,
     mcpToolCall: () =>
       `mcp_tool_call: ${args.providerIdentifier}/${args.toolName}: ${JSON.stringify(args.args ?? {}).slice(0, 200)}${refused}`,
+    // A subagent's own tool calls never reach the stream.
+    taskToolCall: () => `task: ${args.description}${refused}`,
+    getMcpToolsToolCall: () => undefined,
   }[kind ?? '']
-  return line ? [{ type: 'log', line: line() }] : []
+  const text = line ? line() : kind && `${kind}: ${JSON.stringify(args).slice(0, 200)}${refused}`
+  return text ? [{ type: 'log', line: text }] : []
 }
 
 function parseJson(line: string) {
