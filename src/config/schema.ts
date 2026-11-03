@@ -14,6 +14,7 @@ import {
   ruleSteps,
   spanPattern,
 } from '../core/queue.js'
+import { builtinSkills } from '../core/skills.js'
 import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { DAYS, time } from '../core/window.js'
 import { commandProviderConfig } from '../providers/command.js'
@@ -37,6 +38,8 @@ const oneOrMany = z
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
 const units = z.int().positive()
+/** A built-in skill whose merge awaywork makes itself, like `sync`. */
+const merges = (skill: string) => !!builtinSkills[skill]?.merge
 
 const branch = z.string().superRefine((template, ctx) => {
   const problem = templateProblem(template)
@@ -553,6 +556,13 @@ const repo = z.strictObject({
 
 export const configSchema = z
   .strictObject({
+    extends: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another",
+      ),
     windows: z
       .array(
         z
@@ -734,6 +744,24 @@ export const configSchema = z
           message:
             "pending_review isn't available on Bitbucket: awaywork leaves pending reviews on GitHub only; use report",
         })
+      if (merges(r.skill) && r.deliver !== 'push')
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'deliver'],
+          message: `${r.skill} merges your PR's base and pushes the merge onto your PR: it needs deliver: push`,
+        })
+      if (merges(r.skill) && Array.isArray(r.then) && r.then.length > 0)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'then'],
+          message: `${r.skill} is awaywork's own merge, not a model's step: it takes no then`,
+        })
+      if (merges(r.skill) && r.when)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'when'],
+          message: `${r.skill} is awaywork's own merge, which only spends quota on a conflict: drop when`,
+        })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
       if (Array.isArray(r.then))
@@ -761,6 +789,12 @@ export const configSchema = z
         const earlier = chain.findIndex(
           (c) => c.step.skill === s.skill && inLoop(c.at) === inLoop(path),
         )
+        if (j > 0 && merges(s.skill))
+          ctx.addIssue({
+            code: 'custom',
+            path: [...stepAt, 'skill'],
+            message: `${s.skill} is awaywork's own merge, a rule of its own: not a then step`,
+          })
         if (earlier < j)
           ctx.addIssue({
             code: 'custom',

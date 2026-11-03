@@ -87,6 +87,39 @@ queue:                          # first matching rule wins; top = highest priori
     instructions: notes/backend.md
 ```
 
+## A base config
+
+One config per role (`developer.yml`, `qa.yml`, `reviewer.yml`) tends to repeat the same `windows`, `budget`, `sources` and `repos`. Put those in a base and have each role file `extends` it:
+
+```yaml
+# team/base.yml
+windows: [{ start: "01:00", end: "07:00" }]
+limits: { unit_minutes: 45 }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+instructions: [notes/team.md]
+```
+
+```yaml
+# roles/developer.yml
+extends: ../team/base.yml
+limits: { units: 6, units_per_repo: 3 }
+queue:
+  - skill: fix
+    source: github
+    where: { type: pr, mine: true, checks: failing }
+```
+
+`extends` is a path relative to the role file. Maps merge key by key with the role winning, so `limits` above ends up with all three keys and `sources: { github: { every: 15m } }` would keep the base's `repos`. A list replaces the base's list outright, `queue` and `windows` included, since rule order matters. There's no unsetting what the base sets: `null` is just an invalid value. It's one level deep and local: a base with an `extends` of its own is an error, and so is a URL.
+
+Relative paths resolve against the file they're written in, so `notes/team.md` is `team/notes/team.md` whoever extends it. The same goes for the folder a custom source's `command`, a `context` command or a custom provider's `probe` runs in, and for `claude: { settings }`. A custom source's other commands, `write` and `setup`, run in the folder of the file that sets its `command`. Skills stay next to the file you pass to `--config`. An error names the file it comes from: the base when only the base sets that key, the role for anything inside a list the role sets:
+
+```text
+$ awaywork doctor --config roles/developer.yml
+...
+FAIL  team/base.yml: windows[0].end: expected a time like "01:00"
+```
+
 ## Windows, limits and budget
 
 A run is one window opening, or one `awaywork run` by hand. A window's `start` is when a scheduled run begins; no unit starts after its `end`, and a running one stops there. Times are local to the machine, or in GitHub Actions to the timezone you ran `schedule install` in, where a run may start [up to an hour late in summer time](./scheduling.md#in-github-actions) and a GitHub-hosted runner cuts it at about 6 hours whatever the window says. The default is one window, `01:00` to `07:00`. Add windows, each with optional `days` (`sun` to `sat`, the day it opens on), for quota that idles at weekends or over lunch:
@@ -364,7 +397,7 @@ sources:
 
 `image` is the Docker image the repo's units run in under [`isolation: container`](#in-a-container).
 
-`test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file. A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
+`test` is given to the agent in its prompt. `instructions` at the top level, per repo and per rule are **file paths**, relative to the config file they are in ([a base](#a-base-config) or yours). A repo can also carry `.awaywork/instructions.md`, read from the clone unless the unit is on a PR someone else opened.
 
 ### What runs in the clone
 
@@ -403,7 +436,7 @@ repos:
       queues: { changed: ["src/jobs/**"] } # only this repo has it
 ```
 
-A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from:
+A command gate diffs the slice from `$AWAYWORK_FROM`, the commit the slice started from, or git's automatic merge on a [`sync`](./chains.md#conflicts) a model resolved:
 
 ```sh
 #!/bin/sh
@@ -516,6 +549,8 @@ where:
   updated: { older_than: 3d }       # on a date field: older_than, newer_than; m, h, d or w
   title: { matches: '^\[bug\]' }    # on title, description or a text field: case-insensitive regex
   label: awaywork                # on a list field: contains; GitHub issues must also be assigned to you
+  behind: { gt: 0 }                 # GitHub: your PR's base has commits its branch lacks; see sync
+  conflicts: false                  # GitHub: it merges cleanly into its base
   "fields.Priority": High           # an Asana custom field
   blocked: false                    # Linear, Jira, Asana: no open blocker
   any:                              # at least one entry holds; each is a where, ANDed with the keys above

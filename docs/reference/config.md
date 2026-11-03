@@ -23,6 +23,7 @@ with:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `extends` | string |  | A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another |
 | `windows` | object[] | `[{"start":"01:00","end":"07:00"}]` | Local hours a scheduled run may start units in; each opening is one run; [] for none |
 | `watch` | object | `{}` | awaywork watch, the daemon schedule install keeps running |
 | `limits` | object | `{}` | Unit counts and time per run, for every provider |

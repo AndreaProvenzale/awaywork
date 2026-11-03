@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { ConfigError, configPath, parseConfig } from '../src/config/load.js'
+import { editUntilValid } from '../src/cli/config.js'
+import { ConfigError, configPath, loadConfig, parseConfig } from '../src/config/load.js'
 import { unknownSkills } from '../src/config/skills.js'
 import type { Step } from '../src/core/types.js'
 
@@ -355,6 +356,34 @@ describe('config', () => {
       ).toEqual([`queue[0].then: Unrecognized key: "${key.split(':')[0]}"`])
   })
 
+  it('takes sync only as a rule of its own that says deliver: push', () => {
+    const where = 'where: { type: pr, mine: true, behind: { gt: 0 }, conflicts: false }'
+    expect(
+      parseConfig(`${minimal}queue: [{ skill: sync, ${where}, deliver: push }]`).queue,
+    ).toEqual([expect.objectContaining({ skill: 'sync', deliver: 'push' })])
+    expect(problems(`${minimal}queue: [{ skill: sync, ${where} }]`)).toEqual([
+      "queue[0].deliver: sync merges your PR's base and pushes the merge onto your PR: it needs deliver: push",
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: sync, deliver: push, then: fix, when: { headroom: "20%" } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then: sync is awaywork's own merge, not a model's step: it takes no then",
+      "queue[0].when: sync is awaywork's own merge, which only spends quota on a conflict: drop when",
+    ])
+    expect(problems(`${minimal}queue: [{ skill: fix, deliver: push, then: sync }]`)).toEqual([
+      "queue[0].then[0].skill: sync is awaywork's own merge, a rule of its own: not a then step",
+    ])
+    expect(
+      problems(
+        `${minimal}queue: [{ skill: fix, then: { loop: [review, sync], until: { verdict: approve }, max: 2 } }]`,
+      ),
+    ).toEqual([
+      "queue[0].then[0].loop[1].skill: sync is awaywork's own merge, a rule of its own: not a then step",
+    ])
+  })
+
   it('takes a loop in then, with its steps once across loops, a verdict word and a bounded max', () => {
     const cfg = parseConfig(`${minimal.replace('[claude: {}]', '[claude, codex]')}queue:
   - skill: implement
@@ -649,5 +678,206 @@ describe('skills', () => {
     expect(await unknownSkills(cfg, '/none')).toEqual([
       'repos.acme/api.gates.risk.skill: unknown skill "our-judge" (not built in, not in /none; a judge never comes from the repo)',
     ])
+  })
+})
+
+describe('extends', () => {
+  const base = `
+windows: [{ start: '01:00', end: '07:00' }, { start: '12:00', end: '13:00' }]
+limits: { units: 4, unit_minutes: 30 }
+providers: [claude]
+sources: { github: { repos: [acme/api] } }
+`
+
+  /** Writes each file under a fresh folder; returns the folder. */
+  async function files(contents: Record<string, string>): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-extends-'))
+    for (const [path, text] of Object.entries(contents)) {
+      await mkdir(join(dir, path, '..'), { recursive: true })
+      await writeFile(join(dir, path), text)
+    }
+    return dir
+  }
+
+  async function error(path: string): Promise<ConfigError> {
+    const e = await loadConfig(path).catch((e: unknown) => e)
+    if (e instanceof ConfigError) return e
+    throw new Error(`expected a ConfigError, got ${String(e)}`)
+  }
+
+  it('merges maps deeply, the role winning, and replaces lists', async () => {
+    const dir = await files({
+      'base.yml': base,
+      'dev.yml': `extends: base.yml
+windows: [{ start: '22:00', end: '06:00' }]
+limits: { units: 6 }
+sources: { github: { every: 15m } }
+`,
+    })
+    const cfg = await loadConfig(join(dir, 'dev.yml'))
+    expect(cfg.windows).toEqual([{ start: '22:00', end: '06:00' }])
+    expect(cfg.limits).toMatchObject({ units: 6, unit_minutes: 30 })
+    expect(cfg.sources.github).toMatchObject({ repos: ['acme/api'], every: '15m' })
+    await writeFile(join(dir, 'base.yml'), base.replace('unit_minutes: 30', 'unit_minutes: 45'))
+    expect((await loadConfig(join(dir, 'dev.yml'))).limits.unit_minutes).toBe(45)
+  })
+
+  it("resolves a base's relative paths against the base, and the role's as before", async () => {
+    const dir = await files({
+      'team/base.yml': `providers: [claude: { settings: claude.json }]
+sources:
+  github: { repos: [acme/api] }
+  tracker: { command: node items.mjs }
+instructions: notes/team.md
+repos: { acme/api: { instructions: notes/api.md } }
+queue:
+  - skill: fix
+    instructions: [notes/fix.md]
+    then: [{ skill: review, instructions: notes/review.md }, { loop: { skill: fix, instructions: notes/loop.md }, until: { verdict: approve }, max: 2 }]
+`,
+      'roles/dev.yml': `extends: ../team/base.yml
+sources: { github: { context: { command: ./fetch.sh } } }
+repos: { acme/web: { instructions: mine.md } }
+`,
+    })
+    const team = join(dir, 'team')
+    const cfg = await loadConfig(join(dir, 'roles', 'dev.yml'))
+    expect(cfg.instructions).toEqual([join(team, 'notes/team.md')])
+    expect(cfg.repos).toEqual({
+      'acme/api': expect.objectContaining({ instructions: join(team, 'notes/api.md') }),
+      'acme/web': expect.objectContaining({ instructions: 'mine.md' }),
+    })
+    const [rule] = cfg.queue ?? []
+    expect(rule?.instructions).toEqual([join(team, 'notes/fix.md')])
+    expect(rule?.then?.[0]).toMatchObject({ instructions: [join(team, 'notes/review.md')] })
+    expect(rule?.then?.[1]).toMatchObject({
+      loop: [{ instructions: [join(team, 'notes/loop.md')] }],
+    })
+    expect(cfg.providers[0]?.config).toMatchObject({ settings: join(team, 'claude.json') })
+    expect(cfg.sources.tracker).toMatchObject({ dir: team })
+    expect(cfg.sources.github).toMatchObject({ context: { dir: join(dir, 'roles') } })
+  })
+
+  it('refuses a URL, a base that extends another, and a missing base, naming the role', async () => {
+    const dir = await files({
+      'url.yml': 'extends: https://example.com/base.yml\n',
+      'nested.yml': 'extends: middle.yml\n',
+      'middle.yml': `extends: base.yml\n${base}`,
+      'missing.yml': 'extends: nope.yml\n',
+    })
+    for (const [file, problem] of [
+      ['url.yml', 'extends: https://example.com/base.yml: expected a path to a file, not a URL'],
+      [
+        'nested.yml',
+        "extends: middle.yml has an extends of its own; a base can't extend another config",
+      ],
+      ['missing.yml', 'extends: nope.yml: file not found'],
+    ] as const) {
+      const e = await error(join(dir, file))
+      expect([e.path, e.problems]).toEqual([join(dir, file), [problem]])
+    }
+  })
+
+  it('refuses a base that is not a map, naming the base', async () => {
+    const dir = await files({
+      'list/base.yml': '- providers: [claude]\n',
+      'list.yml': `extends: list/base.yml\n${base}`,
+      'empty/base.yml': '',
+      'empty.yml': `extends: empty/base.yml\n${base}`,
+    })
+    for (const name of ['list', 'empty']) {
+      const e = await error(join(dir, `${name}.yml`))
+      expect([e.path, e.problems]).toEqual([
+        join(dir, name, 'base.yml'),
+        ['expected a map of config keys'],
+      ])
+    }
+  })
+
+  it('names the file each problem comes from', async () => {
+    const dir = await files({
+      'broken/base.yml': 'providers: [claude\n',
+      'broken.yml': 'extends: broken/base.yml\n',
+      'bad/base.yml': base.replace("'12:00'", "'noon'").replace('limits:', 'limit: 1\nlimits:'),
+      'bad.yml': 'extends: bad/base.yml\n',
+      'both.yml': 'extends: bad/base.yml\nlimits: { units: none }\n',
+      'over.yml': "extends: bad/base.yml\nwindows: [{ start: '01:00', end: '01:00' }]\nlimit: 2\n",
+      'step/base.yml': `${base}queue: [{ skill: fix, then: { skill: review, max: 2 } }]\n`,
+      'step.yml': 'extends: step/base.yml\n',
+    })
+    const broken = await error(join(dir, 'broken.yml'))
+    expect(broken.path).toBe(join(dir, 'broken/base.yml'))
+    expect(broken.problems[0]).toMatch(/flow sequence/i)
+    const bad = await error(join(dir, 'bad.yml'))
+    expect([bad.path, bad.problems]).toEqual([
+      join(dir, 'bad/base.yml'),
+      [expect.stringMatching(/^windows\[1\]\.start: /), 'Unrecognized key: "limit"'],
+    ])
+    const both = await error(join(dir, 'both.yml'))
+    expect([both.path, both.problems]).toEqual([
+      join(dir, 'bad/base.yml'),
+      [
+        expect.stringMatching(/^windows\[1\]\.start: /),
+        `${join(dir, 'both.yml')}: limits.units: Invalid input: expected number, received string`,
+        'Unrecognized key: "limit"',
+      ],
+    ])
+    expect((await error(join(dir, 'step.yml'))).path).toBe(join(dir, 'step/base.yml'))
+    const over = await error(join(dir, 'over.yml'))
+    expect([over.path, over.problems]).toEqual([
+      join(dir, 'over.yml'),
+      ['windows[0]: start and end must differ', 'Unrecognized key: "limit"'],
+    ])
+  })
+
+  it("names the role for an item of a list it replaced, though the base's item sets that key", async () => {
+    const dir = await files({
+      'team/base.yml': `${base}queue: [{ skill: fix, source: github, where: { type: pr } }]\n`,
+      'rule.yml': 'extends: team/base.yml\nqueue: [{ source: github, where: { type: pr } }]\n',
+      'window.yml': "extends: team/base.yml\nwindows: [{ start: '02:00' }]\n",
+    })
+    for (const file of ['rule.yml', 'window.yml'])
+      expect((await error(join(dir, file))).path).toBe(join(dir, file))
+  })
+
+  it('names the file of each unknown key in one map', async () => {
+    const dir = await files({
+      'typo/base.yml': base.replace('limits: {', 'foo: 1\nlimits: { unitz: 2,'),
+      'typo.yml': 'extends: typo/base.yml\nbar: 2\nlimits: { units: 3, unitx: 4 }\n',
+    })
+    const e = await error(join(dir, 'typo.yml'))
+    const role = join(dir, 'typo.yml')
+    expect([e.path, e.problems.toSorted()]).toEqual([
+      join(dir, 'typo/base.yml'),
+      [
+        `${role}: Unrecognized key: "bar"`,
+        `${role}: limits: Unrecognized key: "unitx"`,
+        'Unrecognized key: "foo"',
+        'limits: Unrecognized key: "unitz"',
+      ].toSorted(),
+    ])
+  })
+
+  it('validates a draft of the role file merged with its base', async () => {
+    const dir = await files({ 'base.yml': base, 'dev.yml': 'extends: base.yml\n' })
+    const path = join(dir, 'dev.yml')
+    const draft = join(dir, 'dev.draft.yml')
+    const edits = [
+      'extends: base.yml\nlimits: { units: x }\n',
+      'extends: base.yml\nlimits: { units: 2 }\n',
+    ]
+    const seen: string[] = []
+    const outcome = await editUntilValid({
+      path,
+      original: 'extends: base.yml\n',
+      draft,
+      edit: () => writeFile(draft, edits.shift() ?? ''),
+      retry: async (e) => {
+        seen.push(e.path)
+        return true
+      },
+    })
+    expect([outcome, seen]).toEqual(['saved', [path]])
+    expect((await loadConfig(path)).limits).toMatchObject({ units: 2, unit_minutes: 30 })
   })
 })

@@ -1,5 +1,5 @@
 ---
-description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, stacked PRs and pushing onto your own PR.
+description: Chains in awaywork, steps that run after a rule's skill in the same clone, covering then, review-and-fix loops, when conditions, stacked PRs, pushing onto your own PR and keeping it in line with its base.
 ---
 
 # Chains
@@ -237,8 +237,84 @@ queue:
 
 - Only onto an open PR you authored, awaywork's own included (they are opened with your login). On someone else's PR, a PR from a fork, or an item with no PR of yours, a chain that could commit is skipped with the reason.
 - The chain pushes once, when it ends: every step's commits, a [loop](#loops)'s rounds included.
-- A fast-forward only: awaywork pushes only commits on top of where the clone started, and refuses when the branch moved since, so it never rewrites history. It reads the PR again right before the push and refuses when it is no longer yours or open, or has auto-merge on, which would merge unreviewed commits, and when its branch lives on a fork, is the default branch, is protected, or also backs someone else's open PR in the repo. New commits that include a merge aren't pushed either. The commits get the `Awaywork:` trailer, which drops a commit's signature.
+- A fast-forward only: awaywork pushes only commits on top of where the clone started, and refuses when the branch moved since, so it never rewrites history. It reads the PR again right before the push and refuses when it is no longer yours or open, or has auto-merge on, which would merge unreviewed commits, and when its branch lives on a fork, is the default branch, is protected, or also backs someone else's open PR in the repo. New commits that include a merge aren't pushed either, but for [`sync`](#sync)'s own merge of the PR's base. The commits get the `Awaywork:` trailer, which drops a commit's signature.
 - The agent writes `.away/out/pr.md`, as for a PR, and the steps keep it current; without it nothing is pushed. The PR body stays as it is: `pr.md`, with the chain's notes, goes into the morning report.
 - A skill's frontmatter can't default to `push`: only a rule opts in.
-- After a push, the PR waits for your review: no rule takes it while its head is still the commit awaywork pushed. Any commit on top releases it, yours or a bot's, and so does a rebase or an amend. Without that, the push itself would update the PR and run the rule again every run. The pushed head is kept in awaywork's state dir, which a [GitHub Actions runner](./scheduling.md#in-github-actions) doesn't keep: there, a push rule pushes again every run its `where` holds.
+- After a push, the PR waits for your review: no rule takes it while its head is still the commit awaywork pushed, unless the push was a [`sync`](#sync)'s clean merge. Any commit on top releases it, yours or a bot's, and so does a rebase or an amend. Without that, the push itself would update the PR and run the rule again every run. The pushed head is kept in awaywork's state dir, which a [GitHub Actions runner](./scheduling.md#in-github-actions) doesn't keep: there, a push rule pushes again every run its `where` holds.
 - Got a bot that commits on every push, like an autofixer or a snapshot updater? Its commit lands right on top of awaywork's and releases the hold, so the rule pushes again every run its `where` holds: keep that repo out of the rule's `where`, e.g. `repo: { not: acme/web }`.
+
+## `sync`
+
+Your PR is green, but `main` moved on, and you'd rather it stayed mergeable without clicking "Update branch" every morning. `sync` is a built-in skill where awaywork merges the PR's base into its branch itself and pushes the merge onto your PR, the way a `push` rule pushes. A model only steps in when the merge [conflicts](#conflicts), to resolve them.
+
+```yaml
+queue:
+  - skill: sync
+    where: { type: pr, mine: true, behind: { gt: 0 } }
+    deliver: push
+```
+
+`behind` counts the commits on the PR's base that its branch doesn't have, a [GitHub field](./how-it-works.md#items). There's a `conflicts` field too, GitHub's own "this branch has conflicts" flag, but leave it out of the `where`: GitHub resets it to unknown right after a push to the base, so `conflicts: false` would miss exactly the PRs that just fell behind, and `sync` reads it on its own. A PR that doesn't read `conflicts: true` gets no provider, since no model runs, and `awaywork plan` lists it with none:
+
+```
+Units 1
+     item                  rule  skill            provider  deliver  title
+  1  awaywork-sandbox#188  #1    sync (built-in)  -         push     sync probe: clean merge
+```
+
+The run pushes one merge commit, `Merge <base> into <branch>` with the `Awaywork:` trailer:
+
+```
+Run 20261103-193652: 0 draft PRs, 0 reports, 1 unit
+     item                  skill  status  result
+  1  awaywork-sandbox#188  sync   done    pushed onto https://github.com/AndreaProvenzale/awaywork-sandbox/pull/188
+     Merge awaywork-sync-base into awaywork-sync-feature: 2 commits, awaywork-sync-base at f25506b.
+```
+
+- The clone is on your PR's branch, and awaywork runs `git merge --no-ff` of the base as the clone fetched it, first thing, before anything of the repo's runs, with your commit identity and none of your signing config. A clean merge runs no worker and spends no quota, a provider planned or not, and gets no gates: they check what a model wrote, and nothing did.
+- A clean merge isn't always a correct one: git happily merges two branches that each added the same block, and you get it twice. So the repo's [`verify`](./configuration.md#repos-and-instructions) still runs before the push, `setup` first, on the merged tree (and only then: nothing else here runs repo code), and a failure goes into the morning report while the push still happens. Your `fix` rule on `checks: failing` picks up whatever broke.
+- What's pushed is that merge commit and nothing else. If `setup` or `verify` amend it, commit on top or move the branch, nothing is pushed, and the report says the clone's head isn't awaywork's merge any more.
+- A branch already up to date pushes nothing, and says `already up to date with <base>`. That counts as a finished attempt, so the PR is skipped as unchanged until it or its base changes: a push to the base doesn't touch the PR's `updated`, so awaywork keeps the base's head it tried and syncs again once it moved.
+- No review hold after a clean merge: there's nothing of a model's to review, so the next `sync`, once the base moves again, or a `fix` on the CI the merge started, can take the PR right away.
+- It's a rule of its own: it must say `deliver: push`, and a `then` or a `when` on it, or `sync` as a step of another rule, is a config error. Everything `push` checks still holds, and it's GitHub only, like `push`.
+
+### Conflicts
+
+When the PR reads `conflicts: true` at plan time, the unit gets a provider, quota and all, like any other:
+
+```
+Units 1
+     item                  rule  skill            provider  deliver  title
+  1  awaywork-sandbox#191  #1    sync (built-in)  resolver  push     resolve probe: conflicting sync
+```
+
+awaywork still makes the merge, before anything of the repo's runs, but leaves the conflict in the clone, markers and all, and hands the worker a list of what conflicts in `.away/context/merge.md`:
+
+```markdown
+awaywork merged `awaywork-resolve-base` (at 95202a5, 2 commits) into `awaywork-resolve-feature`, and these files conflict:
+
+- resolve-probe/a.txt
+
+The commits on `awaywork-resolve-base` that touch them, newest first:
+
+- da5074a resolve probe: theirs
+```
+
+The worker resolves the files, keeping both sides' intent, fixes what the merge broke elsewhere (a function the base renamed, say), runs its targeted checks and writes `.away/out/pr.md`. It doesn't commit: awaywork makes the merge commit itself, from the worker's working tree, on exactly your branch's head and the base's head it merged, whatever the worker did to `.git`. Then it's a `push` like any other: `verify`, the [gates](./configuration.md#gates), the summary in the morning report with the decision card on top when one fired:
+
+```
+     item                  skill  status  result
+  1  awaywork-sandbox#191  sync   done    pushed onto https://github.com/AndreaProvenzale/awaywork-sandbox/pull/191, gate resolved fired
+     - resolved: resolve-probe/a.txt
+```
+
+- Gates and judges read the resolution, not the base: awaywork keeps git's automatic merge, markers included, as a local commit that's never pushed, and the gates diff from that. A `changed` gate fires on paths the model changed on top of it, and always on the conflicted ones, whatever the model left there: keeping your side of a binary file, or of a file the base deleted, changes nothing git wrote, and it's still the call that got made. A gated path only the base touched doesn't fire, as `resolve-probe/base.txt` didn't above. `$AWAYWORK_FROM` is that commit too, so diff it to `HEAD` with two dots: it sits beside the merge, not under it, and `$AWAYWORK_FROM...HEAD` reads every commit the base brought. A judge's prompt lists the conflicted paths.
+- The summary opens with `Resolved:` and the conflicted paths, then `Also changed:` and whatever else the push carries on top of git's merge, the worker's fallout fixes and `setup`'s edits to tracked files alike, above the worker's own lines. So you see it all, gates or not.
+- The merge takes the files git's merge holds, as the worker left them, deletions included, and nothing else: a new file, from `setup`, the worker or its checks, stays out, and the summary lists it as `Left out, untracked: generated.txt, scratch.log`. A resolution that needs a new file asks instead.
+- The push is held for your review, as any `push` is: no rule takes the PR while its head is still the merge awaywork pushed.
+- Nothing is pushed when `setup` or the worker committed or moved `HEAD`, when a conflicted file still holds a `<<<<<<<` or `>>>>>>>` line (longer ones too, as `conflict-marker-size` makes them) it had on neither side, so a fixture with markers of its own is fine, when the resolution keeps nothing of the base (a `git merge --abort` would do that), when it puts a file the base changed outside the conflicts back as your branch had it, deleted files included (`the resolution undoes main's change to x.txt, not pushed`: the base's work comes in, and a fallout fix gives that file new content, it doesn't revert it), or when the worker failed, stopped or asked: a question goes on the PR, as any [question](./how-it-works.md#questions) does. Each counts as an attempt, as for any unit.
+- A conflicted lockfile often breaks `setup`, which runs on the conflicted tree before the worker: then the worker gets a note saying so in `merge.md`, and goes on anyway.
+- `conflicts` reads unknown for a while after a push to the base, so the first run after one may plan the PR with no provider, and then hit the conflict. That run aborts the merge, pushes nothing and says where, as `conflicts with awaywork-resolve-base in resolve-probe/a.txt, and no provider to resolve them`, and the PR doesn't count as tried: the next run, once GitHub reads the conflict, plans a provider for it. So does a run whose providers had no quota left.
+- A conflicted submodule pointer is no file to resolve: awaywork aborts the merge with no worker and no quota spent, and says `conflicts with main in vendor/lib (a submodule): merge it by hand`. That counts as a finished attempt, as `already up to date` does.
+- So does a conflicted file whose name isn't valid UTF-8, which awaywork can't point a check at: `conflicts with main in a file whose name isn't UTF-8: merge it by hand`.
+- The skill's instructions are in its body, so you can [eject](./skills.md#tweak-a-built-in) `sync` and tweak how it resolves; keep `metadata.merge: base` in its frontmatter.

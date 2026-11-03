@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "extends": {
+      "description": "A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another",
+      "type": "string",
+      "minLength": 1
+    },
     "windows": {
       "default": [
         {
