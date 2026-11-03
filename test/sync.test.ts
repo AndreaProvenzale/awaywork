@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
@@ -58,10 +58,46 @@ const pr = (fields: Item['fields'] = {}): Item => {
 }
 
 /** That PR, its base `main` read at `head`. */
-const onBase = (head: string): Item => {
-  const item = pr()
+const onBase = (head: string, fields: Item['fields'] = {}): Item => {
+  const item = pr(fields)
   return { ...item, linkedPrs: item.linkedPrs.map((p) => ({ ...p, intoHead: head })) }
 }
+
+/** A worker that does `act` in the clone, then stops, writing `status` when given. */
+const resolver = (
+  act: (dir: string, skill: string) => Promise<unknown>,
+  prompts: string[] = [],
+): Provider => ({
+  ...fakeProvider('claude'),
+  async *run(job) {
+    prompts.push(job.prompt)
+    await act(job.dir, job.unit.skill)
+    yield { type: 'done', ok: true, turns: 1 }
+  },
+})
+
+/** Resolves `a.txt` keeping both sides, and says so. */
+const bothSides = async (dir: string) => {
+  await writeFile(join(dir, 'a.txt'), 'mine\ntheirs\n')
+  await writeFile(join(dir, '.away/out/pr.md'), 'a.txt: kept both lines.\n')
+}
+
+const resolving = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue:
+  - skill: sync
+    where: { type: pr, mine: true, behind: { gt: 0 } }
+    deliver: push
+gates:
+  db: { changed: ["db/**"] }
+  db-diff: { command: 'git diff --quiet "$AWAYWORK_FROM" HEAD -- db' }
+  resolved: { changed: ["a.txt"] }
+repos:
+  acme/api:
+    setup: 'true'
+    verify: 'test -f db/schema.sql'
+`)
 
 /** An origin with `main` and your `feature-1` off it, `main` then moved on by `base`'s commits, each a file. */
 async function origin(base: Record<string, string>, feature: Record<string, string> = {}) {
@@ -71,6 +107,7 @@ async function origin(base: Record<string, string>, feature: Record<string, stri
   await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const commit = async (files: Record<string, string>) => {
     for (const [name, text] of Object.entries(files)) {
+      await mkdir(dirname(join(origin, name)), { recursive: true })
       await writeFile(join(origin, name), text)
       await git(origin, 'add', name)
       await git(origin, 'commit', '-qm', name)
@@ -99,7 +136,12 @@ async function origin(base: Record<string, string>, feature: Record<string, stri
   return { root, origin, forge, fastForwards, feature1, main }
 }
 
-async function sync(at: Awaited<ReturnType<typeof origin>>, item = pr(), settings = config) {
+async function sync(
+  at: Awaited<ReturnType<typeof origin>>,
+  item = pr(),
+  settings = config,
+  worker = noWorker,
+) {
   const plan = planRun({
     config: settings,
     items: [item],
@@ -113,7 +155,7 @@ async function sync(at: Awaited<ReturnType<typeof origin>>, item = pr(), setting
     runId: 'r1',
     runDir: join(at.root, 'run'),
     dryRun: false,
-    providers: { claude: noWorker },
+    providers: { claude: worker },
     sources: { github: fakeSource() as Source },
     forge: at.forge,
     ctx: { env: { PATH: process.env.PATH }, log: () => {} },
@@ -125,16 +167,19 @@ async function sync(at: Awaited<ReturnType<typeof origin>>, item = pr(), setting
 }
 
 describe('sync', () => {
-  it('plans a merge with no provider and no gates, and skips a PR whose base it can not read', () => {
-    const plan = planRun({
-      config,
-      items: [pr()],
-      allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-      skills: { builtin: builtinSkills },
-    })
-    expect(plan.units.map((p) => [p.unit.merge, p.unit.deliver, p.provider, p.unit.gates])).toEqual(
-      [['main', 'push', undefined, undefined]],
-    )
+  it('plans a merge with no provider and no gates, but on a conflict read, and skips a PR whose base it can not read', () => {
+    const plan = (item: Item) =>
+      planRun({
+        config,
+        items: [item],
+        allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+        skills: { builtin: builtinSkills },
+      }).units.map((p) => [p.unit.merge, p.unit.deliver, p.provider, p.unit.gates])
+    expect(plan(pr())).toEqual([['main', 'push', undefined, undefined]])
+    expect(plan(pr({ conflicts: undefined }))).toEqual([['main', 'push', undefined, undefined]])
+    expect(plan(pr({ conflicts: true }))).toEqual([
+      ['main', 'push', 'claude', { anything: { changed: ['**'], commands: [], skills: [] } }],
+    ])
     const unread = { ...pr(), linkedPrs: pr().linkedPrs.map(({ into: _, ...p }) => p) }
     const skipped = planRun({
       config,
@@ -211,7 +256,7 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     expect(plan.units).toHaveLength(1)
   })
 
-  it('aborts a merge that conflicts, pushes nothing and reports the paths, once until the PR or its base changes', async () => {
+  it('aborts a merge that conflicts with no provider planned, pushes nothing, reports the paths and records no attempt', async () => {
     const at = await origin(
       { 'a.txt': 'theirs', 'b.txt': 'theirs' },
       { 'a.txt': 'mine', 'b.txt': 'mine' },
@@ -219,25 +264,22 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     // Setup runs after the merge: attributes it writes can't turn the conflict into a clean merge.
     const union = withRepo('echo "* merge=union" > .gitattributes', 'true')
     const { report } = await sync(at, onBase(at.main), union)
-    expect(report.results.map((r) => [r.status, r.outcome])).toEqual([
-      ['done', { kind: 'none', reason: 'conflicts with main in a.txt, b.txt: merge it by hand' }],
+    const reason =
+      'conflicts with main in a.txt, b.txt, and no provider was planned to resolve them'
+    expect(report.results.map((r) => [r.status, r.reason, r.outcome])).toEqual([
+      ['skipped', reason, undefined],
     ])
     expect(at.fastForwards).toEqual([])
     expect(await git(at.origin, 'rev-parse', 'feature-1')).toBe(at.feature1)
     const log = await readFile(join(at.root, 'run/units/acme-api-1/1-sync/worker.log'), 'utf8')
     expect(log).toContain('git merge main')
-    expect(formatReport(report)).toContain(
-      '| sync | - | done | conflicts with main in a.txt, b.txt: merge it by hand |',
-    )
-    const attempts = recordAttempts({}, report)
-    expect(attempts['github:acme/api#1']).not.toHaveProperty('failed')
-    expect(unchangedSince(onBase(at.main), 'sync', attempts)).toBe('r1')
-    // A base push leaves the PR's updated time as it was.
-    expect(unchangedSince(onBase('f00d'), 'sync', attempts)).toBeUndefined()
+    expect(formatReport(report)).toContain(`| sync | - | skipped | ${reason} |`)
+    // The next run, reading the conflict, plans a provider for it.
+    expect(recordAttempts({}, report)).toEqual({})
   })
 
-  it("retries a conflict reached through your issue once its PR's base moves", async () => {
-    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+  it("retries an issue's PR already up to date once its base moves", async () => {
+    const at = await origin({})
     const byIssue = parseConfig(`
 providers: [claude: {}]
 sources: { github: { repos: [acme/*] } }
@@ -251,12 +293,178 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     })
     const { report } = await sync(at, issue(at.main), byIssue)
     expect(report.results.map((r) => r.outcome)).toEqual([
-      { kind: 'none', reason: 'conflicts with main in a.txt: merge it by hand' },
+      { kind: 'none', reason: 'already up to date with main' },
     ])
     const attempts = recordAttempts({}, report)
     expect(attempts['github:acme/api#9']).toMatchObject({ base: at.main })
     expect(unchangedSince(issue(at.main), 'sync', attempts)).toBe('r1')
+    // A base push leaves the PR's updated time as it was.
     expect(unchangedSince(issue('f00d'), 'sync', attempts)).toBeUndefined()
+  })
+
+  it("has a worker resolve a conflict read at plan time, and pushes awaywork's merge of it, gated on the resolution alone and held", async () => {
+    const at = await origin(
+      { 'a.txt': 'theirs', 'db/schema.sql': 'v2', 'base-1.txt': '1' },
+      { 'a.txt': 'mine' },
+    )
+    const prompts: string[] = []
+    const seen: Record<string, string> = {}
+    const worker = resolver(async (dir) => {
+      seen.conflict = await readFile(join(dir, 'a.txt'), 'utf8')
+      seen.context = await readFile(join(dir, '.away/context/merge.md'), 'utf8')
+      await bothSides(dir)
+    }, prompts)
+    const item = onBase(at.main, { conflicts: true })
+    const { plan, report } = await sync(at, item, resolving, worker)
+    expect(plan.units.map((p) => p.provider)).toEqual(['claude'])
+    expect(seen.conflict).toMatch(/^<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> /)
+    const touching = await git(at.origin, 'log', '-1', '--format=%h a.txt', 'main', '--', 'a.txt')
+    expect(seen.context).toBe(
+      `awaywork merged \`main\` (at ${at.main.slice(0, 7)}, 3 commits) into \`feature-1\`, and these files conflict:\n\n- a.txt\n\nThe commits on \`main\` that touch them, newest first:\n\n- ${touching}\n`,
+    )
+    expect(prompts[0]).toContain(
+      "Deliver: the merge of `main` into `feature-1`, the developer's own pull request, which awaywork started in this clone and commits and pushes itself from your working tree. Commit nothing",
+    )
+    const [result] = report.results
+    expect(result).toMatchObject({
+      status: 'done',
+      provider: 'claude',
+      made: 'a merge of 3 commits, its conflicts resolved',
+      outcome: { kind: 'pushed', branch: 'feature-1', commits: 1, gated: 'gate resolved fired' },
+    })
+    expect(result?.outcome).toMatchObject({
+      text: '## Needs a decision\n\n### Gates (from scripts)\n\n- resolved: a.txt\n\n---\n\na.txt: kept both lines.',
+    })
+    const head = await git(at.origin, 'rev-parse', 'feature-1')
+    expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
+    expect(await git(at.origin, 'show', `${head}:a.txt`)).toBe('mine\ntheirs')
+    expect(await git(at.origin, 'ls-tree', '-r', '--name-only', head)).toBe(
+      'a.txt\nbase-1.txt\ndb/schema.sql\nfeature.txt',
+    )
+    const log = await git(
+      at.origin,
+      'log',
+      '--first-parent',
+      '--format=%s|%(trailers:key=Awaywork,valueonly)',
+      'feature-1',
+    )
+    expect(log.split('\n').filter(Boolean)).toEqual([
+      'Merge main into feature-1|r1',
+      'a.txt|',
+      'feature.txt|',
+      'init|',
+    ])
+    const out = join(at.root, 'run/units/acme-api-1/out')
+    expect(await readFile(join(out, 'verify.log'), 'utf8')).toContain('passed')
+    // A resolution is the model's work: the PR waits for your review.
+    const attempts = recordAttempts({}, report)
+    expect(attempts['github:acme/api#1']).toMatchObject({ pushed: head })
+    const after = { ...item, linkedPrs: item.linkedPrs.map((p) => ({ ...p, head })) }
+    expect(pushedOnto([after], attempts)?.url).toBe('https://github.com/acme/api/pull/1')
+  })
+
+  it("merges with no worker when a conflict read at plan time doesn't happen", async () => {
+    const at = await origin({ 'base-1.txt': '1', 'base-2.txt': '2' })
+    const { report } = await sync(at, pr({ conflicts: true }))
+    const [result] = report.results
+    expect(result).toMatchObject({ status: 'done', outcome: { kind: 'pushed', commits: 1 } })
+    expect(result?.provider).toBeUndefined()
+    expect(result?.outcome).not.toHaveProperty('gated')
+    expect(recordAttempts({}, report)['github:acme/api#1']).not.toHaveProperty('pushed')
+  })
+
+  it.each([
+    [
+      'commits',
+      async (dir: string) => {
+        await bothSides(dir)
+        await git(dir, 'commit', '-qam', 'resolved')
+      },
+      'the worker moved HEAD: awaywork makes the merge, not pushed',
+    ],
+    [
+      'leaves markers',
+      (dir: string) => writeFile(join(dir, '.away/out/pr.md'), 'Done.\n'),
+      'conflict markers left in a.txt, not pushed',
+    ],
+  ])('pushes nothing when the worker %s', async (_, act, reason) => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const { report } = await sync(
+      at,
+      onBase(at.main, { conflicts: true }),
+      resolving,
+      resolver(act),
+    )
+    expect(report.results.map((r) => [r.status, r.outcome])).toEqual([
+      ['done', { kind: 'none', reason, unpublished: true }],
+    ])
+    expect(at.fastForwards).toEqual([])
+    expect(await git(at.origin, 'rev-parse', 'feature-1')).toBe(at.feature1)
+    expect(recordAttempts({}, report)['github:acme/api#1']).toMatchObject({ failed: 1 })
+  })
+
+  it('merges on exactly the clone and the base it read, whatever the worker wrote to MERGE_HEAD', async () => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const worker = resolver(async (dir) => {
+      await bothSides(dir)
+      await writeFile(join(dir, '.git/MERGE_HEAD'), `${at.feature1}\n`)
+      await writeFile(join(dir, '.git/info/exclude'), '')
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    expect(report.results[0]?.outcome?.kind).toBe('pushed')
+    const head = await git(at.origin, 'rev-parse', 'feature-1')
+    expect(await git(at.origin, 'rev-parse', `${head}^@`)).toBe(`${at.feature1}\n${at.main}`)
+    expect(await git(at.origin, 'ls-tree', '--name-only', head)).not.toContain('.away')
+  })
+
+  it('lets the worker resolve a merge whose conflicted tree fails setup', async () => {
+    const at = await origin({ 'a.txt': 'theirs', 'db/schema.sql': 'v2' }, { 'a.txt': 'mine' })
+    let context = ''
+    const worker = resolver(async (dir) => {
+      context = await readFile(join(dir, '.away/context/merge.md'), 'utf8')
+      await bothSides(dir)
+    })
+    const failing = withRepo('grep -q "<<<<<<<" a.txt && exit 1; true', 'true')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), failing, worker)
+    expect(context).toContain('Setup failed on the conflicted tree: run `grep')
+    expect(report.results[0]?.outcome?.kind).toBe('pushed')
+  })
+
+  it("has a gate's judge read the resolution from git's automatic merge", async () => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const judged = parseConfig(`
+providers: [claude: {}]
+sources: { github: { repos: [acme/*] } }
+queue: [{ skill: sync, where: { type: pr }, deliver: push }]
+gates: { risk: { skill: judge } }
+`)
+    const prompts: string[] = []
+    const worker = resolver(
+      (dir, skill) =>
+        skill === 'judge' ? writeFile(join(dir, '.away/out/verdict'), 'clear\n') : bothSides(dir),
+      prompts,
+    )
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), judged, worker)
+    expect(report.results[0]?.outcome?.kind).toBe('pushed')
+    const automatic = /`([0-9a-f]{40})` is git's automatic merge/.exec(prompts[1] ?? '')?.[1]
+    expect(prompts[1]).toContain(`\`git diff ${automatic} HEAD\` is what that agent wrote`)
+    // A local commit of awaywork's, never pushed.
+    await expect(git(at.origin, 'cat-file', '-e', `${automatic}`)).rejects.toThrow()
+  })
+
+  it('pushes nothing when the worker asks', async () => {
+    const at = await origin({ 'a.txt': 'theirs' }, { 'a.txt': 'mine' })
+    const worker = resolver(async (dir) => {
+      await bothSides(dir)
+      await writeFile(join(dir, '.away/out/questions.md'), 'Which line wins?\n')
+      await writeFile(join(dir, '.away/out/status'), 'ask\n')
+    })
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    expect(report.results.map((r) => [r.status, r.outcome, r.questions?.text])).toEqual([
+      ['done', { kind: 'none', reason: 'asked questions' }, 'Which line wins?'],
+    ])
+    expect(at.fastForwards).toEqual([])
+    expect(await git(at.origin, 'rev-parse', 'feature-1')).toBe(at.feature1)
   })
 
   it('pushes nothing on a branch already up to date with its base', async () => {

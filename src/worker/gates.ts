@@ -38,7 +38,8 @@ export async function runGates(
   const fired: Fired[] = []
   for (const [name, gate] of Object.entries(unit.gates)) {
     const lines: string[] = []
-    const matched = gate.changed.length ? await changedPaths(dir, from, gate.changed) : []
+    // From `from` itself: a resolved merge's is git's automatic merge, beside HEAD rather than under it.
+    const matched = gate.changed.length ? await changedPaths(dir, from, gate.changed, true) : []
     if (matched.length) lines.push(listed(matched))
     for (const command of gate.commands) {
       const swapped = await swappedFile(dir, start, command)

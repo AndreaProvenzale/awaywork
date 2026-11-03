@@ -76,32 +76,44 @@ export async function snapshot(dir: string): Promise<Snapshot | undefined> {
   try {
     // Starting from the clone's index spares hashing every unchanged file again.
     await cp(join(dir, '.git', 'index'), index)
-    // `add` runs git in each submodule, under its config, which repo code may have written.
-    // Paths as bytes on stdin: a name needn't be UTF-8.
-    const listed = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--stage'], {
-      env: { GIT_INDEX_FILE: index },
-      encoding: 'buffer',
-    })
-    const gitlinks = Buffer.from(listed.stdout)
-      .toString('latin1')
-      .split('\0')
-      .filter((entry) => entry.startsWith('160000 '))
-      .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}\0`)
-    const add = (flag: string, pathspec: string) =>
-      execa(
-        bin('git'),
-        [...inClone(dir), 'add', flag, '--pathspec-from-file=-', '--pathspec-file-nul'],
-        {
-          env: { GIT_INDEX_FILE: index },
-          input: Buffer.from([`${pathspec}\0`, ...gitlinks].join(''), 'latin1'),
-        },
-      )
-    await add('-A', '.')
-    await add('-f', `${WORK_DIR}/out`)
+    await addTo(dir, index, '-A', ['.'])
+    await addTo(dir, index, '-f', [`${WORK_DIR}/out`])
     return { staged, tree: await run('write-tree') }
   } finally {
     await rm(index, { force: true })
   }
+}
+
+/**
+ * `git add <flag>` of `pathspecs` into the index file `index`, but for the submodules it lists, which keep their commit:
+ * `add` runs git in each submodule, under its config, which repo code may have written. With `env`, on that env alone.
+ */
+export async function addTo(
+  dir: string,
+  index: string,
+  flag: string,
+  pathspecs: string[],
+  env?: NodeJS.ProcessEnv,
+): Promise<void> {
+  const options = { env: { ...env, GIT_INDEX_FILE: index }, extendEnv: !env }
+  // Paths as bytes on stdin: a name needn't be UTF-8.
+  const listed = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--stage'], {
+    ...options,
+    encoding: 'buffer',
+  })
+  const gitlinks = Buffer.from(listed.stdout)
+    .toString('latin1')
+    .split('\0')
+    .filter((entry) => entry.startsWith('160000 '))
+    .map((entry) => `:(exclude,literal)${entry.slice(entry.indexOf('\t') + 1)}\0`)
+  await execa(
+    bin('git'),
+    [...inClone(dir), 'add', flag, '--pathspec-from-file=-', '--pathspec-file-nul'],
+    {
+      ...options,
+      input: Buffer.from([...pathspecs.map((p) => `${p}\0`), ...gitlinks].join(''), 'latin1'),
+    },
+  )
 }
 
 /** Puts the clone back exactly as a failed step found it: at its `start` commit, with `snapshot`'s trees. */

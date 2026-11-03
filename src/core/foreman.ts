@@ -387,16 +387,17 @@ export function planRun(input: {
       const step = written === rule ? rule : inherit(rule, written)
       const skill = resolveSkill(step.skill, input.skills)
       const providers = step.provider.length > 0 ? step.provider : config.providers.map((p) => p.id)
-      // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes no provider.
-      const { provider, passed } = at.merge ? { passed: [] } : route(providers, allowances, routed)
+      // Every step is routed, as the run does, so the plan holds fallback units for all of them; a merge takes a provider only to resolve conflicts the source read.
+      const routes = !at.merge || items.some((i) => i.fields.conflicts === true)
+      const { provider, passed } = routes ? route(providers, allowances, routed) : { passed: [] }
       if (provider) routed[provider] = (routed[provider] ?? 0) + 1
       const repoInstructions = config.repos[repo]?.instructions
       const unit: Unit = {
         ...at,
         id: unitId,
         verify: config.repos[repo]?.verify,
-        // Gates check what a model wrote, and a merge has nothing of its.
-        gates: at.merge ? undefined : gatesFor(config, repo),
+        // Gates check what a model wrote, and a merge with no model has nothing of its.
+        gates: at.merge && !provider ? undefined : gatesFor(config, repo),
         items,
         repo,
         rule: step,

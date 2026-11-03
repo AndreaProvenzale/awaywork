@@ -89,7 +89,14 @@ import {
   setupEnv,
   snapshot,
 } from './steps.js'
-import { mergeBase } from './sync.js'
+import {
+  concludeMerge,
+  conflictsFile,
+  leaveConflicts,
+  type Merge,
+  mergeBase,
+  type Resolving,
+} from './sync.js'
 import { shortage } from './watchdog.js'
 import {
   configSecrets,
@@ -524,6 +531,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let verdict: string | undefined
     // The merge commit awaywork made itself, the one head a merging unit may push.
     let merged: string | undefined
+    // A merge awaywork left conflicted for the worker, and why it made none of it once the worker ended.
+    let resolving: Resolving | undefined
+    let unmerged: string | undefined
     let ran = false
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
@@ -649,8 +659,50 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }).catch(() => {})
 
     /**
-     * A merging skill's one step: awaywork merges the PR's base `into` the clone itself, with no worker or
-     * provider, before setup runs. Setup runs then only when there's a `verify` to need it; a clean merge publishes as a push.
+     * What follows awaywork's own merge when no worker resolves it: setup only when there's a `verify` to need it,
+     * then a clean merge publishes as a push. A conflict isn't an attempt: the next run, reading it, plans a provider.
+     */
+    const settle = async (
+      unit: Unit,
+      merge: Merge,
+      result: UnitResult,
+      log: (line: string) => void,
+    ) => {
+      const settings = input.config.repos[unit.repo]
+      if (merge.kind === 'merged' && unit.verify && settings?.setup && !unit.untrusted) {
+        const own = unit.foreign || pickedUp ? [] : settings.secrets
+        const env = setupEnv(input.ctx.env, dir, secrets, own)
+        const options = { secrets: own, signal: input.signal, until: input.until }
+        const failed = await runSetup(settings.setup, dir, env, log, options)
+        if (failed) {
+          Object.assign(result, { status: 'skipped', reason: failed })
+          event(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
+          ended = { reason: `${unit.id} setup failed` }
+          return
+        }
+        await restoreGit(dir)
+      }
+      await baseline(dir)
+      const into = unit.merge as string
+      if (merge.kind === 'conflicts')
+        Object.assign(result, {
+          status: 'skipped',
+          reason: `conflicts with ${into} in ${merge.paths.join(', ')}, and no provider was planned to resolve them`,
+        })
+      else if (merge.kind === 'current') {
+        result.status = 'done'
+        result.outcome = { kind: 'none', reason: `already up to date with ${into}` }
+      } else {
+        result.status = 'done'
+        merged = merge.commit
+        ran = true
+        result.made = `a merge of ${counted(merge.commits, 'commit')}`
+      }
+    }
+
+    /**
+     * A merging skill's one step with no provider: awaywork merges the PR's base `into` the clone itself, with no worker,
+     * before setup runs, and aborts a merge that conflicts.
      */
     const mergeStep = async (p: PlannedUnit, into: string) => {
       const unit = { ...p.unit, ...shape }
@@ -672,35 +724,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (input.dryRun) return
         // Before setup runs, on a fresh git config as a gate's: only the branch and its base, as cloned, steer the merge.
         const env = await gateEnv(input.ctx.env, dir, secrets)
-        const merge = await mergeBase(dir, into, unit.base, env, log)
-        const settings = input.config.repos[unit.repo]
-        if (merge.kind === 'merged' && unit.verify && settings?.setup && !unit.untrusted) {
-          const own = unit.foreign || pickedUp ? [] : settings.secrets
-          const env = setupEnv(input.ctx.env, dir, secrets, own)
-          const options = { secrets: own, signal: input.signal, until: input.until }
-          const failed = await runSetup(settings.setup, dir, env, log, options)
-          if (failed) {
-            Object.assign(result, { status: 'skipped', reason: failed })
-            event(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
-            ended = { reason: `${unit.id} setup failed` }
-            return
-          }
-          await restoreGit(dir)
-        }
-        await baseline(dir)
-        result.status = 'done'
-        if (merge.kind === 'merged') {
-          merged = merge.commit
-          ran = true
-          result.made = `a merge of ${counted(merge.commits, 'commit')}`
-        } else
-          result.outcome = {
-            kind: 'none',
-            reason:
-              merge.kind === 'current'
-                ? `already up to date with ${into}`
-                : `conflicts with ${into} in ${merge.paths.join(', ')}: merge it by hand`,
-          }
+        await settle(unit, await mergeBase(dir, into, unit.base, env, log), result, log)
       } catch (e) {
         Object.assign(result, { status: 'error', reason: (e as Error).message })
         log(`error: ${(e as Error).stack}`)
@@ -737,7 +761,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
               ? 'the clone is lost to the worker user'
               : gitUnrestored(dir)
                 ? "the clone's .git was refused"
-                : undefined
+                : unmerged
           const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
           // A first slice's footer records it even when no later run goes on, to hold dependents back; a stacked slice's would resume onto it.
           const held = at === 0 && leaves ? { ...leaves, url: askedOn?.url } : undefined
@@ -745,7 +769,16 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
                 { ...publisher, judge },
-                { ...first.unit, ...shape, deliver, ...(merged && { merged }) },
+                {
+                  ...first.unit,
+                  ...shape,
+                  deliver,
+                  // A clean merge has nothing of a model's for gates to check.
+                  ...(merged &&
+                    (resolving
+                      ? { merged, automatic: resolving.automatic }
+                      : { merged, gates: undefined })),
+                },
                 dir,
                 from,
                 original ?? from,
@@ -846,14 +879,15 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         end(`no image for ${p.unit.repo}: isolation: container needs one in its repos entry`)
         continue
       }
-      if (p.unit.merge) {
-        await mergeStep(p, p.unit.merge)
-        continue
-      }
       const unit = { ...p.unit, ...shape }
       const candidates = retryOf ? [retryOf.result.provider as string] : unit.providers
       const { provider: id, passed } = route(candidates, allowances, routed)
       const provider = id && input.providers[id]
+      // A merge planned with no conflict to resolve, or with no provider left for it, still merges what's clean.
+      if (p.unit.merge && (!p.provider || !provider)) {
+        await mergeStep(p, p.unit.merge)
+        continue
+      }
       if (!id || !provider) {
         end(`no provider left: ${passed.join('; ') || 'none configured'}`)
         continue
@@ -941,6 +975,19 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (input.dryRun) continue
         const a = allowances[id]
         if (!a) continue
+        if (unit.merge && !reuse) {
+          // Before anything else runs, as with no provider; a merge that turns out clean spends nothing.
+          const env = await gateEnv(input.ctx.env, dir, secrets)
+          const merge = await mergeBase(dir, unit.merge, unit.base, env, log, true)
+          if (merge.kind !== 'conflicts') {
+            routed[id] = (routed[id] ?? 1) - 1
+            delete result.provider
+            await settle(unit, merge, result, log)
+            event(`${unit.id}: ${result.status}`)
+            continue
+          }
+          resolving = await leaveConflicts(dir, merge, unit.merge, unit.base, env)
+        }
         if (!reuse)
           await fetchContexts(unit.items, dir, { ...input, env: input.ctx.env, secrets, log })
         const settings = input.config.repos[unit.repo]
@@ -954,7 +1001,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             log,
             { secrets: own, signal: input.signal, until: input.until },
           )
-          if (failed) {
+          // A conflicted lockfile, say, fails an install: the worker resolves the merge all the same.
+          if (failed && resolving) {
+            await refuseSymlinks(dir, [conflictsFile])
+            const again = `\nSetup failed on the conflicted tree: run \`${settings.setup}\` again once they're resolved, if a check needs it.\n`
+            await writeOutput(join(dir, conflictsFile), again, true)
+          } else if (failed) {
             Object.assign(result, { status: 'skipped', reason: failed })
             event(`${unit.id}: skipped, ${failed.split('\n')[0]}`)
             ended = { reason: `${unit.id} setup failed` }
@@ -1067,6 +1119,19 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         // Unless it says it asks, a step that committed went on: its questions aren't the chain's to ask.
         const asks = !!questions && (status === 'ask' || reportsOnly(unit.deliver) || commits === 0)
         result.made = made(commits, report, asks ? questions : '')
+        // awaywork concludes the merge the worker resolved, from its working tree, and nothing it committed.
+        if (resolving && (await head(dir)) !== start)
+          unmerged = `the worker moved HEAD: awaywork makes the merge, not pushed`
+        else if (resolving && worker.status === 'done' && !asks) {
+          const env = await gateEnv(input.ctx.env, dir, secrets)
+          const concluded = await concludeMerge(dir, resolving, start, unit.base, env)
+          if ('markers' in concluded)
+            unmerged = `conflict markers left in ${concluded.markers.join(', ')}, not pushed`
+          else {
+            merged = concluded.commit
+            result.made = `a merge of ${counted(resolving.commits, 'commit')}, its conflicts resolved`
+          }
+        }
         if (worker.status === 'failed' && saved && !input.signal?.aborted) {
           const out = join(unitDir, 'out')
           const keep = () => {
@@ -1087,7 +1152,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           result.reported = true
         }
         // What the next step works from: a committing step's commits, a report step's report.
-        const left = reportsOnly(unit.deliver) ? report !== '' : commits > 0
+        const left = reportsOnly(unit.deliver) ? report !== '' : commits > 0 || !!merged
         if (worker.status === 'stopped: aborted' || input.signal?.aborted) {
           interrupted = true
           ended = { reason: 'interrupted' }

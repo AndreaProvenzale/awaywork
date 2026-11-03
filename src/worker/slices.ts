@@ -152,8 +152,10 @@ export async function publishSlice(
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
   const checked = unit.resume?.from ?? from
   const failed = await verify(deps, unit, dir, checked)
-  const fired = await runGates(deps.check, unit, dir, checked, start)
-  fired.push(...(await runJudges(deps.judge, unit, dir, checked)))
+  // A resolved merge's gates read only what the worker wrote on top of git's automatic merge.
+  const gatesFrom = unit.automatic ?? checked
+  const fired = await runGates(deps.check, unit, dir, gatesFrom, unit.automatic ?? start)
+  fired.push(...(await runJudges(deps.judge, unit, dir, gatesFrom)))
   if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   if (unit.gates) {

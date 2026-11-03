@@ -417,6 +417,8 @@ export interface Unit {
   merge?: string
   /** Set once that merge is made: the merge commit itself, the one head publishing pushes for this unit. */
   merged?: string
+  /** Set when a worker resolved that merge's conflicts: git's automatic merge, markers included, which gates and judges read the resolution from. */
+  automatic?: string
 }
 
 /** A gate fires when the slice's commits change a path matching one of `changed`, one of `commands` fails, or one of `skills` judges it should. */

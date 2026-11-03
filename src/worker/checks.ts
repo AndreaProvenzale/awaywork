@@ -144,18 +144,11 @@ async function uncommitted(dir: string): Promise<string[]> {
   return (await git(dir, ...status)).split('\n').filter(Boolean)
 }
 
-/** The paths matching `globs` the commits since `from` change; a rename counts as both of its paths. */
-export async function changedPaths(dir: string, from: string, globs: string[]) {
+/** The paths matching `globs` the commits since `from` change, from `from` itself when `exact`, else from where it left HEAD's history; a rename counts as both of its paths. */
+export async function changedPaths(dir: string, from: string, globs: string[], exact = false) {
   const paths = globs.map((glob) => `:(glob)${glob}`)
-  const diff = await git(
-    dir,
-    'diff',
-    '--name-only',
-    '--no-renames',
-    `${from}...HEAD`,
-    '--',
-    ...paths,
-  )
+  const range = exact ? [from, 'HEAD'] : [`${from}...HEAD`]
+  const diff = await git(dir, 'diff', '--name-only', '--no-renames', ...range, '--', ...paths)
   return diff.split('\n').filter(Boolean)
 }
 

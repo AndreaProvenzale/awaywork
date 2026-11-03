@@ -753,7 +753,7 @@ export const configSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [...at, 'when'],
-          message: `${r.skill} runs no model and spends no quota: drop when`,
+          message: `${r.skill} is awaywork's own merge, which only spends quota on a conflict: drop when`,
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
