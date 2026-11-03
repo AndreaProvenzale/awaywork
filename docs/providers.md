@@ -13,7 +13,7 @@ Can each coding subscription's quota be spent headlessly, on a machine other tha
 | Claude Code | `claude setup-token`, 1 year, static | Yes, documented for CI [V] | Subscription [V, burn-tested] | 5 h + weekly windows | `rate_limit_event` in stream-json [V, tested] | Stock binary only [V] |
 | Codex (ChatGPT plan) | `~/.codex/auth.json`, rotates at every refresh [V, tested] | Yes, "advanced" [V] | Subscription | 5 h + weekly windows; free plan one 30-day window [V, tested] | App-server `account/rateLimits/read` [V, tested] | Own login, no sharing [I] |
 | GitHub Copilot CLI | Fine-grained PAT or Actions `GITHUB_TOKEN` | Yes, documented [V] | AI Credits, monthly allowance [V] | Monthly credits | Billing and usage APIs [V] | Low [I] |
-| Cursor CLI | `CURSOR_API_KEY` | Yes, documented [V] | Plan pool, then on-demand [C] | Monthly usage | Admin API, Teams only [V] | Low [I] |
+| Cursor CLI | `CURSOR_API_KEY`, static [V, tested] | Yes, documented [V] | Plan pool [V, tested] | Monthly pool (legacy), weekly pool (X Subscription) [V] | Dashboard only [V, tested] | Low [I] |
 | Gemini CLI (AI Pro/Ultra) | Cached OAuth `~/.gemini/oauth_creds.json` | Works, not sanctioned [C] | Subscription only via OAuth [V] | Daily requests | `/stats`, interactive only [V] | **High** [V] |
 | Gemini Code Assist | Workload Identity / Vertex | Yes, `run-gemini-cli` [V] | License [V] | Daily requests | No [I] | Low [I] |
 | Jules | API key (alpha) | Yes [V] | Plan tasks [I] | Daily tasks | No [I] | Low [I] |
@@ -42,7 +42,7 @@ Z.ai, Kimi, MiniMax and Alibaba expose Anthropic-compatible endpoints, so the st
 
 ## What matters for awaywork
 
-- **Idle quota only expires on rolling windows.** Claude, Codex, Factory, Z.ai, Alibaba, OpenCode Go (hours to a week) and Gemini, Jules (daily) lose what a night leaves unused. Monthly credit plans (Copilot, Cursor, Amp, Warp, Augment, Mistral) lose it only at month end; scheduling them nightly is about capacity, not waste.
+- **Idle quota only expires on rolling windows.** Claude, Codex, Factory, Z.ai, Alibaba, OpenCode Go (hours to a week) and Gemini, Jules (daily) lose what a night leaves unused. Cursor's X Subscription plans lose it weekly. Monthly credit plans (Copilot, Cursor's legacy plans, Amp, Warp, Augment, Mistral) lose it only at month end; scheduling them nightly is about capacity, not waste.
 - **Always the vendor's unmodified binary with the user's own credential.** Never call the backing API with a subscription token, never store, pool or proxy other users' credentials, never spoof the client identity. Anthropic (enforced since April 2026), Google (bans in February 2026) and Z.ai punish exactly that.
 - **Vendors ship their own schedulers**: Claude routines, Codex scheduled tasks, Cursor Automations, Copilot coding agent via Agentic Workflows, Jules scheduled tasks, Warp, Devin Cloud, Factory Missions, Amp Orbs. None paces work against remaining quota across providers.
 
@@ -108,7 +108,25 @@ Z.ai, Kimi, MiniMax and Alibaba expose Anthropic-compatible endpoints, so the st
 ### Cursor
 
 - `CURSOR_API_KEY` or `--api-key`; recommended for CI. [V] https://cursor.com/docs/cli/reference/authentication, https://cursor.com/docs/cli/github-actions
-- Plan-pool billing for CLI keys is not stated in docs. [C]
+- Plans: legacy Pro/Pro+/Ultra have monthly pools; X Subscription plans (Plus, Premium, Super, Ultra) one weekly pool shared with Grok. Unused usage doesn't roll over. Remaining usage shows in the dashboard and the editor only. [V] https://cursor.com/help/models-and-usage/usage-limits
+- Billing: on a legacy Pro plan, nine `composer-2.5` runs with a user API key and one with the login showed up as plan usage in the dashboard. Which request drew from which source was not checked. [V, tested]
+- Checked on macOS with `agent` 2026.10.22-27dcf5f, a Pro plan, `composer-2.5`; [V, tested] unless marked:
+  - The binary installs with `curl https://cursor.com/install | bash` into `~/.local/share/cursor-agent/versions/<v>/`, linked as `agent` and `cursor-agent`; no npm package. `cursor-agent update` on 2025.09.17 exited 1 without a message. `about --format json` prints `subscriptionTier`; `models` lists model ids.
+  - The login is two macOS Keychain items, `cursor-access-token` and `cursor-refresh-token`, so a different `HOME` hides it. `CURSOR_CONFIG_DIR` keeps the login but only moves `cli-config.json`: rules, skills, hooks and `mcp.json` there are ignored.
+  - With `CURSOR_API_KEY` and a fresh `HOME` a run works (`apiKeySource: env` in the `init` event) while `status` says not logged in. The binary then tries to save its session to the Keychain, which fails there with a warning and raises a macOS alert. `AGENT_CLI_CREDENTIAL_STORE=memory` (`file`, `memory` or `default`) skips the save and the alert. [V, binary strings; tested] Elsewhere the default store is `$XDG_CONFIG_HOME/cursor/auth.json`. [I, binary strings]
+  - A bad key or model exits 1 with the reason on stderr and nothing on stdout. A prompt on stdin works with `-p`.
+  - `--output-format stream-json` prints `system/init`, `user`, `thinking` deltas (the docs say they are suppressed), `tool_call` `started`/`completed` pairs keyed by `call_id`, `assistant`, then one `result` with `subtype`, `is_error`, `duration_ms` and `usage` token counts. The tool is the one `*ToolCall` key: `shellToolCall` (`result.success.exitCode`, or `rejected`), `readToolCall`, `editToolCall`, `grepToolCall`, `globToolCall`, `mcpToolCall` (`args.providerIdentifier`, `args.toolName`; `result.success`, `rejected` or `permissionDenied`) and `getMcpToolsToolCall` for tool discovery. Calls run in parallel. No quota or rate limit anywhere.
+  - No turn cap flag. Killing the process group after three completed calls exits 143 with no `result` and leaves nothing running. Every run starts a `worker-server` child in the same process group that outlives the agent for minutes, with its environment, `CURSOR_API_KEY` included.
+  - With the developer's `HOME` a run loads every user skill (`~/.agents/skills`, `~/.claude/skills`, Claude Code plugins' skills), the user MCP servers and user rules. With a fresh `HOME` it gets Cursor's built-in skills (synced into `~/.cursor/skills-cursor`) plus the clone's `.cursor/skills`, `.claude/skills`, `.agents/skills`, `AGENTS.md`, `CLAUDE.md` and `.cursor/rules`.
+  - `--plugin-dir` with `.cursor-plugin/plugin.json` or `.claude-plugin/plugin.json` and `skills/<name>/SKILL.md` adds those skills.
+  - Hooks in `~/.cursor/hooks.json` and in the clone's `.cursor/hooks.json` run in print mode, `--trust` or not: `sessionStart`, `preToolUse`, `beforeShellExecution`, `afterFileEdit`; `beforeSubmitPrompt` and `stop` didn't fire. No switch to drop the clone's was found.
+  - MCP: servers in `~/.cursor/mcp.json` start without a flag; the clone's `.cursor/mcp.json` only with `--approve-mcps`. A stdio server gets `HOME`, `PATH` and its own `env` only, where `${env:NAME}` expands from the binary's environment. `enabledTools` is accepted but not enforced: an unlisted tool was listed and called.
+  - Permissions live in `~/.cursor/cli-config.json` and the clone's `.cursor/cli.json`, whose `allow` lists add up. Without `--force`, print mode runs what `allow` lists and returns `rejected` for the rest, so `allow` is an allowlist (`Shell(*)`, `Read(**)`, `Write(**)`, `Mcp(server:tool)`, `Mcp(server:*)`). `deny` wins, also under `--force`, which otherwise runs everything. An invalid `.cursor/cli.json`, a `sandbox` key included, fails the run with exit 1.
+  - Sandbox: `--sandbox enabled` without `--force` runs a shell command under `TYPE_WORKSPACE_READWRITE` with the network off (`CONNECT tunnel failed, response 403`) and writes outside the clone refused; the edit tool and `git commit` work. A command matching an `allow` rule runs unsandboxed (`TYPE_INSECURE_NONE`) or with the network on, and `--force` turns the sandbox off.
+  - No commit trailer was added to a commit made through the shell, though `cli-config.json` defaults `attribution.attributeCommitsToAgent` to true.
+- Install outside the runner's home, checked in an `ubuntu:24.04` amd64 container (qemu, not a GitHub runner): `sudo env HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'` puts everything under `/opt/cursor/.local` (558 MB, mode 755, nothing in `/root`). Linked into `/usr/local/bin`, it runs as a no-home `awaywork` user with its own `HOME`, `CURSOR_API_KEY` and `AGENT_CLI_CREDENTIAL_STORE=memory`: a `cli-config.json` `Shell(*)` allow ran the shell call and the run ended `result/success`, exit 0. It wrote only under its `HOME` (`.cache`, `.cursor`), nothing under `/opt/cursor`, and stderr was empty. [V, tested]
+- Instructions: `AGENTS.md` and `CLAUDE.md` at the root, plus `.cursor/rules`. [V] https://cursor.com/docs/cli/using Skills: `.agents/skills`, `.cursor/skills`, `.claude/skills`, `.codex/skills` and their `~` twins. [V] https://cursor.com/docs/skills
+- ToS: no clause on unattended or headless use; no renting, lending or selling, and the account holder answers for all activity. [V] https://cursor.com/terms-of-service
 - Automations: cron or events, billed as cloud-agent usage. [V] https://cursor.com/docs/cloud-agent/automations
 
 ### Gemini
@@ -185,7 +203,7 @@ Two fix units ended with "The hosted runner lost communication with the server" 
 
 ## Unverified, burn-test before relying on it
 
-- Cursor: API-key usage draws on the plan pool.
+- Cursor: whether an X Subscription key run draws the weekly pool; the binary on Linux; a burn test through awaywork.
 - Kiro: API-key runs draw plan credits.
 - Factory: `droid exec` shares the interactive pool.
 - Devin: personal-plan CLI billing.
