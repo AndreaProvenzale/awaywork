@@ -513,7 +513,8 @@ export async function revealHidden(dir: string, provider: Provider, skill: strin
   // The workspace deleted them all, so one there now is the judge's, left for its gate to see.
   const gone: string[] = []
   for (const path of stdout.split('\0').filter(Boolean))
-    if (!(await lstat(join(dir, path)).catch(() => undefined))) gone.push(`${path}\0`)
+    if (!(await lstat(join(dir, path)).catch((e) => (e.code === 'ENOENT' ? undefined : e))))
+      gone.push(`${path}\0`)
   if (gone.length)
     await git(
       ['restore', `--source=${tree}`, '--pathspec-from-file=-', '--pathspec-file-nul'],

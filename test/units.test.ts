@@ -4138,6 +4138,20 @@ it('fires the gate of a judge that rewrites a config it hid, keeping each slice 
   }
 })
 
+it('fires the gate of a judge that turns the folder of a config it hid into a file', async () => {
+  const { outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
+    async (dir, skill) => {
+      if (skill !== 'judge') return commitFile(dir, '.claude/settings.json', skill)
+      await rm(join(dir, '.claude'), { recursive: true, force: true })
+      await writeFile(join(dir, '.claude'), 'JUDGE')
+      return verdict('clear')(dir)
+    },
+    { provider: { repoConfig: ['.claude/settings.json'] } },
+  )
+  expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
+})
+
 const judgeSkill = '.fake/skills/judge/SKILL.md'
 
 it("fires the gate when its judge can't run", async () => {
