@@ -1,6 +1,6 @@
 ---
 layout: home
-description: awaywork spends idle AI coding-subscription quota while you sleep, running Claude Code, Codex and friends headless on red CI, review threads, QA feedback and plans, and leaves draft PRs and a morning report.
+description: awaywork spends idle AI coding-subscription quota while you sleep, running Claude Code, Codex, Cursor and friends headless on red CI, review threads, QA feedback and plans, and leaves draft PRs and a morning report.
 hero:
   name: awaywork
   text: You're away, your agents work
