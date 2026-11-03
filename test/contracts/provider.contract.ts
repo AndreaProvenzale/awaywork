@@ -30,8 +30,7 @@ export function providerContract(
     })
 
     it('installs on a GitHub-hosted runner, or says why it is unavailable there', () => {
-      const install = provider.install && Object.values(provider.install)[0]
-      if (install) expect(install).not.toBe('')
+      if (provider.install) expect(Object.values(provider.install)[0]).not.toBe('')
       else expect(provider.unavailable?.({ RUNNER_ENVIRONMENT: 'github-hosted' })).toBeTruthy()
     })
 
