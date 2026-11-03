@@ -454,7 +454,7 @@ describe('schedule install --with github-actions', () => {
     expect(out.join('\n')).not.toMatch(/won't run/)
     const hosted = parse(await readFile(join(root, WORKFLOW), 'utf8')).jobs.run.steps.at(-1)
     expect(hosted.with.packages).toBe('@anthropic-ai/claude-code')
-    expect(hosted.with.scripts).toContain('HOME=/opt/cursor bash -c')
+    expect(hosted.with.scripts).toContain('| HOME=/opt/cursor bash')
     expect(Object.keys(hosted.env)).toEqual([
       'GH_TOKEN',
       'CLAUDE_CODE_OAUTH_TOKEN',

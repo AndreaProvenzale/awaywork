@@ -221,7 +221,7 @@ describe('cursor provider', () => {
     expect(await provider.probe({ env: {}, log: () => {} })).toBeNull()
     expect(provider.unavailable).toBeUndefined()
     expect(provider.install).toEqual({
-      script: expect.stringContaining('HOME=/opt/cursor bash -c'),
+      script: expect.stringContaining('| HOME=/opt/cursor bash'),
     })
   })
 })

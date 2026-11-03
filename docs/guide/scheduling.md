@@ -261,7 +261,7 @@ Cursor's CLI has no npm package, so on a GitHub-hosted runner the action install
 packages: "@anthropic-ai/claude-code"
 scripts: |
   sudo install -d -o "$USER" /opt/cursor
-  HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'
+  curl -fsS https://cursor.com/install | HOME=/opt/cursor bash
   sudo ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent
   agent --version
 ```

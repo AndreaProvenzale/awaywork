@@ -12,7 +12,7 @@ const TOOLS = ['Shell(*)', 'Read(**)', 'Write(**)']
 /** As the runner's user, not root, outside its home, which the worker user can't enter (docs/providers.md). */
 const INSTALL = [
   'sudo install -d -o "$USER" /opt/cursor',
-  "HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'",
+  'curl -fsS https://cursor.com/install | HOME=/opt/cursor bash',
   'sudo ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent',
   'agent --version',
 ].join('\n')
