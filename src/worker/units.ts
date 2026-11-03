@@ -663,6 +663,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     /**
      * What follows awaywork's own merge when no worker resolves it: setup only when there's a `verify` to need it,
      * then a clean merge publishes as a push. A conflict isn't an attempt: the next run, reading it, plans a provider.
+     * One in a submodule is the developer's.
      */
     const settle = async (
       unit: Unit,
@@ -686,10 +687,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       await baseline(dir)
       const into = unit.merge as string
-      if (merge.kind === 'conflicts')
+      if (merge.kind === 'conflicts' && merge.submodules.length) {
+        const what = merge.submodules.length > 1 ? 'submodules' : 'a submodule'
+        result.status = 'done'
+        result.outcome = {
+          kind: 'none',
+          reason: `conflicts with ${into} in ${merge.submodules.join(', ')} (${what}): merge it by hand`,
+        }
+      } else if (merge.kind === 'conflicts')
         Object.assign(result, {
           status: 'skipped',
-          reason: `conflicts with ${into} in ${merge.paths.join(', ')}, and no provider was planned to resolve them`,
+          reason: `conflicts with ${into} in ${merge.paths.join(', ')}, and no provider to resolve them`,
         })
       else if (merge.kind === 'current') {
         result.status = 'done'
@@ -981,7 +989,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           // Before anything else runs, as with no provider; a merge that turns out clean spends nothing.
           const env = await gateEnv(input.ctx.env, dir, secrets)
           const merge = await mergeBase(dir, unit.merge, unit.base, env, log, true)
-          if (merge.kind !== 'conflicts') {
+          if (merge.kind !== 'conflicts' || merge.submodules.length) {
             routed[id] = (routed[id] ?? 1) - 1
             delete result.provider
             await settle(unit, merge, result, log)
@@ -1131,9 +1139,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           else {
             merged = concluded.commit
             result.made = `a merge of ${counted(resolving.commits, 'commit')}, its conflicts resolved`
-            const { untracked } = concluded
+            const { untracked, also } = concluded
             const lines = [
               `Resolved: ${resolving.paths.join(', ')}`,
+              ...(also.length ? [`Also changed: ${also.join(', ')}`] : []),
               ...(untracked.length ? [`Left out, untracked: ${untracked.join(', ')}`] : []),
             ]
             await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.push}`])

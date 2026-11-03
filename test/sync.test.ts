@@ -282,8 +282,7 @@ queue: [{ skill: catch-up, where: { type: pr } }]
     // Setup runs after the merge: attributes it writes can't turn the conflict into a clean merge.
     const union = withRepo('echo "* merge=union" > .gitattributes', 'true')
     const { report } = await sync(at, onBase(at.main), union)
-    const reason =
-      'conflicts with main in a.txt, b.txt, and no provider was planned to resolve them'
+    const reason = 'conflicts with main in a.txt, b.txt, and no provider to resolve them'
     expect(report.results.map((r) => [r.status, r.reason, r.outcome])).toEqual([
       ['skipped', reason, undefined],
     ])
@@ -415,6 +414,15 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
       },
       'the resolution keeps nothing of main, not pushed',
     ],
+    [
+      'the worker drops the base, then edits a conflicted file',
+      async (dir: string) => {
+        await git(dir, 'merge', '--abort')
+        await writeFile(join(dir, 'a.txt'), 'merged\n')
+        await writeFile(join(dir, '.away/out/pr.md'), 'a.txt: merged.\n')
+      },
+      "the resolution undoes main's change to b.txt, not pushed",
+    ],
   ])('pushes nothing when %s', async (_, act, reason, settings = resolving) => {
     const at = await origin({ 'a.txt': 'theirs', 'b.txt': 'base work' }, { 'a.txt': 'mine' })
     const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, resolver(act))
@@ -503,17 +511,62 @@ queue: [{ skill: sync, where: { type: issue }, deliver: push }]
     },
   )
 
-  it('gates a base change the resolution reverts', async () => {
-    const at = await origin({ 'a.txt': 'theirs', 'db/schema.sql': 'v2' }, { 'a.txt': 'mine' })
+  it('refuses a resolution that puts back what the base changed outside the conflicts', async () => {
+    const at = await origin(
+      { 'a.txt': 'theirs', 'db/schema.sql': 'v2', 'x.txt': 'new' },
+      { 'a.txt': 'mine' },
+      { 'x.txt': 'old' },
+    )
     const worker = resolver(async (dir) => {
       await bothSides(dir)
       await rm(join(dir, 'db/schema.sql'))
+      await writeFile(join(dir, 'x.txt'), 'old')
     })
     const { report } = await sync(at, onBase(at.main, { conflicts: true }), resolving, worker)
+    expect(report.results[0]?.outcome).toEqual({
+      kind: 'none',
+      reason: "the resolution undoes main's change to db/schema.sql, x.txt, not pushed",
+      unpublished: true,
+    })
+    expect(at.fastForwards).toEqual([])
+  })
+
+  it('lists what else the merge carries besides the conflicted paths', async () => {
+    const at = await origin({ 'a.txt': 'theirs', 'b.txt': 'base work' }, { 'a.txt': 'mine' })
+    const worker = resolver(async (dir) => {
+      await bothSides(dir)
+      await writeFile(join(dir, 'b.txt'), 'base work, fixed')
+    })
+    const settings = withRepo('echo setup >> feature.txt', 'true')
+    const { report } = await sync(at, onBase(at.main, { conflicts: true }), settings, worker)
     expect(report.results[0]?.outcome).toMatchObject({
       kind: 'pushed',
-      text: expect.stringContaining('- db: db/schema.sql\n'),
+      text: expect.stringContaining(
+        'Resolved: a.txt\n\nAlso changed: b.txt, feature.txt\n\na.txt: kept both lines.',
+      ),
     })
+  })
+
+  it('leaves a conflicted submodule to you, with no worker and no attempt', async () => {
+    const at = await origin({})
+    const gitlink = async (branch: string, sha: string) => {
+      await git(at.origin, 'checkout', '-q', branch)
+      await git(at.origin, 'update-index', '--add', '--cacheinfo', `160000,${sha},sub`)
+      await git(at.origin, 'commit', '-qm', `sub on ${branch}`)
+    }
+    await gitlink('main', at.main)
+    await gitlink('feature-1', at.feature1)
+    const main = await git(at.origin, 'rev-parse', 'main')
+    const { report } = await sync(at, onBase(main, { conflicts: true }), config, noWorker)
+    expect(report.results.map((r) => [r.status, r.provider, r.outcome])).toEqual([
+      [
+        'done',
+        undefined,
+        { kind: 'none', reason: 'conflicts with main in sub (a submodule): merge it by hand' },
+      ],
+    ])
+    expect(at.fastForwards).toEqual([])
+    expect(recordAttempts({}, report)['github:acme/api#1']).not.toHaveProperty('failed')
   })
 
   it('lets the worker resolve a merge whose conflicted tree fails setup', async () => {

@@ -7,10 +7,10 @@ import { git } from './checks.js'
 import { addTo } from './steps.js'
 import { inClone, outputFile, WORK_DIR, writeOutput } from './workspace.js'
 
-/** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, or found nothing to merge. */
+/** What awaywork's own merge of a PR's base did: made the merge `commit`, stopped on conflicting `paths` of the base at `head`, `submodules` among them, or found nothing to merge. */
 export type Merge =
   | { kind: 'merged'; commit: string; commits: number }
-  | { kind: 'conflicts'; paths: string[]; head: string; commits: number }
+  | { kind: 'conflicts'; paths: string[]; submodules: string[]; head: string; commits: number }
   | { kind: 'current' }
 
 /** A merge awaywork left conflicted for a worker on the clone's `start`: the base `into` at `head`, its conflicted `paths`, and `automatic`, git's own merge of them as a local commit. */
@@ -69,8 +69,13 @@ export async function mergeBase(
     .split('\n')
     .filter(Boolean)
   if (paths.length === 0) throw new Error(`git merge ${into} failed: ${merge.all}`)
-  if (!keep) await git(dir, 'merge', '--abort')
-  return { kind: 'conflicts', paths, head, commits }
+  // A submodule's pointer is no file a worker can resolve.
+  const gitlinks = (await git(dir, 'ls-files', '-u'))
+    .split('\n')
+    .filter((l) => l.startsWith('160000 '))
+  const submodules = [...new Set(gitlinks.map((l) => l.slice(l.indexOf('\t') + 1)))]
+  if (!keep || submodules.length) await git(dir, 'merge', '--abort')
+  return { kind: 'conflicts', paths, submodules, head, commits }
 }
 
 /**
@@ -118,14 +123,15 @@ export async function leaveConflicts(
 /**
  * Makes the merge a worker resolved: the files of git's automatic merge as its working tree holds them, `.away/`
  * left out, committed on exactly the clone's start and the base's head, whatever `.git` says now; it lists the
- * untracked files it left out. Refused while a conflicted path holds a conflict marker, or when nothing of the base came in.
+ * untracked files it left out and the other paths it changed on git's merge. Refused while a conflicted path holds a
+ * conflict marker, when nothing of the base came in, or when a path the base changed outside the conflicts is back as it was.
  */
 export async function concludeMerge(
   dir: string,
   r: Resolving,
   branch: string,
   env: NodeJS.ProcessEnv,
-): Promise<{ commit: string; untracked: string[] } | { refused: string }> {
+): Promise<{ commit: string; untracked: string[]; also: string[] } | { refused: string }> {
   let untracked: string[] = []
   const tree = await worktreeTree(dir, env, '-u', async (index) => {
     const staging = { ...env, GIT_INDEX_FILE: index }
@@ -144,6 +150,17 @@ export async function concludeMerge(
   })
   if (tree === (await git(dir, 'rev-parse', `${r.start}^{tree}`)))
     return { refused: `the resolution keeps nothing of ${r.into}, not pushed` }
+  const outside = ['.', ...r.paths.map((p) => `:(exclude,literal)${p}`)]
+  const changed = async (from: string, to: string) =>
+    (await git(dir, 'diff', '--name-only', '--no-renames', from, to, '--', ...outside))
+      .split('\n')
+      .filter(Boolean)
+  const kept = new Set(await changed(r.start, tree))
+  const undone = (await changed(r.start, r.automatic)).filter((p) => !kept.has(p))
+  if (undone.length)
+    return {
+      refused: `the resolution undoes ${r.into}'s change to ${undone.join(', ')}, not pushed`,
+    }
   // As text, whatever attributes the worker wrote say; `conflict-marker-size` makes markers longer.
   const marker = ['grep', '-a', '-l', '-E', '^(<{7,}|>{7,})( |$)', tree, '--', ...literal(r.paths)]
   const grep = await execa(bin('git'), [...inClone(dir), ...marker], {
@@ -161,7 +178,7 @@ export async function concludeMerge(
   const message = `Merge ${r.into} into ${branch}`
   const commit = await commitTree(dir, env, tree, [r.start, r.head], message)
   await run(dir, env, ['reset', '-q', commit])
-  return { commit, untracked }
+  return { commit, untracked, also: await changed(r.automatic, tree) }
 }
 
 /** The clone's working tree as a tree, `git add <flag>`ed on what `seed` puts in a fresh index of awaywork's, `.away/` left out. */
