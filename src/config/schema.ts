@@ -553,6 +553,13 @@ const repo = z.strictObject({
 
 export const configSchema = z
   .strictObject({
+    extends: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "A base config file this one goes on top of, relative to this file: maps merge, this file's keys winning, and a list replaces the base's; relative paths resolve against the file they're in. A base can't extend another",
+      ),
     windows: z
       .array(
         z

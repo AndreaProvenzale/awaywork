@@ -2,7 +2,7 @@
 import { existsSync, lstatSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 import { installWorkflow, offerSecrets, staleSchedules } from '../src/cli/schedule.js'
@@ -551,6 +551,23 @@ mcp: { db: { command: npx, secrets: [MCP_DB_URL] } }
     expect(process.exitCode).toBe(1)
     expect(out).toEqual([
       'GitHub Actions runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
+    ])
+    expect(existsSync(join(root, WORKFLOW))).toBe(false)
+  })
+
+  it('refuses a config that extends a base and writes nothing', async () => {
+    const { root, config } = await setup()
+    await writeFile(join(dirname(config), 'base.yml'), CONFIG)
+    await writeFile(config, 'extends: base.yml\n')
+    await installWorkflow(config, {
+      run: async () => root,
+      ask: scriptedAsk([]),
+      env: {},
+      setSecret: async () => {},
+    })
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([
+      `GitHub Actions gets a copy of ${config} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`,
     ])
     expect(existsSync(join(root, WORKFLOW))).toBe(false)
   })
