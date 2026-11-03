@@ -586,7 +586,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       let why: string | undefined
       // The judge's workspace hides the repo's config and skill from it; a clone that isn't foreign gets them back after.
-      const found = unit.foreign ? undefined : await snapshot(dir)
+      const hides = !unit.foreign && (provider.skillsDir || provider.repoConfig?.length)
+      const found = hides ? await snapshot(dir) : undefined
       try {
         if (contained() && image) contain(dir, { image, plugin, secrets })
         const prompt = await prepareWorkspace({

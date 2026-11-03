@@ -4114,6 +4114,30 @@ it("gives the slice stacked after a judge the repo's config and skill the judge 
     expect((await git(origin, 'show', `${tip}:${file}`)).stdout).toBe('fix')
 })
 
+it('fires the gate of a judge that rewrites a config it hid, keeping each slice its own', async () => {
+  const seen: string[] = []
+  const { origin, outcomes } = await gated(
+    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
+    async (dir, skill) => {
+      const settings = join(dir, '.claude/settings.json')
+      if (skill === 'judge') {
+        await mkdir(join(dir, '.claude'), { recursive: true })
+        await writeFile(settings, 'JUDGE')
+        return verdict('clear')(dir)
+      }
+      seen.push(`${skill}: ${await readFile(settings, 'utf8').catch(() => '-')}`)
+      await commitFile(dir, '.claude/settings.json', skill)
+    },
+    { provider: { repoConfig: ['.claude/settings.json'] } },
+  )
+  expect(seen).toEqual(['implement: -', 'fix: implement'])
+  expect(outcomes).toMatchObject([{ draft: 'gate risk fired' }, { draft: 'gate risk fired' }])
+  for (const [i, own] of ['implement', 'fix'].entries()) {
+    const tip = outcomes[i]?.kind === 'pr' ? outcomes[i].head : ''
+    expect((await git(origin, 'show', `${tip}:.claude/settings.json`)).stdout).toBe(own)
+  }
+})
+
 const judgeSkill = '.fake/skills/judge/SKILL.md'
 
 it("fires the gate when its judge can't run", async () => {
