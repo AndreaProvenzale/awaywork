@@ -486,6 +486,37 @@ async function hideAuthorConfig(dir: string, paths: string[]) {
   await hideFromGit(dir, paths)
 }
 
+/**
+ * Puts back, as they are in `tree`, the repo's config and the skill folder a judge's workspace hid in a clone whose
+ * chain isn't foreign, so its later steps see them, git included. awaywork's copy of the skill goes with its exclude.
+ */
+export async function revealHidden(dir: string, provider: Provider, skill: string, tree: string) {
+  const paths = [...(provider.repoConfig ?? [])]
+  if (provider.skillsDir) {
+    const target = join(dir, provider.skillsDir, skill)
+    await refuseSymlinks(dir, [join(provider.skillsDir, skill)])
+    await refuseOutside(dir, dirname(target))
+    const parent = await realpath(dirname(target)).catch(() => dirname(target))
+    const real = relative(await realpath(dir), join(parent, skill))
+    await rm(join(dir, real), { recursive: true, force: true })
+    copied.get(dir)?.delete(target)
+    const exclude = join(dir, '.git', 'info', 'exclude')
+    const lines = (await readFile(exclude, 'utf8')).split('\n')
+    await writeOutput(exclude, lines.filter((line) => line !== `/${real}/`).join('\n'))
+    paths.push(real)
+  }
+  if (!paths.length) return
+  await hideFromGit(dir, paths, '--no-skip-worktree')
+  const git = (args: string[], input?: string) =>
+    execa(bin('git'), [...inClone(dir), ...args], { input, env: { GIT_LITERAL_PATHSPECS: '1' } })
+  const { stdout } = await git(['ls-tree', '-r', '-z', '--name-only', tree, '--', ...paths])
+  if (stdout)
+    await git(
+      ['restore', `--source=${tree}`, '--pathspec-from-file=-', '--pathspec-file-nul'],
+      stdout,
+    )
+}
+
 /** A plugin named `awaywork` holding the skills, so they load as `awaywork:<name>`. */
 async function buildPlugin(plugin: string, dir: string, sources: Map<string, string>) {
   await mkdir(join(plugin, '.claude-plugin'), { recursive: true })
@@ -518,10 +549,10 @@ async function copySkill(dir: string, source: string, target: string) {
   })
 }
 
-/** Tracked files under `paths` keep their committed version in git, whatever the worktree holds. */
-async function hideFromGit(dir: string, paths: string[]): Promise<void> {
+/** Tracked files under `paths` keep their committed version in git, whatever the worktree holds; `--no-skip-worktree` undoes it. */
+async function hideFromGit(dir: string, paths: string[], flag = '--skip-worktree'): Promise<void> {
   const { stdout } = await execa(bin('git'), [...inClone(dir), 'ls-files', '-z', '--', ...paths])
-  await execa(bin('git'), [...inClone(dir), 'update-index', '-z', '--skip-worktree', '--stdin'], {
+  await execa(bin('git'), [...inClone(dir), 'update-index', '-z', flag, '--stdin'], {
     input: stdout,
   })
 }

@@ -101,6 +101,7 @@ import {
   readOutput,
   refuseSymlinks,
   reportsOnly,
+  revealHidden,
   type Shipped,
   WORK_DIR,
   workerEnv,
@@ -584,6 +585,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         },
       }
       let why: string | undefined
+      // The judge's workspace hides the repo's config and skill from it; a clone that isn't foreign gets them back after.
+      const found = unit.foreign ? undefined : await snapshot(dir)
       try {
         if (contained() && image) contain(dir, { image, plugin, secrets })
         const prompt = await prepareWorkspace({
@@ -629,6 +632,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       if (lostToWorker(dir)) throw new Error('the clone is lost to the worker user')
       await restoreGit(dir)
+      if (found) await revealHidden(dir, provider, skill, found.tree)
       return why
     }
 
