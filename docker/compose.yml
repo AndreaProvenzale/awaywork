@@ -10,6 +10,7 @@ services:
     environment:
       GH_TOKEN: ${GH_TOKEN:?}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       # Your windows' timezone, such as Europe/Rome.
       TZ: ${TZ:-UTC}
     volumes:
