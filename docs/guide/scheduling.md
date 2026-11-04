@@ -299,7 +299,7 @@ Without a terminal, `schedule install --with docker` asks nothing. It writes the
 | File | What it does |
 | --- | --- |
 | `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and your providers' CLIs, pinned to the awaywork that wrote it; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](./configuration.md#isolation) needs |
-| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and each secret your config needs as an env var, with `TZ` defaulting to your timezone |
+| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and each secret your config needs as an env var, with `TZ` defaulting to your timezone; `AWAYWORK_REMOTE_TOKEN` and port 7480, exposed to the proxy, for [your laptop](#from-your-laptop) |
 | `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, with its log on the container's output |
 
 The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, a script say, lives in it too. It's GitHub only for now: the image has no twg, no SSH key for Bitbucket's pushes, and the entrypoint wants a `GH_TOKEN`, so install refuses a [Bitbucket](./configuration.md#bitbucket-and-jira) config, as for Actions. A config that [extends a base](./configuration.md#a-base-config) would get there without its base, so install refuses that too. For either, use launchd, systemd or cron.
@@ -352,6 +352,104 @@ error while interpolating services.awaywork.environment.GH_TOKEN: required varia
 ```
 
 After a `git pull`, `docker compose up -d --build` again.
+
+### From your laptop
+
+No ssh into the box, and none needed: give the daemon a token and your laptop's `awaywork report`, `plan`, `skip`, `approve` and `run --unit` run in the container, and so does [`/away`](./agents.md#claude-code), pane and skill, since they only call those. It's the CLI over HTTP, not an API: the daemon runs the same command, with its own config, and sends back what it printed.
+
+1. Make a token, `openssl rand -hex 32`, and set it as `AWAYWORK_REMOTE_TOKEN` in Coolify (or `.env` on a VPS), then redeploy. `compose.yml` already lists it. Without it the daemon opens no port; under 32 characters, it logs `remote: AWAYWORK_REMOTE_TOKEN is shorter than 32 characters, so no port is open` and keeps running without one.
+2. Give the service a domain. In Coolify, the awaywork service's **Domains** field takes it with the container's port, `https://away.example.com:7480`: Coolify's proxy gets the Let's Encrypt certificate and forwards to port 7480, which `compose.yml` exposes to the proxy and never publishes on the host. On a VPS, publish it on localhost in a `compose.override.yml` beside `compose.yml` (compose merges it, and `schedule install` never touches it), and put Caddy in front:
+
+   ```yaml
+   services:
+     awaywork:
+       ports:
+         - "127.0.0.1:7480:7480"
+   ```
+
+   ```
+   away.example.com {
+   	reverse_proxy 127.0.0.1:7480
+   }
+   ```
+
+3. On your laptop, add both to `~/.config/awaywork/env`:
+
+   ```sh
+   AWAYWORK_REMOTE=https://away.example.com
+   AWAYWORK_REMOTE_TOKEN=<the same token>
+   ```
+
+That's it. Here against the image on Colima, Caddy standing in for Coolify's proxy, a stand-in agent and a `chores` command source; nothing of the run is on the laptop:
+
+```
+$ awaywork plan
+Providers
+  present run (outside the windows): present_session_max
+  provider  window  used  ceiling  set by  resets in  session / stop at
+  fake      week    10%   77.1%    pacing  1 run      10% / 40%
+    other limits: reserve cap 90%
+
+Units 1
+     item  rule  skill            provider  deliver  title
+  1  CH-1  #1    plan (built-in)  fake      report   Write a hello report
+$ awaywork run --unit CH-1
+Queued CH-1 as run 20261104-220657; awaywork report 20261104-220657 shows it once it ends
+$ awaywork skip chores:CH-1 --until 2030-01-01
+skipped with awaywork skip chores:CH-1 until 2030-01-01
+$ awaywork unskip chores:CH-1
+chores:CH-1 is no longer skipped
+$ awaywork schedule status
+No scheduled job installed
+Daemon: running, pid 7, since 2026-11-04 23:06:35
+Run in progress: unit run 20261104-220657
+Next window: none, no windows set
+Daemon log: /home/away/.local/state/awaywork/watch.log
+$ awaywork report 20261104-220657 --unit CH-1
+1  CH-1  Write a hello report
+  skill   plan
+  status  done
+  result  report
+  item    https://example.com/ch-1
+  files   /home/away/.local/state/awaywork/runs/20261104-220657/units/ch-1/1-plan/worker.log
+          /home/away/.local/state/awaywork/runs/20261104-220657/units/ch-1/1-plan/out/report.md
+          /home/away/.local/state/awaywork/runs/20261104-220657/units/ch-1/out/report.md
+
+Hello from the stand-in agent, as awaywork
+```
+
+The paths are the container's. Each request is a line in the container's log, with the command and how it went, never the token:
+
+```
+2026-11-04 23:06:56 remote: ["plan"]: exit 0
+2026-11-04 23:06:57 unit run 20261104-220657 started for CH-1
+2026-11-04 23:06:57 remote: ["run","--unit","CH-1"]: exit 0
+2026-11-04 23:06:57 remote: ["skip","chores:CH-1","--until","2030-01-01"]: exit 0
+```
+
+What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config`, `skills`, a full `run`, `schedule install`. So does any of those ten with a flag the daemon doesn't take, `--config` or `--help` say, so `awaywork plan --config other.yml` still plans another config right here.
+
+`run --unit` starts no process on the box: the daemon takes it as a one-off run of that item, as the workflow's [`unit` input](#run-one-item-now) does. It reads the item from its source again, so it still has to match a rule; it runs even after a failed attempt; it's present outside a window and away until the window's end inside one; and it waits for the worker in progress, as a [soon run](#soon-runs) does. One that can't run says why and exits 1:
+
+```
+$ awaywork run --unit CH-9
+no unit "CH-9" in the plan; awaywork plan --why CH-9 says why
+$ awaywork run --unit CH-1
+CH-1 is running in run 20261104-220137
+```
+
+The daemon runs two commands at a time and turns a third away. A box that's down, or a token that doesn't match, fails in one line too:
+
+```
+$ awaywork doctor
+AWAYWORK_REMOTE (http://127.0.0.1:7480): 2 commands are running, try again
+$ awaywork report
+can't reach AWAYWORK_REMOTE (http://127.0.0.1:8480): read ECONNRESET
+$ awaywork report
+AWAYWORK_REMOTE (http://127.0.0.1:7480) refused AWAYWORK_REMOTE_TOKEN
+```
+
+To go back to your laptop's own runs, take the two lines out of the env file. A daemon of your own on the laptop opens no port while `AWAYWORK_REMOTE` is set: that machine forwards. What a leaked token gets, and how to rotate it, is in [Safety](./safety.md#the-remote-token).
 
 ### Living with it
 

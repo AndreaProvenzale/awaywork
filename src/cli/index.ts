@@ -6,6 +6,7 @@ import { configCommand } from './config.js'
 import { doctorCommand } from './doctor.js'
 import { initCommand } from './init.js'
 import { planCommand } from './plan.js'
+import { checkArgs, forward } from './remote.js'
 import { replayCommand } from './replay.js'
 import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
@@ -17,6 +18,11 @@ import { watchCommand } from './watch.js'
 
 // The environment wins over the file; scheduled jobs start without a login shell's variables.
 if (existsSync(envFile)) process.loadEnvFile(envFile)
+
+const { AWAYWORK_REMOTE: url, AWAYWORK_REMOTE_TOKEN: token } = process.env
+// Blank once read, so what this starts runs here and never sees the token: an empty variable wins over the file.
+if (url !== undefined) process.env.AWAYWORK_REMOTE = ''
+if (token !== undefined) process.env.AWAYWORK_REMOTE_TOKEN = ''
 
 // A reader that went away, as `| head` does, ends the command quietly, like git.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => {
@@ -40,10 +46,14 @@ skipCommand(program)
 approveCommand(program)
 skillsCommand(program)
 runCommand(program)
-watchCommand(program)
+watchCommand(program, { url, token })
 statsCommand(program)
 replayCommand(program)
 scheduleCommand(program)
 doctorCommand(program)
 
-await program.parseAsync()
+const args = process.argv.slice(2)
+// The commands a remote daemon serves run there; anything else, here.
+if (url && token && !('refused' in checkArgs(args)))
+  process.exitCode = await forward(args, { url, token })
+else await program.parseAsync()

@@ -13,6 +13,11 @@ services:
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       # Your windows' timezone, such as Europe/Rome.
       TZ: ${TZ:-UTC}
+      # 32 characters or more, to reach the daemon from your laptop: docs/guide/scheduling.md, "From your laptop".
+      AWAYWORK_REMOTE_TOKEN: ${AWAYWORK_REMOTE_TOKEN:-}
+    # For the proxy in front (Coolify's, or Caddy on a VPS), not the host; served only with the token set.
+    expose:
+      - "7480"
     volumes:
       - state:/home/away/.local/state/awaywork
       - codex:/home/away/.codex
