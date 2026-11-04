@@ -27,7 +27,7 @@ export async function dockerFiles(image: Image): Promise<Record<string, string>>
   const setup = image.setup
     .map(
       (s) =>
-        `# A command source's setup, in the config's folder, without the secrets.\nRUN <<"EOF"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\n${s.trimEnd()}\nEOF\n`,
+        `# A command source's setup, in the config's folder, without the secrets.\nRUN <<"AWAYWORK_SETUP"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\n${s.trimEnd()}\nAWAYWORK_SETUP\n`,
     )
     .join('')
   const env = image.secrets

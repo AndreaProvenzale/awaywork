@@ -108,7 +108,7 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     expect(cursor).toMatch(/^RUN install -d \/opt\/cursor/)
     expect(built).toContain(`as RUN lines: setup runs as the worker user.\n${cursor}`)
     expect(built).toContain(
-      'COPY .awaywork /home/away/.awaywork\n# A command source\'s setup, in the config\'s folder, without the secrets.\nRUN <<"EOF"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\ngo build -o board .\nEOF\n',
+      'COPY .awaywork /home/away/.awaywork\n# A command source\'s setup, in the config\'s folder, without the secrets.\nRUN <<"AWAYWORK_SETUP"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\ngo build -o board .\nAWAYWORK_SETUP\n',
     )
     const env = parse(await read('compose.yml')).services.awaywork.environment
     expect(env).toEqual({
@@ -141,6 +141,18 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     await install([[/^Overwrite Dockerfile/, initial]], true)
     expect(await read('Dockerfile')).toBe(generated)
     expect(out).toContain('  commit Dockerfile')
+  })
+
+  it('refuses a Bitbucket config and writes nothing', async () => {
+    const { root, install } = await setup(
+      'providers: [claude]\nsources: { bitbucket: { repos: [acme/api] } }\n',
+    )
+    await install()
+    expect(process.exitCode).toBe(1)
+    expect(out).toEqual([
+      'A container runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
+    ])
+    expect(existsSync(join(root, 'Dockerfile'))).toBe(false)
   })
 
   it('refuses a config that extends a base and writes nothing', async () => {

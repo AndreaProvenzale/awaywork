@@ -302,7 +302,7 @@ Without a terminal, `schedule install --with docker` asks nothing. It writes the
 | `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and each secret your config needs as an env var, with `TZ` defaulting to your timezone |
 | `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, with its log on the container's output |
 
-The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, a script say, lives in it too. A config that [extends a base](./configuration.md#a-base-config) would get there without its base, so install refuses it, as for Actions: use launchd, systemd or cron.
+The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, a script say, lives in it too. It's GitHub only for now: the image has no twg, no SSH key for Bitbucket's pushes, and the entrypoint wants a `GH_TOKEN`, so install refuses a [Bitbucket](./configuration.md#bitbucket-and-jira) config, as for Actions. A config that [extends a base](./configuration.md#a-base-config) would get there without its base, so install refuses that too. For either, use launchd, systemd or cron.
 
 Run `schedule install --with docker` again after changing your config or skills, or after upgrading awaywork. As for Actions, a file that matches is up to date, and one that differs shows the diff and is replaced only if you say yes, so a hand edit, a toolchain's `RUN` line say, never goes silently. Without a terminal it keeps the repo's copy, prints the diff and exits 1:
 
@@ -336,7 +336,7 @@ Compose, not the Dockerfile build pack: that one does [rolling updates](https://
 
 ### On a VPS
 
-Any box with Docker and the compose plugin:
+Any box with Docker and the compose plugin. `.env` takes every env var install listed, here for a config with Claude alone:
 
 ```sh
 git clone git@github.com:you/my-awaywork-repo.git && cd my-awaywork-repo
@@ -369,7 +369,7 @@ After a `git pull`, `docker compose up -d --build` again.
 
   Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` lists.
 
-- **A [custom source](./custom-sources.md)'s `setup`** runs at build, as a `RUN` right after the config is copied in: in the config's folder, as root and without the secrets. What it builds there, awaywork can read.
+- **A [custom source](./custom-sources.md)'s `setup`** runs at build, as a `RUN` right after the config is copied in: in the config's folder, as root and without the secrets. What it builds there, awaywork can read and the worker user can't; it runs after the image's sweep for world-writable paths, so keep its output in that folder.
 - **Upgrading** is a rebuild: upgrade awaywork, run `schedule install --with docker` again, commit and push. Claude Code's auto-updater is off, so it moves when you rebuild too.
 - **A push stops a running unit.** The redeploy sends the daemon a SIGTERM: the unit stops, publishes nothing and doesn't count as an attempt, so the new container runs it again. Here `docker compose stop` hit a stand-in agent mid-unit, after the run's first unit had opened its draft PR, and `docker compose up -d` started the next container:
 

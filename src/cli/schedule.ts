@@ -366,6 +366,14 @@ function installsOf(config: Config, providers: Provider[]) {
 
 const localTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 
+/** Why a repo's copy of the config can't run `where`; undefined when it can. */
+const unfitForRepo = (loaded: Config, path: string, where: string) =>
+  loaded.sources.bitbucket
+    ? `${where} runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron`
+    : loaded.extends
+      ? `${where} gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`
+      : undefined
+
 /** Writes the workflow and copies the config and skills into the repo; run again, it syncs them. */
 export async function installWorkflow(
   config: string | undefined,
@@ -380,17 +388,9 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
-    if (loaded.sources.bitbucket) {
-      console.error(
-        'GitHub Actions runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
-      )
-      process.exitCode = 1
-      return
-    }
-    if (loaded.extends) {
-      console.error(
-        `GitHub Actions gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`,
-      )
+    const refused = unfitForRepo(loaded, path, 'GitHub Actions')
+    if (refused) {
+      console.error(refused)
       process.exitCode = 1
       return
     }
@@ -450,10 +450,9 @@ export async function installDocker(config: string | undefined, io: Io = termina
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
-    if (loaded.extends) {
-      console.error(
-        `A container gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`,
-      )
+    const refused = unfitForRepo(loaded, path, 'A container')
+    if (refused) {
+      console.error(refused)
       process.exitCode = 1
       return
     }

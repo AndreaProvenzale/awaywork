@@ -282,6 +282,7 @@ Run 20261022-174313: 1 draft PR, 0 reports, 1 unit
 - **`deliver: push`.** Refused when the config loads: twg reads neither branch restrictions nor auto-merge, so awaywork can't make the checks a push onto your PR needs.
 - **`deliver: pending_review`.** Refused when the config loads: awaywork leaves pending reviews on GitHub only.
 - **Going on with its own draft.** GitHub only: a draft that says `continue`, or asked, is yours to finish by hand ([Continue](./how-it-works.md#continue)).
+- **GitHub Actions or a container.** `schedule install` refuses both for a Bitbucket config: use launchd, systemd or cron.
 - **PRs from forks.** Bitbucket has no pull refs to fetch them from, so a unit on one fails.
 - **Stacks.** A [stacked](./chains.md#stack) slice still opens its PR into the one below, but Bitbucket has no stack to add it to.
 
