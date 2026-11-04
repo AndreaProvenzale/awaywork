@@ -434,11 +434,11 @@ What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `sch
 ```
 $ awaywork skip chores:CH-2 --reason "-- see thread"
 AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --reason -- see thread: write it --reason=-- see thread
-$ awaywork plan --config other.yml
-AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --config
+$ awaywork run --unit CH-1 --dry-run
+AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --dry-run
 ```
 
-To run one here anyway, blank the variable for that call: `AWAYWORK_REMOTE= awaywork plan --config other.yml`.
+Naming a config with `-c`/`--config` means this machine, so `awaywork plan --config other.yml` runs here. To run any other call here anyway, blank the variable for it: `AWAYWORK_REMOTE= awaywork report`.
 
 `run --unit` starts no process on the box: the daemon takes it as a one-off run of that item, as the workflow's [`unit` input](#run-one-item-now) does. It reads the item from its source again, so it still has to match a rule; it runs even after a failed attempt; it's present outside a window and away until the window's end inside one; and it waits for the worker in progress, as a [soon run](#soon-runs) does. One that can't run says why and exits 1:
 

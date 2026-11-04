@@ -95,8 +95,11 @@ export function checkArgs(argv: unknown): Checked {
 const commandOf = (argv: string[]) =>
   argv[0] === 'schedule' ? `schedule ${argv[1] ?? ''}` : (argv[0] ?? '')
 
-/** Whether a CLI call goes to the remote, which refuses what it doesn't take: all but help and the commands it doesn't serve. */
+const namesConfig = (arg: string) => /^(-c|--config(=|$))/.test(arg)
+
+/** Whether a CLI call goes to the remote, which refuses what it doesn't take: all but help, a call naming a config here and the commands it doesn't serve. */
 export function servedRemotely(argv: string[]): boolean {
+  if (argv.some(namesConfig)) return false
   const checked = checkArgs(argv)
   if (!('refused' in checked)) return true
   const command = commandOf(argv)

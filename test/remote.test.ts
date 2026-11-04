@@ -80,11 +80,10 @@ describe('the remote allowlist', () => {
     expect(refused(['approve', 'github:a/b#1', '-c/tmp/evil.yml'])).toBe('-c/tmp/evil.yml')
   })
 
-  it('sends a served command to the remote even with a flag it refuses; help and the rest run here', () => {
+  it('sends a served command to the remote even with a flag it refuses; help, a config and the rest run here', () => {
     for (const argv of [
       ['plan'],
       ['skip', 'chores:CH-2', '--reason', '-- see thread'],
-      ['plan', '--config', 'other.yml'],
       ['run', '--dry-run', '--unit', 'CH-1'],
       ['run', '--unit=CH-1', 'extra'],
     ])
@@ -97,6 +96,11 @@ describe('the remote allowlist', () => {
       ['init'],
       ['schedule', 'install'],
       ['-c', 'other.yml', 'plan'],
+      ['plan', '-c', 'other.yml'],
+      ['plan', '-cother.yml'],
+      ['plan', '-c=other.yml'],
+      ['plan', '--config', 'other.yml'],
+      ['skip', 'x', '--config=other.yml'],
       ['--version'],
     ])
       expect(servedRemotely(argv), argv.join(' ')).toBe(false)
