@@ -471,7 +471,8 @@ function killWorker(): Promise<unknown> {
   const user = worker
   if (!user) return killing
   killing = killing.then(() =>
-    execa(bin('sudo'), ['-n', '-u', user, 'kill', '-9', '-1'], { reject: false }),
+    // Without `--`, procps 4.0.4-8+ (Ubuntu 26.04) takes `-1` for an option and kills nothing.
+    execa(bin('sudo'), ['-n', '-u', user, 'kill', '-9', '--', '-1'], { reject: false }),
   )
   return killing
 }
