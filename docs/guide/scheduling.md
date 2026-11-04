@@ -319,8 +319,18 @@ After a `git pull`, `docker compose up -d --build` again.
 
 - **Secrets are env vars.** There's no `~/.config/awaywork/env` in the image: awaywork reads the container's env. Any other secret your config names, `ASANA_TOKEN`, a repo's `secrets` or `notify.secrets`, goes in `compose.yml`'s `environment` the same way, `NAME: ${NAME}`, so Coolify lists it too.
 - **Codex** isn't in the image by default: add it to the Dockerfile's `PACKAGES` (`ARG PACKAGES="@anthropic-ai/claude-code @openai/codex"`), push, and log in once into the volume: `docker exec -it <container> codex login --device-auth` (`docker ps` names the container). The login stays on the `codex` volume across redeploys, where Codex rotates it in place.
-- **Cursor** has no npm package, so `PACKAGES` can't add it: put the installer lines from [Running Cursor](#running-cursor) in one `RUN` at the toolchains spot, without the `sudo`s or `-o "$USER"`, as the build runs as root. Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` already lists.
 - **Your repos' toolchains** go in the Dockerfile as `RUN` lines, at the spot it marks: setup runs as the worker user, which can't enter `/home/away`, so install system-wide (`RUN npm install -g pnpm@10`, `RUN apt-get update && apt-get install -y …`).
+- **Cursor** has no npm package, so `PACKAGES` can't add it: put the installer from [Running Cursor](#running-cursor) at the toolchains spot as one `RUN`, without the `sudo`s or `-o "$USER"`, as the build runs as root:
+
+  ```dockerfile
+  RUN install -d /opt/cursor \
+    && curl -fsS https://cursor.com/install | HOME=/opt/cursor bash \
+    && ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent \
+    && agent --version
+  ```
+
+  Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` already lists.
+
 - **Upgrading** is a rebuild: change `AWAYWORK_VERSION` in the Dockerfile and push. Claude Code's auto-updater is off, so it moves when you rebuild too.
 - **A push stops a running unit.** The redeploy sends the daemon a SIGTERM: the unit stops, publishes nothing and doesn't count as an attempt, so the new container runs it again. Here `docker compose stop` hit a stand-in agent mid-unit, after the run's first unit had opened its draft PR, and `docker compose up -d` started the next container:
 
