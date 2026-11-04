@@ -53,10 +53,10 @@ awaywork run --unit api#1
 Then schedule it for when you're away:
 
 ```sh
-awaywork schedule install    # asks: this machine (launchd, systemd or cron) or GitHub Actions
+awaywork schedule install    # asks: this machine (launchd, systemd or cron), GitHub Actions or a container
 ```
 
-GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists. Or run the daemon in a container, on Coolify or any VPS, from the [Dockerfile awaywork ships](docs/guide/scheduling.md#in-a-container).
+GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists. Or run the daemon in a container, on Coolify or any VPS: in a repo of your own, `schedule install` writes the [Dockerfile and compose file](docs/guide/scheduling.md#in-a-container) for it.
 
 Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
 

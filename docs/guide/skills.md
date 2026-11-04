@@ -35,7 +35,7 @@ An extra skill, one in `skills`, also falls back to the repo's own skill folders
 
 A config outside `~/.config/awaywork/` (`--config`, `AWAYWORK_CONFIG`) uses its own `skills/`, so move or link the folder there; `doctor` warns while `~/.config/awaywork/skills/` holds skills it doesn't use. On a PR someone else opened, `.awaywork/skills/` is the author's and is skipped. To use a skill from `~/.claude/skills/`, link it into yours: `ln -s ~/.claude/skills/<name> ~/.config/awaywork/skills/<name>`.
 
-On a runner, yours are the copy `schedule install --with github-actions` puts next to the repo's config: `.awaywork/skills/`.
+On a runner or in a container, yours are the copy `schedule install` puts next to the repo's config: `.awaywork/skills/`.
 
 Claude Code gets the unit's skills as a plugin outside the clone (`--plugin-dir`), named `awaywork:<name>`, so they are callable on every unit, someone else's PR included; Cursor gets the same plugin through its own `--plugin-dir`. Codex gets them copied into the clone's `.agents/skills/`: a repo that already has a skill of that name there keeps it, except on someone else's PR, where awaywork's copy replaces it. `doctor` and `config edit` see user and built-in skills only, so they warn about a name they can't find; an in-repo skill resolves at run time, and a unit naming a skill that's nowhere fails with `unknown skill`.
 

@@ -318,7 +318,7 @@ A custom source: any command that prints your open items as JSON.
 | `command` (required) | string |  | Shell command printing the items as a JSON array; runs in the config file's folder |
 | `fields` | string[] | `[]` | Item fields rules may match on |
 | `secrets` | string[] | `[]` | Env vars the command reads; the GitHub Actions workflow passes them in |
-| `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions |
+| `setup` | string |  | Runs in the config file's folder before awaywork on GitHub Actions, and at build in awaywork's container image |
 | `link` | string |  | Line awaywork writes into its PR bodies, and finds in yours, to link an item; {key}, {id} and {url} are the item's |
 | `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |
 | `write` | string |  | Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item's updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source |

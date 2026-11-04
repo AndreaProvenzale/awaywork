@@ -906,7 +906,7 @@
             }
           },
           "setup": {
-            "description": "Runs in the config file's folder before awaywork on GitHub Actions",
+            "description": "Runs in the config file's folder before awaywork on GitHub Actions, and at build in awaywork's container image",
             "type": "string"
           },
           "link": {

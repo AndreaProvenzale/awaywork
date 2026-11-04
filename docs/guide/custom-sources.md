@@ -15,7 +15,7 @@ sources:
     command: python3 sources/board.py   # runs in the config file's folder
     fields: [column, board]             # what `where` may match on; `any` is reserved
     secrets: [BOARD_TOKEN]              # env vars the command reads
-    setup: pip install -r sources/requirements.txt   # GitHub Actions only
+    setup: pip install -r sources/requirements.txt   # GitHub Actions and awaywork's image only
     link: "Refs {key}"                  # optional: the line that links a PR, see below
 
 queue:

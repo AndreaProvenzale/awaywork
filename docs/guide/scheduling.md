@@ -12,6 +12,7 @@ In a terminal, `awaywork schedule install` asks where it runs:
 ◆  Where should it run on a schedule?
 │  ● this machine
 │  ○ GitHub Actions, from the repo in this directory
+│  ○ a container (Docker Compose, e.g. Coolify), from the repo in this directory
 │  ↑/↓ to navigate • Enter: confirm
 └
 ```
@@ -272,27 +273,64 @@ On a self-hosted runner it runs the `agent` already on the runner's `PATH` inste
 
 No machine of yours to leave on? Run `awaywork watch` in a container: on [Coolify](https://coolify.io), or with `docker compose` on any VPS. Setup, the agent and the checks run as a worker user inside it, as on a [GitHub-hosted runner](./safety.md#a-worker-user-in-awaywork-s-image). Compared with Actions, the state dir lives on a volume, so attempts, skips, approvals and a [`deliver: push`](./chains.md#push) head carry over; the daemon runs your [`run: soon`](#soon-runs) rules all day; there's no 6-hour cap; and Codex works, its login on a volume where it rotates in place.
 
-It's a control repo of your own, private, as for Actions: your config in `.awaywork/config.yml`, your skills in `.awaywork/skills/`, and at the root the three files awaywork ships in `docker/`. Copy them from the installed package:
+It's a control repo of your own, private, as for Actions, and `schedule install` sets it up from inside it. Here with Claude Code, Codex and Linear in the config:
 
-```sh
-cd my-awaywork-repo
-mkdir -p .awaywork && cp ~/.config/awaywork/config.yml .awaywork/
-cp -R ~/.config/awaywork/skills .awaywork/  # if you have any
-cp "$(npm root -g)/awaywork/docker/"* .
-git add . && git commit -m "awaywork in a container" && git push
 ```
+$ cd my-awaywork-repo
+$ awaywork schedule install
+☾ >_ awaywork  You're away, your agents work
+
+│
+◇  Where should it run on a schedule?
+│  a container (Docker Compose, e.g. Coolify), from the repo in this directory
+Wrote Dockerfile
+Wrote compose.yml
+Wrote entrypoint.sh
+Copied ~/.config/awaywork/config.yml to .awaywork/config.yml
+Before the first run:
+  commit Dockerfile, compose.yml, entrypoint.sh and .awaywork/config.yml
+  set these env vars in Coolify, or in .env beside compose.yml on a VPS: GH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, LINEAR_API_KEY
+  GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` scopes (…)
+  once it runs, log Codex in: docker exec -it <container> codex login --device-auth
+```
+
+Without a terminal, `schedule install --with docker` asks nothing. It writes the three files awaywork ships in `docker/` at the repo root, fit to your config, copies the config to `.awaywork/config.yml` and your [skills](./skills.md#where-skills-come-from), if any, to `.awaywork/skills/`. Commit and push, and that's all a deploy needs. Values are never printed: there's no secret store to offer them to, so you set them where the container runs.
 
 | File | What it does |
 | --- | --- |
-| `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and Claude Code, pinned to the awaywork you copied it from; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](./configuration.md#isolation) needs |
-| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and the env vars it reads |
+| `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and your providers' CLIs, pinned to the awaywork that wrote it; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](./configuration.md#isolation) needs |
+| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and each secret your config needs as an env var, with `TZ` defaulting to your timezone |
 | `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, with its log on the container's output |
 
-The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, an `extends` base or a script, lives in it too.
+The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, a script say, lives in it too. A config that [extends a base](./configuration.md#a-base-config) would get there without its base, so install refuses it, as for Actions: use launchd, systemd or cron.
+
+Run `schedule install --with docker` again after changing your config or skills, or after upgrading awaywork. As for Actions, a file that matches is up to date, and one that differs shows the diff and is replaced only if you say yes, so a hand edit, a toolchain's `RUN` line say, never goes silently. Without a terminal it keeps the repo's copy, prints the diff and exits 1:
+
+```
+$ awaywork schedule install --with docker
+diff --git a/…/my-awaywork-repo/Dockerfile b/…/awaywork-JnChDn/Dockerfile
+index 994e7d1..10f7986 100644
+--- a/…/my-awaywork-repo/Dockerfile
++++ b/…/awaywork-JnChDn/Dockerfile
+@@ -18,7 +18,6 @@ ENV DISABLE_AUTOUPDATER=1
+ RUN npm install -g "awaywork@$AWAYWORK_VERSION" $PACKAGES && npm cache clean --force
+
+ # Your repos' toolchains go here, as RUN lines: setup runs as the worker user.
+-RUN npm install -g pnpm@10
+
+ # The developer's user runs awaywork; sudoers' chown names its uid and gid.
+ RUN groupadd --gid 1001 away \
+Kept Dockerfile; run this again in a terminal to replace it
+compose.yml is up to date
+entrypoint.sh is up to date
+.awaywork/config.yml is up to date
+```
+
+In a terminal, say no to keep your line, or yes and add it back. `awaywork schedule remove` inside the repo deletes the three files, when the Dockerfile is awaywork's, and leaves `.awaywork/`. `doctor` inside it warns while the Dockerfile builds another awaywork than the one you run.
 
 ### On Coolify
 
-Add a resource from your control repo with the **Docker Compose** build pack and the compose location `/compose.yml`. Coolify lists the variables `compose.yml` names: `GH_TOKEN` is required, so it won't deploy until you fill it in (the same [classic token](#in-github-actions) as for Actions), `CLAUDE_CODE_OAUTH_TOKEN` is Claude's (`claude setup-token`), `CURSOR_API_KEY` Cursor's if you add it, and `TZ` is your windows' timezone, such as `Europe/Rome`, UTC otherwise. Deploy, and every push to the repo redeploys.
+Add a resource from your control repo with the **Docker Compose** build pack and the compose location `/compose.yml`. Coolify lists the variables `compose.yml` names, the ones install printed: `GH_TOKEN` is required, so it won't deploy until you fill it in (the same [classic token](#in-github-actions) as for Actions), `CLAUDE_CODE_OAUTH_TOKEN` is Claude's (`claude setup-token`), `CURSOR_API_KEY` Cursor's, and the rest your config's own. `TZ` is your windows' timezone and defaults to the one you ran install in; set it to change that. Deploy, and every push to the repo redeploys.
 
 Compose, not the Dockerfile build pack: that one does [rolling updates](https://coolify.io/docs/applications/deployments/rolling-updates), starting the new container before it stops the old one, and awaywork's locks check their holder by pid and start time, which mean nothing across containers. So for a moment two daemons would share one state dir. Coolify doesn't roll compose apps: `docker compose up` replaces the container.
 
@@ -317,10 +355,10 @@ After a `git pull`, `docker compose up -d --build` again.
 
 ### Living with it
 
-- **Secrets are env vars.** There's no `~/.config/awaywork/env` in the image: awaywork reads the container's env. Any other secret your config names, `ASANA_TOKEN`, a repo's `secrets` or `notify.secrets`, goes in `compose.yml`'s `environment` the same way, `NAME: ${NAME}`, so Coolify lists it too.
-- **Codex** isn't in the image by default: add it to the Dockerfile's `PACKAGES` (`ARG PACKAGES="@anthropic-ai/claude-code @openai/codex"`), push, and log in once into the volume: `docker exec -it <container> codex login --device-auth` (`docker ps` names the container). The login stays on the `codex` volume across redeploys, where Codex rotates it in place.
-- **Your repos' toolchains** go in the Dockerfile as `RUN` lines, at the spot it marks: setup runs as the worker user, which can't enter `/home/away`, so install system-wide (`RUN npm install -g pnpm@10`, `RUN apt-get update && apt-get install -y …`).
-- **Cursor** has no npm package, so `PACKAGES` can't add it: put the installer from [Running Cursor](#running-cursor) at the toolchains spot as one `RUN`, without the `sudo`s or `-o "$USER"`, as the build runs as root:
+- **Secrets are env vars.** There's no `~/.config/awaywork/env` in the image: awaywork reads the container's env. Coolify passes only the variables `compose.yml` names, so install lists every secret your config needs there, `ASANA_TOKEN`, a repo's `secrets` or `notify.secrets` included, as `NAME: ${NAME:-}`. Added one to the config? Run install again.
+- **Codex** goes into the image when your config uses it: install adds `@openai/codex` to the Dockerfile's `PACKAGES`. Log in once into the volume, as install says: `docker exec -it <container> codex login --device-auth` (`docker ps` names the container). The login stays on the `codex` volume across redeploys, where Codex rotates it in place.
+- **Your repos' toolchains** go in the Dockerfile as `RUN` lines, at the spot it marks: setup runs as the worker user, which can't enter `/home/away`, so install system-wide (`RUN npm install -g pnpm@10`, `RUN apt-get update && apt-get install -y …`), and a [CLI of your own](./configuration.md#bring-your-own-cli) the same way. Install shows them in its diff on the next run, as above.
+- **Cursor** has no npm package, so `PACKAGES` can't add it: with Cursor in your config, install puts the installer from [Running Cursor](#running-cursor) at the toolchains spot as one `RUN`, without the `sudo`s or `-o "$USER"`, as the build runs as root:
 
   ```dockerfile
   RUN install -d /opt/cursor \
@@ -329,9 +367,10 @@ After a `git pull`, `docker compose up -d --build` again.
     && agent --version
   ```
 
-  Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` already lists.
+  Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` lists.
 
-- **Upgrading** is a rebuild: change `AWAYWORK_VERSION` in the Dockerfile and push. Claude Code's auto-updater is off, so it moves when you rebuild too.
+- **A [custom source](./custom-sources.md)'s `setup`** runs at build, as a `RUN` right after the config is copied in: in the config's folder, as root and without the secrets. What it builds there, awaywork can read.
+- **Upgrading** is a rebuild: upgrade awaywork, run `schedule install --with docker` again, commit and push. Claude Code's auto-updater is off, so it moves when you rebuild too.
 - **A push stops a running unit.** The redeploy sends the daemon a SIGTERM: the unit stops, publishes nothing and doesn't count as an attempt, so the new container runs it again. Here `docker compose stop` hit a stand-in agent mid-unit, after the run's first unit had opened its draft PR, and `docker compose up -d` started the next container:
 
   ```
