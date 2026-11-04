@@ -373,6 +373,8 @@ No ssh into the box, and none needed: give the daemon a token and your laptop's 
    }
    ```
 
+   In the image the daemon listens on every interface, since Coolify's proxy comes from another container. Anywhere else, `watch` under launchd, systemd or cron with the token in its env file, it listens on `127.0.0.1:7480` only and logs `remote: serving the CLI on port 7480, 127.0.0.1 only`, so the same Caddy on that machine is the way in.
+
 3. On your laptop, add both to `~/.config/awaywork/env`:
 
    ```sh
@@ -427,7 +429,16 @@ The paths are the container's. Each request is a line in the container's log, wi
 2026-11-04 23:06:57 remote: ["skip","chores:CH-1","--until","2030-01-01"]: exit 0
 ```
 
-What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config`, `skills`, a full `run`, `schedule install`. So does any of those ten with a flag the daemon doesn't take, `--config` or `--help` say, so `awaywork plan --config other.yml` still plans another config right here.
+What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config`, `skills`, a full `run`, `schedule install`, and `--help`. One of those ten with a flag the daemon doesn't take still goes there, and fails, so nothing you meant for the container lands on the laptop:
+
+```
+$ awaywork skip chores:CH-2 --reason "-- see thread"
+AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --reason -- see thread: write it --reason=-- see thread
+$ awaywork plan --config other.yml
+AWAYWORK_REMOTE (http://127.0.0.1:7480): refused --config
+```
+
+To run one here anyway, blank the variable for that call: `AWAYWORK_REMOTE= awaywork plan --config other.yml`.
 
 `run --unit` starts no process on the box: the daemon takes it as a one-off run of that item, as the workflow's [`unit` input](#run-one-item-now) does. It reads the item from its source again, so it still has to match a rule; it runs even after a failed attempt; it's present outside a window and away until the window's end inside one; and it waits for the worker in progress, as a [soon run](#soon-runs) does. One that can't run says why and exits 1:
 

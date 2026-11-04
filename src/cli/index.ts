@@ -6,7 +6,7 @@ import { configCommand } from './config.js'
 import { doctorCommand } from './doctor.js'
 import { initCommand } from './init.js'
 import { planCommand } from './plan.js'
-import { checkArgs, forward } from './remote.js'
+import { forward, servedRemotely } from './remote.js'
 import { replayCommand } from './replay.js'
 import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
@@ -53,7 +53,6 @@ scheduleCommand(program)
 doctorCommand(program)
 
 const args = process.argv.slice(2)
-// The commands a remote daemon serves run there; anything else, here.
-if (url && token && !('refused' in checkArgs(args)))
-  process.exitCode = await forward(args, { url, token })
+// The commands a remote daemon serves run there, refused or not; anything else, here.
+if (url && token && servedRemotely(args)) process.exitCode = await forward(args, { url, token })
 else await program.parseAsync()

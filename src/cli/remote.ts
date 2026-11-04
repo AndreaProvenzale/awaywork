@@ -1,9 +1,11 @@
-import { execFile } from 'node:child_process'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { execa } from 'execa'
 import { runsDir } from '../config/paths.js'
+import { awaitGroup } from '../core/group.js'
+import { inAwayworkImage } from '../core/launch.js'
 
 /** The port `awaywork watch` serves the CLI on when AWAYWORK_REMOTE_TOKEN is set. */
 export const REMOTE_PORT = 7480
@@ -60,7 +62,7 @@ const isFlag = (arg: string) => arg.length > 1 && arg.startsWith('-')
 export function checkArgs(argv: unknown): Checked {
   if (!Array.isArray(argv) || !argv.every((a) => typeof a === 'string'))
     return { refused: 'args, which must be an array of strings' }
-  const command = argv[0] === 'schedule' ? `schedule ${argv[1] ?? ''}` : (argv[0] ?? '')
+  const command = commandOf(argv)
   const spec = Object.hasOwn(allowed, command) ? allowed[command] : undefined
   if (!spec) return { refused: command || 'no command' }
   const rest = argv.slice(command.split(' ').length)
@@ -88,6 +90,18 @@ export function checkArgs(argv: unknown): Checked {
   if (command === 'run' && typeof options['--unit'] !== 'string')
     return { refused: 'run without --unit <key>' }
   return { command, args, options }
+}
+
+const commandOf = (argv: string[]) =>
+  argv[0] === 'schedule' ? `schedule ${argv[1] ?? ''}` : (argv[0] ?? '')
+
+/** Whether a CLI call goes to the remote, which refuses what it doesn't take: all but help and the commands it doesn't serve. */
+export function servedRemotely(argv: string[]): boolean {
+  const checked = checkArgs(argv)
+  if (!('refused' in checked)) return true
+  const command = commandOf(argv)
+  if (!Object.hasOwn(allowed, command) || ['-h', '--help'].includes(checked.refused)) return false
+  return command !== 'run' || argv.some((a) => a === '--unit' || a.startsWith('--unit='))
 }
 
 /** AWAYWORK_REMOTE and AWAYWORK_REMOTE_TOKEN, as the CLI started with them. */
@@ -138,6 +152,7 @@ export interface Serve {
   /** The CLI to spawn, `awaywork` itself by default. */
   cli?: string[]
   port?: number
+  timeout?: number
 }
 
 /**
@@ -160,12 +175,12 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
   const wanted = digest(`Bearer ${token}`)
   let running = 0
   const server = createServer(async (req, res) => {
-    const send = (status: number, body: object, outcome: string) => {
+    const send = (status: number, body: object, outcome?: string) => {
       res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body))
-      s.log(`remote: ${outcome}`)
+      if (outcome) s.log(`remote: ${outcome}`)
     }
-    if (req.method !== 'POST' || req.url !== '/cli')
-      return send(404, { error: 'not found' }, `${req.method} ${req.url}: 404`)
+    // Unlogged: scanners on a public domain would fill watch.log.
+    if (req.method !== 'POST' || req.url !== '/cli') return send(404, { error: 'not found' })
     if (!timingSafeEqual(digest(req.headers.authorization ?? ''), wanted))
       return send(401, { error: 'wrong token' }, '401, wrong token')
     if (running >= MAX_COMMANDS)
@@ -199,7 +214,7 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
       const out =
         checked.command === 'run'
           ? await s.runUnit(checked.options['--unit'] as string)
-          : await runCli(s.cli ?? self(), ['--config', s.config, ...(args as string[])])
+          : await runCli(s.cli ?? self(), ['--config', s.config, ...(args as string[])], s.timeout)
       send(200, out, `${call}: exit ${out.code}`)
     } catch (e) {
       send(500, { error: String(e) }, `500, ${String(e)}`)
@@ -208,9 +223,12 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
     }
   })
   server.on('error', (e) => s.log(`remote: no port open: ${e.message}`))
-  server.listen(s.port ?? REMOTE_PORT, () =>
-    s.log(`remote: serving the CLI on port ${(server.address() as AddressInfo).port}`),
-  )
+  // The image's proxy reaches it from another container; anywhere else, only a proxy on this machine.
+  const host = inAwayworkImage(process.env) ? undefined : '127.0.0.1'
+  server.listen(s.port ?? REMOTE_PORT, host, () => {
+    const { port } = server.address() as AddressInfo
+    s.log(`remote: serving the CLI on port ${port}${host ? `, ${host} only` : ''}`)
+  })
   return server
 }
 
@@ -232,20 +250,22 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
 /** This awaywork, as the daemon was started. */
 const self = () => [process.execPath, ...process.execArgv, process.argv[1] as string]
 
-/** Runs `cli` with `args` as argv, no shell nor terminal, the remote's variables blank. */
-function runCli([file, ...pre]: string[], args: string[]): Promise<Output> {
-  const env = { ...process.env, AWAYWORK_REMOTE: '', AWAYWORK_REMOTE_TOKEN: '' }
-  return new Promise((resolve) => {
-    const child = execFile(
-      file as string,
-      [...pre, ...args],
-      { env, timeout: TIMEOUT_MS, maxBuffer: 64 * 2 ** 20 },
-      (e, stdout, stderr) => {
-        const code = typeof e?.code === 'number' ? e.code : e ? 1 : 0
-        const late = e?.killed ? `timed out after ${TIMEOUT_MS / 60_000} minutes\n` : ''
-        resolve({ stdout, stderr: stderr + late, code })
-      },
-    )
-    child.stdin?.end()
-  })
+/** Runs `cli` with `args` as argv, no shell nor terminal, the remote's variables blank; its process group goes when it ends. */
+async function runCli(
+  [file, ...pre]: string[],
+  args: string[],
+  timeout = TIMEOUT_MS,
+): Promise<Output> {
+  const ran = await awaitGroup(
+    execa(file as string, [...pre, ...args], {
+      env: { ...process.env, AWAYWORK_REMOTE: '', AWAYWORK_REMOTE_TOKEN: '' },
+      stdin: 'ignore',
+      timeout,
+      detached: true,
+      reject: false,
+      stripFinalNewline: false,
+    }),
+  )
+  const late = ran.timedOut ? `timed out after ${timeout / 60_000} minutes\n` : ''
+  return { stdout: ran.stdout, stderr: ran.stderr + late, code: ran.exitCode ?? 1 }
 }

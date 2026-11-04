@@ -1,12 +1,12 @@
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkArgs, forward, serveRemote } from '../src/cli/remote.js'
+import { checkArgs, forward, servedRemotely, serveRemote } from '../src/cli/remote.js'
 import { runsDir } from '../src/config/paths.js'
 
 vi.mock('../src/config/paths.js', async (original) => {
@@ -79,6 +79,28 @@ describe('the remote allowlist', () => {
     expect(refused(['plan', '--why', '-c', '/tmp/evil.yml'])).toBe('--why -c: write it --why=-c')
     expect(refused(['approve', 'github:a/b#1', '-c/tmp/evil.yml'])).toBe('-c/tmp/evil.yml')
   })
+
+  it('sends a served command to the remote even with a flag it refuses; help and the rest run here', () => {
+    for (const argv of [
+      ['plan'],
+      ['skip', 'chores:CH-2', '--reason', '-- see thread'],
+      ['plan', '--config', 'other.yml'],
+      ['run', '--dry-run', '--unit', 'CH-1'],
+      ['run', '--unit=CH-1', 'extra'],
+    ])
+      expect(servedRemotely(argv), argv.join(' ')).toBe(true)
+    for (const argv of [
+      ['plan', '--help'],
+      ['skip', 'x', '-h'],
+      ['run'],
+      ['run', '--dry-run'],
+      ['init'],
+      ['schedule', 'install'],
+      ['-c', 'other.yml', 'plan'],
+      ['--version'],
+    ])
+      expect(servedRemotely(argv), argv.join(' ')).toBe(false)
+  })
 })
 
 const TOKEN = 'a'.repeat(40)
@@ -92,7 +114,7 @@ const closeAll = () => {
 afterEach(closeAll)
 
 /** Serves on a free port, with a stand-in CLI printing its argv and whether it sees the remote's env. */
-async function serve(cli = 'console.log(JSON.stringify(process.argv.slice(1)))') {
+async function serve(cli = 'console.log(JSON.stringify(process.argv.slice(1)))', timeout?: number) {
   const log: string[] = []
   const runUnit = vi.fn(async (key: string) => ({ stdout: `Queued ${key}\n`, stderr: '', code: 0 }))
   const server = serveRemote(
@@ -103,11 +125,14 @@ async function serve(cli = 'console.log(JSON.stringify(process.argv.slice(1)))')
       runUnit,
       cli: [process.execPath, '-e', cli, '--'],
       port: 0,
+      timeout,
     },
   ) as Server
   servers.push(server)
   await vi.waitFor(() =>
-    expect(log).toEqual([expect.stringMatching(/^remote: serving the CLI on port \d+$/)]),
+    expect(log).toEqual([
+      expect.stringMatching(/^remote: serving the CLI on port \d+(, 127.0.0.1 only)?$/),
+    ]),
   )
   log.splice(0)
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -168,8 +193,6 @@ describe('the daemon serving the CLI', () => {
       { error: 'no run ../../etc; awaywork report --list lists them' },
     ])
     expect(log).toEqual([
-      'remote: GET /cli: 404',
-      'remote: POST /other: 404',
       'remote: 401, wrong token',
       'remote: 413, body too big',
       'remote: 400, not JSON',
@@ -186,6 +209,29 @@ describe('the daemon serving the CLI', () => {
     const res = await post({ args: ['run', '--unit', 'API-12'] })
     expect(await res.json()).toEqual({ stdout: 'Queued API-12\n', stderr: '', code: 0 })
     expect(runUnit).toHaveBeenCalledWith('API-12')
+  })
+
+  it('listens on localhost only, but on every interface in the image, for its proxy', async () => {
+    const address = () => (servers.at(-1)?.address() as AddressInfo | undefined)?.address
+    await serve()
+    expect(address()).toBe('127.0.0.1')
+    vi.stubEnv('AWAYWORK_IMAGE', '1')
+    await serve()
+    expect(address()).toMatch(/^(::|0\.0\.0\.0)$/)
+    vi.unstubAllEnvs()
+  })
+
+  it('kills what the command started once it times out', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-hung-'))
+    const pid = join(dir, 'pid')
+    const { post } = await serve(
+      `const c = require('node:child_process').spawn('sleep', ['30']); require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(c.pid)); setTimeout(() => {}, 30000)`,
+      500,
+    )
+    const res = await post({ args: ['stats'] })
+    expect((await res.json()).stderr).toBe(`timed out after ${500 / 60_000} minutes\n`)
+    const sleeping = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(sleeping, 0)).toThrow())
   })
 
   it('turns a third command away while two run', async () => {
