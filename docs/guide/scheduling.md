@@ -470,11 +470,11 @@ awaywork on a box of its own, a VPS under systemd from [`schedule install`](#on-
 AWAYWORK_REMOTE=ssh://box   # or ssh://you@host:2222
 ```
 
-The host is whatever `ssh` takes, so an alias from `~/.ssh/config` works. The same calls as above go to the box, `/away` too, and they still go through the box's daemon: the laptop runs `ssh -T -o BatchMode=yes box env AWAYWORK_REMOTE=http://127.0.0.1:7480 AWAYWORK_REMOTE_VIA=ssh://box awaywork <args>`, each argument quoted for the box's shell, and the box's awaywork forwards it to its daemon on `127.0.0.1:7480`, the way it would over HTTP. So the box needs:
+The host is whatever `ssh` takes, so an alias from `~/.ssh/config` works. The same calls as above go to the box, `/away` too, and they still go through the box's daemon: the laptop runs `ssh -T -o BatchMode=yes box env AWAYWORK_REMOTE=http://127.0.0.1:7480 awaywork --from-ssh WyJzc2g6Ly9ib3giLCJwbGFuIl0`, the call (`["ssh://box","plan"]`) as one base64url word, which no login shell reads anything into, csh included, and the box's awaywork forwards it to its daemon on `127.0.0.1:7480`, the way it would over HTTP. So the box needs:
 
+- **awaywork 0.1.0-rc.3 or newer.** An older one answers `error: unknown option '--from-ssh'`; `npm install -g awaywork@latest` there.
 - **`awaywork watch` running with a token.** On the box, `echo "AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/awaywork/env`, then restart the daemon. The token never leaves the box: ssh is the lock.
 - **awaywork and node on the PATH ssh gives a command**, which isn't your login shell's: nvm's or a user prefix's usually aren't. `ssh box 'command -v awaywork node'` should print both; if it doesn't, install them system-wide, or link them from an interactive shell on the box: `sudo ln -s "$(command -v node)" "$(command -v awaywork)" /usr/local/bin/`.
-- **A login shell that's sh-like or fish.** ssh hands the command to the box user's login shell as one string. sh, dash, bash, zsh and fish all read awaywork's quoting the same, tried with quotes, backslashes, `;`, `$(…)`, backticks and newlines in the arguments. csh and tcsh don't: a `!` or a newline in an argument breaks the call there, and a newline can run what follows it as a command. `chsh` to one of the others, or ssh in as a user who has one.
 - **Key auth.** `BatchMode` means ssh never asks for a password or about a host key, either of which would hang the `/away` pane. Your agent is fine; ssh in once by hand so the host key is known.
 
 Here against a box on Colima, sshd and this awaywork under a user `dev`, the same stand-in agent and `chores` source:

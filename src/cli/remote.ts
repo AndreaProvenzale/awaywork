@@ -124,11 +124,8 @@ const fail = (line: string) => {
 }
 
 /** Runs a CLI call where AWAYWORK_REMOTE says, its exit code; undefined when it runs here. */
-export function remoteCall(
-  args: string[],
-  { url, token, via }: Remote & { via?: string },
-): Promise<number> | undefined {
-  if (via) return fromSsh(args, url, token, via)
+export function remoteCall(args: string[], { url, token }: Remote): Promise<number> | undefined {
+  if (args[0] === FROM_SSH) return fromSsh(args[1], url, token)
   if (!url || !servedRemotely(args)) return
   if (/^ssh:\/\//i.test(url)) return overSsh(args, url)
   if (!/^https?:\/\//i.test(url))
@@ -136,22 +133,16 @@ export function remoteCall(
   if (token) return forward(args, { url, token })
 }
 
-/** `arg` as one word for a POSIX shell or fish, whatever it holds. */
-// fish reads `\\` and `\'` inside single quotes, so both go outside them, escaped.
-export const shellQuote = (arg: string) => `'${arg.replace(/['\\]/g, (c) => `'\\${c}'`)}'`
+// A flag, so a box on an older awaywork fails on it rather than running something else.
+const FROM_SSH = '--from-ssh'
 
 /** The argv for `ssh` to run a CLI call with the box's awaywork, which forwards it to its own daemon. */
 export function sshArgs(url: string, args: string[]): string[] | undefined {
   const target = URL.canParse(url) ? new URL(url) : undefined
   if (!target?.hostname) return
   const { username, hostname, port } = target
-  const command = [
-    'env',
-    `AWAYWORK_REMOTE=http://127.0.0.1:${REMOTE_PORT}`,
-    `AWAYWORK_REMOTE_VIA=${url}`,
-    'awaywork',
-    ...args,
-  ]
+  // base64url holds nothing any login shell reads, so the call needs no quoting.
+  const call = Buffer.from(JSON.stringify([url, ...args])).toString('base64url')
   return [
     '-T',
     '-o',
@@ -159,7 +150,7 @@ export function sshArgs(url: string, args: string[]): string[] | undefined {
     ...(port ? ['-p', port] : []),
     '--',
     username ? `${username}@${hostname}` : hostname,
-    command.map(shellQuote).join(' '),
+    `env AWAYWORK_REMOTE=http://127.0.0.1:${REMOTE_PORT} awaywork ${FROM_SSH} ${call}`,
   ]
 }
 
@@ -199,8 +190,15 @@ async function overSsh(args: string[], url: string): Promise<number> {
   return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`)
 }
 
-/** On the box, a call that came over ssh: forwarded to this box's daemon until the laptop's end goes. */
-async function fromSsh(args: string[], url = '', token = '', via = ''): Promise<number> {
+/** On the box, a call that came over ssh, `[via, ...args]` as base64url JSON: forwarded to this box's daemon until the laptop's end goes. */
+async function fromSsh(word = '', url = '', token = ''): Promise<number> {
+  let call: unknown
+  try {
+    call = JSON.parse(Buffer.from(word, 'base64url').toString())
+  } catch {}
+  if (!Array.isArray(call) || !call.length || !call.every((a) => typeof a === 'string'))
+    return fail(`awaywork ${FROM_SSH}: not a call as awaywork sends it over ssh`)
+  const [via, ...args] = call as string[]
   if (!token)
     return fail(
       `AWAYWORK_REMOTE (${via}): the box's daemon isn't serving, the box's ${envFile} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch`,

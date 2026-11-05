@@ -14,7 +14,6 @@ import {
   remoteCall,
   servedRemotely,
   serveRemote,
-  shellQuote,
   sshArgs,
 } from '../src/cli/remote.js'
 import { runsDir } from '../src/config/paths.js'
@@ -467,25 +466,80 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
     }
     afterEach(() => vi.unstubAllEnvs())
 
-    it('runs ssh with no terminal nor prompt, the box user, host and port as the URL names them', () => {
-      const command = `'env' 'AWAYWORK_REMOTE=http://127.0.0.1:7480' 'AWAYWORK_REMOTE_VIA=ssh://box' 'awaywork' 'plan' '--json'`
-      expect(sshArgs('ssh://box', ['plan', '--json'])).toEqual([
-        '-T',
-        '-o',
-        'BatchMode=yes',
-        '--',
-        'box',
-        command,
+    /** What sh, bash, zsh, fish or csh would read as more than one word, or as code, `pwned` the file it would touch. */
+    const nasty = (pwned: string) => [
+      '',
+      `it's`,
+      'a\nb',
+      'end\\',
+      `; touch ${pwned} #`,
+      '\\',
+      '\\\\',
+      `\\'`,
+      `'\\`,
+      `'`,
+      `''`,
+      `$(touch ${pwned})`,
+      `\`touch ${pwned}\``,
+      `(touch ${pwned})`,
+      `x\ntouch ${pwned}`,
+      `y\r\ntouch ${pwned}`,
+      'tab\there',
+      '{a,b}',
+      '$HOME',
+      '!x',
+      '%1',
+      '^',
+      '*',
+      '?',
+      '[a]',
+      '~',
+      '#',
+      '=ls',
+      'ünï ✓ 日本',
+      '"double"',
+      'a  b',
+      ' ',
+      `| touch ${pwned} &`,
+      'tail\\',
+      `\\\n; touch ${pwned}`,
+    ]
+
+    it('runs ssh with no terminal nor prompt, the box user, host and port as the URL names them, the call one base64url word', () => {
+      const call = ['approve', ...nasty('/tmp/pwned')]
+      const argv = sshArgs('ssh://box', call) as string[]
+      expect(argv.slice(0, -1)).toEqual(['-T', '-o', 'BatchMode=yes', '--', 'box'])
+      const command = (argv.at(-1) as string).split(' ')
+      expect(command.slice(0, -1)).toEqual([
+        'env',
+        'AWAYWORK_REMOTE=http://127.0.0.1:7480',
+        'awaywork',
+        '--from-ssh',
       ])
+      const word = command.at(-1) as string
+      expect(word).toMatch(/^[\w-]+$/)
+      expect(JSON.parse(Buffer.from(word, 'base64url').toString())).toEqual(['ssh://box', ...call])
       expect(sshArgs('ssh://me@box.example.com:2222', [])?.slice(3, -1)).toEqual([
         '-p',
         '2222',
         '--',
         'me@box.example.com',
       ])
-      expect(shellQuote(`it's`)).toBe(`'it'\\''s'`)
-      expect(shellQuote('C:\\')).toBe(`'C:'\\\\''`)
       expect(sshArgs('ssh://', [])).toBeUndefined()
+    })
+
+    it("refuses on the box a --from-ssh call that isn't an array of strings", async () => {
+      const { url, log } = await serve()
+      const word = (call: unknown) => Buffer.from(JSON.stringify(call)).toString('base64url')
+      const words = ['', 'not-json', word({ args: ['stats'] }), word([]), word(['ssh://box', 1])]
+      const out = output()
+      for (const w of words)
+        expect(await remoteCall(['--from-ssh', w], { url, token: TOKEN })).toBe(1)
+      expect(await remoteCall(['--from-ssh'], { url, token: TOKEN })).toBe(1)
+      expect(out.stderr).toBe(
+        'awaywork --from-ssh: not a call as awaywork sends it over ssh\n'.repeat(words.length + 1),
+      )
+      expect(log).toEqual([])
     })
 
     it('hands the box every argument as it is, and its exit code and output, stdout and stderr apart', async () => {
@@ -495,25 +549,9 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
         'console.log(JSON.stringify(process.argv.slice(1))); console.error("err"); process.exit(3)',
       )
       vi.stubEnv('BOX_URL', url)
-      const nasty = [
-        `it's`,
-        'a  b',
-        '"double"',
-        'end\\',
-        `; touch ${pwned}`,
-        `$(touch ${pwned})`,
-        `\`touch ${pwned}\``,
-        `| touch ${pwned} &`,
-        'line\nbreak',
-        '\\',
-        '*',
-        '~',
-        '#',
-        '',
-      ]
       const calls = [
-        ['approve', 'chores:CH-1', ...nasty],
-        ['skip', 'x', `--reason=-${nasty.join('')}`],
+        ['approve', 'chores:CH-1', ...nasty(pwned)],
+        ['skip', 'x', `--reason=-${nasty(pwned).join('')}`],
       ]
       const out = output()
       for (const args of calls) expect(await remoteCall(args, { url: 'ssh://box' })).toBe(3)

@@ -53,10 +53,6 @@ scheduleCommand(program)
 doctorCommand(program)
 
 // The commands a remote daemon serves run there, refused or not; anything else, here.
-const remotely = remoteCall(process.argv.slice(2), {
-  url,
-  token,
-  via: process.env.AWAYWORK_REMOTE_VIA,
-})
+const remotely = remoteCall(process.argv.slice(2), { url, token })
 if (remotely) process.exitCode = await remotely
 else await program.parseAsync()
