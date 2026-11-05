@@ -13,6 +13,7 @@ import { allowance } from '../core/budget.js'
 import {
   DOCKER_TIMEOUT_MS,
   dockerVersion,
+  inAwayworkImage,
   inImage,
   sudoersLines,
   WORKER,
@@ -107,7 +108,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   if (workflow) report('warn', 'schedule', workflow)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
   const boxed =
-    config.isolation === 'container' && process.env.RUNNER_ENVIRONMENT !== 'github-hosted'
+    config.isolation === 'container' &&
+    process.env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
+    !inAwayworkImage(process.env)
   const isolation = boxed
     ? await containerChecks(config, process.env)
     : await isolationChecks(config.isolation, process.env)
@@ -254,7 +257,10 @@ export async function isolationChecks(
       },
     ]
   if (worker instanceof Error) {
-    const local = env.RUNNER_ENVIRONMENT !== 'github-hosted' && process.platform === 'linux'
+    const local =
+      env.RUNNER_ENVIRONMENT !== 'github-hosted' &&
+      !inAwayworkImage(env) &&
+      process.platform === 'linux'
     const setup = [
       'make the worker user once:',
       `sudo useradd --no-create-home --user-group --shell /usr/sbin/nologin ${WORKER}`,

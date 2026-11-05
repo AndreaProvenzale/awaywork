@@ -1,10 +1,10 @@
 ---
-description: Run awaywork in its windows on your machine with launchd, systemd or cron, or in GitHub Actions on GitHub's runners or your own.
+description: Run awaywork in its windows on your machine with launchd, systemd or cron, in GitHub Actions on GitHub's runners or your own, or in a container on Coolify or any Docker host.
 ---
 
 # Scheduling
 
-A scheduled run is one [window](./configuration.md#windows-limits-and-budget) opening: it starts when the window opens and starts no unit after it ends. A unit still running at the window's end stops there with status `stopped: window ended`, and what it left is published as for a quota stop. On your machine, `awaywork watch` starts those runs; in GitHub Actions, a cron calls `awaywork run --scheduled` at each window's start.
+A scheduled run is one [window](./configuration.md#windows-limits-and-budget) opening: it starts when the window opens and starts no unit after it ends. A unit still running at the window's end stops there with status `stopped: window ended`, and what it left is published as for a quota stop. On your machine and [in a container](#in-a-container), `awaywork watch` starts those runs; in GitHub Actions, a cron calls `awaywork run --scheduled` at each window's start.
 
 In a terminal, `awaywork schedule install` asks where it runs:
 
@@ -60,7 +60,7 @@ Daemon log: ~/.local/state/awaywork/watch.log
 - The daemon reads the env file and its own code once, when it starts. Edited the env file or upgraded awaywork? Run `schedule install` again, which restarts it.
 - systemd user services run only while you are logged in; `loginctl enable-linger` lifts that. Without a user session (after `sudo -iu` or `su -`, say) `--with systemd` fails and changes nothing; log in directly, or use `--with cron`, which needs no session. From such a shell `schedule status` and `doctor` can't reach the service and report no schedule.
 - `windows: []` is fine: the daemon idles, and install sets no wake.
-- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes what it has, as in the log below. One still running after that makes install change nothing and say so; run it again once it's gone. Run from inside the daemon, by a notify hook or a worker, they refuse instead of stopping it.
+- `schedule install` and `schedule remove` stop the running daemon first, whatever started it (launchd, systemd, cron or you by hand): a SIGTERM, then up to 2 minutes for it to exit. That stops a run in progress: the running unit stops and publishes nothing, as in the log below, and doesn't count as an attempt, so the next run takes it again. One still running after that makes install change nothing and say so; run it again once it's gone. Run from inside the daemon, by a notify hook or a worker, they refuse instead of stopping it.
 - launchd and systemd bring it back only after a crash. One you stop with a SIGTERM of your own stays down until your next login or `schedule install`; under cron it's back within 5 minutes.
 
 The daemon's log, `~/.local/state/awaywork/watch.log`, has events only: start and stop, each run and unit starting and ending, and what went wrong, never a line per minute. Past 5 MB it moves to `watch.log.1`. Here a SIGTERM stopped it a few seconds into a unit:
@@ -267,3 +267,123 @@ scripts: |
 ```
 
 On a self-hosted runner it runs the `agent` already on the runner's `PATH` instead. Either way it gets the `CURSOR_API_KEY` secret the workflow passes, as it needs one everywhere: a login on the machine doesn't reach the fresh `HOME` it runs in.
+
+## In a container
+
+No machine of yours to leave on? Run `awaywork watch` in a container: on [Coolify](https://coolify.io), or with `docker compose` on any VPS. Setup, the agent and the checks run as a worker user inside it, as on a [GitHub-hosted runner](./safety.md#a-worker-user-in-awaywork-s-image). Compared with Actions, the state dir lives on a volume, so attempts, skips, approvals and a [`deliver: push`](./chains.md#push) head carry over; the daemon runs your [`run: soon`](#soon-runs) rules all day; there's no 6-hour cap; and Codex works, its login on a volume where it rotates in place.
+
+It's a control repo of your own, private, as for Actions: your config in `.awaywork/config.yml`, your skills in `.awaywork/skills/`, and at the root the three files awaywork ships in `docker/`. Copy them from the installed package:
+
+```sh
+cd my-awaywork-repo
+mkdir -p .awaywork && cp ~/.config/awaywork/config.yml .awaywork/
+cp -R ~/.config/awaywork/skills .awaywork/  # if you have any
+cp "$(npm root -g)/awaywork/docker/"* .
+git add . && git commit -m "awaywork in a container" && git push
+```
+
+| File | What it does |
+| --- | --- |
+| `Dockerfile` | Debian with Node 22, git, gh, sudo and tini; awaywork and Claude Code, pinned to the awaywork you copied it from; `away`, the user awaywork runs as, and `awaywork`, the worker user, with the sudoers lines [`isolation: user`](./configuration.md#isolation) needs |
+| `compose.yml` | `restart: unless-stopped`, `stop_grace_period: 2m`, `mem_limit: 4g`, volumes for the state dir and Codex's login, and the env vars it reads |
+| `entrypoint.sh` | Fails on an empty `GH_TOKEN`, commits as the token's user (env vars, as the action does), then `exec awaywork watch`, with its log on the container's output |
+
+The image reads its config from `/home/away/.awaywork/config.yml`, copied in at build: a push is how a config change gets there. Only `.awaywork/` goes into the image, so anything your config names by path, an `extends` base or a script, lives in it too.
+
+### On Coolify
+
+Add a resource from your control repo with the **Docker Compose** build pack and the compose location `/compose.yml`. Coolify lists the variables `compose.yml` names: `GH_TOKEN` is required, so it won't deploy until you fill it in (the same [classic token](#in-github-actions) as for Actions), `CLAUDE_CODE_OAUTH_TOKEN` is Claude's (`claude setup-token`), `CURSOR_API_KEY` Cursor's if you add it, and `TZ` is your windows' timezone, such as `Europe/Rome`, UTC otherwise. Deploy, and every push to the repo redeploys.
+
+Compose, not the Dockerfile build pack: that one does [rolling updates](https://coolify.io/docs/applications/deployments/rolling-updates), starting the new container before it stops the old one, and awaywork's locks check their holder by pid and start time, which mean nothing across containers. So for a moment two daemons would share one state dir. Coolify doesn't roll compose apps: `docker compose up` replaces the container.
+
+### On a VPS
+
+Any box with Docker and the compose plugin:
+
+```sh
+git clone git@github.com:you/my-awaywork-repo.git && cd my-awaywork-repo
+printf 'GH_TOKEN=%s\nCLAUDE_CODE_OAUTH_TOKEN=%s\nTZ=Europe/Rome\n' "$GH_TOKEN" "$CLAUDE_CODE_OAUTH_TOKEN" > .env && chmod 600 .env
+docker compose up -d --build
+```
+
+Keep `.env` out of git. Without a `GH_TOKEN` compose refuses to start it:
+
+```
+$ docker compose up -d
+error while interpolating services.awaywork.environment.GH_TOKEN: required variable GH_TOKEN is missing a value
+```
+
+After a `git pull`, `docker compose up -d --build` again.
+
+### Living with it
+
+- **Secrets are env vars.** There's no `~/.config/awaywork/env` in the image: awaywork reads the container's env. Any other secret your config names, `ASANA_TOKEN`, a repo's `secrets` or `notify.secrets`, goes in `compose.yml`'s `environment` the same way, `NAME: ${NAME}`, so Coolify lists it too.
+- **Codex** isn't in the image by default: add it to the Dockerfile's `PACKAGES` (`ARG PACKAGES="@anthropic-ai/claude-code @openai/codex"`), push, and log in once into the volume: `docker exec -it <container> codex login --device-auth` (`docker ps` names the container). The login stays on the `codex` volume across redeploys, where Codex rotates it in place.
+- **Your repos' toolchains** go in the Dockerfile as `RUN` lines, at the spot it marks: setup runs as the worker user, which can't enter `/home/away`, so install system-wide (`RUN npm install -g pnpm@10`, `RUN apt-get update && apt-get install -y …`).
+- **Cursor** has no npm package, so `PACKAGES` can't add it: put the installer from [Running Cursor](#running-cursor) at the toolchains spot as one `RUN`, without the `sudo`s or `-o "$USER"`, as the build runs as root:
+
+  ```dockerfile
+  RUN install -d /opt/cursor \
+    && curl -fsS https://cursor.com/install | HOME=/opt/cursor bash \
+    && ln -sf "$(readlink -f /opt/cursor/.local/bin/agent)" /usr/local/bin/agent \
+    && agent --version
+  ```
+
+  Built that way on arm64, the worker user ran `agent --version` (`2026.10.22-27dcf5f`) and couldn't write to `/opt/cursor`. Then set `CURSOR_API_KEY`, which `compose.yml` already lists.
+
+- **Upgrading** is a rebuild: change `AWAYWORK_VERSION` in the Dockerfile and push. Claude Code's auto-updater is off, so it moves when you rebuild too.
+- **A push stops a running unit.** The redeploy sends the daemon a SIGTERM: the unit stops, publishes nothing and doesn't count as an attempt, so the new container runs it again. Here `docker compose stop` hit a stand-in agent mid-unit, after the run's first unit had opened its draft PR, and `docker compose up -d` started the next container:
+
+  ```
+  2026-11-03 23:14:19   andreaprovenzale-awaywork-sandbox-197: implement on fake
+  2026-11-03 23:14:20   andreaprovenzale-awaywork-sandbox-197: done
+  2026-11-03 23:14:25   andreaprovenzale-awaywork-sandbox-196: implement on fake
+  2026-11-03 23:14:39   andreaprovenzale-awaywork-sandbox-196: stopped: aborted
+  2026-11-03 23:14:39 Run 20261103-231413: 1 draft PR, 0 reports, 2 units
+       item                  skill      status                      result
+    1  awaywork-sandbox#197  implement  done                        https://github.com/AndreaProvenzale/awaywork-sandbox/pull/198
+       Ran as awaywork in the container image.
+    2  awaywork-sandbox#196  implement  stopped: aborted (aborted)  interrupted
+       Ran as awaywork in the container image.
+  Report: /home/away/.local/state/awaywork/runs/20261103-231413/report.md
+  2026-11-03 23:14:39 awaywork watch stopped
+  2026-11-03 23:14:53 awaywork watch started, pid 7, config /home/away/.awaywork/config.yml
+  2026-11-03 23:14:53 window run 20261103-231453 started, until 2026-11-04 04:00:00
+  2026-11-03 23:14:58 Run 20261103-231453: 1 unit planned, state in /home/away/.local/state/awaywork/runs/20261103-231453
+  2026-11-03 23:14:58   andreaprovenzale-awaywork-sandbox-196: implement on fake
+  ```
+
+  The stop took a second; `stop_grace_period: 2m` gives a slower one the 2 minutes `schedule install` gives the daemon on your machine, where Docker's default would kill it after 10 s.
+
+- **Memory.** `compose.yml` caps the container at 4 GB, and the watchdog starts no unit under 1.5 GB free, counted against that cap: `process.availableMemory()` was 2.99 GB in a container with `-m 3g`, 7.19 GB without. A big repo's build next to the agent may want more: raise `mem_limit`.
+- **Reaching it** is `docker exec`, or ssh to the host first; Coolify has a terminal for it too. The daemon's log, `watch.log` in the state dir, is also the container's output, so `docker logs -f <container>` follows it, as does Coolify's Logs tab:
+
+  ```
+  $ docker logs -f <container>
+  2026-11-03 23:43:59 awaywork watch started, pid 7, config /home/away/.awaywork/config.yml
+  2026-11-03 23:43:59 window run 20261103-234359 started, until 2026-11-04 05:00:00
+  2026-11-03 23:44:04 Run 20261103-234359: 1 unit planned, state in /home/away/.local/state/awaywork/runs/20261103-234359
+  2026-11-03 23:44:05   andreaprovenzale-awaywork-sandbox-199: implement on fake
+  ```
+
+  And `docker exec` runs awaywork's own commands in it:
+
+  ```
+  $ docker exec <container> awaywork schedule status
+  No scheduled job installed
+  Daemon: running, pid 7, since 2026-11-03 23:12:02
+  Run in progress: window run 20261103-231202, until 2026-11-04 04:00:00
+  Next window: 2026-11-04 22:00:00
+  Daemon log: /home/away/.local/state/awaywork/watch.log
+  $ docker exec <container> awaywork doctor
+  ok    git: git version 2.39.5
+  ok    gh: gh version 2.103.3 (2026-10-26)
+  ok    gh login
+  ok    /home/away/.awaywork/config.yml
+  ok    isolation: user: setup, the agent and the checks run as awaywork
+  warn  fake: unattended: grey
+  warn  fake quota: fallback: 2 units (no quota reading), sits out runs outside the windows
+  ok    github: 3 open items
+  ```
+
+  "No scheduled job" is right: the container is what keeps `watch` running. `docker exec <container> awaywork report` prints the morning report.

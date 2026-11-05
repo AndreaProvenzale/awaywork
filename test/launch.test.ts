@@ -237,16 +237,19 @@ describe('the launcher', () => {
 
   // Where the worker user exists, real-isolation.test.ts takes the other side.
   it.skipIf(process.env.AWAYWORK_WORKER_TEST)(
-    'isolates under isolation: user or on a GitHub-hosted runner, and refuses without the worker user',
+    'isolates under isolation: user, on a GitHub-hosted runner or in awaywork’s image, and refuses without the worker user',
     async () => {
       expect(await workerFor('none', { RUNNER_ENVIRONMENT: 'self-hosted' })).toBeUndefined()
       expect(await workerFor('none', {})).toBeUndefined()
-      const refused =
-        process.platform === 'linux'
-          ? "can't run as the awaywork user"
-          : `isolation: user runs on Linux only, not ${process.platform}`
+      const linux = process.platform === 'linux'
+      const refused = linux
+        ? "can't run as the awaywork user"
+        : `isolation: user runs on Linux only, not ${process.platform}`
       await expect(workerFor('none', { RUNNER_ENVIRONMENT: 'github-hosted' })).rejects.toThrow(
         refused,
+      )
+      await expect(workerFor('none', { AWAYWORK_IMAGE: '1' })).rejects.toThrow(
+        linux ? "in this image: build it from awaywork's Dockerfile" : refused,
       )
       await expect(workerFor('user', { RUNNER_ENVIRONMENT: 'self-hosted' })).rejects.toThrow(
         refused,

@@ -73,6 +73,8 @@ Versions follow SemVer; while on 0.x a minor version may change the config. A ta
 npm version 0.1.0-rc.2 --no-git-tag-version
 ```
 
+and sets `AWAYWORK_VERSION` in `docker/Dockerfile` to it, which `test/docker.test.ts` checks.
+
 After it merges, tag the merge commit and push the tag:
 
 ```sh

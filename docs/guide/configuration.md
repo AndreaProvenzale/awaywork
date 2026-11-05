@@ -825,7 +825,7 @@ A few things change with it:
 - **Tools live outside your home.** The worker can't run what nvm, `~/.local/bin` or `~/.cargo` put in your home. Install the agents' CLIs and the repos' toolchains system-wide; `doctor` warns about every folder on your `PATH` it can't enter. Cursor's installer writes to `~/.local`; `sudo env HOME=/opt/cursor bash -c 'curl https://cursor.com/install -fsS | bash'` puts it in `/opt/cursor/.local` instead, for you to link `agent` into `/usr/local/bin`.
 - **Your home is closed.** The worker reads whatever in it is readable by others, so `doctor` warns until `chmod o-rwx ~`.
 - **Linux only.** On macOS it refuses to run: `isolation: user runs on Linux only, not darwin`.
-- **Always on a GitHub-hosted runner**, whatever the config says: there `none` and `container` are ignored, and the action makes the user.
+- **Always on a GitHub-hosted runner and in awaywork's image**, whatever the config says: there `none` and `container` are ignored, and the action or the [Dockerfile](./scheduling.md#in-a-container) makes the user.
 - **One developer per worker user.** Whoever has the `chown` line can chown any awaywork clone folder, someone else's too.
 
 ### In a container

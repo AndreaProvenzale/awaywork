@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "docker",
     "harness.md",
     "skills",
     "plugin",

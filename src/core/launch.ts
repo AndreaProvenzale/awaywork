@@ -318,8 +318,11 @@ export function isolate(user: string | undefined): void {
 
 export const isolated = () => worker !== undefined
 
+/** Set by awaywork's Dockerfile, whose image runs every launch as the worker user, as a GitHub-hosted runner does. */
+export const inAwayworkImage = (env: NodeJS.ProcessEnv) => Boolean(env.AWAYWORK_IMAGE)
+
 /**
- * The worker user every launch runs as: always on a GitHub-hosted runner, elsewhere under `isolation: user`.
+ * The worker user every launch runs as: always on a GitHub-hosted runner and in awaywork's image, elsewhere under `isolation: user`.
  * One that can't run as it, or where it can sudo, is refused rather than run as the developer's user.
  */
 export async function workerFor(
@@ -327,7 +330,8 @@ export async function workerFor(
   env: NodeJS.ProcessEnv,
 ): Promise<string | undefined> {
   const hosted = env.RUNNER_ENVIRONMENT === 'github-hosted'
-  if (isolation !== 'user' && !hosted) return undefined
+  const image = inAwayworkImage(env)
+  if (isolation !== 'user' && !hosted && !image) return undefined
   if (process.platform !== 'linux')
     throw new Error(`isolation: user runs on Linux only, not ${process.platform}`)
   const as = (...command: string[]) =>
@@ -337,7 +341,9 @@ export async function workerFor(
     throw new Error(
       hosted
         ? `can't run as the ${WORKER} user on this GitHub-hosted runner: run awaywork through its action, which creates it`
-        : `can't run as the ${WORKER} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
+        : image
+          ? `can't run as the ${WORKER} user in this image: build it from awaywork's Dockerfile, which creates it`
+          : `can't run as the ${WORKER} user (${ran.stderr.split('\n')[0] || ran.shortMessage})`,
     )
   if (!(await as('sudo', '-n', 'true')).failed)
     throw new Error(

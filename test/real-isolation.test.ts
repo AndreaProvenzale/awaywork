@@ -40,6 +40,7 @@ describe.skipIf(!process.env.AWAYWORK_WORKER_TEST)('isolation user, live', () =>
   let dir: string
   beforeAll(async () => {
     expect(await workerFor('user', process.env)).toBe(WORKER)
+    expect(await workerFor('none', { ...process.env, AWAYWORK_IMAGE: '1' })).toBe(WORKER)
     dir = await workerRoot()
     await execa('git', ['init', '-q', dir])
     isolate(WORKER)

@@ -38,7 +38,7 @@ What that leaves open:
 - **Codex and Cursor read the PR author's `AGENTS.md`** on someone else's PR, as above, and Cursor its `CLAUDE.md`, `.cursor/rules` and skills too.
 - **A command provider's repo config** on someone else's PR: its CLI loads whatever repo config it loads, e.g. MCP servers or hooks in its config dir, and awaywork can't stop that.
 
-So run awaywork on a machine or runner where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux, or a [container](#a-container-on-your-machine) wherever Docker runs, your Mac included. GitHub's hosted runners [always get a worker user](#a-worker-user-on-github-hosted-runners).
+So run awaywork on a machine or runner where that's acceptable, or give it a [worker user](#a-worker-user-on-your-linux-machine) on Linux, or a [container](#a-container-on-your-machine) wherever Docker runs, your Mac included. GitHub's hosted runners [always get a worker user](#a-worker-user-on-github-hosted-runners), and so does [awaywork's image](#a-worker-user-in-awaywork-s-image).
 
 ### A worker user on your Linux machine
 
@@ -193,6 +193,28 @@ What it doesn't close:
 - **The clone.** It's the worker's while it runs, so what it leaves there is what the checks run and what awaywork publishes, as everywhere.
 - **What's world-readable.** The toolchains, `/tmp`, and every process's command line (not its env).
 - **The machine.** It can still fill the disk or the memory; the watchdog stops the unit then.
+
+### A worker user in awaywork's image
+
+The [container](./scheduling.md#in-a-container) you run `awaywork watch` in is built from awaywork's Dockerfile, which sets `AWAYWORK_IMAGE=1`: there, as on a hosted runner, setup, the agent and the checks always run as `awaywork`, whatever `isolation` says. awaywork itself runs as `away`, whose env holds your `GH_TOKEN`, so an agent running as `away` could read it from `/proc/1/environ`. Built from another image without the user, it refuses to start: `can't run as the awaywork user in this image: build it from awaywork's Dockerfile, which creates it`.
+
+The Dockerfile makes the worker as the action does on a runner: no sudo, cron and `at` denied, `nologin`, no home of its own, `/home/away` closed (700), and the write bit taken off everything world-writable and off default ACLs, at build time. `away` gets the two sudoers lines [`isolation: user`](#a-worker-user-on-your-linux-machine) needs, which a test keeps equal to what awaywork asks for. The kernel's `fs.protected_hardlinks` and `fs.protected_symlinks` are the host's, checked when the daemon starts its first run. A stand-in agent in the image, against a private sandbox repo:
+
+```
+agent: as awaywork (awaywork), HOME=/tmp/awaywork-W8BnHa
+agent: ok   /proc/1/environ refused (/usr/bin/tini -- /usr/local/bin/awaywork)
+agent: ok   /proc/7/environ refused (node /usr/local/bin/awaywork watch )
+agent: ok   /home/away refused
+agent: ok   sudo -n true refused
+agent: GH_TOKEN=none
+agent: committed smoke.txt
+```
+
+It closes what the [worker user on your Linux machine](#a-worker-user-on-your-linux-machine) does and leaves open the same: the network, the agent's own secrets, the clone, the machine's memory and disk. And on a shared box:
+
+- **One container per developer.** Never one config serving several people: everything it does is in the name of the one `GH_TOKEN`, and the `chown` line is for one developer. A company box runs one container, one control repo and one token for each person.
+- **Whoever is root on the host reads every container's tokens.** `docker inspect` shows a container's env, and the Coolify admin, or anyone who can run `docker` there, has them all, as an org admin has its self-hosted runners' secrets. Put your token only on a host whose root you'd trust with it.
+- **Never mount the Docker socket into it.** Whatever can reach the socket is root on the host, awaywork and anything that takes awaywork over included, and then every other container's tokens are in reach too.
 
 ## Public repos
 

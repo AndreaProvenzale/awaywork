@@ -55,3 +55,11 @@ jobs:
       - run: pnpm vitest run test/real-container.test.ts
         env:
           AWAYWORK_CONTAINER_TEST: alpine:3.22
+
+  # The container template still builds; the newest release stands in for a version not published yet.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: mkdir docker/.awaywork && touch docker/.awaywork/config.yml
+      - run: docker build --build-arg AWAYWORK_VERSION=latest docker

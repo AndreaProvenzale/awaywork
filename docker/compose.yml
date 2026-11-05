@@ -1,0 +1,22 @@
+# awaywork's daemon: docs/guide/scheduling.md, "In a container". One per developer, never one serving several.
+services:
+  awaywork:
+    build: .
+    restart: unless-stopped
+    # The 2 minutes `schedule install` gives watch to stop its runs; Docker's default is 10s.
+    stop_grace_period: 2m
+    # The watchdog starts no unit under 1.5 GB free.
+    mem_limit: 4g
+    environment:
+      GH_TOKEN: ${GH_TOKEN:?}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      # Your windows' timezone, such as Europe/Rome.
+      TZ: ${TZ:-UTC}
+    volumes:
+      - state:/home/away/.local/state/awaywork
+      - codex:/home/away/.codex
+
+volumes:
+  state:
+  codex:

@@ -56,7 +56,7 @@ Then schedule it for when you're away:
 awaywork schedule install    # asks: this machine (launchd, systemd or cron) or GitHub Actions
 ```
 
-GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists.
+GitHub Actions runs from a repo of your own, on GitHub's runners or on a machine of yours, which is how Codex runs there; add the secrets it lists. Or run the daemon in a container, on Coolify or any VPS, from the [Dockerfile awaywork ships](docs/guide/scheduling.md#in-a-container).
 
 Next morning, `awaywork report` opens the run in your terminal. Arrow to a unit, `⏎` reads its PR body or report, `o` opens the PR, `l` and `d` page its log and diff, `s` skips an item for the coming runs:
 
@@ -143,7 +143,7 @@ A run in one of your windows reads that at the next window's start, or at the re
 
 ## The paranoid bit
 
-- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
+- **Only its own login reaches the agent,** plus the secrets of any MCP servers a rule names. No forge token, no other agent's login. PR diffs, threads and CI logs are prefetched into files. awaywork itself does the push. On your machine it's not a sandbox, though: the agent runs as you and can read what you can, your gh login and ssh agent included. On GitHub's hosted runners, in awaywork's container image, and on Linux with `isolation: user`, it runs as a user of its own, which can't; with `isolation: container`, in a fresh container per command that sees only the clone, on your Mac too.
 - **It only pushes branches it creates** (`away/<key>`), unless a rule opts in to fast-forward your own PR. No force pushes or PR merges, and it never touches anyone else's branch. The only comments it writes are a step's questions, a rule's plan or a unit's result on your own item, signed `— awaywork`; your reply there runs it again. A rule can opt in to leaving its review on a PR as your pending one, which nobody sees until you submit it, or to moving your own tracker item once its work is published (`on_done`).
 - **It runs the vendor's own binary with your login.** It never calls the backing API with a subscription token and never proxies credentials.
 - **A watchdog cleans up** after every worker and kills units that eat all the RAM or disk.
@@ -154,7 +154,7 @@ More in [Safety](docs/guide/safety.md).
 
 | Agents | Sources | Runs on |
 | --- | --- | --- |
-| Claude Code, Cursor (with a `CURSOR_API_KEY`, even locally), Codex (experimental, not on GitHub-hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions |
+| Claude Code, Cursor (with a `CURSOR_API_KEY`, even locally), Codex (experimental, not on GitHub-hosted runners) | GitHub, Asana, Linear, Jira Cloud | launchd, systemd, cron, GitHub Actions, Docker |
 
 More agents and task trackers are on the way, or bring your own: [add a provider](docs/extend/providers.md), [add a source](docs/extend/sources.md), or point a [custom source](docs/guide/custom-sources.md) at any script that prints JSON. Needs Node 22+, `git`, and `gh auth login`, or `twg` and an SSH key for [Bitbucket Cloud](docs/guide/configuration.md#bitbucket-and-jira).
 
@@ -168,7 +168,7 @@ More agents and task trackers are on the way, or bring your own: [add a provider
 | [Chains](docs/guide/chains.md) | More steps after a rule's skill: loops, conditions, stacked PRs, pushing onto your PR |
 | [Where results go](docs/guide/results.md) | Who sees what, and notify hooks for Notion, Slack and the like |
 | [Skills](docs/guide/skills.md) | Built-ins, ejecting, writing your own |
-| [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions |
+| [Scheduling](docs/guide/scheduling.md) | launchd, systemd, cron, GitHub Actions, a container |
 | [Safety](docs/guide/safety.md) | Guardrails and vendor terms |
 | [With an AI agent](docs/guide/agents.md) | Let your coding agent write your queue, or set awaywork up |
 | [Suggested rules](docs/guide/suggest.md) | Rules, routines and `AGENTS.md` lines from your own sessions and PRs |
