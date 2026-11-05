@@ -583,6 +583,14 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
       ])
     }, 20_000)
 
+    it("refuses here, as the box's daemon would, a call over its body cap, without ssh", async () => {
+      await box()
+      const out = output()
+      const reason = `--reason=${'x'.repeat(16 * 1024)}`
+      expect(await remoteCall(['skip', 'x', reason], { url: 'ssh://down' })).toBe(1)
+      expect(out.stderr).toBe('AWAYWORK_REMOTE (ssh://down): the body is over 16384 bytes\n')
+    })
+
     it("says the box's daemon runs with another token than its env file, and passes a lone stderr line on", async () => {
       await box(`AWAYWORK_REMOTE_TOKEN=${'b'.repeat(64)}\n`)
       const { url } = await serve()

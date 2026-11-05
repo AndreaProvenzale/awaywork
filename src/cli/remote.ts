@@ -159,6 +159,9 @@ async function overSsh(args: string[], url: string): Promise<number> {
   const at = `AWAYWORK_REMOTE (${url})`
   const argv = sshArgs(url, args)
   if (!argv) return fail(`${at} names no host`)
+  // Refused here as the box's daemon would: a much bigger call wouldn't fit in one argument there.
+  if (Buffer.byteLength(JSON.stringify({ args })) > MAX_BODY)
+    return fail(`${at}: the body is over ${MAX_BODY} bytes`)
   // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
   const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
   // Held until stdout comes or HOLD_MS pass, so ssh's last lines, however split, can become this one's.
