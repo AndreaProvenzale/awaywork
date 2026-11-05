@@ -26,6 +26,7 @@ import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../providers/command.js'
 import { providerFor } from '../providers/index.js'
+import { staleDocker } from '../scheduler/docker.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
 import { sourceFor } from '../sources/index.js'
@@ -106,6 +107,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const root = await gitRoot()
   const workflow = root && (await staleWorkflow(root))
   if (workflow) report('warn', 'schedule', workflow)
+  const image = root && (await staleDocker(root))
+  if (image) report('warn', 'schedule', image)
   for (const c of root ? await workflowSecretChecks(root) : []) report(c.status, c.what, c.detail)
   const boxed =
     config.isolation === 'container' &&

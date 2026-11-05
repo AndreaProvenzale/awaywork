@@ -155,7 +155,7 @@ What each command does:
 | `skills eject <name>` | Copies a skill into the user's skills dir |
 | `run --dry-run` | Clones repos and writes workspaces; no agent, nothing pushed |
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
-| `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`. Ask first. |
+| `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`, or a container's files with `--with docker`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
 | `init`, `config edit` | Interactive; need a terminal |
 

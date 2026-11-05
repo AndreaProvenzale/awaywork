@@ -20,6 +20,7 @@ import type { Ask, Provider } from '../core/types.js'
 import { describeWindow, startsOf, type Window } from '../core/window.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { providerFor } from '../providers/index.js'
+import { dockerFiles, imageVersion, removeDocker } from '../scheduler/docker.js'
 import {
   isPlainSelfHosted,
   isSelfHosted,
@@ -47,6 +48,7 @@ import { reportConfigError } from './config.js'
 import { stopWatch, watchStatus } from './watch.js'
 
 const GITHUB_ACTIONS = 'github-actions'
+const DOCKER = 'docker'
 const GH_TOKEN_HELP =
   'GH_TOKEN is a classic personal access token of yours with the `repo`, `workflow` and `read:org` ' +
   'scopes (https://github.com/settings/tokens/new?scopes=repo,workflow,read:org): `repo` reads your ' +
@@ -56,14 +58,16 @@ const GH_TOKEN_HELP =
 export function scheduleCommand(program: Command): void {
   const schedule = program
     .command('schedule')
-    .description('run awaywork when its windows open, on this machine or in GitHub Actions')
+    .description(
+      'run awaywork when its windows open, on this machine, in GitHub Actions or in a container',
+    )
 
   schedule
     .command('install')
     .description('keep `awaywork watch` running, which starts a run when a window opens')
     .option(
       '--with <scheduler>',
-      `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS].join(', ')} (default: asks in a terminal, else launchd on macOS, else systemd if it runs, else cron)`,
+      `${[...Object.keys(localSchedulers()), GITHUB_ACTIONS, DOCKER].join(', ')} (default: asks in a terminal, else launchd on macOS, else systemd if it runs, else cron)`,
     )
     .action((opts: { with?: string }) => {
       printBrand()
@@ -72,7 +76,9 @@ export function scheduleCommand(program: Command): void {
 
   schedule
     .command('remove')
-    .description(`remove the scheduled job, and ${WORKFLOW} in the current repo`)
+    .description(
+      `remove the scheduled job, and ${WORKFLOW} or the container's files in the current repo`,
+    )
     .action(() => removeSchedule())
 
   schedule
@@ -96,6 +102,7 @@ export async function removeSchedule(
     if (await scheduler.remove()) removed.push(scheduler.id)
   const root = await gitRoot()
   if (root && (await removeWorkflow(root))) removed.push(GITHUB_ACTIONS)
+  if (root && (await removeDocker(root))) removed.push(DOCKER)
   console.log(
     removed.length ? `Removed the ${removed.join(', ')} job` : 'No scheduled job installed',
   )
@@ -127,6 +134,10 @@ export async function printStatus(
   if (root && existsSync(join(root, WORKFLOW))) {
     found = true
     console.log(`Scheduled with ${GITHUB_ACTIONS}: ${join(root, WORKFLOW)}`)
+  }
+  if (root && (await imageVersion(root))) {
+    found = true
+    console.log(`Scheduled with ${DOCKER}: ${join(root, 'compose.yml')}`)
   }
   if (!found) console.log('No scheduled job installed')
   if (watched || (await lockHolder(watchLockPath)))
@@ -180,6 +191,10 @@ export const whereToRun = (ask: Ask, later = false) =>
     [
       { value: '', label: 'this machine' },
       { value: GITHUB_ACTIONS, label: 'GitHub Actions, from the repo in this directory' },
+      {
+        value: DOCKER,
+        label: 'a container (Docker Compose, e.g. Coolify), from the repo in this directory',
+      },
       ...(later ? [{ value: 'later', label: 'later, with awaywork schedule install' }] : []),
     ],
     '',
@@ -201,11 +216,12 @@ export async function installSchedule(
       return cancelled(e)
     }
   if (id === GITHUB_ACTIONS) return installWorkflow(config, io)
+  if (id === DOCKER) return installDocker(config, io)
   const all = localSchedulers()
   const scheduler = all[id || defaultScheduler()]
   if (!scheduler) {
     console.error(
-      `unknown scheduler "${id}"; use ${[...Object.keys(all), GITHUB_ACTIONS].join(', ')}`,
+      `unknown scheduler "${id}"; use ${[...Object.keys(all), GITHUB_ACTIONS, DOCKER].join(', ')}`,
     )
     process.exitCode = 1
     return
@@ -327,6 +343,37 @@ const secretsOf = (config: Config, providers: Provider[]) => [
   ]),
 ]
 
+/** The config's providers that run in `env`, saying which won't and why. */
+const usedProviders = (config: Config, env: NodeJS.ProcessEnv, where: string) =>
+  config.providers.flatMap((p) => {
+    const provider = providerFor(p.id, p.config)
+    const unavailable = provider?.unavailable?.(env)
+    if (unavailable) console.log(`${p.id} won't run in ${where}: ${unavailable}`)
+    return provider && !unavailable ? [provider] : []
+  })
+
+/** The npm packages and scripts installing the providers' CLIs, and the command sources' setup. */
+function installsOf(config: Config, providers: Provider[]) {
+  const installs = providers.flatMap((p) => p.install ?? [])
+  return {
+    packages: installs.flatMap((i) => ('npm' in i ? [i.npm] : [])),
+    scripts: installs.flatMap((i) => ('script' in i ? [i.script] : [])),
+    setup: Object.values(config.sources).flatMap((cfg) =>
+      isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
+    ),
+  }
+}
+
+const localTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
+
+/** Why a repo's copy of the config can't run `where`; undefined when it can. */
+const unfitForRepo = (loaded: Config, path: string, where: string) =>
+  loaded.sources.bitbucket
+    ? `${where} runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron`
+    : loaded.extends
+      ? `${where} gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`
+      : undefined
+
 /** Writes the workflow and copies the config and skills into the repo; run again, it syncs them. */
 export async function installWorkflow(
   config: string | undefined,
@@ -341,17 +388,9 @@ export async function installWorkflow(
   try {
     const path = configPath(config)
     const loaded = await loadConfig(path)
-    if (loaded.sources.bitbucket) {
-      console.error(
-        'GitHub Actions runs only with the GitHub forge; schedule a Bitbucket config with launchd, systemd or cron',
-      )
-      process.exitCode = 1
-      return
-    }
-    if (loaded.extends) {
-      console.error(
-        `GitHub Actions gets a copy of ${path} alone, without the base it extends; schedule a config with extends with launchd, systemd or cron`,
-      )
+    const refused = unfitForRepo(loaded, path, 'GitHub Actions')
+    if (refused) {
+      console.error(refused)
       process.exitCode = 1
       return
     }
@@ -365,23 +404,13 @@ export async function installWorkflow(
       ? await askSelfHosted(io.ask, isSelfHosted(current))
       : isSelfHosted(current)
     const runner = selfHosted ? 'self-hosted' : 'github-hosted'
-    const used = loaded.providers.flatMap((p) => {
-      const provider = providerFor(p.id, p.config)
-      const unavailable = provider?.unavailable?.({ RUNNER_ENVIRONMENT: runner })
-      if (unavailable) console.log(`${p.id} won't run in this workflow: ${unavailable}`)
-      return provider && !unavailable ? [provider] : []
-    })
-    // A self-hosted runner keeps the machine's own CLIs and their logins.
-    const installs = selfHosted ? [] : used.flatMap((p) => p.install ?? [])
+    const used = usedProviders(loaded, { RUNNER_ENVIRONMENT: runner }, 'this workflow')
     const base = {
       starts: startsOf(loaded.windows),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: localTimezone(),
       version: packageVersion,
-      packages: installs.flatMap((i) => ('npm' in i ? [i.npm] : [])),
-      scripts: installs.flatMap((i) => ('script' in i ? [i.script] : [])),
-      setup: Object.values(loaded.sources).flatMap((cfg) =>
-        isCommand(cfg) && cfg.setup ? [cfg.setup] : [],
-      ),
+      // A self-hosted runner keeps the machine's own CLIs and their logins.
+      ...installsOf(loaded, selfHosted ? [] : used),
       // A label picking the machine, as in `[self-hosted, macOS]`, stays.
       runsOn: selfHosted
         ? (isSelfHosted(current) && runsOnOf(current)) || 'self-hosted'
@@ -393,7 +422,7 @@ export async function installWorkflow(
       )
     const secrets = secretsOf(loaded, used)
     const text = workflow({ ...base, config: REPO_CONFIG, secrets })
-    const changed = await syncRepo(root, WORKFLOW, text, path, REPO_CONFIG, confirmer(io))
+    const changed = await syncRepo(root, { [WORKFLOW]: text }, path, REPO_CONFIG, confirmer(io))
     const unset = io.interactive
       ? await offerSecrets(secrets, io.env, io.ask, io.setSecret).catch((e) => {
           if (e instanceof Cancelled) return secrets
@@ -404,6 +433,49 @@ export async function installWorkflow(
     if (changed.length) console.log(`  commit ${and(changed)}`)
     if (unset.length) console.log(`  add these repository secrets: ${unset.join(', ')}`)
     if (unset.includes('GH_TOKEN')) console.log(`  ${GH_TOKEN_HELP}`)
+  } catch (e) {
+    if (!(e instanceof Cancelled)) return reportConfigError(e)
+    cancelled(e)
+  }
+}
+
+/** Writes the container's files and copies the config and skills into the repo; run again, it syncs them. */
+export async function installDocker(config: string | undefined, io: Io = terminal): Promise<void> {
+  const root = await gitRoot(io.run)
+  if (!root) {
+    console.error('A container builds from a repo; run this inside a git repository')
+    process.exitCode = 1
+    return
+  }
+  try {
+    const path = configPath(config)
+    const loaded = await loadConfig(path)
+    const refused = unfitForRepo(loaded, path, 'A container')
+    if (refused) {
+      console.error(refused)
+      process.exitCode = 1
+      return
+    }
+    // The env the image runs in: neither runner, so Codex runs on the login its volume keeps.
+    const used = usedProviders(loaded, { AWAYWORK_IMAGE: '1' }, 'this container')
+    const secrets = secretsOf(loaded, used)
+    const files = await dockerFiles({
+      version: packageVersion,
+      ...installsOf(loaded, used),
+      secrets,
+      timezone: localTimezone(),
+    })
+    const changed = await syncRepo(root, files, path, REPO_CONFIG, confirmer(io))
+    console.log('Before the first run:')
+    if (changed.length) console.log(`  commit ${and(changed)}`)
+    console.log(
+      `  set these env vars in Coolify, or in .env beside compose.yml on a VPS: ${secrets.join(', ')}`,
+    )
+    console.log(`  ${GH_TOKEN_HELP}`)
+    if (used.some((p) => p.id === 'codex'))
+      console.log(
+        '  once it runs, log Codex in: docker exec -it <container> codex login --device-auth',
+      )
   } catch (e) {
     if (!(e instanceof Cancelled)) return reportConfigError(e)
     cancelled(e)
@@ -424,20 +496,20 @@ const askSelfHosted = async (ask: Ask, selfHosted: boolean) =>
     selfHosted ? 'self-hosted' : 'github-hosted',
   )) === 'self-hosted'
 
-/** Syncs the workflow, then the config and the user's skills beside it; returns what it wrote. */
+/** Syncs the files, then the config and the user's skills beside them; returns what it wrote. */
 async function syncRepo(
   root: string,
-  file: string,
-  text: string,
+  files: Record<string, string>,
   path: string,
   config: string,
   ask?: Ask,
 ): Promise<string[]> {
   const changed = []
-  if (await sync(root, file, ask, (staged) => writeFile(staged, text))) {
-    console.log(`Wrote ${file}`)
-    changed.push(file)
-  }
+  for (const [file, text] of Object.entries(files))
+    if (await sync(root, file, ask, (staged) => writeFile(staged, text))) {
+      console.log(`Wrote ${file}`)
+      changed.push(file)
+    }
   if (await syncCopy(path, root, config, ask)) changed.push(config)
   const skills = skillsDirOf(path)
   if ((await hasSkills(skills)) && (await syncCopy(skills, root, skillsDirOf(config), ask)))

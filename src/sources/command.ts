@@ -69,7 +69,9 @@ export const commandConfig = z
     setup: z
       .string()
       .optional()
-      .describe("Runs in the config file's folder before awaywork on GitHub Actions"),
+      .describe(
+        "Runs in the config file's folder before awaywork on GitHub Actions, and at build in awaywork's container image",
+      ),
     link: linkTemplate.optional(),
     every: pollEvery,
     write: z

@@ -53,8 +53,8 @@ Commands:
   replay <run> <unit>       re-run a past run's unit, its first step, on its
                             base commit and saved context with today's skills
                             and instructions; nothing is pushed
-  schedule                  run awaywork when its windows open, on this machine
-                            or in GitHub Actions
+  schedule                  run awaywork when its windows open, on this machine,
+                            in GitHub Actions or in a container
   doctor [options]          validate the config and check binaries, credentials,
                             quota and sources before a run
   help [command]            display help for command
@@ -318,7 +318,8 @@ Options:
 ```text
 Usage: awaywork schedule [options] [command]
 
-run awaywork when its windows open, on this machine or in GitHub Actions
+run awaywork when its windows open, on this machine, in GitHub Actions or in a
+container
 
 Options:
   -h, --help         display help for command
@@ -327,7 +328,8 @@ Commands:
   install [options]  keep `awaywork watch` running, which starts a run when a
                      window opens
   remove             remove the scheduled job, and
-                     .github/workflows/awaywork.yml in the current repo
+                     .github/workflows/awaywork.yml or the container's files in
+                     the current repo
   status             show the installed scheduled job and what awaywork watch is
                      doing
   help [command]     display help for command
@@ -341,9 +343,9 @@ Usage: awaywork schedule install [options]
 keep `awaywork watch` running, which starts a run when a window opens
 
 Options:
-  --with <scheduler>  launchd, systemd, cron, github-actions (default: asks in a
-                      terminal, else launchd on macOS, else systemd if it runs,
-                      else cron)
+  --with <scheduler>  launchd, systemd, cron, github-actions, docker (default:
+                      asks in a terminal, else launchd on macOS, else systemd if
+                      it runs, else cron)
   -h, --help          display help for command
 ```
 
@@ -352,7 +354,8 @@ Options:
 ```text
 Usage: awaywork schedule remove [options]
 
-remove the scheduled job, and .github/workflows/awaywork.yml in the current repo
+remove the scheduled job, and .github/workflows/awaywork.yml or the container's
+files in the current repo
 
 Options:
   -h, --help  display help for command

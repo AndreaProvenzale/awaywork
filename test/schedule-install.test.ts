@@ -213,8 +213,8 @@ it('offers later at the end of init only, not in schedule install', async () => 
   await installSchedule(config, undefined, { ...install, ask: recording(install.ask) })
   await whereToRun(recording(scriptedAsk([[/^Where should it run/, initial]])), true)
   expect(offered).toEqual([
-    ['', 'github-actions'],
-    ['', 'github-actions', 'later'],
+    ['', 'github-actions', 'docker'],
+    ['', 'github-actions', 'docker', 'later'],
   ])
 })
 

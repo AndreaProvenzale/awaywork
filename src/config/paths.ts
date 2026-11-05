@@ -19,6 +19,7 @@ function packageRoot(dir = dirname(fileURLToPath(import.meta.url))): string {
 
 export const harnessPath = join(packageRoot(), 'harness.md')
 export const builtinSkillsDir = join(packageRoot(), 'skills')
+export const dockerDir = join(packageRoot(), 'docker')
 export const packageVersion: string = JSON.parse(
   readFileSync(join(packageRoot(), 'package.json'), 'utf8'),
 ).version
