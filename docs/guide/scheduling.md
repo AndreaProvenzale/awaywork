@@ -355,7 +355,7 @@ After a `git pull`, `docker compose up -d --build` again.
 
 ### From your laptop
 
-No ssh into the box, and none needed: give the daemon a token and your laptop's `awaywork report`, `plan`, `skip`, `approve` and `run --unit` run in the container, and so does [`/away`](./agents.md#claude-code), pane and skill, since they only call those. It's the CLI over HTTP, not an API: the daemon runs the same command, with its own config, and streams back what it prints as it prints it.
+No ssh into the container, and none needed: give the daemon a token and your laptop's `awaywork report`, `plan`, `skip`, `approve` and `run --unit` run in the container, and so does [`/away`](./agents.md#claude-code), pane and skill, since they only call those. It's the CLI over HTTP, not an API: the daemon runs the same command, with its own config, and streams back what it prints as it prints it. awaywork running on a box of your own, no container, is simpler still: [over ssh](#over-ssh).
 
 1. Make a token, `openssl rand -hex 32`, and set it as `AWAYWORK_REMOTE_TOKEN` in Coolify (or `.env` on a VPS), then redeploy. `compose.yml` already lists it. Without it the daemon opens no port; under 32 characters, it logs `remote: AWAYWORK_REMOTE_TOKEN is shorter than 32 characters, so no port is open` and keeps running without one.
 2. Give the service a domain. In Coolify, the awaywork service's **Domains** field takes it with the container's port, `https://away.example.com:7480`: Coolify's proxy gets the Let's Encrypt certificate and forwards to port 7480, which `compose.yml` exposes to the proxy and never publishes on the host. On a VPS, publish it on localhost in a `compose.override.yml` beside `compose.yml` (compose merges it, and `schedule install` never touches it), and put Caddy in front:
@@ -375,7 +375,7 @@ No ssh into the box, and none needed: give the daemon a token and your laptop's 
 
    In the image the daemon listens on every interface, since Coolify's proxy comes from another container. Anywhere else, `watch` under launchd, systemd or cron with the token in its env file, it listens on `127.0.0.1:7480` only and logs `remote: serving the CLI on port 7480, 127.0.0.1 only`, so the same Caddy on that machine is the way in.
 
-3. On your laptop, add both to `~/.config/awaywork/env`:
+3. On your laptop, add both to `~/.config/awaywork/env`. `AWAYWORK_REMOTE` takes an `https://` or `http://` URL, which needs the token, or an [`ssh://`](#over-ssh) one, which doesn't; anything else is an error:
 
    ```sh
    AWAYWORK_REMOTE=https://away.example.com
@@ -461,6 +461,63 @@ AWAYWORK_REMOTE (http://127.0.0.1:7480) refused AWAYWORK_REMOTE_TOKEN
 ```
 
 To go back to your laptop's own runs, take the two lines out of the env file. A daemon of your own on the laptop opens no port while `AWAYWORK_REMOTE` is set: that machine forwards. What a leaked token gets, and how to rotate it, is in [Safety](./safety.md#the-remote-token).
+
+#### Over ssh
+
+awaywork on a box of its own, a VPS under systemd from [`schedule install`](#on-your-machine), a home server, the Mac mini in the closet: you can already ssh in, so that's the way. No proxy, no TLS, no token on the laptop. On the laptop, in `~/.config/awaywork/env`:
+
+```sh
+AWAYWORK_REMOTE=ssh://box   # or ssh://you@host:2222
+```
+
+The host is whatever `ssh` takes, so an alias from `~/.ssh/config` works. The same calls as above go to the box, `/away` too, and they still go through the box's daemon: the laptop runs `ssh -T -o BatchMode=yes box env AWAYWORK_REMOTE=http://127.0.0.1:7480 AWAYWORK_REMOTE_VIA=ssh://box awaywork <args>`, each argument quoted for the box's shell, and the box's awaywork forwards it to its daemon on `127.0.0.1:7480`, the way it would over HTTP. So the box needs:
+
+- **`awaywork watch` running with a token.** Put `AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)` in the box's `~/.config/awaywork/env` and restart the daemon. The token never leaves the box: ssh is the lock.
+- **awaywork and node on the PATH ssh gives a command**, which isn't your login shell's: nvm's or a user prefix's usually aren't. `ssh box 'command -v awaywork node'` should print both; if it doesn't, install them system-wide, or link them from an interactive shell on the box: `sudo ln -s "$(command -v node)" "$(command -v awaywork)" /usr/local/bin/`.
+- **Key auth.** `BatchMode` means ssh never asks for a password or about a host key, either of which would hang the `/away` pane. Your agent is fine; ssh in once by hand so the host key is known.
+
+Here against a box on Colima, sshd and this awaywork under a user `dev`, the same stand-in agent and `chores` source:
+
+```
+$ awaywork plan --json | jq -c '{units: [.units[] | {key: .unit.items[0].key, skill: .unit.skill}]}'
+{"units":[{"key":"CH-1","skill":"plan"}]}
+$ awaywork run --unit CH-1
+Queued CH-1 as run 20261105-195818; awaywork report 20261105-195818 shows it once it ends
+$ awaywork report --list
+20261105-195818  1 unit, 0 draft PRs, 1 report
+$ awaywork report 20261105-195818 --unit CH-1
+1  CH-1  Write a hello report
+  skill   plan
+  status  done
+  result  report
+  item    https://example.com/ch-1
+  files   /home/dev/.local/state/awaywork/runs/20261105-195818/units/ch-1/1-plan/worker.log
+          /home/dev/.local/state/awaywork/runs/20261105-195818/units/ch-1/1-plan/out/report.md
+          /home/dev/.local/state/awaywork/runs/20261105-195818/units/ch-1/out/report.md
+
+Hello from the stand-in agent, on box
+$ awaywork skip chores:CH-1 --reason "it's done; \$(rm -rf ~)"
+skipped with awaywork skip chores:CH-1: it's done; $(rm -rf ~)
+$ awaywork run --unit CH-1 --dry-run
+AWAYWORK_REMOTE (ssh://box): refused --dry-run
+```
+
+The exit code is the box's, and stdout and stderr stay apart, so `--json | jq` works. Without a terminal, ssh passes no Ctrl-C to the box; instead the box's awaywork leaves once the laptop's ssh goes, whatever took it down, and the daemon stops the command, as over HTTP (`remote: ["plan"]: stopped, the client left` in the box's `watch.log`). When something's off, it's one line naming the remote, the box's side included:
+
+```
+$ awaywork report
+can't reach AWAYWORK_REMOTE (ssh://box): ssh: connect to host 127.0.0.1 port 2222: Connection refused
+$ awaywork report
+can't reach AWAYWORK_REMOTE (ssh://dev@127.0.0.1:2222): Host key verification failed.
+$ awaywork report
+AWAYWORK_REMOTE (ssh://box): awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin
+$ awaywork report
+AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving (connect ECONNREFUSED 127.0.0.1:7480); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file?
+$ awaywork run --unit CH-1
+AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's /home/dev/.config/awaywork/env has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch
+```
+
+A call that came over ssh never runs on the box outside its daemon, so a box without a token turns it away rather than running `run --unit` there and then. The container is the exception: its daemon's port goes to the proxy, not the host, so for Coolify or compose it's HTTP.
 
 ### Living with it
 

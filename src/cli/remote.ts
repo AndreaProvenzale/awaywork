@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
-import { runsDir } from '../config/paths.js'
+import { envFile, runsDir } from '../config/paths.js'
 import { awaitGroup } from '../core/group.js'
 import { inAwayworkImage } from '../core/launch.js'
 
@@ -117,12 +117,102 @@ export interface Remote {
   token?: string
 }
 
+const fail = (line: string) => {
+  console.error(line)
+  return 1
+}
+
+/** Runs a CLI call where AWAYWORK_REMOTE says, its exit code; undefined when it runs here. */
+export function remoteCall(
+  args: string[],
+  { url, token, via }: Remote & { via?: string },
+): Promise<number> | undefined {
+  if (via) return fromSsh(args, url, token, via)
+  if (!url || !servedRemotely(args)) return
+  if (/^ssh:\/\//i.test(url)) return overSsh(args, url)
+  if (!/^https?:\/\//i.test(url))
+    return Promise.resolve(fail(`AWAYWORK_REMOTE (${url}) is neither ssh:// nor http(s)://`))
+  if (token) return forward(args, { url, token })
+}
+
+/** `arg` as one word for a POSIX shell, whatever it holds. */
+export const shellQuote = (arg: string) => `'${arg.replaceAll("'", `'\\''`)}'`
+
+/** The argv for `ssh` to run a CLI call with the box's awaywork, which forwards it to its own daemon. */
+export function sshArgs(url: string, args: string[]): string[] | undefined {
+  const target = URL.canParse(url) ? new URL(url) : undefined
+  if (!target?.hostname) return
+  const { username, hostname, port } = target
+  const command = [
+    'env',
+    `AWAYWORK_REMOTE=http://127.0.0.1:${REMOTE_PORT}`,
+    `AWAYWORK_REMOTE_VIA=${url}`,
+    'awaywork',
+    ...args,
+  ]
+  return [
+    '-T',
+    '-o',
+    'BatchMode=yes',
+    ...(port ? ['-p', port] : []),
+    '--',
+    username ? `${username}@${hostname}` : hostname,
+    command.map(shellQuote).join(' '),
+  ]
+}
+
+/** Runs a CLI call on the box an ssh:// AWAYWORK_REMOTE names, printing its output as it comes; its exit code. */
+async function overSsh(args: string[], url: string): Promise<number> {
+  const at = `AWAYWORK_REMOTE (${url})`
+  const argv = sshArgs(url, args)
+  if (!argv) return fail(`${at} names no host`)
+  // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
+  const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
+  // Held until more output comes, so ssh's own last line can become this one's.
+  let held = ''
+  const flush = () => {
+    process.stderr.write(held)
+    held = ''
+  }
+  ssh.stdout.setEncoding('utf8').on('data', (text: string) => {
+    flush()
+    process.stdout.write(text)
+  })
+  ssh.stderr.setEncoding('utf8').on('data', (text: string) => {
+    flush()
+    held = text
+  })
+  const { exitCode, originalMessage } = await ssh
+  if (exitCode === 255)
+    return fail(`can't reach ${at}: ${held.trim().split('\n').at(-1)?.trim() || 'ssh exited 255'}`)
+  if (exitCode === 127)
+    return fail(
+      `${at}: awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin`,
+    )
+  flush()
+  return exitCode ?? fail(`can't reach ${at}: ${originalMessage}`)
+}
+
+/** On the box, a call that came over ssh: forwarded to this box's daemon until the laptop's end goes. */
+async function fromSsh(args: string[], url = '', token = '', via = ''): Promise<number> {
+  if (!token)
+    return fail(
+      `AWAYWORK_REMOTE (${via}): the box's daemon isn't serving, the box's ${envFile} has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch`,
+    )
+  // ssh passes no Ctrl-C without a terminal, but the laptop's end going closes stdin.
+  process.stdin.once('end', () => process.exit(130)).resume()
+  const code = await forward(args, { url, token }, via)
+  process.stdin.destroy()
+  return code
+}
+
 /** Runs a CLI call on the remote, printing its output as it comes; its exit code. */
 export async function forward(
   args: string[],
   remote: { url: string; token: string },
+  via?: string,
 ): Promise<number> {
-  const at = `AWAYWORK_REMOTE (${remote.url})`
+  const at = `AWAYWORK_REMOTE (${via ?? remote.url})`
   let res: Response
   try {
     res = await fetch(`${remote.url.replace(/\/+$/, '')}/cli`, {
@@ -133,8 +223,12 @@ export async function forward(
     })
   } catch (e) {
     const { cause, message } = e as Error & { cause?: Error }
-    console.error(`can't reach ${at}: ${cause?.message ?? message}`)
-    return 1
+    const reason = cause?.message ?? message
+    return fail(
+      via
+        ? `${at}: the box's daemon isn't serving (${reason}); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file?`
+        : `can't reach ${at}: ${reason}`,
+    )
   }
   if (res.status === 401) {
     console.error(`${at} refused AWAYWORK_REMOTE_TOKEN`)
