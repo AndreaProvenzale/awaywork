@@ -93,6 +93,15 @@ vi.mock('node:timers/promises', async (original) => {
       timers.setTimeout(clock.fast && (ms ?? 0) > 1000 ? 20 : ms, value, options),
   }
 })
+// The daemon's remote server, on a free port.
+vi.mock('../src/cli/remote.js', async (original) => {
+  const real = await original<typeof import('../src/cli/remote.js')>()
+  return {
+    ...real,
+    serveRemote: (...[env, s]: Parameters<typeof real.serveRemote>) =>
+      real.serveRemote(env, { ...s, port: 0 }),
+  }
+})
 vi.mock('../src/scheduler/wake.js', async (original) => ({
   ...(await original<typeof import('../src/scheduler/wake.js')>()),
   holdAwake: async () => () => {},
@@ -301,6 +310,64 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
     const events = (await readFile(join(dir, 'events.txt'), 'utf8')).trim().split('\n')
     expect(events.sort()).toEqual(['run', 'unit ch-1', 'unit ch-2'])
   }, 30_000)
+
+  it('queues a remote run --unit as a one-off run of that item alone, refusing one no rule takes', async () => {
+    const path = await config('[]')
+    const item = (n: number) => ({
+      id: String(n),
+      key: `CH-${n}`,
+      title: `Chore ${n}`,
+      url: `https://e.com/${n}`,
+      fields: { repo: 'acme/api' },
+    })
+    await writeFile(join(dirname(path), 'items.json'), JSON.stringify([item(1), item(2)]))
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+    )
+    const stop = new AbortController()
+    const done = watch(path, stop.signal, { token: 'a'.repeat(32) })
+    await vi.waitFor(async () => expect(await daemonLog()).toContain('remote: serving the CLI'))
+    const port = /serving the CLI on port (\d+)/.exec(await daemonLog())?.[1]
+    const post = (args: string[]) =>
+      fetch(`http://127.0.0.1:${port}/cli`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${'a'.repeat(32)}` },
+        body: JSON.stringify({ args }),
+      })
+        .then((r) => r.text())
+        .then((text) =>
+          Object.assign(
+            {},
+            ...text
+              .trim()
+              .split('\n')
+              .map((l) => JSON.parse(l)),
+          ),
+        )
+    expect(await post(['run', '--unit', 'CH-9'])).toEqual({
+      stdout: '',
+      stderr: 'no unit "CH-9" in the plan; awaywork plan --why CH-9 says why\n',
+      code: 1,
+    })
+    const { stdout } = await post(['run', '--unit', 'CH-1'])
+    const runId =
+      /^Queued CH-1 as run (\d{8}-\d{6}); awaywork report \1 shows it once it ends\n$/.exec(
+        stdout,
+      )?.[1]
+    await vi.waitFor(async () => expect(await daemonLog()).toContain('Report: '), {
+      timeout: 10_000,
+    })
+    stop.abort()
+    await done
+    const log = await daemonLog()
+    expect(log).toContain(`unit run ${runId} started for CH-1\n`)
+    expect(log).toContain('remote: ["run","--unit","CH-1"]: exit 0')
+    const plan = await readFile(join(runsDir, runId ?? '', 'plan.txt'), 'utf8')
+    expect(plan).toContain('present run (outside the windows)')
+    expect(plan).toContain('Chore 1')
+    expect(plan).not.toContain('Chore 2')
+  })
 
   it('switches isolation only with no run in progress, and again after a switch failed', async () => {
     // A docker that answers, and a sudo that refuses: isolation: user fails on Linux too.

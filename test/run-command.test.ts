@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { abortOnSignals, executeRun, type RunArgs, runCommand } from '../src/cli/run.js'
 import { loadConfig } from '../src/config/load.js'
 import { runLockPath, runsDir, watchLockPath } from '../src/config/paths.js'
+import { claimUnits } from '../src/core/poll.js'
 
 vi.mock('../src/providers/index.js', async () => {
   const { fakeProvider } = await import('./fakes/provider.js')
@@ -170,6 +171,31 @@ describe('run command', () => {
     const present = await readFile(join(runsDir, '20261025-120100', 'plan.txt'), 'utf8')
     expect(present).toContain('present run (outside the windows)')
     expect(await readFile(out, 'utf8')).toBe('run\n')
+  })
+
+  it('ends a unit run whose item a run in progress claimed first with a report saying so', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-run-'))
+    const path = join(dir, 'config.yml')
+    const item = { id: '1', key: 'CH-1', title: 'Chore 1', url: 'https://e.com/1' }
+    await writeFile(join(dir, 'items.json'), JSON.stringify([{ ...item, fields: { repo: 'a/b' } }]))
+    await writeFile(
+      path,
+      `providers: [claude]\nwindows: []\nsources: { chores: { command: cat items.json } }\nqueue: [{ skill: plan }]\n`,
+    )
+    const held = new Map([['chores:CH-1', '20261025-115900']])
+    const runId = '20261025-120200'
+    await executeRun({
+      path,
+      config: await loadConfig(path),
+      runId,
+      now: new Date(),
+      log: { info: () => {}, error: () => {} },
+      signal: () => new AbortController().signal,
+      unit: 'CH-1',
+      claim: (plan) => claimUnits(plan, runId, held, new Map()),
+    })
+    const report = await readFile(join(runsDir, runId, 'report.md'), 'utf8')
+    expect(report).toContain('CH-1: running in run 20261025-115900')
   })
 
   it("masks the notify command's secret in its failure", async () => {

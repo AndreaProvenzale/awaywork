@@ -287,7 +287,8 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     runId,
     runDir,
     dryRun: !!a.dryRun,
-    only: a.unit,
+    // Claimed first by a run in progress, it's in the plan's skipped, and this run runs nothing.
+    only: a.unit && namedChains(plan, a.unit).length ? a.unit : undefined,
     until: a.until,
     providers: providersOf(config),
     sources,

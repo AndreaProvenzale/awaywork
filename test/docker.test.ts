@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
+import { REMOTE_PORT } from '../src/cli/remote.js'
 import { installDocker } from '../src/cli/schedule.js'
 import { packageVersion } from '../src/config/paths.js'
 import { sudoersLines } from '../src/core/launch.js'
@@ -110,7 +111,8 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
     expect(built).toContain(
       'COPY .awaywork /home/away/.awaywork\n# A command source\'s setup, in the config\'s folder, without the secrets.\nRUN <<"AWAYWORK_SETUP"\n#!/usr/bin/env bash\nset -eo pipefail\ncd /home/away/.awaywork\ngo build -o board .\nAWAYWORK_SETUP\n',
     )
-    const env = parse(await read('compose.yml')).services.awaywork.environment
+    const { environment: env, expose } = parse(await read('compose.yml')).services.awaywork
+    expect(expose).toEqual([String(REMOTE_PORT)])
     expect(env).toEqual({
       GH_TOKEN: '${GH_TOKEN:?}',
       CLAUDE_CODE_OAUTH_TOKEN: '${CLAUDE_CODE_OAUTH_TOKEN:-}',
@@ -118,6 +120,7 @@ repos: { acme/api: { secrets: [DATABASE_URL] } }
       BOARD_TOKEN: '${BOARD_TOKEN:-}',
       DATABASE_URL: '${DATABASE_URL:-}',
       TZ: `\${TZ:-${Intl.DateTimeFormat().resolvedOptions().timeZone}}`,
+      AWAYWORK_REMOTE_TOKEN: '${AWAYWORK_REMOTE_TOKEN:-}',
     })
   })
 

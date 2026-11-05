@@ -32,10 +32,13 @@ import { firstOpening, windowEnd, windowRun } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { holdAwake } from '../scheduler/wake.js'
 import { maskSecrets } from '../worker/setup.js'
+import { namedChains } from '../worker/units.js'
+import { ambiguous } from './format.js'
 import { probeAndPlan, sourceFailure } from './plan.js'
+import { type Output, type Remote, serveRemote } from './remote.js'
 import { executeRun, newRunId, pruneOld, type RunArgs, type RunLog, serial } from './run.js'
 
-export function watchCommand(program: Command): void {
+export function watchCommand(program: Command, remote: Remote): void {
   program
     .command('watch')
     .description(
@@ -47,11 +50,11 @@ export function watchCommand(program: Command): void {
       for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => stop.abort())
       // Inherited by hooks and workers, so `schedule install` there won't stop this daemon.
       process.env.AWAYWORK_WATCH = String(process.pid)
-      return watch(configPath(program.opts().config), stop.signal)
+      return watch(configPath(program.opts().config), stop.signal, remote)
     })
 }
 
-type Trigger = 'window' | 'soon'
+type Trigger = 'window' | 'soon' | 'unit'
 
 /** What the daemon is doing, rewritten on each change. */
 interface WatchState {
@@ -112,9 +115,10 @@ export function isolation(turn: <T>(f: () => Promise<T>) => Promise<T>, log: (l:
 
 /**
  * The daemon: each minute on the wall clock, starts the window run due and polls the sources of
- * `run: soon` rules that are due, starting a soon run for the units due, until `stop`.
+ * `run: soon` rules that are due, starting a soon run for the units due, until `stop`. With a
+ * `remote` token, serves the CLI over HTTP.
  */
-export async function watch(path: string, stop: AbortSignal): Promise<void> {
+export async function watch(path: string, stop: AbortSignal, remote: Remote = {}): Promise<void> {
   const lock = await takeRunLock(watchLockPath, 'watch')
   if (!('release' in lock)) {
     console.log(`awaywork watch is already running (pid ${lock.pid})`)
@@ -181,7 +185,9 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
         ...(r.until && { until: r.until.toISOString() }),
       })
       await save()
-      const claim = (plan: RunPlan) => claimUnits(plan, runId, held, seen)
+      // A unit run takes its own chain only, as a soon run plans only its units.
+      const claim = (plan: RunPlan) =>
+        claimUnits(r.unit ? chainOf(plan, r.unit) : plan, runId, held, seen)
       const isolated = isolate(r.config, alone)
       const run = daemonRun({ ...r, path, runId, stop, claim, turn: oneWorker, isolated })
       running.set(
@@ -262,9 +268,44 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     else waiting = false
   }
 
+  /** A one-off run of the item `key`, as the workflow's `unit` input runs it, behind the worker in progress. */
+  const runUnit = async (key: string): Promise<Output> => {
+    const refuse = (why: string) => ({ stdout: '', stderr: `${why}\n`, code: 1 })
+    const config = await loadConfig(path).catch((e) => reason(e))
+    if (typeof config === 'string') return refuse(config)
+    const { plan } = await probeAndPlan(config, skillsDirOf(path), { retry: true, probe: false })
+    const [named, ...more] = namedChains(plan, key)
+    if (!named || more.length)
+      return refuse(
+        named
+          ? ambiguous(
+              key,
+              [named, ...more].flatMap((p) => p.unit.items.slice(0, 1)),
+            )
+          : `no unit "${key}" in the plan; awaywork plan --why ${key} says why`,
+      )
+    const busy = named.unit.items.map((i) => held.get(`${i.source}:${i.key}`)).find(Boolean)
+    if (busy) return refuse(`${key} is running in run ${busy}`)
+    if (stop.aborted) return refuse('awaywork watch is stopping')
+    // Inside a window it's away, until the window ends, as a soon run.
+    const until = windowEnd(config.windows, new Date())
+    const started = await start({ trigger: 'unit', config, until, present: !until, unit: key })
+    if (typeof started !== 'string')
+      return refuse(
+        `run ${started.runId} (pid ${started.pid}) holds the run lock; try again once it ends`,
+      )
+    const behind = running.size > 1 ? ', behind the runs in progress' : ''
+    return {
+      stdout: `Queued ${key} as run ${started}${behind}; awaywork report ${started} shows it once it ends\n`,
+      stderr: '',
+      code: 0,
+    }
+  }
+
   let polling: Promise<void> | undefined
   let pollFailed: string | undefined
   event(`awaywork watch started, pid ${process.pid}, config ${path}`)
+  const server = serveRemote(remote, { config: path, log: event, runUnit })
   await save()
   try {
     while (!stop.aborted) {
@@ -311,16 +352,24 @@ export async function watch(path: string, stop: AbortSignal): Promise<void> {
     // The last run's finish, which may have left `running` before it released the run lock.
     await inTurn(async () => {})
     await inSave(() => rm(watchStatePath, { force: true }))
+    server?.close()
+    server?.closeAllConnections()
     event('awaywork watch stopped')
     await lock.release()
   }
+}
+
+/** The plan with only the chain `unit` names. */
+function chainOf(plan: RunPlan, unit: string): RunPlan {
+  const heads = new Set(namedChains(plan, unit).map((p) => p.unit.id))
+  return { ...plan, units: plan.units.filter((p) => heads.has(p.chain ?? p.unit.id)) }
 }
 
 /** E.g. `5m` or `1h`. */
 const describeSpan = (ms: number) =>
   ms % (60 * MINUTE) === 0 ? `${ms / (60 * MINUTE)}h` : `${Math.round(ms / MINUTE)}m`
 
-interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn'> {
+interface DaemonRun extends Pick<RunArgs, 'until' | 'soon' | 'claim' | 'turn' | 'unit'> {
   trigger: Trigger
   path: string
   config: Config
@@ -346,7 +395,7 @@ async function daemonRun(r: DaemonRun): Promise<void> {
     },
   }
   const until = r.until ? `, until ${localTime(r.until)}` : ''
-  const units = r.soon ? ` for ${r.soon.units.join(', ')}` : ''
+  const units = r.soon ? ` for ${r.soon.units.join(', ')}` : r.unit ? ` for ${r.unit}` : ''
   event(`${r.trigger} run ${r.runId} started${until}${units}`)
   try {
     await r.isolated

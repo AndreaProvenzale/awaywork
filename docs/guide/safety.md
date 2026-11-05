@@ -277,6 +277,25 @@ A watchdog polls every 2 s. It stops the unit below 1.5 GB of free memory or 2 G
 
 In GitHub Actions, your credentials are secrets of your control repo. The generated workflow passes them only to awaywork's step, checks out without keeping a credential, and gives the job's `GITHUB_TOKEN` read access only: awaywork pushes with your `GH_TOKEN`. Still, anyone with write access to the repo can read them: a branch they push can carry a workflow that prints them. So keep the control repo your own, one per person on a team.
 
+## The remote token
+
+`AWAYWORK_REMOTE_TOKEN` lets your laptop [reach the container's daemon](./scheduling.md#from-your-laptop), so it's worth what that reach is, no more. Whoever has it and the domain gets:
+
+- **Reads:** `report`, `plan`, `stats`, `sources`, `doctor` and `schedule status`, so your items' titles and text, the units' summaries and reports, and the box's paths. `sources <id>` takes any built-in source, configured or not, so it also lists what the box's credentials can see: `sources github` prints your login and orgs, Asana, Linear and Jira the workspaces, teams, projects and statuses their tokens reach. Secrets your config names are masked in what these print, as they are on your machine.
+- **A few writes, all inside the usual guardrails:** `skip` and `unskip` an item, `approve` one with any notes (marking it, or replying `approve <notes>`, marked as awaywork's, on a plan awaywork posted), and `run --unit`, a one-off run of an item a rule already takes, as the schedule would run it. Each of those can only do what a run could anyway, on your own items.
+- **Nothing else.** The daemon runs an allowlist of commands and flags, never a shell: arguments reach the command as plain text, so `x; touch /tmp/pwned` is just an item key nobody has. It always runs its own config, never a `--config` or `-c` (refused wherever it sits, as a flag's value included), never a cwd or env from the request; a run id `report` takes has to be a run in the daemon's runs dir. So no `init`, `config`, `schedule install` or `remove`, no full `run`, no env, config or credentials: `GH_TOKEN` and the agents' logins stay in the container.
+
+It's not in the units' env: the daemon blanks it before anything starts, so neither the agent, setup and checks nor a command awaywork spawns gets it. Under `isolation: user`, which the image always uses, they can't reach it at all. Under `isolation: none` they run as the daemon's user, who can read the daemon's environment (`/proc/<pid>/environ` on Linux), so the token is in reach like your other secrets ([Not a sandbox](#not-a-sandbox)). A stand-in agent in the image, asking the daemon from inside the container:
+
+```
+as awaywork, AWAYWORK_REMOTE_TOKEN=[unset]
+{"error":"wrong token"}
+```
+
+The daemon speaks plain HTTP: TLS is the proxy's job, Coolify's Traefik or your Caddy, which is why outside the image it listens on `127.0.0.1` only. Set `AWAYWORK_REMOTE` to an `https://` URL whenever it crosses a network you don't own. The token is compared in constant time, and it's never in a log line.
+
+Leaked, or just old? Make a new one, set it in Coolify (or `.env`) and redeploy, then put it in your laptop's env file: the old one stops working when the new container starts. Take it out of Coolify and redeploy, and the port is gone.
+
 ## Vendor terms
 
 awaywork runs each vendor's **unmodified CLI** with **your own login**. It never calls a provider's backing API with a subscription credential, never stores, pools or proxies anyone else's, and never changes the client's identity. That is the line the vendors draw.
