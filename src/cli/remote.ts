@@ -17,7 +17,7 @@ const MAX_BODY = 16 * 1024
 const MAX_COMMANDS = 2
 const TIMEOUT_MS = 2 * 60_000
 const BEAT_MS = 30_000
-const QUIET_MS = 500
+const HOLD_MS = 500
 
 /** A command's output, as the remote ran it; streamed as NDJSON lines, `code` last. */
 export interface Output {
@@ -161,11 +161,12 @@ async function overSsh(args: string[], url: string): Promise<number> {
   if (!argv) return fail(`${at} names no host`)
   // A stdin nothing writes to: it closes when this process goes, and the box's end leaves with it.
   const ssh = execa('ssh', argv, { stdin: 'pipe', reject: false, buffer: false })
-  // Held until more output or a quiet spell comes, so ssh's own last line can become this one's.
+  // Held until stdout comes or HOLD_MS pass, so ssh's last lines, however split, can become this one's.
   let held = ''
-  let quiet: NodeJS.Timeout | undefined
+  let hold: NodeJS.Timeout | undefined
   const flush = () => {
-    clearTimeout(quiet)
+    clearTimeout(hold)
+    hold = undefined
     process.stderr.write(held)
     held = ''
   }
@@ -174,12 +175,11 @@ async function overSsh(args: string[], url: string): Promise<number> {
     process.stdout.write(text)
   })
   ssh.stderr.setEncoding('utf8').on('data', (text: string) => {
-    flush()
-    held = text
-    quiet = setTimeout(flush, QUIET_MS)
+    held += text
+    hold ??= setTimeout(flush, HOLD_MS)
   })
   const { exitCode, originalMessage } = await ssh
-  clearTimeout(quiet)
+  clearTimeout(hold)
   if (exitCode === 255)
     return fail(`can't reach ${at}: ${held.trim().split('\n').at(-1)?.trim() || 'ssh exited 255'}`)
   if (exitCode === 127)

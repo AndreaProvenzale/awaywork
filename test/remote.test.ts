@@ -450,7 +450,7 @@ describe('the CLI forwarding to a remote', () => {
       await writeFile(join(home, '.config', 'awaywork', 'env'), boxEnv)
       const ssh = `#!/bin/sh
 while [ "$1" != -- ]; do shift; done
-if [ "$2" = down ]; then echo "ssh: connect to host down port 22: Connection refused" >&2; exit 255; fi
+if [ "$2" = down ]; then printf "kex_exchange_identification: read: Connection reset by peer\\nssh: connect to host down " >&2; sleep 0.1; echo "port 22: Connection refused" >&2; exit 255; fi
 if [ "$2" = chatty ]; then echo warn >&2; sleep 2; echo out; exit 0; fi
 exec env PATH="$BOX_PATH" sh -c "$3"
 `
