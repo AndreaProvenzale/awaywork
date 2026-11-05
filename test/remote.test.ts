@@ -452,6 +452,7 @@ describe('the CLI forwarding to a remote', () => {
       const ssh = `#!/bin/sh
 while [ "$1" != -- ]; do shift; done
 if [ "$2" = down ]; then echo "ssh: connect to host down port 22: Connection refused" >&2; exit 255; fi
+if [ "$2" = chatty ]; then echo warn >&2; sleep 2; echo out; exit 0; fi
 exec env PATH="$BOX_PATH" sh -c "$3"
 `
       // The box's daemon is on its own port here, not 7480.
@@ -483,6 +484,7 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
         'me@box.example.com',
       ])
       expect(shellQuote(`it's`)).toBe(`'it'\\''s'`)
+      expect(shellQuote('C:\\')).toBe(`'C:'\\\\''`)
       expect(sshArgs('ssh://', [])).toBeUndefined()
     })
 
@@ -497,6 +499,7 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
         `it's`,
         'a  b',
         '"double"',
+        'end\\',
         `; touch ${pwned}`,
         `$(touch ${pwned})`,
         `\`touch ${pwned}\``,
@@ -540,6 +543,24 @@ exec env AWAYWORK_REMOTE="$BOX_URL" HOME=${home} ${process.execPath} --experimen
         "AWAYWORK_REMOTE (ssh://box): awaywork isn't on the box's PATH for non-interactive ssh; install it and node system-wide there, or link both into /usr/local/bin",
         '',
       ])
+    }, 20_000)
+
+    it("says the box's daemon runs with another token than its env file, and passes a lone stderr line on", async () => {
+      await box(`AWAYWORK_REMOTE_TOKEN=${'b'.repeat(64)}\n`)
+      const { url } = await serve()
+      vi.stubEnv('BOX_URL', url)
+      const out = output()
+      expect(await remoteCall(['plan'], { url: 'ssh://box' })).toBe(1)
+      expect(out.stderr).toBe(
+        "AWAYWORK_REMOTE (ssh://box): the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there\n",
+      )
+      out.stderr = ''
+      const chatty = remoteCall(['plan'], { url: 'ssh://chatty' })
+      await vi.waitFor(() => expect(out).toEqual({ stdout: '', stderr: 'warn\n' }), {
+        timeout: 1500,
+      })
+      expect(await chatty).toBe(0)
+      expect(out).toEqual({ stdout: 'out\n', stderr: 'warn\n' })
     }, 20_000)
 
     it("says the box's daemon isn't serving when its env file has no token", async () => {

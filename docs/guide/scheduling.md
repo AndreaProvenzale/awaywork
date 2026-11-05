@@ -472,8 +472,9 @@ AWAYWORK_REMOTE=ssh://box   # or ssh://you@host:2222
 
 The host is whatever `ssh` takes, so an alias from `~/.ssh/config` works. The same calls as above go to the box, `/away` too, and they still go through the box's daemon: the laptop runs `ssh -T -o BatchMode=yes box env AWAYWORK_REMOTE=http://127.0.0.1:7480 AWAYWORK_REMOTE_VIA=ssh://box awaywork <args>`, each argument quoted for the box's shell, and the box's awaywork forwards it to its daemon on `127.0.0.1:7480`, the way it would over HTTP. So the box needs:
 
-- **`awaywork watch` running with a token.** Put `AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)` in the box's `~/.config/awaywork/env` and restart the daemon. The token never leaves the box: ssh is the lock.
+- **`awaywork watch` running with a token.** On the box, `echo "AWAYWORK_REMOTE_TOKEN=$(openssl rand -hex 32)" >> ~/.config/awaywork/env`, then restart the daemon. The token never leaves the box: ssh is the lock.
 - **awaywork and node on the PATH ssh gives a command**, which isn't your login shell's: nvm's or a user prefix's usually aren't. `ssh box 'command -v awaywork node'` should print both; if it doesn't, install them system-wide, or link them from an interactive shell on the box: `sudo ln -s "$(command -v node)" "$(command -v awaywork)" /usr/local/bin/`.
+- **A login shell that's sh-like or fish.** ssh hands the command to the box user's login shell as one string. sh, dash, bash, zsh and fish all read awaywork's quoting the same, tried with quotes, backslashes, `;`, `$(…)`, backticks and newlines in the arguments. csh and tcsh don't: a `!` or a newline in an argument breaks the call there, and a newline can run what follows it as a command. `chsh` to one of the others, or ssh in as a user who has one.
 - **Key auth.** `BatchMode` means ssh never asks for a password or about a host key, either of which would hang the `/away` pane. Your agent is fine; ssh in once by hand so the host key is known.
 
 Here against a box on Colima, sshd and this awaywork under a user `dev`, the same stand-in agent and `chores` source:
@@ -515,6 +516,8 @@ $ awaywork report
 AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving (connect ECONNREFUSED 127.0.0.1:7480); is awaywork watch running there, with AWAYWORK_REMOTE_TOKEN in its env file?
 $ awaywork run --unit CH-1
 AWAYWORK_REMOTE (ssh://box): the box's daemon isn't serving, the box's /home/dev/.config/awaywork/env has no AWAYWORK_REMOTE_TOKEN; add one there and restart awaywork watch
+$ awaywork report --list
+AWAYWORK_REMOTE (ssh://box): the box's daemon runs with another AWAYWORK_REMOTE_TOKEN than its env file; restart awaywork watch there
 ```
 
 A call that came over ssh never runs on the box outside its daemon, so a box without a token turns it away rather than running `run --unit` there and then. The container is the exception: its daemon's port goes to the proxy, not the host, so for Coolify or compose it's HTTP.
