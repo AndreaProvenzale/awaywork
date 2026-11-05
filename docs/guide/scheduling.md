@@ -355,7 +355,7 @@ After a `git pull`, `docker compose up -d --build` again.
 
 ### From your laptop
 
-No ssh into the box, and none needed: give the daemon a token and your laptop's `awaywork report`, `plan`, `skip`, `approve` and `run --unit` run in the container, and so does [`/away`](./agents.md#claude-code), pane and skill, since they only call those. It's the CLI over HTTP, not an API: the daemon runs the same command, with its own config, and sends back what it printed.
+No ssh into the box, and none needed: give the daemon a token and your laptop's `awaywork report`, `plan`, `skip`, `approve` and `run --unit` run in the container, and so does [`/away`](./agents.md#claude-code), pane and skill, since they only call those. It's the CLI over HTTP, not an API: the daemon runs the same command, with its own config, and streams back what it prints as it prints it.
 
 1. Make a token, `openssl rand -hex 32`, and set it as `AWAYWORK_REMOTE_TOKEN` in Coolify (or `.env` on a VPS), then redeploy. `compose.yml` already lists it. Without it the daemon opens no port; under 32 characters, it logs `remote: AWAYWORK_REMOTE_TOKEN is shorter than 32 characters, so no port is open` and keeps running without one.
 2. Give the service a domain. In Coolify, the awaywork service's **Domains** field takes it with the container's port, `https://away.example.com:7480`: Coolify's proxy gets the Let's Encrypt certificate and forwards to port 7480, which `compose.yml` exposes to the proxy and never publishes on the host. On a VPS, publish it on localhost in a `compose.override.yml` beside `compose.yml` (compose merges it, and `schedule install` never touches it), and put Caddy in front:
@@ -449,7 +449,7 @@ $ awaywork run --unit CH-1
 CH-1 is running in run 20261104-220137
 ```
 
-The daemon runs two commands at a time and turns a third away. A box that's down, or a token that doesn't match, fails in one line too:
+The daemon runs two commands at a time and turns a third away. Each gets 10 minutes. While one prints nothing, as `plan` does while it reads your sources, the daemon still sends a `{}` line every 30 s so the proxy keeps the request open, and Ctrl-C on the laptop stops the command on the box. A `run --unit` still queues: it's the daemon's own by then. A box that's down, or a token that doesn't match, fails in one line too:
 
 ```
 $ awaywork doctor

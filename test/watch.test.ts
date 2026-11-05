@@ -334,7 +334,17 @@ notify: { command: 'echo "$AWAYWORK_EVENT $AWAYWORK_UNIT" >> ${join(dir, 'events
         method: 'POST',
         headers: { authorization: `Bearer ${'a'.repeat(32)}` },
         body: JSON.stringify({ args }),
-      }).then((r) => r.json())
+      })
+        .then((r) => r.text())
+        .then((text) =>
+          Object.assign(
+            {},
+            ...text
+              .trim()
+              .split('\n')
+              .map((l) => JSON.parse(l)),
+          ),
+        )
     expect(await post(['run', '--unit', 'CH-9'])).toEqual({
       stdout: '',
       stderr: 'no unit "CH-9" in the plan; awaywork plan --why CH-9 says why\n',

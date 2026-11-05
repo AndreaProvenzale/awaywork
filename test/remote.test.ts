@@ -117,8 +117,22 @@ const closeAll = () => {
 }
 afterEach(closeAll)
 
+/** A streamed answer, its lines' fields joined. */
+async function streamed(res: Response) {
+  const out = { stdout: '', stderr: '', code: undefined as number | undefined }
+  for (const line of (await res.text()).split('\n').filter(Boolean)) {
+    const { stdout = '', stderr = '', code } = JSON.parse(line)
+    Object.assign(out, { stdout: out.stdout + stdout, stderr: out.stderr + stderr, code })
+  }
+  return out
+}
+
 /** Serves on a free port, with a stand-in CLI printing its argv and whether it sees the remote's env. */
-async function serve(cli = 'console.log(JSON.stringify(process.argv.slice(1)))', timeout?: number) {
+async function serve(
+  cli = 'console.log(JSON.stringify(process.argv.slice(1)))',
+  timeout?: number,
+  beat?: number,
+) {
   const log: string[] = []
   const runUnit = vi.fn(async (key: string) => ({ stdout: `Queued ${key}\n`, stderr: '', code: 0 }))
   const server = serveRemote(
@@ -130,6 +144,7 @@ async function serve(cli = 'console.log(JSON.stringify(process.argv.slice(1)))',
       cli: [process.execPath, '-e', cli, '--'],
       port: 0,
       timeout,
+      beat,
     },
   ) as Server
   servers.push(server)
@@ -172,7 +187,7 @@ describe('the daemon serving the CLI', () => {
     const why = `x; touch ${pwned} $(touch ${pwned}) \`touch ${pwned}\` | touch ${pwned}`
     const res = await post({ args: ['plan', '--why', why] })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({
+    expect(await streamed(res)).toEqual({
       stdout: `${JSON.stringify(['--config', '/daemon/config.yml', 'plan', '--why', why])}\n`,
       stderr: '["",""]\n',
       code: 3,
@@ -211,7 +226,7 @@ describe('the daemon serving the CLI', () => {
     const { post, runUnit } = await serve()
     expect((await post({ args: ['report', '20261104-101500'] })).status).toBe(200)
     const res = await post({ args: ['run', '--unit', 'API-12'] })
-    expect(await res.json()).toEqual({ stdout: 'Queued API-12\n', stderr: '', code: 0 })
+    expect(await streamed(res)).toEqual({ stdout: 'Queued API-12\n', stderr: '', code: 0 })
     expect(runUnit).toHaveBeenCalledWith('API-12')
   })
 
@@ -230,12 +245,84 @@ describe('the daemon serving the CLI', () => {
     const pid = join(dir, 'pid')
     const { post } = await serve(
       `const c = require('node:child_process').spawn('sleep', ['30']); require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(c.pid)); setTimeout(() => {}, 30000)`,
-      500,
+      2500,
     )
     const res = await post({ args: ['stats'] })
-    expect((await res.json()).stderr).toBe(`timed out after ${500 / 60_000} minutes\n`)
+    expect((await streamed(res)).stderr).toBe(`timed out after ${2500 / 60_000} minutes\n`)
     const sleeping = Number(await readFile(pid, 'utf8'))
     await vi.waitFor(() => expect(() => process.kill(sleeping, 0)).toThrow())
+  })
+
+  it('answers at once and streams the output as it comes, a line every beat while the command is quiet', async () => {
+    const { post } = await serve(
+      'console.log("fetching"); setTimeout(() => console.log("done"), 1000)',
+      undefined,
+      300,
+    )
+    const res = await post({ args: ['stats'] })
+    expect(res.headers.get('content-type')).toBe('application/x-ndjson')
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader()
+    const decoder = new TextDecoder()
+    let body = ''
+    while (!body.includes('fetching')) {
+      const r = await reader.read()
+      expect(r.done).toBe(false)
+      body += decoder.decode(r.value)
+    }
+    expect(body).not.toContain('done')
+    for (let r = await reader.read(); !r.done; r = await reader.read())
+      body += decoder.decode(r.value)
+    const lines = body.trim().split('\n')
+    expect(lines.filter((l) => l !== '{}')).toEqual([
+      '{"stdout":"fetching\\n"}',
+      '{"stdout":"done\\n"}',
+      '{"code":0}',
+    ])
+    const quiet = lines.slice(
+      lines.indexOf('{"stdout":"fetching\\n"}'),
+      lines.indexOf('{"stdout":"done\\n"}'),
+    )
+    expect(quiet.filter((l) => l === '{}').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('stops the command when the client leaves', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-left-'))
+    const pid = join(dir, 'pid')
+    const { url, log } = await serve(
+      `require('node:fs').writeFileSync(${JSON.stringify(pid)}, String(process.pid)); setTimeout(() => {}, 30000)`,
+    )
+    const left = new AbortController()
+    const res = await fetch(`${url}/cli`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ args: ['stats'] }),
+      signal: left.signal,
+    })
+    expect(res.status).toBe(200)
+    await vi.waitFor(() => expect(existsSync(pid)).toBe(true))
+    left.abort()
+    const running = Number(await readFile(pid, 'utf8'))
+    await vi.waitFor(() => expect(() => process.kill(running, 0)).toThrow())
+    await vi.waitFor(() => expect(log).toEqual(['remote: ["stats"]: stopped, the client left']))
+  })
+
+  it('still queues a run --unit whose client left, logging its exit', async () => {
+    const { url, log, runUnit } = await serve()
+    runUnit.mockImplementation(async (key) => {
+      await new Promise((r) => setTimeout(r, 300))
+      return { stdout: `Queued ${key}\n`, stderr: '', code: 0 }
+    })
+    const left = new AbortController()
+    const res = await fetch(`${url}/cli`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify({ args: ['run', '--unit', 'API-12'] }),
+      signal: left.signal,
+    })
+    expect(res.status).toBe(200)
+    left.abort()
+    await vi.waitFor(() => expect(log).toEqual(['remote: ["run","--unit","API-12"]: exit 0']))
+    expect(runUnit).toHaveBeenCalledWith('API-12')
   })
 
   it('turns a third command away while two run', async () => {
@@ -270,6 +357,32 @@ describe('the CLI forwarding to a remote', () => {
     const out = output()
     expect(await forward(['stats'], { url: `${url}/`, token: TOKEN })).toBe(2)
     expect(out).toEqual({ stdout: 'out\n', stderr: 'err\n' })
+  })
+
+  it('fails in one line naming AWAYWORK_REMOTE when the answer stops before an exit code', async () => {
+    const cut = createServer((_, res) => {
+      res.writeHead(200).write('{"stdout":"half"}\n')
+      setTimeout(() => res.destroy(), 100)
+    }).listen(0)
+    servers.push(cut)
+    await once(cut, 'listening')
+    const url = `http://127.0.0.1:${(cut.address() as AddressInfo).port}`
+    const out = output()
+    expect(await forward(['stats'], { url, token: TOKEN })).toBe(1)
+    expect(out.stdout).toBe('half')
+    expect(out.stderr).toMatch(new RegExp(`^AWAYWORK_REMOTE \\(${url}\\) stopped answering: .+\n$`))
+  })
+
+  it("says a 200 that isn't awaywork's stream is not watch answering", async () => {
+    const page = createServer((_, res) => res.writeHead(200).end('<!DOCTYPE html>\n')).listen(0)
+    servers.push(page)
+    await once(page, 'listening')
+    const url = `http://127.0.0.1:${(page.address() as AddressInfo).port}`
+    const out = output()
+    expect(await forward(['stats'], { url, token: TOKEN })).toBe(1)
+    expect(out.stderr).toBe(
+      `AWAYWORK_REMOTE (${url}): answered HTTP 200, not as awaywork watch does\n`,
+    )
   })
 
   it('fails in one line naming AWAYWORK_REMOTE on a wrong token, a refusal or no daemon', async () => {

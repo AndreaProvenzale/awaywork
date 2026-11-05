@@ -2,6 +2,9 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { readdir } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { createInterface } from 'node:readline'
+import { Readable } from 'node:stream'
+import type { ReadableStream } from 'node:stream/web'
 import { execa } from 'execa'
 import { runsDir } from '../config/paths.js'
 import { awaitGroup } from '../core/group.js'
@@ -12,9 +15,10 @@ export const REMOTE_PORT = 7480
 const MIN_TOKEN = 32
 const MAX_BODY = 16 * 1024
 const MAX_COMMANDS = 2
-const TIMEOUT_MS = 2 * 60_000
+const TIMEOUT_MS = 10 * 60_000
+const BEAT_MS = 30_000
 
-/** A command's output, as the remote ran it. */
+/** A command's output, as the remote ran it; streamed as NDJSON lines, `code` last. */
 export interface Output {
   stdout: string
   stderr: string
@@ -113,7 +117,7 @@ export interface Remote {
   token?: string
 }
 
-/** Runs a CLI call on the remote, printing its output as it came; its exit code. */
+/** Runs a CLI call on the remote, printing its output as it comes; its exit code. */
 export async function forward(
   args: string[],
   remote: { url: string; token: string },
@@ -136,13 +140,27 @@ export async function forward(
     console.error(`${at} refused AWAYWORK_REMOTE_TOKEN`)
     return 1
   }
-  const body: Partial<Output & { error: string }> = await res.json().catch(() => ({}))
-  if (res.ok && typeof body.code === 'number') {
-    process.stdout.write(body.stdout ?? '')
-    process.stderr.write(body.stderr ?? '')
-    return body.code
+  const unlike = `answered HTTP ${res.status}, not as awaywork watch does`
+  if (!res.ok || !res.body) {
+    const body: { error?: string } = await res.json().catch(() => ({}))
+    console.error(`${at}: ${body.error ?? unlike}`)
+    return 1
   }
-  console.error(`${at}: ${body.error ?? `answered HTTP ${res.status}, not as awaywork watch does`}`)
+  try {
+    for await (const line of createInterface({
+      input: Readable.fromWeb(res.body as ReadableStream),
+    })) {
+      const { stdout, stderr, code }: Partial<Output> = JSON.parse(line) ?? {}
+      if (stdout) process.stdout.write(stdout)
+      if (stderr) process.stderr.write(stderr)
+      if (typeof code === 'number') return code
+    }
+    console.error(`${at}: ${unlike}`)
+  } catch (e) {
+    const { cause, message } = e as Error & { cause?: Error }
+    if (e instanceof SyntaxError) console.error(`${at}: ${unlike}`)
+    else console.error(`${at} stopped answering: ${cause?.message ?? message}`)
+  }
   return 1
 }
 
@@ -156,6 +174,8 @@ export interface Serve {
   cli?: string[]
   port?: number
   timeout?: number
+  /** How often a command printing nothing sends a line anyway, so proxies keep the request open. */
+  beat?: number
 }
 
 /**
@@ -189,6 +209,8 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
     if (running >= MAX_COMMANDS)
       return send(429, { error: `${MAX_COMMANDS} commands are running, try again` }, '429, busy')
     running++
+    const left = new AbortController()
+    res.on('close', () => left.abort())
     try {
       const body = await readBody(req)
       if (body === undefined)
@@ -214,13 +236,33 @@ export function serveRemote(remote: Remote, s: Serve): Server | undefined {
           { error: `no run ${id}; awaywork report --list lists them` },
           `${call}: 403, no run ${id}`,
         )
-      const out =
-        checked.command === 'run'
-          ? await s.runUnit(checked.options['--unit'] as string)
-          : await runCli(s.cli ?? self(), ['--config', s.config, ...(args as string[])], s.timeout)
-      send(200, out, `${call}: exit ${out.code}`)
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' }).flushHeaders()
+      const write = (line: Partial<Output>) => res.write(`${JSON.stringify(line)}\n`)
+      const beat = setInterval(() => write({}), s.beat ?? BEAT_MS)
+      try {
+        const code =
+          checked.command === 'run'
+            ? await s.runUnit(checked.options['--unit'] as string).then(({ code, ...out }) => {
+                write(out)
+                return code
+              })
+            : await runCli(
+                s.cli ?? self(),
+                ['--config', s.config, ...(args as string[])],
+                write,
+                left.signal,
+                s.timeout,
+              )
+        res.end(`${JSON.stringify({ code })}\n`)
+        // A run --unit queues all the same, so only a CLI call stops.
+        const stopped = checked.command !== 'run' && left.signal.aborted
+        s.log(`remote: ${call}: ${stopped ? 'stopped, the client left' : `exit ${code}`}`)
+      } finally {
+        clearInterval(beat)
+      }
     } catch (e) {
-      send(500, { error: String(e) }, `500, ${String(e)}`)
+      if (!res.headersSent) send(500, { error: String(e) }, `500, ${String(e)}`)
+      else res.end(`${JSON.stringify({ stderr: `${String(e)}\n`, code: 1 })}\n`)
     } finally {
       running--
     }
@@ -253,22 +295,29 @@ async function readBody(req: IncomingMessage): Promise<string | undefined> {
 /** This awaywork, as the daemon was started. */
 const self = () => [process.execPath, ...process.execArgv, process.argv[1] as string]
 
-/** Runs `cli` with `args` as argv, no shell nor terminal, the remote's variables blank; its process group goes when it ends. */
+/**
+ * Runs `cli` with `args` as argv, no shell nor terminal, the remote's variables blank, writing its
+ * output as it comes until it ends or `stop` aborts; its process group goes with it. Its exit code.
+ */
 async function runCli(
   [file, ...pre]: string[],
   args: string[],
+  write: (line: Partial<Output>) => void,
+  stop: AbortSignal,
   timeout = TIMEOUT_MS,
-): Promise<Output> {
-  const ran = await awaitGroup(
-    execa(file as string, [...pre, ...args], {
-      env: { ...process.env, AWAYWORK_REMOTE: '', AWAYWORK_REMOTE_TOKEN: '' },
-      stdin: 'ignore',
-      timeout,
-      detached: true,
-      reject: false,
-      stripFinalNewline: false,
-    }),
-  )
-  const late = ran.timedOut ? `timed out after ${timeout / 60_000} minutes\n` : ''
-  return { stdout: ran.stdout, stderr: ran.stderr + late, code: ran.exitCode ?? 1 }
+): Promise<number> {
+  const child = execa(file as string, [...pre, ...args], {
+    env: { ...process.env, AWAYWORK_REMOTE: '', AWAYWORK_REMOTE_TOKEN: '' },
+    stdin: 'ignore',
+    timeout,
+    cancelSignal: stop,
+    detached: true,
+    reject: false,
+    buffer: false,
+  })
+  for (const name of ['stdout', 'stderr'] as const)
+    child[name].setEncoding('utf8').on('data', (text: string) => write({ [name]: text }))
+  const ran = await awaitGroup(child)
+  if (ran.timedOut) write({ stderr: `timed out after ${timeout / 60_000} minutes\n` })
+  return ran.exitCode ?? 1
 }
