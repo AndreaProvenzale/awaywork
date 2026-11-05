@@ -449,7 +449,7 @@ $ awaywork run --unit CH-1
 CH-1 is running in run 20261104-220137
 ```
 
-The daemon runs two commands at a time and turns a third away. Each gets 10 minutes. While one prints nothing, as `plan` does while it reads your sources, the daemon still sends a `{}` line every 30 s so the proxy keeps the request open, and Ctrl-C on the laptop stops the command on the box. A `run --unit` still queues: it's the daemon's own by then. A box that's down, or a token that doesn't match, fails in one line too:
+The daemon runs two commands at a time and turns a third away. Each gets 2 minutes. While one prints nothing, as `plan` does while it reads your sources, the daemon still sends a `{}` line every 30 s so the proxy keeps the request open, and Ctrl-C on the laptop stops the command on the box. A `run --unit` still queues: it's the daemon's own by then. A box that's down, or a token that doesn't match, fails in one line too:
 
 ```
 $ awaywork doctor

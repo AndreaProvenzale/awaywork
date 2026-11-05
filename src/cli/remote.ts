@@ -15,7 +15,7 @@ export const REMOTE_PORT = 7480
 const MIN_TOKEN = 32
 const MAX_BODY = 16 * 1024
 const MAX_COMMANDS = 2
-const TIMEOUT_MS = 10 * 60_000
+const TIMEOUT_MS = 2 * 60_000
 const BEAT_MS = 30_000
 
 /** A command's output, as the remote ran it; streamed as NDJSON lines, `code` last. */
