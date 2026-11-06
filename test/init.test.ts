@@ -334,4 +334,12 @@ describe('saveSecret', () => {
     expect(await readFile(file, 'utf8')).toBe('B=2\nAB=3\nA=new\n')
     expect((await stat(file)).mode & 0o777).toBe(0o600)
   })
+
+  it('drops the export and spaced forms of the name too, keeping every other line as it was', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'awaywork-env-')), 'env')
+    const others = '# A=comment\n  B = 2\r\nexport AB=3\n\t\n'
+    await writeFile(file, `export A=1\n${others}  A = 2\r\n  export\tA=3`)
+    await saveSecret('A', 'new', file)
+    expect(await readFile(file, 'utf8')).toBe(`${others}A=new\n`)
+  })
 })
