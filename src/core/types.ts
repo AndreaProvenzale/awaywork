@@ -101,9 +101,7 @@ export interface Choice<T extends string = string> {
 
 /** Questions `schedule install` and `config edit` ask in the terminal; tests answer them from a script. */
 export interface Ask {
-  text(message: string, opts?: { initial?: string; placeholder?: string }): Promise<string>
   select<T extends string>(message: string, choices: Choice<T>[], initial?: T): Promise<T>
-  multiselect<T extends string>(message: string, choices: Choice<T>[], initial?: T[]): Promise<T[]>
   confirm(message: string, initial?: boolean): Promise<boolean>
   note(message: string): void
 }

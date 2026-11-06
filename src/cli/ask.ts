@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseEnv } from 'node:util'
-import { confirm, isCancel, log, multiselect, select, text } from '@clack/prompts'
+import { confirm, isCancel, log, select } from '@clack/prompts'
 import { envFile } from '../config/paths.js'
 import type { Ask, Choice } from '../core/types.js'
 import { brandHeader } from './format.js'
@@ -22,26 +22,8 @@ function answer<T>(value: T): Exclude<T, symbol> {
 }
 
 export const terminalAsk: Ask = {
-  text: async (message, opts = {}) =>
-    answer(
-      await text({
-        message,
-        initialValue: opts.initial,
-        defaultValue: opts.initial,
-        placeholder: opts.placeholder,
-      }),
-    ) ?? '',
   select: async <T extends string>(message: string, choices: Choice<T>[], initial?: T) =>
     answer(await select<string>({ message, options: choices, initialValue: initial })) as T,
-  multiselect: async <T extends string>(message: string, choices: Choice<T>[], initial?: T[]) =>
-    answer(
-      await multiselect<string>({
-        message,
-        options: choices,
-        initialValues: initial,
-        required: false,
-      }),
-    ) as T[],
   confirm: async (message, initial = true) =>
     answer(await confirm({ message, initialValue: initial })),
   note: (message) => log.info(message),

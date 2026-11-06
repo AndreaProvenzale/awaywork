@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { saveSecret } from '../src/cli/ask.js'
-import { type InitInput, initConfig, NoDefault } from '../src/cli/init.js'
+import { type InitInput, initConfig, NothingToWrite } from '../src/cli/init.js'
 import { parseConfig } from '../src/config/load.js'
 import type { Ctx, Discovery, Source } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
@@ -112,8 +112,8 @@ describe('init --yes', () => {
     expect(await picked({})).toEqual(['claude'])
     expect(await picked({ CURSOR_API_KEY: 'key' })).toEqual(['claude', 'cursor'])
     await expect(init({ env: {}, installed: ['cursor'], providers })).rejects.toThrow(
-      new NoDefault(
-        'no default for "Providers (pick at least one)": claude not installed, cursor needs CURSOR_API_KEY',
+      new NothingToWrite(
+        'no provider found: install claude, or set CURSOR_API_KEY for cursor, or pass --provider',
       ),
     )
   })
@@ -163,12 +163,10 @@ describe('init --yes', () => {
 
   it('fails when no source is left, naming a missing gh login', async () => {
     await expect(init({ env: {}, source: ['asana'] })).rejects.toThrow(
-      new NoDefault('no default for "Where does the work come from? (pick at least one)"'),
+      new NothingToWrite('no source could be set up'),
     )
     await expect(init({ ghLogin: false })).rejects.toThrow(
-      new NoDefault(
-        'no default for "Where does the work come from? (pick at least one)": github gh not logged in',
-      ),
+      new NothingToWrite('no source found: log in to gh (gh auth login), or pass --source'),
     )
   })
 })

@@ -1,5 +1,5 @@
 ---
-description: How to add a work source such as a task tracker to awaywork, with the Source contract, fields for queue rules, prefetched context, init questions, discovery and contract tests.
+description: How to add a work source such as a task tracker to awaywork, with the Source contract, fields for queue rules, prefetched context, discovery and contract tests.
 ---
 
 # Adding a source

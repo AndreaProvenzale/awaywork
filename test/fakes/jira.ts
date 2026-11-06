@@ -10,7 +10,6 @@ type Route = Parameters<typeof recordedFetch>[0][number]
 export const jiraFetch = (first: Route[] = []) =>
   recordedFetch([
     ...first,
-    [/\/_edge\/tenant_info$/, jiraFixture('tenant_info.json')],
     [/\/rest\/api\/3\/field$/, jiraFixture('fields.json')],
     [/"nextPageToken":"token-2"/, jiraFixture('search-2.json')],
     [/\/rest\/api\/3\/search\/jql$/, jiraFixture('search-1.json')],

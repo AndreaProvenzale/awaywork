@@ -72,11 +72,11 @@ export function initCommand(program: Command): void {
         await writeFile(path, text)
         outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`)
       } catch (e) {
-        if (e instanceof NoDefault) {
+        if (e instanceof NothingToWrite) {
           cancel(`Nothing written: ${e.message}`)
           process.exitCode = 1
         } else if (e instanceof ConfigError) {
-          cancel(`Nothing written, the answers make an invalid config:\n${e.message}`)
+          cancel(`Nothing written, that makes an invalid config:\n${e.message}`)
           process.exitCode = 1
         } else throw e
       }
@@ -227,7 +227,9 @@ export interface InitInput {
 }
 
 /** Nothing usable to write, e.g. no provider; the message says what is missing. */
-export class NoDefault extends Error {}
+export class NothingToWrite extends Error {}
+
+const or = new Intl.ListFormat('en-GB', { type: 'disjunction' })
 
 /** The --yes config: the flags, else the detected providers and sources, each set up from what it discovers. */
 export async function initConfig(input: InitInput): Promise<string> {
@@ -238,10 +240,13 @@ export async function initConfig(input: InitInput): Promise<string> {
   const keyless = (id: string) => id === 'cursor' && !ctx.env.CURSOR_API_KEY
   const picked = input.provider ?? ids.filter((id) => installed.includes(id) && !keyless(id))
   if (picked.length === 0) {
-    const hints = ids.map(
-      (id) => `${id} ${installed.includes(id) ? 'needs CURSOR_API_KEY' : 'not installed'}`,
-    )
-    throw new NoDefault(`no default for "Providers (pick at least one)": ${hints.join(', ')}`)
+    const missing = ids.filter((id) => !installed.includes(id))
+    const fixes = [
+      ...(missing.length ? [`install ${or.format(missing)}`] : []),
+      ...(installed.some(keyless) ? ['set CURSOR_API_KEY for cursor'] : []),
+      'pass --provider',
+    ]
+    throw new NothingToWrite(`no provider found: ${fixes.join(', or ')}`)
   }
 
   const configs: Record<string, Record<string, unknown>> = {}
@@ -259,8 +264,10 @@ export async function initConfig(input: InitInput): Promise<string> {
     }
   }
   if (Object.keys(configs).length === 0)
-    throw new NoDefault(
-      `no default for "Where does the work come from? (pick at least one)"${input.ghLogin ? '' : ': github gh not logged in'}`,
+    throw new NothingToWrite(
+      input.source || input.ghLogin
+        ? 'no source could be set up'
+        : 'no source found: log in to gh (gh auth login), or pass --source',
     )
 
   const queue = defaultRules(Object.keys(configs)).flatMap((rule) => {

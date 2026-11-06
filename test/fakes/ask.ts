@@ -15,9 +15,7 @@ export function scriptedAsk(script: [RegExp, unknown][]): Ask & { notes: string[
   }
   return {
     notes,
-    text: async (message, opts) => next(message, opts?.initial ?? '') as string,
     select: async (message, _, init) => next(message, init) as never,
-    multiselect: async (message, _, init) => next(message, init ?? []) as never,
     confirm: async (message, init = true) => next(message, init) as boolean,
     note: (message) => void notes.push(message),
   }
