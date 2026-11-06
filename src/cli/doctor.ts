@@ -20,12 +20,12 @@ import {
   workerFor,
 } from '../core/launch.js'
 import { counted } from '../core/report.js'
-import type { Ctx } from '../core/types.js'
+import type { Ctx, Provider } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../providers/command.js'
-import { providerFor } from '../providers/index.js'
+import { providerFor, providers } from '../providers/index.js'
 import { staleDocker } from '../scheduler/docker.js'
 import { staleWorkflow, WORKFLOW } from '../scheduler/github-actions.js'
 import { isCommand } from '../sources/command.js'
@@ -57,8 +57,12 @@ export function doctorCommand(program: Command): void {
     })
 }
 
-/** Runs every check in order, handing each to onCheck as soon as it is known. */
-export async function runChecks(path: string, onCheck: (check: Check) => void): Promise<Check[]> {
+/** Runs every check in order, handing each to onCheck as soon as it is known; without a config, which agent CLIs are here. */
+export async function runChecks(
+  path: string,
+  onCheck: (check: Check) => void,
+  builtins: Record<string, Provider> = providers,
+): Promise<Check[]> {
   const checks: Check[] = []
   const report = (status: Status, what: string, detail = '') => {
     const check = { status, what, detail }
@@ -97,6 +101,14 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   if (loaded instanceof Error) {
     const what = loaded instanceof ConfigError ? loaded.path : path
     report('FAIL', what, loaded.message.split('\n').slice(1).join('; ').trim())
+    for (const provider of Object.values(builtins)) {
+      const found = await provider.detect().catch(() => ({ installed: false, version: undefined }))
+      const version = found.version ?? 'installed'
+      if (!found.installed) report('warn', provider.id, 'not installed')
+      else if (provider.id === 'cursor' && !process.env.CURSOR_API_KEY)
+        report('warn', provider.id, `${version}, ${CURSOR_KEYLESS}`)
+      else report('ok', provider.id, version)
+    }
     return checks
   }
   const config = loaded
@@ -140,12 +152,7 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     ]
     const unset = provider.secrets.filter((name) => !process.env[name])
     const keyless = id === 'cursor' && unset.length > 0
-    if (keyless)
-      report(
-        'FAIL',
-        id,
-        `${found.version}, CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file`,
-      )
+    if (keyless) report('FAIL', id, `${found.version}, ${CURSOR_KEYLESS}`)
     else
       report(
         provider.unattended === 'allowed' ? 'ok' : 'warn',
@@ -193,6 +200,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   }
   return checks
 }
+
+const CURSOR_KEYLESS =
+  "CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file"
 
 const SAFETY = 'https://andreaprovenzale.github.io/awaywork/guide/safety#not-a-sandbox'
 

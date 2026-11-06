@@ -10,6 +10,7 @@ import { forward, servedRemotely } from './remote.js'
 import { replayCommand } from './replay.js'
 import { runCommand } from './run.js'
 import { scheduleCommand } from './schedule.js'
+import { secretCommand } from './secret.js'
 import { skillsCommand } from './skills.js'
 import { skipCommand } from './skip.js'
 import { sourcesCommand } from './sources.js'
@@ -40,6 +41,7 @@ const program = new Command('awaywork')
 
 initCommand(program)
 configCommand(program)
+secretCommand(program)
 sourcesCommand(program)
 planCommand(program)
 skipCommand(program)

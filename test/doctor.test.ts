@@ -8,6 +8,7 @@ import { canMatch } from '../src/config/schema.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import { recorded } from './fakes/gh.js'
+import { fakeProvider } from './fakes/provider.js'
 
 vi.mock('../src/forge/gh.js', () => ({
   exec: async (cmd: string, args: string[]) => {
@@ -38,7 +39,7 @@ describe('doctor', () => {
     const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
     const seen: unknown[] = []
     vi.stubEnv('GH_TOKEN', '')
-    const checks = await runChecks(path, (c) => seen.push(c))
+    const checks = await runChecks(path, (c) => seen.push(c), {})
     vi.unstubAllEnvs()
     expect(seen).toEqual(checks)
     expect(checks).toContainEqual({
@@ -51,6 +52,38 @@ describe('doctor', () => {
     expect(checks.at(-1)).toEqual({ status: 'FAIL', what: path, detail: 'file not found' })
   })
 
+  it('lists the agent CLIs after a missing config, without probing their quota', async () => {
+    const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
+    const probe = vi.fn()
+    const builtins = {
+      claude: { ...fakeProvider('claude'), probe },
+      codex: { ...fakeProvider('codex'), detect: async () => ({ installed: false }) },
+      cursor: {
+        ...fakeProvider('cursor'),
+        detect: async () => ({ installed: true, version: 'v' }),
+      },
+    }
+    vi.stubEnv('CURSOR_API_KEY', '')
+    const checks = await runChecks(path, () => {}, builtins)
+    vi.stubEnv('CURSOR_API_KEY', 'key')
+    const keyed = await runChecks(path, () => {}, builtins)
+    vi.unstubAllEnvs()
+    const after = checks.slice(checks.findIndex((c) => c.what === path))
+    expect(after).toEqual([
+      { status: 'FAIL', what: path, detail: 'file not found' },
+      { status: 'ok', what: 'claude', detail: '1.0.0' },
+      { status: 'warn', what: 'codex', detail: 'not installed' },
+      {
+        status: 'warn',
+        what: 'cursor',
+        detail:
+          "v, CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
+      },
+    ])
+    expect(keyed.at(-1)).toEqual({ status: 'ok', what: 'cursor', detail: 'v' })
+    expect(probe).not.toHaveBeenCalled()
+  })
+
   it("warns that the default skills aren't used with a config elsewhere, without parsing them", async () => {
     await mkdir(join(configDir, 'skills/mine'), { recursive: true })
     await writeFile(
@@ -58,12 +91,12 @@ describe('doctor', () => {
       '---\ndescription: Fix CI: retry\n---\n',
     )
     const elsewhere = await mkdtemp(join(tmpdir(), 'awaywork-elsewhere-'))
-    expect(await runChecks(join(elsewhere, 'config.yml'), () => {})).toContainEqual({
+    expect(await runChecks(join(elsewhere, 'config.yml'), () => {}, {})).toContainEqual({
       status: 'warn',
       what: join(configDir, 'skills'),
       detail: `not used with this config; move or link its skills to ${join(elsewhere, 'skills')}`,
     })
-    const own = await runChecks(join(configDir, 'config.yml'), () => {})
+    const own = await runChecks(join(configDir, 'config.yml'), () => {}, {})
     expect(own.map((c) => c.what)).not.toContain(join(configDir, 'skills'))
   })
 
