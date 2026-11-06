@@ -296,6 +296,8 @@ The daemon speaks plain HTTP: TLS is the proxy's job, Coolify's Traefik or your 
 
 Leaked, or just old? Make a new one, set it in Coolify (or `.env`) and redeploy, then put it in your laptop's env file: the old one stops working when the new container starts. Take it out of Coolify and redeploy, and the port is gone.
 
+[Over ssh](./scheduling.md#over-ssh) the token stays in the box's env file and the laptop has none: what reaches the daemon is your own ssh login to the box, which can do all of the above and more already. The calls still go through the daemon and its allowlist, never run on the box outside it.
+
 ## Vendor terms
 
 awaywork runs each vendor's **unmodified CLI** with **your own login**. It never calls a provider's backing API with a subscription credential, never stores, pools or proxies anyone else's, and never changes the client's identity. That is the line the vendors draw.
