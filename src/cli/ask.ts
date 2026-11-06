@@ -1,5 +1,6 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { parseEnv } from 'node:util'
 import { confirm, isCancel, log, multiselect, password, select, text } from '@clack/prompts'
 import { envFile } from '../config/paths.js'
 import type { Ask, Choice } from '../core/types.js'
@@ -84,15 +85,25 @@ export function defaultAsk(presets: [RegExp, unknown][], note: (message: string)
   }
 }
 
-/** Sets `name` in the env file, replacing its earlier line; the file ends mode 600. */
+/**
+ * Sets `name` in the env file, replacing its earlier lines and quoting the value when Node's
+ * loader would otherwise read back something else; the file is never readable by others.
+ */
 export async function saveSecret(name: string, value: string, file = envFile): Promise<void> {
+  const entry = [value, `'${value}'`, `"${value}"`, `\`${value}\``]
+    .map((quoted) => `${name}=${quoted}`)
+    .find((line) => parseEnv(line)[name] === value)
+  if (!entry) throw new Error(`Nothing saved: the env file can't hold that value for ${name}`)
   await mkdir(dirname(file), { recursive: true })
   const existing = await readFile(file, 'utf8').catch(() => '')
+  const earlier = new RegExp(`^\\s*(export\\s+)?${name}\\s*=`)
   const kept = existing
     .split('\n')
-    .filter((line) => !line.trimStart().startsWith(`${name}=`))
+    .filter((line) => !earlier.test(line))
     .join('\n')
   const separator = kept && !kept.endsWith('\n') ? '\n' : ''
-  await writeFile(file, `${kept}${separator}${name}=${value}\n`, { mode: 0o600 })
-  await chmod(file, 0o600)
+  await chmod(file, 0o600).catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== 'ENOENT') throw e
+  })
+  await writeFile(file, `${kept}${separator}${entry}\n`, { mode: 0o600 })
 }
