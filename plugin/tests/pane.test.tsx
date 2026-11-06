@@ -1,7 +1,15 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { busyPlan, busyReport, emptyPlan, emptyReport, noConfig, oldAwaywork } from './fixtures'
+import {
+  busyPlan,
+  busyReport,
+  emptyPlan,
+  emptyReport,
+  noConfig,
+  oldAwaywork,
+  remoteDown,
+} from './fixtures'
 
 // 100 columns: a page of four cards, 24 wide; 30 rows: the pane takes 28, a detail of 15.
 const PANE = {
@@ -620,6 +628,14 @@ test('an awaywork too old for config path still opens the pane', async ($, on) =
   expect(opened).toEqual(['away'])
   const ui = await mount($, 'terminal')
   expect(await text(ui, /6 need you/)).toBe(true)
+})
+
+test("a remote that doesn't answer opens the pane on its error, not setup", async ($, on) => {
+  const { opened } = engine(on, { 'config path': remoteDown, 'report --json': remoteDown })
+  await $.command.run(away())
+  expect(opened).toEqual(['away'])
+  const ui = await mount($, 'terminal')
+  expect(await text(ui, /can't reach AWAYWORK_REMOTE/)).toBe(true)
 })
 
 test('bare /away opens the pane when typed before the desktop attaches, not under -p', async ($, on) => {

@@ -49,6 +49,7 @@ const allowed: Record<string, { flags: Record<string, Value>; args: number }> = 
   sources: { flags: { '--json': 'none' }, args: 1 },
   doctor: { flags: { '--json': 'none' }, args: 0 },
   'schedule status': { flags: {}, args: 0 },
+  'config path': { flags: {}, args: 0 },
   skip: { flags: { '--until': 'required', '--reason': 'required' }, args: 1 },
   unskip: { flags: {}, args: 1 },
   approve: { flags: {}, args: Number.POSITIVE_INFINITY },
@@ -97,7 +98,7 @@ export function checkArgs(argv: unknown): Checked {
 }
 
 const commandOf = (argv: string[]) =>
-  argv[0] === 'schedule' ? `schedule ${argv[1] ?? ''}` : (argv[0] ?? '')
+  argv[0] === 'schedule' || argv[0] === 'config' ? `${argv[0]} ${argv[1] ?? ''}` : (argv[0] ?? '')
 
 const namesConfig = (arg: string) => /^(-c|--config(=|$))/.test(arg)
 

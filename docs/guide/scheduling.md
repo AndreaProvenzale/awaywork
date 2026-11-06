@@ -429,7 +429,7 @@ The paths are the container's. Each request is a line in the container's log, wi
 2026-11-04 23:06:57 remote: ["skip","chores:CH-1","--until","2030-01-01"]: exit 0
 ```
 
-What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config`, `skills`, a full `run`, `schedule install`, and `--help`. One of those ten with a flag the daemon doesn't take still goes there, and fails, so nothing you meant for the container lands on the laptop:
+What goes to the container: `report`, `plan`, `stats`, `sources`, `doctor`, `schedule status`, `config path`, `skip`, `unskip`, `approve` and `run --unit`, each with the flags it has here and nothing else. The rest runs on your laptop as before: `init`, `config schema` and `config edit`, `skills`, a full `run`, `schedule install`, and `--help`. One of those eleven with a flag the daemon doesn't take still goes there, and fails, so nothing you meant for the container lands on the laptop:
 
 ```
 $ awaywork skip chores:CH-2 --reason "-- see thread"

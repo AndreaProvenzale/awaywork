@@ -40,6 +40,7 @@ describe('the remote allowlist', () => {
       ['sources', 'github', '--json'],
       ['doctor', '--json'],
       ['schedule', 'status'],
+      ['config', 'path'],
       ['skip', 'github:acme/api#5', '--until', '2030-01-01', '--reason', 'not now'],
       ['unskip', 'github:acme/api#5'],
       ['approve', 'github:acme/api#5', 'ship', 'it'],
@@ -56,7 +57,8 @@ describe('the remote allowlist', () => {
 
   it('refuses any other command, flag or extra argument, naming it', () => {
     expect(refused(['init'])).toBe('init')
-    expect(refused(['config', 'show'])).toBe('config')
+    expect(refused(['config', 'show'])).toBe('config show')
+    expect(refused(['config', 'edit'])).toBe('config edit')
     expect(refused(['schedule', 'install'])).toBe('schedule install')
     expect(refused(['replay', 'x'])).toBe('replay')
     expect(refused(['watch'])).toBe('watch')
@@ -83,6 +85,7 @@ describe('the remote allowlist', () => {
   it('sends a served command to the remote even with a flag it refuses; help, a config and the rest run here', () => {
     for (const argv of [
       ['plan'],
+      ['config', 'path'],
       ['skip', 'chores:CH-2', '--reason', '-- see thread'],
       ['run', '--dry-run', '--unit', 'CH-1'],
       ['run', '--unit=CH-1', 'extra'],
@@ -95,6 +98,8 @@ describe('the remote allowlist', () => {
       ['run', '--dry-run'],
       ['init'],
       ['schedule', 'install'],
+      ['config', 'schema'],
+      ['config', 'edit'],
       ['-c', 'other.yml', 'plan'],
       ['plan', '-c', 'other.yml'],
       ['plan', '-cother.yml'],

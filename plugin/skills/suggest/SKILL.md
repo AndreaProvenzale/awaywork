@@ -90,7 +90,7 @@ A routine spends quota on every occurrence, work or not: show its units per week
 
 ## 6. Verify
 
-Copy the config to a draft as `queue`'s step 4 does, or from setup use its draft, and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate.
+Copy the config to a draft as `queue`'s step 4 does, or from setup use its draft, and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate. From setup, skip `doctor`, which setup runs once at the end, and `plan --json` when there's no routine candidate.
 
 For a correction, check the target file for the line, or one meaning the same.
 
