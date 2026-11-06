@@ -7,7 +7,6 @@ import { routines } from '../src/sources/routines.js'
 import { providerContract } from './contracts/provider.contract.js'
 import { sourceContract } from './contracts/source.contract.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
-import { initial, scriptedAsk } from './fakes/ask.js'
 import { githubRoutes, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
 import { jiraFetch } from './fakes/jira.js'
@@ -56,7 +55,6 @@ sourceContract(
   ) as Source<unknown>,
   { repos: ['acme/*'] },
   {},
-  () => scriptedAsk([[/^GitHub repos/, initial]]),
   'qa',
 )
 sourceContract(
@@ -76,12 +74,6 @@ sourceContract(
   ) as Source<unknown>,
   { workspace: '100' },
   { ASANA_TOKEN: 'pat' },
-  () =>
-    scriptedAsk([
-      [/^Asana workspace/, '100'],
-      [/^Asana projects/, ['300']],
-      [/^GitHub repo for tasks/, 'acme/api'],
-    ]),
   'QA',
 )
 sourceContract(
@@ -100,11 +92,6 @@ sourceContract(
   ) as Source<unknown>,
   {},
   { LINEAR_API_KEY: 'lin_api_key' },
-  () =>
-    scriptedAsk([
-      [/^Linear teams/, ['ENG']],
-      [/^GitHub repo for issues in ENG/, 'acme/api'],
-    ]),
   'In Review',
 )
 sourceContract(
@@ -123,13 +110,5 @@ sourceContract(
   ) as Source<unknown>,
   { site: 'acme.atlassian.net', email: 'dev@acme.test' },
   { JIRA_API_TOKEN: 'atl-token' },
-  () =>
-    scriptedAsk([
-      [/^Jira Cloud site/, 'https://acme.atlassian.net/'],
-      [/^Atlassian account email/, 'dev@acme.test'],
-      [/^Is the token scoped/, true],
-      [/^Jira projects/, ['ENG']],
-      [/^GitHub repo for issues in ENG/, 'acme/api'],
-    ]),
   'In Review',
 )

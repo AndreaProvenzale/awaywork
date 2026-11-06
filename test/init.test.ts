@@ -2,56 +2,69 @@ import { chmod, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { Cancelled, defaultAsk, saveSecret } from '../src/cli/ask.js'
-import { initConfig } from '../src/cli/init.js'
+import { z } from 'zod'
+import { saveSecret } from '../src/cli/ask.js'
+import { type InitInput, initConfig, NoDefault } from '../src/cli/init.js'
 import { parseConfig } from '../src/config/load.js'
-import { builtinSkillsDir } from '../src/config/paths.js'
-import { loadSkills } from '../src/config/skills.js'
-import type { Ctx } from '../src/core/types.js'
+import type { Ctx, Discovery, Source } from '../src/core/types.js'
 import { asanaSource } from '../src/sources/asana.js'
 import { githubSource } from '../src/sources/github.js'
 import { jiraSource } from '../src/sources/jira.js'
 import { linearSource } from '../src/sources/linear.js'
+import { routines } from '../src/sources/routines.js'
 import { asanaRoutes, recordedFetch } from './fakes/asana.js'
-import { initial, scriptedAsk } from './fakes/ask.js'
 import { recorded } from './fakes/gh.js'
 import { jiraFetch } from './fakes/jira.js'
 import { linearFetch } from './fakes/linear.js'
 import { fakeProvider } from './fakes/provider.js'
 
-const skills = await loadSkills(builtinSkillsDir)
-const gh = () =>
-  recorded([
-    [/^gh api user --jq/, 'octo\n'],
-    [/^gh api user\/orgs/, 'acme\nwidgets\n'],
-  ])
-const registry = (env: Ctx['env'] = { ASANA_TOKEN: 'pat' }) => ({
-  ctx: { env, log: () => {} },
-  providers: { claude: fakeProvider('claude'), codex: fakeProvider('codex') },
-  sources: {
-    github: githubSource(gh()),
-    asana: asanaSource(recordedFetch(asanaRoutes())),
-    linear: linearSource(linearFetch()),
-    jira: jiraSource(jiraFetch()),
-  },
-  skills,
-})
+const keys = { ASANA_TOKEN: 'pat', LINEAR_API_KEY: 'lin_api_key', JIRA_API_TOKEN: 'atl-token' }
+const sources = {
+  github: githubSource(
+    recorded([
+      [/^gh api user --jq/, 'octo\n'],
+      [/^gh api user\/orgs/, 'acme\nwidgets\n'],
+    ]),
+  ),
+  asana: asanaSource(recordedFetch(asanaRoutes())),
+  linear: linearSource(linearFetch()),
+  jira: jiraSource(jiraFetch()),
+  routines,
+}
+const stub = (id: string, discover: () => Promise<Discovery>) =>
+  ({
+    id,
+    configSchema: z.object({}),
+    fields: {},
+    secrets: () => [],
+    items: async () => [],
+    prefetch: async () => {},
+    discover,
+  }) as Source
 
-describe('init', () => {
-  it('writes a valid config with the picked providers, sources and default queue', async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, initial],
-      [/^GitHub repos to watch.*your orgs: acme, widgets/, 'octo/*, acme/api'],
-      [/^Starting queue/, initial],
-      [/^Window starts at/, '23:30'],
-      [/^Window ends at/, initial],
-    ])
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: true, ...registry() })
+/** The --yes config for these inputs, with the notes it printed. */
+async function init(input: Partial<InitInput> & { env?: Ctx['env'] } = {}) {
+  const notes: string[] = []
+  const text = await initConfig({
+    ctx: { env: input.env ?? keys, log: () => {} },
+    installed: ['claude'],
+    ghLogin: true,
+    providers: { claude: fakeProvider('claude'), codex: fakeProvider('codex') },
+    note: (note) => void notes.push(note),
+    ...input,
+    sources: { ...sources, ...input.sources },
+  })
+  return { text, cfg: parseConfig(text), notes }
+}
+
+describe('init --yes', () => {
+  it('takes the installed providers, github as <login>/* when gh is logged in, its default rules and 01:00-07:00', async () => {
+    const { text, notes } = await init()
+    expect(notes).toEqual([])
     expect(text).toMatchInlineSnapshot(`
       "# awaywork config: \`awaywork config edit\` validates on save,
       # \`awaywork plan\` previews the next run, \`awaywork plan --rules\` what each rule takes.
-      windows: [{ start: "23:30", end: "07:00" }]
+      windows: [{ start: "01:00", end: "07:00" }]
       budget:                         # every provider; override one with - <id>: { budget: … }
         reserve: 10%                  # never go past 1 - reserve of any window
         session_max: 90%              # stop a worker past this share of the short window
@@ -59,7 +72,7 @@ describe('init', () => {
         # per_run: 15%                # at most this share of the long window per run
       providers: [claude]             # order = routing preference
       sources:
-        github: {repos: [octo/*, acme/api]}
+        github: {repos: [octo/*]}
       queue:                          # first matching rule wins; top = highest priority
         - skill: fix
           source: github
@@ -75,242 +88,86 @@ describe('init', () => {
           where: {type: pr, review_requested: true, trusted: true}
       "
     `)
-    const cfg = parseConfig(text)
-    expect(cfg.windows).toEqual([{ start: '23:30', end: '07:00' }])
-    expect(cfg.budget).toMatchObject({ reserve: 0.1, session_max: 0.9 })
-    expect(cfg.budget.per_run).toBeUndefined()
   })
 
-  it('orders providers by the one picked first', async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, ['claude', 'codex']],
-      [/^Which provider takes units first/, 'codex'],
-      [/^Where does the work come from/, ['github']],
-      [/^GitHub repos/, initial],
-      [/^Starting queue/, []],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const text = await initConfig({ ask, installed: [], ghLogin: true, ...registry() })
-    const cfg = parseConfig(text)
+  it('takes the providers in the order given, the sources and the window from the flags', async () => {
+    const { cfg } = await init({
+      installed: [],
+      ghLogin: false,
+      provider: ['codex', 'claude'],
+      source: ['github', 'routines'],
+      window: ['22:00', '06:00'],
+    })
     expect(cfg.providers.map((p) => p.id)).toEqual(['codex', 'claude'])
-    expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] } })
-    expect(cfg.queue).toEqual([])
-  })
-
-  it("maps Asana rules onto the project's real sections", async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['asana']],
-      [/^Asana workspace/, '100'],
-      [/^Asana projects/, ['300']],
-      [/^GitHub repo for tasks in Platform/, 'acme/api'],
-      [/^Starting queue/, initial],
-      [/^Which section holds the items for fix\? Fix the problems/, initial],
-      [/^Which section holds the items for implement/, 'Doing'],
-      [/^Which section holds the items for plan/, ''],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry() })
-    const cfg = parseConfig(text)
-    expect(cfg.sources).toEqual({
-      asana: {
-        workspace: '100',
-        projects: ['300'],
-        repo_map: { '300': 'acme/api' },
-        token_env: 'ASANA_TOKEN',
-      },
-    })
-    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['fix', { section: 'QA' }],
-      ['implement', { section: 'Doing' }],
-    ])
-  })
-
-  it("maps Linear teams to repos and rules onto the teams' real states", async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['linear']],
-      [/^Linear teams/, ['ENG', 'WEB']],
-      [/^GitHub repo for issues in ENG/, 'acme/api'],
-      [/^GitHub repo for issues in WEB/, ''],
-      [/^Starting queue/, initial],
-      [/^Which status holds the items for fix/, initial],
-      [/^Which status holds the items for implement/, initial],
-      [/^Which status holds the items for plan/, ''],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const env = { LINEAR_API_KEY: 'lin_api_key' }
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry(env) })
-    const cfg = parseConfig(text)
-    expect(cfg.sources).toEqual({
-      linear: { repo_map: { ENG: 'acme/api' }, token_env: 'LINEAR_API_KEY' },
-    })
-    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['fix', { status: 'QA' }],
-      ['implement', { status: 'In Progress' }],
-    ])
-  })
-
-  it("maps Jira projects to repos through the gateway and rules onto the site's statuses", async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['jira']],
-      [/^Jira Cloud site/, 'acme.atlassian.net'],
-      [/^Atlassian account email/, 'dev@acme.test'],
-      [/^Atlassian API token/, 'atl-token'],
-      [/^Is the token scoped/, true],
-      [/^Jira projects/, ['ENG', 'WEB']],
-      [/^GitHub repo for issues in ENG/, 'acme/api'],
-      [/^GitHub repo for issues in WEB/, ''],
-      [/^Starting queue/, initial],
-      [/^Which status holds the items for fix/, initial],
-      [/^Which status holds the items for implement/, initial],
-      [/^Which status holds the items for plan/, initial],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry({}) })
-    expect(ask.secrets).toEqual(['JIRA_API_TOKEN'])
-    const cfg = parseConfig(text)
-    expect(cfg.sources).toEqual({
-      jira: {
-        site: 'acme.atlassian.net',
-        email: 'dev@acme.test',
-        cloud_id: '0a1b2c3d-0000-4000-8000-000000000001',
-        repo_map: { ENG: 'acme/api' },
-        token_env: 'JIRA_API_TOKEN',
-      },
-    })
-    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
-      ['fix', { status: 'QA' }],
-      ['implement', { status: 'In Progress' }],
-      ['plan', { status: 'To Do' }],
-    ])
-  })
-
-  it("reads sections from the user's tasks when no project is picked", async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['asana']],
-      [/^Asana workspace/, '100'],
-      [/^Asana projects/, []],
-      [/^Starting queue/, ['2']],
-      [/^Which section holds the items for plan/, initial],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry() })
-    expect(parseConfig(text).queue?.map((r) => r.where)).toEqual([{ section: 'Current sprint' }])
-  })
-
-  it('asks for a missing Asana token, or the workspace gid without one', async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['asana']],
-      [/^Asana personal access token/, ''],
-      [/^Asana workspace gid/, '100'],
-      [/^Starting queue/, initial],
-      [/^Window starts/, initial],
-      [/^Window ends/, initial],
-    ])
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...registry({}) })
-    expect(ask.secrets).toEqual(['ASANA_TOKEN'])
-    expect(parseConfig(text).queue?.map((r) => r.where.section)).toEqual([
-      'QA',
-      'In progress',
-      'Current sprint',
-    ])
-  })
-
-  it('skips a source whose setup fails and asks again when none is left', async () => {
-    const ask = scriptedAsk([
-      [/^Providers/, []],
-      [/^Providers/, initial],
-      [/^Where does the work come from/, ['github']],
-      [/^Where does the work come from/, ['asana']],
-      [/^Asana workspace/, '100'],
-      [/^Asana projects/, []],
-      [/^Starting queue/, []],
-      [/^Window starts/, '25:00'],
-      [/^Window starts at \(HH:MM/, '02:00'],
-      [/^Window ends/, initial],
-    ])
-    const setup = registry()
-    setup.sources.github = githubSource(recorded([]))
-    const text = await initConfig({ ask, installed: ['claude'], ghLogin: false, ...setup })
-    expect(ask.notes).toEqual([expect.stringMatching(/^Skipping github: no recorded output/)])
-    expect(parseConfig(text).windows[0]?.start).toBe('02:00')
-  })
-})
-
-describe('init --yes', () => {
-  it('takes the installed providers, github when gh is logged in and the default queue', async () => {
-    const ask = defaultAsk([], () => {})
-    const text = await initConfig({ ask, installed: ['codex'], ghLogin: true, ...registry() })
-    const cfg = parseConfig(text)
-    expect(cfg.providers.map((p) => p.id)).toEqual(['codex'])
-    expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] } })
-    expect(cfg.queue?.map((r) => r.skill)).toEqual(['fix', 'fix', 'fix', 'review'])
-    expect(cfg.windows).toEqual([{ start: '01:00', end: '07:00' }])
+    expect(cfg.sources).toEqual({ github: { repos: ['octo/*'] }, routines: {} })
+    expect(cfg.windows).toEqual([{ start: '22:00', end: '06:00' }])
   })
 
   it('takes an installed Cursor only with CURSOR_API_KEY set, else says it needs one', async () => {
     const providers = { claude: fakeProvider('claude'), cursor: fakeProvider('cursor') }
-    const hints: unknown[] = []
-    const init = async (env: Ctx['env']) => {
-      const ask = defaultAsk([], () => {})
-      const multiselect = ask.multiselect
-      ask.multiselect = (message, choices, initial) => {
-        if (message.startsWith('Providers')) hints.push(choices.map((c) => c.hint))
-        return multiselect(message, choices, initial)
-      }
-      const text = await initConfig({
-        ask,
-        installed: ['claude', 'cursor'],
-        ghLogin: true,
-        ...registry(env),
-        providers,
-      })
-      return parseConfig(text).providers.map((p) => p.id)
-    }
-    expect(await init({})).toEqual(['claude'])
-    expect(await init({ CURSOR_API_KEY: 'key' })).toEqual(['claude', 'cursor'])
-    expect(hints).toEqual([
-      [undefined, 'needs CURSOR_API_KEY'],
-      [undefined, undefined],
+    const picked = async (env: Ctx['env']) =>
+      (await init({ env, installed: ['claude', 'cursor'], providers })).cfg.providers.map(
+        (p) => p.id,
+      )
+    expect(await picked({})).toEqual(['claude'])
+    expect(await picked({ CURSOR_API_KEY: 'key' })).toEqual(['claude', 'cursor'])
+    await expect(init({ env: {}, installed: ['cursor'], providers })).rejects.toThrow(
+      new NoDefault(
+        'no default for "Providers (pick at least one)": claude not installed, cursor needs CURSOR_API_KEY',
+      ),
+    )
+  })
+
+  it("takes the first Asana workspace and its real section names, dropping the rule there's none for", async () => {
+    const { cfg } = await init({ source: ['asana'] })
+    expect(cfg.sources).toEqual({ asana: { workspace: '100', token_env: 'ASANA_TOKEN' } })
+    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
+      ['fix', { section: 'QA' }],
+      ['implement', { section: 'In progress' }],
+      ['plan', { section: 'Current sprint' }],
+    ])
+    const asana = stub('asana', async () => ({
+      workspaces: [{ gid: '100', name: 'Acme', sections: ['qa', 'Doing'] }],
+    }))
+    const renamed = await init({ source: ['asana'], sources: { asana } })
+    expect(renamed.cfg.queue?.map((r) => r.where)).toEqual([{ section: 'qa' }])
+  })
+
+  it("maps Linear rules onto its teams' states and keeps a guess when nothing tells", async () => {
+    const { cfg } = await init({ source: ['linear'] })
+    expect(cfg.sources).toEqual({ linear: { token_env: 'LINEAR_API_KEY' } })
+    expect(cfg.queue?.map((r) => [r.skill, r.where])).toEqual([
+      ['fix', { status: 'QA' }],
+      ['implement', { status: 'In Progress' }],
+      ['plan', { status: 'Todo' }],
+    ])
+    const linear = stub('linear', async () => ({ teams: [] }))
+    const guessed = await init({ source: ['linear'], sources: { linear } })
+    expect(guessed.cfg.queue?.map((r) => r.where.status)).toEqual(['QA', 'In Progress', 'Todo'])
+  })
+
+  it('skips a source it cannot set up, naming an unset token and how to save it', async () => {
+    const asana = stub('asana', async () => ({ workspaces: [] }))
+    const { cfg, notes } = await init({
+      env: {},
+      source: ['jira', 'linear', 'asana', 'github'],
+      sources: { asana },
+    })
+    expect(Object.keys(cfg.sources)).toEqual(['github'])
+    expect(notes).toEqual([
+      'Skipping jira: add sources.jira { site, email } to the config first',
+      'Skipping linear: LINEAR_API_KEY is not set; awaywork secret LINEAR_API_KEY saves it',
+      'Skipping asana: this token sees no workspace',
     ])
   })
 
-  it('answers from the presets and skips a source whose secret is unset', async () => {
-    const notes: string[] = []
-    const ask = defaultAsk(
-      [
-        [/^Providers/, ['codex', 'claude']],
-        [/^Where does the work come from/, ['asana', 'github']],
-        [/^Window starts/, '22:00'],
-        [/^Window ends/, '06:00'],
-      ],
-      (note) => void notes.push(note),
+  it('fails when no source is left, naming a missing gh login', async () => {
+    await expect(init({ env: {}, source: ['asana'] })).rejects.toThrow(
+      new NoDefault('no default for "Where does the work come from? (pick at least one)"'),
     )
-    const text = await initConfig({ ask, installed: [], ghLogin: false, ...registry({}) })
-    const cfg = parseConfig(text)
-    expect(cfg.providers.map((p) => p.id)).toEqual(['codex', 'claude'])
-    expect(Object.keys(cfg.sources)).toEqual(['github'])
-    expect(cfg.windows).toEqual([{ start: '22:00', end: '06:00' }])
-    expect(notes).toEqual(['Skipping asana: ASANA_TOKEN is not set'])
-  })
-
-  it('fails instead of asking again when a default is not enough, saying why', async () => {
-    const ask = defaultAsk([], () => {})
-    const providers = { claude: fakeProvider('claude'), cursor: fakeProvider('cursor') }
-    await expect(
-      initConfig({ ask, installed: ['cursor'], ghLogin: true, ...registry(), providers }),
-    ).rejects.toThrow(
-      new Cancelled(
-        'no default for "Providers (pick at least one)": claude not installed, cursor needs CURSOR_API_KEY',
+    await expect(init({ ghLogin: false })).rejects.toThrow(
+      new NoDefault(
+        'no default for "Where does the work come from? (pick at least one)": github gh not logged in',
       ),
     )
   })

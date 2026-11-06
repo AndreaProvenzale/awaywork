@@ -249,52 +249,6 @@ export function jiraSource(http: typeof fetch = fetch): Source<Config> {
       return { before: iso(read.fields.updated), after: iso(fields.updated) }
     },
 
-    /** Finds the site, maps projects to repos and lists the site's real status names. */
-    async init(ask, ctx) {
-      const site = (await ask.text('Jira Cloud site', { placeholder: 'acme.atlassian.net' }))
-        .trim()
-        .replace(/^https?:\/\//, '')
-        .replace(/\/.*$/, '')
-      const email = (await ask.text('Atlassian account email')).trim()
-      if (!site || !email) throw new Error('Jira needs a site and an email')
-      const token =
-        ctx.env.JIRA_API_TOKEN ||
-        (await ask.secret(
-          'JIRA_API_TOKEN',
-          'Atlassian API token, scoped to read:jira-work (id.atlassian.com > Security > API tokens)',
-        ))
-      if (!token) return { config: { site, email } }
-
-      let cfg: Config = { site, email, token_env: 'JIRA_API_TOKEN' }
-      if (await ask.confirm('Is the token scoped (created "with scopes")?', true)) {
-        const tenant = await http(`https://${site}/_edge/tenant_info`)
-        if (!tenant.ok) throw new Error(`no Jira Cloud site at ${site}: ${tenant.status}`)
-        cfg = { ...cfg, cloud_id: ((await tenant.json()) as { cloudId: string }).cloudId }
-      }
-      const found = await projects(cfg, token)
-      const picked = await ask.multiselect(
-        'Jira projects whose issues have code in a GitHub repo',
-        found.map((p) => ({ value: p.key, label: p.name })),
-      )
-      const repos: Record<string, string> = {}
-      for (const key of picked) {
-        const repo = await ask.text(`GitHub repo for issues in ${key} (owner/repo, blank: none)`)
-        if (repo.trim()) repos[key] = repo.trim()
-      }
-      return {
-        config: {
-          site,
-          email,
-          ...(cfg.cloud_id && { cloud_id: cfg.cloud_id }),
-          ...(Object.keys(repos).length > 0 && { repo_map: repos }),
-        },
-        values: {
-          project: found.map((p) => p.key),
-          status: await statuses(cfg, token),
-        },
-      }
-    },
-
     /** The projects and the site's statuses; the site and email come from the config alone. */
     async discover(partial, ctx) {
       const { site, email } = partial
