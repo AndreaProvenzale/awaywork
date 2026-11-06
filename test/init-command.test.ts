@@ -147,7 +147,8 @@ describe('handOff', () => {
     const { io, ran, printed } = fake({ answer: true, after: installed(true, '/nowhere') })
     await handOff(io, fresh)
     expect(ran).toEqual([marketplace, install, withPluginDir])
-    expect(printed[0]).toContain('claude plugin marketplace update awaywork')
+    expect(printed[0]).toContain('predates its setup skill')
+    expect(printed[0]).not.toContain('updates yours')
   })
 
   it("loads the package's plugin when the updated marketplace still serves a stale one", async () => {

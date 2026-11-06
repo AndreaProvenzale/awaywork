@@ -151,6 +151,7 @@ export async function handOff(
       await io.output('claude', ['plugin', 'list', '--json']),
     ).find((p) => p.id === plugin)
   let found = await listed()
+  let updated = false
   const args: string[] = []
   if (!found?.enabled) {
     const marketplace = parsed<{ name: string }>(
@@ -173,7 +174,10 @@ export async function handOff(
       io.print(
         `${yes ? 'That failed, so this' : 'This'} session loads the plugin from ${pluginDir}`,
       )
-    } else found = await listed()
+    } else {
+      found = await listed()
+      updated = true
+    }
   }
   if (
     !args.length &&
@@ -181,8 +185,11 @@ export async function handOff(
     !existsSync(join(found.installPath, 'skills', 'setup'))
   ) {
     args.push('--plugin-dir', pluginDir)
+    const hint = updated
+      ? ''
+      : `; claude plugin marketplace update awaywork, then claude plugin update ${plugin}, updates yours`
     io.print(
-      `Your awaywork plugin predates its setup skill, so this session loads the plugin from ${pluginDir}; claude plugin marketplace update awaywork, then claude plugin update ${plugin}, updates yours`,
+      `Your awaywork plugin predates its setup skill, so this session loads the plugin from ${pluginDir}${hint}`,
     )
   }
   const request = config.exists
