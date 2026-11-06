@@ -74,10 +74,10 @@ async function json<T>($: EngineInterface, args: string[], timeoutMs?: number): 
   }
 }
 
-/** No config, so the skill sets awaywork up; an awaywork too old for `config path` gets the pane as before. */
+/** No config, so the skill sets awaywork up; any other failure (too old, a remote down) gets the pane as before. */
 async function unconfigured($: EngineInterface) {
   const r = await awaywork($, ['config', 'path'], 10_000)
-  return r.exitCode === 1 && !/unknown command/i.test(r.stderr)
+  return r.exitCode === 1 && /not found; awaywork init writes one/.test(r.stderr)
 }
 
 async function readReport($: EngineInterface) {

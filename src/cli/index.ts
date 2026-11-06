@@ -17,6 +17,7 @@ import { sourcesCommand } from './sources.js'
 import { statsCommand } from './stats.js'
 import { watchCommand } from './watch.js'
 
+const shell = { ...process.env }
 // The environment wins over the file; scheduled jobs start without a login shell's variables.
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
@@ -41,7 +42,7 @@ const program = new Command('awaywork')
 
 initCommand(program)
 configCommand(program)
-secretCommand(program)
+secretCommand(program, shell)
 sourcesCommand(program)
 planCommand(program)
 skipCommand(program)

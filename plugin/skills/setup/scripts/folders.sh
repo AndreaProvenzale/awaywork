@@ -1,10 +1,12 @@
 #!/bin/sh
 # The folders interactive agent sessions ran in over the last N days (default 30), from metadata alone.
-# One tab-separated line per agent and folder: agent, sessions, KB, folder, repo (owner/repo, the remote URL, or -).
+# A header, then one tab-separated line per agent and folder: agent, sessions, MB, memories, folder, repo (owner/repo, the remote URL, or -).
+# Then the user-level files suggest would read, one path per line.
 days=${1:-30}
+roots=$(printf '%s\n' "$HOME/.claude" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR"} | awk '!seen[$0]++')
 
 sessions() {
-  for root in "$HOME/.claude" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR"}; do
+  printf '%s\n' "$roots" | while read -r root; do
     [ -d "$root/projects" ] || continue
     find "$root/projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -mtime -"$days" | while read -r f; do
       jq -rn --arg kb "$(($(wc -c <"$f") / 1024))" \
@@ -27,12 +29,31 @@ repo() {
   printf '%s\n' "$1" | sed -E 's#^(git@|ssh://git@|https://)github\.com[:/]##; s#\.git$##'
 }
 
+# Claude Code's memory files for a folder, under either root; Codex keeps none per folder.
+memories() {
+  [ "$1" = claude ] || { printf -- '-'; return; }
+  slug=$(printf '%s' "$2" | sed 's/[^A-Za-z0-9]/-/g')
+  printf '%s\n' "$roots" | while read -r root; do
+    ls "$root/projects/$slug/memory" 2>/dev/null | grep '\.md$' | grep -vx 'MEMORY\.md'
+  done | sort -u | wc -l | tr -d ' '
+}
+
+printf 'agent\tsessions\tMB\tmemories\tfolder\trepo\n'
 sessions | awk -F'\t' '!seen[$1 FS $2]++ { n[$1 FS $4]++; kb[$1 FS $4] += $3; if ($5) url[$1 FS $4] = $5 }
-  END { for (k in n) { split(k, p, FS); print p[1] "\t" n[k] "\t" kb[k] "\t" p[2] "\t" url[k] } }' |
-  sort -t "$(printf '\t')" -k2,2nr | while IFS="$(printf '\t')" read -r agent n kb dir url; do
+  END { for (k in n) { split(k, p, FS); printf "%s\t%d\t%.1f\t%s\t%s\n", p[1], n[k], kb[k] / 1024, p[2], url[k] } }' |
+  sort -t "$(printf '\t')" -k2,2nr | while IFS="$(printf '\t')" read -r agent n mb dir url; do
     # A removed worktree's remote is its repo's: the nearest folder above it that still exists.
     at=$dir
     while [ -n "$at" ] && [ ! -d "$at" ]; do at=${at%/*}; done
     remote=$(git -C "${at:-/}" remote get-url origin 2>/dev/null || printf '%s' "$url")
-    printf '%s\t%s\t%s\t%s\t%s\n' "$agent" "$n" "$kb" "$dir" "$(repo "${remote:--}")"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$agent" "$n" "$mb" "$(memories "$agent" "$dir")" "$dir" "$(repo "${remote:--}")"
   done
+
+printf '\nuser-level files\n'
+{
+  printf '%s\n' "$roots" | while read -r root; do
+    for f in "$root/CLAUDE.md" "$root"/rules/*.md; do [ -f "$f" ] && realpath "$f"; done
+  done
+  f="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+  [ -f "$f" ] && realpath "$f"
+} | sort -u

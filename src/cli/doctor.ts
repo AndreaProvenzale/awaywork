@@ -20,7 +20,7 @@ import {
   workerFor,
 } from '../core/launch.js'
 import { counted } from '../core/report.js'
-import type { Ctx, Provider } from '../core/types.js'
+import type { Ctx } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
@@ -58,11 +58,7 @@ export function doctorCommand(program: Command): void {
 }
 
 /** Runs every check in order, handing each to onCheck as soon as it is known; without a config, which agent CLIs are here. */
-export async function runChecks(
-  path: string,
-  onCheck: (check: Check) => void,
-  builtins: Record<string, Provider> = providers,
-): Promise<Check[]> {
+export async function runChecks(path: string, onCheck: (check: Check) => void): Promise<Check[]> {
   const checks: Check[] = []
   const report = (status: Status, what: string, detail = '') => {
     const check = { status, what, detail }
@@ -101,7 +97,7 @@ export async function runChecks(
   if (loaded instanceof Error) {
     const what = loaded instanceof ConfigError ? loaded.path : path
     report('FAIL', what, loaded.message.split('\n').slice(1).join('; ').trim())
-    for (const provider of Object.values(builtins)) {
+    for (const provider of Object.values(providers)) {
       const found = await provider.detect().catch(() => ({ installed: false, version: undefined }))
       const version = found.version ?? 'installed'
       if (!found.installed) report('warn', provider.id, 'not installed')
