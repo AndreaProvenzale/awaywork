@@ -34,6 +34,13 @@ describe('awaywork secret', () => {
     expect(await readFile(file, 'utf8')).toBe('T=`a\'b"c#`\n')
   })
 
+  it('keeps a value that opens a quote from swallowing the next one', async () => {
+    const file = await envIn()
+    await secretFrom('T', piped('"abc'), file)
+    await secretFrom('U', piped('p"q'), file)
+    expect(parseEnv(await readFile(file, 'utf8'))).toEqual({ T: '"abc', U: 'p"q' })
+  })
+
   it('says when the shell sets the name too, never with either value', async () => {
     const file = await envIn()
     const said = await secretFrom('T', piped('new'), file, 'old')

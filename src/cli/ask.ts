@@ -92,7 +92,8 @@ export function defaultAsk(presets: [RegExp, unknown][], note: (message: string)
 export async function saveSecret(name: string, value: string, file = envFile): Promise<void> {
   const entry = [value, `'${value}'`, `"${value}"`, `\`${value}\``]
     .map((quoted) => `${name}=${quoted}`)
-    .find((line) => parseEnv(line)[name] === value)
+    // Twice, so a value that opens a quote can't swallow the next line, on every Node 22 too.
+    .find((line) => parseEnv(`${line}\n${line}\n`)[name] === value)
   if (!entry) throw new Error(`Nothing saved: the env file can't hold that value for ${name}`)
   await mkdir(dirname(file), { recursive: true })
   const existing = await readFile(file, 'utf8').catch(() => '')
