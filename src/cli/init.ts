@@ -230,6 +230,11 @@ export interface InitInput {
 export class NothingToWrite extends Error {}
 
 const or = new Intl.ListFormat('en-GB', { type: 'disjunction' })
+const named: Record<string, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: "Cursor's agent CLI",
+}
 
 /** The --yes config: the flags, else the detected providers and sources, each set up from what it discovers. */
 export async function initConfig(input: InitInput): Promise<string> {
@@ -242,8 +247,8 @@ export async function initConfig(input: InitInput): Promise<string> {
   if (picked.length === 0) {
     const missing = ids.filter((id) => !installed.includes(id))
     const fixes = [
-      ...(missing.length ? [`install ${or.format(missing)}`] : []),
-      ...(installed.some(keyless) ? ['set CURSOR_API_KEY for cursor'] : []),
+      ...(missing.length ? [`install ${or.format(missing.map((id) => named[id] ?? id))}`] : []),
+      ...(installed.some(keyless) ? ['set CURSOR_API_KEY for Cursor'] : []),
       'pass --provider',
     ]
     throw new NothingToWrite(`no provider found: ${fixes.join(', or ')}`)

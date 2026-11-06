@@ -113,7 +113,7 @@ describe('init --yes', () => {
     expect(await picked({ CURSOR_API_KEY: 'key' })).toEqual(['claude', 'cursor'])
     await expect(init({ env: {}, installed: ['cursor'], providers })).rejects.toThrow(
       new NothingToWrite(
-        'no provider found: install claude, or set CURSOR_API_KEY for cursor, or pass --provider',
+        'no provider found: install Claude Code, or set CURSOR_API_KEY for Cursor, or pass --provider',
       ),
     )
   })
