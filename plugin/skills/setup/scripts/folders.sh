@@ -52,7 +52,8 @@ sessions | awk -F'\t' '!seen[$1 FS $2]++ { n[$1 FS $4]++; kb[$1 FS $4] += $3; if
 printf '\nuser-level files\n'
 {
   printf '%s\n' "$roots" | while read -r root; do
-    for f in "$root/CLAUDE.md" "$root"/rules/*.md; do [ -f "$f" ] && realpath "$f"; done
+    [ -f "$root/CLAUDE.md" ] && realpath "$root/CLAUDE.md"
+    ls "$root/rules" 2>/dev/null | grep '\.md$' | while read -r f; do realpath "$root/rules/$f"; done
   done
   f="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
   [ -f "$f" ] && realpath "$f"
