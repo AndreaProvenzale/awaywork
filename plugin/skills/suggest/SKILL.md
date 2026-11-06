@@ -14,11 +14,11 @@ Find the work the developer hands to an agent by reflex, right after something h
 - **One scope.** Use only the projects they named. Work and personal never mix: a session or a memory about another project never feeds a candidate, even when it sits in a folder in scope.
 - **Paraphrase only.** Sessions hold pasted tokens, customer data and secrets. Evidence is a count and a paraphrase in your words, never a quote, a path or output from inside a session, and nothing from one goes verbatim into a rule, a line or the chat. Keep digests out of the chat too: they carry prompt text. Memories are paraphrased the same way. A user-level file (a global `CLAUDE.md`, `~/.codex/AGENTS.md`) spans every project: use only the lines that clearly apply to the repo in scope, never one written for another project.
 - **Read-only.** Read sessions and memories where they are, never copy them; put digests in a temp dir and delete it at the end. Forge CLIs only read.
-- **Nothing written but what they pick,** through the [`queue`](../queue/SKILL.md) skill's loop. Where a step leans on `queue`, invoke it as a skill rather than reading its file, and take only that step from it. The ground rules in the [`away`](../away/SKILL.md#ground-rules) skill hold here: no credentials, no runs, real names only, widening needs its own yes.
+- **Nothing written but what they pick,** through the [`queue`](../queue/SKILL.md) skill's loop, or [`setup`](../setup/SKILL.md)'s when it invoked you. Where a step leans on `queue`, invoke it as a skill rather than reading its file, and take only that step from it. The ground rules in the [`away`](../away/SKILL.md#ground-rules) skill hold here: no credentials, no runs, real names only, widening needs its own yes.
 
 ## 1. Ask
 
-Read the config (none: tell them to run `awaywork init` and come back). Then count what's in scope from file names and dates, plus, for Codex, each file's first line (`cwd`, `originator`) and whether it has a `turn_context` line (step 2 says where), and ask in one message:
+Read the config `awaywork config path` prints; invoked from [`setup`](../setup/SKILL.md), its draft. Setup asked these questions in its first message: take the scope they gave there and go to step 2. Otherwise count what's in scope from file names and dates, plus, for Codex, each file's first line (`cwd`, `originator`) and whether it has a `turn_context` line (step 2 says where), and ask in one message:
 
 - **Projects:** default the repos in the config, as the local folders their sessions ran in. Ask for the folder when you can't tell.
 - **Window:** default the last 30 days. Under 3 weeks finds no routines (step 4 wants 3 different weeks): say so.
@@ -90,7 +90,7 @@ A routine spends quota on every occurrence, work or not: show its units per week
 
 ## 6. Verify
 
-Copy the config to a draft as `queue`'s step 4 does and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate.
+Copy the config to a draft as `queue`'s step 4 does, or from setup use its draft, and add every rule and routine candidate. `awaywork --config <draft> plan --rules --json` gives, per rule, what it takes now (`taken`), what an earlier rule takes first (`takenBy`), and the `unmatched` items that fit the pattern, with the reason. A new routine's latest occurrence shows up as taken: it runs at the next window, or within minutes with `run: soon`. A config error goes to stderr: fix the candidate or drop it. Then, once for the whole draft, `awaywork --config <draft> doctor --json` and `awaywork --config <draft> plan --json`, whose `routines` holds each routine's next occurrence by name; both probe quota, so not per candidate.
 
 For a correction, check the target file for the line, or one meaning the same.
 
@@ -123,7 +123,7 @@ Corrections
 Keep which? (e.g. 2, 3, 5)
 ```
 
-Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through `queue`'s steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
+Nothing found in a group: say so in one line, and under 3 weeks just "no routines: window too short", without what fell short. The developer accepts, tweaks or declines each. Accepted rules and routines go through `queue`'s steps 4 to 7 (draft, check, write, validate), starting from the draft above with the declined ones taken out; from setup, take the declined ones out of its draft and go back to setup's step 5 with the picks. Widening still needs its own yes. A correction: show the file and the exact line, and edit only on a yes; it's a local change they commit themselves. Nothing declined is written, and nothing is remembered: a declined candidate comes back next run.
 
 ## End
 

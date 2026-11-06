@@ -139,3 +139,9 @@ export const busyPlan = {
 export const emptyReport = { ...busyReport, plan: { queue, units: [], skipped: [] }, results: [] }
 
 export const emptyPlan = { queue, units: [], skipped: [], warnings: [] }
+
+/** `awaywork config path` with no config file there. */
+export const noConfig = { exitCode: 1, stdout: '/home/me/.config/awaywork/config.yml\n' }
+
+/** `awaywork config path` from an awaywork that has no such command. */
+export const oldAwaywork = { exitCode: 1, stderr: "error: unknown command 'path'\n" }
