@@ -16,7 +16,43 @@ You know what you want off your plate: red CI on your PRs, the bugs QA bounces b
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces.
 
-Bare `/away` opens a pane beside the chat, straight from `awaywork report --json`:
+No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks. Then it runs `awaywork doctor --json` for your agent CLIs and gh login, and lists the folders your Claude Code and Codex sessions ran in over the last 30 days, from their metadata alone, mapped to repos by their git remotes. One message asks the rest: providers, repos, whether tasks also come from Asana, Linear or Jira, the window, and whether to [suggest](./suggest.md) your first rules from those sessions. Trimmed, on a sandbox, the repos renamed:
+
+```text
+Questions
+1. Providers: claude first, then codex when claude's quota runs out. Is that the order you want?
+2. Repos, most sessions first, from the last 30 days:
+   - acme/api (64 sessions)
+   - acme/web (9)
+   Do you want to edit this list? owner/* also works, for example acme/*.
+3. Trackers: do tasks also come from Asana, Linear or Jira? Default: no, GitHub only.
+4. Window: 01:00–07:00 in your local time?
+5. First rules: should I suggest rules from your recent sessions and PRs, or start from
+   awaywork's default rules? Default: the default rules.
+```
+
+A tracker needs a token, and it never goes through the chat. The skill tells you to run `awaywork secret LINEAR_API_KEY`, which saves it in `~/.config/awaywork/env` (mode 600) and prints only that it did: in your own terminal it asks at a hidden prompt; in Claude Code, copy the token and type `! pbpaste | awaywork secret LINEAR_API_KEY`. Say done, and it reads your teams and statuses with `awaywork sources linear --json` and asks only which repo each team's code lives in.
+
+The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, your tracker, and the default rules with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
+
+```text
+Rules (none takes anything today)
+1. fix: your PRs with failing checks.
+2. fix: your PRs with unresolved threads.
+3. fix: your awaywork PRs with threads you started.
+4. review: PRs where your review is requested, trusted authors.
+5. implement: Linear NIG issues in In Progress.
+6. plan: Linear NIG issues in Todo.
+
+Commands for you to run (I never run these):
+- awaywork plan previews the next run.
+- awaywork run --unit <id> tries one unit.
+- awaywork schedule install runs it in the window.
+```
+
+It left out the default `QA` rule, saying so: that team has no `QA` status.
+
+With a config, bare `/away` opens a pane beside the chat, straight from `awaywork report --json`:
 
 ```text
 ☾ awaywork · last run 01:00 · 9 PRs · 14 need you
@@ -59,7 +95,7 @@ A tab is a strip of cards, a page at a time: items under their repo, or their tr
 - writes the rules you accept into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
 - starts a tweak from the item, with `awaywork plan --why <key>`, and shows the before and after.
 
-What it won't do: see a token (credentials are `awaywork init`'s job, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
+What it won't do: see a token (you put one in with `awaywork secret <NAME>`, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
 
 Not sure what to hand over? `/away what could you take off my plate?` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The skill offers it once, on a first setup.
 
@@ -97,13 +133,13 @@ codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:away`, next to `awaywork:queue` and `awaywork:suggest`, which it routes to; ask Codex to use it by name.
+It shows up in Codex's skill list as `awaywork:away`, next to `awaywork:setup`, `awaywork:queue` and `awaywork:suggest`, which it routes to; ask Codex to use it by name.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
 ```sh
 mkdir -p ~/.agents/skills
-for s in away queue suggest; do ln -s "$(npm root -g)/awaywork/plugin/skills/$s" ~/.agents/skills/$s; done
+for s in away setup queue suggest; do ln -s "$(npm root -g)/awaywork/plugin/skills/$s" ~/.agents/skills/$s; done
 ```
 
 No skills support? Tell the agent to read `away/SKILL.md` and follow it.
@@ -118,8 +154,8 @@ for me. Read the docs first. Find which of claude, codex and agent
 (Cursor) I have installed and logged in, and which GitHub repos I work on (gh). Ask me
 which repos and which Asana workspace to include and how much quota a
 run may use, then write the config, validate it and show me the plan.
-If a source needs a token, tell me to run awaywork init instead of
-asking me for it. Don't start a run or install a schedule until I say so.
+If a source needs a token, tell me to run awaywork secret <NAME>
+instead of asking me for it. Don't start a run or install a schedule until I say so.
 ```
 
 ## For agents
@@ -133,6 +169,7 @@ Machine-readable docs:
 | `<page>.md` | Any page as Markdown, e.g. [`guide/configuration.md`](https://andreaprovenzale.github.io/awaywork/guide/configuration.md) |
 | [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json) | The config's JSON Schema; `awaywork config schema` prints the installed version's |
 | [`away`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `/away` skill: status, why an item did or didn't run, and which skill handles the rest |
+| [`setup`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/setup/SKILL.md) | A first config, when there's none: agents, repos from recent sessions, trackers, a checked first queue |
 | [`queue`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | Writing and checking rules on real items |
 | [`suggest`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
 
