@@ -6,6 +6,7 @@ import type { Command } from 'commander'
 import { execa } from 'execa'
 import { parse } from 'yaml'
 import { ConfigError, configPath, loadConfig } from '../config/load.js'
+import { expandHome, loginCommand, type Pin, pinLogins } from '../config/logins.js'
 import { bin, configDir, envFile, runsDir, skillsDirIn, skillsDirOf } from '../config/paths.js'
 import { type Config, canMatch } from '../config/schema.js'
 import { hasSkills, unknownSkillsWarning } from '../config/skills.js'
@@ -20,7 +21,7 @@ import {
   workerFor,
 } from '../core/launch.js'
 import { counted } from '../core/report.js'
-import type { Ctx } from '../core/types.js'
+import type { Ctx, Provider } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
 import { type Exec, exec } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
@@ -68,7 +69,11 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const ctx: Ctx = { env: process.env, log: (line) => report('warn', line) }
   const secret = (name: string) => (process.env[name] ? `${name} set` : `${name} unset`)
 
-  const loaded = await loadConfig(path).catch((e: Error) => e)
+  const loaded = await loadConfig(path, { pin: false }).catch((e: Error) => e)
+  const pins = loaded instanceof Error ? [] : await pinLogins(loaded)
+  const ghPin = pins.find((p) => p.what === 'gh')
+  const githubUser =
+    loaded instanceof Error ? undefined : (loaded.sources.github as { user?: string })?.user
   const workspaces = loaded instanceof Error ? [] : bitbucketWorkspaces(loaded)
   for (const bin of ['git', workspaces.length ? 'twg' : 'gh']) {
     const version = await exec(bin, ['--version']).catch(() => undefined)
@@ -76,9 +81,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   }
   if (workspaces.length && !(loaded instanceof Error))
     for (const c of await bitbucketChecks(loaded)) report(c.status, c.what, c.detail)
+  else if (ghPin?.problem) report('FAIL', 'gh login', ghPin.problem)
   else
-    await exec('gh', ['auth', 'status']).then(
-      () => report('ok', 'gh login'),
+    await exec('gh', ['api', 'user', '--jq', '.login']).then(
+      (login) => report(...ghLogin(login.trim(), githubUser, ghPin, process.env)),
       () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
     )
   if (existsSync(envFile)) {
@@ -157,6 +163,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       )
     if (!keyless && asWorker && !provider.login && unset.length > 0)
       report('warn', id, `the ${WORKER} user can't use your login: set ${unset.join(', ')}`)
+    const pin = pins.find((p) => p.what === id)
+    if (provider.account) report(...(await providerLogin(provider, pin, process.env)))
+    // Unpinned, it would read another login's quota.
+    if (pin?.problem) continue
     await provider.probe(ctx).then(
       (quota) => {
         const a = allowance(budget, quota, Date.now(), config.windows)
@@ -169,7 +179,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
-    if (!source) continue
+    // Read as gh's active account, it would count someone else's items.
+    if (!source || (id === 'github' && ghPin?.problem)) continue
     const secrets = source.secrets(cfg).map(secret)
     await source.items(cfg, ctx).then(
       (items) => report('ok', id, [counted(items.length, 'open item'), ...secrets].join(', ')),
@@ -195,6 +206,54 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     report(unset.length > 0 ? 'warn' : 'ok', `mcp ${name}`, facts)
   }
   return checks
+}
+
+const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
+
+/** The gh login a run uses and where it comes from; a warning when the environment's wins over another `user`. */
+export function ghLogin(
+  login: string,
+  user: string | undefined,
+  pin: Pin | undefined,
+  env: NodeJS.ProcessEnv,
+): [Status, string, string] {
+  if (pin?.value) return ['ok', 'gh login', `${login}, pinned by ${pin.key}`]
+  const token = GH_TOKENS.find((name) => env[name])
+  if (user && login !== user)
+    return [
+      'warn',
+      'gh login',
+      `${login} from ${token ?? "gh's active account"}, not sources.github.user ${user}: a token in the environment wins; make it ${user}'s, or unset it`,
+    ]
+  return ['ok', 'gh login', `${login}, ${token ? `from ${token}` : "gh's active account"}`]
+}
+
+/** The login a provider's runs use and where it comes from; a FAIL with the fix when there's none. */
+export async function providerLogin(
+  provider: Provider,
+  pin: Pin | undefined,
+  env: NodeJS.ProcessEnv,
+): Promise<[Status, string, string]> {
+  const what = `${provider.id} login`
+  if (pin?.problem) return ['FAIL', what, pin.problem]
+  const token = provider.secrets.find((name) => env[name])
+  if (token) return ['ok', what, pin ? `${token}, which wins over ${pin.key}` : token]
+  const { loginDir, account } = provider
+  if (!loginDir || !account) return ['ok', what, '']
+  const dir = tilde(env[loginDir.env] || loginDir.default)
+  const where = `in ${dir}${pin ? `, pinned by ${pin.key}` : ''}`
+  const fix = `log in with ${loginCommand(loginDir, dir)}`
+  // The binary would make the folder, as `claude auth status` does.
+  if (!existsSync(expandHome(dir))) return ['FAIL', what, `${dir} doesn't exist; ${fix}`]
+  return account(env).then(
+    (who): [Status, string, string] => ['ok', what, `${who}, ${where}`],
+    (): [Status, string, string] => ['FAIL', what, `no login ${where}; ${fix}`],
+  )
+}
+
+const tilde = (path: string) => {
+  const home = homedir()
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
 }
 
 const CURSOR_KEYLESS =

@@ -107,6 +107,7 @@ claude settings.
 | `settings` | string |  | Settings file for every worker, relative to the config file; passed as --settings |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
+| `config_dir` | string |  | Folder of the login it runs on, passed as CLAUDE_CONFIG_DIR, e.g. ~/.claude-work; default the environment's; CLAUDE_CODE_OAUTH_TOKEN wins when set; not with isolation: user or container |
 
 ## `providers[].claude.budget`
 
@@ -138,6 +139,7 @@ codex settings.
 | `config` | map |  | Config values for every worker, e.g. { model_reasoning_effort: high }; passed as -c |
 | `model` | string |  | Model passed to the provider's binary; default the binary's |
 | `budget` | object |  | Overrides the top-level budget for this provider |
+| `config_dir` | string |  | Folder of the login it runs on, passed as CODEX_HOME, e.g. ~/.codex-work; default the environment's |
 
 ## `providers[].codex.budget`
 
@@ -203,6 +205,7 @@ My PRs, PRs awaiting my review and issues assigned to me, plus any extra searche
 |---|---|---|---|
 | `repos` (required) | string[] |  | Repos to read, owner/name; * globs, e.g. acme/* |
 | `host` | string |  | GitHub Enterprise host, e.g. github.acme.com; github.com by default |
+| `user` | string |  | The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins |
 | `search` | string[] |  | Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested |
 | `context` | object |  | Fetches more context for an item, with secrets kept out of the agent's environment |
 | `every` | string |  | How often awaywork watch polls this source for run: soon rules, when that is less often than watch.every |

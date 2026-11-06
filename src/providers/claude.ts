@@ -40,6 +40,18 @@ export function claudeProvider(bin = 'claude'): Provider {
     unattended: 'allowed',
     install: { npm: '@anthropic-ai/claude-code' },
     secrets: ['CLAUDE_CODE_OAUTH_TOKEN'],
+    loginDir: { env: 'CLAUDE_CONFIG_DIR', default: '~/.claude', command: 'claude /login' },
+
+    async account(env) {
+      const { stdout } = await execa(bin, ['auth', 'status', '--json'], {
+        env,
+        extendEnv: false,
+        reject: false,
+      })
+      const status = parseJson(stdout)
+      if (!status?.loggedIn) throw new Error('not logged in')
+      return [status.email ?? status.authMethod, status.subscriptionType].filter(Boolean).join(', ')
+    },
 
     async detect() {
       const out = await execa(bin, ['--version']).catch(() => undefined)

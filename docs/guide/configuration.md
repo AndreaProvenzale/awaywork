@@ -147,6 +147,40 @@ Workers skip your user-level agent config. To give them the hooks, env or settin
 
 Cursor takes no settings of its own, only `model` (Cursor's `auto` without one), and it needs `CURSOR_API_KEY` in the env file even on your machine: every run gets a fresh `HOME` in the clone, `.away/agent-home`, so none of your `~/.cursor` comes along, your `agent login` included. Make a key in Cursor's dashboard. awaywork writes that `HOME`'s permissions, any shell command, read and write plus the `tools` of the rule's [MCP servers](#mcp-servers), and never passes `--force`. Its commits can carry its own `Co-authored-by: Cursor <cursoragent@cursor.com>` line, as Claude Code's can. A Cursor subagent counts as one turn toward the turn cap however much it runs, and `worker.log` shows it as one `task:` line, since its own tool calls never reach awaywork; `limits.unit_minutes` bounds it. Its usage shows in the dashboard only, so Cursor runs on the [fallback](./how-it-works.md#budget) caps and sits out runs you start outside a window. On a GitHub-hosted runner the action installs it, see [Running Cursor](./scheduling.md#running-cursor). A command provider of yours named `cursor` from before has to take another name now: the config says `providers[0].cursor: built in, so it takes no command; give your own provider another name`.
 
+### Which login
+
+Work and personal subscriptions on one machine, two gh accounts? Each config can pin the logins its runs use, so the work config never bills or pushes as the personal one:
+
+```yaml
+providers:
+  - claude: { config_dir: ~/.claude-work }
+  - codex: { config_dir: ~/.codex-work }
+sources:
+  github:
+    repos: [acme/*]
+    user: octocat-acme
+```
+
+`config_dir` is the folder the agent keeps its login in, passed as `CLAUDE_CONFIG_DIR` or `CODEX_HOME`; log in there once with `CLAUDE_CONFIG_DIR=~/.claude-work claude /login` or `CODEX_HOME=~/.codex-work codex login`. `~/.claude` itself means Claude Code's default login, which it only finds with `CLAUDE_CONFIG_DIR` unset, so that's what awaywork does. `sources.github.user` picks one of the accounts `gh auth status` lists: awaywork takes its `gh auth token --user` once and uses it as `GH_TOKEN` for everything it does on GitHub, reads, pushes and PRs alike, without a `gh auth switch`. Without them a run uses whatever the environment says, which for a [scheduled job](./scheduling.md#on-your-machine) is the env file and each binary's default, not the `claude` function in your shell that switches logins.
+
+The environment wins. With `CLAUDE_CODE_OAUTH_TOKEN` set, `config_dir` changes nothing, and with `GH_TOKEN` or `GITHUB_TOKEN` set, neither does `user` (`GH_ENTERPRISE_TOKEN` with a `host`), so the same config runs in Actions or a container, where those folders don't exist. Cursor has no login folder to point at: its login is `CURSOR_API_KEY`, everywhere. Under `isolation: user` or `container`, Claude's `config_dir` is refused, since the worker can't reach your folder (`set CLAUDE_CODE_OAUTH_TOKEN instead`); Codex's works, the `auth.json` it lends coming from the pinned folder.
+
+`doctor` names the login each run uses, and fails with the fix when the pinned one isn't there:
+
+```text
+ok    gh login: octocat-acme, pinned by sources.github.user
+ok    claude login: <email>, max, in ~/.claude-work, pinned by providers[0].claude.config_dir
+FAIL  codex login: ~/.codex-work doesn't exist; log in there with CODEX_HOME=~/.codex-work codex login
+```
+
+It warns when a token in the environment belongs to someone else, `gh login: octocat from GH_TOKEN, not sources.github.user octocat-acme: a token in the environment wins; make it octocat-acme's, or unset it`, and every other command stops before touching anything when a pin can't be made:
+
+```text
+$ awaywork plan --rules
+~/.config/awaywork/config.yml:
+  sources.github.user: octocat-acme isn't logged in to gh; log in with gh auth login, as octocat-acme
+```
+
 ### Bring your own CLI
 
 opencode, Amp and friends don't need code in awaywork. Name a provider yourself and give it a command; it's your CLI and your login:
@@ -182,7 +216,7 @@ There's no turn cap, so `limits.unit_minutes` is required and bounds each unit, 
 
 | Source | Keys |
 | --- | --- |
-| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false`, and with `is:closed` for [finished items](#finished-items) (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to |
+| `github` | `repos`: `owner/name` globs such as `acme/*`; optional `search`: extra GitHub search qualifiers, each ANDed with `is:open archived:false`, and with `is:closed` for [finished items](#finished-items) (their items are neither `mine` nor `review_requested`); optional `host` for GitHub Enterprise (`github.acme.com`), which `gh` must be logged in to; optional `user`, the `gh` account awaywork acts as ([Which login](#which-login)) |
 | `asana` | `workspace` gid, optional `projects` (gids), `repo_map` (project gid → `owner/name`), `token_env` (default `ASANA_TOKEN`) |
 | `linear` | optional `repo_map` (team key → `owner/name`), `token_env` (default `LINEAR_API_KEY`) |
 | `bitbucket` | `repos`: `workspace/name` globs such as `acme/*`, the workspace spelled out. Makes Bitbucket Cloud the forge instead of GitHub; no items of its own yet, see [Bitbucket and Jira](#bitbucket-and-jira) |
@@ -859,7 +893,7 @@ The image is yours to build, and what's in it is all the units get:
 - **Pulled once.** A missing image is pulled by the first `docker run` (or by `doctor`); after that awaywork uses it as it is, so `docker pull` to update it.
 - **Only the env it needs.** A container gets the image's own environment, plus what awaywork sets (the `none` placeholders, its git config, the prompt's path) and that phase's secrets, by name, never on argv: setup its repo's `secrets`, the agent its provider's and its MCP servers'. Nothing else of yours, your ssh agent included, so a variable a tool needs goes in `secrets` or in the image.
 - **A `HOME` in the clone.** It's `.away/home`, fresh with each clone: what setup puts there, a `pip install --user` or a browser download, reaches the chain's agents and checks, and goes with the clone, so caches don't survive the night. Bake them into the image.
-- **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Cursor needs its `CURSOR_API_KEY`, as everywhere, and gets its own `HOME` there too, `.away/agent-home`. Codex gets your `auth.json` (`~/.codex`, or `$CODEX_HOME`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
+- **Logins.** Claude needs a `CLAUDE_CODE_OAUTH_TOKEN` in the env file (`claude setup-token`): your keychain login isn't there, and `doctor` warns without it. Cursor needs its `CURSOR_API_KEY`, as everywhere, and gets its own `HOME` there too, `.away/agent-home`. Codex gets your `auth.json` (`~/.codex`, `$CODEX_HOME`, or its `config_dir`) copied into its `HOME` for the run, as under `user`, and the copy goes back over yours once the container is gone, under the same lock as its probes, when it's a refresh of the one lent: a refresh rotates the refresh token, and the old one stops working within a day ([Providers](../providers.md#codex)). Quota probes and `--version` checks stay on your machine, with your own logins.
 - **Clones in your home.** They stay in the run dir under `~/.local/state/awaywork/runs/`, unlike `user`'s `/tmp/awaywork-*`: Colima shares only your home and `/tmp/colima` with its VM, Docker Desktop shares `/Users`, `/tmp` and a few more, so a clone in your home is the one place both see. `doctor` fails when the engine can't mount the run dir.
 - **What it costs.** An image per repo to keep current; a container start per command (a few hundred ms on Colima); file access through the VM's sharing on macOS, slow for an `npm install`; and no Xcode or anything else macOS-only, since the containers are Linux.
 
@@ -879,12 +913,12 @@ The config holds env var **names** only. Values come from the environment or `~/
 
 | Variable | Used by |
 | --- | --- |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude, when not using the local login (`claude setup-token`); wins over `config_dir` |
 | `ASANA_TOKEN` (or your `token_env`) | Asana |
 | `LINEAR_API_KEY` (or your `token_env`) | Linear |
 | `JIRA_API_TOKEN` (or your `token_env`) | Jira |
 | A custom source's `secrets` | That source's `command` and `write` |
-| `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login |
+| `GH_TOKEN` | GitHub in Actions; locally `gh`'s own login, or the account `sources.github.user` names |
 | A built-in source's `context.secrets` | That source's `context` command |
 | Your `notify.secrets` | The notify command |
 | Your `repos.<owner/name>.secrets` | That repo's `setup` |
