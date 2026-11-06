@@ -12,7 +12,7 @@ description: Install awaywork, write a config, preview the next run with plan, r
 - At least one agent CLI, installed and logged in with your subscription:
   - [Claude Code](https://code.claude.com): `claude` logged in, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
   - [Codex](https://developers.openai.com/codex): `codex login`.
-  - [Cursor](https://cursor.com/docs/cli/overview): its `agent` CLI and a `CURSOR_API_KEY` from the dashboard, even on your own machine. awaywork runs it in a `HOME` of its own, where your `agent login` doesn't reach. Until the key is set, `init` leaves Cursor unticked.
+  - [Cursor](https://cursor.com/docs/cli/overview): its `agent` CLI and a `CURSOR_API_KEY` from the dashboard, even on your own machine. awaywork runs it in a `HOME` of its own, where your `agent login` doesn't reach. Until the key is set, the setup leaves Cursor out.
 - Optionally an Asana personal access token, a Linear personal API key or an Atlassian API token for Jira Cloud, if your tasks live there.
 
 ## Install
@@ -28,7 +28,53 @@ awaywork --help
 awaywork init
 ```
 
-`init` finds the installed agents and your `gh` login, then asks which providers and sources to use and which rules to start the queue with. For Asana it lists your workspaces, projects and real section names, and asks which repo each project's code lives in; for Linear it lists your teams and their real workflow states, and asks which repo each team's code lives in; for Jira it asks your site and email, lists your projects and the site's statuses, and asks which repo each project's code lives in. It writes `~/.config/awaywork/config.yml`; a token you type is saved to `~/.config/awaywork/env` (mode 600), never to the config. Last, it asks where to run it on a schedule: this machine, GitHub Actions or later, and hands off to [`schedule install`](#on-a-schedule). `awaywork init --yes` asks nothing and takes the defaults instead.
+`init` doesn't ask you a wall of questions: it opens Claude Code on `/away set up awaywork`, and the [`/away` skill](./agents.md#claude-code) does the setup with you. No awaywork plugin in Claude Code yet? It offers to install it first:
+
+```text
+$ awaywork init
+◇  Install the awaywork plugin for Claude Code? It runs claude plugin marketplace add AndreaProvenzale/awaywork, then
+│  claude plugin install awaywork@awaywork
+│  Yes
+✔ Successfully added marketplace: awaywork (declared in user settings)
+✔ Successfully installed plugin: awaywork@awaywork (scope: user)
+│
+●  Opening Claude Code on /away set up awaywork; /exit comes back here
+```
+
+Say no and that one session loads the plugin from the npm package instead (`--plugin-dir`), nothing installed. Then `/away` looks around on its own: `awaywork doctor` for your agent CLIs and `gh` login, and the folders your recent Claude Code and Codex sessions ran in, mapped to repos by their git remotes. One message asks the rest:
+
+```text
+⏺ I've looked around and have a few questions before I draft the config.
+
+  Questions (the default is in brackets)
+  1. Providers: claude first, then codex when claude's quota runs out. [claude, codex]
+  2. Repos: which GitHub repos should awaywork watch? Name them, or use owner/* for a whole owner. [acme/*]
+  3. Trackers: do tasks also come from Asana, Linear or Jira? [no]
+  4. Window: when may runs happen? [01:00–07:00 your local time]
+  5. First rules: should I suggest rules from your recent sessions and PRs, or start from awaywork's default rules?
+
+❯ Only acme/api as the repo; everything else the defaults.
+```
+
+It drafts the config, checks each rule on your real items with `awaywork plan --rules`, and writes `~/.config/awaywork/config.yml` only on your yes:
+
+```text
+⏺ Here is the draft config, checked against acme/api. I haven't written it to your config yet.
+
+  Rules (the first matching rule wins):
+  1. Fix your PRs whose checks fail. It takes nothing today.
+  2. Fix your PRs that have unresolved review threads. It takes nothing today.
+  3. Fix your PRs that have unresolved threads you opened on a PR awaywork made. It takes nothing today.
+  4. Review PRs where your review is requested, from trusted authors. It takes nothing today.
+
+  Nothing matches today, which doesn't show the rules are wrong. [...]
+
+  Should I write this config as it is?
+```
+
+A tracker token never goes through the chat: it tells you to run `awaywork secret LINEAR_API_KEY` (or `! pbpaste | awaywork secret LINEAR_API_KEY` right in Claude Code), which saves it to `~/.config/awaywork/env` (mode 600). It ends with the commands for you to run, `awaywork plan`, `awaywork run --unit <id>` and `awaywork schedule install`, and runs none of them. `/exit` drops you back in your shell.
+
+Run `init` again with a config there and `/away` tells you where it stands and what you could change. No Claude Code? `init` says what to do instead: Codex gets the same plugin (see [Codex and friends](./agents.md#codex-and-friends)), any agent that loads skills can take them from the package, and `awaywork init --yes` asks nothing and writes the detected defaults, for a container or CI.
 
 Or write a minimal config by hand:
 

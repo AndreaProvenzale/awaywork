@@ -1,11 +1,13 @@
-import { existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import { cancel, intro, log, outro, spinner } from '@clack/prompts'
+import { dirname, join, resolve } from 'node:path'
+import { parseEnv } from 'node:util'
+import { cancel, confirm, intro, isCancel, log, outro, spinner } from '@clack/prompts'
 import { type Command, InvalidArgumentError } from 'commander'
 import { flow, queueYaml } from '../config/edit.js'
 import { ConfigError, configPath, parseConfig } from '../config/load.js'
-import { builtinSkillsDir, skillsDirOf } from '../config/paths.js'
+import { bin, builtinSkillsDir, envFile, pluginDir, skillsDirOf } from '../config/paths.js'
 import { loadSkills } from '../config/skills.js'
 import { defaultRules } from '../core/queue.js'
 import type { SkillMeta } from '../core/skills.js'
@@ -14,40 +16,39 @@ import { time } from '../core/window.js'
 import { exec } from '../forge/gh.js'
 import { providers } from '../providers/index.js'
 import { sources } from '../sources/index.js'
-import { Cancelled, defaultAsk, printBrand, terminalAsk } from './ask.js'
+import { Cancelled, defaultAsk } from './ask.js'
 import { describeRule } from './format.js'
-import { installSchedule, whereToRun } from './schedule.js'
 
 export function initCommand(program: Command): void {
   program
     .command('init')
-    .description('detect installed agents, pick providers, sources and a starting queue')
-    .option('-y, --yes', 'answer every question with its default; needs no terminal')
+    .description(
+      "set awaywork up with Claude Code's /away, or write the detected defaults with --yes",
+    )
+    .option('-y, --yes', 'write the detected defaults, asking nothing; needs no terminal')
     .option('--provider <id...>', 'with --yes: providers, first takes units first')
     .option('--source <id...>', 'with --yes: sources to take work from')
     .option('--window <start-end>', 'with --yes: the run window, e.g. 01:00-07:00', parseWindow)
-    .option('--force', 'replace an existing config without asking')
+    .option('--force', 'with --yes: replace an existing config')
     .action(async (opts: InitOptions) => {
       const path = configPath(program.opts().config)
-      if (!opts.yes && !process.stdin.isTTY) {
-        console.error(
-          'init asks questions in a terminal; without one, pass --yes to take the detected defaults, or write the config by hand (`awaywork config schema` describes it) and run `awaywork doctor`',
-        )
-        process.exitCode = 1
+      if (!opts.yes) {
+        if (!process.stdin.isTTY) {
+          console.error(
+            'init hands the setup to Claude Code in a terminal; without one, ask your agent to set awaywork up with /away (the awaywork plugin), pass --yes to take the detected defaults, or write the config by hand (`awaywork config schema` describes it) and run `awaywork doctor`',
+          )
+          process.exitCode = 1
+          return
+        }
+        process.exitCode = await handOff(terminalHandoff, { path, exists: existsSync(path) })
         return
       }
-      const ask = opts.yes ? defaultAsk(presets(opts), (line) => log.info(line)) : terminalAsk
-      if (!opts.yes) printBrand()
       intro('awaywork init')
       try {
         if (existsSync(path) && !opts.force) {
-          if (opts.yes) {
-            cancel(`${path} exists; --force replaces it`)
-            process.exitCode = 1
-            return
-          }
-          if (!(await ask.confirm(`Replace ${path}?`, false)))
-            return outro('Kept the existing config')
+          cancel(`${path} exists; --force replaces it`)
+          process.exitCode = 1
+          return
         }
 
         const found = process.stdout.isTTY ? spinner() : undefined
@@ -72,22 +73,15 @@ export function initCommand(program: Command): void {
           ...(await loadSkills(skillsDirOf(path))),
         }
         const ctx: Ctx = { env: process.env, log: (line) => log.warn(line) }
+        const ask = defaultAsk(presets(opts), (line) => log.info(line))
         const text = await initConfig({ ask, ctx, installed, ghLogin, skills })
         parseConfig(text, path)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, text)
-        const scheduler = opts.yes
-          ? 'later'
-          : await whereToRun(terminalAsk, true).catch(() => 'later')
-        if (scheduler === 'later')
-          return outro(
-            `Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`,
-          )
-        outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan`)
-        await installSchedule(program.opts().config, scheduler)
+        outro(`Wrote ${path}. Next: awaywork doctor, awaywork plan, awaywork schedule install`)
       } catch (e) {
         if (e instanceof Cancelled) {
-          cancel(opts.yes ? `Nothing written: ${e.message}` : 'Nothing written')
+          cancel(`Nothing written: ${e.message}`)
           process.exitCode = 1
         } else if (e instanceof ConfigError) {
           cancel(`Nothing written, the answers make an invalid config:\n${e.message}`)
@@ -95,6 +89,99 @@ export function initCommand(program: Command): void {
         } else throw e
       }
     })
+}
+
+const plugin = 'awaywork@awaywork'
+
+/** What interactive init runs, apart for tests. */
+export interface Handoff {
+  /** The command's stdout; undefined when it fails or isn't installed. */
+  output: (cmd: string, args: string[]) => Promise<string | undefined>
+  /** Runs the command on this terminal and returns its exit code. */
+  spawn: (cmd: string, args: string[], env?: Record<string, string>) => number
+  /** undefined when cancelled. */
+  confirm: (message: string) => Promise<boolean | undefined>
+  print: (message: string) => void
+}
+
+const terminalHandoff: Handoff = {
+  output: (cmd, args) => exec(cmd, args).catch(() => undefined),
+  spawn: (cmd, args, env) =>
+    spawnSync(bin(cmd), args, { stdio: 'inherit', env: { ...withoutEnvFile(), ...env } }).status ??
+    1,
+  confirm: async (message) => {
+    const answer = await confirm({ message })
+    return isCancel(answer) ? undefined : answer
+  },
+  print: (message) => log.info(message),
+}
+
+/** The environment without what the env file added, so the agent never holds those tokens. */
+function withoutEnvFile(): NodeJS.ProcessEnv {
+  const added = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')) : {}
+  return Object.fromEntries(Object.entries(process.env).filter(([k, v]) => added[k] !== v))
+}
+
+/** Opens Claude Code on `/away`, offering to install its plugin first; returns the exit code. */
+export async function handOff(
+  io: Handoff,
+  config: { path: string; exists: boolean },
+): Promise<number> {
+  if ((await io.output('claude', ['--version'])) === undefined) {
+    io.print(
+      [
+        "Claude Code isn't installed, so there's no /away to hand the setup to. Instead:",
+        `- Codex: codex plugin marketplace add AndreaProvenzale/awaywork, codex plugin add ${plugin}, then ask it to set awaywork up with the awaywork:away skill`,
+        `- another agent: load the skills in ${join(pluginDir, 'skills')}, https://andreaprovenzale.github.io/awaywork/guide/agents#codex-and-friends`,
+        '- no agent: awaywork init --yes writes the detected defaults',
+      ].join('\n'),
+    )
+    return 0
+  }
+  const found = parsed<{ id: string; enabled: boolean; installPath?: string }>(
+    await io.output('claude', ['plugin', 'list', '--json']),
+  ).find((p) => p.id === plugin)
+  const args: string[] = []
+  if (!found?.enabled) {
+    const steps = found
+      ? [['plugin', 'enable', plugin]]
+      : [
+          ...(parsed<{ name: string }>(
+            await io.output('claude', ['plugin', 'marketplace', 'list', '--json']),
+          ).some((m) => m.name === 'awaywork')
+            ? []
+            : [['plugin', 'marketplace', 'add', 'AndreaProvenzale/awaywork']]),
+          ['plugin', 'install', plugin],
+        ]
+    const yes = await io.confirm(
+      `${found ? 'Enable' : 'Install'} the awaywork plugin for Claude Code? It runs ${steps.map((s) => `claude ${s.join(' ')}`).join(', then ')}`,
+    )
+    if (yes === undefined) return 1
+    if (!yes || !steps.every((step) => io.spawn('claude', step) === 0)) {
+      args.push('--plugin-dir', pluginDir)
+      io.print(
+        `${yes ? 'That failed, so this' : 'This'} session loads the plugin from ${pluginDir}`,
+      )
+    }
+  } else if (found.installPath && !existsSync(join(found.installPath, 'skills', 'setup'))) {
+    args.push('--plugin-dir', pluginDir)
+    io.print(
+      `Your awaywork plugin predates its setup skill, so this session loads the plugin from ${pluginDir}; claude plugin marketplace update awaywork, then claude plugin update ${plugin}, updates yours`,
+    )
+  }
+  const request = config.exists
+    ? '/away awaywork has a config already: show me where it stands and what I could change'
+    : '/away set up awaywork'
+  io.print(`Opening Claude Code on ${request}; /exit comes back here`)
+  return io.spawn('claude', [...args, request], { AWAYWORK_CONFIG: resolve(config.path) })
+}
+
+function parsed<T>(json?: string): T[] {
+  try {
+    return JSON.parse(json ?? '[]')
+  } catch {
+    return []
+  }
 }
 
 interface InitOptions {
