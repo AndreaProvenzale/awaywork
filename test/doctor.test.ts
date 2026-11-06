@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseConfig } from '../src/config/load.js'
 import { canMatch } from '../src/config/schema.js'
+import type { Provider } from '../src/core/types.js'
 import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import { recorded } from './fakes/gh.js'
@@ -15,6 +16,22 @@ vi.mock('../src/forge/gh.js', () => ({
     throw new Error(`${cmd} ${args.join(' ')}: not found`)
   },
 }))
+
+// The built-ins doctor lists without a config find what `found` says, never a real agent CLI.
+const agents = vi.hoisted(() => ({
+  found: {} as Record<string, { installed: boolean; version?: string }>,
+  probe: vi.fn(),
+}))
+vi.mock('../src/providers/index.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/providers/index.js')>()
+  const stub = (p: Provider): Provider => ({
+    ...p,
+    detect: async () => agents.found[p.id] ?? { installed: false },
+    probe: agents.probe,
+  })
+  const providers = Object.values(original.providers).map((p) => [p.id, stub(p)])
+  return { ...original, providers: Object.fromEntries(providers) }
+})
 
 vi.mock('../src/config/paths.js', async (importOriginal) => {
   const { mkdtempSync } = await import('node:fs')
@@ -34,7 +51,7 @@ const { bitbucketChecks, containerChecks, isolationChecks, runChecks, workflowSe
 const { configDir, runsDir } = await import('../src/config/paths.js')
 
 describe('doctor', () => {
-  it('reports each check as { status, what, detail } and stops at a missing config', async () => {
+  it('reports each check as { status, what, detail } and fails a missing config', async () => {
     const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
     const seen: unknown[] = []
     vi.stubEnv('GH_TOKEN', '')
@@ -48,7 +65,35 @@ describe('doctor', () => {
     })
     expect(checks).toContainEqual({ status: 'FAIL', what: 'gh', detail: 'not found on PATH' })
     expect(checks).toContainEqual({ status: 'FAIL', what: 'gh login', detail: 'GH_TOKEN unset' })
-    expect(checks.at(-1)).toEqual({ status: 'FAIL', what: path, detail: 'file not found' })
+    expect(checks).toContainEqual({ status: 'FAIL', what: path, detail: 'file not found' })
+  })
+
+  it('lists the agent CLIs after a missing config, without probing their quota', async () => {
+    const path = join(import.meta.dirname, 'fixtures', 'missing.yml')
+    agents.found = {
+      claude: { installed: true, version: '1.0.0' },
+      cursor: { installed: true, version: 'v' },
+    }
+    vi.stubEnv('CURSOR_API_KEY', '')
+    const checks = await runChecks(path, () => {})
+    vi.stubEnv('CURSOR_API_KEY', 'key')
+    const keyed = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    agents.found = {}
+    const after = checks.slice(checks.findIndex((c) => c.what === path))
+    expect(after).toEqual([
+      { status: 'FAIL', what: path, detail: 'file not found' },
+      { status: 'ok', what: 'claude', detail: '1.0.0' },
+      { status: 'warn', what: 'codex', detail: 'not installed' },
+      {
+        status: 'warn',
+        what: 'cursor',
+        detail:
+          "v, CURSOR_API_KEY unset: Cursor runs in a HOME of awaywork's, where your login doesn't reach; make a key in Cursor's dashboard and put it in the env file",
+      },
+    ])
+    expect(keyed.at(-1)).toEqual({ status: 'ok', what: 'cursor', detail: 'v' })
+    expect(agents.probe).not.toHaveBeenCalled()
   })
 
   it("warns that the default skills aren't used with a config elsewhere, without parsing them", async () => {

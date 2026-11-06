@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
-import { editUntilValid } from '../src/cli/config.js'
+import { Command } from 'commander'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { configCommand, editUntilValid } from '../src/cli/config.js'
 import { ConfigError, configPath, loadConfig, parseConfig } from '../src/config/load.js'
 import { unknownSkills } from '../src/config/skills.js'
 import type { Step } from '../src/core/types.js'
@@ -879,5 +880,37 @@ repos: { acme/web: { instructions: mine.md } }
     })
     expect([outcome, seen]).toEqual(['saved', [path]])
     expect((await loadConfig(path)).limits).toMatchObject({ units: 2, unit_minutes: 30 })
+  })
+})
+
+describe('awaywork config path', () => {
+  afterEach(() => {
+    process.exitCode = undefined
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  async function path(...args: string[]) {
+    const out = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const program = new Command().option('-c, --config <path>')
+    configCommand(program)
+    await program.parseAsync([...args, 'config', 'path'], { from: 'user' })
+    return { out: out.mock.calls, err: err.mock.calls, code: process.exitCode }
+  }
+
+  it('prints the config in use, from --config or else $AWAYWORK_CONFIG, and exits 1 when it is missing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-path-'))
+    const there = join(dir, 'config.yml')
+    const missing = join(dir, 'missing.yml')
+    await writeFile(there, minimal)
+    vi.stubEnv('AWAYWORK_CONFIG', missing)
+    expect(await path('--config', there)).toEqual({ out: [[there]], err: [], code: undefined })
+    vi.restoreAllMocks()
+    expect(await path()).toEqual({
+      out: [[missing]],
+      err: [[`${missing} not found; awaywork init writes one`]],
+      code: 1,
+    })
   })
 })

@@ -140,15 +140,15 @@ Setting up:
 
 1. `npm install -g awaywork`; check `claude --version`, `codex --version`, `agent --version` (Cursor, which also needs `CURSOR_API_KEY` in the env file), `gh auth status`.
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. Override with `--provider claude codex` (first takes units first), `--source github asana` and `--window 23:00-06:00`. Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear is likewise skipped unless `LINEAR_API_KEY` is set. Cursor counts as installed only with `CURSOR_API_KEY` set, and `--provider cursor` takes it anyway: where it's the only agent, `--yes` without either stops, naming the missing key. Jira is skipped: it needs a site and an email. It refuses to replace an existing config without `--force`. To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). `awaywork sources asana --json` gives the Asana workspace and project gids and the real section names for `where`; `sources linear`, `sources jira` (once the config has its `site` and `email`) and `sources github` do the same for theirs, without you ever seeing the token.
-3. Secrets go in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. They're the user's to put there, or to type into `awaywork init`: don't ask for them in the chat, and don't read them from that file or other tools' files.
-4. `awaywork doctor` until the config's line isn't `FAIL`.
+3. Secrets go in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. They're the user's to put there, with `awaywork secret ASANA_TOKEN` (a hidden prompt; in Claude Code, `! pbpaste | awaywork secret ASANA_TOKEN` after copying it), or to type into `awaywork init`: don't ask for them in the chat, and don't read them from that file or other tools' files.
+4. `awaywork doctor` until the config's line isn't `FAIL`. Without a config it still lists each agent CLI: `ok` with its version, `warn` when it's not installed or, for Cursor, `CURSOR_API_KEY` is unset. `awaywork config path` prints the config file in use and exits 1 while it doesn't exist.
 5. For the queue, follow the [skill](#codex-and-friends). `awaywork plan`, and show the user the result. When stdin and stdout are both a terminal, `plan` and `report` open an interactive view; piped (`| cat`) or with `CI` set, they print text.
 
 What each command does:
 
 | Command | Effect |
 | --- | --- |
-| `config schema`, `skills list`, `report` | Read-only, local |
+| `config path`, `config schema`, `skills list`, `report` | Read-only, local |
 | `plan`, `doctor` | Read-only on sources and forge; probe each provider's quota (one tiny model call for Claude) |
 | `plan --rules`, `plan --rules --json` | Read-only on sources and forge; probes no provider |
 | `sources [id]` | Read-only on sources; prints no token |
@@ -157,6 +157,7 @@ What each command does:
 | `run`, `run --unit <id>` | Runs agents on the user's quota; pushes branches and opens draft PRs. Ask first. |
 | `schedule install` | Installs a scheduled job, or writes a workflow with `--with github-actions`, or a container's files with `--with docker`. Ask first. |
 | `init --yes` | Writes the config from detected defaults; `--force` replaces one |
+| `secret <NAME>` | Writes the env file from a hidden prompt or a pipe; prints no value. The user runs it, not you |
 | `init`, `config edit` | Interactive; need a terminal |
 
 Machine-readable output:

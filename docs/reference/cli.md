@@ -24,7 +24,10 @@ Options:
 Commands:
   init [options]            detect installed agents, pick providers, sources and
                             a starting queue
-  config                    print the config schema or edit the config
+  config                    print the config's path or its schema, or edit the
+                            config
+  secret <name>             save a token to ~/.config/awaywork/env (mode 600),
+                            from a hidden prompt or a pipe
   sources [options] [id]    list what a source's credentials can see
                             (workspaces, projects, teams, statuses), read-only;
                             with no id, every configured source
@@ -82,16 +85,29 @@ Options:
 ```text
 Usage: awaywork config [options] [command]
 
-print the config schema or edit the config
+print the config's path or its schema, or edit the config
 
 Options:
   -h, --help      display help for command
 
 Commands:
+  path            print the config file awaywork reads; exit 1 when it does not
+                  exist
   schema          print the config JSON Schema, for editor autocompletion
   edit            open the config in $VISUAL or $EDITOR; it is saved only once
                   valid
   help [command]  display help for command
+```
+
+## awaywork config path
+
+```text
+Usage: awaywork config path [options]
+
+print the config file awaywork reads; exit 1 when it does not exist
+
+Options:
+  -h, --help  display help for command
 ```
 
 ## awaywork config schema
@@ -111,6 +127,21 @@ Options:
 Usage: awaywork config edit [options]
 
 open the config in $VISUAL or $EDITOR; it is saved only once valid
+
+Options:
+  -h, --help  display help for command
+```
+
+## awaywork secret
+
+```text
+Usage: awaywork secret [options] <name>
+
+save a token to ~/.config/awaywork/env (mode 600), from a hidden prompt or a
+pipe
+
+Arguments:
+  name        the variable, e.g. ASANA_TOKEN
 
 Options:
   -h, --help  display help for command
