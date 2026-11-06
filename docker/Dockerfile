@@ -12,7 +12,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # Upgrading is a rebuild: change these and push.
-ARG AWAYWORK_VERSION=0.1.0-rc.2
+ARG AWAYWORK_VERSION=0.1.0-rc.3
 ARG PACKAGES=@anthropic-ai/claude-code
 ENV DISABLE_AUTOUPDATER=1
 RUN npm install -g "awaywork@$AWAYWORK_VERSION" $PACKAGES && npm cache clean --force
