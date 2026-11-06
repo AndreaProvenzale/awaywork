@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { confirm, isCancel, log, multiselect, password, select, text } from '@clack/prompts'
 import { envFile } from '../config/paths.js'
@@ -84,10 +84,15 @@ export function defaultAsk(presets: [RegExp, unknown][], note: (message: string)
   }
 }
 
-/** Appends to the env file, created with mode 600. */
+/** Sets `name` in the env file, replacing its earlier line; the file ends mode 600. */
 export async function saveSecret(name: string, value: string, file = envFile): Promise<void> {
   await mkdir(dirname(file), { recursive: true })
   const existing = await readFile(file, 'utf8').catch(() => '')
-  const separator = existing && !existing.endsWith('\n') ? '\n' : ''
-  await appendFile(file, `${separator}${name}=${value}\n`, { mode: 0o600 })
+  const kept = existing
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith(`${name}=`))
+    .join('\n')
+  const separator = kept && !kept.endsWith('\n') ? '\n' : ''
+  await writeFile(file, `${kept}${separator}${name}=${value}\n`, { mode: 0o600 })
+  await chmod(file, 0o600)
 }
