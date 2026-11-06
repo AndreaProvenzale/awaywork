@@ -1,6 +1,7 @@
 #!/bin/sh
 # The folders interactive agent sessions ran in over the last N days (default 30), from metadata alone.
 # A header, then one tab-separated line per agent and folder: agent, sessions, MB, memories, folder, repo (owner/repo, the remote URL, or -).
+# Then the user-level files suggest would read, one path per line.
 days=${1:-30}
 roots=$(printf '%s\n' "$HOME/.claude" ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR"} | awk '!seen[$0]++')
 
@@ -47,3 +48,12 @@ sessions | awk -F'\t' '!seen[$1 FS $2]++ { n[$1 FS $4]++; kb[$1 FS $4] += $3; if
     remote=$(git -C "${at:-/}" remote get-url origin 2>/dev/null || printf '%s' "$url")
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$agent" "$n" "$mb" "$(memories "$agent" "$dir")" "$dir" "$(repo "${remote:--}")"
   done
+
+printf '\nuser-level files\n'
+{
+  printf '%s\n' "$roots" | while read -r root; do
+    for f in "$root/CLAUDE.md" "$root"/rules/*.md; do [ -f "$f" ] && realpath "$f"; done
+  done
+  f="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+  [ -f "$f" ] && realpath "$f"
+} | sort -u

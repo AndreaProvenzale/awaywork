@@ -16,19 +16,31 @@ You know what you want off your plate: red CI on your PRs, the bugs QA bounces b
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces.
 
-No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. Then it runs `awaywork doctor --json` for your agent CLIs and gh login, and lists the folders your Claude Code and Codex sessions ran in over the last 30 days, from their metadata alone, mapped to repos by their git remotes. One message asks the rest: providers, repos, whether tasks also come from Asana, Linear or Jira, the window, and whether to [suggest](./suggest.md) your first rules from those sessions. Trimmed, on a sandbox, the repos renamed:
+No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. Then it runs `awaywork doctor --json` for your agent CLIs and gh login, and lists the folders your Claude Code and Codex sessions ran in over the last 30 days, from their metadata alone, mapped to repos by their git remotes. One message asks the rest: providers, which owners this config is for and their repos, whether tasks also come from Asana, Linear or Jira, the window, and whether to [suggest](./suggest.md) your first rules from those sessions, with what it would read. Trimmed, the repos renamed:
 
 ```text
+- Repos from your last 30 days of sessions, grouped by owner with the most sessions first:
+  - acme (127 sessions): api (126), web (1)
+  - acme-labs (41): site
+  - widgets (30): art. The remote is the ssh alias git@github-work:widgets/art, so I've left
+    it out until you confirm that repo.
+  - Not GitHub: billing is on Bitbucket. This setup doesn't write Bitbucket sources, so it's left out.
+
 Questions
-1. Providers: claude first, then codex when claude's quota runs out. Is that the order you want?
-2. Repos, most sessions first, from the last 30 days:
-   - acme/api (64 sessions)
-   - acme/web (9)
-   Do you want to edit this list? owner/* also works, for example acme/*.
-3. Trackers: do tasks also come from Asana, Linear or Jira? Default: no, GitHub only.
-4. Window: 01:00–07:00 in your local time?
-5. First rules: should I suggest rules from your recent sessions and PRs, or start from
-   awaywork's default rules? Default: the default rules.
+1. Providers: claude first, then codex when its quota runs out. Do you want a different order, or Cursor too?
+2. Repos: this config covers one set of owners, default acme. Which repos should it list: acme/api,
+   acme/web, or acme/*? Add acme-labs/site or widgets/art if you want them, since work and personal
+   usually get separate configs.
+3. Trackers: do tasks also come from Asana, Linear or Jira? No. For Jira I'd need the Cloud site, your
+   Atlassian email, and whether the token is scoped.
+4. Window: 01:00–07:00 your time.
+5. First rules: I can suggest rules from your recent sessions and PRs, or you can start from awaywork's
+   default rules (the default).
+   - If you say yes to suggestions, I'd read the Claude Code sessions and memories in the acme repo
+     folders over the last 30 days. That's 127 sessions (233.0 MB) in 4 folders and 52 memory files,
+     plus your global ~/.claude/CLAUDE.md. There are no Codex sessions there.
+   - Everything I read goes to Anthropic, my vendor. A yes covers this run for the owners you chose,
+     and I won't ask again.
 ```
 
 A tracker needs a token, and it never goes through the chat. The skill tells you to run `awaywork secret LINEAR_API_KEY`, which saves it in `~/.config/awaywork/env` (mode 600) and prints only that it did: in your own terminal it asks at a hidden prompt; in Claude Code, copy the token and type `! pbpaste | awaywork secret LINEAR_API_KEY`. Say done, and it reads your teams and statuses with `awaywork sources linear --json` and asks only which repo each team's code lives in.
