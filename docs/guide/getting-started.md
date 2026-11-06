@@ -44,14 +44,31 @@ $ awaywork init
 Say no and that one session loads the plugin from the npm package instead (`--plugin-dir`), nothing installed. Then `/away` looks around on its own: `awaywork doctor` for your agent CLIs and `gh` login, and the folders your recent Claude Code and Codex sessions ran in, mapped to repos by their git remotes. One message asks the rest:
 
 ```text
-⏺ I've looked around and have a few questions before I draft the config.
+⏺ I looked around your machine. Here's what I found, and what I need from you to write the config.
+  [...]
+  Repos from your last 30 days of sessions, grouped by owner
+  1. acme: api (about 126 sessions, counting its worktrees) and web (1). This is the owner with the
+     most sessions.
+  2. acme-labs: site (41). Your gh login may not reach this org.
+  3. widgets: art (30). It shows up as the ssh alias git@github-work:widgets/art, so I need you to
+     confirm that repo name before I use it.
+  4. Not GitHub, so left out: billing (Bitbucket Cloud). Setup doesn't write a Bitbucket source.
 
-  Questions (the default is in brackets)
-  1. Providers: claude first, then codex when claude's quota runs out. [claude, codex]
-  2. Repos: which GitHub repos should awaywork watch? Name them, or use owner/* for a whole owner. [acme/*]
-  3. Trackers: do tasks also come from Asana, Linear or Jira? [no]
-  4. Window: when may runs happen? [01:00–07:00 your local time]
-  5. First rules: should I suggest rules from your recent sessions and PRs, or start from awaywork's default rules?
+  Work and personal usually get separate configs, so one config covers the owners you pick.
+
+  Questions
+  1. Providers: claude first, then codex. Is that right?
+  2. Repos: acme/api and acme/web. Do you want acme/* or other owners instead?
+  3. Trackers: do tasks also come from Asana, Linear or Jira? No. For Jira I'd need your Cloud site,
+     Atlassian email, and whether the API token is scoped.
+  4. Window: 01:00–07:00 your local time.
+  5. First rules: the default is awaywork's default rules. I can suggest rules from your recent
+     sessions and PRs instead, but that needs your yes.
+     - What I'd read for the default owner: 123 Claude Code sessions (229 MB) in the api folder, plus
+       2 sessions (1.7 MB) in its fix-ci worktree folder and 1 in an agent worktree. It also covers 50
+       memory files and your global ~/.claude/CLAUDE.md. There are no Codex sessions there.
+     - Everything I read goes to Anthropic, my vendor.
+     - A yes also covers suggest's consent for this run, for the owners you chose.
 
 ❯ Only acme/api as the repo; everything else the defaults.
 ```

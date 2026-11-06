@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { printBrand } from '../src/cli/ask.js'
-import { type Handoff, handOff, initCommand } from '../src/cli/init.js'
+import { type Handoff, handOff, initCommand, withoutEnvFile } from '../src/cli/init.js'
 import { pluginDir } from '../src/config/paths.js'
 
 vi.mock('../src/providers/index.js', async () => {
@@ -89,6 +89,7 @@ describe('handOff', () => {
   const disabled = installed(false)
   const fake = ({
     plugins = absent,
+    after = enabled,
     claude = true,
     marketplaces = '[]',
     answer = undefined as boolean | undefined,
@@ -104,7 +105,9 @@ describe('handOff', () => {
             ? '2.1.319'
             : args[1] === 'marketplace'
               ? marketplaces
-              : plugins,
+              : ran.length
+                ? after
+                : plugins,
       spawn: (cmd, args, env) => {
         ran.push([cmd, ...args, ...(env ? [env.AWAYWORK_CONFIG] : [])].join(' '))
         return failing && args.join(' ').includes(failing) ? 1 : 0
@@ -117,7 +120,10 @@ describe('handOff', () => {
   const fresh = { path: '/home/me/.config/awaywork/config.yml', exists: false }
   const marketplace = 'claude plugin marketplace add AndreaProvenzale/awaywork'
   const install = 'claude plugin install awaywork@awaywork'
+  const update = 'claude plugin marketplace update awaywork'
+  const added = JSON.stringify([{ name: 'awaywork' }])
   const setUp = `claude /away set up awaywork ${fresh.path}`
+  const withPluginDir = `claude --plugin-dir ${pluginDir} /away set up awaywork ${fresh.path}`
 
   it('opens /away right away when the plugin is enabled', async () => {
     const { io, ran } = fake({ plugins: enabled })
@@ -131,10 +137,28 @@ describe('handOff', () => {
     expect(ran).toEqual([marketplace, install, setUp])
   })
 
-  it('installs from the awaywork marketplace already added', async () => {
-    const { io, ran } = fake({ marketplaces: JSON.stringify([{ name: 'awaywork' }]), answer: true })
+  it('updates the awaywork marketplace already added, then installs from it', async () => {
+    const { io, ran } = fake({ marketplaces: added, answer: true })
     await handOff(io, fresh)
-    expect(ran).toEqual([install, setUp])
+    expect(ran).toEqual([update, install, setUp])
+  })
+
+  it("loads the package's plugin when the one just installed has no setup skill", async () => {
+    const { io, ran, printed } = fake({ answer: true, after: installed(true, '/nowhere') })
+    await handOff(io, fresh)
+    expect(ran).toEqual([marketplace, install, withPluginDir])
+    expect(printed[0]).toContain('claude plugin marketplace update awaywork')
+  })
+
+  it("loads the package's plugin when the updated marketplace still serves a stale one", async () => {
+    const { io, ran } = fake({
+      plugins: installed(false, '/nowhere'),
+      marketplaces: added,
+      answer: true,
+      after: installed(true, '/nowhere'),
+    })
+    await handOff(io, fresh)
+    expect(ran).toEqual([update, 'claude plugin enable awaywork@awaywork', withPluginDir])
   })
 
   it('enables a disabled plugin on a yes', async () => {
@@ -146,23 +170,20 @@ describe('handOff', () => {
   it("loads the package's plugin for the session on a no", async () => {
     const { io, ran } = fake({ answer: false })
     await handOff(io, fresh)
-    expect(ran).toEqual([`claude --plugin-dir ${pluginDir} /away set up awaywork ${fresh.path}`])
+    expect(ran).toEqual([withPluginDir])
   })
 
   it("falls back to the package's plugin when the install fails, stopping at the failed step", async () => {
     const { io, ran, printed } = fake({ answer: true, failing: 'marketplace' })
     await handOff(io, fresh)
-    expect(ran).toEqual([
-      marketplace,
-      `claude --plugin-dir ${pluginDir} /away set up awaywork ${fresh.path}`,
-    ])
+    expect(ran).toEqual([marketplace, withPluginDir])
     expect(printed[0]).toContain('That failed')
   })
 
   it("loads the package's plugin over one without the setup skill", async () => {
     const { io, ran, printed } = fake({ plugins: installed(true, '/nowhere') })
     await handOff(io, fresh)
-    expect(ran).toEqual([`claude --plugin-dir ${pluginDir} /away set up awaywork ${fresh.path}`])
+    expect(ran).toEqual([withPluginDir])
     expect(printed[0]).toContain('claude plugin update awaywork@awaywork')
   })
 
@@ -189,6 +210,18 @@ describe('handOff', () => {
     expect(await handOff(io, fresh)).toBe(0)
     expect(ran).toEqual([])
     expect(printed.join('\n')).toMatch(/codex plugin add awaywork@awaywork[\s\S]*init --yes/)
+  })
+})
+
+describe('withoutEnvFile', () => {
+  it("drops what the env file added but claude's login", () => {
+    const env = { PATH: '/bin', ASANA_TOKEN: 'a', CLAUDE_CODE_OAUTH_TOKEN: 'c', SHELL_TOKEN: 's' }
+    const file = { ASANA_TOKEN: 'a', CLAUDE_CODE_OAUTH_TOKEN: 'c', SHELL_TOKEN: 'other' }
+    expect(withoutEnvFile(env, file)).toEqual({
+      PATH: '/bin',
+      CLAUDE_CODE_OAUTH_TOKEN: 'c',
+      SHELL_TOKEN: 's',
+    })
   })
 })
 

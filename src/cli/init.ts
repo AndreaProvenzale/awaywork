@@ -107,8 +107,10 @@ export interface Handoff {
 const terminalHandoff: Handoff = {
   output: (cmd, args) => exec(cmd, args).catch(() => undefined),
   spawn: (cmd, args, env) =>
-    spawnSync(bin(cmd), args, { stdio: 'inherit', env: { ...withoutEnvFile(), ...env } }).status ??
-    1,
+    spawnSync(bin(cmd), args, {
+      stdio: 'inherit',
+      env: { ...withoutEnvFile(process.env, envFileVars()), ...env },
+    }).status ?? 1,
   confirm: async (message) => {
     const answer = await confirm({ message })
     return isCancel(answer) ? undefined : answer
@@ -116,10 +118,16 @@ const terminalHandoff: Handoff = {
   print: (message) => log.info(message),
 }
 
-/** The environment without what the env file added, so the agent never holds those tokens. */
-function withoutEnvFile(): NodeJS.ProcessEnv {
-  const added = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')) : {}
-  return Object.fromEntries(Object.entries(process.env).filter(([k, v]) => added[k] !== v))
+const envFileVars = () => (existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')) : {})
+
+/** The environment without what the env file added but claude's own login, so the agent never holds awaywork's tokens. */
+export function withoutEnvFile(
+  env: NodeJS.ProcessEnv,
+  added: Record<string, string | undefined>,
+): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(([k, v]) => k === 'CLAUDE_CODE_OAUTH_TOKEN' || added[k] !== v),
+  )
 }
 
 /** Opens Claude Code on `/away`, offering to install its plugin first; returns the exit code. */
@@ -138,21 +146,24 @@ export async function handOff(
     )
     return 0
   }
-  const found = parsed<{ id: string; enabled: boolean; installPath?: string }>(
-    await io.output('claude', ['plugin', 'list', '--json']),
-  ).find((p) => p.id === plugin)
+  const listed = async () =>
+    parsed<{ id: string; enabled: boolean; installPath?: string }>(
+      await io.output('claude', ['plugin', 'list', '--json']),
+    ).find((p) => p.id === plugin)
+  let found = await listed()
   const args: string[] = []
   if (!found?.enabled) {
-    const steps = found
-      ? [['plugin', 'enable', plugin]]
-      : [
-          ...(parsed<{ name: string }>(
-            await io.output('claude', ['plugin', 'marketplace', 'list', '--json']),
-          ).some((m) => m.name === 'awaywork')
-            ? []
-            : [['plugin', 'marketplace', 'add', 'AndreaProvenzale/awaywork']]),
-          ['plugin', 'install', plugin],
-        ]
+    const marketplace = parsed<{ name: string }>(
+      await io.output('claude', ['plugin', 'marketplace', 'list', '--json']),
+    ).some((m) => m.name === 'awaywork')
+    const steps = [
+      ...(marketplace
+        ? [['plugin', 'marketplace', 'update', 'awaywork']]
+        : found
+          ? []
+          : [['plugin', 'marketplace', 'add', 'AndreaProvenzale/awaywork']]),
+      found ? ['plugin', 'enable', plugin] : ['plugin', 'install', plugin],
+    ]
     const yes = await io.confirm(
       `${found ? 'Enable' : 'Install'} the awaywork plugin for Claude Code? It runs ${steps.map((s) => `claude ${s.join(' ')}`).join(', then ')}`,
     )
@@ -162,8 +173,13 @@ export async function handOff(
       io.print(
         `${yes ? 'That failed, so this' : 'This'} session loads the plugin from ${pluginDir}`,
       )
-    }
-  } else if (found.installPath && !existsSync(join(found.installPath, 'skills', 'setup'))) {
+    } else found = await listed()
+  }
+  if (
+    !args.length &&
+    found?.installPath &&
+    !existsSync(join(found.installPath, 'skills', 'setup'))
+  ) {
     args.push('--plugin-dir', pluginDir)
     io.print(
       `Your awaywork plugin predates its setup skill, so this session loads the plugin from ${pluginDir}; claude plugin marketplace update awaywork, then claude plugin update ${plugin}, updates yours`,
