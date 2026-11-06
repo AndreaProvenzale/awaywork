@@ -15,7 +15,7 @@ import {
   spanPattern,
 } from '../core/queue.js'
 import { builtinSkills } from '../core/skills.js'
-import type { Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
+import type { Provider, Rule, Scalar, Source, Where, WhereValue } from '../core/types.js'
 import { DAYS, time } from '../core/window.js'
 import { commandProviderConfig } from '../providers/command.js'
 import { providers } from '../providers/index.js'
@@ -92,7 +92,20 @@ const models = z
 type ProviderConfig = {
   model?: string
   budget?: z.output<typeof budgetOverride>
+  config_dir?: string
 } & Record<string, unknown>
+
+const loginFolder = (p: Provider, { env, default: folder }: NonNullable<Provider['loginDir']>) =>
+  z
+    .string()
+    .regex(/^~?\//, 'expected an absolute path or one under ~/')
+    .describe(
+      [
+        `Folder of the login it runs on, passed as ${env}, e.g. ${folder}-work; default the environment's`,
+        ...(p.secrets.length ? [`${p.secrets.join(', ')} wins when set`] : []),
+        ...(p.login ? [] : ['not with isolation: user or container']),
+      ].join('; '),
+    )
 
 const providerName = z
   .enum(Object.keys(providers))
@@ -103,7 +116,11 @@ const providerOverride = z
       Object.values(providers).map((p) => [
         p.id,
         p.configSchema
-          .extend({ model: model.optional(), budget: budgetOverride.optional() })
+          .extend({
+            model: model.optional(),
+            budget: budgetOverride.optional(),
+            ...(p.loginDir && { config_dir: loginFolder(p, p.loginDir).optional() }),
+          })
           .optional()
           .describe(`${p.id} settings`),
       ]),
@@ -692,7 +709,15 @@ export const configSchema = z
         message: 'required with a command provider: it has no turn cap, so this bounds its unit',
       })
     cfg.providers.forEach((entry, i) => {
-      for (const id of Object.keys(entry)) {
+      for (const [id, settings] of Object.entries(entry as Record<string, ProviderConfig>)) {
+        const provider = Object.hasOwn(providers, id) ? providers[id] : undefined
+        // Only a login awaywork lends to the worker reaches it; the rest stay in your folders.
+        if (settings?.config_dir && cfg.isolation !== 'none' && provider && !provider.login)
+          ctx.addIssue({
+            code: 'custom',
+            path: ['providers', i, id, 'config_dir'],
+            message: `not with isolation: ${cfg.isolation}, which can't reach your login folder; set ${provider.secrets.join(', ')} instead`,
+          })
         if (!commandIds.includes(id)) continue
         // `constructor` is the one such name Object.prototype already has.
         if (!/^(?!constructor$)[a-z][a-z0-9-]*$/.test(id))
@@ -1022,10 +1047,11 @@ export const configSchema = z
     ...cfg,
     providers: entries.flatMap((entry) =>
       Object.entries(entry as Record<string, ProviderConfig>).map(
-        ([id, { model, budget: override, ...config }]) => ({
+        ([id, { model, budget: override, config_dir, ...config }]) => ({
           id,
           config,
           model,
+          config_dir,
           budget: {
             ...cfg.budget,
             ...override,

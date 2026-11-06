@@ -130,6 +130,26 @@ describe('doctor', () => {
     expect(checks.at(-1)?.what).toBe('github')
   })
 
+  it("fails gh login with the fix when the pinned account has none, and counts no one else's items", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      'providers: [codex]\nsources: { github: { repos: [a/b], user: octocat } }\n',
+    )
+    vi.stubEnv('GH_TOKEN', '')
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const checks = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'gh login',
+      detail: "octocat isn't logged in to gh; log in with gh auth login, as octocat",
+    })
+    expect(checks.map((c) => c.what)).not.toContain('github')
+  })
+
   it('fails Cursor without CURSOR_API_KEY, even with your login', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
