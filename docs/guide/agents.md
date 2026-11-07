@@ -35,19 +35,19 @@ Whose GitHub work should this awaywork config take care of?
 The login tab offers each Claude Code folder with its account and plan (`$CLAUDE_CONFIG_DIR, Max 5x (Recommended)`, the one holding that work's sessions), and the next rounds ask for the repos, a tracker (an MCP server pointing at one is a hint), the window, the rules and whether to [suggest](./suggest.md) more from those sessions, with what it would read:
 
 ```text
-←  ☐ Rules  ☐ Suggestions  ✔ Submit  →
+←  ☐ My PRs  ☐ Reviews  ☐ Cards  ☐ Learn  ✔ Submit  →
 
-Which kinds of work should awaywork take from your GitHub items?
+Which work on your own PRs should awaywork take?
 
-❯ 1. [ ] Fix red checks on my PRs
+❯ 1. [ ] Fix red checks
          Pushes a draft PR stacked on your PR with the fix.
-  2. [ ] Fix review threads on my PRs
+  2. [ ] Fix review threads
          Draft PR stacked on yours addressing open review comments, awaywork's own drafts included.
-  3. [ ] Review requests
-         Writes a report on PRs that ask for your review; nothing is posted.
-  4. [ ] Review as pending review (widening)
-         Same, but left as your pending GitHub review, visible only to you; this widens what it writes.
+  3. [ ] Keep them up to date with main (widening)
+         Pushes a merge of main onto your PR; a conflict gets resolved by a model and waits for your review.
 ```
+
+Review requests are one pick (a report only you read, or your pending GitHub review, which widens what it writes), and if you hand over the sprint's cards, the round with your tracker's names asks how: plan then implement across repos, waiting for you only when a judge finds a product decision the card leaves open, or on every plan, or just a plan report.
 
 The suggestions option says what it would read before it reads it: `Reads 124 Claude Code sessions (233.7 MB) in the api folder plus memories and your global CLAUDE.md; it goes to Anthropic.`
 
