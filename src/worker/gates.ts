@@ -156,11 +156,16 @@ export async function gateOut(
   await putBack(join(dir, copy), judged)
   for (const [path, data] of judged)
     if (Buffer.isBuffer(data)) await chmod(join(dir, copy, path), 0o444)
+  const dirs = ['', ...[...judged].flatMap(([path, data]) => (data === 'dir' ? [path] : []))]
+  const dirMode = (mode: number) =>
+    Promise.all(dirs.map((d) => chmod(join(dir, copy, d), mode).catch(() => undefined)))
+  await dirMode(0o555)
   try {
     const fired = await runGates(deps.check, unit, dir, '', start, join(dir, copy))
     fired.push(...(await runJudges(deps.judge, unit, dir, { out: copy })))
     return fired
   } finally {
+    await dirMode(0o755)
     await refuseSymlinks(dir, [`${WORK_DIR}/out`, copy])
     await rm(join(dir, copy), { recursive: true, force: true })
     await putBack(out, left)

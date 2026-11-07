@@ -144,6 +144,7 @@ const questionsAnswer =
   "Reply here to answer: awaywork's next run takes this up again with your reply."
 const planAnswer =
   'To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.'
+const planWent = 'This plan went ahead without your approve: a reply to it changes nothing.'
 const reportAnswer =
   'To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.'
 
@@ -219,9 +220,14 @@ export function waitingTasks(item: Pick<Item, 'comments'>): string[] {
   return [...new Set(asked)]
 }
 
-/** What awaywork posts on an item for a `deliver: plan` rule: the report, the contract and `plan.yml` in fences, and how to answer. */
-export const planComment = (report: string, plan: string, contract?: Contract): string =>
-  `${report.trim()}\n\n${contract ? `${contractBlock(contract)}\n\n` : ''}\`\`\`yaml\n${plan.trim()}\n\`\`\`\n\n${planAnswer}`
+/** What awaywork posts on an item for a `deliver: plan` rule: the report, the contract and `plan.yml` in fences, and how to answer, or that it went ahead. */
+export const planComment = (
+  report: string,
+  plan: string,
+  contract?: Contract,
+  went = false,
+): string =>
+  `${report.trim()}\n\n${contract ? `${contractBlock(contract)}\n\n` : ''}\`\`\`yaml\n${plan.trim()}\n\`\`\`\n\n${went ? planWent : planAnswer}`
 
 export const contractHeading = (name: string) => `### Contract: ${name}`
 
@@ -264,7 +270,7 @@ const visibleLines = (c: Item['comments'][number]): string[] =>
 export function commentKind(c: Item['comments'][number]): CommentKind | undefined {
   if (!isAwayworkComment(c)) return undefined
   const above = visibleLines(c).at(-2) ?? ''
-  if (above === planAnswer) return 'plan'
+  if (above === planAnswer || above === planWent) return 'plan'
   if (above === questionsAnswer) return 'questions'
   if (isApprove(c)) return 'approve'
   return statusLine.test(statusAt(c)) ? 'result' : 'questions'

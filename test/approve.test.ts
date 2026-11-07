@@ -111,7 +111,7 @@ describe('approve', () => {
     const ahead = github([item({ went: true, gates: ['taste'] })])
     await expect(
       approveItem('github:acme/api#7', config, '', { sources: ahead.sources, ctx }),
-    ).rejects.toThrow("the story's result on https://example.com/1 went ahead")
+    ).rejects.toThrow(/^story's result on https:\/\/example.com\/1 went ahead/)
   })
 
   it("refuses a plan's task, which the plan's approval covers", async () => {

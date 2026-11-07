@@ -79,6 +79,14 @@ queue:
     where: { planned: true }
     deliver: report
     run: soon
+  - skill: story
+    where: { label: story }
+    deliver: report
+    wait: true
+    on_done: { move: designed }
+  - skill: prototype
+    where: { approved: story }
+    deliver: report
 `
 
 const contract = `openapi: 3.1.0
@@ -120,24 +128,33 @@ const card: Item = {
   raw: null,
 }
 
+/** The issues after the feature's card, once a step adds them. */
+const others: Item[] = []
+
 /** Your comment on the card, which bumps its updated time as GitHub does. */
-const reply = (body: string) => {
+const reply = (body: string, on = card) => {
   const at = tick()
-  card.comments.push({ author: 'me', body, at, mine: true })
-  card.fields.updated = at
+  on.comments.push({ author: 'me', body, at, mine: true })
+  on.fields.updated = at
 }
 
-// The real GitHub source's schema and fields, over the card kept in memory.
-vi.spyOn(github, 'items').mockImplementation(async () => {
-  const comments = [...card.comments]
-  // Its prefetch counts the comments GitHub returned in `raw` against those it shows.
-  return [{ ...card, comments, fields: { ...card.fields }, raw: { comments: { nodes: comments } } }]
-})
-vi.spyOn(github, 'write').mockImplementation(async (_cfg, _item, w: Write) => {
-  const before = card.fields.updated as string
-  if (w.op === 'comment') reply(w.body)
-  else card.fields = { ...card.fields, label: [card.fields.label, w.to].flat(), updated: tick() }
-  return { before, after: card.fields.updated as string }
+// The real GitHub source's schema and fields, over the cards kept in memory.
+vi.spyOn(github, 'items').mockImplementation(async () =>
+  [card, ...others].map((c) => {
+    const comments = [...c.comments]
+    // Its prefetch counts the comments GitHub returned in `raw` against those it shows.
+    return { ...c, comments, fields: { ...c.fields }, raw: { comments: { nodes: comments } } }
+  }),
+)
+vi.spyOn(github, 'write').mockImplementation(async (_cfg, item, w: Write) => {
+  const on = others.find((c) => c.key === item.key) ?? card
+  const before = on.fields.updated as string
+  if (w.op === 'comment') reply(w.body, on)
+  else {
+    on.labels = [...on.labels, w.to]
+    on.fields = { ...on.fields, label: on.labels, updated: tick() }
+  }
+  return { before, after: on.fields.updated as string }
 })
 
 /** The steps the agent took, as `<task> <skill>`, and what each task's implement step found in its context. */
@@ -202,7 +219,9 @@ the.agent = {
     } else if (skill === 'qa-evidence') {
       await out('report.md', 'Export screen: CSV downloads, 3 screenshots attached.')
       await out('status', 'done\n')
-    } else await commit({ [`${task}-paged.txt`]: 'paged\n' })
+    } else if (skill === 'story' || skill === 'prototype')
+      await out('report.md', skill === 'story' ? 'Export VAT as CSV.' : 'A button on reports.')
+    else await commit({ [`${task}-paged.txt`]: 'paged\n' })
     yield { type: 'done', ok: true, turns: 1 }
   },
 }
@@ -278,11 +297,17 @@ beforeAll(async () => {
   the.forge = origins.forge
   path = join(root, 'config.yml')
   await writeFile(path, configYaml(eventsFile()))
-  await mkdir(join(root, 'skills/qa-evidence'), { recursive: true })
-  await writeFile(
-    join(root, 'skills/qa-evidence/SKILL.md'),
-    '---\nname: qa-evidence\ndescription: Collect QA evidence for a task. Use when a task needs checking by hand.\n---\n\nCheck the task and report the evidence.\n',
-  )
+  for (const [name, does] of [
+    ['qa-evidence', 'Collect QA evidence for a task'],
+    ['story', 'Write the user story for a card'],
+    ['prototype', 'Sketch a prototype from an approved story'],
+  ]) {
+    await mkdir(join(root, `skills/${name}`), { recursive: true })
+    await writeFile(
+      join(root, `skills/${name}/SKILL.md`),
+      `---\nname: ${name}\ndescription: ${does}. Use when a rule names it.\n---\n\n${does} and report it.\n`,
+    )
+  }
   await writeFile(eventsFile(), '')
 })
 
@@ -493,4 +518,46 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.plan).toContain('  acme/api#1/app: merged in https://github.com/acme/web/pull/13\n')
     expect(run.plan).toContain(`  acme/api#1/qa: done: its result is on ${cardUrl}\n`)
   })
+})
+
+// A second card, after the feature: a report that waits for your approve before the next stage takes it.
+describe('a story card through a post that waits', () => {
+  const storyUrl = 'https://github.com/acme/web/issues/2'
+
+  it("posts the story, holding its move, and waits for your approve through a teammate's comment", async () => {
+    others.push({
+      ...card,
+      id: 'I_2',
+      key: 'acme/web#2',
+      title: 'VAT story',
+      url: storyUrl,
+      labels: ['story'],
+      comments: [],
+      fields: { repo: 'acme/web', label: ['story'], mine: true, updated: tick(), state: 'open' },
+    })
+    const story = others[0] as Item
+    const run = await windowRun()
+    expect(run.steps).toEqual(['card story'])
+    expect(story.comments.at(-1)?.body).toMatch(
+      /^Result of story\n\nExport VAT as CSV\.\n\nStatus: done\n\nTo approve, reply with approve as the first line\..*\n\n— awaywork · waits · move=designed · saw=open$/,
+    )
+    expect(story.labels).toEqual(['story'])
+    story.comments.push({ author: 'sam', body: 'approve', at: tick() })
+    const next = await windowRun()
+    expect(next.steps).toEqual([])
+    expect(next.plan).toContain(
+      `  web#2: waiting for your approval of story's result on ${storyUrl}\n`,
+    )
+  }, 30_000)
+
+  it('makes the held move on your approve, and the next stage takes the card in the same run', async () => {
+    const config = await loadConfig(path)
+    expect(await approveItem('github:acme/web#2', config, '')).toBe(
+      `story's result approved: replied approve on ${storyUrl}`,
+    )
+    const run = await windowRun()
+    expect(others[0]?.labels).toEqual(['story', 'designed'])
+    expect(run.report).toContain('- on_done moved acme/web#2 to "designed", its post approved')
+    expect(run.steps).toEqual(['card prototype'])
+  }, 30_000)
 })

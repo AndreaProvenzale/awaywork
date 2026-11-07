@@ -10,7 +10,7 @@ import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
 import { defaultRules, itemState, lookback } from '../core/queue.js'
-import { counted } from '../core/report.js'
+import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
 import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
@@ -172,11 +172,11 @@ export async function probeAndPlan(
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providersOf(config), sources)
   const collected = await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed })
-  const items = opts.moves
+  const { items, moved } = opts.moves
     ? await makeHeldMoves(collected, config, ctx, opts.moves, (line) =>
         maskSecrets(line, secrets, ctx.env),
       )
-    : collected
+    : { items: collected, moved: [] }
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -221,6 +221,7 @@ export async function probeAndPlan(
         only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
       }),
       present,
+      ...(moved.length && { moved }),
       ...(config.sources.routines && {
         routines: nextOccurrences(config.sources.routines as RoutinesConfig, at),
       }),
@@ -294,15 +295,16 @@ export async function collectItems(
 
 const firstLine = (text: string) => text.split('\n')[0]
 
-/** Makes each move on_done held on a post of yours you approved since, with no model run; a dry run only says it. Returns the items as moved. */
+/** Makes each move on_done held on a post of yours you approved since, with no model run; a dry run only says it. Returns the items as moved, and the moves. */
 async function makeHeldMoves(
   items: Item[],
   config: Config,
   ctx: Ctx,
   { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
   mask: (line: string) => string,
-): Promise<Item[]> {
+): Promise<{ items: Item[]; moved: Moved[] }> {
   const out: Item[] = []
+  const moved: Moved[] = []
   for (const item of items) {
     const to = item.mine && heldMove(item)
     if (!to || dryRun) {
@@ -315,19 +317,32 @@ async function makeHeldMoves(
       const write = { op: 'move', to } as const
       const { updated } = await writeItem(sourceFor(item.source, cfg), cfg, item, write, ctx)
       log(`on_done: moved ${item.key} to ${to}, its post approved`)
-      // As a move writes it, a GitHub label or else the tracker's status; the move is awaywork's own change, not the card's.
-      const moved = { ...item, fields: { ...item.fields, ...(updated && { updated }) } }
-      out.push(
-        item.source === 'github'
-          ? { ...moved, labels: [...item.labels, to] }
-          : { ...moved, status: to },
-      )
+      moved.push({ item: `${item.source}:${item.key}`, to })
+      // The move is awaywork's own change, not the card's.
+      out.push(movedTo({ ...item, fields: { ...item.fields, ...(updated && { updated }) } }, to))
     } catch (e) {
-      log(mask(`on_done: couldn't move ${item.key} to ${to}: ${(e as Error).message}`))
+      const failed = mask((e as Error).message)
+      log(`on_done: couldn't move ${item.key} to ${to}: ${failed}`)
+      moved.push({ item: `${item.source}:${item.key}`, to, failed })
       out.push(item)
     }
   }
-  return out
+  return { items: out, moved }
+}
+
+/** The item as a move to `to` leaves it, in the fields `where` reads too: a GitHub label, else the tracker's status or section. */
+function movedTo(item: Item, to: string): Item {
+  if (item.source === 'github')
+    return {
+      ...item,
+      labels: [...item.labels, to],
+      fields: { ...item.fields, label: [...item.labels, to] },
+    }
+  const swap = (v: unknown): unknown =>
+    v === item.status ? to : Array.isArray(v) ? v.map(swap) : v
+  const fields = { ...item.fields }
+  for (const key of ['status', 'section']) if (key in fields) fields[key] = swap(fields[key])
+  return { ...item, status: to, fields }
 }
 
 /** How far back the source's rules read finished items, the widest wins; unset when none does. */

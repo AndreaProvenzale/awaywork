@@ -13,7 +13,7 @@ import {
 import { planRun } from '../src/core/foreman.js'
 import { approvedSkill, heldMove, postAnswer, reportPost } from '../src/core/posts.js'
 import type { Item } from '../src/core/types.js'
-import { fakeItem } from './fakes/items.js'
+import { asanaTask, fakeItem, githubPr } from './fakes/items.js'
 
 const at = (n: number) => `2026-11-0${n}T00:00:00Z`
 const post = (skill: string, state: PostState | undefined, n = 1) => ({
@@ -173,10 +173,32 @@ queue:
     expect(skips(plan(went))).toEqual([
       [
         'approved',
-        "#1 story doesn't run again: you approved its result on https://example.com/1; delete that post to run it again",
+        "#1 story doesn't run again: you approved its result; to run it again, delete that post on https://example.com/1",
       ],
     ])
   })
+})
+
+it("holds only its own rule: the fix on the card's linked PR with failing checks still runs", () => {
+  const config = parseConfig(`
+providers: [claude: {}]
+sources: { asana: { workspace: '1' }, github: { repos: [acme/api] } }
+queue:
+  - { skill: story, source: asana, deliver: report, wait: true }
+  - { skill: fix, source: github, where: { type: pr, checks: failing } }
+`)
+  const pr = githubPr(7, { checks: 'failing' })
+  const task = asanaTask(1, {}, { linkedPrs: pr.linkedPrs, comments: [post('story', waits)] })
+  const plan = planRun({
+    config,
+    items: [task, pr],
+    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+    skills: {},
+  })
+  expect(plan.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)])).toEqual([
+    ['fix', ['acme/api#7']],
+  ])
+  expect(plan.skipped.map((s) => [s.item.key, s.kind])).toEqual([['T-1', 'waiting_for_approval']])
 })
 
 it('posts a report rule with wait: false and no gates of its own as a plain result, as one without wait', () => {

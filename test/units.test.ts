@@ -251,6 +251,26 @@ it('reports a run with no provider and a multi-line warning', () => {
   )
 })
 
+it('reports the moves held on posts you approved, made before any unit, and those that failed', () => {
+  const at = new Date(2026, 9, 12, 22, 34, 18)
+  const moved = [
+    { item: 'linear:NIG-21', to: 'In Progress' },
+    { item: 'jira:ENG-7', to: 'Ready', failed: 'no transition to Ready' },
+  ]
+  const plan = { queue: [], defaultQueue: true, units: [], skipped: [], allowances: {}, moved }
+  const run = { runId: 'r', dryRun: false, startedAt: at, finishedAt: at, plan, results: [] }
+  expect(formatReport({ ...run, quotas: {} })).toContain(
+    [
+      '## Held moves (2)',
+      '',
+      '- on_done moved NIG-21 to "In Progress", its post approved',
+      `- on_done couldn't move ENG-7 to "Ready": no transition to Ready, its post approved`,
+      '',
+      '## Units (0)',
+    ].join('\n'),
+  )
+})
+
 it('prepares workspaces without running a worker or context command on a dry run, for one unit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-dry-'))
   const forge = {
@@ -5461,7 +5481,7 @@ it("posts a report that waits with how to answer, holding on_done's move until y
 
 it("runs a report rule's own command gate on a read-only copy of what the step left: one that fires holds the post, one that holds lets it go ahead", async () => {
   const gate = (exit: number) =>
-    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: 'echo hacked >> "$AWAYWORK_OUT_DIR/report.md" 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
+    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: '(echo hacked >> "$AWAYWORK_OUT_DIR/report.md" || touch "$AWAYWORK_OUT_DIR/new") 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
   const fired = await finishedRun(gate(1), [yours(1)])
   const card =
     '## Needs a decision\n\n### Gates (from scripts)\n\n- taste: acme-api-1 says nothing.\n\n---'
@@ -5492,6 +5512,27 @@ it("runs a report rule's own command gate on a read-only copy of what the step l
     ['acme/api#1', { op: 'comment', body: markComment(went, { went: true, gates: ['taste'] }) }],
     ['acme/api#1', { op: 'move', to: 'QA' }],
   ])
+})
+
+it('posts a plan that went ahead saying a reply changes nothing, not how to approve', async () => {
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const out = join(job.dir, '.away/out')
+      await writeFile(join(out, 'report.md'), 'One task.')
+      await writeFile(join(out, 'plan.yml'), 'tasks:\n  - { id: api, title: API }\n')
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { writes } = await finishedRun(
+    '  - { skill: plan, deliver: plan, wait: false }\n  - { skill: implement, where: { planned: true } }',
+    [yours(1)],
+    provider,
+  )
+  const [[, write]] = writes as [[string, Write]]
+  expect(write.op === 'comment' && write.body).toMatch(
+    /```\n\nThis plan went ahead without your approve: a reply to it changes nothing\.\n\n— awaywork · went ahead$/,
+  )
 })
 
 it("gives a plan's judge a read-only copy of the step's out files and its gate's instructions, not the rule's, and posts the plan as the step left it", async () => {

@@ -202,6 +202,13 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
       ...warnings.map((w) => `- ${w.replace(/\n(?=.)/g, '\n  ')}`),
       '',
     )
+  if (r.plan.moved?.length)
+    out.push(
+      `## Held moves (${r.plan.moved.length})`,
+      '',
+      ...r.plan.moved.map((m) => `- on_done ${describeMoved(m)}, its post approved`),
+      '',
+    )
   out.push(`## Units (${chains(r).length})`, '')
   if (r.results.length === 0) out.push('None.')
   else {

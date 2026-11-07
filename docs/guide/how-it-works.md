@@ -89,10 +89,10 @@ queue:
     deliver: report
     wait: true # your approve hands it on
   - skill: implement
-    where: { approved: plan }
+    where: { section: Current sprint, approved: plan }
 ```
 
-`plan` posts its report on the task and waits for your reply; `approve` and tonight's run hands the task to `implement`, which finds the plan as its earlier report. While `implement`'s draft PR is open the task waits for review; once you merge it, move the task out of the section.
+`plan` posts its report on the task and waits for your reply; `approve` and tonight's run hands the task to `implement`, which finds the plan as its earlier report. While `implement`'s draft PR is open the task waits for review; once you merge it, move the task out of the section, and neither rule takes it again.
 
 ## Budget
 
@@ -322,7 +322,7 @@ The run says where it went, and the rule's [`on_done`](./configuration.md#on-don
 
 - **Anything else of yours is feedback:** your reply that doesn't start with a bare `approve` (`approve if web waits` included). Your reply changed the card, so the next run plans again with the whole thread in `item.md`, the plan headed `awaywork's plan`, and posts a new plan, which waits for a fresh approval whatever `wait` says. A re-plan that isn't posted is skipped as unchanged until the card changes again.
 - **Only you answer.** A plan's answer is your first reply after it, read off the card: a teammate's comment, a code owner's or a bot's is context in `item.md`, never an answer, and a later comment of yours changes nothing. Edit your reply to change your mind before the next run reads it; a reply someone else edited isn't yours anymore.
-- **`wait: false`** posts the plan and goes on: the post says so on its mark line (`— awaywork · went ahead`), counts as its own answer, and the next run fans it out with no notes. Its [gates](./configuration.md#gates-of-a-rules-own) still run, and one that fires makes it wait, its decision card on top of the plan.
+- **`wait: false`** posts the plan and goes on: the post says so on its mark line (`— awaywork · went ahead`) and that a reply to it changes nothing, counts as its own answer, and the next run fans it out with no notes. Its [gates](./configuration.md#gates-of-a-rules-own) still run, and one that fires makes it wait, its decision card on top of the plan.
 - The plan is read off the card on every run, never the state dir: it's awaywork's newest plan comment, so a fresh runner waits too. Edit it to fix a task and the next run checks your edit again; an edit that breaks it skips the card as **plan refused** with the reason, under Needs you, instead of planning over your edit. A plan comment someone else edited isn't awaywork's anymore ([Safety](./safety.md#what-awaywork-publishes)), so the card has no plan and gets a new one. GitHub reads the card's whole thread, past its last 50 comments, so an old plan up a long thread still counts.
 - A plan that fails its checks, in the file or as the next run reads it back from the comment, a missing `plan.yml` or contract, or a comment over 30 KB, the contract included, is never posted: the reason stays in the morning report, as `plan not posted: plan.yml: task id "api" is used twice`, and `on_done` doesn't fire. Same for an item that isn't yours, a source that can't write, or a post that fails. A step that asks [questions](#questions) instead posts those, and the card waits for your answer as usual.
 - A `deliver: plan` rule that matches only merged or closed items, names a `source` that can't write, or has no rule whose `where` names `planned` to take its tasks, is a config error.
@@ -738,7 +738,7 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 — awaywork · waits · move=Ready%20for%20design · saw=Inbox
 ```
 
-- **It holds its rule.** Later runs skip the item as **waiting for your approval**, whatever else changes on the card. Other rules on the item run as their `where` says, so a red-CI fix on the linked PR still runs:
+- **It holds its rule.** Later runs skip the item as **waiting for your approval**, whatever else changes on the card. Other rules on the item run as their `where` says, so a red-CI fix on the linked PR still runs, without the card:
 
   ```
   Needs you 1
@@ -748,8 +748,8 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
   ```
 
 - **Your first reply decides**, as on a [plan](#plans): first line `approve` approves, anything else is feedback and runs the step again with the thread in `item.md`, its new post waiting whatever `wait` says. `awaywork approve <source:key>`, or `a` in the report, replies for you. A teammate's comment is context, never an answer, and a later comment of yours on an approved post changes nothing.
-- **Approved, it hands the item on.** The item's `approved` becomes the post's skill, read off the thread, so `where: { approved: story }` takes it even on a tracker awaywork can't move cards on; a newer post that waits leaves it on the one before. The rule that posted it is done with the item and passes it down the queue: with no rule after it, the item is skipped as `#1 story doesn't run again: you approved its result on <url>; delete that post to run it again`. Deleting awaywork's post is how you run that stage again, with `awaywork run --unit <key>` when the card didn't change since.
-- **`on_done` waits too.** A post that waits holds its `move` and records the card's status. The first run that sees your `approve`, a window, `soon` or manual one, makes the move before planning any unit, with no model run, only while the card is still in the status the post saw (on GitHub, while the label isn't on it yet) and no newer awaywork post is on the item. A dry run only says it would. Moving or reassigning the card yourself releases the post:
+- **Approved, it hands the item on.** The item's `approved` becomes the post's skill, read off the thread, so `where: { approved: story }` takes it even on a tracker awaywork can't move cards on; a newer post that waits leaves it on the one before. The rule that posted it is done with the item and passes it down the queue: with no rule after it, the item is skipped as `#1 story doesn't run again: you approved its result; to run it again, delete that post on <url>`. Deleting awaywork's post is how you run that stage again, with `awaywork run --unit <key>` when the card didn't change since.
+- **`on_done` waits too.** A post that waits holds its `move` and records the card's status. The first run that sees your `approve`, a window, `soon` or manual one, makes the move the post names, even if `on_done` changed since, before planning any unit, with no model run, only while the card is still in the status the post saw (on GitHub, while the label isn't on it yet) and no newer awaywork post is on the item. A dry run only says it would; the run's report lists the move, or why it failed, under Held moves. Moving or reassigning the card yourself releases the post:
 
   ```text
     on_done: moved ENG-2101 to Ready for design, its post approved

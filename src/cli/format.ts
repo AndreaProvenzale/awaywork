@@ -685,6 +685,8 @@ export function describeRule(r: Rule): string {
         .map(([p, m]) => `${p}:${[m].flat().join('>')}`)
         .join('|')}`,
     r.deliver && `deliver=${r.deliver}`,
+    r.wait !== undefined && `wait=${r.wait}`,
+    r.gates && `gates=${Object.keys(r.gates).join(',')}`,
     r.order && `order=${r.order}`,
     r.run === 'soon' && 'run=soon',
     r.then?.length &&

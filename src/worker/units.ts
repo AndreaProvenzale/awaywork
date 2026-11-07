@@ -452,7 +452,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const text = name ? (await readOutput(join(out, name))).replace(/\r\n/g, '\n').trimEnd() : ''
     if (name && !text.trim())
       return { unposted: `plan.yml: contract ${file.plan.contract} is missing or empty` }
-    const body = planComment(report, yaml, name ? { name, text } : undefined)
+    const body = planComment(
+      report,
+      yaml,
+      name ? { name, text } : undefined,
+      !!post && 'went' in post,
+    )
     // The plan an approve approves is the one the next run reads back, so it must be the file's.
     const read = checkPlan(planYaml(body), limits)
     if (!('plan' in read && isDeepStrictEqual(read.plan, file.plan)))

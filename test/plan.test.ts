@@ -765,7 +765,7 @@ queue:
       title: 'Export VAT',
       url: 'https://tracker/ENG-7',
       status,
-      fields: { updated: '2026-11-02T00:00:00Z' },
+      fields: { updated: '2026-11-02T00:00:00Z', status },
       comments: [
         { author: 'me', body: post, at: '2026-11-01T00:00:00Z', mine: true },
         { author: 'me', body: 'approve', at: '2026-11-02T00:00:00Z', mine: true },
@@ -774,7 +774,7 @@ queue:
     await writeFile(join(root, 'items.json'), JSON.stringify([card('Inbox')]))
     const config = parseConfig(`
 providers: [claude]
-sources: { tracker: { command: 'cat items.json', write: 'cat >> writes.jsonl; echo "{\\"before\\":\\"2026-11-02T00:00:00Z\\",\\"after\\":\\"2026-11-03T00:00:00Z\\"}"', fields: [column] } }
+sources: { tracker: { command: 'cat items.json', write: 'cat >> writes.jsonl; echo "{\\"before\\":\\"2026-11-02T00:00:00Z\\",\\"after\\":\\"2026-11-03T00:00:00Z\\"}"', fields: [status] } }
 queue:
   - { skill: story, deliver: report, wait: true, on_done: { move: Ready } }
   - { skill: prototype, where: { approved: story }, deliver: report }
@@ -801,10 +801,12 @@ queue:
         id: '7',
         to: 'Ready',
       })
-      // The move is awaywork's own: the card reads as it left it, so attempts see no change of yours.
-      expect(real.plan.skipped.map((s) => [s.item.status, s.item.fields.updated])).toEqual([
-        ['Ready', '2026-11-03T00:00:00Z'],
-      ])
+      // The move is awaywork's own: the card reads as it left it, `where` too, so attempts see no change of yours.
+      expect(
+        real.plan.skipped.map((s) => [s.item.status, s.item.fields.status, s.item.fields.updated]),
+      ).toEqual([['Ready', 'Ready', '2026-11-03T00:00:00Z']])
+      expect(real.plan.moved).toEqual([{ item: 'tracker:ENG-7', to: 'Ready' }])
+      expect(dry.plan.moved).toBeUndefined()
       // Moved already, or by you elsewhere: nothing to make.
       await writeFile(join(root, 'items.json'), JSON.stringify([card('Doing')]))
       lines.length = 0
