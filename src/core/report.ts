@@ -1,6 +1,7 @@
 import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import { type Allowance, pct, presenceLine } from './budget.js'
+import type { PostState } from './footer.js'
 import {
   describeChain,
   needsYou,
@@ -66,9 +67,18 @@ export interface Questions extends Posted {
   text: string
 }
 
-/** A plan rule's plan, and where it went: its task ids once it passed its checks. */
+/** A plan rule's plan, and where it went: its task ids once it passed its checks, and what the post says of itself. */
 export interface PlanPost extends Posted {
   tasks?: string[]
+  post?: PostState
+}
+
+/** `; it waits for your approve, holding the move to "Ready"`, or `; it went ahead, gates clear: product`. */
+const describePost = (post: PostState | undefined): string => {
+  if (!post) return ''
+  if ('went' in post)
+    return `; it went ahead${post.gates.length ? `, gates clear: ${post.gates.join(', ')}` : ''}`
+  return `; it waits for your approve${post.move ? `, holding the move to "${post.move}"` : ''}`
 }
 
 /** `questions posted on <url>`, or why they weren't. */
@@ -79,7 +89,7 @@ export const describeQuestions = (q: Questions): string =>
 export const describePlan = (p: PlanPost): string =>
   p.unposted
     ? `plan not posted: ${p.unposted}`
-    : `plan posted on ${p.url}, tasks ${p.tasks?.join(', ')}`
+    : `plan posted on ${p.url}, tasks ${p.tasks?.join(', ')}${describePost(p.post)}`
 
 /** An item (`source:key`) on_done moved, with its updated time after when only the move changed it, or why the move failed. */
 export interface Moved {
@@ -95,18 +105,21 @@ export function describeMoved(m: Moved): string {
   return m.failed ? `couldn't move ${key} to "${m.to}": ${m.failed}` : `moved ${key} to "${m.to}"`
 }
 
-/** An item (`source:key`) the unit's result was posted on, with the comment's URL and the item's updated time after when only the post changed it, or why the post failed. */
+/** An item (`source:key`) the unit's result was posted on, with the comment's URL, the item's updated time after when only the post changed it and what the post says of itself, or why the post failed. */
 export interface Commented {
   item: string
   url?: string
   updated?: string
   failed?: string
+  post?: PostState
 }
 
 /** `result posted on <url>`, or why it couldn't. */
 export function describeResult(c: Commented): string {
   const key = c.item.slice(c.item.indexOf(':') + 1)
-  return c.failed ? `couldn't post its result on ${key}: ${c.failed}` : `result posted on ${c.url}`
+  return c.failed
+    ? `couldn't post its result on ${key}: ${c.failed}`
+    : `result posted on ${c.url}${describePost(c.post)}`
 }
 
 /** What a chain's first step wrote to its items, in order: its questions or its plan, then its result and on_done's moves. */

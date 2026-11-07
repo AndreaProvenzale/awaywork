@@ -5254,6 +5254,7 @@ it("posts a plan rule's plan once on your card with its report, and fires on_don
   expect(head?.plan).toEqual({
     tasks: ['api', 'web'],
     item: 'github:acme/api#1',
+    post: { waits: true },
     url: 'https://example.com/1',
   })
   expect(lines).toContain('acme-api-1: plan posted on https://example.com/1')
@@ -5401,8 +5402,10 @@ queue:
   const waiting = [
     ['waiting_for_approval', 'waiting for your approval of the plan on https://example.com/1'],
   ]
+  // A teammate's comment is context, never an answer.
+  comment('approve')
   expect(await round(tasks, 2)).toEqual({ skipped: waiting, posted: undefined })
-  comment('approve if web waits for the API to merge')
+  comment('approve if web waits for the API to merge', true)
   expect(await round('tasks:\n  - { id: api, title: A }\n  - { id: api, title: B }\n', 3)).toEqual({
     skipped: [],
     posted: { unposted: 'plan.yml: task id "api" is used twice' },
@@ -5411,12 +5414,12 @@ queue:
     skipped: [['unchanged', 'unchanged since run r3']],
     posted: undefined,
   })
-  comment('Split web in two.')
+  comment('Split web in two.', true)
   expect(await round('tasks:\n  - { id: api, title: VAT export endpoint }\n', 5)).toMatchObject({
     skipped: [],
     posted: { tasks: ['api'] },
   })
-  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan'])
+  expect(kinds()).toEqual(['plan', 'sam', 'me', 'me', 'plan'])
   expect(await round(tasks, 6)).toEqual({ skipped: waiting, posted: undefined })
   expect(
     await approveItem('github:acme/api#1', config, 'Keep the old route.', {
@@ -5424,7 +5427,7 @@ queue:
       ctx,
     }),
   ).toBe('plan approved: replied approve, with your notes, on https://example.com/1')
-  expect(kinds()).toEqual(['plan', 'sam', 'sam', 'plan', 'approve'])
+  expect(kinds()).toEqual(['plan', 'sam', 'me', 'me', 'plan', 'approve'])
   expect(await round(tasks, 7)).toEqual({
     skipped: [['fanned_out', 'fanned out: api no PR yet']],
     posted: undefined,
@@ -5435,4 +5438,105 @@ queue:
       ctx,
     }),
   ).rejects.toThrow('was already answered by me')
+})
+
+it("posts a report that waits with how to answer, holding on_done's move until you approve", async () => {
+  const { report, writes } = await finishedRun(
+    '  - { skill: review, deliver: report, wait: true, on_done: { move: QA } }',
+    [yours(1)],
+  )
+  const body = resultComment('acme-api-1 says nothing.', 'done', 'review', undefined, 0, true)
+  expect(writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: markComment(body, { waits: true, move: 'QA', saw: 'open' }) },
+    ],
+  ])
+  expect(body).toMatch(/\n\nStatus: done\n\nTo approve, reply with approve as the first line\./)
+  expect(report.results[0]?.moved).toBeUndefined()
+  expect(formatReport(report)).toContain(
+    '- **api#1**: result posted on https://example.com/1; it waits for your approve, holding the move to "QA"',
+  )
+})
+
+it("runs a report rule's own command gate on a read-only copy of what the step left: one that fires holds the post, one that holds lets it go ahead", async () => {
+  const gate = (exit: number) =>
+    `  - { skill: review, deliver: report, on_done: { move: QA }, gates: { taste: { command: 'echo hacked >> "$AWAYWORK_OUT_DIR/report.md" 2>/dev/null || cat "$AWAYWORK_OUT_DIR/report.md"; exit ${exit}' } } }`
+  const fired = await finishedRun(gate(1), [yours(1)])
+  const card =
+    '## Needs a decision\n\n### Gates (from scripts)\n\n- taste: acme-api-1 says nothing.\n\n---'
+  const held = resultComment(
+    `${card}\n\nacme-api-1 says nothing.`,
+    'done',
+    'review',
+    undefined,
+    0,
+    true,
+  )
+  expect(fired.writes).toEqual([
+    [
+      'acme/api#1',
+      { op: 'comment', body: markComment(held, { waits: true, move: 'QA', saw: 'open' }) },
+    ],
+  ])
+  expect(fired.report.results[0]?.outcome).toMatchObject({
+    gates: { ran: ['taste'], fired: 'gate taste fired' },
+  })
+  const clear = await finishedRun(gate(0), [yours(1)])
+  const went = resultComment(
+    'Gates: none fired (taste)\n\n---\n\nacme-api-1 says nothing.',
+    'done',
+    'review',
+  )
+  expect(clear.writes).toEqual([
+    ['acme/api#1', { op: 'comment', body: markComment(went, { went: true, gates: ['taste'] }) }],
+    ['acme/api#1', { op: 'move', to: 'QA' }],
+  ])
+})
+
+it("gives a plan's judge a read-only copy of the step's out files and its gate's instructions, not the rule's, and posts the plan as the step left it", async () => {
+  const notes = join(await mkdtemp(join(tmpdir(), 'awaywork-judges-')), 'product.md')
+  await writeFile(notes, 'Copy changes need design.')
+  const rules = join(await mkdtemp(join(tmpdir(), 'awaywork-rule-')), 'plan.md')
+  await writeFile(rules, 'Plan small.')
+  const seen: string[] = []
+  const provider: Provider = {
+    ...fakeProvider('claude'),
+    async *run(job) {
+      const out = join(job.dir, '.away/out')
+      if (job.unit.skill === 'judge') {
+        const prompt = await readFile(join(job.dir, '.away/prompt.md'), 'utf8')
+        seen.push(await readFile(join(job.dir, '.away/context/out/plan.yml'), 'utf8'))
+        seen.push(prompt.includes('Copy changes need design.') ? 'gate notes' : 'no notes')
+        seen.push(prompt.includes('Plan small.') ? 'rule notes' : 'no rule notes')
+        seen.push(prompt.includes('a read-only copy of its `.away/out/`') ? 'out files' : 'a diff')
+        await writeFile(join(out, 'plan.yml'), 'tasks: []\n')
+        await writeFile(join(out, 'verdict'), 'fires\n')
+        await writeFile(join(out, 'report.md'), '- Export button copy → design decides')
+      } else {
+        await writeFile(join(out, 'report.md'), 'One task.')
+        await writeFile(join(out, 'plan.yml'), 'tasks:\n  - { id: api, title: API }\n')
+      }
+      yield { type: 'done', ok: true, turns: 1 }
+    },
+  }
+  const { report, writes } = await finishedRun(
+    `  - { skill: plan, deliver: plan, wait: false, instructions: [${rules}], gates: { product: { skill: judge, instructions: [${notes}] } } }\n  - { skill: implement, where: { planned: true } }`,
+    [yours(1)],
+    provider,
+  )
+  expect(seen).toEqual([
+    'tasks:\n  - { id: api, title: API }\n',
+    'gate notes',
+    'no rule notes',
+    'out files',
+  ])
+  const [[, write]] = writes as [[string, Write]]
+  const body = write.op === 'comment' ? write.body : ''
+  expect(body).toMatch(
+    /^## Needs a decision\n\n### Judge\n\n- product: the judge changed the clone; awaywork dropped its changes\n- product: Export button copy → design decides\n\n---\n\nOne task\.\n\n```yaml\ntasks:\n {2}- \{ id: api, title: API \}\n```\n/,
+  )
+  // A fired gate holds a plan that would go ahead: a plan with no post state waits.
+  expect(body.endsWith('\n\n— awaywork')).toBe(true)
+  expect(report.results[0]?.plan).toMatchObject({ tasks: ['api'], post: { waits: true } })
 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { approveItem } from '../src/cli/approve.js'
 import { parseConfig } from '../src/config/load.js'
-import { planComment } from '../src/core/footer.js'
+import { markComment, type PostState, planComment, resultComment } from '../src/core/footer.js'
 import type { Item, Source, Write } from '../src/core/types.js'
 import { fakeItem } from './fakes/items.js'
 import { fakeSource } from './fakes/source.js'
@@ -59,19 +59,59 @@ describe('approve', () => {
     ])
   })
 
-  it('refuses a plan already answered', async () => {
+  it('refuses a plan you already answered, or one that went ahead, but not past a teammate', async () => {
     const bot = {
       author: 'ci',
       body: 'Coverage 91%',
       at: '2026-01-02T00:00:00Z',
       bot: true as const,
     }
-    const reply = { author: 'sam', body: 'Split api.', at: '2026-01-03T00:00:00Z' }
-    const { sources, writes } = github([card(bot, reply), fakeItem({ key: 'acme/api#6' })])
+    const theirs = { author: 'sam', body: 'Split api.', at: '2026-01-03T00:00:00Z' }
+    const mine = { ...theirs, author: 'me', mine: true as const }
+    const { sources, writes } = github([card(bot, mine)])
     await expect(approveItem('github:acme/api#5', config, '', { sources, ctx })).rejects.toThrow(
-      'the plan on https://example.com/1 was already answered by sam, 2026-01-03T00:00:00Z',
+      'the plan on https://example.com/1 was already answered by me, 2026-01-03T00:00:00Z',
     )
-    expect(writes).toEqual([])
+    const went = {
+      ...plan,
+      body: markComment(plan.body.replace(/\n\n— awaywork$/, ''), { went: true, gates: [] }),
+    }
+    const ahead = github([
+      fakeItem({ source: 'github', key: 'acme/api#5', mine: true, comments: [went] }),
+    ])
+    await expect(
+      approveItem('github:acme/api#5', config, '', { sources: ahead.sources, ctx }),
+    ).rejects.toThrow(
+      'the plan on https://example.com/1 went ahead: nothing waits for your approval',
+    )
+    expect([...writes, ...ahead.writes]).toEqual([])
+    const teammate = github([card(theirs)])
+    expect(
+      await approveItem('github:acme/api#5', config, '', { sources: teammate.sources, ctx }),
+    ).toBe('plan approved: replied approve on https://example.com/1#issuecomment-1')
+  })
+
+  it("replies approve on a report's result that waits, and refuses one that went ahead", async () => {
+    const result = (post: PostState) => ({
+      author: 'me',
+      body: markComment(
+        resultComment('Two flows.', 'done', 'story', undefined, 0, 'waits' in post),
+        post,
+      ),
+      at: '2026-01-01T00:00:00Z',
+      mine: true as const,
+    })
+    const item = (post: PostState) =>
+      fakeItem({ source: 'github', key: 'acme/api#7', mine: true, comments: [result(post)] })
+    const { sources, writes } = github([item({ waits: true, move: 'Ready', saw: 'open' })])
+    expect(await approveItem('github:acme/api#7', config, '', { sources, ctx })).toBe(
+      "story's result approved: replied approve on https://example.com/1#issuecomment-1",
+    )
+    expect(writes).toEqual([['acme/api#7', { op: 'comment', body: 'approve\n\n— awaywork' }]])
+    const ahead = github([item({ went: true, gates: ['taste'] })])
+    await expect(
+      approveItem('github:acme/api#7', config, '', { sources: ahead.sources, ctx }),
+    ).rejects.toThrow("the story's result on https://example.com/1 went ahead")
   })
 
   it("refuses a plan's task, which the plan's approval covers", async () => {

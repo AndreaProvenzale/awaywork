@@ -140,7 +140,7 @@ const reasonOf = (s: Skip) => s.reason.replace(` ${s.url ?? s.item.url}`, '').re
 const actions: Record<string, string> = {
   waiting_for_review: 'review PR',
   waiting_for_answer: 'answer question',
-  waiting_for_approval: 'approve plan',
+  waiting_for_approval: 'approve',
   invalid_plan: 'fix plan',
   all_tasks_done: 'close card',
   gave_up: 'read logs',
@@ -157,6 +157,7 @@ const actions: Record<string, string> = {
   waiting_for_task: 'waits on task',
   task_merged: 'merged',
   task_done: 'done',
+  approved: 'approved',
   continues_later: 'next run',
   running: 'running',
 }
@@ -287,7 +288,7 @@ const titles: Record<Tab, string> = {
 const questions = {
   skip: (ref: string) => `skip ${ref} in the coming runs? awaywork unskip undoes it`,
   unskip: (ref: string) => `unskip ${ref}? the coming runs can take it again`,
-  approve: (ref: string) => `approve ${ref}'s plan? awaywork replies approve on it, no undo`,
+  approve: (ref: string) => `approve ${ref}? awaywork replies approve on it, no undo`,
 }
 
 const marked: Record<Action, Mark> = {
@@ -390,7 +391,7 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
       item && {
         key: 'approve',
         hotkey: 'a',
-        label: 'approve plan',
+        label: 'approve',
         run: ask('approve', questions.approve(ref)),
       },
     here && {

@@ -452,12 +452,12 @@ describe('tasks as items', () => {
     expect(skips(plan([{ ...approved(), taskPrs: null }]))).toEqual([
       ['acme/api#1', 'fanned_out', failed],
     ])
-    const feedback = plan([{ ...card([planned(), theirs('Split web.', 2)]), taskPrs: null }])
+    const feedback = plan([{ ...card([planned(), yours('Split web.', 2)]), taskPrs: null }])
     expect(feedback.units).toEqual([])
     expect(skips(feedback)).toEqual([['acme/api#1', 'fanned_out', failed]])
     // A second plan waiting for you still needs you when its tasks' PRs went unread.
     const waiting = {
-      ...card([planned(), theirs('Split web.', 2), planned(yaml, 3)]),
+      ...card([planned(), yours('Split web.', 2), planned(yaml, 3)]),
       taskPrs: null,
     }
     expect(skips(plan([waiting]))).toEqual([
@@ -749,7 +749,7 @@ describe("a task's PR", () => {
     forge.heads['acme/api:away/acme-api-1-old'] = [on(3, 'closed', 'acme/api#1/old')]
     const old = 'tasks: [{ id: old, title: Old }]'
     const parent = {
-      ...card([planned(old, 1), theirs('No.', 2), planned(yaml, 3)]),
+      ...card([planned(old, 1), yours('No.', 2), planned(yaml, 3)]),
       taskPrs: undefined,
     }
     const lines: string[] = []
@@ -785,7 +785,7 @@ describe("a task's PR", () => {
     const first = { ...card([planned()]), taskPrs: undefined }
     await linkPlanTasks([first], config, { builtin: builtinSkills }, counting, ctx)
     expect([calls, first.taskPrs]).toEqual([0, undefined])
-    const answered = { ...card([planned(), theirs('Split web.', 2)]), taskPrs: undefined }
+    const answered = { ...card([planned(), yours('Split web.', 2)]), taskPrs: undefined }
     await linkPlanTasks([answered], config, { builtin: builtinSkills }, counting, ctx)
     expect([calls, answered.taskPrs]).toEqual([2, {}])
   })

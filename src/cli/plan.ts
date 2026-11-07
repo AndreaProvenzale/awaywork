@@ -8,6 +8,7 @@ import { type Allowance, allowance, pct } from '../core/budget.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
 import { renderLink } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
+import { heldMove, withApproved } from '../core/posts.js'
 import { defaultRules, itemState, lookback } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
@@ -16,7 +17,7 @@ import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
-import { sourceFor } from '../sources/index.js'
+import { sourceFor, writeItem } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
 import { maskSecrets } from '../worker/setup.js'
 import { configSecrets } from '../worker/workspace.js'
@@ -132,6 +133,7 @@ export function ruleNumber(text: string): number {
  * Collects items from every configured source, probes every provider and plans a run started `at`,
  * masking secrets in warnings; `present` when it says, else when `at` is outside every window. `soon`
  * plans only the `run: soon` rules over its sources, and its units when it names them; `probe: false` leaves the providers out.
+ * With `moves`, a run's, it first makes the moves on_done held on the posts you approved since, a dry run only saying them.
  */
 export async function probeAndPlan(
   config: Config,
@@ -146,6 +148,7 @@ export async function probeAndPlan(
     soon?: { sources: string[]; units?: string[] }
     probe?: boolean
     failed?: SourceFailed
+    moves?: { dryRun: boolean; log: (line: string) => void }
   } = {},
 ): Promise<{
   plan: RunPlan
@@ -165,7 +168,15 @@ export async function probeAndPlan(
     )
 
   const { onProgress, soon, failed } = opts
-  const items = await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed })
+  const sources = configuredSources(config)
+  // A failed source's warning carries its stderr, and coding agents read `plan`.
+  const secrets = configSecrets(config, providersOf(config), sources)
+  const collected = await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed })
+  const items = opts.moves
+    ? await makeHeldMoves(collected, config, ctx, opts.moves, (line) =>
+        maskSecrets(line, secrets, ctx.env),
+      )
+    : collected
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -198,9 +209,6 @@ export async function probeAndPlan(
   await linkPlanTasks(items, config, skills, forgeFor(config), ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
-  const sources = configuredSources(config)
-  // A failed source's warning carries its stderr, and coding agents read `plan`.
-  const secrets = configSecrets(config, providersOf(config), sources)
   return {
     plan: {
       ...planRun({
@@ -268,7 +276,9 @@ export async function collectItems(
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
       (found) => {
-        items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
+        items.push(
+          ...found.map((i) => withApproved(link ? { ...i, link: renderLink(link, i) } : i)),
+        )
         onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
       },
       (e: Error) => {
@@ -283,6 +293,40 @@ export async function collectItems(
 }
 
 const firstLine = (text: string) => text.split('\n')[0]
+
+/** Makes each move on_done held on a post of yours you approved since, with no model run; a dry run only says it. Returns the items as moved. */
+async function makeHeldMoves(
+  items: Item[],
+  config: Config,
+  ctx: Ctx,
+  { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
+  mask: (line: string) => string,
+): Promise<Item[]> {
+  const out: Item[] = []
+  for (const item of items) {
+    const to = item.mine && heldMove(item)
+    if (!to || dryRun) {
+      if (to) log(`on_done: would move ${item.key} to ${to}, its post approved`)
+      out.push(item)
+      continue
+    }
+    const cfg = config.sources[item.source]
+    try {
+      await writeItem(sourceFor(item.source, cfg), cfg, item, { op: 'move', to }, ctx)
+      log(`on_done: moved ${item.key} to ${to}, its post approved`)
+      // As a move writes it: a GitHub label, else the tracker's status.
+      out.push(
+        item.source === 'github'
+          ? { ...item, labels: [...item.labels, to] }
+          : { ...item, status: to },
+      )
+    } catch (e) {
+      log(mask(`on_done: couldn't move ${item.key} to ${to}: ${(e as Error).message}`))
+      out.push(item)
+    }
+  }
+  return out
+}
 
 /** How far back the source's rules read finished items, the widest wins; unset when none does. */
 export function finishedSince(queue: Rule[], source: string): Date | undefined {

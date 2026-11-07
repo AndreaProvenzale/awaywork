@@ -494,6 +494,61 @@ describe('config', () => {
     ])
   })
 
+  it('takes wait and gates on plan and report rules only, a rule gate without changed or a shared name', () => {
+    const rules = (queue: string) =>
+      problems(
+        `${minimal}gates: { risk: { skill: judge } }\nrepos: { acme/api: { gates: { routes: { command: x } } } }\nqueue:\n${queue}\n  - { skill: implement, where: { planned: true } }`,
+      )
+    expect(
+      rules(
+        '  - { skill: plan, deliver: plan, wait: false, gates: { product: { skill: judge, instructions: judges/product.md } } }\n  - { skill: story, deliver: report, wait: true, gates: { taste: { command: \'test -s "$AWAYWORK_OUT_DIR/report.md"\' } } }',
+      ),
+    ).toEqual([])
+    const why =
+      'needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates'
+    expect(rules('  - { skill: implement, deliver: pr, wait: true }')).toEqual([
+      `queue[0].wait: wait ${why}`,
+    ])
+    expect(rules('  - { skill: implement, gates: { x: { command: x } } }')).toEqual([
+      `queue[0].gates: gates ${why}`,
+    ])
+    expect(
+      rules('  - { skill: qa, deliver: report, where: { planned: true }, wait: true }'),
+    ).toContain("queue[0].wait: wait goes on the plan's rule: a task's approval is the plan's")
+    expect(
+      rules("  - { skill: story, deliver: report, gates: { ui: { changed: 'src/**' } } }"),
+    ).toEqual([
+      'queue[0].gates.ui.changed: a report has no diff: changed needs commits, in a top-level or repo gate',
+    ])
+    expect(
+      rules(
+        '  - { skill: plan, deliver: plan, gates: { risk: { skill: judge }, routes: { command: y } } }',
+      ),
+    ).toEqual([
+      'queue[0].gates.risk: a top-level or repo gate is named risk too: name this one otherwise',
+      'queue[0].gates.routes: a top-level or repo gate is named routes too: name this one otherwise',
+    ])
+    expect(
+      rules('  - { skill: plan, deliver: plan, gates: { x: { command: x, instructions: a.md } } }'),
+    ).toEqual(['queue[0].gates.x.instructions: instructions go to a judge: they need skill'])
+  })
+
+  it("refuses a report that waits on a source that can't write, and approved: true with what it names now", () => {
+    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    expect(
+      problems(`${quiet}queue: [{ skill: story, source: tracker, deliver: report, wait: true }]`),
+    ).toEqual([
+      "queue[0].wait: a report that waits posts on the item, and tracker can't write to its items",
+    ])
+    const hint = "approved names the approved post's skill now, e.g. approved: story"
+    expect(problems(`${minimal}queue: [{ skill: implement, where: { approved: true } }]`)).toEqual([
+      `queue[0].where.approved: ${hint}`,
+    ])
+    expect(
+      problems(`${minimal}queue: [{ skill: implement, where: { approved: [story, prototype] } }]`),
+    ).toEqual([])
+  })
+
   it('refuses stack, which was removed, with what to do instead', () => {
     const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
     const hint = 'stack was removed: split work into tasks with a deliver: plan rule'

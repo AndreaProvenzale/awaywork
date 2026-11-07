@@ -7,7 +7,13 @@ import type { Attempts } from '../core/attempts.js'
 import { MAX_TURNS, quotaFacts, route, withQuota } from '../core/budget.js'
 import { describeCondition, holds } from '../core/condition.js'
 import { byHand } from '../core/continue.js'
-import { planComment, questionsComment, resultComment, type Status } from '../core/footer.js'
+import {
+  type PostState,
+  planComment,
+  questionsComment,
+  resultComment,
+  type Status,
+} from '../core/footer.js'
 import {
   describeChain,
   isNamed,
@@ -284,12 +290,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     check,
   }
 
-  /** Posts a finished unit's result on each of its items that is yours; a write that fails is reported, never thrown. */
+  /** Posts a finished unit's result on each of its items that is yours, saying what `post` says of it there; a write that fails is reported, never thrown. */
   const postResult = async (
     p: PlannedUnit,
     text: string,
     status: Status = 'done',
     continued = 0,
+    post?: (item: Item) => PostState,
   ): Promise<Commented[]> => {
     const posted: Commented[] = []
     for (const item of ownItems(p)) {
@@ -305,14 +312,23 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       try {
+        const state = post?.(item)
+        const waits = !!state && 'waits' in state
         const write = {
           op: 'comment',
-          body: resultComment(text, status, p.unit.skill, item.task?.id, continued),
+          body: resultComment(text, status, p.unit.skill, item.task?.id, continued, waits),
         } as const
         const cfg = input.config.sources[item.source]
-        const { updated, url = item.url } = await writeItem(source, cfg, item, write, input.ctx)
+        const { updated, url = item.url } = await writeItem(
+          source,
+          cfg,
+          item,
+          write,
+          input.ctx,
+          state,
+        )
         input.ctx.log(`${item.key}: result posted on ${url}`)
-        posted.push({ ...ref, url, ...(updated && { updated }) })
+        posted.push({ ...ref, url, ...(updated && { updated }), ...(state && { post: state }) })
       } catch (e) {
         const failed = maskSecrets((e as Error).message, secrets, input.ctx.env)
         event(`couldn't post the result on ${item.key}: ${failed}`)
@@ -387,6 +403,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     p: PlannedUnit,
     what: string,
     body: (item: Item) => string,
+    post?: PostState,
   ): Promise<Posted> => {
     if (input.signal?.aborted) return { unposted: 'interrupted' }
     const item = ownItems(p).find((i) => !unwritable(i, input.sources[i.source]))
@@ -404,6 +421,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         item,
         write,
         input.ctx,
+        post,
       )
       input.ctx.log(`${p.unit.id}: ${what} posted on ${url}`)
       return { item: ref, url }
@@ -419,8 +437,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       ? { unposted: `questions.md is over ${MAX_COMMENT_BYTES} bytes` }
       : postComment(p, 'questions', (item) => questionsComment(text, item.task?.id))
 
-  /** Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract; a refused plan posts nothing. */
-  const postPlan = async (p: PlannedUnit, report: string, out: string): Promise<PlanPost> => {
+  /** Checks the chain's `plan.yml` in its `out` folder and posts it with the report and its contract, saying it went ahead unless it waits; a refused plan posts nothing. */
+  const postPlan = async (
+    p: PlannedUnit,
+    report: string,
+    out: string,
+    post: PostState | undefined,
+  ): Promise<PlanPost> => {
     const limits = p.unit.planLimits ?? { maxTasks: input.config.limits.plan_tasks }
     const yaml = await readOutput(join(out, 'plan.yml'))
     const file = checkPlan(yaml, limits)
@@ -441,7 +464,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const tasks = file.plan.tasks.map((t) => t.id)
     if (Buffer.byteLength(body) > MAX_COMMENT_BYTES)
       return { tasks, unposted: `the plan comment is over ${MAX_COMMENT_BYTES} bytes` }
-    return { tasks, ...(await postComment(p, 'plan', () => body)) }
+    const posted = await postComment(p, 'plan', () => body, post)
+    return { tasks, ...posted, ...(posted.url && { post: post ?? { waits: true } }) }
   }
 
   /** Runs notify for each step of a finished chain: its own output, and the chain's PR. Once interrupted, none starts. */
@@ -539,7 +563,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let publishedBy: UnitResult | undefined
 
     /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the chain's `out/`. */
-    const judge: Publisher['judge'] = async (gate, skill, unit, dir, from) => {
+    const judge: Publisher['judge'] = async (gate, skill, unit, dir, on, instructions) => {
       // On a provider that ran a step of the chain, a judge rides on that step's fallback unit; elsewhere it takes one.
       const ranSlice = new Set(done.filter((r) => r.status !== 'skipped').map((r) => r.provider))
       const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
@@ -566,9 +590,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         deliver: 'report',
         foreign: true,
         stackedOn: undefined,
+        // The gate's own instructions, from the config: the rule's are written for the worker it judges.
         rule: {
           ...unit.rule,
-          instructions: [],
+          instructions,
           with: undefined,
           when: undefined,
         },
@@ -587,7 +612,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           provider,
           ctx: { ...input.ctx, log },
           reuse: true,
-          judge: { from },
+          judge: on,
         })
         const withheld = secrets.filter((name) => !provider.secrets.includes(name))
         const job = {
@@ -597,7 +622,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           maxTurns: a.kind === 'fallback' ? a.turns : MAX_TURNS,
           model,
           // Attributes as the gates read them: a resolved merge's from git's automatic merge.
-          env: await gateEnv(input.ctx.env, dir, withheld, from, unit.automatic ?? original),
+          env: await gateEnv(
+            input.ctx.env,
+            dir,
+            withheld,
+            'from' in on ? on.from : undefined,
+            unit.automatic ?? original,
+          ),
           config: entry?.config,
           configDir: input.configDir,
           plugin,
@@ -1186,10 +1217,17 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         ...(finishByHand ? { unposted: finishByHand } : await postQuestions(first, asked.text)),
       }
     else if (finishByHand && lead) lead.byHand = finishByHand
-    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
-      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, 'out'))
     // A unit that goes on isn't done: a report keeps its count in its result, a PR in its draft.
     const continues = leaves?.status === 'continue'
+    // A plan's or report's post waits, or goes ahead unless one of its gates fired, saying which ran clear.
+    const outcome = publishedBy?.outcome
+    const gates = outcome?.kind === 'report' ? outcome.gates : undefined
+    const decides = first.unit.waits !== undefined && !continues
+    const waits = decides && (!!first.unit.waits || !!gates?.fired)
+    const went: PostState | undefined =
+      decides && !waits ? { went: true, gates: gates?.ran ?? [] } : undefined
+    if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
+      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, 'out'), went)
     // The chain ran and published, and only a `when`, or a report's `continue`, ended it early; a plan rule's plan was posted.
     const finished =
       !interrupted &&
@@ -1198,17 +1236,22 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       !!publishedBy
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
-      // A report task's result is how its card hears it's done, so it always posts one.
-      if (onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))) {
+      // A report task's result is how its card hears it's done, so it always posts one, as does a report that decides.
+      const report = deliver === 'report' && decides
+      if (
+        onDone?.comment === 'result' ||
+        (first.unit.items[0]?.task && reportsOnly(deliver)) ||
+        report
+      ) {
         const status = continues ? 'continue' : 'done'
-        lead.result = await postResult(
-          first,
-          resultOf(publishedBy?.outcome),
-          status,
-          leaves?.continued,
-        )
+        // A post that waits holds on_done's move until you approve it, while the card stays where it saw it.
+        const post = report
+          ? (item: Item): PostState =>
+              went ?? { waits: true, ...(onDone?.move && { move: onDone.move, saw: item.status }) }
+          : undefined
+        lead.result = await postResult(first, resultOf(outcome), status, leaves?.continued, post)
       }
-      if (onDone?.move && !continues)
+      if (onDone?.move && !continues && !(report && waits))
         lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
     }
     for (const r of done) {

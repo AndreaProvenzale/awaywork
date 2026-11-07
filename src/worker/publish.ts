@@ -27,6 +27,8 @@ export type Outcome =
       text: string
       /** Why a `deliver: pending_review` report wasn't left as a review. */
       unposted?: string
+      /** A plan's or report's own gates that ran on what its step left, and which fired: their card tops `text`. */
+      gates?: { ran: string[]; fired?: string }
     }
   | {
       kind: 'review'

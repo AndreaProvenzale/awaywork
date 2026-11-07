@@ -9,16 +9,19 @@ import { branchName, committingStep, expandPlans, planLimits, stepReports } from
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
 import { elsewhere, latestResult, planState } from './plan.js'
+import { postAnswer, reportPost } from './posts.js'
 import {
   closestRule,
   defaultRules,
   describeComparison,
+  doneWith,
   failedIn,
   fieldValue,
   implicitWhere,
   isAwayworkPr,
   isLoop,
   isMatch,
+  matches,
   type Ranked,
   rank,
   TOP,
@@ -78,6 +81,7 @@ export type SkipKind =
   | 'waiting_for_review'
   | 'waiting_for_answer'
   | 'waiting_for_approval'
+  | 'approved'
   | 'invalid_plan'
   | 'fanned_out'
   | 'waiting_for_task'
@@ -102,6 +106,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   waiting_for_review: true,
   waiting_for_answer: true,
   waiting_for_approval: true,
+  approved: false,
   invalid_plan: true,
   fanned_out: false,
   waiting_for_task: false,
@@ -263,8 +268,26 @@ export function planRun(input: {
       skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
       continue
     }
+    // A report's post that waits holds its rule, whatever else changed on the card.
+    const posted =
+      rule.deliver === 'report' && !items[0]?.task
+        ? items.flatMap((item) => {
+            const post = reportPost(item, rule.skill)
+            return post ? [{ item, answer: postAnswer(post) }] : []
+          })[0]
+        : undefined
+    if (posted?.answer === 'waiting') {
+      skip(
+        'waiting_for_approval',
+        `waiting for your approval of ${rule.skill}'s result on ${posted.item.url}`,
+        posted.item.url,
+      )
+      continue
+    }
+    // Closing a task's PR doesn't touch the card: its re-plan is due all the same.
+    const replan = card?.state === 'replan'
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean) && !goesOn) {
+    if (since.every(Boolean) && !goesOn && !replan) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -344,6 +367,11 @@ export function planRun(input: {
     }
 
     const id = slug(items[0]?.key ?? '')
+    // A post after your feedback, or a task's PR closed, waits for you whatever `wait` says.
+    const again = card?.state === 'feedback' || replan || posted?.answer === 'feedback'
+    const decides =
+      planned || (rule.deliver === 'report' && (rule.wait !== undefined || !!rule.gates))
+    const waits = decides ? again || (rule.wait ?? planned) : undefined
     // A resumed task's draft stays stacked on the task below it while that one is open.
     const below =
       draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
@@ -381,8 +409,13 @@ export function planRun(input: {
         ...at,
         id: unitId,
         verify: config.repos[repo]?.verify,
-        // Gates check what a model wrote, and a merge with no model has nothing of its.
-        gates: at.merge && !provider ? undefined : gatesFor(config, repo),
+        // Gates check what a model wrote, and a merge with no model has nothing of its; a plan's or report's are its rule's own, on what it left.
+        gates: decides
+          ? ruleGates(rule)
+          : at.merge && !provider
+            ? undefined
+            : gatesFor(config, repo),
+        ...(waits !== undefined && { waits }),
         items,
         repo,
         rule: step,
@@ -500,13 +533,28 @@ function gatesFor(config: Config, repo: string): Record<string, Gate> | undefine
     ...Object.entries(config.gates),
     ...Object.entries(config.repos[repo]?.gates ?? {}),
   ]) {
-    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [] }
+    const gate = gates.get(name) ?? { changed: [], commands: [], skills: [], instructions: [] }
     gate.changed.push(...(g.changed ?? []))
     if (g.command) gate.commands.push(g.command)
     if (g.skill) gate.skills.push(g.skill)
+    gate.instructions.push(...(g.instructions ?? []))
     gates.set(name, gate)
   }
   return gates.size ? Object.fromEntries(gates) : undefined
+}
+
+/** A plan or report rule's own gates, which run on what its step left. */
+function ruleGates(rule: Rule): Record<string, Gate> | undefined {
+  const gates = Object.entries(rule.gates ?? {}).map(([name, g]) => [
+    name,
+    {
+      changed: [],
+      commands: g.command ? [g.command] : [],
+      skills: g.skill ? [g.skill] : [],
+      instructions: g.instructions ?? [],
+    },
+  ])
+  return gates.length ? Object.fromEntries(gates) : undefined
 }
 
 function quotaUnmet(when: Condition | undefined, a: Allowance | undefined): string | undefined {
@@ -545,8 +593,18 @@ function deliveryRefusal(
   if (fork) return `deliver ${deliver}: ${base} is on a fork`
 }
 
-/** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`. */
+/** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
+  const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
+  const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
+  if (post) {
+    const how = 'went' in post.state ? 'its result went ahead' : 'you approved its result'
+    return {
+      kind: 'approved',
+      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how} on ${item.url}; delete that post to run it again`,
+      url: item.url,
+    }
+  }
   const closest = closestRule(item, queue)
   const ours = isAwayworkPr(item)
   const kind = ours ? 'waiting_for_review' : 'no_rule'

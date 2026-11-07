@@ -148,10 +148,15 @@ function absolute(raw: Raw, dir: string): void {
   const fix = (o: unknown) => {
     if (isRaw(o) && 'instructions' in o) o.instructions = resolved(o.instructions)
   }
-  fix(raw)
-  if (isRaw(raw.repos)) Object.values(raw.repos).forEach(fix)
+  // A gate's instructions are files too, a rule's gates' as well.
+  const fixWithGates = (o: unknown) => {
+    fix(o)
+    if (isRaw(o) && isRaw(o.gates)) Object.values(o.gates).forEach(fix)
+  }
+  fixWithGates(raw)
+  if (isRaw(raw.repos)) Object.values(raw.repos).forEach(fixWithGates)
   for (const rule of [raw.queue ?? []].flat()) {
-    fix(rule)
+    fixWithGates(rule)
     for (const step of isRaw(rule) ? [rule.then ?? []].flat() : [])
       if (isRaw(step) && 'loop' in step) [step.loop].flat().forEach(fix)
       else fix(step)

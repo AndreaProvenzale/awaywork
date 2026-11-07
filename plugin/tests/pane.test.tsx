@@ -195,7 +195,7 @@ test('a card shows its ref and action on top and its title in two lines, the det
     })
     expect(await card(ui, SHOP8)).toEqual({
       ref: '#8',
-      word: 'approve plan',
+      word: 'approve',
       title: ['Split the checkout', 'service into cart, …'],
       selected: false,
     })
@@ -377,7 +377,7 @@ test('s and a ask yes or no in the buttons row first, then mark the card', async
   // Another card drops the question.
   await ui.press({ key: 'nextCard' })
   await ui.press({ key: 'approve' })
-  expect(await text(ui, /approve #8's plan\? .* no undo$/)).toBe(true)
+  expect(await text(ui, /approve #8\? .* no undo$/)).toBe(true)
   await ui.press({ key: 'prev' })
   expect(await ui.find({ key: 'yes' })).toBeFalsy()
   await ui.press({ key: 'nextCard' })
@@ -489,9 +489,9 @@ test('the confirm shows its whole question, taking its rows from the detail', as
     await ui.press({ key: 'approve' })
     const [asked] = ((await ui.find({ key: 'buttons' }))?.children ?? []) as { children: Node[] }[]
     expect(asked?.children.slice(0, -1).map(shown)).toEqual([
-      "approve #8's plan?",
-      'awaywork replies approve',
-      'on it, no undo',
+      'approve #8? awaywork',
+      'replies approve on it, no',
+      'undo',
     ])
     expect(await heights()).toEqual([24, 4, 5])
     await ui.press({ key: 'no' })

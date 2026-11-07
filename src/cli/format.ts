@@ -311,7 +311,7 @@ export function needsYouLines(skipped: ReportedSkip[], style: Style = (_, text) 
 const actions: Record<SkipKind, string> = {
   waiting_for_review: 'review PR',
   waiting_for_answer: 'answer question',
-  waiting_for_approval: 'approve plan',
+  waiting_for_approval: 'approve',
   invalid_plan: 'fix plan',
   all_tasks_done: 'close card',
   gave_up: 'read logs',
@@ -328,6 +328,7 @@ const actions: Record<SkipKind, string> = {
   waiting_for_task: 'waits on task',
   task_merged: 'merged',
   task_done: 'done',
+  approved: 'approved',
   continues_later: 'next run',
   running: 'running',
 }
@@ -338,7 +339,7 @@ const ranks = Object.keys(actions)
 const kindSays: Partial<Record<SkipKind, RegExp>> = {
   waiting_for_review: /^waiting for review: (awaywork PR is open$)?/,
   waiting_for_answer: /^waiting for your answer$/,
-  waiting_for_approval: /^waiting for your approval of the plan$/,
+  waiting_for_approval: /^waiting for your approval of (the )?/,
   invalid_plan: /^plan refused: /,
   all_tasks_done: /^all tasks done: close or move the card$/,
   no_repo: /^no repo: no linked PR or repo field$/,

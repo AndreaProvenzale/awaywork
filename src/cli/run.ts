@@ -247,6 +247,7 @@ export async function executeRun(a: RunArgs): Promise<boolean> {
     at: a.now,
     present: a.present,
     soon: a.soon,
+    moves: { dryRun: !!a.dryRun, log: (line) => log.info(`  ${line}`, true) },
   })
   const { warnings, ctx, sources, secrets } = planned
   for (const warning of warnings) log.error(`warning: ${warning.replaceAll('\n', '\n  ')}`)

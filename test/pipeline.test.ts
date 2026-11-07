@@ -294,7 +294,7 @@ describe('a feature card through the whole pipeline', () => {
     expect(run.events.at(-1)).toMatch(/^run\b/)
     expect(run.report).toEqual(
       expect.arrayContaining([
-        `- **api#1**: plan posted on ${cardUrl}, tasks api, web, app, qa`,
+        `- **api#1**: plan posted on ${cardUrl}, tasks api, web, app, qa; it waits for your approve`,
         '- **api#1**: on_done moved acme/api#1 to "plan-review"',
       ]),
     )
