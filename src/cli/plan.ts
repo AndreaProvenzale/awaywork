@@ -231,17 +231,22 @@ export async function probeAndPlan(
   await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
+  const planned = planRun({
+    config,
+    items,
+    allowances,
+    skills,
+    attempts,
+    skips,
+    only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
+  })
   return {
     plan: {
-      ...planRun({
-        config,
-        items,
-        allowances,
-        skills,
-        attempts,
-        skips,
-        only: { repo: opts.repo, rule: opts.rule, soon: !!soon, units: soon?.units },
-      }),
+      ...planned,
+      // A finished card read only so its thread can close isn't a skip.
+      skipped: planned.skipped.filter(
+        (s) => s.kind !== 'no_rule' || !readForThread(s.item, planned.queue),
+      ),
       present,
       ...(moved.length && { moved }),
       ...(config.sources.routines && {
@@ -370,13 +375,23 @@ function movedTo(item: Item, to: string): Item {
 
 /** How far back the source's rules read finished items, the widest wins, a thread's card's for a week to close its thread; unset when none does. */
 export function finishedSince(queue: Rule[], source: string): Date | undefined {
-  const reach = queue
-    .filter((r) => !r.source || r.source === source)
-    .flatMap((r) => [
-      ...(ruleThread(r) ? [spanMs(DEFAULT_LOOKBACK)] : []),
-      ...[lookback(r.where) ?? []].flat(),
-    ])
+  const rules = rulesOf(queue, source)
+  const reach = rules.flatMap((r) => lookback(r.where) ?? [])
+  if (rules.some((r) => ruleThread(r))) reach.push(spanMs(DEFAULT_LOOKBACK))
   return reach.length > 0 ? new Date(Date.now() - Math.max(...reach)) : undefined
+}
+
+const rulesOf = (queue: Rule[], source: string) =>
+  queue.filter((r) => !r.source || r.source === source)
+
+/** A finished card read only so its thread can close: its source has a thread rule and no rule there looks back. */
+function readForThread(item: Item, queue: Rule[]): boolean {
+  const rules = rulesOf(queue, item.source)
+  return (
+    itemState(item) !== 'open' &&
+    rules.some((r) => ruleThread(r)) &&
+    rules.every((r) => lookback(r.where) === undefined)
+  )
 }
 
 const FAILURE_LINE = 300

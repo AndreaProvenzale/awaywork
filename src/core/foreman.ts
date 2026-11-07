@@ -179,8 +179,8 @@ export function planRun(input: {
   let counted = 0
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
-  const held = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
-  for (const found of inBlocks(dedupe(ranked, held), expanded.items)) {
+  const waiting = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
+  for (const found of inBlocks(dedupe(ranked, waiting), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -210,7 +210,7 @@ export function planRun(input: {
     // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
     const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
-    if (ours && !pickup && !draft) {
+    if (ours && !pickup && !draft && !found.some(waiting)) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
@@ -231,12 +231,12 @@ export function planRun(input: {
       skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
-    const held = pushedOnto(items, input.attempts ?? {})
-    if (held) {
+    const pushed = pushedOnto(items, input.attempts ?? {})
+    if (pushed) {
       skip(
         'waiting_for_review',
-        `waiting for review: awaywork pushed onto your PR ${held.url}`,
-        held.url,
+        `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
+        pushed.url,
       )
       continue
     }
@@ -253,10 +253,10 @@ export function planRun(input: {
         ? stack.onto
         : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
     if (unplanned) {
-      const held = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
+      const taskDraft = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
       skip(
         'waiting_for_task',
-        `waiting for task ${unplanned}'s ${held ? `draft, which says ${held.status}` : 'PR to open'}`,
+        `waiting for task ${unplanned}'s ${taskDraft ? `draft, which says ${taskDraft.status}` : 'PR to open'}`,
       )
       continue
     }

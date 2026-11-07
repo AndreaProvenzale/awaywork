@@ -803,7 +803,7 @@ awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT rep
     closed https://github.com/AndreaProvenzale/awaywork-sandbox/issues/212, CARD-1's thread: the card is closed
   ```
 
-  Every task merged isn't the end: the card says `all tasks done: close or move the card` until you do, and its thread stays open with it. Close the thread yourself and the next post opens a new one.
+  Every task merged isn't the end: the card says `all tasks done: close or move the card` until you do, and its thread stays open with it. Close the thread yourself and the next post opens a new one. A thread whose card leaves your items without reading as done (reassigned, moved to another `repo`, or closed while no run read back that week) stays open: close it yourself.
 
 - **Or a host of your own.** `thread: <source>` names a custom source with `thread: true` instead, a Notion database or a folder of Markdown files in your vault, which opens and lists the threads itself: see [Thread hosts](./custom-sources.md#thread-hosts). That's the one for a Bitbucket config.
 
