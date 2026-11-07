@@ -981,7 +981,7 @@
               "type": "object",
               "properties": {
                 "changed": {
-                  "description": "Git globs from the repo root; fires when the slice's commits change a matching path",
+                  "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
                   "anyOf": [
                     {
                       "type": "string"
@@ -995,14 +995,28 @@
                   ]
                 },
                 "command": {
-                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
                   "type": "string",
                   "minLength": 1
                 },
                 "skill": {
-                  "description": "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+                  "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
                   "type": "string",
                   "minLength": 1
+                },
+                "instructions": {
+                  "description": "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -1037,7 +1051,7 @@
         "type": "object",
         "properties": {
           "changed": {
-            "description": "Git globs from the repo root; fires when the slice's commits change a matching path",
+            "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
             "anyOf": [
               {
                 "type": "string"
@@ -1051,14 +1065,28 @@
             ]
           },
           "command": {
-            "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the slice started from; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+            "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
             "type": "string",
             "minLength": 1
           },
           "skill": {
-            "description": "A skill, yours or built in, that a model runs on the slice's commits after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+            "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
             "type": "string",
             "minLength": 1
+          },
+          "instructions": {
+            "description": "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -1274,6 +1302,62 @@
               "plan"
             ]
           },
+          "wait": {
+            "description": "deliver: plan or report: the post waits for your reply on the item, approve as its first line letting the next stage take it, anything else running the step again; default true for plan, false for report; a gate of the rule's own that fires makes it wait anyway",
+            "type": "boolean"
+          },
+          "gates": {
+            "description": "deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[\\w-]+$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "changed": {
+                  "description": "Git globs from the repo root; fires when the chain's commits change a matching path",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "command": {
+                  "description": "A shell command awaywork runs in the clone, outside the model, naming its script by its path from the repo root; it diffs from AWAYWORK_FROM, the commit the chain started from, or, as a plan or report rule's gate, reads AWAYWORK_OUT_DIR, a read-only copy of what the step left in .away/out; a non-zero exit fires, with its stdout as the line; so does one that can't run or times out, and, without running, one where a file it names differs from the one the chain started with",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "skill": {
+                  "description": "A skill, yours or built in, that a model runs on the chain's commits, or a plan or report rule's out files, after the other gates, routed like the rule's steps; it fires when it writes the verdict fires, its report lines on the card; so does a run that fails or changes the clone, whose changes awaywork drops",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "instructions": {
+                  "description": "Instruction files a skill gate's judge reads, relative to the config file; never the repo's, and never the rule's",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
           "branch": {
             "description": "Branch name template for this rule",
             "type": "string"
@@ -1306,13 +1390,13 @@
             "additionalProperties": false
           },
           "units": {
-            "description": "At most this many units per run from this rule; each of a chain's slices counts once",
+            "description": "At most this many units per run from this rule; a chain counts once",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "then": {
-            "description": "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
+            "description": "Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps",
             "anyOf": [
               {
                 "anyOf": [
@@ -1484,10 +1568,6 @@
                           }
                         },
                         "additionalProperties": false
-                      },
-                      "stack": {
-                        "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -1496,7 +1576,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
               },
               {
                 "type": "object",
@@ -1674,10 +1754,6 @@
                                   }
                                 },
                                 "additionalProperties": false
-                              },
-                              "stack": {
-                                "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                                "type": "boolean"
                               }
                             },
                             "required": [
@@ -1686,7 +1762,7 @@
                             "additionalProperties": false
                           }
                         ],
-                        "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                        "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                       },
                       {
                         "minItems": 1,
@@ -1861,10 +1937,6 @@
                                     }
                                   },
                                   "additionalProperties": false
-                                },
-                                "stack": {
-                                  "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                                  "type": "boolean"
                                 }
                               },
                               "required": [
@@ -1873,7 +1945,7 @@
                               "additionalProperties": false
                             }
                           ],
-                          "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                          "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                         }
                       }
                     ]
@@ -1942,10 +2014,6 @@
                     "minimum": 1,
                     "maximum": 5,
                     "description": "At most this many rounds, up to 5"
-                  },
-                  "stack": {
-                    "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
-                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -2131,10 +2199,6 @@
                                 }
                               },
                               "additionalProperties": false
-                            },
-                            "stack": {
-                              "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                              "type": "boolean"
                             }
                           },
                           "required": [
@@ -2143,7 +2207,7 @@
                           "additionalProperties": false
                         }
                       ],
-                      "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                      "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                     },
                     {
                       "type": "object",
@@ -2321,10 +2385,6 @@
                                         }
                                       },
                                       "additionalProperties": false
-                                    },
-                                    "stack": {
-                                      "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                                      "type": "boolean"
                                     }
                                   },
                                   "required": [
@@ -2333,7 +2393,7 @@
                                   "additionalProperties": false
                                 }
                               ],
-                              "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                              "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                             },
                             {
                               "minItems": 1,
@@ -2508,10 +2568,6 @@
                                           }
                                         },
                                         "additionalProperties": false
-                                      },
-                                      "stack": {
-                                        "description": "Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR",
-                                        "type": "boolean"
                                       }
                                     },
                                     "required": [
@@ -2520,7 +2576,7 @@
                                     "additionalProperties": false
                                   }
                                 ],
-                                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack"
+                                "description": "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when"
                               }
                             }
                           ]
@@ -2589,10 +2645,6 @@
                           "minimum": 1,
                           "maximum": 5,
                           "description": "At most this many rounds, up to 5"
-                        },
-                        "stack": {
-                          "description": "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
-                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -2609,7 +2661,7 @@
             ]
           },
           "on_done": {
-            "description": "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+            "description": "Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported",
             "type": "object",
             "properties": {
               "move": {
