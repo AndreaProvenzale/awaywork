@@ -14,7 +14,7 @@ In Claude Code, with the [plugin](./agents.md#claude-code) installed:
 /away what could you take off my plate?
 ```
 
-On a first setup (no queue yet, or just the default rules `awaywork init` wrote), `/away` offers it once before asking what to offload. Codex and friends get the same skills from the npm package, in `plugin/skills/`, as in [Codex and friends](./agents.md#codex-and-friends).
+With no config at all, `/away` sets awaywork up, and one of its questions asks whether your first rules should come from this, with the scope and size it would read: say yes and it doesn't ask again. On a config with no queue yet, or just the default rules `awaywork init` wrote, it offers it once before asking what to offload. Either way it never needs a token: those go in with `awaywork secret <NAME>`, which you run, as in [With an AI agent](./agents.md#claude-code). Codex and friends get the same skill from the npm package, in `plugin/skills/away/`, as in [Codex and friends](./agents.md#codex-and-friends).
 
 ## It asks first
 
@@ -87,7 +87,7 @@ Plus a few lines under it: 2 patterns dropped because awaywork can't see what st
 
 ## You pick
 
-Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items, written into your config keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
+Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items again, written into your config on your yes keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
 
 What it won't do:
 
