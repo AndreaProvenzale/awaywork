@@ -42,7 +42,7 @@ Which kinds of work should awaywork take from your GitHub items?
 ❯ 1. [ ] Fix red checks on my PRs
          Pushes a draft PR stacked on your PR with the fix.
   2. [ ] Fix review threads on my PRs
-         Draft PR stacked on your PR addressing the comments.
+         Draft PR stacked on yours addressing open review comments, awaywork's own drafts included.
   3. [ ] Review requests
          Writes a report on PRs that ask for your review; nothing is posted.
   4. [ ] Review as pending review (widening)
@@ -53,7 +53,7 @@ The suggestions option says what it would read before it reads it: `Reads 124 Cl
 
 A tracker needs a token, and it never goes through the chat. The skill tells you to run `awaywork secret LINEAR_API_KEY`, which saves it in `~/.config/awaywork/env` (mode 600) and prints only that it did: in your own terminal it asks at a hidden prompt; in Claude Code, copy the token and type `! pbpaste | awaywork secret LINEAR_API_KEY`. Say done, and it reads your teams and statuses with `awaywork sources linear --json` and asks only which repo each team's code lives in.
 
-The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, the gh account and Claude login you picked, pinned as `sources.github.user` and `config_dir` ([Which login](./configuration.md#which-login)), your tracker, and the rules you picked with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
+The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, the gh account and Claude login it runs on, pinned as `sources.github.user` and `config_dir` wherever a scheduled job wouldn't find them on its own ([Which login](./configuration.md#which-login)), your tracker, and the rules you picked with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
 
 ```text
 Rules (none takes anything today)
@@ -112,10 +112,10 @@ A tab is a strip of cards, a page at a time: items under their repo, or their tr
 
 - reads your config and learns real names with `awaywork sources --json`, so a section is spelled the way Asana spells it;
 - drafts rules on a copy beside your config and runs `awaywork plan --rules --json` on it, showing you the items each rule takes now, the ones another rule takes first, and the near misses with the condition they failed;
-- writes the rules you accept into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
+- asks before writing, and on your yes writes the rules into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
 - starts a tweak from the item, with `awaywork plan --why <key>`, and shows the before and after.
 
-What it won't do: see a token (you put one in with `awaywork secret <NAME>`, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
+What it won't do: see a token (you put one in with `awaywork secret <NAME>`, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. Nothing reaches your config without your yes in that session, a change you asked for by name included; a widening you didn't ask for gets its own question.
 
 Not sure what to hand over? `/away what could you take off my plate?` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The skill offers it once, on a first setup.
 

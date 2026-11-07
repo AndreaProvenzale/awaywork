@@ -31,9 +31,9 @@ sessions() {
   done
 }
 
-# owner/repo from a GitHub remote, else the remote as is.
+# owner/repo from a GitHub remote, else the remote without credentials, query or fragment.
 repo() {
-  printf '%s\n' "$1" | sed -E 's#^(git@|ssh://git@|https://)github\.com[:/]##; s#\.git$##'
+  printf '%s\n' "$1" | sed -E 's|[?#].*$||; s#^([A-Za-z][A-Za-z0-9+.-]*://).*@#\1#; s#^(git@|ssh://|https?://)github\.com[:/]##; s#\.git$##'
 }
 
 # Claude Code keeps the default folder's settings in ~/.claude.json, any other's inside it.

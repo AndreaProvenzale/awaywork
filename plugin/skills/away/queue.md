@@ -30,9 +30,9 @@ Turn what the developer wants offloaded into rules, check them on their real ite
    }
    ```
 
-   `taken` is what the rule runs on now (`"plan": true` on a card its `deliver: plan` rule keeps though its `where` no longer matches), `takenBy` what it matches but another rule takes, `unmatched` what no rule takes, with the closest rule's failed conditions. A config error goes to stderr with exit 1: fix the draft and rerun. Show the developer, for each new or changed rule, the items it takes (key and title), the ones another rule takes, and the unmatched ones that sound like what they asked for, with the reason. Iterate until they agree. Nothing taken today isn't proof the rule is right: say so, and show the closest misses.
+   `taken` is what the rule runs on now (`"plan": true` on a card its `deliver: plan` rule keeps though its `where` no longer matches), `takenBy` what it matches but another rule takes, `unmatched` what no rule takes, with the closest rule's failed conditions. A config error goes to stderr with exit 1: fix the draft and rerun. Show the developer, for each new or changed rule, the items it takes (key and title), the ones another rule takes, and the unmatched ones that sound like what they asked for, with the reason. Nothing taken today isn't proof the rule is right: say so, and show the closest misses. Then one question: write it, change a rule, or leave the config as it is.
 
-6. **Write.** Apply the accepted rules to the real config by editing only the lines that change: keep comments, order and style as you found them, and don't round-trip the file through a YAML library. With `extends`, that's the role file, never its base, which every role extending it shares. Delete the draft.
+6. **Write,** on their yes to that question. Apply the accepted rules to the real config by editing only the lines that change: keep comments, order and style as you found them, and don't round-trip the file through a YAML library. With `extends`, that's the role file, never its base, which every role extending it shares. Delete the draft.
 7. **Validate.** `awaywork doctor --json` prints an array of `{ status, what, detail }`, `status` being `ok`, `warn` or `FAIL`, and exits 1 on any `FAIL`. A `FAIL` on the config (its `what` is the config's path, or its base's) is yours to fix; one on a binary or a login is the developer's: say which and how. It probes each provider's quota, a tiny model call, so run it once here, not in the loop. Then rerun `plan --rules --json` on the real config and check it takes what the draft did.
 
 ## Tweak
@@ -41,11 +41,11 @@ Start from the item: "why did or didn't X run", "stop doing Y on Z".
 
 1. `awaywork plan --why <key>`, with the key as `plan` shows it (`acme/api#12`, `ENG-12`, or `source:key`), says which rule plans it, or why it's skipped: `no_rule` with the closest rule and the condition that failed, or a kind such as `unchanged`, `over_cap`, `waiting_for_review`, `skipped_by_you`. It probes quota like `plan`. For a past run, `awaywork report --json`.
 2. Not the rules' doing (skipped by them, waiting on their review or answer, a cap): say what unblocks it, e.g. `awaywork unskip <source:key>`, and stop.
-3. Otherwise change the rule in a draft as above and show the before and after of `plan --rules --json`: the items each changed rule gains and loses. Then write and validate.
+3. Otherwise change the rule in a draft as above and show the before and after of `plan --rules --json`: the items each changed rule gains and loses. Then step 5's question, and on their yes write and validate (steps 6 and 7).
 
 ## Widening
 
-A change that lets awaywork write more, or exposes the agent to more, is shown on its own: the rule before and after, what it means, and the items it applies to now. A widening the developer named ("push onto my PR", "open them ready for review") is that yes: show it, then write it. Any other widening needs a yes given after seeing it: one you'd add to make another request work, or one that reaches items they didn't describe. When you can't ask, leave it out and say so. A blanket "yes to everything" names nothing. Widening is:
+A change that lets awaywork write more, or exposes the agent to more, is shown on its own: the rule before and after, what it means, and the items it applies to now. One the developer named ("push onto my PR", "open them ready for review") goes into step 5's question with the rest; any other, one you'd add to make another request work or one that reaches items they didn't describe, gets a question of its own. A blanket "yes to everything" names nothing. Widening is:
 
 - `deliver: pr` (opens ready for review, pinging reviewers and code owners), `push` (pushes onto the developer's own PR branch), `pending_review` (leaves their pending review on the PR), `plan` (posts a plan on the item and waits for approval).
 - `on_done`, or a wider one: posts the result on the item, moves it in the tracker.

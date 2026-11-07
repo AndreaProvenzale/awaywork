@@ -81,4 +81,54 @@ describe('folders.sh', () => {
     expect(stdout).not.toContain('FAKE')
     expect((await run(['30'], { CLAUDE_CONFIG_DIR: work })).stdout).toBe(stdout)
   })
+
+  it("prints a remote without its credentials, query or fragment, Codex's too", async () => {
+    const home = await realpath(await mkdtemp(join(tmpdir(), 'awaywork-folders-')))
+    const remotes = {
+      api: `https://x-access-token:${token}@github.com/acme/api.git`,
+      web: `https://${token}@github.com/acme/web`,
+      lab: `https://oauth2:${token}@gitlab.com/acme/lab.git?private_token=${token}#${token}`,
+      cli: 'ssh://git@github.com/acme/cli.git',
+    }
+    for (const [name, url] of Object.entries(remotes)) {
+      const dir = join(home, name)
+      await mkdir(dir)
+      await execa('git', ['init', '-q', dir])
+      await execa('git', ['-C', dir, 'remote', 'add', 'origin', url])
+      await session(join(home, '.claude'), dir, name)
+    }
+    const notes = join(home, 'notes')
+    await mkdir(notes)
+    const day = join(home, '.codex/sessions/2026/11/07')
+    await mkdir(day, { recursive: true })
+    const meta = {
+      type: 'session_meta',
+      payload: {
+        id: 'c1',
+        cwd: notes,
+        originator: 'codex_cli_rs',
+        git: { repository_url: remotes.api },
+      },
+    }
+    await writeFile(
+      join(day, 'rollout-c1.jsonl'),
+      `${JSON.stringify(meta)}\n{"type":"turn_context"}\n`,
+    )
+
+    const { stdout } = await execa('sh', [script, '30'], {
+      env: { HOME: home, PATH: process.env.PATH },
+      extendEnv: false,
+    })
+
+    for (const line of [
+      `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'api')}\tacme/api`,
+      `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'web')}\tacme/web`,
+      `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'lab')}\thttps://gitlab.com/acme/lab`,
+      `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'cli')}\tacme/cli`,
+      `codex\t1\t0.0\t-\t-\t-\t${notes}\tacme/api`,
+    ]) {
+      expect(stdout.split('\n')).toContain(line)
+    }
+    expect(stdout).not.toContain('FAKE')
+  })
 })
