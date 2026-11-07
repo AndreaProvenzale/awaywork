@@ -832,11 +832,11 @@ if (op.op === 'put') {
 }
 ```
 
-Two things are the script's job, not awaywork's:
+Three things are the script's job, not awaywork's:
 
 - **A URL that lasts.** The link is read back days later, from the post. An S3 presigned link expires within a week, so sign it again in `get` from a key you put in the URL, or pick a host whose links don't expire.
 - **Secrets in what leaves.** A log or a recording can hold a token the agent saw on screen. Redact before the file leaves the machine, or keep those kinds out of the store.
-- **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, but a teammate who can edit those can edit a pin line too. A `get` that refuses any URL it didn't print, as above, keeps the store from fetching whatever they name.
+- **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, and on GitHub and Jira it skips any of those someone else edited last, so a teammate can't swap in a pin there. Asana, Linear and a custom source don't say who edited a comment, so a teammate who can edit yours can edit a pin line too. A `get` that refuses any URL it didn't print, as above, keeps the store from fetching whatever they name.
 
 A put that fails leaves the file in the run dir, pins nothing for it and gets a line in the morning report (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting what it printed); the post and the PR still go out. A get that fails skips the unit with why, as `fix store`, and counts no attempt. What comes back and when is in [Files that come back](./how-it-works.md#files-that-come-back).
 

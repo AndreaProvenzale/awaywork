@@ -148,8 +148,8 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
       { name: `${at + 1}-${kind}`, what: `awaywork's post of ${c.at}`, pins, edits: !!item.mine },
     ]
   })
-  // Only a PR awaywork opened for you: anyone can end a PR body with awaywork's marker and a pin.
-  const ours = item.type === 'pr' && item.mine && item.fields.ours === true
+  // Only a PR awaywork opened for you, its body last edited by you: anyone can end a PR body with awaywork's marker and a pin.
+  const ours = item.type === 'pr' && item.mine && item.bodyMine && item.fields.ours === true
   const body = ours ? footerPins(item.description) : []
   const footer = { name: 'pr', what: "the PR body's footer", pins: body, edits: false }
   return body.length ? [...posts, footer] : posts

@@ -220,6 +220,22 @@ ${queue}`)
     expect(plan(`${rule}\n${fix}`, [linked(planned), pr])).toEqual(waiting)
   })
 
+  it("shows the card as waiting for your approval while awaywork's PR on it is open", () => {
+    const story = `  - { skill: story, source: asana, deliver: report, wait: true }`
+    const fixOurs = `  - { skill: fix, source: github, where: { type: pr, checks: failing, ours: true } }`
+    const opened = githubPr(9, { checks: 'failing', ours: true })
+    const away = { ...opened, linkedPrs: opened.linkedPrs.map((p) => ({ ...p, ours: true })) }
+    const held = asanaTask(
+      1,
+      { repo: 'acme/api' },
+      { mine: true, linkedPrs: away.linkedPrs, comments: [post('story', waits)] },
+    )
+    expect(plan(`${story}\n${fixOurs}`, [held, away])).toEqual({
+      units: [['fix', ['acme/api#9']]],
+      skipped: [['T-1', 'waiting_for_approval']],
+    })
+  })
+
   it('keeps the card from a rule below while it waits', () => {
     const queue = `  - { skill: story, source: asana, where: { section: Ready }, deliver: report, wait: true }
   - { skill: triage, source: asana, deliver: report, on_done: { comment: result } }`
