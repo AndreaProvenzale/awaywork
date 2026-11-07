@@ -182,7 +182,7 @@ export async function handOff(
   if (
     !args.length &&
     found?.installPath &&
-    !existsSync(join(found.installPath, 'skills', 'setup'))
+    !existsSync(join(found.installPath, 'skills', 'away', 'setup.md'))
   ) {
     args.push('--plugin-dir', pluginDir)
     const hint = updated
