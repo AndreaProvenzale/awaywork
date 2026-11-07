@@ -10,9 +10,13 @@ import type { Exec } from '../src/forge/gh.js'
 import { workflow } from '../src/scheduler/github-actions.js'
 import { recorded } from './fakes/gh.js'
 
-vi.mock('../src/forge/gh.js', () => ({
-  exec: async (cmd: string, args: string[]) => {
+// A test answers gh through `gh.run`; without one, gh isn't installed.
+const gh = vi.hoisted(() => ({ run: undefined as Exec | undefined }))
+vi.mock('../src/forge/gh.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/forge/gh.js')>()),
+  exec: async (cmd: string, args: string[], env?: Record<string, string>) => {
     if (cmd === 'git') return 'git version 2.50.0\nextra'
+    if (cmd === 'gh' && gh.run) return gh.run(cmd, args, env)
     throw new Error(`${cmd} ${args.join(' ')}: not found`)
   },
 }))
@@ -128,6 +132,97 @@ describe('doctor', () => {
       detail: `queue[0]: unknown skill "nope" (not built in, not in ${join(dir, 'skills')}); fine only if every repo it runs in has it in .awaywork/skills, or as an extra in .claude/skills, .agents/skills or .cursor/skills; a run fails wherever it is missing`,
     })
     expect(checks.at(-1)?.what).toBe('github')
+  })
+
+  it("fails gh login with the fix when the pinned account has none, and counts no one else's items", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      'providers: [codex]\nsources: { github: { repos: [a/b], user: octocat } }\n',
+    )
+    vi.stubEnv('GH_TOKEN', '')
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const checks = await runChecks(path, () => {})
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'gh login',
+      detail: "octocat isn't logged in to gh; log in with gh auth login, as octocat",
+    })
+    expect(checks.map((c) => c.what)).not.toContain('github')
+  })
+
+  it("names the gh login on the config's Enterprise host, and passes a login gh has only there as before", async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    const config = (keys: string) =>
+      `providers: [codex]\nsources: { github: { repos: [a/b], host: github.acme.com${keys} } }\n`
+    const calls: string[] = []
+    gh.run = async (_, args, env) => {
+      calls.push(`${args.join(' ')} ${env?.GH_HOST ?? ''}`.trim())
+      if (args.join(' ') === 'auth token --user octo-ghe --hostname github.acme.com') return 'ghe'
+      if (args[0] === 'api' && env?.GH_HOST === 'github.acme.com') return 'octo-ghe\n'
+      if (args[0] === 'auth' && args[1] === 'status') return ''
+      throw new Error('not logged in to github.com')
+    }
+    for (const name of [
+      'GH_TOKEN',
+      'GITHUB_TOKEN',
+      'GH_ENTERPRISE_TOKEN',
+      'GITHUB_ENTERPRISE_TOKEN',
+    ])
+      vi.stubEnv(name, '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const login = async (text: string) => {
+      await writeFile(path, text)
+      return (await runChecks(path, () => {})).find((c) => c.what === 'gh login')
+    }
+    expect(await login(config(', user: octo-ghe'))).toEqual({
+      status: 'ok',
+      what: 'gh login',
+      detail: 'octo-ghe, pinned by sources.github.user',
+    })
+    expect(calls).toContain('api user --jq .login github.acme.com')
+    expect((await login(config('')))?.detail).toBe("octo-ghe, gh's active account")
+    expect(await login(config('').replace(', host: github.acme.com', ''))).toEqual({
+      status: 'ok',
+      what: 'gh login',
+      detail: '',
+    })
+    gh.run = undefined
+    vi.unstubAllEnvs()
+  })
+
+  it('fails a pinned gh token gh rejects, naming the fix', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      'providers: [codex]\nsources: { github: { repos: [a/b], host: github.acme.com, user: octo-ghe } }\n',
+    )
+    gh.run = async (_, args) => {
+      if (args[0] === 'auth' && args[1] === 'token') return 'revoked'
+      throw new Error('HTTP 401: Bad credentials')
+    }
+    for (const name of [
+      'GH_TOKEN',
+      'GITHUB_TOKEN',
+      'GH_ENTERPRISE_TOKEN',
+      'GITHUB_ENTERPRISE_TOKEN',
+    ])
+      vi.stubEnv(name, '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const checks = await runChecks(path, () => {})
+    gh.run = undefined
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'gh login',
+      detail:
+        "gh rejects octo-ghe's token on github.acme.com; log in again with gh auth login --hostname github.acme.com, as octo-ghe",
+    })
   })
 
   it('fails Cursor without CURSOR_API_KEY, even with your login', async () => {

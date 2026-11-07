@@ -16,36 +16,44 @@ You know what you want off your plate: red CI on your PRs, the bugs QA bounces b
 
 On Claude Code 2.1.275 or later, `/plugin install awaywork --marketplace AndreaProvenzale/awaywork` does the first two in one go. Third-party marketplaces don't auto-update by default: `/plugin marketplace update awaywork` pulls the latest skill, or turn auto-update on under `/plugin` > Marketplaces. `awaywork init` does all three from your shell: it offers the install (or loads the package's plugin for that one session on a no) and opens Claude Code on `/away set up awaywork`.
 
-No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. Then it runs `awaywork doctor --json` for your agent CLIs and gh login, and lists the folders your Claude Code and Codex sessions ran in over the last 30 days, from their metadata alone, mapped to repos by their git remotes. One message asks the rest: providers, which owners this config is for and their repos, whether tasks also come from Asana, Linear or Jira, the window, and whether to [suggest](./suggest.md) your first rules from those sessions, with what it would read. Trimmed, the repos renamed:
+No config yet? `/away`, bare or with anything after it, sets awaywork up. It asks `awaywork config path` where the config goes, and the CLI's answer is the only place it looks: with [`AWAYWORK_REMOTE`](./scheduling.md#from-your-laptop) set, that's the server's config, so there's nothing to set up. Then it looks around without asking: `awaywork doctor --json` for your agent CLIs, every gh account and the orgs it reaches, the login in each Claude Code folder (a shell function that switches `CLAUDE_CONFIG_DIR` counts), whether a job is already scheduled here, and the folders your Claude Code and Codex sessions ran in over the last 30 days, with the MCP servers set up for each, from metadata and config alone, mapped to repos by their git remotes. The rest comes in rounds of up to four multiple-choice questions, its pick first, every option built from what it found. The first round, renamed:
 
 ```text
-- Repos from your last 30 days of sessions, grouped by owner with the most sessions first:
-  - acme (127 sessions): api (126), web (1)
-  - acme-labs (41): site
-  - widgets (30): art. The remote is the ssh alias git@github-work:widgets/art, so I've left
-    it out until you confirm that repo.
-  - Not GitHub: billing is on Bitbucket. This setup doesn't write Bitbucket sources, so it's left out.
+←  ☐ Work  ☐ Claude login  ☐ Runs on  ✔ Submit  →
 
-Questions
-1. Providers: claude first, then codex when its quota runs out. Do you want a different order, or Cursor too?
-2. Repos: this config covers one set of owners, default acme. Which repos should it list: acme/api,
-   acme/web, or acme/*? Add acme-labs/site or widgets/art if you want them, since work and personal
-   usually get separate configs.
-3. Trackers: do tasks also come from Asana, Linear or Jira? No. For Jira I'd need the Cloud site, your
-   Atlassian email, and whether the token is scoped.
-4. Window: 01:00–07:00 your time.
-5. First rules: I can suggest rules from your recent sessions and PRs, or you can start from awaywork's
-   default rules (the default).
-   - If you say yes to suggestions, I'd read the Claude Code sessions and memories in the acme repo
-     folders over the last 30 days. That's 127 sessions (233.0 MB) in 4 folders and 52 memory files,
-     plus your global ~/.claude/CLAUDE.md. There are no Codex sessions there.
-   - Everything I read goes to Anthropic, my vendor. A yes covers this run for the owners you chose,
-     and I won't ask again.
+Whose GitHub work should this awaywork config take care of?
+
+❯ 1. octocat (Recommended)
+     Reaches octocat, widgets; ~215 sessions in these repos, mostly api (124) and site (41).
+  2. octocat-acme
+     Reaches acme; ~125 sessions across acme/app, acme/backend, acme/web and others.
+  3. octocat-labs
+     Reaches acme-labs; no sessions seen in those owners' repos.
+  4. Type something.
 ```
+
+The login tab offers each Claude Code folder with its account and plan (`$CLAUDE_CONFIG_DIR, Max 5x (Recommended)`, the one holding that work's sessions), and the next rounds ask for the repos, a tracker (an MCP server pointing at one is a hint), the window, the rules and whether to [suggest](./suggest.md) more from those sessions, with what it would read:
+
+```text
+←  ☐ Rules  ☐ Suggestions  ✔ Submit  →
+
+Which kinds of work should awaywork take from your GitHub items?
+
+❯ 1. [ ] Fix red checks on my PRs
+         Pushes a draft PR stacked on your PR with the fix.
+  2. [ ] Fix review threads on my PRs
+         Draft PR stacked on yours addressing open review comments, awaywork's own drafts included.
+  3. [ ] Review requests
+         Writes a report on PRs that ask for your review; nothing is posted.
+  4. [ ] Review as pending review (widening)
+         Same, but left as your pending GitHub review, visible only to you; this widens what it writes.
+```
+
+The suggestions option says what it would read before it reads it: `Reads 124 Claude Code sessions (233.7 MB) in the api folder plus memories and your global CLAUDE.md; it goes to Anthropic.`
 
 A tracker needs a token, and it never goes through the chat. The skill tells you to run `awaywork secret LINEAR_API_KEY`, which saves it in `~/.config/awaywork/env` (mode 600) and prints only that it did: in your own terminal it asks at a hidden prompt; in Claude Code, copy the token and type `! pbpaste | awaywork secret LINEAR_API_KEY`. Say done, and it reads your teams and statuses with `awaywork sources linear --json` and asks only which repo each team's code lives in.
 
-The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, your tracker, and the default rules with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
+The draft is `config.draft.yml` beside the config, rendered by `awaywork init --yes` and then edited: your repos, the gh account and Claude login it runs on, pinned as `sources.github.user` and `config_dir` wherever a scheduled job wouldn't find them on its own ([Which login](./configuration.md#which-login)), your tracker, and the rules you picked with your tracker's real status names. `awaywork plan --rules --json` shows what each rule takes now, and on your yes it becomes the config and `doctor` runs once:
 
 ```text
 Rules (none takes anything today)
@@ -104,10 +112,10 @@ A tab is a strip of cards, a page at a time: items under their repo, or their tr
 
 - reads your config and learns real names with `awaywork sources --json`, so a section is spelled the way Asana spells it;
 - drafts rules on a copy beside your config and runs `awaywork plan --rules --json` on it, showing you the items each rule takes now, the ones another rule takes first, and the near misses with the condition they failed;
-- writes the rules you accept into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
+- asks before writing, and on your yes writes the rules into your config, keeping your comments and layout, then runs `awaywork doctor --json`;
 - starts a tweak from the item, with `awaywork plan --why <key>`, and shows the before and after.
 
-What it won't do: see a token (you put one in with `awaywork secret <NAME>`, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. One you asked for by name it then writes; one you didn't waits for your yes.
+What it won't do: see a token (you put one in with `awaywork secret <NAME>`, and `~/.config/awaywork/env` is off limits), start a run or install a schedule (it gives you the commands), skip, unskip or approve an item without asking, or turn on anything that lets awaywork write more, like `deliver: push`, `deliver: pr`, `on_done` or dropping `trusted`, without showing you the rule before and after. Nothing reaches your config without your yes in that session, a change you asked for by name included; a widening you didn't ask for gets its own question.
 
 Not sure what to hand over? `/away what could you take off my plate?` reads your recent agent sessions and PRs, with your say-so every time, and proposes the rules, routines and `AGENTS.md` lines for the work you already do by reflex, each checked on your real items: [Suggested rules](./suggest.md). The skill offers it once, on a first setup.
 
@@ -138,20 +146,20 @@ To try it:
 
 ## Codex and friends
 
-The same skills ship in the npm package, in `plugin/skills/`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
+The same skill ships in the npm package, in `plugin/skills/away/`, in the [Agent Skills](https://agentskills.io) format. Codex reads the Claude Code marketplace too:
 
 ```sh
 codex plugin marketplace add AndreaProvenzale/awaywork
 codex plugin add awaywork@awaywork
 ```
 
-It shows up in Codex's skill list as `awaywork:away`, next to `awaywork:setup`, `awaywork:queue` and `awaywork:suggest`, which it routes to; ask Codex to use it by name.
+It shows up in Codex's skill list as `awaywork:away`; ask Codex to use it by name. Its longer routes, `setup.md`, `queue.md` and `suggest.md`, sit beside its `SKILL.md` and are read only when a route needs one.
 
 Any agent that loads skills from a folder can take it from the installed package instead, e.g. `~/.agents/skills`, which Codex reads as well:
 
 ```sh
 mkdir -p ~/.agents/skills
-for s in away setup queue suggest; do ln -s "$(npm root -g)/awaywork/plugin/skills/$s" ~/.agents/skills/$s; done
+ln -s "$(npm root -g)/awaywork/plugin/skills/away" ~/.agents/skills/away
 ```
 
 No skills support? Tell the agent to read `away/SKILL.md` and follow it.
@@ -180,24 +188,24 @@ Machine-readable docs:
 | [`llms-full.txt`](https://andreaprovenzale.github.io/awaywork/llms-full.txt) | All pages in one file |
 | `<page>.md` | Any page as Markdown, e.g. [`guide/configuration.md`](https://andreaprovenzale.github.io/awaywork/guide/configuration.md) |
 | [`config.schema.json`](https://andreaprovenzale.github.io/awaywork/config.schema.json) | The config's JSON Schema; `awaywork config schema` prints the installed version's |
-| [`away`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `/away` skill: status, why an item did or didn't run, and which skill handles the rest |
-| [`setup`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/setup/SKILL.md) | A first config, when there's none: agents, repos from recent sessions, trackers, a checked first queue |
-| [`queue`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/queue/SKILL.md) | Writing and checking rules on real items |
-| [`suggest`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/suggest/SKILL.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
+| [`away`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/SKILL.md) | The `/away` skill: status, why an item did or didn't run, and which of the files below handles the rest |
+| [`setup.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/setup.md) | A first config, when there's none: whose work and which logins, where it runs, repos from recent sessions, trackers, a checked first queue |
+| [`queue.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/queue.md) | Writing and checking rules on real items |
+| [`suggest.md`](https://github.com/AndreaProvenzale/awaywork/blob/main/plugin/skills/away/suggest.md) | Candidate rules from the user's own sessions and PRs, asked for every run |
 
 Setting up:
 
 1. `npm install -g awaywork`; check `claude --version`, `codex --version`, `agent --version` (Cursor, which also needs `CURSOR_API_KEY` in the env file), `gh auth status`.
 2. `awaywork init --yes` writes `~/.config/awaywork/config.yml` without a terminal: the installed providers, `github` when `gh` is logged in (repos `<login>/*`), the default queue and a 01:00-07:00 window. Override with `--provider claude codex` (first takes units first), `--source github asana` and `--window 23:00-06:00`. Asana is skipped with a note unless `ASANA_TOKEN` is set; then it takes the first workspace and every project with the user's tasks. Linear is likewise skipped unless `LINEAR_API_KEY` is set. Cursor counts as installed only with `CURSOR_API_KEY` set, and `--provider cursor` takes it anyway: where it's the only agent, `--yes` without either stops, naming the missing key. Jira is skipped: it needs a site and an email. It refuses to replace an existing config without `--force`. To go further, edit the file from [Configuration](./configuration.md) and the [reference](../reference/config.md). `awaywork sources asana --json` gives the Asana workspace and project gids and the real section names for `where`; `sources linear`, `sources jira` (once the config has its `site` and `email`) and `sources github` do the same for theirs, without you ever seeing the token.
 3. Secrets go in `~/.config/awaywork/env` (`NAME=value` lines, mode 600), never in the config. They're the user's to put there, with `awaywork secret ASANA_TOKEN` (a hidden prompt; in Claude Code, `! pbpaste | awaywork secret ASANA_TOKEN` after copying it): don't ask for them in the chat, and don't read them from that file or other tools' files.
-4. `awaywork doctor` until the config's line isn't `FAIL`. Without a config it still lists each agent CLI: `ok` with its version, `warn` when it's not installed or, for Cursor, `CURSOR_API_KEY` is unset. `awaywork config path` prints the config file in use and exits 1 while it doesn't exist.
+4. `awaywork doctor` until the config's line isn't `FAIL`. Its `gh login` and `<provider> login` lines name the account each run uses; on a machine with several, the config pins them ([Which login](./configuration.md#which-login)). Without a config it still lists each agent CLI: `ok` with its version, `warn` when it's not installed or, for Cursor, `CURSOR_API_KEY` is unset. `awaywork config path` prints the config file in use and exits 1 while it doesn't exist.
 5. For the queue, follow the [skill](#codex-and-friends). `awaywork plan`, and show the user the result. When stdin and stdout are both a terminal, `plan` and `report` open an interactive view; piped (`| cat`) or with `CI` set, they print text.
 
 What each command does:
 
 | Command | Effect |
 | --- | --- |
-| `config path`, `config schema`, `skills list`, `report` | Read-only, local |
+| `config path`, `config schema`, `skills list`, `report`, `schedule status` | Read-only, local |
 | `plan`, `doctor` | Read-only on sources and forge; probe each provider's quota (one tiny model call for Claude) |
 | `plan --rules`, `plan --rules --json` | Read-only on sources and forge; probes no provider |
 | `sources [id]` | Read-only on sources; prints no token |

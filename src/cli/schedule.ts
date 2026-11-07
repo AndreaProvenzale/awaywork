@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import { execa } from 'execa'
 import { ConfigError, configPath, loadConfig } from '../config/load.js'
+import { pinned } from '../config/logins.js'
 import {
   bin,
   packageVersion,
@@ -590,7 +591,8 @@ export async function offerSecrets(
 ): Promise<string[]> {
   const unset = []
   for (const name of names) {
-    const value = env[name]
+    // A token awaywork pinned from gh is gh's login, not one you put in your env.
+    const value = pinned(env, name) ? undefined : env[name]
     if (value && (await ask.confirm(`Set the ${name} repository secret from your env?`))) {
       try {
         await set(name, value)

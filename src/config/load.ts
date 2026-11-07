@@ -9,6 +9,7 @@ import { isCommandProvider } from '../providers/command.js'
 import { isCommand } from '../sources/command.js'
 import { routinesOf } from '../sources/routines.js'
 import type { ContextSource } from '../worker/context.js'
+import { pinLogins } from './logins.js'
 import { defaultConfigPath } from './paths.js'
 import { type Config, configSchema } from './schema.js'
 
@@ -30,7 +31,8 @@ export function configPath(flag?: string): string {
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
-export async function loadConfig(path: string): Promise<Config> {
+/** The config at `path`, with the logins it pins set in this process's env unless `pin` is false; a pin it can't make throws. */
+export async function loadConfig(path: string, { pin = true } = {}): Promise<Config> {
   const text = await readFile(path, 'utf8').catch((e: NodeJS.ErrnoException) => {
     throw new ConfigError(path, [e.code === 'ENOENT' ? 'file not found' : e.message])
   })
@@ -44,6 +46,11 @@ export async function loadConfig(path: string): Promise<Config> {
   }
   for (const { config: cfg } of config.providers)
     if (isCommandProvider(cfg)) cfg.dir = dirOf('providers')
+  if (!pin) return config
+  const problems = (await pinLogins(config)).flatMap((p) =>
+    p.problem ? [`${p.key}: ${p.problem}`] : [],
+  )
+  if (problems.length) throw new ConfigError(path, problems)
   return config
 }
 
