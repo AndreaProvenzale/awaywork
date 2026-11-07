@@ -89,6 +89,7 @@ describe('folders.sh', () => {
       web: `https://${token}@github.com/acme/web`,
       lab: `https://oauth2:${token}@gitlab.com/acme/lab.git?private_token=${token}#${token}`,
       cli: 'ssh://git@github.com/acme/cli.git',
+      port: 'ssh://git@github.com:22/acme/port.git',
     }
     for (const [name, url] of Object.entries(remotes)) {
       const dir = join(home, name)
@@ -125,6 +126,7 @@ describe('folders.sh', () => {
       `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'web')}\tacme/web`,
       `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'lab')}\thttps://gitlab.com/acme/lab`,
       `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'cli')}\tacme/cli`,
+      `claude\t1\t0.0\t0\t~/.claude\t-\t${join(home, 'port')}\tacme/port`,
       `codex\t1\t0.0\t-\t-\t-\t${notes}\tacme/api`,
     ]) {
       expect(stdout.split('\n')).toContain(line)

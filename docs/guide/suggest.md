@@ -87,7 +87,7 @@ Plus a few lines under it: 2 patterns dropped because awaywork can't see what st
 
 ## You pick
 
-Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items, written into your config keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
+Accept, tweak or decline each by number. Rules and routines you keep go through the skill's usual queue loop: drafted, checked on your items again, written into your config on your yes keeping your comments, then `doctor`. An `AGENTS.md` line is a local edit you commit yourself. A rule that lets awaywork write more (`deliver: pending_review`, `pr`, `push`, `on_done`) gets its own yes, as when [you write rules with it](./agents.md#claude-code). Nothing else is written.
 
 What it won't do:
 
