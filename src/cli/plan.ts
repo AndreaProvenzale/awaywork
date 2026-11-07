@@ -312,13 +312,15 @@ async function makeHeldMoves(
     }
     const cfg = config.sources[item.source]
     try {
-      await writeItem(sourceFor(item.source, cfg), cfg, item, { op: 'move', to }, ctx)
+      const write = { op: 'move', to } as const
+      const { updated } = await writeItem(sourceFor(item.source, cfg), cfg, item, write, ctx)
       log(`on_done: moved ${item.key} to ${to}, its post approved`)
-      // As a move writes it: a GitHub label, else the tracker's status.
+      // As a move writes it, a GitHub label or else the tracker's status; the move is awaywork's own change, not the card's.
+      const moved = { ...item, fields: { ...item.fields, ...(updated && { updated }) } }
       out.push(
         item.source === 'github'
-          ? { ...item, labels: [...item.labels, to] }
-          : { ...item, status: to },
+          ? { ...moved, labels: [...item.labels, to] }
+          : { ...moved, status: to },
       )
     } catch (e) {
       log(mask(`on_done: couldn't move ${item.key} to ${to}: ${(e as Error).message}`))
