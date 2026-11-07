@@ -54,9 +54,23 @@ export async function outFiles(dir: string): Promise<string[]> {
 /** What a put says a file is: `plan`, `contract`, `report`, else its name. */
 export type Kind = 'plan' | 'contract' | 'report' | (string & {})
 
+/** The `url` a put printed; its output is never quoted, since it may hold a secret. */
+function urlOf(stdout: string): string {
+  let printed: { url?: unknown } | null
+  try {
+    printed = JSON.parse(stdout)
+  } catch {
+    throw new Error(`printed ${stdout.length} characters that aren't JSON, not {"url": "…"}`)
+  }
+  const url = printed?.url
+  if (typeof url !== 'string' || !/^\S+$/.test(url)) throw new Error('printed no {"url": "…"}')
+  return url
+}
+
 /**
- * Puts each file of `dir` named in `files` in the store, the item and unit it's for alongside, and pins it by the URL the
- * store printed and its sha256; a put that fails pins nothing for its file, its line in `failed`.
+ * Puts each file of `dir` named in `files` in the store, the item and unit it's for alongside, gets it back once, and
+ * pins it by the URL the store printed, its size and sha256; a put that fails, or whose get gives back other bytes,
+ * pins nothing for its file, its line in `failed`.
  */
 export async function putFiles(
   store: Store,
@@ -67,18 +81,29 @@ export async function putFiles(
 ): Promise<{ pins: Pin[]; failed: string[] }> {
   const pins: Pin[] = []
   const failed: string[] = []
-  for (const { name, kind } of files) {
-    const path = join(dir, name)
-    try {
-      const op = { op: 'put', item: at.item, unit: at.unit, path, kind }
-      const { stdout } = await runShell(store.command, store.dir, env, JSON.stringify(op))
-      const url = (JSON.parse(stdout) as { url?: unknown }).url
-      if (typeof url !== 'string' || !/^\S+$/.test(url))
-        throw new Error(`printed no {"url": "…"} but ${stdout.slice(0, 200)}`)
-      pins.push({ name, url, sha256: await sha256(path) })
-    } catch (e) {
-      failed.push(`${name} not stored: ${(e as Error).message.split('\n')[0]}`)
+  const tmp = await mkdtemp(join(tmpdir(), 'awaywork-put-'))
+  try {
+    for (const [n, { name, kind }] of files.entries()) {
+      const path = join(dir, name)
+      try {
+        const op = { op: 'put', item: at.item, unit: at.unit, path, kind }
+        const url = urlOf(
+          (await runShell(store.command, store.dir, env, JSON.stringify(op))).stdout,
+        )
+        const [hash, { size }] = await Promise.all([sha256(path), stat(path)])
+        const back = join(tmp, String(n))
+        await getFile(store, env, url, back).catch((e: Error) => {
+          throw new Error(`couldn't get it back: ${e.message.split('\n')[0]}`)
+        })
+        if ((await sha256(back)) !== hash)
+          throw new Error('the store gave back different bytes than awaywork put')
+        pins.push({ name, url, sha256: hash, size })
+      } catch (e) {
+        failed.push(`${name} not stored: ${(e as Error).message.split('\n')[0]}`)
+      }
     }
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
   }
   return { pins, failed }
 }
@@ -125,7 +150,8 @@ async function readPins(
   const back: ReadBack = { read: [], stale: [], over: [] }
   for (const pin of pins) {
     if (!inside(pin.name) || !wanted(pin.name)) continue
-    if (budget.left <= 0) {
+    const fits = (size: number) => size <= budget.left || always.includes(pin.name)
+    if (budget.left <= 0 || (pin.size !== undefined && !fits(pin.size))) {
       back.over.push(pin.name)
       continue
     }
@@ -138,7 +164,7 @@ async function readPins(
       )
     }
     const { size } = await stat(to)
-    if (size > budget.left && !always.includes(pin.name)) {
+    if (!fits(size)) {
       await rm(to)
       back.over.push(pin.name)
       continue
@@ -200,7 +226,7 @@ function contractIn(yaml: string): string | undefined {
 
 /**
  * Reads back the files of a unit's `posts` into `dir`, a folder per post, within the store's cap; returns a line per file
- * edited since it was pinned, and for those left out, links still. Throws when a get fails.
+ * edited since it was pinned, dropped unless the post takes `edits`, and for those left out, links still. Throws when a get fails.
  */
 export async function readBack(
   store: Store,
@@ -212,8 +238,12 @@ export async function readBack(
   const notes: string[] = []
   for (const post of posts) {
     const back = await readPins(store, env, post.pins, join(dir, post.name), budget)
-    for (const name of back.stale)
-      notes.push(`${name} of ${post.what} changed in the store since awaywork pinned it`)
+    for (const name of back.stale) {
+      if (!post.edits) await rm(join(dir, post.name, name))
+      notes.push(
+        `${name} of ${post.what} changed in the store since awaywork pinned it${post.edits ? '' : ': left out'}`,
+      )
+    }
     if (back.over.length)
       notes.push(
         `over the store's read.max_mb, left as links: ${back.over.join(', ')} of ${post.what}`,

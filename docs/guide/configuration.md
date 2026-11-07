@@ -557,7 +557,7 @@ queue:
 | `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; a report that waits holds the move until you approve it; see [`on_done`](#on-done) |
 | `wait` | `deliver: plan` or `report` only: the post waits for your reply on the item, `true` by default for a plan, `false` for a report; see [Posts that wait](./how-it-works.md#posts-that-wait) |
 | `gates` | `deliver: plan` or `report` only: gates of the rule's own, on what its step left; see [Gates of a rule's own](#gates-of-a-rules-own) |
-| `post` | `deliver: plan` or `report` only: `summary`, the step's `summary.md` with a link per file it left, put in the [store](#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./how-it-works.md#files-that-come-back) |
+| `post` | `deliver: plan`, or a `report` that posts (`wait: true`, `gates` or `on_done: { comment: result }`): `summary`, the step's `summary.md` with a link per file it left, put in the [store](#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./how-it-works.md#files-that-come-back) |
 | `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
@@ -803,7 +803,9 @@ store:
 The command gets one JSON op on stdin per call, and runs with your environment like a [custom source](./custom-sources.md)'s:
 
 - `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is a copy awaywork made out of the clone, readable while the put runs. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/` for anything else the step left, so one script can send recordings to a bucket and plans to Notion.
-- `{"op": "get", "url": "…"}` prints the file's bytes. A store that only puts sets `get: false`, and awaywork reads the file back with a plain HTTP GET of its URL.
+- `{"op": "get", "url": "…"}` prints the file's bytes, exactly as put. A store that only puts sets `get: false`, and awaywork reads the file back with a plain HTTP GET of its URL.
+
+Right after each put awaywork gets the file back once and compares its sha256: a pin is that hash, so a store that hands back other bytes, a CMS adding a newline, Notion turning markdown into a page and back, would make every post look edited. Such a file isn't pinned, and the morning report says `report.md not stored: the store gave back different bytes than awaywork put`. Keep such a store's page for people, and the bytes awaywork reads somewhere that keeps them as they are.
 
 The model never sees a URL before awaywork writes it, and never picks where a file goes. A tiny one that keeps the files in a folder next to it, at `file://` URLs, which is enough for one machine:
 
@@ -820,15 +822,22 @@ if (op.op === 'put') {
   mkdirSync(dirname(to), { recursive: true })
   copyFileSync(op.path, to)
   console.log(JSON.stringify({ url: pathToFileURL(to).href }))
-} else process.stdout.write(readFileSync(fileURLToPath(op.url)))
+} else {
+  const path = fileURLToPath(op.url)
+  // A pin line anyone could write names this URL: read only this store's files.
+  if (!path.startsWith(join(dirname(fileURLToPath(import.meta.url)), 'files', '/')))
+    throw new Error(`not in this store: ${op.url}`)
+  process.stdout.write(readFileSync(path))
+}
 ```
 
 Two things are the script's job, not awaywork's:
 
 - **A URL that lasts.** The link is read back days later, from the post. An S3 presigned link expires within a week, so sign it again in `get` from a key you put in the URL, or pick a host whose links don't expire.
 - **Secrets in what leaves.** A log or a recording can hold a token the agent saw on screen. Redact before the file leaves the machine, or keep those kinds out of the store.
+- **Only its own URLs.** awaywork reads pins only off its own posts and the PRs it opened for you, but a teammate who can edit those can edit a pin line too. A `get` that refuses any URL it didn't print, as above, keeps the store from fetching whatever they name.
 
-A put that fails leaves the file in the run dir, pins nothing for it and gets a line in the morning report (`fail.bin not stored: Command failed with exit code 1: …`); the post and the PR still go out. A get that fails skips the unit with why, as `fix store`, and counts no attempt. What comes back and when is in [Files that come back](./how-it-works.md#files-that-come-back).
+A put that fails leaves the file in the run dir, pins nothing for it and gets a line in the morning report (`fail.bin not stored: Command failed with exit code 1: …`, or `printed 11 characters that aren't JSON, not {"url": "…"}`, never quoting what it printed); the post and the PR still go out. A get that fails skips the unit with why, as `fix store`, and counts no attempt. What comes back and when is in [Files that come back](./how-it-works.md#files-that-come-back).
 
 ## MCP servers
 

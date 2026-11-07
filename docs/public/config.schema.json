@@ -1359,7 +1359,7 @@
             }
           },
           "post": {
-            "description": "deliver: plan or report: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
+            "description": "deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
             "type": "string",
             "enum": [
               "summary",

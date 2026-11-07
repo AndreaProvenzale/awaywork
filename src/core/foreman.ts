@@ -391,8 +391,9 @@ export function planRun(input: {
     // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
     const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
     const waits = decides ? again || (rule.wait ?? planned) : undefined
+    // Only a post reads the step's summary: a report rule posts when it decides or comments its result.
     const lean =
-      (planned || rule.deliver === 'report') &&
+      (decides || (rule.deliver === 'report' && rule.on_done?.comment === 'result')) &&
       !items[0]?.task &&
       (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
     // A resumed task's draft stays stacked on the task below it while that one is open.

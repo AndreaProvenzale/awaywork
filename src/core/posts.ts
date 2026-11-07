@@ -102,16 +102,18 @@ export function decisionPosts(item: Pick<Item, 'comments'>): Comment[] {
   return [...(plan ? [plan] : []), ...reports]
 }
 
-/** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, and its pins. */
+/** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, its pins, and whether a file edited since is your feedback, else left out. */
 export interface PinnedPost {
   name: string
   what: string
   pins: Pin[]
+  edits: boolean
 }
 
 /**
  * The posts whose files a unit of `skill` on the item reads back: the post its approval covers (a task's plan, the result
- * `approved` names), its own newest post when it runs again on your feedback, those newer than that post, and an awaywork PR's body.
+ * `approved` names), its own newest post when it runs again on your feedback, those newer than that post, and the body of
+ * a PR awaywork opened for you.
  */
 export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedPost[] {
   const task = item.task?.id
@@ -142,8 +144,13 @@ export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedP
     const of = commentTask(c)
     const kind =
       commentKind(c) === 'plan' ? 'plan' : (resultSkill(c) ?? (of ? `task-${of}` : 'post'))
-    return [{ name: `${at + 1}-${kind}`, what: `awaywork's post of ${c.at}`, pins }]
+    return [
+      { name: `${at + 1}-${kind}`, what: `awaywork's post of ${c.at}`, pins, edits: !!item.mine },
+    ]
   })
-  const body = item.type === 'pr' && item.fields.ours === true ? footerPins(item.description) : []
-  return body.length ? [...posts, { name: 'pr', what: "the PR body's footer", pins: body }] : posts
+  // Only a PR awaywork opened for you: anyone can end a PR body with awaywork's marker and a pin.
+  const ours = item.type === 'pr' && item.mine && item.fields.ours === true
+  const body = ours ? footerPins(item.description) : []
+  const footer = { name: 'pr', what: "the PR body's footer", pins: body, edits: false }
+  return body.length ? [...posts, footer] : posts
 }
