@@ -442,7 +442,7 @@ export async function watchStatus(config: string, now = new Date()): Promise<str
     const backoff = p.failures ? `, backing off after ${counted(p.failures, 'failed poll')}` : ''
     lines.push(`Next poll of ${id}: ${localTime(new Date(p.next))}${backoff}`)
   }
-  const windows = await loadConfig(up ? state.config : config).then(
+  const windows = await loadConfig(up ? state.config : config, { pin: false }).then(
     (c) => c.windows,
     () => undefined,
   )

@@ -88,10 +88,12 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     await onHost(exec, github?.host)('gh', ['api', 'user', '--jq', '.login']).then(
       (login) => report(...ghLogin(login.trim(), github?.user, ghPin, process.env)),
       () =>
-        exec('gh', ['auth', 'status']).then(
-          () => report('ok', 'gh login'),
-          () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
-        ),
+        ghPin?.value
+          ? report('FAIL', 'gh login', ghRejected(github?.user as string, github?.host))
+          : exec('gh', ['auth', 'status']).then(
+              () => report('ok', 'gh login'),
+              () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
+            ),
     )
   if (existsSync(envFile)) {
     const mode = statSync(envFile).mode & 0o777
@@ -217,6 +219,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 
 /** The gh login a run uses and where it comes from; a warning when the environment's wins over another `user`. */
+export const ghRejected = (user: string, host?: string) =>
+  `gh rejects ${user}'s token${host ? ` on ${host}` : ''}; log in again with gh auth login${host ? ` --hostname ${host}` : ''}, as ${user}`
+
 export function ghLogin(
   login: string,
   user: string | undefined,

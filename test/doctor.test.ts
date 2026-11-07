@@ -195,6 +195,36 @@ describe('doctor', () => {
     vi.unstubAllEnvs()
   })
 
+  it('fails a pinned gh token gh rejects, naming the fix', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
+    const path = join(dir, 'config.yml')
+    await writeFile(
+      path,
+      'providers: [codex]\nsources: { github: { repos: [a/b], host: github.acme.com, user: octo-ghe } }\n',
+    )
+    gh.run = async (_, args) => {
+      if (args[0] === 'auth' && args[1] === 'token') return 'revoked'
+      throw new Error('HTTP 401: Bad credentials')
+    }
+    for (const name of [
+      'GH_TOKEN',
+      'GITHUB_TOKEN',
+      'GH_ENTERPRISE_TOKEN',
+      'GITHUB_ENTERPRISE_TOKEN',
+    ])
+      vi.stubEnv(name, '')
+    vi.stubEnv('RUNNER_ENVIRONMENT', 'github-hosted')
+    const checks = await runChecks(path, () => {})
+    gh.run = undefined
+    vi.unstubAllEnvs()
+    expect(checks).toContainEqual({
+      status: 'FAIL',
+      what: 'gh login',
+      detail:
+        "gh rejects octo-ghe's token on github.acme.com; log in again with gh auth login --hostname github.acme.com, as octo-ghe",
+    })
+  })
+
   it('fails Cursor without CURSOR_API_KEY, even with your login', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-doctor-'))
     const path = join(dir, 'config.yml')
