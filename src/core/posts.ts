@@ -1,10 +1,15 @@
 import {
   answerTo,
   commentKind,
+  commentTask,
+  footerPins,
   isApprove,
   isAwayworkComment,
+  type Pin,
   type PostState,
+  pinsOf,
   postState,
+  resultOf,
   resultSkill,
 } from './footer.js'
 import { planThread } from './plan.js'
@@ -36,9 +41,15 @@ export function reportPost(item: Pick<Item, 'comments'>, skill: string): Post | 
   )
 }
 
-/** Where a post stands: waiting for your answer, your feedback, or approved, by your `approve` or by going ahead. */
-export const postAnswer = ({ state, answer }: Post): 'waiting' | 'feedback' | 'approved' =>
-  !answer ? 'waiting' : 'went' in state || isApprove(answer) ? 'approved' : 'feedback'
+/** Where a post stands: waiting for your answer, your feedback, or approved, by your `approve` or by going ahead; a file of it edited in the store is feedback. */
+export const postAnswer = ({ post, state, answer }: Post): 'waiting' | 'feedback' | 'approved' =>
+  post.pinned?.stale
+    ? 'feedback'
+    : !answer
+      ? 'waiting'
+      : 'went' in state || isApprove(answer)
+        ? 'approved'
+        : 'feedback'
 
 /** The skill of the newest result awaywork posted on the item that you approved or that went ahead: the item's `approved`. */
 export function approvedSkill(item: Pick<Item, 'comments'>): string | undefined {
@@ -81,4 +92,58 @@ export function decisionPost(
   if (!report) return undefined
   const what = `${resultSkill(report.post)}'s result`
   return { what, ...report, ...('went' in report.state && { went: true as const }) }
+}
+
+/** The posts on the item whose answer decides a rule: the newest plan, and each skill's newest result that waits or went ahead. */
+export function decisionPosts(item: Pick<Item, 'comments'>): Comment[] {
+  const plan = planThread(item)?.plan
+  const skills = new Set(item.comments.flatMap((c) => resultSkill(c) ?? []))
+  const reports = [...skills].flatMap((skill) => reportPost(item, skill)?.post ?? [])
+  return [...(plan ? [plan] : []), ...reports]
+}
+
+/** A post whose pinned files a unit reads back: its folder's name under `files/`, what it is, and its pins. */
+export interface PinnedPost {
+  name: string
+  what: string
+  pins: Pin[]
+}
+
+/**
+ * The posts whose files a unit of `skill` on the item reads back: the post its approval covers (a task's plan, the result
+ * `approved` names), its own newest post when it runs again on your feedback, those newer than that post, and an awaywork PR's body.
+ */
+export function readBackPosts(item: Item, skill: string, plan: boolean): PinnedPost[] {
+  const task = item.task?.id
+  const own = item.comments.findLastIndex((c) =>
+    task
+      ? commentKind(c) === 'result' && commentTask(c) === task
+      : plan
+        ? commentKind(c) === 'plan'
+        : resultSkill(c) === skill,
+  )
+  const covered = task
+    ? planThread(item)?.plan
+    : item.comments.findLast((c, at) => {
+        const post = resultSkill(c) === item.fields.approved && postAt(item, at)
+        return !!post && postAnswer(post) === 'approved'
+      })
+  const ownPost = item.comments[own]
+  // It runs again on your feedback, or goes on from where it said `continue`.
+  const again =
+    ownPost &&
+    (commentKind(ownPost) === 'plan' ||
+      !!postState(ownPost) ||
+      resultOf(ownPost)?.status === 'continue')
+  const posts = item.comments.flatMap((c, at) => {
+    const pins = pinsOf(c)
+    const read = c === covered || at > own || (at === own && again)
+    if (!pins.length || !read || commentKind(c) === 'approve') return []
+    const of = commentTask(c)
+    const kind =
+      commentKind(c) === 'plan' ? 'plan' : (resultSkill(c) ?? (of ? `task-${of}` : 'post'))
+    return [{ name: `${at + 1}-${kind}`, what: `awaywork's post of ${c.at}`, pins }]
+  })
+  const body = item.type === 'pr' && item.fields.ours === true ? footerPins(item.description) : []
+  return body.length ? [...posts, { name: 'pr', what: "the PR body's footer", pins: body }] : posts
 }

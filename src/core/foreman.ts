@@ -8,7 +8,7 @@ import { dedupe } from './dedupe.js'
 import { branchName, committingStep, expandPlans, planLimits, stepReports } from './fanout.js'
 import { awaitsAnswer } from './footer.js'
 import { globToRegExp } from './glob.js'
-import { elsewhere, latestResult, planState } from './plan.js'
+import { elsewhere, latestResult, planState, planThread } from './plan.js'
 import { postAnswer, reportPost } from './posts.js'
 import {
   closestRule,
@@ -83,6 +83,7 @@ export type SkipKind =
   | 'waiting_for_approval'
   | 'approved'
   | 'invalid_plan'
+  | 'store_failed'
   | 'fanned_out'
   | 'waiting_for_task'
   | 'task_merged'
@@ -108,6 +109,7 @@ export const needsYou: Record<SkipKind, boolean> = {
   waiting_for_approval: true,
   approved: false,
   invalid_plan: true,
+  store_failed: true,
   fanned_out: false,
   waiting_for_task: false,
   task_merged: false,
@@ -190,6 +192,12 @@ export function planRun(input: {
       .find((key) => skips[key])
     if (skippedByUser) {
       skip('skipped_by_you', describeSkip(skippedByUser, skips[skippedByUser] as Skip))
+      continue
+    }
+    // A post awaywork couldn't read back from the store decides nothing yet: no attempt counts.
+    const unread = items.flatMap((i) => i.comments).find((c) => c.pinned?.failed)?.pinned?.failed
+    if (unread) {
+      skip('store_failed', unread)
       continue
     }
     const prs = items.flatMap((i) => i.linkedPrs)
@@ -284,10 +292,15 @@ export function planRun(input: {
       )
       continue
     }
-    // Closing a task's PR doesn't touch the card: its re-plan is due all the same.
+    // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
     const replan = card?.state === 'replan'
+    const stale = items.some(
+      (i) =>
+        (rule.deliver === 'plan' ? planThread(i)?.plan : reportPost(i, rule.skill)?.post)?.pinned
+          ?.stale,
+    )
     const since = items.map((item) => unchangedSince(item, rule.skill, input.attempts ?? {}))
-    if (since.every(Boolean) && !goesOn && !replan) {
+    if (since.every(Boolean) && !goesOn && !replan && !stale) {
       skip('unchanged', `unchanged since run ${since.sort().at(-1)}`)
       continue
     }
@@ -372,6 +385,10 @@ export function planRun(input: {
     // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
     const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
     const waits = decides ? again || (rule.wait ?? planned) : undefined
+    const lean =
+      (planned || rule.deliver === 'report') &&
+      !items[0]?.task &&
+      (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
     // A resumed task's draft stays stacked on the task below it while that one is open.
     const below =
       draft && items[0]?.task?.onto && items[0].task.parent.taskPrs?.[items[0].task.onto]
@@ -416,6 +433,7 @@ export function planRun(input: {
             ? undefined
             : gatesFor(config, repo),
         ...(waits !== undefined && { waits }),
+        ...(lean && { lean }),
         items,
         repo,
         rule: step,

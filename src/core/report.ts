@@ -52,6 +52,8 @@ export interface UnitResult {
   byHand?: string
   /** On a plan rule's chain's first step: the plan it posted, or why not. */
   plan?: PlanPost
+  /** On the chain's first step: what didn't go to the store or come back from it, a line each. */
+  store?: string[]
 }
 
 /** The item (`source:key`) and URL awaywork posted a comment on, or why it didn't. */
@@ -127,6 +129,7 @@ export const unitNotes = (u: UnitResult): string[] => [
   ...(u.questions ? [describeQuestions(u.questions)] : []),
   ...(u.byHand ? [u.byHand] : []),
   ...(u.plan ? [describePlan(u.plan)] : []),
+  ...(u.store ?? []),
   ...(u.result ?? []).map(describeResult),
   ...(u.moved ?? []).map((m) => `on_done ${describeMoved(m)}`),
 ]

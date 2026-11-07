@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execa } from 'execa'
 import { bin } from '../config/paths.js'
-import { type Left, trailerKey } from '../core/footer.js'
+import { type Left, type Pin, trailerKey } from '../core/footer.js'
 import { counted } from '../core/report.js'
 import type { Forge, Unit } from '../core/types.js'
 import type { Held } from './slices.js'
@@ -28,7 +28,7 @@ export type Outcome =
       /** Why a `deliver: pending_review` report wasn't left as a review. */
       unposted?: string
       /** A plan's or report's own gates that ran on what its step left, and which fired: their card tops `text`. */
-      gates?: { ran: string[]; fired?: string }
+      gates?: { ran: string[]; fired?: string; card: string }
     }
   | {
       kind: 'review'
@@ -74,6 +74,7 @@ export async function publish(
   closes = false,
   notReady?: string,
   held?: Held,
+  pins?: Pin[],
 ): Promise<Outcome> {
   const out = `${WORK_DIR}/out`
   const file = join(dir, out, outputFile[unit.deliver])
@@ -88,7 +89,7 @@ export async function publish(
     // From the clone's own `.git` only, like `inClone`.
     const strict = '--upload-pack=git-upload-pack --strict'
     await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
-    return await deliver(unit, repo, forge, runId, start, file, text, closes, notReady, held)
+    return await deliver(unit, repo, forge, runId, start, file, text, closes, notReady, held, pins)
   } finally {
     await rm(repo, { recursive: true, force: true })
   }
@@ -105,6 +106,7 @@ async function deliver(
   closes = false,
   notReady?: string,
   held?: Held,
+  pins?: Pin[],
 ): Promise<Outcome> {
   const push = unit.deliver === 'push'
   const { resume } = unit
@@ -210,7 +212,7 @@ async function deliver(
     ...(held && { held: held.status }),
   }
   if (resume) {
-    await forge.updatePr(unit.repo, resume.number, file, runId, unit.items, ready, left)
+    await forge.updatePr(unit.repo, resume.number, file, runId, unit.items, ready, left, pins)
     return { kind: 'pr', url: resume.url, commits: commits.length, head, ...opened }
   }
   const url = await forge.openPr(
@@ -222,6 +224,7 @@ async function deliver(
     unit.items,
     !ready,
     left,
+    pins,
   )
   // Stacked PRs are a preview on GitHub: a repo without them answers 404, and the body says it anyway.
   if (unit.stackedOn) await forge.stack(unit.repo, unit.stackedOn, url).catch(() => {})

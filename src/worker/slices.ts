@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_ATTEMPTS } from '../core/attempts.js'
-import { footerItems, hasTrailer, type Left } from '../core/footer.js'
+import { footerItems, hasTrailer, type Left, type Pin } from '../core/footer.js'
 import type { Forge, Unit } from '../core/types.js'
 import {
   type Check,
@@ -96,6 +96,8 @@ export interface Publisher {
     on: Judged,
     instructions: string[],
   ) => Promise<string | undefined>
+  /** Puts the files the clone's `.away/out/` holds besides the PR body in the store, if there's one: their pins go in its footer. */
+  pin: (dir: string) => Promise<Pin[]>
 }
 
 /**
@@ -128,7 +130,8 @@ export async function publishSlice(
     const ran = unit.waits !== undefined && unit.gates && Object.keys(unit.gates)
     const fired = ran ? await gateOut(deps, unit, dir, start, joined) : []
     if (deps.signal?.aborted) return { kind: 'none', reason: 'interrupted', unpublished: true }
-    const text = ran ? `${gatesSection(ran, fired)}\n\n${joined}` : joined
+    const card = ran ? gatesSection(ran, fired) : ''
+    const text = ran ? `${card}\n\n${joined}` : joined
     await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile.report}`])
     await writeOutput(join(out, outputFile.report), `${text}\n`)
     const last = reports.at(-1)
@@ -137,7 +140,11 @@ export async function publishSlice(
         ? { kind: 'report', text, unposted: failedStep }
         : leaveReview(deps.forge, unit, from, text, last)
     const gated = describeFired(fired)
-    return { kind: 'report', text, ...(ran && { gates: { ran, ...(gated && { fired: gated }) } }) }
+    return {
+      kind: 'report',
+      text,
+      ...(ran && { gates: { ran, ...(gated && { fired: gated }), card } }),
+    }
   }
   await refuseSymlinks(dir, [`${WORK_DIR}/out/${outputFile[deliver]}`])
   await appendChainNotes(join(out, outputFile[deliver]), reports, Object.values(loops))
@@ -169,7 +176,18 @@ export async function publishSlice(
   const gated = describeFired(fired)
   const said = held && (held.status === 'ask' ? 'asked questions' : 'the agent will continue')
   const notReady = failedStep ?? said ?? failed ?? why ?? gated
-  const outcome = await publish(unit, dir, deps.forge, deps.runId, from, closes, notReady, held)
+  const pins = unit.deliver === 'push' ? [] : await deps.pin(dir)
+  const outcome = await publish(
+    unit,
+    dir,
+    deps.forge,
+    deps.runId,
+    from,
+    closes,
+    notReady,
+    held,
+    pins,
+  )
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
 

@@ -313,6 +313,7 @@ const actions: Record<SkipKind, string> = {
   waiting_for_answer: 'answer question',
   waiting_for_approval: 'approve',
   invalid_plan: 'fix plan',
+  store_failed: 'fix store',
   all_tasks_done: 'close card',
   gave_up: 'read logs',
   no_repo: 'add repo',

@@ -273,6 +273,9 @@ export function contractText(comment: string, name: string): string {
 
 type Comment = Item['comments'][number]
 
+/** A plan post's `plan.yml`: read back from the store for a lean one, else in its comment. */
+export const planOf = (c: Comment): string => c.pinned?.files['plan.yml'] ?? planYaml(c.body)
+
 /** Awaywork's newest plan comment on the item, and its answer: your first reply after it, or the plan itself when it `went` ahead. */
 export function planThread(
   item: Pick<Item, 'comments'>,
@@ -320,6 +323,7 @@ export function planState(
 ): PlanState | undefined {
   const thread = planThread(item)
   if (!thread) return undefined
+  if (thread.plan.pinned?.stale) return { state: 'feedback' }
   if (thread.answer && !thread.went && !isApprove(thread.answer)) return { state: 'feedback' }
   // A PR closed before the plan was posted retired its id; one closed after it re-plans.
   const posted = Date.parse(thread.plan.at)
@@ -327,11 +331,11 @@ export function planState(
     item,
     (pr) => pr.state === 'closed' && Date.parse(pr.closedAt ?? '') < posted,
   )
-  const checked = checkPlan(planYaml(thread.plan.body), { ...limits, retired })
+  const checked = checkPlan(planOf(thread.plan), { ...limits, retired })
   if ('problem' in checked) return { state: 'invalid', problem: checked.problem }
   const { contract: path } = checked.plan
   const name = path && contractName(path)
-  const text = name ? contractText(thread.plan.body, name) : ''
+  const text = name ? (thread.plan.pinned?.files[name] ?? contractText(thread.plan.body, name)) : ''
   if (name && !text.trim())
     return { state: 'invalid', problem: `contract ${path} isn't in the plan comment` }
   if (!thread.answer) return { state: 'waiting' }
@@ -361,7 +365,7 @@ export function cardTasks(item: Pick<Item, 'comments'>): Task[] {
     .reverse()
     .flatMap((c) => {
       try {
-        return planFile.safeParse(parse(planYaml(c.body))).data?.tasks ?? []
+        return planFile.safeParse(parse(planOf(c))).data?.tasks ?? []
       } catch {
         return []
       }

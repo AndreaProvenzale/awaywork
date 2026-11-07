@@ -417,6 +417,12 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "deliver: plan or report: gates of the rule's own, on top of the top-level ones, run on what the step left: a command reads AWAYWORK_OUT_DIR, a skill a read-only copy of .away/out; one that fires puts its line on the post and makes it wait",
       ),
+    post: z
+      .enum(['summary', 'full'])
+      .optional()
+      .describe(
+        "deliver: plan or report: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
+      ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
       .enum(['oldest', 'newest', 'updated'])
@@ -682,6 +688,45 @@ export const configSchema = z
       .describe(
         'Runs after each step of a finished unit and with the morning report when a run ends; a failure is only logged',
       ),
+    store: z
+      .strictObject({
+        command: z
+          .string()
+          .min(1)
+          .describe(
+            'Shell command run like a custom source\'s, once per file: it reads {"op":"put","item","unit","path","kind"} on stdin and prints {"url":"…"}, or reads {"op":"get","url"} and prints the file\'s bytes',
+          ),
+        secrets: z
+          .array(z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'expected an env var name'))
+          .default([])
+          .describe('Env vars the command reads; withheld from workers, listed in Actions'),
+        get: z
+          .boolean()
+          .default(true)
+          .describe(
+            'false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL',
+          ),
+        read: z
+          .strictObject({
+            max_mb: z
+              .number()
+              .positive()
+              .default(10)
+              .describe("At most this many MB of a unit's files come back; the rest stay links"),
+            files: z
+              .array(z.string().min(1))
+              .default([])
+              .describe(
+                'Globs of the file names that come back, e.g. ["*.md", "*.yml"]; default every file',
+              ),
+          })
+          .prefault({})
+          .describe("What comes back into a unit's context when it reads its item's thread"),
+      })
+      .optional()
+      .describe(
+        'Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back',
+      ),
     keep_runs: span
       .default('30d')
       .describe(
@@ -876,6 +921,18 @@ export const configSchema = z
                 ? `${key} goes on the plan's rule: a task's approval is the plan's`
                 : `${key} needs deliver: plan or report; a PR is already the decision, and commits take top-level or repo gates`,
           })
+      if (r.post !== undefined && !posts)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'post'],
+          message: 'post needs deliver: plan or report: a PR body is always full',
+        })
+      if (r.post === 'summary' && !cfg.store)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'post'],
+          message: 'post: summary pins files in a store: add a top-level store, or drop post',
+        })
       if (r.deliver === 'report' && (r.wait || r.gates) && silent)
         ctx.addIssue({
           code: 'custom',
