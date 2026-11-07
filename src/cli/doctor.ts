@@ -19,6 +19,7 @@ import {
   WORKER,
   workerFor,
 } from '../core/launch.js'
+import { ruleThread } from '../core/queue.js'
 import { counted } from '../core/report.js'
 import type { Ctx } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
@@ -184,8 +185,8 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
       ? [rule.source]
       : Object.keys(config.sources).filter((id) => canMatch(config.sources, id, rule.where))
     const { comment, move } = rule.on_done ?? {}
-    // Its posts go to a thread issue, its moves still to the item.
-    const posts = rule.thread !== 'github'
+    // Its posts go to a thread, its moves still to the item.
+    const posts = !ruleThread(rule)
     const lost = [
       posts && (comment || waits) && 'no result is posted',
       posts && waits && 'nothing waits for you',

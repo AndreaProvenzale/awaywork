@@ -139,6 +139,139 @@ console.log(JSON.stringify({ before, after: (await res.json()).card.updated_at }
 
 On a comment your `command` prints back, set `"mine": true` when your own account wrote it and, if the tracker says, nobody else edited it last: awaywork counts a comment as its own only with its last line and `mine`, so a teammate pasting the line doesn't pass for awaywork.
 
+## Thread hosts
+
+Your tracker can't take awaywork's posts, and `thread: github` doesn't fit: your repos are on Bitbucket, or you'd rather keep plans out of the issue list. A custom source can host the [threads](./how-it-works.md#threads) instead: say `thread: true` on it and name it in a rule's `thread`.
+
+```yaml
+sources:
+  jira: { site: acme.atlassian.net, email: me@acme.dev } # a read-only token
+  notes:
+    command: node threads.mjs ~/vault/awaywork
+    write: node threads.mjs ~/vault/awaywork write
+    thread: true # its write opens threads
+
+queue:
+  - skill: story
+    source: jira
+    deliver: report
+    wait: true
+    thread: notes
+```
+
+The rule's first post for a card opens its thread, one more op for `write`:
+
+```json
+{ "op": "open", "item": "ENG-2101", "title": "ENG-2101: Export VAT report", "body": "awaywork posts here for [ENG-2101](https://acme.atlassian.net/browse/ENG-2101), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.\n\n<!-- awaywork thread item=jira:ENG-2101 -->" }
+```
+
+It prints the new thread's key and link, `{"key": "ENG-2101", "url": "file:///Users/me/vault/awaywork/ENG-2101.md"}`. Every post awaywork makes for the card is then a `comment` on that key, sent as both `item` and `id`, and once the card's source says it's done, a `close` with a last line to post, `The card is done, so awaywork closes its thread.` A host may ignore `close`: it then gets it again on every run that still reads the card as done, a week by default.
+
+- **Listed back as items.** `command` prints each thread it opened like any item, with the `body` it got as `description`, the marker line included. That marker is how awaywork finds a card's thread on every run, so nothing goes in the state dir, and why a thread is never an item of its own: a custom source's item carrying it is left out.
+- **Its `comments` are the replies**, oldest first, `mine` on yours, as on any item: only your reply answers a post, a teammate's is context in `item.md`. Everything else works as on a GitHub thread: approving, feedback, held moves, `awaywork approve jira:ENG-2101` or the thread's own key, `notes:ENG-2101`.
+- **Nobody gets pinged.** A GitHub issue notifies its assignee; a file or a page in your notes doesn't, so a post waits there unseen. Pair the host with a [notify](./configuration.md#notify) hook that tells you when a run left something waiting.
+
+### A folder of Markdown files
+
+One file per card, in a folder only you write to: a corner of your Obsidian vault, say. A `### <who> · <time>` line heads each reply. A file can't tell who wrote a line, so `mine` is whoever the heading names, and that makes it a thread only while you're the folder's only writer: a personal vault yes, a team's shared drive no.
+
+```js
+// threads.mjs: awaywork's threads as Markdown files in a folder only you write to
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { userInfo } from 'node:os'
+import { join, resolve } from 'node:path'
+import { text } from 'node:stream/consumers'
+
+const [folder, mode] = process.argv.slice(2)
+const dir = resolve(folder)
+const me = userInfo().username
+const reply = /^### (\S+) · (\S+)$/m // `### <who> · <ISO time>`, then the reply
+const file = (key) => join(dir, `${key}.md`)
+
+if (mode !== 'write') {
+  const threads = []
+  for (const name of (await readdir(dir)).filter((n) => n.endsWith('.md'))) {
+    const [head, ...replies] = (await readFile(join(dir, name), 'utf8')).split(/^(?=### \S+ · \S+$)/m)
+    if (!head.includes('<!-- awaywork thread ')) continue
+    const key = name.slice(0, -3)
+    threads.push({
+      id: key,
+      key,
+      title: head.match(/^# (.*)$/m)?.[1] ?? key,
+      url: `file://${file(key)}`,
+      description: head.replace(/^# .*\n+/, ''),
+      comments: replies.map((r) => {
+        const [, author, at] = r.match(reply)
+        return { author, at, body: r.replace(reply, '').trim(), mine: author === me }
+      }),
+    })
+  }
+  console.log(JSON.stringify(threads))
+} else {
+  const write = JSON.parse(await text(process.stdin))
+  if (write.op === 'open') {
+    const key = write.item.replace(/[^\w.-]+/g, '-')
+    await writeFile(file(key), `# ${write.title}\n\n${write.body}\n`, { flag: 'wx' })
+    console.log(JSON.stringify({ key, url: `file://${file(key)}` }))
+  } else if (write.op === 'comment' || write.op === 'close') {
+    const thread = await readFile(file(write.item), 'utf8') // no thread, no comment
+    await writeFile(file(write.item), `${thread}\n### ${me} · ${new Date().toISOString()}\n\n${write.body}\n`)
+    if (write.op === 'close') {
+      await mkdir(join(dir, 'closed'), { recursive: true })
+      await rename(file(write.item), join(dir, 'closed', `${write.item}.md`))
+    }
+  } else throw new Error(`${write.op}: this folder only holds threads`)
+}
+```
+
+A real one, after a waiting `story`, a teammate's `approve` (context), yours, and the `prototype` it let through:
+
+```md
+# CARD-1: Export VAT report
+
+awaywork posts here for [CARD-1](https://tracker.example/CARD-1), Export VAT report: its plans, results and questions. Reply here to answer them; the card still decides whether it's yours.
+
+<!-- awaywork thread item=tracker:CARD-1 -->
+
+### andreaprovenzale · 2026-11-07T20:55:22.292Z
+
+Result of story
+
+Report of story: a story for the VAT export.
+
+Status: done
+
+To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
+
+— awaywork · waits
+
+### bob · 2026-11-07T20:55:33Z
+
+approve
+
+### andreaprovenzale · 2026-11-07T20:56:02Z
+
+approve
+
+### andreaprovenzale · 2026-11-07T20:56:13.464Z
+
+Result of prototype
+
+Report of prototype: a story for the VAT export.
+
+Status: done
+
+— awaywork
+```
+
+Reply from your editor with a heading of your own, or from the shell:
+
+```sh
+printf '\n### %s · %s\n\napprove\n' "$(id -un)" "$(date -u +%FT%TZ)" >> ~/vault/awaywork/CARD-1.md
+```
+
+Once the card is done, `close` posts its last line and moves the file to `closed/`, which the listing doesn't read.
+
 ## Recipe: chores
 
 When the queue is done and quota is left, a source can hand out work that needs no tracker item: tests for an untested module, a TODO to clear. Print one item per chore and repo, and put its rule last so it only gets what the rest leaves:

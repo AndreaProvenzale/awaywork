@@ -47,6 +47,7 @@ import {
   planYaml,
 } from '../core/plan.js'
 import { readBackPosts } from '../core/posts.js'
+import { ruleThread } from '../core/queue.js'
 import {
   type Commented,
   counted,
@@ -427,11 +428,11 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
   const ownItems = (p: PlannedUnit): Item[] =>
     p.unit.items.filter((i) => i.source === p.unit.items[0]?.source)
 
-  /** Where the unit's comments go instead of its items: their thread issues, opened for a rule with `thread: github`. */
-  const threadsOf = (p: PlannedUnit): Threads => ({
-    forge: input.forge,
-    open: input.plan.queue[p.rule]?.thread === 'github',
-  })
+  /** Where the unit's comments go instead of its items: their threads, opened for a rule with a `thread`. */
+  const threadsOf = (p: PlannedUnit): Threads => {
+    const rule = input.plan.queue[p.rule]
+    return { forge: input.forge, sources: input.config.sources, open: rule && ruleThread(rule) }
+  }
 
   /** Why awaywork won't comment on the unit's item, here or on its thread. */
   const commentRefused = (p: PlannedUnit, item: Item): string | undefined =>

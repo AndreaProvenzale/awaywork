@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,7 @@ import { parseConfig } from '../src/config/load.js'
 import { markComment, planComment, threadBody, threadMarker, threadOf } from '../src/core/footer.js'
 import type { Forge, Item, Thread } from '../src/core/types.js'
 import { githubSource, githubThreads } from '../src/sources/github.js'
-import { writeItem } from '../src/sources/index.js'
+import { sourceFor, writeItem } from '../src/sources/index.js'
 import { fakeForge } from './fakes/forge.js'
 import { fixture, recorded } from './fakes/gh.js'
 import { fakeItem } from './fakes/items.js'
@@ -20,27 +20,28 @@ function threadForge(found: Found[] = []): Forge & { calls: string[] } {
   const calls: string[] = []
   return Object.assign(fakeForge(), {
     calls,
-    threads: async (repo: string) => {
+    byRepo: true,
+    threads: async (repo?: string) => {
       calls.push(`threads ${repo}`)
-      return found.filter((t) => t.thread.repo === repo)
+      return found.filter((t) => t.thread.key.startsWith(`${repo}#`))
     },
-    openThread: async (repo: string, item: Pick<Item, 'source' | 'key'>) => {
+    openThread: async (repo: string | undefined, item: Pick<Item, 'source' | 'key'>) => {
       calls.push(`open ${repo} for ${item.source}:${item.key}`)
-      return { repo, number: 57, url: `https://github.com/${repo}/issues/57` }
+      return { host: 'github', key: `${repo}#57`, url: `https://github.com/${repo}/issues/57` }
     },
     threadComment: async (t: Thread, body: string) => {
-      calls.push(`comment #${t.number}: ${body.split('\n')[0]}`)
+      calls.push(`comment ${t.key}: ${body.split('\n')[0]}`)
       return `${t.url}#issuecomment-1`
     },
     closeThread: async (t: Thread, body: string) => {
-      calls.push(`close #${t.number}: ${body.split('\n')[0]}`)
+      calls.push(`close ${t.key}: ${body.split('\n')[0]}`)
     },
   })
 }
 
 const thread57: Thread = {
-  repo: 'acme/api',
-  number: 57,
+  host: 'github',
+  key: 'acme/api#57',
   url: 'https://github.com/acme/api/issues/57',
 }
 const plan = markComment(
@@ -75,15 +76,15 @@ describe('a comment on an item with a thread', () => {
     const write = { op: 'comment', body: 'Two tasks.' } as const
     const first = await writeItem(undefined, {}, item, write, ctx(), undefined, {
       forge,
-      open: true,
+      open: 'github',
     })
     const second = await writeItem(undefined, {}, item, write, ctx(), undefined, { forge })
     expect(first).toEqual({ url: 'https://github.com/acme/api/issues/57#issuecomment-1' })
     expect(second).toEqual(first)
     expect(forge.calls).toEqual([
       'open acme/api for jira:ENG-7',
-      'comment #57: Two tasks.',
-      'comment #57: Two tasks.',
+      'comment acme/api#57: Two tasks.',
+      'comment acme/api#57: Two tasks.',
     ])
     // A move still goes to the card, which can't take it.
     await expect(
@@ -91,16 +92,13 @@ describe('a comment on an item with a thread', () => {
     ).rejects.toThrow("jira can't write to its items")
   })
 
-  it("refuses an item that isn't yours, or has no repo to open its thread in", async () => {
+  it("refuses an item that isn't yours", async () => {
     const forge = threadForge()
     const write = { op: 'comment', body: 'Hi' } as const
-    const open = { forge, open: true }
+    const open = { forge, open: 'github' }
     await expect(
       writeItem(undefined, {}, card({ mine: undefined }), write, ctx(), undefined, open),
     ).rejects.toThrow('not yours')
-    await expect(
-      writeItem(undefined, {}, card({ fields: {} }), write, ctx(), undefined, open),
-    ).rejects.toThrow('ENG-7 has no repo to open its thread in')
     expect(forge.calls).toEqual([])
   })
 
@@ -111,7 +109,7 @@ describe('a comment on an item with a thread', () => {
     await writeItem(undefined, {}, task, { op: 'comment', body: 'Done' }, ctx(), undefined, {
       forge,
     })
-    expect(forge.calls).toEqual(['comment #57: Done'])
+    expect(forge.calls).toEqual(['comment acme/api#57: Done'])
   })
 })
 
@@ -143,7 +141,7 @@ queue:
     const own = { author: 'me', body: plan, at: '2026-11-04T00:00:00Z', mine: true as const }
     const forge = threadForge([
       { item: 'tracker:ENG-7', thread: thread57, comments: [own, reply] },
-      { item: 'tracker:ENG-8', thread: { ...thread57, number: 58 }, comments: [own] },
+      { item: 'tracker:ENG-8', thread: { ...thread57, key: 'acme/api#58' }, comments: [own] },
     ])
     const onCard = { author: 'bob', body: 'Looks big', at: '2026-10-30T00:00:00Z' }
     const items = [
@@ -155,12 +153,10 @@ queue:
     ]
     const linked = await linkThreads(items, config, forge, ctx())
     expect(forge.calls).toEqual(['threads acme/api'])
-    expect(
-      linked.map((i) => [i.key, i.thread?.number, i.comments.length, i.fields.updated]),
-    ).toEqual([
-      ['ENG-7', 57, 3, '2026-11-03T00:00:00Z'],
+    expect(linked.map((i) => [i.key, i.thread?.key, i.comments.length, i.fields.updated])).toEqual([
+      ['ENG-7', 'acme/api#57', 3, '2026-11-03T00:00:00Z'],
       // awaywork's own post there changes nothing.
-      ['ENG-8', 58, 1, '2026-11-01T00:00:00Z'],
+      ['ENG-8', 'acme/api#58', 1, '2026-11-01T00:00:00Z'],
       ['ENG-9', undefined, 0, '2026-11-01T00:00:00Z'],
       ['ENG-10', undefined, 0, '2026-11-01T00:00:00Z'],
     ])
@@ -262,7 +258,7 @@ queue:
     ])
     expect(real.calls).toEqual([
       'threads acme/api',
-      'close #57: The card is done, so awaywork closes its thread.',
+      'close acme/api#57: The card is done, so awaywork closes its thread.',
     ])
     // An open card keeps its thread.
     await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
@@ -278,7 +274,7 @@ queue:
       expect(await approveItem(key, config, '', { forge, ctx: ctx() })).toBe(
         `plan approved: replied approve on ${thread57.url}#issuecomment-1`,
       )
-      expect(forge.calls).toEqual(['threads acme/api', 'comment #57: approve'])
+      expect(forge.calls).toEqual(['threads acme/api', 'comment acme/api#57: approve'])
     }
   })
 })
@@ -341,17 +337,20 @@ describe("GitHub's thread issues", () => {
     expect(await threads.threads('acme/api')).toEqual([
       {
         item: 'jira:ENG-7',
-        thread: { repo: 'acme/api', number: 57, url: 'https://github.com/acme/api/issues/57' },
+        thread: thread57,
         comments: [{ author: 'me', body: 'approve', at: '2026-11-02T00:00:00Z', mine: true }],
       },
     ])
     const item = { source: 'jira', key: 'ENG-8', title: 'Export VAT', url: 'https://jira/ENG-8' }
     const opened = await threads.openThread('acme/api', item)
     expect(opened).toEqual({
-      repo: 'acme/api',
-      number: 58,
+      host: 'github',
+      key: 'acme/api#58',
       url: 'https://github.com/acme/api/issues/58',
     })
+    await expect(threads.openThread(undefined, item)).rejects.toThrow(
+      'ENG-8 has no repo to open its thread in',
+    )
     await threads.closeThread(opened, 'done')
     expect(run.calls.slice(2).map((c) => c.join(' '))).toEqual([
       `gh api repos/acme/api/issues -f title=ENG-8: Export VAT -f body=${threadBody(item)} -f assignees[]=me --jq [.number, .html_url] | @tsv`,
@@ -373,5 +372,134 @@ describe("GitHub's thread issues", () => {
     const items = await githubSource(run).items({ repos: ['acme/*'] }, ctx())
     expect(items.length).toBeGreaterThan(0)
     expect(items.map((i) => i.key)).not.toContain('acme/api#57')
+  })
+})
+
+describe('a custom thread host', () => {
+  let root: string
+  const cwd = process.cwd()
+  // Keeps its threads in threads.json, each write's op in writes.log.
+  const host = `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+const threads = JSON.parse(readFileSync('threads.json', 'utf8'))
+if (process.argv[2] !== 'write') {
+  console.log(JSON.stringify(threads))
+  process.exit(0)
+}
+let input = ''
+for await (const chunk of process.stdin) input += chunk
+const w = JSON.parse(input)
+appendFileSync('writes.log', w.op + ' ' + w.item + '\\n')
+if (w.op === 'open') {
+  const key = 'thread-' + w.item
+  threads.push({ id: key, key, title: w.title, url: 'file://' + key, description: w.body })
+  console.log(JSON.stringify({ key, url: 'file://' + key }))
+}
+const thread = threads.find((t) => t.key === w.item)
+if (w.op === 'comment') (thread.comments ??= []).push({ author: 'me', body: w.body, at: new Date().toISOString(), mine: true })
+writeFileSync('threads.json', JSON.stringify(threads))
+`
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'awaywork-host-'))
+    process.chdir(root)
+    await writeFile(join(root, 'threads.json'), '[]')
+    await writeFile(join(root, 'writes.log'), '')
+    await writeFile(join(root, 'host.mjs'), host)
+  })
+  afterEach(() => process.chdir(cwd))
+
+  const config = parseConfig(`
+providers: [claude]
+sources:
+  tracker: { command: 'cat items.json' }
+  notes: { command: 'node host.mjs', write: 'node host.mjs write', thread: true }
+queue:
+  - { skill: plan, source: tracker, deliver: plan, thread: notes }
+  - { skill: implement, where: { planned: true } }
+`)
+  const card = (state = 'open') => ({
+    id: '7',
+    key: 'ENG-7',
+    title: 'Export VAT',
+    url: 'https://tracker/ENG-7',
+    state,
+    fields: { repo: 'acme/api', updated: '2026-11-01T00:00:00Z' },
+  })
+  const threadOn = (comments: Item['comments']) => [
+    {
+      id: 'thread-ENG-7',
+      key: 'thread-ENG-7',
+      title: 'ENG-7: Export VAT',
+      url: 'file://thread-ENG-7',
+      description: threadBody({ source: 'tracker', ...card() }),
+      comments,
+    },
+  ]
+  const posted = { author: 'me', body: plan, at: '2026-11-02T00:00:00Z', mine: true as const }
+  const planOn = async (dryRun = false) => {
+    const lines: string[] = []
+    const { plan, warnings } = await probeAndPlan(config, root, {
+      probe: false,
+      retry: true,
+      forge: fakeForge(),
+      moves: { dryRun, log: (l) => lines.push(l) },
+    })
+    return { plan, warnings, lines }
+  }
+  const writes = async () => (await readFile(join(root, 'writes.log'), 'utf8')).trim().split('\n')
+
+  it('opens the thread through its write, the card needing no repo, and posts there', async () => {
+    const item = fakeItem({ source: 'tracker', key: 'ENG-7', type: 'task', mine: true })
+    const threads = { forge: fakeForge(), sources: config.sources, open: 'notes' }
+    const write = { op: 'comment', body: 'Two tasks.' } as const
+    const first = await writeItem(undefined, {}, item, write, ctx(), undefined, threads)
+    expect(first).toEqual({ url: 'file://thread-ENG-7' })
+    expect(item.thread).toEqual({ host: 'notes', key: 'thread-ENG-7', url: 'file://thread-ENG-7' })
+    expect(await writes()).toEqual(['open ENG-7', 'comment thread-ENG-7'])
+    const [opened] = JSON.parse(await readFile(join(root, 'threads.json'), 'utf8'))
+    expect(threadOf(opened.description)).toBe('tracker:ENG-7')
+    expect(opened.comments.map((c: { body: string }) => c.body)).toEqual([
+      markComment('Two tasks.'),
+    ])
+  })
+
+  it("isn't an item, and waits for your approve there, a teammate's being context, then fans out", async () => {
+    await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
+    const teammate = { author: 'bob', body: 'approve', at: '2026-11-03T00:00:00Z' }
+    await writeFile(join(root, 'threads.json'), JSON.stringify(threadOn([posted, teammate])))
+    const notes = config.sources.notes
+    expect(await sourceFor('notes', notes)?.items(notes, ctx())).toEqual([])
+    const waiting = await planOn()
+    expect(waiting.plan.skipped.map((s) => [s.item.key, s.kind, s.url])).toEqual([
+      ['ENG-7', 'waiting_for_approval', 'file://thread-ENG-7'],
+    ])
+    const yours = { author: 'me', body: 'approve', at: '2026-11-04T00:00:00Z', mine: true }
+    const approved = threadOn([posted, teammate, yours])
+    await writeFile(join(root, 'threads.json'), JSON.stringify(approved))
+    expect((await planOn()).plan.units.map((p) => [p.unit.skill, p.unit.items[0]?.key])).toEqual([
+      ['implement', 'ENG-7/api'],
+    ])
+  })
+
+  it("approves by the card's key or the thread's, through the host's write", async () => {
+    await writeFile(join(root, 'items.json'), JSON.stringify([card()]))
+    for (const key of ['tracker:ENG-7', 'notes:thread-ENG-7']) {
+      await writeFile(join(root, 'threads.json'), JSON.stringify(threadOn([posted])))
+      expect(await approveItem(key, config, '', { forge: fakeForge(), ctx: ctx() })).toBe(
+        'plan approved: replied approve on file://thread-ENG-7',
+      )
+    }
+    expect(await writes()).toEqual(['comment thread-ENG-7', 'comment thread-ENG-7'])
+  })
+
+  it('sends close once the card is done, which a host may ignore', async () => {
+    await writeFile(join(root, 'items.json'), JSON.stringify([card('closed')]))
+    await writeFile(join(root, 'threads.json'), JSON.stringify(threadOn([posted])))
+    expect((await planOn(true)).lines).toEqual([
+      "would close file://thread-ENG-7, ENG-7's thread: the card is closed",
+    ])
+    expect((await planOn()).lines).toEqual([
+      "closed file://thread-ENG-7, ENG-7's thread: the card is closed",
+    ])
+    expect(await writes()).toEqual(['close thread-ENG-7'])
   })
 })

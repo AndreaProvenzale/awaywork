@@ -143,6 +143,10 @@ export function itemState(item: Item): ItemState {
   return state === 'merged' || state === 'closed' ? state : 'open'
 }
 
+/** The thread host a rule posts on, `github` or a custom source; unset when it posts on the item. */
+export const ruleThread = (rule: Pick<Rule, 'thread'>): string | undefined =>
+  rule.thread === 'item' ? undefined : rule.thread
+
 /** How far back a rule reads finished items when its `where` doesn't bound `closed`. */
 export const DEFAULT_LOOKBACK = '7d'
 

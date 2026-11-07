@@ -4549,7 +4549,7 @@ it("posts a thread rule's waiting result on a thread issue it opens for a card t
   const threads: Partial<Forge> = {
     openThread: async (repo, item) => {
       posted.push(`open ${repo} for ${item.source}:${item.key}`)
-      return { repo, number: 57, url: `https://github.com/${repo}/issues/57` }
+      return { host: 'github', key: `${repo}#57`, url: `https://github.com/${repo}/issues/57` }
     },
     threadComment: async (t, body) => {
       posted.push(body)
@@ -4581,7 +4581,7 @@ it("posts a thread rule's waiting result on a thread issue it opens for a card t
   posted.length = 0
   const plain = await finishedRun(
     '  - { skill: review, deliver: report, thread: github, on_done: { comment: result, move: QA } }',
-    [{ ...yours(1), thread: { repo: 'acme/api', number: 57, url: 'https://x/57' } }],
+    [{ ...yours(1), thread: { host: 'github', key: 'acme/api#57', url: 'https://x/57' } }],
     undefined,
     null,
     undefined,

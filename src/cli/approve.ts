@@ -7,7 +7,7 @@ import { decisionPost } from '../core/posts.js'
 import type { Ctx, Forge, Source } from '../core/types.js'
 import { forgeFor } from '../forge/index.js'
 import { sourceFor, writeItem } from '../sources/index.js'
-import { linkThreads, threadSources } from './plan.js'
+import { linkThreads, threadHosts } from './plan.js'
 import { checkKey, printOutcome } from './skip.js'
 
 export function approveCommand(program: Command): void {
@@ -34,28 +34,26 @@ export async function approveItem(
     forge = forgeFor(config as Config),
   }: { sources?: Record<string, Source>; ctx?: Ctx; forge?: Forge } = {},
 ): Promise<string> {
-  const threads = threadSources(config)
-  checkKey(key, [...Object.keys(config.sources), ...(threads.length ? ['github'] : [])])
+  const hosts = threadHosts(config)
+  checkKey(key, [...Object.keys(config.sources), ...hosts.keys()])
   const read = async (id: string) => {
     const cfg = config.sources[id]
     const source = cfg ? (sources[id] ?? sourceFor(id, cfg)) : undefined
     const items = source ? await source.items(cfg, ctx) : []
     return { cfg, source, items: await linkThreads(items, config, forge, ctx) }
   }
-  // A thread issue isn't a GitHub item: its key names the card it's the thread of.
+  // A thread isn't an item of its host: its key names the card it's the thread of.
   const thread = async () => {
-    for (const other of new Set(threads)) {
+    for (const other of new Set([...hosts.values()].flat())) {
       const found = await read(other)
-      const card = found.items.find(
-        (i) => i.thread && `github:${i.thread.repo}#${i.thread.number}` === key,
-      )
+      const card = found.items.find((i) => i.thread && `${i.thread.host}:${i.thread.key}` === key)
       if (card) return { ...found, item: card }
     }
   }
   const id = key.slice(0, key.indexOf(':'))
   const named = await read(id)
   const own = named.items.find((i) => `${id}:${i.key}` === key)
-  const { cfg, source, items, item } = (!own && key.startsWith('github:') && (await thread())) || {
+  const { cfg, source, items, item } = (!own && hosts.has(id) && (await thread())) || {
     ...named,
     item: own,
   }
@@ -77,6 +75,7 @@ export async function approveItem(
       `${what} on ${item.url} was already answered by ${post.answer.author}, ${post.answer.at}`,
     )
   const write = { op: 'comment', body: approveReply(notes) } as const
-  const { url = item.url } = await writeItem(source, cfg, item, write, ctx, undefined, { forge })
+  const threads = { forge, sources: config.sources }
+  const { url = item.url } = await writeItem(source, cfg, item, write, ctx, undefined, threads)
   return `${post.what} approved: replied approve${notes.trim() ? ', with your notes,' : ''} on ${url}`
 }

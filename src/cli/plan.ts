@@ -15,7 +15,14 @@ import {
 } from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import { DEFAULT_LOOKBACK, defaultRules, itemState, lookback, spanMs } from '../core/queue.js'
+import {
+  DEFAULT_LOOKBACK,
+  defaultRules,
+  itemState,
+  lookback,
+  ruleThread,
+  spanMs,
+} from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
@@ -23,7 +30,7 @@ import type { Ctx, Forge, Item, Rule, Source, Thread } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
-import { sourceFor, writeItem } from '../sources/index.js'
+import { sourceFor, threadHost, writeItem } from '../sources/index.js'
 import { nextOccurrences, type RoutinesConfig } from '../sources/routines.js'
 import { maskSecrets } from '../worker/setup.js'
 import { checkPins } from '../worker/store.js'
@@ -191,7 +198,7 @@ export async function probeAndPlan(
         maskSecrets(line, secrets, ctx.env),
       )
     : { items: collected, moved: [] }
-  if (opts.moves) await closeThreads(items, forge, ctx, opts.moves)
+  if (opts.moves) await closeThreads(items, config, forge, ctx, opts.moves)
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -366,7 +373,7 @@ export function finishedSince(queue: Rule[], source: string): Date | undefined {
   const reach = queue
     .filter((r) => !r.source || r.source === source)
     .flatMap((r) => [
-      ...(r.thread === 'github' ? [spanMs(DEFAULT_LOOKBACK)] : []),
+      ...(ruleThread(r) ? [spanMs(DEFAULT_LOOKBACK)] : []),
       ...[lookback(r.where) ?? []].flat(),
     ])
   return reach.length > 0 ? new Date(Date.now() - Math.max(...reach)) : undefined
@@ -446,16 +453,24 @@ export async function linkTasks(
     onProgress?.({ name: 'linking PRs', state: 'done', detail: `${tasks.length}/${tasks.length}` })
 }
 
-/** The sources a `thread: github` rule can take items from. */
-export const threadSources = (config: Pick<Config, 'sources' | 'queue'>): string[] =>
-  (config.queue ?? [])
-    .filter((r) => r.thread === 'github')
-    .flatMap((r) => (r.source ? [r.source] : Object.keys(config.sources)))
+/** Each thread host a rule names, with the sources its rules take items from. */
+export function threadHosts(config: Pick<Config, 'sources' | 'queue'>): Map<string, string[]> {
+  const hosts = new Map<string, string[]>()
+  for (const r of config.queue ?? []) {
+    const host = ruleThread(r)
+    if (host)
+      hosts.set(host, [
+        ...(hosts.get(host) ?? []),
+        ...(r.source ? [r.source] : Object.keys(config.sources)),
+      ])
+  }
+  return hosts
+}
 
 /**
- * Each of your items a `thread: github` rule can take gets the thread issue awaywork opened for it, if any: its comments
+ * Each of your items a rule with a `thread` can take gets the thread awaywork opened for it, if any: its comments
  * follow the card's, and a reply there changes the item as one on the card would. Returns the items but those whose
- * repo's threads couldn't be read: planned without them, they'd post a second plan.
+ * threads couldn't be read: planned without them, they'd post a second plan.
  */
 export async function linkThreads(
   items: Item[],
@@ -463,21 +478,26 @@ export async function linkThreads(
   forge: Forge,
   ctx: Ctx,
 ): Promise<Item[]> {
-  const sources = threadSources(config)
-  const threaded = items.filter(
-    (i) => i.mine && sources.includes(i.source) && typeof i.fields.repo === 'string',
-  )
   const unread = new Set<Item>()
-  for (const repo of new Set(threaded.map((i) => i.fields.repo as string))) {
-    const here = threaded.filter((i) => i.fields.repo === repo)
-    const found = await forge.threads?.(repo).catch((e: Error) => {
-      const keys = here.map((i) => i.key).join(', ')
-      ctx.log(`couldn't read awaywork's threads in ${repo}, so left out ${keys}: ${e.message}`)
-      for (const item of here) unread.add(item)
-    })
-    for (const item of here) {
-      const thread = found?.find((t) => t.item === `${item.source}:${item.key}`)
-      if (thread) linkThread(item, thread)
+  for (const [name, sources] of threadHosts(config)) {
+    const host = threadHost(name, config.sources, forge, ctx)
+    const repoOf = (i: Item) =>
+      host?.byRepo && typeof i.fields.repo === 'string' ? i.fields.repo : undefined
+    const threaded = items.filter(
+      (i) => i.mine && !i.thread && sources.includes(i.source) && (!host?.byRepo || repoOf(i)),
+    )
+    for (const repo of new Set(threaded.map(repoOf))) {
+      const here = threaded.filter((i) => repoOf(i) === repo)
+      const found = await host?.threads(repo).catch((e: Error) => {
+        const keys = here.map((i) => i.key).join(', ')
+        const on = repo ? `in ${repo}` : `on ${name}`
+        ctx.log(`couldn't read awaywork's threads ${on}, so left out ${keys}: ${e.message}`)
+        for (const item of here) unread.add(item)
+      })
+      for (const item of here) {
+        const thread = found?.find((t) => t.item === `${item.source}:${item.key}`)
+        if (thread) linkThread(item, thread)
+      }
     }
   }
   return items.filter((i) => !unread.has(i))
@@ -499,9 +519,10 @@ function linkThread(
   if (newer) item.fields.updated = replied
 }
 
-/** Closes the thread issue of each card its source says is done, with a line saying so; a dry run only says it. */
+/** Closes the thread of each card its source says is done, with a line saying so; a dry run only says it. */
 async function closeThreads(
   items: Item[],
+  config: Pick<Config, 'sources'>,
   forge: Forge,
   ctx: Ctx,
   { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
@@ -513,9 +534,11 @@ async function closeThreads(
     const what = `${thread.url}, ${item.key}'s thread: the card is ${state}`
     if (dryRun) log(`would close ${what}`)
     else
-      await forge.closeThread?.(thread, markComment(threadClosed)).then(
-        () => log(`closed ${what}`),
-        (e: Error) => ctx.log(`couldn't close ${thread.url}, ${item.key}'s thread: ${e.message}`),
-      )
+      await threadHost(thread.host, config.sources, forge, ctx)
+        ?.closeThread(thread, markComment(threadClosed))
+        .then(
+          () => log(`closed ${what}`),
+          (e: Error) => ctx.log(`couldn't close ${thread.url}, ${item.key}'s thread: ${e.message}`),
+        )
   }
 }

@@ -2,9 +2,9 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execa } from 'execa'
 import { z } from 'zod'
-import { commentMarkdown, linkProblem } from '../core/footer.js'
+import { commentMarkdown, linkProblem, threadBody, threadOf } from '../core/footer.js'
 import { awaitGroup } from '../core/group.js'
-import type { Ctx, Item, Source, Write } from '../core/types.js'
+import type { Ctx, Item, Source, ThreadHost, Write } from '../core/types.js'
 
 export const linkTemplate = z
   .string()
@@ -81,6 +81,16 @@ export const commandConfig = z
       .describe(
         'Shell command that comments on or moves one of your items, run like `command`; it reads the write as JSON on stdin, e.g. {"op":"move","item":"ENG-2101","id":"10012","to":"QA"}, and may print the item\'s updated times as {"before":"…","after":"…"}. Without it, on_done writes nothing to this source',
       ),
+    thread: z
+      .boolean()
+      .optional()
+      .describe(
+        'A thread host: a rule\'s `thread` may name this source, whose `write` then also answers {"op":"open","item":"<card key>","title":"…","body":"…"} with {"key":"…","url":"…"}, and `command` lists the threads it opened as items, their comments the replies',
+      ),
+  })
+  .refine((c) => !c.thread || c.write, {
+    path: ['thread'],
+    message: 'a thread host opens threads through its `write`: add one',
   })
   .describe('A custom source: any command that prints your open items as JSON')
 
@@ -149,44 +159,51 @@ export function isCommand(cfg: unknown): cfg is CommandConfig {
   return typeof cfg === 'object' && cfg !== null && 'command' in cfg
 }
 
+const run = (command: string, c: CommandConfig, ctx: Ctx, input?: string) =>
+  runShell(command, c.dir, ctx.env, input)
+
+const fieldsOf = (cfg: CommandConfig): Record<string, z.ZodType> => ({
+  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
+  created: z.iso.datetime({ offset: true }),
+  updated: z.iso.datetime({ offset: true }),
+  ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),
+})
+
+/** Every item the command prints, the threads it opened as a thread host included. */
+async function printed(id: string, c: CommandConfig, ctx: Ctx, since?: Date): Promise<Item[]> {
+  const env = since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env
+  const { stdout } = await run(c.command, c, { ...ctx, env })
+  let json: unknown
+  try {
+    json = JSON.parse(stdout)
+  } catch {
+    throw new Error(`\`${c.command}\` did not print JSON`)
+  }
+  const parsed = z.array(entry).safeParse(json)
+  if (!parsed.success) {
+    const [issue] = parsed.error.issues
+    throw new Error(`items${issue?.path.map((p) => `[${String(p)}]`).join('')}: ${issue?.message}`)
+  }
+  const odd = parsed.data.find((e) => unreadable(e))
+  if (odd)
+    ctx.log(
+      `${id}: ignoring ${odd.key}'s ${unreadable(odd)}, and any like it: a top-level state is open or closed, and closed a datetime`,
+    )
+  const fields = fieldsOf(c)
+  return parsed.data.map((e) => toItem(id, e, fields))
+}
+
 /** A source whose items come from the user's own command; its fields come from the config. */
 export function commandSource(id: string, cfg: CommandConfig): Source<CommandConfig> {
-  const fields: Record<string, z.ZodType> = {
-    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/),
-    created: z.iso.datetime({ offset: true }),
-    updated: z.iso.datetime({ offset: true }),
-    ...Object.fromEntries(cfg.fields.map((name) => [name, scalar])),
-  }
-  const run = (command: string, c: CommandConfig, ctx: Ctx, input?: string) =>
-    runShell(command, c.dir, ctx.env, input)
   return {
     id,
     configSchema: commandConfig,
-    fields,
+    fields: fieldsOf(cfg),
     secrets: (c) => c.secrets,
 
     async items(c, ctx, since) {
-      const env = since ? { ...ctx.env, AWAYWORK_CLOSED_SINCE: since.toISOString() } : ctx.env
-      const { stdout } = await run(c.command, c, { ...ctx, env })
-      let json: unknown
-      try {
-        json = JSON.parse(stdout)
-      } catch {
-        throw new Error(`\`${c.command}\` did not print JSON`)
-      }
-      const parsed = z.array(entry).safeParse(json)
-      if (!parsed.success) {
-        const [issue] = parsed.error.issues
-        throw new Error(
-          `items${issue?.path.map((p) => `[${String(p)}]`).join('')}: ${issue?.message}`,
-        )
-      }
-      const odd = parsed.data.find((e) => unreadable(e))
-      if (odd)
-        ctx.log(
-          `${id}: ignoring ${odd.key}'s ${unreadable(odd)}, and any like it: a top-level state is open or closed, and closed a datetime`,
-        )
-      return parsed.data.map((e) => toItem(id, e, fields))
+      // Awaywork's thread for another item isn't an item: a plan rule would take it too.
+      return (await printed(id, c, ctx, since)).filter((i) => !threadOf(i.description))
     },
 
     async prefetch(item, dir) {
@@ -209,6 +226,41 @@ export function commandSource(id: string, cfg: CommandConfig): Source<CommandCon
         return written.safeParse(printed).data ?? {}
       },
     }),
+  }
+}
+
+/** A thread host's threads: the items its command prints with awaywork's thread marker, opened, commented and closed through its `write`. */
+export function commandThreads(id: string, cfg: CommandConfig, ctx: Ctx): ThreadHost {
+  const write = async (input: Record<string, string>) =>
+    (await run(cfg.write as string, cfg, ctx, JSON.stringify(input))).stdout
+  let listed: Promise<Item[]> | undefined
+  return {
+    async threads() {
+      listed ??= printed(id, cfg, ctx)
+      return (await listed).flatMap((i) => {
+        const item = threadOf(i.description)
+        const thread = { host: id, key: i.key, url: i.url }
+        return item ? [{ item, thread, comments: i.comments }] : []
+      })
+    },
+    async openThread(_repo, item) {
+      const title = `${item.key}: ${item.title}`
+      const stdout = await write({ op: 'open', item: item.key, title, body: threadBody(item) })
+      let opened: unknown
+      try {
+        opened = JSON.parse(stdout)
+      } catch {}
+      const { data } = z.object({ key: z.string().min(1), url: z.string() }).safeParse(opened)
+      if (!data) throw new Error(`${id}'s write printed no {"key","url"} for the thread it opened`)
+      return { host: id, ...data }
+    },
+    async threadComment(thread, body) {
+      await write({ op: 'comment', item: thread.key, id: thread.key, body })
+      return thread.url
+    },
+    async closeThread(thread, body) {
+      await write({ op: 'close', item: thread.key, id: thread.key, body })
+    },
   }
 }
 
