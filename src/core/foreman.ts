@@ -241,7 +241,7 @@ export function planRun(input: {
     // Read off the item, not attempts, so a runner without state waits too, and awaywork's comment doesn't count as a change; a task's questions wait on its card.
     const asked = items.find((i) => !i.task && awaitsAnswer(i))
     if (asked) {
-      skip('waiting_for_answer', `waiting for your answer on ${asked.url}`, asked.url)
+      skip('waiting_for_answer', `waiting for your answer on ${postsOn(asked)}`, postsOn(asked))
       continue
     }
     const stack = prs.length === 0 ? stackTarget(items[0] as Item, units) : undefined
@@ -271,13 +271,13 @@ export function planRun(input: {
     if (card?.state === 'waiting') {
       skip(
         'waiting_for_approval',
-        `waiting for your approval of the plan on ${card.item.url}`,
-        card.item.url,
+        `waiting for your approval of the plan on ${postsOn(card.item)}`,
+        postsOn(card.item),
       )
       continue
     }
     if (card?.state === 'invalid') {
-      skip('invalid_plan', `plan refused: ${card.problem}`, card.item.url)
+      skip('invalid_plan', `plan refused: ${card.problem}`, postsOn(card.item))
       continue
     }
     // A report's post that waits holds its rule at ranking, so here it's answered, if any.
@@ -607,14 +607,17 @@ function deliveryRefusal(
   if (fork) return `deliver ${deliver}: ${base} is on a fork`
 }
 
+/** Where you answer awaywork's posts on the item: its thread issue, else the item. */
+const postsOn = (item: Item): string => item.thread?.url ?? item.url
+
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
   const waiting = queue.find((r) => matches(r, item) && waitsOn(r, item))
   if (waiting && !isAwayworkPr(item))
     return {
       kind: 'waiting_for_approval',
-      reason: `waiting for your approval of ${waiting.skill}'s result on ${item.url}`,
-      url: item.url,
+      reason: `waiting for your approval of ${waiting.skill}'s result on ${postsOn(item)}`,
+      url: postsOn(item),
     }
   const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
   const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
@@ -622,8 +625,8 @@ export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
     const how = 'went' in post.state ? 'its result went ahead' : 'you approved its result'
     return {
       kind: 'approved',
-      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how}; to run it again, delete that post on ${item.url}`,
-      url: item.url,
+      reason: `#${done + 1} ${queue[done]?.skill} doesn't run again: ${how}; to run it again, delete that post on ${postsOn(item)}`,
+      url: postsOn(item),
     }
   }
   const closest = closestRule(item, queue)

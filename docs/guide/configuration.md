@@ -558,6 +558,7 @@ queue:
 | `wait` | `deliver: plan` or `report` only: the post waits for your reply on the item, `true` by default for a plan, `false` for a report; see [Posts that wait](./how-it-works.md#posts-that-wait) |
 | `gates` | `deliver: plan` or `report` only: gates of the rule's own, on what its step left; see [Gates of a rule's own](#gates-of-a-rules-own) |
 | `post` | `deliver: plan` or `report` only: `summary`, the step's `summary.md` with a link per file it left, put in the [store](#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./how-it-works.md#files-that-come-back) |
+| `thread` | `item` (default), the item itself, or `github`: its posts go to an issue awaywork opens as the item's thread in its repo, assigned to you, and replies are read there, for a tracker that can't take them; not on a `planned` rule or a Bitbucket config; see [Threads](./how-it-works.md#threads) |
 | `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`

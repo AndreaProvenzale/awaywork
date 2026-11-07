@@ -423,6 +423,12 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe(
         "deliver: plan or report: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
       ),
+    thread: z
+      .enum(['item', 'github'])
+      .optional()
+      .describe(
+        "Where its posts go and their replies are read: item (default), the item itself; github, an issue awaywork opens as the item's thread in its repo, assigned to you, for a tracker that can't take them; from then on all of the item's posts go there, its plan's tasks' too, and it closes once its source says the item is done",
+      ),
     branch: branch.optional().describe('Branch name template for this rule'),
     order: z
       .enum(['oldest', 'newest', 'updated'])
@@ -899,15 +905,31 @@ export const configSchema = z
           message:
             'plan waits for your reply on an open item, and this rule matches only merged or closed items; use report',
         })
+      // A rule whose posts go to a thread issue needs no source that writes.
       const silent =
         r.source &&
+        r.thread !== 'github' &&
         sourceIds.includes(r.source) &&
         !sourceFor(r.source, cfg.sources[r.source])?.write
+      const threadable = !bitbucket && r.source !== routines.id ? ', or thread: github' : ''
       if (r.deliver === 'plan' && silent)
         ctx.addIssue({
           code: 'custom',
           path: [...at, 'deliver'],
-          message: `plan posts on the item, and ${r.source} can't write to its items; use report`,
+          message: `plan posts on the item, and ${r.source} can't write to its items; use report${threadable}`,
+        })
+      if (r.thread === 'github' && bitbucket)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'thread'],
+          message:
+            "thread: github opens an issue in the item's repo, and this config's repos are on Bitbucket; a custom thread host can take its posts instead",
+        })
+      if (r.thread !== undefined && 'planned' in r.where)
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'thread'],
+          message: "thread goes on the plan's rule: its tasks post where the plan did",
         })
       // A post waits only as a plan's or a report's, never a task's, and the PR rules' PR is already the decision.
       const posts = (r.deliver === 'plan' || r.deliver === 'report') && !('planned' in r.where)
@@ -937,7 +959,7 @@ export const configSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [...at, r.wait ? 'wait' : 'gates'],
-          message: `a report that waits posts on the item, and ${r.source} can't write to its items`,
+          message: `a report that waits posts on the item, and ${r.source} can't write to its items${threadable && '; add thread: github'}`,
         })
       const shared = [cfg.gates, ...Object.values(cfg.repos).map((p) => p.gates)]
       for (const [name, g] of Object.entries(r.gates ?? {})) {

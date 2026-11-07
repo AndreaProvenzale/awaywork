@@ -6,14 +6,20 @@ import { loadSkills } from '../config/skills.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
-import { renderLink } from '../core/footer.js'
+import {
+  commentKind,
+  isAwayworkComment,
+  markComment,
+  renderLink,
+  threadClosed,
+} from '../core/footer.js'
 import { needsYou, planRun, type RunPlan } from '../core/foreman.js'
 import { heldMove, withApproved } from '../core/posts.js'
-import { defaultRules, itemState, lookback } from '../core/queue.js'
+import { DEFAULT_LOOKBACK, defaultRules, itemState, lookback, spanMs } from '../core/queue.js'
 import { counted, type Moved } from '../core/report.js'
 import { builtinSkills, type SkillCatalog } from '../core/skills.js'
 import { activeSkips, loadSkips } from '../core/skips.js'
-import type { Ctx, Forge, Item, Rule, Source } from '../core/types.js'
+import type { Ctx, Forge, Item, Rule, Source, Thread } from '../core/types.js'
 import { describeWindow, HOSTED_RUN_MINUTES, tooLongForHosted, windowEnd } from '../core/window.js'
 import { forgeFor } from '../forge/index.js'
 import { providerFor, providersOf } from '../providers/index.js'
@@ -150,6 +156,7 @@ export async function probeAndPlan(
     probe?: boolean
     failed?: SourceFailed
     moves?: { dryRun: boolean; log: (line: string) => void }
+    forge?: Forge
   } = {},
 ): Promise<{
   plan: RunPlan
@@ -172,12 +179,19 @@ export async function probeAndPlan(
   const sources = configuredSources(config)
   // A failed source's warning carries its stderr, and coding agents read `plan`.
   const secrets = configSecrets(config, providersOf(config), sources)
-  const collected = await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed })
+  const forge = opts.forge ?? forgeFor(config)
+  const collected = await collectItems(config, ctx, {
+    onProgress,
+    sources: soon?.sources,
+    failed,
+    forge,
+  })
   const { items, moved } = opts.moves
     ? await makeHeldMoves(collected, config, ctx, opts.moves, (line) =>
         maskSecrets(line, secrets, ctx.env),
       )
     : { items: collected, moved: [] }
+  if (opts.moves) await closeThreads(items, forge, ctx, opts.moves)
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -207,7 +221,7 @@ export async function probeAndPlan(
   }
 
   const skills = { user: await loadSkills(userSkillsDir), builtin: builtinSkills }
-  await linkPlanTasks(items, config, skills, forgeFor(config), ctx, onProgress)
+  await linkPlanTasks(items, config, skills, forge, ctx, onProgress)
   const attempts = opts.retry ? {} : await loadAttempts(attemptsPath)
   const skips = opts.retry ? {} : activeSkips(await loadSkips(skipsPath), Date.now())
   return {
@@ -266,10 +280,10 @@ export type SourceFailed = (source: string, e: Error & { retryAfter?: number }) 
 export async function collectItems(
   config: Config,
   ctx: Ctx,
-  opts: { onProgress?: OnProgress; sources?: string[]; failed?: SourceFailed } = {},
+  opts: { onProgress?: OnProgress; sources?: string[]; failed?: SourceFailed; forge?: Forge } = {},
 ): Promise<Item[]> {
-  const { onProgress } = opts
-  const items: Item[] = []
+  const { onProgress, forge = forgeFor(config) } = opts
+  const found: Item[] = []
   const queue = config.queue ?? defaultRules(Object.keys(config.sources))
   for (const [id, cfg] of Object.entries(config.sources)) {
     const source = sourceFor(id, cfg)
@@ -277,9 +291,9 @@ export async function collectItems(
     const link = source.link !== false && ((cfg as { link?: string }).link ?? source.link)
     onProgress?.({ name: id, state: 'running' })
     await source.items(cfg, ctx, finishedSince(queue, id)).then(
-      (found) => {
-        items.push(...found.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
-        onProgress?.({ name: id, state: 'done', detail: counted(found.length, 'item') })
+      (read) => {
+        found.push(...read.map((i) => (link ? { ...i, link: renderLink(link, i) } : i)))
+        onProgress?.({ name: id, state: 'done', detail: counted(read.length, 'item') })
       },
       (e: Error) => {
         ctx.log(`source ${id}: ${sourceFailure(e)}`)
@@ -288,7 +302,8 @@ export async function collectItems(
       },
     )
   }
-  await linkTasks(items, forgeFor(config), ctx, onProgress)
+  await linkTasks(found, forge, ctx, onProgress)
+  const items = await linkThreads(found, config, forge, ctx)
   // `approved` is read off the thread, an edited file in the store included.
   if (config.store) await checkPins(items, config.store, ctx.env)
   return items.map(withApproved)
@@ -346,11 +361,14 @@ function movedTo(item: Item, to: string): Item {
   return { ...item, status: to, fields }
 }
 
-/** How far back the source's rules read finished items, the widest wins; unset when none does. */
+/** How far back the source's rules read finished items, the widest wins, a thread's card's for a week to close its thread; unset when none does. */
 export function finishedSince(queue: Rule[], source: string): Date | undefined {
   const reach = queue
     .filter((r) => !r.source || r.source === source)
-    .flatMap((r) => lookback(r.where) ?? [])
+    .flatMap((r) => [
+      ...(r.thread === 'github' ? [spanMs(DEFAULT_LOOKBACK)] : []),
+      ...[lookback(r.where) ?? []].flat(),
+    ])
   return reach.length > 0 ? new Date(Date.now() - Math.max(...reach)) : undefined
 }
 
@@ -426,4 +444,78 @@ export async function linkTasks(
   }
   if (tasks.length)
     onProgress?.({ name: 'linking PRs', state: 'done', detail: `${tasks.length}/${tasks.length}` })
+}
+
+/** The sources a `thread: github` rule can take items from. */
+export const threadSources = (config: Pick<Config, 'sources' | 'queue'>): string[] =>
+  (config.queue ?? [])
+    .filter((r) => r.thread === 'github')
+    .flatMap((r) => (r.source ? [r.source] : Object.keys(config.sources)))
+
+/**
+ * Each of your items a `thread: github` rule can take gets the thread issue awaywork opened for it, if any: its comments
+ * follow the card's, and a reply there changes the item as one on the card would. Returns the items but those whose
+ * repo's threads couldn't be read: planned without them, they'd post a second plan.
+ */
+export async function linkThreads(
+  items: Item[],
+  config: Pick<Config, 'sources' | 'queue'>,
+  forge: Forge,
+  ctx: Ctx,
+): Promise<Item[]> {
+  const sources = threadSources(config)
+  const threaded = items.filter(
+    (i) => i.mine && sources.includes(i.source) && typeof i.fields.repo === 'string',
+  )
+  const unread = new Set<Item>()
+  for (const repo of new Set(threaded.map((i) => i.fields.repo as string))) {
+    const here = threaded.filter((i) => i.fields.repo === repo)
+    const found = await forge.threads?.(repo).catch((e: Error) => {
+      const keys = here.map((i) => i.key).join(', ')
+      ctx.log(`couldn't read awaywork's threads in ${repo}, so left out ${keys}: ${e.message}`)
+      for (const item of here) unread.add(item)
+    })
+    for (const item of here) {
+      const thread = found?.find((t) => t.item === `${item.source}:${item.key}`)
+      if (thread) linkThread(item, thread)
+    }
+  }
+  return items.filter((i) => !unread.has(i))
+}
+
+/** The item with its thread's comments after its own, and the newest reply there as its updated time when newer. */
+function linkThread(
+  item: Item,
+  { thread, comments }: { thread: Thread; comments: Item['comments'] },
+): void {
+  // Awaywork's own posts there leave the item as it was, as they do on the card.
+  const replied = comments
+    .filter((c) => !isAwayworkComment(c) || commentKind(c) === 'approve')
+    .at(-1)?.at
+  const card = item.fields.updated
+  const newer = !!replied && !(typeof card === 'string' && Date.parse(card) >= Date.parse(replied))
+  item.thread = { ...thread, ...(newer && typeof card === 'string' && { card }) }
+  item.comments = [...item.comments, ...comments]
+  if (newer) item.fields.updated = replied
+}
+
+/** Closes the thread issue of each card its source says is done, with a line saying so; a dry run only says it. */
+async function closeThreads(
+  items: Item[],
+  forge: Forge,
+  ctx: Ctx,
+  { dryRun, log }: { dryRun: boolean; log: (line: string) => void },
+): Promise<void> {
+  for (const item of items) {
+    const { thread } = item
+    const state = itemState(item)
+    if (!thread || state === 'open') continue
+    const what = `${thread.url}, ${item.key}'s thread: the card is ${state}`
+    if (dryRun) log(`would close ${what}`)
+    else
+      await forge.closeThread?.(thread, markComment(threadClosed)).then(
+        () => log(`closed ${what}`),
+        (e: Error) => ctx.log(`couldn't close ${thread.url}, ${item.key}'s thread: ${e.message}`),
+      )
+  }
 }

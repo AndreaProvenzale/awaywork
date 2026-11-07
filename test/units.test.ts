@@ -4495,6 +4495,7 @@ async function finishedRun(
   provider = looper({}),
   write?: Source['write'] | null,
   ownDraftsRefused?: string,
+  threads: Partial<Forge> = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'awaywork-done-'))
   const { origin, forge, opened, updated } = await originForge(root)
@@ -4534,7 +4535,7 @@ ${queue}
     dryRun: false,
     providers: { claude: provider },
     sources: { github: source as Source, tracker: source as Source },
-    forge: { ...forge, ownDraftsRefused },
+    forge: { ...forge, ownDraftsRefused, ...threads },
     ctx: { env: { PATH: process.env.PATH, SRC_TOKEN: 's3cret' }, log: (line) => lines.push(line) },
     watch: () => ({ stop: async () => {} }),
     shortage: async () => undefined,
@@ -4542,6 +4543,55 @@ ${queue}
   })
   return { report, writes, lines, opened, updated }
 }
+
+it("posts a thread rule's waiting result on a thread issue it opens for a card that can't write, holding no move it can't make", async () => {
+  const posted: string[] = []
+  const threads: Partial<Forge> = {
+    openThread: async (repo, item) => {
+      posted.push(`open ${repo} for ${item.source}:${item.key}`)
+      return { repo, number: 57, url: `https://github.com/${repo}/issues/57` }
+    },
+    threadComment: async (t, body) => {
+      posted.push(body)
+      return `${t.url}#issuecomment-1`
+    },
+  }
+  const { report, writes } = await finishedRun(
+    '  - { skill: review, deliver: report, wait: true, thread: github, on_done: { move: QA } }',
+    [yours(1)],
+    undefined,
+    null,
+    undefined,
+    threads,
+  )
+  const body = resultComment('acme-api-1 says nothing.', 'done', 'review', undefined, 0, true)
+  expect(writes).toEqual([])
+  expect(posted).toEqual([
+    'open acme/api for github:acme/api#1',
+    markComment(body, { waits: true }),
+  ])
+  expect(report.results[0]?.result).toEqual([
+    {
+      item: 'github:acme/api#1',
+      url: 'https://github.com/acme/api/issues/57#issuecomment-1',
+      post: { waits: true },
+    },
+  ])
+  // A plain one's move says the card stayed put.
+  posted.length = 0
+  const plain = await finishedRun(
+    '  - { skill: review, deliver: report, thread: github, on_done: { comment: result, move: QA } }',
+    [{ ...yours(1), thread: { repo: 'acme/api', number: 57, url: 'https://x/57' } }],
+    undefined,
+    null,
+    undefined,
+    threads,
+  )
+  expect(posted).toHaveLength(1)
+  expect(plain.report.results[0]?.moved).toEqual([
+    { item: 'github:acme/api#1', to: 'QA', failed: "github can't write to its items" },
+  ])
+})
 
 const yours = (n: number) =>
   fakeItem({

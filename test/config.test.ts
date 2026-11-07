@@ -538,7 +538,7 @@ describe('config', () => {
     expect(
       problems(`${quiet}queue: [{ skill: story, source: tracker, deliver: report, wait: true }]`),
     ).toEqual([
-      "queue[0].wait: a report that waits posts on the item, and tracker can't write to its items",
+      "queue[0].wait: a report that waits posts on the item, and tracker can't write to its items; add thread: github",
     ])
     const hint = "approved names the approved post's skill now, e.g. approved: story"
     expect(problems(`${minimal}queue: [{ skill: implement, where: { approved: true } }]`)).toEqual([
@@ -547,6 +547,36 @@ describe('config', () => {
     expect(
       problems(`${minimal}queue: [{ skill: implement, where: { approved: [story, prototype] } }]`),
     ).toEqual([])
+  })
+
+  it("takes a plan or a waiting report on a source that can't write with thread: github, never on Bitbucket or a task rule", () => {
+    const quiet = `providers: [claude: {}]\nsources: { github: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    const task = '{ skill: implement, where: { planned: true } }'
+    expect(
+      problems(
+        `${quiet}queue: [{ skill: plan, source: tracker, deliver: plan, thread: github }, { skill: story, source: tracker, deliver: report, wait: true, thread: github }, ${task}]`,
+      ),
+    ).toEqual([])
+    expect(
+      problems(`${quiet}queue: [{ skill: plan, source: tracker, deliver: plan }, ${task}]`),
+    ).toEqual([
+      "queue[0].deliver: plan posts on the item, and tracker can't write to its items; use report, or thread: github",
+    ])
+    expect(
+      problems(
+        `${quiet}queue: [{ skill: plan, deliver: plan, thread: github }, { skill: implement, where: { planned: true }, thread: github }]`,
+      ),
+    ).toEqual([
+      "queue[1].thread: thread goes on the plan's rule: its tasks post where the plan did",
+    ])
+    const bitbucket = `providers: [claude: {}]\nsources: { bitbucket: { repos: [acme/api] }, tracker: { command: 'echo []' } }\n`
+    expect(
+      problems(
+        `${bitbucket}queue: [{ skill: story, source: tracker, deliver: report, thread: github }]`,
+      ),
+    ).toEqual([
+      "queue[0].thread: thread: github opens an issue in the item's repo, and this config's repos are on Bitbucket; a custom thread host can take its posts instead",
+    ])
   })
 
   it('refuses stack, which was removed, with what to do instead', () => {

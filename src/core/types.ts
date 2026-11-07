@@ -82,7 +82,18 @@ export interface Item {
   }
   /** On a card: the PRs its plans' tasks have, by task id; unset when none was looked up, null when reading failed. */
   taskPrs?: Record<string, TaskPr> | null
+  /** The GitHub issue awaywork opened as the card's thread: its posts go there, and its comments follow the card's. */
+  thread?: Thread
   raw: unknown
+}
+
+/** A GitHub issue awaywork opened as an item's thread, for posts the item's own tracker can't take. */
+export interface Thread {
+  repo: string
+  number: number
+  url: string
+  /** The card's own updated time, when a reply on the thread is newer and stands in for it. */
+  card?: string
 }
 
 /** A task's PR, found by the task's branch and its footer: open, merged, or closed unmerged at `closedAt`. */
@@ -300,6 +311,14 @@ export interface Forge {
    * one else; returns its URL. Throws why it didn't, e.g. a pending review of yours already there.
    */
   pendingReview(repo: string, pr: number, head: string, review: Review): Promise<string>
+  /** The open issues in `repo` you opened as items' threads, by item (`source:key`), each with its whole comment history. */
+  threads?(repo: string): Promise<{ item: string; thread: Thread; comments: Item['comments'] }[]>
+  /** Opens an issue in `repo` as the item's thread, assigned to you. */
+  openThread?(repo: string, item: Pick<Item, 'source' | 'key' | 'title' | 'url'>): Promise<Thread>
+  /** Comments `body` on the thread; returns the comment's URL. */
+  threadComment?(thread: Thread, body: string): Promise<string>
+  /** Comments `body` on the thread, then closes it. */
+  closeThread?(thread: Thread, body: string): Promise<void>
 }
 
 /** A PR on a branch; `closedAt` when the forge says. */
@@ -397,6 +416,8 @@ export interface Rule extends Step {
   >
   /** `soon`: awaywork watch starts its units as soon as it sees them due, not only in a window. */
   run?: 'soon' | 'window'
+  /** Where its posts go: `item`, the item itself, or `github`, an issue awaywork opens as the item's thread. */
+  thread?: 'item' | 'github'
 }
 
 /** Which of a rule's items goes first; unset keeps the source's order. */
