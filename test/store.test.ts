@@ -38,6 +38,9 @@ import { fakeSource } from './fakes/source.js'
 process.env.GIT_COMMITTER_NAME ??= 't'
 process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 
+const git = (dir: string, ...args: string[]) =>
+  execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
+
 /** The guide's example store: files in a folder next to it, at file:// URLs; this one refuses to put fail.bin. */
 const storeScript = `import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -111,7 +114,7 @@ async function run(top: string, queue: string, items: Item[], provider: Provider
   const root = await mkdtemp(join(tmpdir(), 'awaywork-store-run-'))
   const origin = join(root, 'origin')
   await execa(bin('git'), ['init', '-q', '-b', 'main', origin])
-  await execa(bin('git'), ['-C', origin, 'commit', '-q', '--allow-empty', '-m', 'init'])
+  await git(origin, 'commit', '-q', '--allow-empty', '-m', 'init')
   const footers: Pin[][] = []
   const forge = {
     ...fakeForge(),
@@ -365,8 +368,8 @@ describe('read-back', () => {
       ...fakeProvider('claude'),
       async *run(job: { dir: string }) {
         await writeFile(join(job.dir, 'a.txt'), 'a')
-        await execa(bin('git'), ['-C', job.dir, 'add', 'a.txt'])
-        await execa(bin('git'), ['-C', job.dir, 'commit', '-qm', 'a'])
+        await git(job.dir, 'add', 'a.txt')
+        await git(job.dir, 'commit', '-qm', 'a')
         await writeFile(join(job.dir, '.away/out/pr.md'), 'Add a\n\nDone.')
         await writeFile(join(job.dir, '.away/out/shot.png'), 'png')
         yield { type: 'done', ok: true, turns: 1 }
