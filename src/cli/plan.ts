@@ -236,7 +236,6 @@ export async function probeAndPlan(
   return {
     plan: {
       ...planned,
-      // A finished card read only so its thread can close isn't a skip.
       skipped: planned.skipped.filter(
         (s) => s.kind !== 'no_rule' || !readForThread(s.item, planned.queue),
       ),
