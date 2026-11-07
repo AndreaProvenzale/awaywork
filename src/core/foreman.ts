@@ -177,8 +177,8 @@ export function planRun(input: {
   let counted = 0
 
   // A post that waits holds its card for its rule only: the card's linked items rank on their own.
-  const held = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
-  for (const found of inBlocks(dedupe(ranked, held), expanded.items)) {
+  const waiting = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
+  for (const found of inBlocks(dedupe(ranked, waiting), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -202,7 +202,7 @@ export function planRun(input: {
     // awaywork's own draft for these items, which it left for a later run.
     const keys = items.map((i) => `${i.source}:${i.key}`)
     const draft = !pickup && ours?.left?.items.some((k) => keys.includes(k)) ? ours.left : undefined
-    if (ours && !pickup && !draft) {
+    if (ours && !pickup && !draft && !found.some(waiting)) {
       skip('waiting_for_review', `waiting for review: awaywork PR ${ours.url} is open`, ours.url)
       continue
     }
