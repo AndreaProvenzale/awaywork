@@ -421,7 +421,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .enum(['summary', 'full'])
       .optional()
       .describe(
-        "deliver: plan or report: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
+        "deliver: plan, or a report that posts: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
       ),
     thread: z
       .enum(['item', 'github'])
@@ -948,6 +948,20 @@ export const configSchema = z
           code: 'custom',
           path: [...at, 'post'],
           message: 'post needs deliver: plan or report: a PR body is always full',
+        })
+      if (
+        r.post !== undefined &&
+        posts &&
+        r.deliver === 'report' &&
+        r.wait !== true &&
+        !r.gates &&
+        r.on_done?.comment !== 'result'
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: [...at, 'post'],
+          message:
+            'post shapes a post, and this report posts nothing: add wait: true, gates or on_done: { comment: result }, or drop post',
         })
       if (r.post === 'summary' && !cfg.store)
         ctx.addIssue({

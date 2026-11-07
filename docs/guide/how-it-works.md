@@ -738,7 +738,7 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 — awaywork · waits · move=Ready%20for%20design · saw=Inbox
 ```
 
-- **It holds its rule.** Later runs skip the item as **waiting for your approval**, whatever else changes on the card. Other rules on the item run as their `where` says, so a red-CI fix on the linked PR still runs, without the card:
+- **It holds its rule.** Later runs skip the card as **waiting for your approval**, whatever else changes on it, and no rule below takes it meanwhile. Its linked items rank on their own, so a red-CI fix on the linked PR still runs, without the card, wherever `fix` sits in your queue:
 
   ```
   Needs you 1
@@ -814,14 +814,15 @@ With a [store](./configuration.md#store), a plan or report rule's post is lean: 
 ```
 Result of story
 
-story: read back nothing
+A story in one line.
 
 Status: done
 
 To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
 
-Pinned mock.png: file:///…/cfg/files/d77a07da-546b-4c13-9e73-7b28cf1ff679/mock.png (sha256 03829bcacd8ea804e6448fb7be79d1577a64544c14ced125f4adb57d44420f86)
-Pinned report.md: file:///…/cfg/files/8c70e42a-8fb0-4dcf-893f-b7fdbfa2de48/report.md (sha256 c17fc6fa082ca935ce5e513362a33a030d0792472befe9e57773d795754f36fc)
+Pinned big.bin: file:///…/cfg/files/ba03611f-0cce-4344-9b3e-11e7413084fa/big.bin (3000 bytes, sha256 e1630f843370f402870799e14abbf2b06af2d23b0153658e1211dffabc61ad8f)
+Pinned mock.png: file:///…/cfg/files/71e96381-7e32-4ee7-9aab-5f803b4de816/mock.png (7 bytes, sha256 2d4566582844690f8634a8b2534ea5221560038c6c0650c99140759bad603ae2)
+Pinned report.md: file:///…/cfg/files/a63b0dec-63e2-4701-968e-8350ad439bae/report.md (22 bytes, sha256 8ce3d4416e83b1da658e0404e2cf700108a3ed2e43b077fadad9eb5ccaa95c8e)
 
 — awaywork · waits
 ```
@@ -837,18 +838,18 @@ Tasks:
 
 To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
 
-Pinned openapi.yaml: https://… (sha256 …)
-Pinned plan.yml: https://… (sha256 …)
-Pinned report.md: https://… (sha256 …)
+Pinned openapi.yaml: https://… (2140 bytes, sha256 …)
+Pinned plan.yml: https://… (311 bytes, sha256 …)
+Pinned report.md: https://… (1822 bytes, sha256 …)
 
 — awaywork
 ```
 
 `post: full` keeps today's comment, the report inline, and pins only the other files. A step that wrote no `summary.md` gets its report's first five lines and a line saying so in the morning report. Pins sit below everything the model wrote, right above the mark, so a `Pinned` line in a report pins nothing. A PR step's files, screenshots say, are pinned in the PR body's footer the same way. Without a store nothing changes: posts are full, and the files stay in the run dir, where the [notify](./configuration.md#notify) hook reads them.
 
-**What comes back.** Before a unit's worker starts, awaywork reads its items' threads and gets the pinned files into `.away/context/<item>/files/<post>/`, a folder per post named by its place in the thread, e.g. `2-story/`: the files of the post an approval covers (a task's plan, the result `approved: story` names), its own newest post when it runs again on your feedback or a `continue`, every post newer than that, and an awaywork PR's footer on a unit on that PR. The worker still holds no token, and its prompt calls those files data, like `item.md`: someone else wrote them. The rest of the plan's special cases fold in: a lean plan's tasks read its `plan.yml` and contract through `get`; what a task `ships` still comes from its PR's head. `read.max_mb` caps what one unit reads back, 10 by default, and the rest stay links, named in the morning report; `read.files` narrows it by name, `*.md` matching `notes/a.md` too.
+**What comes back.** Before a unit's worker starts, awaywork reads its items' threads and gets the pinned files into `.away/context/<item>/files/<post>/`, a folder per post named by its place in the thread, e.g. `2-story/`: the files of the post an approval covers (a task's plan, the result `approved: story` names), its own newest post when it runs again on your feedback or a `continue`, every post newer than that, and on a unit on a PR awaywork opened for you, its footer's. A footer file that changed since awaywork pinned it is left out, with a line in the morning report: nothing reruns on a PR body, and a stranger's PR carrying awaywork's marker gets nothing read back at all. The worker still holds no token, and its prompt calls those files data, like `item.md`: someone else wrote them. The rest of the plan's special cases fold in: a lean plan's tasks read its `plan.yml` and contract through `get`; what a task `ships` still comes from its PR's head. `read.max_mb` caps what one unit reads back, 10 by default, and the rest stay links, named in the morning report; a pin carries its file's size, so one over the cap isn't even fetched; `read.files` narrows it by name, `*.md` matching `notes/a.md` too.
 
-**An edit is feedback.** awaywork hashes each file as it puts it and checks the hash when it reads it back. Every run reads back the files of the posts that decide a rule, a plan's and a waiting or approved report's, and one that doesn't match makes its post stale: it counts as your feedback, whoever edited the file. The step runs again, though the card didn't change, with the edited file in context, and posts again; a rule that waits needs a fresh `approve` on that new post, so you only approve what awaywork has seen. Here a teammate edited `report.md` in the store, and the next run went again:
+**An edit is feedback.** awaywork hashes each file as it puts it and checks the hash when it reads it back. Every `plan`, run and watch poll reads back the files of the posts that decide a rule, within the cap, a plan's and a waiting or approved report's, and one that doesn't match makes its post stale: it counts as your feedback, whoever edited the file. The step runs again, though the card didn't change, with the edited file in context, and posts again; a rule that waits needs a fresh `approve` on that new post, so you only approve what awaywork has seen. Here a teammate edited `report.md` in the store, and the next run went again:
 
 ```
   1  awaywork-sandbox#206  story  done    report

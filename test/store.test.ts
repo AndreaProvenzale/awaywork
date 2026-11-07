@@ -28,7 +28,7 @@ import { postAnswer, readBackPosts, reportPost, withApproved } from '../src/core
 import { formatReport } from '../src/core/report.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, Write } from '../src/core/types.js'
-import { checkPins, type Store } from '../src/worker/store.js'
+import { checkPins, putFiles, readBack, type Store } from '../src/worker/store.js'
 import { runUnits } from '../src/worker/units.js'
 import { fakeForge } from './fakes/forge.js'
 import { fakeItem } from './fakes/items.js'
@@ -41,7 +41,7 @@ process.env.GIT_COMMITTER_EMAIL ??= 't@t'
 const git = (dir: string, ...args: string[]) =>
   execa(bin('git'), ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args])
 
-/** The guide's example store: files in a folder next to it, at file:// URLs; this one refuses to put fail.bin. */
+/** The guide's example store, files in a folder next to it at file:// URLs, but it gets any file:// URL and refuses to put fail.bin. */
 const storeScript = `import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
@@ -57,11 +57,15 @@ if (op.op === 'put') {
 } else process.stdout.write(readFileSync(fileURLToPath(op.url)))
 `
 
-async function folderStore(): Promise<{ config: string; dir: string }> {
+async function folderStore(script = storeScript): Promise<{ config: string; dir: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'awaywork-store-'))
-  await writeFile(join(dir, 'store.mjs'), storeScript)
+  await writeFile(join(dir, 'store.mjs'), script)
   return { config: `store: { command: 'node ${join(dir, 'store.mjs')}' }`, dir }
 }
+
+const storeOf = (top: string) =>
+  parseConfig(`providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${top}\n`)
+    .store as Store
 
 const shared = await folderStore()
 
@@ -250,6 +254,17 @@ describe('lean posts', () => {
     ])
   })
 
+  it('asks no summary.md of a report rule that posts nothing', async () => {
+    const seen = { prompts: [], read: [] }
+    await run(
+      shared.config,
+      '  - { skill: review, deliver: report }',
+      [yours(1)],
+      writer({ 'report.md': 'ok' }, seen),
+    )
+    expect(seen.prompts[0]).not.toContain('summary.md')
+  })
+
   it('posts no store and no pins without a store, as before', async () => {
     const files = { 'report.md': 'The report.', 'notes.txt': 'n' }
     const seen = { prompts: [], read: [] }
@@ -382,6 +397,121 @@ describe('read-back', () => {
   })
 })
 
+describe('PR footers', () => {
+  const pr = (mine: boolean, description: string) =>
+    fakeItem({
+      source: 'github',
+      id: '9',
+      key: 'acme/api#9',
+      type: 'pr',
+      ...(mine && { mine: true as const }),
+      description,
+      fields: { repo: 'acme/api', ours: true, updated: '2026-10-24T00:00:00Z' },
+    })
+
+  it("reads a stranger's PR footer pins never, though its body carries awaywork's marker", async () => {
+    const env = await pinned('env', 'SECRET=1')
+    const body = `Please review.\n\n${footer('x', [], undefined, [env])}`
+    expect(footerPins(body)).toEqual([env])
+    expect(readBackPosts(pr(false, body), 'review', false)).toEqual([])
+  })
+
+  it('reads back the footer of a PR awaywork opened for you, leaving out a file that changed since', async () => {
+    const shot = await pinned('shot.png', 'png')
+    const edited = await pinned('notes.md', 'edited', sha('as put'))
+    const posts = readBackPosts(
+      pr(true, `Body.\n\n${footer('r0', [], undefined, [shot, edited])}`),
+      'review',
+      false,
+    )
+    expect(posts).toMatchObject([{ name: 'pr', edits: false }])
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-footer-'))
+    const notes = await readBack(storeOf(shared.config), process.env, posts, dir)
+    expect(await readdir(join(dir, 'pr'))).toEqual(['shot.png'])
+    expect(notes).toEqual([
+      "notes.md of the PR body's footer changed in the store since awaywork pinned it: left out",
+    ])
+  })
+})
+
+describe('put', () => {
+  const files = async (text: string) => {
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-put-test-'))
+    await writeFile(join(dir, 'report.md'), text)
+    return dir
+  }
+  const at = { item: 'acme/api#1', unit: 'u1' }
+
+  it('pins a file by its size and sha256 once the store gives back the bytes it put', async () => {
+    const dir = await files('the report')
+    const { pins, failed } = await putFiles(
+      storeOf(shared.config),
+      process.env,
+      dir,
+      [{ name: 'report.md', kind: 'report' }],
+      at,
+    )
+    expect(failed).toEqual([])
+    expect(pins).toEqual([
+      {
+        name: 'report.md',
+        url: expect.stringMatching(/^file:/),
+        sha256: sha('the report'),
+        size: 10,
+      },
+    ])
+    const line = pinBlock(pins).trim()
+    expect(line).toMatch(/^Pinned report\.md: file:\S+ \(10 bytes, sha256 [0-9a-f]{64}\)$/)
+    const marked = post(markComment(`${resultComment('Done.', 'done', 'qa')}\n\n${line}`))
+    expect(pinsOf(marked)).toEqual(pins)
+  })
+
+  it('pins nothing for a file the store gives back changed, a newline added', async () => {
+    const store = await folderStore(
+      storeScript.replace(
+        'process.stdout.write(readFileSync(fileURLToPath(op.url)))',
+        "process.stdout.write(readFileSync(fileURLToPath(op.url), 'utf8') + '\\n')",
+      ),
+    )
+    const dir = await files('the report')
+    const put = await putFiles(
+      storeOf(store.config),
+      process.env,
+      dir,
+      [{ name: 'report.md', kind: 'report' }],
+      at,
+    )
+    expect(put).toEqual({
+      pins: [],
+      failed: ['report.md not stored: the store gave back different bytes than awaywork put'],
+    })
+  })
+
+  it("never quotes what a put printed that isn't JSON", async () => {
+    const store = await folderStore("console.log('oops s3cr3t')\n")
+    const put = await putFiles(
+      storeOf(store.config),
+      process.env,
+      await files('x'),
+      [{ name: 'report.md', kind: 'report' }],
+      at,
+    )
+    expect(put.failed).toEqual([
+      `report.md not stored: printed 11 characters that aren't JSON, not {"url": "…"}`,
+    ])
+  })
+
+  it('leaves a file whose pinned size is over the cap as a link, getting nothing', async () => {
+    const big = { name: 'big.bin', url: 'file:///nowhere/big.bin', sha256: sha('x'), size: 3000 }
+    const dir = await mkdtemp(join(tmpdir(), 'awaywork-cap-'))
+    const posts = [{ name: '1-qa', what: 'a post', pins: [big], edits: true }]
+    const capped = storeOf(shared.config.replace(' }', ', read: { max_mb: 0.002 } }'))
+    expect(await readBack(capped, process.env, posts, dir)).toEqual([
+      "over the store's read.max_mb, left as links: big.bin of a post",
+    ])
+  })
+})
+
 describe('stale posts', () => {
   const config = parseConfig(
     `providers: [claude: {}]\nsources: { github: { repos: [acme/*] } }\n${shared.config}\nqueue:\n  - { skill: story, deliver: report, wait: true }\n  - { skill: prototype, deliver: report, where: { approved: story } }\n`,
@@ -444,6 +574,11 @@ describe('store config', () => {
     expect(() =>
       parseConfig(`${base}queue:\n  - { skill: review, deliver: report, post: summary }\n`),
     ).toThrow('post: summary pins files in a store')
+    expect(() =>
+      parseConfig(
+        `${base}store: { command: ./store.sh }\nqueue:\n  - { skill: review, deliver: report, post: summary }\n`,
+      ),
+    ).toThrow('this report posts nothing')
     const config = parseConfig(`${base}store: { command: ./store.sh, secrets: [STORE_TOKEN] }\n`)
     expect(config.store).toEqual({
       command: './store.sh',

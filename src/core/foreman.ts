@@ -178,7 +178,9 @@ export function planRun(input: {
   const perRule: Record<number, number> = {}
   let counted = 0
 
-  for (const found of inBlocks(dedupe(ranked), expanded.items)) {
+  // A post that waits holds its card for its rule only: the card's linked items rank on their own.
+  const held = (e: Ranked) => waitsOn(queue[e.rule] as Rule, e.item)
+  for (const found of inBlocks(dedupe(ranked, held), expanded.items)) {
     const ours = found.flatMap((e) => e.item.linkedPrs).find((p) => p.ours)
     // An awaywork PR taken by a rule leads its feature: that rule decides, its key names the unit.
     const pickup = ours && found.find((e) => isAwayworkPr(e.item))
@@ -280,7 +282,7 @@ export function planRun(input: {
       skip('invalid_plan', `plan refused: ${card.problem}`, postsOn(card.item))
       continue
     }
-    // A report's post that waits holds its rule at ranking, so here it's answered, if any.
+    // A report's post that waits holds its rule, whatever else changed on the card.
     const posted =
       rule.deliver === 'report' && !items[0]?.task
         ? items.flatMap((item) => {
@@ -288,6 +290,14 @@ export function planRun(input: {
             return post ? [{ item, answer: postAnswer(post) }] : []
           })[0]
         : undefined
+    if (posted?.answer === 'waiting') {
+      skip(
+        'waiting_for_approval',
+        `waiting for your approval of ${rule.skill}'s result on ${postsOn(posted.item)}`,
+        postsOn(posted.item),
+      )
+      continue
+    }
     // Closing a task's PR doesn't touch the card, nor editing a pinned file: its re-plan is due all the same.
     const replan = card?.state === 'replan'
     const stale = items.some(
@@ -381,8 +391,9 @@ export function planRun(input: {
     // A report that neither waits nor has gates of its own posts as a plain result, `wait: false` too.
     const decides = planned || (rule.deliver === 'report' && (rule.wait === true || !!rule.gates))
     const waits = decides ? again || (rule.wait ?? planned) : undefined
+    // Only a post reads the step's summary: a report rule posts when it decides or comments its result.
     const lean =
-      (planned || rule.deliver === 'report') &&
+      (decides || (rule.deliver === 'report' && rule.on_done?.comment === 'result')) &&
       !items[0]?.task &&
       (rule.post ?? (config.store ? 'summary' : 'full')) === 'summary'
     // A resumed task's draft stays stacked on the task below it while that one is open.
@@ -612,13 +623,6 @@ const postsOn = (item: Item): string => item.thread?.url ?? item.url
 
 /** E.g. `matched no rule; closest #2 fix: checks is passing, wants failing`, or the last report rule done with it. */
 export function noRuleReason(item: Item, queue: Rule[]): Omit<Skipped, 'item'> {
-  const waiting = queue.find((r) => matches(r, item) && waitsOn(r, item))
-  if (waiting && !isAwayworkPr(item))
-    return {
-      kind: 'waiting_for_approval',
-      reason: `waiting for your approval of ${waiting.skill}'s result on ${postsOn(item)}`,
-      url: postsOn(item),
-    }
   const done = queue.findLastIndex((r) => matches(r, item) && doneWith(r, item))
   const post = done >= 0 && !isAwayworkPr(item) && doneWith(queue[done] as Rule, item)
   if (post) {

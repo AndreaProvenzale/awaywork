@@ -6,6 +6,7 @@ import {
   isAwayworkComment,
   markComment,
   type PostState,
+  planComment,
   postState,
   resultComment,
   resultOf,
@@ -179,26 +180,56 @@ queue:
   })
 })
 
-it("holds only its own rule: the fix on the card's linked PR with failing checks still runs", () => {
-  const config = parseConfig(`
+describe('a post that waits holds its card for its rule only', () => {
+  const plan = (queue: string, items: Item[]) => {
+    const config = parseConfig(`
 providers: [claude: {}]
 sources: { asana: { workspace: '1' }, github: { repos: [acme/api] } }
 queue:
-  - { skill: story, source: asana, deliver: report, wait: true }
-  - { skill: fix, source: github, where: { type: pr, checks: failing } }
-`)
+${queue}`)
+    const p = planRun({
+      config,
+      items,
+      allowances: { claude: allowance(config.budget, null, 0, config.windows) },
+      skills: {},
+    })
+    return {
+      units: p.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)]),
+      skipped: p.skipped.map((s) => [s.item.key, s.kind]),
+    }
+  }
+  const fix = `  - { skill: fix, source: github, where: { type: pr, checks: failing } }`
   const pr = githubPr(7, { checks: 'failing' })
-  const task = asanaTask(1, {}, { linkedPrs: pr.linkedPrs, comments: [post('story', waits)] })
-  const plan = planRun({
-    config,
-    items: [task, pr],
-    allowances: { claude: allowance(config.budget, null, 0, config.windows) },
-    skills: {},
+  const linked = (comment: Item['comments'][number]) =>
+    asanaTask(1, { repo: 'acme/api' }, { mine: true, linkedPrs: pr.linkedPrs, comments: [comment] })
+  const waiting = {
+    units: [['fix', ['acme/api#7']]],
+    skipped: [['T-1', 'waiting_for_approval']],
+  }
+
+  it("leaves the card's linked PR with failing checks to fix, a report's post or a plan, wherever fix ranks", () => {
+    const story = `  - { skill: story, source: asana, deliver: report, wait: true }`
+    expect(plan(`${story}\n${fix}`, [linked(post('story', waits)), pr])).toEqual(waiting)
+    expect(plan(`${fix}\n${story}`, [linked(post('story', waits)), pr])).toEqual(waiting)
+    const planned = yours(
+      markComment(planComment('One task.', 'tasks: [{ id: api, title: API }]')),
+      1,
+    )
+    const rule = `  - { skill: plan, source: asana, deliver: plan }
+  - { skill: implement, where: { planned: true } }`
+    expect(plan(`${rule}\n${fix}`, [linked(planned), pr])).toEqual(waiting)
   })
-  expect(plan.units.map((u) => [u.unit.skill, u.unit.items.map((i) => i.key)])).toEqual([
-    ['fix', ['acme/api#7']],
-  ])
-  expect(plan.skipped.map((s) => [s.item.key, s.kind])).toEqual([['T-1', 'waiting_for_approval']])
+
+  it('keeps the card from a rule below while it waits', () => {
+    const queue = `  - { skill: story, source: asana, where: { section: Ready }, deliver: report, wait: true }
+  - { skill: triage, source: asana, deliver: report, on_done: { comment: result } }`
+    expect(
+      plan(queue, [asanaTask(1, { repo: 'acme/api' }, { comments: [post('story', waits)] })]),
+    ).toEqual({
+      units: [],
+      skipped: [['T-1', 'waiting_for_approval']],
+    })
+  })
 })
 
 it('posts a report rule with wait: false and no gates of its own as a plain result, as one without wait', () => {

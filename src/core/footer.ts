@@ -25,26 +25,31 @@ export function footer(
   return `---\n${marker} run=${runId}${named.join('')}${said} -->\nOpened by awaywork (run \`${runId}\`): a coding agent worked on this unattended. Review it like any other contribution.${pinBlock(pins)}`
 }
 
-/** A file awaywork put in the store for a post: its name under `.away/out/`, its URL and its sha256 when put. */
+/** A file awaywork put in the store for a post: its name under `.away/out/`, its URL, and its size and sha256 when put. */
 export interface Pin {
   name: string
   url: string
   sha256: string
+  /** Bytes; a pin line written before awaywork wrote sizes has none. */
+  size?: number
 }
 
-/** E.g. `Pinned plan.yml: https://… (sha256 9f86…)`, the name URI-encoded but for its slashes, so a space can't split the line. */
-const pinLine = ({ name, url, sha256 }: Pin): string =>
-  `Pinned ${encodeURIComponent(name).replaceAll('%2F', '/')}: ${url} (sha256 ${sha256})`
+/** E.g. `Pinned plan.yml: https://… (1234 bytes, sha256 9f86…)`, the name URI-encoded but for its slashes, so a space can't split the line. */
+const pinLine = ({ name, url, sha256, size }: Pin): string =>
+  `Pinned ${encodeURIComponent(name).replaceAll('%2F', '/')}: ${url} (${size === undefined ? '' : `${size} bytes, `}sha256 ${sha256})`
 
 /** The pins' lines, a paragraph after what they follow; '' for none. */
 export const pinBlock = (pins: Pin[]): string =>
   pins.length ? `\n\n${pins.map(pinLine).join('\n')}` : ''
 
 function readPin(line: string | undefined): Pin | undefined {
-  const [, name = '', url = '', sha256 = ''] =
-    /^Pinned (\S+): (\S+) \(sha256 ([0-9a-f]{64})\)$/.exec(line?.trim() ?? '') ?? []
+  const [, name = '', url = '', size, sha256 = ''] =
+    /^Pinned (\S+): (\S+) \((?:(\d+) bytes, )?sha256 ([0-9a-f]{64})\)$/.exec(line?.trim() ?? '') ??
+    []
   try {
-    return name ? { name: decodeURIComponent(name), url, sha256 } : undefined
+    return name
+      ? { name: decodeURIComponent(name), url, sha256, ...(size && { size: Number(size) }) }
+      : undefined
   } catch {
     return undefined
   }
