@@ -765,14 +765,15 @@ With a [store](./configuration.md#store), a plan or report rule's post is lean: 
 ```
 Result of story
 
-story: read back nothing
+A story in one line.
 
 Status: done
 
 To approve, reply with approve as the first line. Any other reply is feedback: awaywork runs this step again with it.
 
-Pinned mock.png: file:///…/cfg/files/d77a07da-546b-4c13-9e73-7b28cf1ff679/mock.png (sha256 03829bcacd8ea804e6448fb7be79d1577a64544c14ced125f4adb57d44420f86)
-Pinned report.md: file:///…/cfg/files/8c70e42a-8fb0-4dcf-893f-b7fdbfa2de48/report.md (sha256 c17fc6fa082ca935ce5e513362a33a030d0792472befe9e57773d795754f36fc)
+Pinned big.bin: file:///…/cfg/files/ba03611f-0cce-4344-9b3e-11e7413084fa/big.bin (3000 bytes, sha256 e1630f843370f402870799e14abbf2b06af2d23b0153658e1211dffabc61ad8f)
+Pinned mock.png: file:///…/cfg/files/71e96381-7e32-4ee7-9aab-5f803b4de816/mock.png (7 bytes, sha256 2d4566582844690f8634a8b2534ea5221560038c6c0650c99140759bad603ae2)
+Pinned report.md: file:///…/cfg/files/a63b0dec-63e2-4701-968e-8350ad439bae/report.md (22 bytes, sha256 8ce3d4416e83b1da658e0404e2cf700108a3ed2e43b077fadad9eb5ccaa95c8e)
 
 — awaywork · waits
 ```
@@ -788,9 +789,9 @@ Tasks:
 
 To approve, reply with approve as the first line; the lines below it reach the tasks as notes. Any other reply is feedback: awaywork plans again with it.
 
-Pinned openapi.yaml: https://… (sha256 …)
-Pinned plan.yml: https://… (sha256 …)
-Pinned report.md: https://… (sha256 …)
+Pinned openapi.yaml: https://… (2140 bytes, sha256 …)
+Pinned plan.yml: https://… (311 bytes, sha256 …)
+Pinned report.md: https://… (1822 bytes, sha256 …)
 
 — awaywork
 ```
