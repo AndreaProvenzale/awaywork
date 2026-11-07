@@ -1,11 +1,13 @@
 import type { Ranked } from './queue.js'
 
-/** Items that share a key or a linked PR (repo + branch) are one feature; groups and their items keep rank order. */
-export function dedupe(ranked: Ranked[]): Ranked[][] {
+/** Items that share a key or a linked PR (repo + branch) are one feature, unless `alone` keeps one apart; groups and their items keep rank order. */
+export function dedupe(ranked: Ranked[], alone = (_: Ranked) => false): Ranked[][] {
+  const known = new Map(ranked.map((e) => [e, alone(e) ? [] : featureIds(e)]))
+  const ids = (e: Ranked) => known.get(e) ?? []
   let groups: Ranked[][] = []
   for (const entry of ranked) {
-    const ids = featureIds(entry)
-    const linked = groups.filter((g) => g.some((e) => featureIds(e).some((id) => ids.includes(id))))
+    const own = ids(entry)
+    const linked = groups.filter((g) => g.some((e) => ids(e).some((id) => own.includes(id))))
     groups = [...groups.filter((g) => !linked.includes(g)), [...linked.flat(), entry]]
   }
   const position = (e: Ranked) => ranked.indexOf(e)

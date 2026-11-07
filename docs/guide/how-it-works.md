@@ -738,7 +738,7 @@ To approve, reply with approve as the first line. Any other reply is feedback: a
 — awaywork · waits · move=Ready%20for%20design · saw=Inbox
 ```
 
-- **It holds its rule.** Later runs skip the item as **waiting for your approval**, whatever else changes on the card. Other rules on the item run as their `where` says, so a red-CI fix on the linked PR still runs, without the card:
+- **It holds its rule.** Later runs skip the card as **waiting for your approval**, whatever else changes on it, and no rule below takes it meanwhile. Its linked items rank on their own, so a red-CI fix on the linked PR still runs, without the card, wherever `fix` sits in your queue:
 
   ```
   Needs you 1
