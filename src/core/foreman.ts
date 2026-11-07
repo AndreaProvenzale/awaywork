@@ -223,12 +223,12 @@ export function planRun(input: {
       skip('continues_later', `goes on from ${where} in the next window run`, where)
       continue
     }
-    const held = pushedOnto(items, input.attempts ?? {})
-    if (held) {
+    const pushed = pushedOnto(items, input.attempts ?? {})
+    if (pushed) {
       skip(
         'waiting_for_review',
-        `waiting for review: awaywork pushed onto your PR ${held.url}`,
-        held.url,
+        `waiting for review: awaywork pushed onto your PR ${pushed.url}`,
+        pushed.url,
       )
       continue
     }
@@ -245,10 +245,10 @@ export function planRun(input: {
         ? stack.onto
         : waitsFor.find((id) => !taskChain(units, items[0] as Item, id))
     if (unplanned) {
-      const held = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
+      const taskDraft = items[0]?.task?.parent.taskPrs?.[unplanned]?.left
       skip(
         'waiting_for_task',
-        `waiting for task ${unplanned}'s ${held ? `draft, which says ${held.status}` : 'PR to open'}`,
+        `waiting for task ${unplanned}'s ${taskDraft ? `draft, which says ${taskDraft.status}` : 'PR to open'}`,
       )
       continue
     }
