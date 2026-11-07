@@ -8,6 +8,7 @@ import { offerSecrets } from '../src/cli/schedule.js'
 import { ConfigError, loadConfig, parseConfig } from '../src/config/load.js'
 import { pinLogins, pinned } from '../src/config/logins.js'
 import type { Ask, Provider } from '../src/core/types.js'
+import type { Exec } from '../src/forge/gh.js'
 import { claudeProvider } from '../src/providers/claude.js'
 import { codexProvider } from '../src/providers/codex.js'
 import { recorded } from './fakes/gh.js'
@@ -72,6 +73,45 @@ describe('sources.github.user', () => {
   it('pins afresh when the config is loaded again, as watch does', async () => {
     const env: NodeJS.ProcessEnv = {}
     await pinLogins(github(', user: octocat'), env, token)
+    await pinLogins(github(''), env, token)
+    expect(env).toEqual({})
+    expect(pinned(env, 'GH_TOKEN')).toBe(false)
+  })
+
+  it("keeps the previous pin while a reload waits on gh, so a run spawned meanwhile doesn't act as gh's active account", async () => {
+    const env: NodeJS.ProcessEnv = {}
+    await pinLogins(github(', user: octocat'), env, token)
+    let answer = (_: string) => {}
+    const slow = (async () => new Promise<string>((resolve) => (answer = resolve))) as Exec
+    const reload = pinLogins(github(', user: hubot'), env, slow)
+    await Promise.resolve()
+    expect(env.GH_TOKEN).toBe('gho_octocat')
+    answer('gho_hubot')
+    await reload
+    expect(env.GH_TOKEN).toBe('gho_hubot')
+  })
+
+  it('keeps the previous pin when a reload fails, and still reports why', async () => {
+    const env: NodeJS.ProcessEnv = {}
+    await pinLogins(github(', user: octocat'), env, token)
+    const [pin] = await pinLogins(github(', user: octocat'), env, recorded([]))
+    expect(pin?.problem).toMatch("octocat isn't logged in to gh")
+    expect(env.GH_TOKEN).toBe('gho_octocat')
+    expect(pinned(env, 'GH_TOKEN')).toBe(true)
+  })
+
+  it("never takes a pinned token for the environment's own when two loads overlap", async () => {
+    const env: NodeJS.ProcessEnv = {}
+    await Promise.all([
+      pinLogins(github(', user: octocat'), env, token),
+      pinLogins(github(', user: octocat'), env, token),
+    ])
+    await Promise.all([
+      pinLogins(github(', user: octocat'), env, token),
+      pinLogins(github(', user: octocat'), env, token),
+    ])
+    const [pin] = await pinLogins(github(', user: octocat'), env, token)
+    expect(pin?.by).toBeUndefined()
     await pinLogins(github(''), env, token)
     expect(env).toEqual({})
     expect(pinned(env, 'GH_TOKEN')).toBe(false)

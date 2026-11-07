@@ -19,11 +19,17 @@ export interface Pin {
   problem?: string
 }
 
-/** Each env's values from before awaywork pinned them, so a config loaded again pins afresh. */
+/** Each env's own values of the names awaywork pinned, kept from the moment it first pinned each. */
 const before = new WeakMap<NodeJS.ProcessEnv, Map<string, string | undefined>>()
 
 /** Whether `name` holds a login awaywork pinned rather than one from the environment. */
 export const pinned = (env: NodeJS.ProcessEnv, name: string) => before.get(env)?.has(name) ?? false
+
+/** The environment's own value of `name`, whatever awaywork pinned over it. */
+const own = (env: NodeJS.ProcessEnv, name: string) => {
+  const was = before.get(env)
+  return was?.has(name) ? was.get(name) : env[name]
+}
 
 export const expandHome = (path: string) =>
   path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
@@ -31,21 +37,26 @@ export const expandHome = (path: string) =>
 /**
  * Points `env` at the logins the config pins, each provider's `config_dir` and `sources.github.user`'s gh account,
  * where the environment brings no login of its own. Returns every pin, the ones it couldn't make included.
+ * Resolves every pin before touching `env`, then sets them all at once, so a run spawned meanwhile keeps the
+ * previous pins; a pin it can't make leaves that variable as it was.
  */
 export async function pinLogins(
   config: Config,
   env: NodeJS.ProcessEnv = process.env,
   run: Exec = exec,
 ): Promise<Pin[]> {
-  const was = before.get(env) ?? new Map<string, string | undefined>()
-  before.set(env, was)
-  for (const [name, value] of was) set(env, name, value)
-  was.clear()
   const gh = await ghPin(config, env, run)
   const pins = [...providerPins(config, env), ...(gh ? [gh] : [])]
+  const was = before.get(env) ?? new Map<string, string | undefined>()
+  before.set(env, was)
+  for (const name of was.keys())
+    if (!pins.some((p) => p.name === name && !p.by)) {
+      set(env, name, was.get(name))
+      was.delete(name)
+    }
   for (const pin of pins) {
     if (pin.by || pin.problem) continue
-    was.set(pin.name, env[pin.name])
+    if (!was.has(pin.name)) was.set(pin.name, env[pin.name])
     set(env, pin.name, pin.value)
   }
   return pins
@@ -62,7 +73,7 @@ function providerPins(config: Config, env: NodeJS.ProcessEnv): Pin[] {
     const login = provider?.loginDir
     if (!dir || !provider || !login) return []
     const pin = { what: id, key: `providers[${i}].${id}.config_dir`, name: login.env }
-    const by = provider.secrets.find((name) => env[name])
+    const by = provider.secrets.find((name) => own(env, name))
     if (by) return [{ ...pin, by }]
     const path = expandHome(dir)
     if (!existsSync(path))
@@ -88,7 +99,7 @@ async function ghPin(config: Config, env: NodeJS.ProcessEnv, run: Exec): Promise
     ? ['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
     : ['GH_TOKEN', 'GITHUB_TOKEN']
   const pin = { what: 'gh', key: 'sources.github.user', name: names[0] as string }
-  const by = names.find((name) => env[name])
+  const by = names.find((name) => own(env, name))
   if (by) return { ...pin, by }
   const hostname = host ? ['--hostname', host] : []
   const token = (
