@@ -249,6 +249,11 @@
                     },
                     "additionalProperties": false,
                     "description": "Overrides the top-level budget for this provider"
+                  },
+                  "config_dir": {
+                    "type": "string",
+                    "pattern": "^~?\\/",
+                    "description": "Folder of the login it runs on, passed as CLAUDE_CONFIG_DIR, e.g. ~/.claude-work; default the environment's; CLAUDE_CODE_OAUTH_TOKEN wins when set; not with isolation: user or container"
                   }
                 },
                 "additionalProperties": false
@@ -321,6 +326,11 @@
                     },
                     "additionalProperties": false,
                     "description": "Overrides the top-level budget for this provider"
+                  },
+                  "config_dir": {
+                    "type": "string",
+                    "pattern": "^~?\\/",
+                    "description": "Folder of the login it runs on, passed as CODEX_HOME, e.g. ~/.codex-work; default the environment's"
                   }
                 },
                 "additionalProperties": false
@@ -487,6 +497,11 @@
               "description": "GitHub Enterprise host, e.g. github.acme.com; github.com by default",
               "type": "string",
               "pattern": "^[^/\\s]+$"
+            },
+            "user": {
+              "description": "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]+$"
             },
             "search": {
               "description": "Extra GitHub search qualifiers, each ANDed with is:open archived:false (and with is:closed when a rule reads finished items), e.g. label:awaywork or mentions:@me; items they find are neither mine nor review-requested",

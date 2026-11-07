@@ -67,7 +67,7 @@ export function configCommand(program: Command): void {
         }[outcome],
       )
       if (outcome === 'saved') {
-        const config = await loadConfig(path)
+        const config = await loadConfig(path, { pin: false })
         const unknown = await unknownSkillsWarning(config, skillsDirOf(path))
         if (unknown) console.error(`warning: ${unknown}`)
         for (const warning of await staleSchedules(path, config.windows))

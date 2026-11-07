@@ -83,6 +83,15 @@ export function codexProvider(
     unattended: 'grey',
     install: { npm: '@openai/codex' },
     secrets: [],
+    loginDir: { env: 'CODEX_HOME', default: '~/.codex', command: 'codex login' },
+
+    /** `codex login status`'s line, e.g. `Logged in using ChatGPT`. */
+    async account(env) {
+      const status = await execa(bin, ['login', 'status'], { env, extendEnv: false, reject: false })
+      const line = (status.stderr.trim() || status.stdout.trim()).split('\n').at(-1) ?? ''
+      if (status.failed) throw new Error(line || 'not logged in')
+      return line
+    },
 
     unavailable: (env) => (env.RUNNER_ENVIRONMENT === 'github-hosted' ? HOSTED_RUNNER : undefined),
 

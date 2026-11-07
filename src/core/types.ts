@@ -225,6 +225,10 @@ export interface Provider {
   prepare?(job: Job): Promise<void>
   /** Under a worker user, whose `HOME` is fresh for each clone: lends it the machine's own login for the run. */
   login?: Login
+  /** The env var naming the folder its login is in, which a config's `config_dir` sets; the folder without it, and how to log in. */
+  loginDir?: { env: string; default: string; command: string }
+  /** Who it's logged in as in `env`; throws when it isn't. */
+  account?(env: NodeJS.ProcessEnv): Promise<string>
   /** Where the binary finds skills in the clone; unset, they come in `Job.plugin`. */
   skillsDir?: string
   instructionsFile: string
