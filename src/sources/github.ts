@@ -16,6 +16,13 @@ const config = z
       .regex(/^[^/\s]+$/, 'host only, no scheme or path')
       .optional()
       .describe('GitHub Enterprise host, e.g. github.acme.com; github.com by default'),
+    user: z
+      .string()
+      .regex(/^[A-Za-z0-9-]+$/, 'expected a GitHub login')
+      .optional()
+      .describe(
+        "The gh account awaywork acts as, e.g. octocat: its `gh auth token` becomes GH_TOKEN (GH_ENTERPRISE_TOKEN with a host) for everything awaywork does on GitHub; default gh's active account. A token already in the environment wins",
+      ),
     search: z
       .array(z.string().min(1))
       .optional()

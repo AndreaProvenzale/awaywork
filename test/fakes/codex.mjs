@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stands in for the `codex` binary: replays a recorded exec run or answers the app server's rate-limit read.
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const args = process.argv.slice(2)
@@ -9,6 +9,11 @@ const recorded = (name) =>
 
 if (args.includes('--version')) {
   console.log('codex-cli 0.149.1')
+} else if (args[0] === 'login') {
+  const home = process.env.CODEX_HOME || `${process.env.HOME}/.codex`
+  const loggedIn = existsSync(`${home}/auth.json`)
+  console.error(loggedIn ? 'Logged in using ChatGPT' : 'Not logged in')
+  process.exitCode = loggedIn ? 0 : 1
 } else if (args[0] === 'app-server') {
   const [init, notice, limits] = recorded('rate-limits').trim().split('\n')
   for await (const line of createInterface({ input: process.stdin })) {
