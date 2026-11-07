@@ -186,7 +186,7 @@ export const gitRoot = (run: Exec = exec) =>
   run('git', ['rev-parse', '--show-toplevel']).catch(() => undefined)
 
 /** The `--with` value: '' for this machine's default scheduler. */
-export const whereToRun = (ask: Ask, later = false) =>
+export const whereToRun = (ask: Ask) =>
   ask.select(
     'Where should it run on a schedule?',
     [
@@ -196,7 +196,6 @@ export const whereToRun = (ask: Ask, later = false) =>
         value: DOCKER,
         label: 'a container (Docker Compose, e.g. Coolify), from the repo in this directory',
       },
-      ...(later ? [{ value: 'later', label: 'later, with awaywork schedule install' }] : []),
     ],
     '',
   )

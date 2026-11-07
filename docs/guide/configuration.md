@@ -268,7 +268,7 @@ Asana has no read-only personal token: the token can do anything you can. awaywo
 
 Linear takes a personal API key (Settings > Account > Security & access). awaywork only reads with it, unless a rule's [`on_done`](#on-done) moves your issues or awaywork posts [questions](./how-it-works.md#questions) or a [plan](./how-it-works.md#plans), and never hands it to the agent, unless you list it in an [MCP server](#mcp-servers)'s `secrets`: when Linear offers the choice, give the key read access only, or write access too for `on_done`, questions and plans.
 
-Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done), [questions](./how-it-works.md#questions) and [plans](./how-it-works.md#plans): `init` then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done`, questions and plans aside. Tokens expire after at most a year.
+Jira Cloud takes an Atlassian API token (id.atlassian.com > Security > API tokens). Prefer "Create API token with scopes", app Jira, scope `read:jira-work`, plus `write:jira-work` for [`on_done`](#on-done), [questions](./how-it-works.md#questions) and [plans](./how-it-works.md#plans): the `/away` setup then finds the site's `cloud_id` and awaywork calls `api.atlassian.com`, as scoped tokens require. A token without scopes can do anything you can; awaywork only reads with it, `on_done`, questions and plans aside. Tokens expire after at most a year.
 
 Jira custom fields that share a name are keyed by name and id, such as `fields.Team (customfield_10040)`.
 

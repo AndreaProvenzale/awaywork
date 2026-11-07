@@ -20,6 +20,8 @@ function packageRoot(dir = dirname(fileURLToPath(import.meta.url))): string {
 export const harnessPath = join(packageRoot(), 'harness.md')
 export const builtinSkillsDir = join(packageRoot(), 'skills')
 export const dockerDir = join(packageRoot(), 'docker')
+/** The Claude Code plugin the package ships, for a `--plugin-dir` session. */
+export const pluginDir = join(packageRoot(), 'plugin')
 export const packageVersion: string = JSON.parse(
   readFileSync(join(packageRoot(), 'package.json'), 'utf8'),
 ).version

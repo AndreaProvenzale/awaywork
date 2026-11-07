@@ -60,7 +60,7 @@ With no `queue` in the config, the default one applies, keeping only the rules w
 | 12  | `plan`      | Linear | status `Todo`                                |
 | 13  | `plan`      | Jira   | status `To Do`                               |
 
-The section and status names are guesses; `awaywork init` replaces them with your tracker's real ones and writes the queue out so you can edit it.
+The section and status names are guesses; the setup `awaywork init` hands to `/away` replaces them with your tracker's real ones and writes the queue out so you can edit it.
 
 ## Units
 
