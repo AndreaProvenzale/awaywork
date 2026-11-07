@@ -1,9 +1,8 @@
 import { type Command, InvalidArgumentError, Option } from 'commander'
 import { configPath, loadConfig } from '../config/load.js'
-import { approvalsPath, attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
+import { attemptsPath, skillsDirOf, skipsPath } from '../config/paths.js'
 import type { Config } from '../config/schema.js'
 import { loadSkills } from '../config/skills.js'
-import { loadApprovals, withApprovals } from '../core/approvals.js'
 import { loadAttempts } from '../core/attempts.js'
 import { type Allowance, allowance, pct } from '../core/budget.js'
 import { taskBranches, taskPr } from '../core/fanout.js'
@@ -166,10 +165,7 @@ export async function probeAndPlan(
     )
 
   const { onProgress, soon, failed } = opts
-  const items = withApprovals(
-    await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed }),
-    await loadApprovals(approvalsPath),
-  )
+  const items = await collectItems(config, ctx, { onProgress, sources: soon?.sources, failed })
 
   const at = opts.at ?? new Date()
   const present = opts.present ?? !windowEnd(config.windows, at)
@@ -232,7 +228,7 @@ export async function probeAndPlan(
 async function describeRules(config: Config, json = false): Promise<string> {
   const warnings: string[] = []
   const ctx: Ctx = { env: process.env, log: (line) => warnings.push(line) }
-  const items = withApprovals(await collectItems(config, ctx), await loadApprovals(approvalsPath))
+  const items = await collectItems(config, ctx)
   const secrets = configSecrets(config, providersOf(config), configuredSources(config))
   const masked = warnings.map((w) => maskSecrets(w, secrets, ctx.env))
   const rules = config.queue ?? defaultRules(Object.keys(config.sources))

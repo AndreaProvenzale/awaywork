@@ -9,7 +9,6 @@ import { describeCondition, holds } from '../core/condition.js'
 import { byHand } from '../core/continue.js'
 import { planComment, questionsComment, resultComment, type Status } from '../core/footer.js'
 import {
-  bySlice,
   describeChain,
   isNamed,
   modelFor,
@@ -64,12 +63,11 @@ import { unwritable, writeItem } from '../sources/index.js'
 import { commitsSince, createChecks, git, head, untilHolds } from './checks.js'
 import { fetchContexts } from './context.js'
 import { notifyUnit } from './notify.js'
-import type { Outcome, Stack } from './publish.js'
+import type { Outcome } from './publish.js'
 import type { ReplayState } from './replay.js'
 import { runWorker, type WorkerOptions } from './run.js'
 import { maskSecrets, runSetup } from './setup.js'
 import {
-  cutBranch,
   describeLoop,
   freeBranch,
   type Held,
@@ -170,16 +168,13 @@ const triedLater = (r: UnitResult) =>
   (!!r.reason?.startsWith('no provider left') ||
     (!!r.passedOver && !!r.reason?.startsWith('when ')))
 
-/** Where a chain's slice keeps what it published: `out/`, `out-2/` and so on. */
-const sliceOut = (at: number) => (at > 0 ? `out-${at + 1}` : 'out')
-
-/** Why a `deliver: pr` slice opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
+/** Why a `deliver: pr` chain opens as a draft: a step that failed, stopped or never ran; `runLine` splits at `; `. */
 function notReady(r: UnitResult): string {
   const why = r.status === 'skipped' && r.reason?.split('\n')[0]?.split('; ')[0]
   return `${r.planned.unit.id} ${r.status}${why ? `: ${why}` : ''}`
 }
 
-/** A step's files, and what it concluded: its slice's PR body when it leads the slice, else its report. */
+/** A step's files, and what it concluded: the chain's PR body when it leads the chain, else its report. */
 async function leftBy(
   runDir: string,
   chainId: string,
@@ -190,7 +185,7 @@ async function leftBy(
   if (!r.step) return {}
   // Relative and with `/`: report.json is read on other machines, from an uploaded artifact.
   const step = posix.join('units', chainId, r.step)
-  const slice = posix.join('units', chainId, sliceOut(r.planned.slice ?? 0))
+  const slice = posix.join('units', chainId, 'out')
   const all: StepFiles = {
     log: posix.join(step, 'worker.log'),
     report: posix.join(step, 'out', outputFile.report),
@@ -214,23 +209,19 @@ async function leftBy(
 /** Under every tracker's comment limit as text; Jira's write also checks the longer ADF it sends. */
 const MAX_COMMENT_BYTES = 30_000
 
-/** A slice's outcome that published: a PR, a push, a report or a pending review left. */
+/** A chain's outcome that published: a PR, a push, a report or a pending review left. */
 const delivered = (o: Outcome | undefined) =>
   !!o && o.kind !== 'none' && !(o.kind === 'report' && o.unposted)
 
-/** A finished chain's result: each slice's report, or a line linking what it published. */
-const resultOf = (outcomes: Outcome[]): string =>
-  outcomes
-    .map((o) => {
-      if (o.kind === 'report') return o.text
-      if (o.kind === 'pr') return `Opened ${o.url}${o.ready ? '' : ' as a draft'}`
-      if (o.kind === 'pushed')
-        return `Pushed ${o.commits} ${o.commits === 1 ? 'commit' : 'commits'} onto ${o.url}`
-      if (o.kind === 'review') return `Left your pending review on ${o.url}`
-      return ''
-    })
-    .filter(Boolean)
-    .join('\n\n')
+/** A finished chain's result: its report, or a line linking what it published. */
+function resultOf(o: Outcome | undefined): string {
+  if (o?.kind === 'report') return o.text
+  if (o?.kind === 'pr') return `Opened ${o.url}${o.ready ? '' : ' as a draft'}`
+  if (o?.kind === 'pushed')
+    return `Pushed ${o.commits} ${o.commits === 1 ? 'commit' : 'commits'} onto ${o.url}`
+  if (o?.kind === 'review') return `Left your pending review on ${o.url}`
+  return ''
+}
 
 /** A failed step to retry: the clone as it found it, and what it leaves the chain if the retry can't start. */
 interface Retry {
@@ -257,11 +248,10 @@ export function namedChains(plan: RunPlan, name: string): PlannedUnit[] {
 
 /**
  * Runs the plan's chains one at a time, re-routing as windows fill. A rule's steps all work in one
- * clone, and each slice of the chain publishes once, when it ends: its commits as a PR or a
- * push onto your PR, else its reports. A PR stacks on the awaywork PR a rule took up, or on
- * the slice before, whose pushed tip the next slice's commits are published onto.
+ * clone, and the chain publishes once, when it ends: its commits as a PR or a push onto your PR,
+ * else its reports. A PR stacks on the awaywork PR a rule took up, or on the task's it stacks on.
  * Every step leaves `units/<id>/<n>-<skill>/` in the run dir: its context, prompt, output and worker
- * log; what each slice published is in `units/<id>/out/`, `out-2/` and so on.
+ * log; what the chain published is in `units/<id>/out/`.
  */
 export async function runUnits(input: RunInput): Promise<RunReport> {
   const startedAt = new Date()
@@ -454,38 +444,35 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     return { tasks, ...(await postComment(p, 'plan', () => body)) }
   }
 
-  /** Runs notify for each step of a finished chain: its own output, and its slice's PR. Once interrupted, none starts. */
+  /** Runs notify for each step of a finished chain: its own output, and the chain's PR. Once interrupted, none starts. */
   const notifyUnits = async (chain: UnitResult[]) => {
     const hook = input.config.notify
     if (!hook || input.dryRun) return
-    for (const slice of bySlice(chain, (r) => r.planned.slice)) {
-      const outcome = slice.find((r) => r.outcome)?.outcome
-      const pr = outcome?.kind === 'pr' ? outcome.url : undefined
-      for (const r of slice) {
-        if (input.signal?.aborted) return
-        const { id, skill, deliver, items, repo } = r.planned.unit
-        const chainId = r.planned.chain ?? id
-        const outDir = r.step && join(input.runDir, 'units', chainId, r.step, 'out')
-        const out = outDir && join(outDir, outputFile[deliver])
-        const failure = await notifyUnit(
-          hook.command,
-          {
-            runId: input.runId,
-            id,
-            skill,
-            status: r.status,
-            items,
-            repo,
-            verdict: r.verdict,
-            pr,
-            report: out && existsSync(out) ? out : undefined,
-            outDir: outDir && existsSync(outDir) ? outDir : undefined,
-          },
-          input.signal,
-        )
-        if (failure)
-          event(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
-      }
+    const outcome = chain.find((r) => r.outcome)?.outcome
+    const pr = outcome?.kind === 'pr' ? outcome.url : undefined
+    for (const r of chain) {
+      if (input.signal?.aborted) return
+      const { id, skill, deliver, items, repo } = r.planned.unit
+      const chainId = r.planned.chain ?? id
+      const outDir = r.step && join(input.runDir, 'units', chainId, r.step, 'out')
+      const out = outDir && join(outDir, outputFile[deliver])
+      const failure = await notifyUnit(
+        hook.command,
+        {
+          runId: input.runId,
+          id,
+          skill,
+          status: r.status,
+          items,
+          repo,
+          verdict: r.verdict,
+          pr,
+          report: out && existsSync(out) ? out : undefined,
+          outDir: outDir && existsSync(outDir) ? outDir : undefined,
+        },
+        input.signal,
+      )
+      if (failure) event(`notify failed for ${id}: ${maskSecrets(failure, secrets, input.ctx.env)}`)
     }
   }
 
@@ -502,7 +489,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         .flatMap((i) => i.linkedPrs)
         .find((pr) => pr.ours && pr.repo === repo && pr.branch === base)?.url ??
       first.unit.stackedOn
-    // The open slice's base, branch and the PR it stacks on: the awaywork PR the chain started on, or the slice before's; a draft it resumes stacks as it did.
+    // The chain's base, branch and the PR it stacks on: the awaywork PR the chain started on; a draft it resumes stacks as it did.
     const shape = {
       base,
       branch: first.unit.branch,
@@ -514,22 +501,13 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const dir = isolated() ? await workerRoot(0o700) : join(root, 'work', first.unit.id)
     const chainDir = join(input.runDir, 'units', first.unit.id)
     const steps = chain.length > 1 ? describeChain(chain) : undefined
-    const slices = bySlice(chain, (p) => p.slice).length
-    // Slices publish from one repo of awaywork's own, where the next sits on the commits the one before pushed.
-    const stack: Stack | undefined =
-      slices > 1 ? { repo: join(input.runDir, 'publish', first.unit.id) } : undefined
-    // Branches this chain published: a later slice passes them over, not taking them for an earlier attempt.
-    const published = new Set<string>()
-    let at = 0
-    let opening = first
-    let loops: Record<number, OpenLoop> = {}
-    let reports: StepReport[] = []
+    const loops: Record<number, OpenLoop> = {}
+    const reports: StepReport[] = []
     let cloned: string | undefined
     // What gates compare their scripts with: an awaywork PR's commits are a worker's, so where it left the default branch.
     let original: string | undefined
-    // Where the open slice's commits start in the clone, and whether its branch is still to be cut there.
+    // Where the chain's commits start in the clone.
     let from: string | undefined
-    let cut = false
     let previous: Previous | undefined
     let verdict: string | undefined
     // The merge commit awaywork made itself, the one head a merging unit may push.
@@ -541,9 +519,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     let interrupted = false
     // A step that failed, to run again on its provider's next model.
     let retrying: Retry | undefined
-    // Why the steps left didn't run, whether they're passed over rather than missed, and whether a slice's `when` did.
+    // Why the steps left didn't run, whether they're passed over rather than missed, and whether the rule's `when` did.
     let ended: { reason: string; passedOver?: true; when?: true } | undefined
-    // A slice that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
+    // A chain that ran and didn't publish, had a step fail or a loop whose `until` never held: on_done doesn't run.
     let unfinished = false
     // The step that couldn't go on without answers, and its questions.
     let asked: Pick<Questions, 'step' | 'text'> | undefined
@@ -551,23 +529,19 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
     const leave = (status: Held['status']): Held & { byHand?: string } => {
       const continued = status === 'continue' ? before + 1 : before
       const refused = input.forge.ownDraftsRefused
-      const stop = opensPr && byHand({ continued, refused }, { slice: at })
+      const stop = opensPr && byHand({ continued, refused })
       return { status, continued, ...(stop && { byHand: stop.why }) }
     }
     let leaves: ReturnType<typeof leave> | undefined
     // The note saying the draft it left is yours to finish by hand.
     let finishByHand: string | undefined
-    // Each slice's first step, which publishes it.
-    const leads = new Set<UnitResult>()
+    // The chain's first step, once it published the chain.
+    let publishedBy: UnitResult | undefined
 
-    /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the slice's `out/`. */
+    /** Runs a gate's judge like a step, on the rule's providers and models, its worker log in the chain's `out/`. */
     const judge: Publisher['judge'] = async (gate, skill, unit, dir, from) => {
-      // On a provider that ran a step of its slice, a judge rides on that step's fallback unit; elsewhere it takes one.
-      const ranSlice = new Set(
-        done
-          .filter((r) => (r.planned.slice ?? 0) === at && r.status !== 'skipped')
-          .map((r) => r.provider),
-      )
+      // On a provider that ran a step of the chain, a judge rides on that step's fallback unit; elsewhere it takes one.
+      const ranSlice = new Set(done.filter((r) => r.status !== 'skipped').map((r) => r.provider))
       const counted = Object.fromEntries(Object.entries(routed).filter(([p]) => !ranSlice.has(p)))
       const { provider: id, passed } = route(unit.providers, allowances, counted)
       const provider = id && input.providers[id]
@@ -580,7 +554,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       const model = modelFor(unit.rule.model, id, 0) ?? entry?.model
       const name = `judge-${gate}-${slug(skill)}`
       input.ctx.log(`${unit.id}: gate ${gate}, ${skill} on ${id}${model ? ` (${model})` : ''}`)
-      const out = join(chainDir, sliceOut(at))
+      const out = join(chainDir, 'out')
       await mkdir(out, { recursive: true })
       const logFile = createWriteStream(join(out, `${name}.log`))
       const log = (line: string) => logFile.write(`${new Date().toISOString()} ${line}\n`)
@@ -753,21 +727,20 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       event(`${unit.id}: ${result.status}`)
     }
 
-    /** Publishes the open slice once its last step ended; after its PR, the next slice is cut at the clone's tip. */
-    const endSlice = async (last: boolean) => {
+    /** Publishes the chain once its last step ended. */
+    const publishChain = async () => {
       const lead = done.find(
-        (r) => r.planned.unit.id === opening.unit.id && r.status !== 'skipped' && !r.retried,
+        (r) => r.planned.unit.id === first.unit.id && r.status !== 'skipped' && !r.retried,
       )
-      const out = join(chainDir, sliceOut(at))
-      // A step the chain ended before also leaves the slice unfinished; one passed over by its `when` doesn't.
+      const out = join(chainDir, 'out')
+      // A step the chain ended before also leaves it unfinished; one passed over by its `when` doesn't.
       const failed = done.find(
         (r) =>
-          (r.planned.slice ?? 0) === at &&
           !r.retried &&
           (/^(failed|stopped|error)/.test(r.status) || (r.status === 'skipped' && !r.passedOver)),
       )
       if (from !== undefined && lead && ran && !input.dryRun) {
-        leads.add(lead)
+        publishedBy = lead
         if (Object.keys(loops).length) lead.loop = Object.values(loops).map(describeLoop).join('; ')
         interrupted ||= !!input.signal?.aborted
         try {
@@ -779,8 +752,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 ? "the clone's .git was refused"
                 : unmerged
           const askedOn = ownItems(first).find((i) => !unwritable(i, input.sources[i.source]))
-          // A first slice's footer records it even when no later run goes on, to hold dependents back; a stacked slice's would resume onto it.
-          const held = at === 0 && leaves ? { ...leaves, url: askedOn?.url } : undefined
+          // The footer records it even when no later run goes on, to hold dependents back.
+          const held = leaves && { ...leaves, url: askedOn?.url }
           lead.outcome = kept
             ? { kind: 'none', reason: kept, unpublished: true }
             : await publishSlice(
@@ -800,15 +773,14 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
                 original ?? from,
                 reports,
                 loops,
-                stack,
-                // Only the whole chain, cut from the default branch as the draft it resumes was, closes its issues.
-                last && !first.capped && (base === '' || (!!shape.resume && !shape.stackedOn)),
+                // Only a chain cut from the default branch, as the draft it resumes was, closes its issues.
+                base === '' || (!!shape.resume && !shape.stackedOn),
                 (failed && notReady(failed)) || leaves?.byHand,
                 held,
               )
-          // A stacked slice's questions stay in the report whatever it published; a first slice's only with a draft.
-          if (leaves?.byHand && (at > 0 || lead.outcome.kind === 'pr'))
-            finishByHand = `${leaves.byHand}: finish ${lead.outcome.kind === 'pr' ? lead.outcome.url : `it on ${shape.stackedOn}`} by hand`
+          // Its questions stay in the report only with a draft.
+          if (leaves?.byHand && lead.outcome.kind === 'pr')
+            finishByHand = `${leaves.byHand}: finish ${lead.outcome.url} by hand`
           if (asked && lead.outcome.kind === 'none' && !lead.outcome.unpublished)
             lead.outcome = { kind: 'none', reason: 'asked questions' }
         } catch (e) {
@@ -819,43 +791,12 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
       if (lead && (failed || !delivered(lead.outcome) || Object.values(loops).some((l) => !l.held)))
         unfinished = true
-      if (last || ended) return
-      const outcome = lead?.outcome
-      if (outcome?.kind === 'pr') {
-        if (stack) stack.onto = outcome.head
-        shape.stackedOn = outcome.url
-        if (previous)
-          previous.published = { url: outcome.url, body: join(out, outputFile.draft_pr) }
-      } else if (!input.dryRun) {
-        ended = { reason: `${opening.unit.id} opened no PR to stack on`, passedOver: true }
-        return
-      }
-      published.add(shape.branch)
-      shape.base = shape.branch
-      shape.resume = undefined
-      cut = true
-      try {
-        // The next slice's commits are those after the clone's tip, and it writes its own PR body.
-        from = await head(dir)
-        await refuseSymlinks(dir, [`${WORK_DIR}/out`])
-        await rm(join(dir, WORK_DIR, 'out'), { recursive: true, force: true })
-      } catch (e) {
-        ended = { reason: `${opening.unit.id} error: ${(e as Error).message}` }
-      }
     }
 
     for (let i = 0; i < chain.length; i += retrying ? 0 : 1) {
       const p = chain[i] as PlannedUnit
       const retryOf = retrying
       retrying = undefined
-      if ((p.slice ?? 0) !== at) {
-        await endSlice(false)
-        at = p.slice ?? 0
-        opening = p
-        loops = {}
-        reports = []
-        ran = false
-      }
       if (p.loop) loops[p.loop.at] ??= { skills: p.loop.skills, rounds: 0 }
       const loop = p.loop && loops[p.loop.at]
       // A loop's later rounds run only while it goes on: once the chain ended, or in a dry run, only its first is listed.
@@ -909,9 +850,9 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         continue
       }
       // A resumed draft's branch is the unit's own: no other name to find.
-      if ((cloned === undefined || cut) && opensPr && !shape.resume) {
+      if (cloned === undefined && opensPr && !shape.resume) {
         const named = p.unit.branch
-        const free = await freeBranch(input.forge, p.unit, published).catch((e: Error) => ({
+        const free = await freeBranch(input.forge, p.unit).catch((e: Error) => ({
           skip: `couldn't check ${named} on ${unit.repo}: ${e.message}`,
         }))
         if ('skip' in free) {
@@ -953,10 +894,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (retryOf) await discard(dir, retryOf.start, retryOf.saved)
         const ctx = { ...input.ctx, log }
         const reuse = cloned !== undefined
-        if (cut) {
-          await cutBranch(dir, unit.branch)
-          cut = false
-        }
         const prompt = await prepareWorkspace({
           ...input,
           unit,
@@ -969,7 +906,6 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           reuse,
           shipped,
           chain: steps,
-          slice: slices > 1 ? { n: at + 1, of: slices } : undefined,
           loop: p.loop,
         })
         if (checked) {
@@ -1051,8 +987,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
             Object.assign(result, { status: 'skipped', reason, passedOver: true })
             event(`${unit.id}: skipped, ${reason}`)
             routed[id] = (routed[id] ?? 1) - 1
-            // A rule's own `when` gates its whole chain, and a stacked step's the rest of it.
-            if (p === opening) ended = { reason, passedOver: true, when: true }
+            // A rule's own `when` gates its whole chain.
+            if (p === first) ended = { reason, passedOver: true, when: true }
             // A refused check is refused every round: the loop would repeat without its step.
             else if (loop && p.loop && met.check?.refused) loop.ended = reason
             else if (loop && p.loop && p.loop.step === p.loop.skills.length - 1) {
@@ -1095,8 +1031,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         if (a.kind === 'quota')
           result.baseline = { name: a.window, used: a.used, resetsAt: a.resetsAt }
         start = await head(dir)
-        const retryable =
-          !retryOf && published.size === 0 && modelFor(unit.rule.model, id, 1) !== undefined
+        const retryable = !retryOf && modelFor(unit.rule.model, id, 1) !== undefined
         const saved = retryable ? await snapshot(dir) : undefined
         ran = true
         const worker = await runWorker(provider, job, a, {
@@ -1187,8 +1122,7 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
         else if (asks) {
           ended = { reason: `${unit.id} asked questions`, passedOver: true }
           asked = { step: unit.id, text: questions }
-          // A stacked slice's questions reach no later run, whatever its status file said.
-          if (status === 'ask' || at > 0) leaves = leave('ask')
+          if (status === 'ask') leaves = leave('ask')
         } else if (status === 'continue' && kept) {
           leaves = leave('continue')
           ended = {
@@ -1197,8 +1131,8 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
           }
         } else if (!left) {
           const reason = `${unit.id} ${reportsOnly(unit.deliver) ? 'wrote no report' : 'committed nothing'}`
-          // Inside a loop it ends only the loop, and the steps after it still run; a stacked slice's first step leaves it nothing.
-          if (loop && !(at > 0 && p === opening)) loop.ended = reason
+          // Inside a loop it ends only the loop, and the steps after it still run.
+          if (loop) loop.ended = reason
           else ended = { reason, passedOver: true }
         } else if (loop && p.loop) {
           if (result.verdict) loop.verdict = result.verdict
@@ -1242,10 +1176,10 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       event(`${unit.id}: ${result.status}`)
     }
 
-    await endSlice(true)
+    await publishChain()
     const onDone = input.plan.queue[first.rule]?.on_done
     const lead = done.find((r) => !r.planned.chain && !r.retried)
-    // Answers to a stacked slice, or to a draft awaywork can't push onto, would reach no later run.
+    // Answers to a draft awaywork can't push onto would reach no later run.
     if (asked && lead)
       lead.questions = {
         ...asked,
@@ -1253,35 +1187,38 @@ export async function runUnits(input: RunInput): Promise<RunReport> {
       }
     else if (finishByHand && lead) lead.byHand = finishByHand
     if (deliver === 'plan' && !asked && lead?.outcome?.kind === 'report')
-      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, sliceOut(0)))
+      lead.plan = await postPlan(first, lead.outcome.text, join(chainDir, 'out'))
     // A unit that goes on isn't done: a report keeps its count in its result, a PR in its draft.
     const continues = leaves?.status === 'continue'
-    // Every slice that ran published, and only a `when`, or a report's `continue`, ended the chain early; a plan rule's plan was posted.
+    // The chain ran and published, and only a `when`, or a report's `continue`, ended it early; a plan rule's plan was posted.
     const finished =
       !interrupted &&
       !unfinished &&
       (!ended || ended.when || (continues && deliver === 'report')) &&
-      leads.size > 0
+      !!publishedBy
     const posted = deliver !== 'plan' || !!lead?.plan?.url
     if (lead && finished && posted && !input.dryRun && !input.signal?.aborted) {
       // A report task's result is how its card hears it's done, so it always posts one.
       if (onDone?.comment === 'result' || (first.unit.items[0]?.task && reportsOnly(deliver))) {
-        const outcomes = [...leads].flatMap((r) => r.outcome ?? [])
         const status = continues ? 'continue' : 'done'
-        lead.result = await postResult(first, resultOf(outcomes), status, leaves?.continued)
+        lead.result = await postResult(
+          first,
+          resultOf(publishedBy?.outcome),
+          status,
+          leaves?.continued,
+        )
       }
       if (onDone?.move && !continues)
         lead.moved = await moveItems(ownItems(first), onDone.move, lead.result)
     }
     for (const r of done) {
-      // A committing slice that committed nothing published its reports.
-      const published = leads.has(r) && r.outcome?.kind === 'report' ? 'report' : deliver
-      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, leads.has(r)))
+      // A committing chain that committed nothing published its reports.
+      const published = r === publishedBy && r.outcome?.kind === 'report' ? 'report' : deliver
+      Object.assign(r, await leftBy(input.runDir, first.unit.id, r, published, r === publishedBy))
     }
     for (const path of [dir, workerHome(dir)])
       if (path && !input.dryRun && !lostToWorker(path))
         await rm(path, { recursive: true, force: true })
-    if (stack) await rm(stack.repo, { recursive: true, force: true })
     return done
   }
 

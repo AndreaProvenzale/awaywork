@@ -3880,19 +3880,6 @@ it('runs the gate script the chain started with, and fires without running one t
   )
   expect(byVerify.outcomes[0]).toMatchObject({ draft: 'gate routes fired' })
   expect(byVerify.opened[0]?.body).toContain(swapped)
-
-  const stacked = await gated(
-    `${routesGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    (dir, skill) =>
-      skill === 'implement'
-        ? commitFile(dir, 'scripts/gate.sh', 'exit 0\n')
-        : commitFile(dir, 'src/routes.ts', 'x'),
-  )
-  expect(stacked.outcomes).toMatchObject([
-    { draft: 'gate routes fired' },
-    { draft: 'gate routes fired' },
-  ])
-  expect(stacked.opened[1]?.body).toContain(swapped)
 })
 
 it("fires a changed gate on the commits as pushed, whatever the clone's replace refs say", async () => {
@@ -4085,59 +4072,6 @@ it('drops what the judge changed and fires its gate, publishing the steps’ com
   expect((await git(origin, 'show', `${tip}:src/app.ts`)).stdout).toBe('x')
 })
 
-it("gives the slice stacked after a judge the repo's config and skill the judge hid", async () => {
-  const seen: string[] = []
-  const { origin, outcomes } = await gated(
-    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    async (dir, skill) => {
-      if (skill === 'judge') return verdict('clear')(dir)
-      const read = (file: string) => readFile(join(dir, file), 'utf8').catch(() => '-')
-      const files = ['.claude/settings.json', '.cursor/hooks.json', judgeSkill]
-      seen.push(`${skill}: ${(await Promise.all(files.map(read))).join(' ')}`)
-      await commitFile(dir, '.claude/settings.json', skill)
-      await commitFile(dir, judgeSkill, skill)
-      await mkdir(join(dir, '.cursor'), { recursive: true })
-      await writeFile(join(dir, '.cursor/hooks.json'), 'uncommitted')
-    },
-    {
-      provider: { repoConfig: ['.claude/settings.json', '.cursor/hooks.json'] },
-      items: async (origin) => {
-        await commitFile(origin, judgeSkill, 'mine')
-        return [issue(1)]
-      },
-    },
-  )
-  expect(seen).toEqual(['implement: - - mine', 'fix: implement uncommitted implement'])
-  expect(outcomes).toMatchObject([{ ready: true }, { ready: true }])
-  const tip = outcomes[1]?.kind === 'pr' ? outcomes[1].head : ''
-  for (const file of ['.claude/settings.json', judgeSkill])
-    expect((await git(origin, 'show', `${tip}:${file}`)).stdout).toBe('fix')
-})
-
-it('fires the gate of a judge that rewrites a config it hid, keeping each slice its own', async () => {
-  const seen: string[] = []
-  const { origin, outcomes } = await gated(
-    `${riskGate}\nqueue: [{ skill: implement, deliver: pr, then: [{ skill: fix, stack: true }] }]`,
-    async (dir, skill) => {
-      const settings = join(dir, '.claude/settings.json')
-      if (skill === 'judge') {
-        await mkdir(join(dir, '.claude'), { recursive: true })
-        await writeFile(settings, 'JUDGE')
-        return verdict('clear')(dir)
-      }
-      seen.push(`${skill}: ${await readFile(settings, 'utf8').catch(() => '-')}`)
-      await commitFile(dir, '.claude/settings.json', skill)
-    },
-    { provider: { repoConfig: ['.claude/settings.json'] } },
-  )
-  expect(seen).toEqual(['implement: -', 'fix: implement'])
-  expect(outcomes).toMatchObject([{ draft: 'gate risk fired' }, { draft: 'gate risk fired' }])
-  for (const [i, own] of ['implement', 'fix'].entries()) {
-    const tip = outcomes[i]?.kind === 'pr' ? outcomes[i].head : ''
-    expect((await git(origin, 'show', `${tip}:.claude/settings.json`)).stdout).toBe(own)
-  }
-})
-
 it('fires the gate of a judge that turns the folder of a config it hid into a file', async () => {
   const { outcomes } = await gated(
     `${riskGate}\nqueue: [{ skill: implement, deliver: pr }]`,
@@ -4151,8 +4085,6 @@ it('fires the gate of a judge that turns the folder of a config it hid into a fi
   )
   expect(outcomes[0]).toMatchObject({ draft: 'gate risk fired' })
 })
-
-const judgeSkill = '.fake/skills/judge/SKILL.md'
 
 it("fires the gate when its judge can't run", async () => {
   const { opened, outcomes } = await gated(
@@ -4962,56 +4894,7 @@ it('stops the chain on continue, its commits opening as a draft whose footer cou
   expect(formatReport(report)).toContain('(1 commit, draft: the agent will continue)')
 })
 
-it('leaves a stacked slice that says continue or ask to you: a draft no later run goes on with', async () => {
-  const slices = (status: 'continue' | 'ask'): Provider => ({
-    ...fakeProvider('claude'),
-    async *run(job, signal) {
-      const said = asker(status === 'ask' ? 'Which?' : '', true, status)
-      yield* (job.unit.skill === 'fix' ? said : committer).run(job, signal)
-    },
-  })
-  for (const status of ['continue', 'ask'] as const) {
-    const { report, writes, opened } = await finishedRun(
-      '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [{ skill: fix, stack: true }] }',
-      [yours(1)],
-      slices(status),
-    )
-    const [head, fix] = report.results
-    expect(opened.map((o) => [o.head, o.left])).toEqual([
-      ['away/acme-api-1', undefined],
-      ['away/acme-api-1-2', undefined],
-    ])
-    expect(opened[1]?.body).toMatch(/^Add a\n\nDone\.\n/)
-    expect(fix?.outcome).toMatchObject({ kind: 'pr', draft: "a stacked slice can't go on" })
-    const byHand = `a stacked slice can't go on: finish https://example.com/acme/api/pull/away/acme-api-1-2 by hand`
-    if (status === 'ask')
-      expect(head?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
-    else expect(head?.byHand).toBe(byHand)
-    expect(formatReport(report)).toContain(
-      `- **api#1**: ${status === 'ask' ? 'questions not posted: ' : ''}${byHand}`,
-    )
-    // It isn't done: no result, no move.
-    expect(writes).toEqual([])
-  }
-  // Asked without committing, its questions stay in the report too: no later run reads the answer.
-  const idle: Provider = {
-    ...fakeProvider('claude'),
-    async *run(job, signal) {
-      yield* (job.unit.skill === 'fix' ? asker('Which?', false, 'ask') : committer).run(job, signal)
-    },
-  }
-  const { report, writes, opened } = await finishedRun(
-    '  - { skill: implement, deliver: pr, on_done: { comment: result }, then: [{ skill: fix, stack: true }] }',
-    [yours(1)],
-    idle,
-  )
-  expect(opened.map((o) => [o.head, o.left])).toEqual([['away/acme-api-1', undefined]])
-  const byHand = `a stacked slice can't go on: finish it on https://example.com/acme/api/pull/away/acme-api-1 by hand`
-  expect(report.results[0]?.questions).toMatchObject({ text: 'Which?', unposted: byHand })
-  expect(writes).toEqual([])
-})
-
-it("leaves a draft to you where awaywork can't push onto it, as a stacked slice's, but posts an ask without commits", async () => {
+it("leaves a draft to you where awaywork can't push onto it, but posts an ask without commits", async () => {
   const queue =
     '  - { skill: implement, deliver: pr, on_done: { comment: result, move: QA }, then: [review] }'
   const byHand = `${GITHUB_ONLY}: finish https://example.com/acme/api/pull/away/acme-api-1 by hand`

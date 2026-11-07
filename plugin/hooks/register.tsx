@@ -10,11 +10,9 @@ import type {
   Planned,
   Report,
   Result,
-  Rule,
   Skip,
   Tab,
   View,
-  Where,
 } from '../types'
 import { CARD_ROWS, type Card, card } from './cards'
 
@@ -41,7 +39,7 @@ type Row = {
   /** The CLI's read of a last-run unit, what `v` shows. */
   report?: string[]
   skip?: 'skip' | 'unskip'
-  approve?: 'plan' | 'mark'
+  approve?: true
   here?: string
 }
 
@@ -149,7 +147,6 @@ const actions: Record<string, string> = {
   no_repo: 'add repo',
   invalid_branch: 'fix branch',
   refused_delivery: 'fix rule',
-  unstackable: 'fix rule',
   draft_moved: 'finish by hand',
   continue_cap: 'finish by hand',
   no_rule: 'no rule',
@@ -166,22 +163,9 @@ const actions: Record<string, string> = {
 
 const ranks = Object.keys(actions)
 
-/** Whether a where waits for the mark `awaywork approve` leaves: `approved: true`, or `[true]`, in it or an `any` under it. */
-const wantsApproval = ({ approved, any }: Where): boolean =>
-  approved === true ||
-  (Array.isArray(approved) && approved.includes(true)) ||
-  !!any?.some(wantsApproval)
-
-/** Whether a rule that can take `item` takes approved items. */
-const takesApproval =
-  (item: ItemRef) =>
-  ({ source, where }: Rule) =>
-    (!source || source === item.source) && !!where && wantsApproval(where)
-
 const lines = (...text: (string | null | undefined)[]) => text.filter((t): t is string => !!t)
 
-/** `marking`: a rule takes the item approved, so `approve` can make it run. */
-function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
+function skipRow(tab: Tab, s: Skip): Row {
   const key = itemKey(s.item)
   const group = groupOf(s.item)
   const url = s.url ?? s.item.url ?? undefined
@@ -197,16 +181,11 @@ function skipRow(tab: Tab, s: Skip, marking: (item: ItemRef) => boolean): Row {
     detail: lines(reasonOf(s)),
     url,
     skip: s.kind === 'skipped_by_you' ? 'unskip' : 'skip',
-    approve:
-      s.kind === 'waiting_for_approval'
-        ? 'plan'
-        : marking(s.item) && !s.needsYou
-          ? 'mark'
-          : undefined,
+    approve: s.kind === 'waiting_for_approval' || undefined,
   }
 }
 
-function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean): Row {
+function resultRow(runId: string, r: Result): Row {
   const { id, repo, skill, items } = r.planned.unit
   const top = items[0]
   const fact =
@@ -228,7 +207,6 @@ function resultRow(runId: string, r: Result, marking: (item: ItemRef) => boolean
     url,
     report: ['report', runId, '--unit', id],
     skip: top && 'skip',
-    approve: top && marking(top) ? 'mark' : undefined,
     here: `continue awaywork unit ${id} of run ${runId}; start with \`awaywork report ${runId} --unit ${id}\``,
   }
 }
@@ -268,12 +246,11 @@ function layout(d: Data, v: View) {
   const skips = plan?.skipped ?? []
   const report = d.report
   const heads = report?.results.filter((r) => !r.planned.chain && !r.retried) ?? []
-  const marking = (item: ItemRef) => !!plan?.queue?.some(takesApproval(item))
   const rows: Record<Tab, Row[]> = {
-    needs: grouped(skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s, marking))),
-    last: report ? grouped(heads.map((r) => resultRow(report.runId, r, marking))) : [],
+    needs: grouped(skips.filter((s) => s.needsYou).map((s) => skipRow('needs', s))),
+    last: report ? grouped(heads.map((r) => resultRow(report.runId, r))) : [],
     next: grouped(d.plan?.units.filter((p) => !p.chain).map(unitRow) ?? []),
-    skipped: grouped(skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s, marking))),
+    skipped: grouped(skips.filter((s) => !s.needsYou).map((s) => skipRow('skipped', s))),
   }
   const landing =
     (['needs', 'last', 'skipped'] as const).find((t) => rows[t].length) ??
@@ -310,9 +287,7 @@ const titles: Record<Tab, string> = {
 const questions = {
   skip: (ref: string) => `skip ${ref} in the coming runs? awaywork unskip undoes it`,
   unskip: (ref: string) => `unskip ${ref}? the coming runs can take it again`,
-  approvePlan: (ref: string) => `approve ${ref}'s plan? awaywork replies approve on it, no undo`,
-  approve: (ref: string) =>
-    `mark ${ref} approved for approved: true rules, until a unit on it finishes? no undo`,
+  approve: (ref: string) => `approve ${ref}'s plan? awaywork replies approve on it, no undo`,
 }
 
 const marked: Record<Action, Mark> = {
@@ -407,7 +382,6 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
         ? { ...x, status: 'already approved' }
         : { ...x, confirm: { action, key: item, question } },
     )
-  const plan = row.approve === 'plan'
   const keys: (Key | '' | undefined)[] = [
     url && { key: 'open', hotkey: 'o', label: opens(url), run: () => openUrl($, url) },
     report && { key: 'report', hotkey: 'v', label: 'view report', run: () => readRow($, report) },
@@ -416,8 +390,8 @@ function cardButtons($: EngineInterface, v: View, row: Row): Key[] {
       item && {
         key: 'approve',
         hotkey: 'a',
-        label: plan ? 'approve plan' : 'mark approved',
-        run: ask('approve', plan ? questions.approvePlan(ref) : questions.approve(ref)),
+        label: 'approve plan',
+        run: ask('approve', questions.approve(ref)),
       },
     here && {
       key: 'here',

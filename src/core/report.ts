@@ -2,7 +2,6 @@ import type { Outcome } from '../worker/publish.js'
 import type { WorkerStatus } from '../worker/run.js'
 import { type Allowance, pct, presenceLine } from './budget.js'
 import {
-  bySlice,
   describeChain,
   needsYou,
   type PlannedUnit,
@@ -200,20 +199,14 @@ export function formatReport(r: RunReport, warnings: string[] = []): string {
     }
     const listed = chains(r)
     listed.forEach((chain, i) => {
-      const { head, steps, skills, slices } = chain
+      const { head, steps, skills } = chain
       row([i + 1, linkedItem(head), skills, providers(steps), ...chainCells(chain)])
-      const stepRow = (s: UnitResult, indent: string) => {
-        const [id, ...cells] = stepCells(s)
-        row(['', `${indent}└ ${id}`, ...cells])
-      }
-      // A chain of one step is its own row; a longer one lists every step that was listed under it, by slice when it has several.
-      if (slices.length > 1)
-        slices.forEach((slice, k) => {
-          const u = chainOf(slice.steps)
-          row(['', `└ slice ${k + 1}`, slice.skills, providers(slice.steps), status(u), result(u)])
-          for (const s of slice.steps) stepRow(s, '  ')
-        })
-      else if (steps.length > 1) for (const s of steps) stepRow(s, '')
+      // A chain of one step is its own row; a longer one lists every step that was listed under it.
+      if (steps.length > 1)
+        for (const s of steps) {
+          const [id, ...cells] = stepCells(s)
+          row(['', `└ ${id}`, ...cells])
+        }
     })
     const summed = listed.filter((c) => c.head.summary).map(({ head }) => head)
     if (summed.length > 0) out.push('', ...summed.map((u) => `- **${refOf(u)}**: ${u.summary}`))
@@ -333,10 +326,9 @@ export interface Chain {
   head: UnitResult
   steps: UnitResult[]
   skills: string
-  slices: { steps: UnitResult[]; skills: string }[]
 }
 
-/** The run's results grouped by chain and slice, with what the plan chained: e.g. `implement → loop(review ⇄ fix)`. */
+/** The run's results grouped by chain, with what the plan chained: e.g. `implement → loop(review ⇄ fix)`. */
 export function chains(r: RunReport): Chain[] {
   return r.results
     .filter((u) => !u.planned.chain && !u.retried)
@@ -344,27 +336,14 @@ export function chains(r: RunReport): Chain[] {
       const { id } = head.planned.unit
       const steps = r.results.filter((u) => u.planned.unit.id === id || u.planned.chain === id)
       const planned = r.plan.units.filter((p) => p.unit.id === id || p.chain === id)
-      const plannedSlices = bySlice(planned, (p) => p.slice)
-      const slices = bySlice(steps, (u) => u.planned.slice).map((steps, k) => ({
-        steps,
-        skills: describeChain(plannedSlices[k] ?? []),
-      }))
-      return { head, steps, skills: describeChain(planned), slices }
+      return { head, steps, skills: describeChain(planned) }
     })
 }
 
-/** A chain's status and result; with several slices, each slice's result in turn, its loops on its own row. `loops: false` keeps them out of the status. */
-export function chainCells(
-  { steps, slices }: Chain,
-  show = result,
-  loops = true,
-): [string, string] {
+/** A chain's status and result. `loops: false` keeps its loops out of the status. */
+export function chainCells({ steps }: Chain, show = result, loops = true): [string, string] {
   const chain = chainOf(steps)
-  const capped = chain.planned.capped ? ` (${chain.planned.capped})` : ''
-  const loop = loops && slices.length === 1 ? chain.loop : undefined
-  const cell = `${status({ ...chain, loop })}${capped}`
-  if (slices.length === 1 || chain.status === 'skipped') return [cell, show(chain)]
-  return [cell, slices.map((slice) => show(chainOf(slice.steps))).join('; ')]
+  return [status({ ...chain, loop: loops ? chain.loop : undefined }), show(chain)]
 }
 
 /** A chain as one result: its first step's last attempt, with every step's turns and the latest verdict. */
@@ -401,7 +380,7 @@ export function runLine(runId: string, report: string | undefined): string {
     .split('\n')
     .filter((line) => /^\| \d+ \|/.test(line))
     .map((line) => line.slice(2, -2).split(' | ').at(-1) ?? '')
-  // A chain of several slices lists each one's result, separated by `; `.
+  // An older run's chain of several slices lists each one's result, separated by `; `.
   const parts = results.flatMap((r) => r.split('; '))
   const prs = parts.filter((r) =>
     /^https:\/\/\S+ \(\d+ commits?(, ready for review|, draft: .+)?\)(, verdict \S+)?$/.test(r),

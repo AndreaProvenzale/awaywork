@@ -5,7 +5,6 @@ import {
   bounds,
   DEFAULT_LOOKBACK,
   isAge,
-  isLoop,
   isMatch,
   lookback,
   matchesOpen,
@@ -38,6 +37,12 @@ const oneOrMany = z
   .transform((v) => (typeof v === 'string' ? [v] : v))
 
 const units = z.int().positive()
+
+/** Keys a release dropped, with what to write instead: the config refuses them with this. */
+export const removedKeys: Record<string, string> = {
+  stack: 'stack was removed: split work into tasks with a deliver: plan rule',
+}
+
 /** A built-in skill whose merge awaywork makes itself, like `sync`. */
 const merges = (skill: string) => !!builtinSkills[skill]?.merge
 
@@ -312,12 +317,6 @@ const stepObject = z.strictObject({
     .optional()
     .describe("Instruction files added for this step; default the rule's, [] none"),
   when: when.optional().describe('Run this step only when every key holds; otherwise skip it'),
-  stack: z
-    .boolean()
-    .optional()
-    .describe(
-      'Start a new slice here: a new branch cut from the slice before, published as a PR stacked on its PR',
-    ),
 })
 const step = z
   .union([
@@ -329,7 +328,7 @@ const step = z
     stepObject,
   ])
   .describe(
-    "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with, when and stack",
+    "A skill name, or a map with skill, provider, model, skills, mcp and instructions (unset, the rule's), with and when",
   )
 const loop = z
   .strictObject({
@@ -339,12 +338,6 @@ const loop = z
       .describe("Steps run in turn every round, in the chain's clone"),
     until: condition.describe('Ends the loop as soon as it holds; checked after every step'),
     max: z.int().min(1).max(MAX_ROUNDS).describe(`At most this many rounds, up to ${MAX_ROUNDS}`),
-    stack: z
-      .boolean()
-      .optional()
-      .describe(
-        "Start a new slice at the loop's first round: a new branch cut from the slice before, published as a PR stacked on its PR",
-      ),
   })
   .describe('Steps repeated until a condition holds')
 
@@ -374,16 +367,14 @@ const rule: z.ZodType<Rule, unknown> = z
       .describe("Run this rule's unit only when the quota holds; otherwise skip it"),
     units: units
       .optional()
-      .describe(
-        "At most this many units per run from this rule; each of a chain's slices counts once",
-      ),
+      .describe('At most this many units per run from this rule; a chain counts once'),
     // biome-ignore lint/suspicious/noThenProperty: the key users write; never a function
     then: z
       .union([step, loop, z.array(z.union([step, loop])).min(1)])
       .transform((steps) => [steps].flat())
       .default([])
       .describe(
-        "Steps run in turn after this rule's unit, in its clone; each slice publishes once, when it ends, and stack: true starts the next; a {loop} repeats its steps",
+        "Steps run in turn after this rule's unit, in its clone; the chain publishes once, when it ends; a {loop} repeats its steps",
       ),
     on_done: z
       .strictObject({
@@ -404,7 +395,7 @@ const rule: z.ZodType<Rule, unknown> = z
       .refine((d) => Object.keys(d).length > 0, 'expected move or comment')
       .optional()
       .describe(
-        "Written to the unit's items that are yours once its chain finished and every slice published; a write that fails is only reported",
+        "Written to the unit's items that are yours once its chain finished and published; a write that fails is only reported",
       ),
     run: z
       .enum(['soon', 'window'])
@@ -764,24 +755,6 @@ export const configSchema = z
         })
       // A `then` that failed to parse is still raw here; its own issues say why.
       const chain = Array.isArray(r.then) ? ruleSteps(r) : [{ step: r, at: [] }]
-      if (Array.isArray(r.then))
-        r.then.forEach((entry, j) => {
-          if (entry.stack && r.deliver && r.deliver !== 'draft_pr' && r.deliver !== 'pr')
-            ctx.addIssue({
-              code: 'custom',
-              path: [...at, 'then', j, 'stack'],
-              message: `stack needs deliver: draft_pr or pr, not ${r.deliver}: a stacked slice opens a PR`,
-            })
-          if (isLoop(entry))
-            entry.loop.forEach((step, k) => {
-              if (step.stack)
-                ctx.addIssue({
-                  code: 'custom',
-                  path: [...at, 'then', j, 'loop', k, 'stack'],
-                  message: 'a loop sits inside one slice: set stack on the loop',
-                })
-            })
-        })
       // Round ids (`<unit>-<skill>-<n>`) can't collide with plain steps', only with other rounds'.
       const inLoop = (path: (string | number)[]) => path[2] === 'loop'
       chain.forEach(({ step: s, at: path }, j) => {

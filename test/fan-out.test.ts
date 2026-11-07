@@ -330,8 +330,8 @@ describe('tasks as items', () => {
       task: { id: 'api', skill: 'implement', notes: 'Go.' },
     })
     expect(task.task?.parent).toBe(parent)
-    const approvedCard = { ...parent, fields: { ...parent.fields, approved: true } }
-    expect(taskItem(approvedCard, { id: 'api', title: 'A' }).fields.approved).toBe(false)
+    const approvedCard = { ...parent, fields: { ...parent.fields, approved: 'story' } }
+    expect(taskItem(approvedCard, { id: 'api', title: 'A' }).fields.approved).toBeUndefined()
     const md = taskMarkdown(task)
     expect(md).toContain(
       '# acme/api#1/api: VAT export endpoint\n\nhttps://example.com/1\n\nAdd GET /exports/vat.\n',
@@ -1102,10 +1102,10 @@ it('takes no other branch for a task: its PR is found by that name', async () =>
   const forge = fakeForge()
   forge.branches.add('acme/api:away/acme-api-1-api')
   const [unit] = plan([approved()]).units.map((u) => u.unit)
-  expect(await freeBranch(forge, unit as Unit, new Set())).toEqual({
+  expect(await freeBranch(forge, unit as Unit)).toEqual({
     skip: 'away/acme-api-1-api exists on acme/api; delete it to run this task',
   })
-  expect(await freeBranch(fakeForge(), unit as Unit, new Set())).toEqual({
+  expect(await freeBranch(fakeForge(), unit as Unit)).toEqual({
     branch: 'away/acme-api-1-api',
   })
 })

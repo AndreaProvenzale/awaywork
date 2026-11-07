@@ -271,23 +271,18 @@ export function planUnitTable(
         `   provider: ${[...p.passed, p.provider ? `took ${p.provider}` : 'none left'].join('; ')}`,
       )
     // A loop's later rounds repeat its first: only round 1 is listed.
-    let slice = 0
     for (const s of stepsOf(plan, p).filter((s) => !s.loop || s.loop.round === 1)) {
-      // A stacked slice starts with `stack` where the others say `then`.
-      const then = (s.slice ?? 0) !== slice ? 'stack' : 'then'
-      slice = s.slice ?? 0
       if (s.loop?.step === 0) {
         const { skills, until, max } = s.loop
         out.push(
-          `   ${then} loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
+          `   then loop ${skills.join(' ⇄ ')} until ${describeCondition(until)}, at most ${max} ${max === 1 ? 'round' : 'rounds'}`,
         )
       }
       const when = s.unit.rule.when ? `, when ${describeCondition(s.unit.rule.when)}` : ''
       const passed = s.passed.length > 0 ? ` (${s.passed.join('; ')})` : ''
       const on = `on ${s.provider ?? 'no provider left'}${passed}`
-      out.push(`   ${s.loop ? '  ' : `${then} `}${describeSkill(s)} ${on}${when}`)
+      out.push(`   ${s.loop ? '  ' : 'then '}${describeSkill(s)} ${on}${when}`)
     }
-    if (p.capped) out.push(`   ${p.capped}`)
     return out
   })
   return { header: style('bold', lines[0] ?? ''), units: blocks }
@@ -323,7 +318,6 @@ const actions: Record<SkipKind, string> = {
   no_repo: 'add repo',
   invalid_branch: 'fix branch',
   refused_delivery: 'fix rule',
-  unstackable: 'fix rule',
   draft_moved: 'finish by hand',
   continue_cap: 'finish by hand',
   no_rule: 'no rule',
@@ -693,7 +687,7 @@ export function describeRule(r: Rule): string {
     r.order && `order=${r.order}`,
     r.run === 'soon' && 'run=soon',
     r.then?.length &&
-      `then=${r.then.map((s) => `${s.stack ? 'stack:' : ''}${isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill}`).join(',')}`,
+      `then=${r.then.map((s) => (isLoop(s) ? `loop(${s.loop.map((l) => l.skill).join(',')})` : s.skill)).join(',')}`,
   ]
   return (
     [r.source && `source=${r.source}`, ...where, ...extras].filter(Boolean).join(' ') ||

@@ -341,10 +341,7 @@ export interface Step {
 
 /** A `then` or loop step as written: the settings it leaves unset are the rule's. */
 export type ThenStep = Omit<Step, 'provider' | 'skills' | 'instructions'> &
-  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>> & {
-    /** Starts a new slice: a new branch cut from the slice before, and a PR stacked on its PR. */
-    stack?: boolean
-  }
+  Partial<Pick<Step, 'provider' | 'skills' | 'instructions'>>
 
 /** What a loop checks after each of its steps, or a step before it runs; every key set must hold. */
 export interface Condition {
@@ -365,8 +362,6 @@ export interface Loop {
   loop: ThenStep[]
   until: Condition
   max: number
-  /** Starts a new slice at the loop's first round. */
-  stack?: boolean
 }
 
 export interface Rule extends Step {
@@ -377,7 +372,7 @@ export interface Rule extends Step {
   where: Where
   order?: Order
   units?: number
-  /** Steps run in turn after the rule's unit, in its clone; each slice of the chain publishes once, when it ends. */
+  /** Steps run in turn after the rule's unit, in its clone; the chain publishes once, when it ends. */
   then?: (ThenStep | Loop)[]
   /** Written to the unit's items that are yours once its chain finished and published, or a plan rule's plan was posted: its result as a comment, then the move. */
   on_done?: { move?: string; comment?: 'result' }
@@ -404,7 +399,7 @@ export interface Unit {
   verify?: string
   /** Checks run before publishing commits, the top-level ones merged with the repo's: one that fires drafts a `deliver: pr` PR and goes on top of its body. */
   gates?: Record<string, Gate>
-  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the chain's slice before. */
+  /** The URL of the awaywork PR whose branch `base` is: one a rule took up again, or the task's this one stacks on. */
   stackedOn?: string
   /** `base` is awaywork's own draft for the unit, which a later run goes on with: the chain's commits go onto it. */
   resume?: { url: string; number: number; from: string; head: string; status: 'ask' | 'continue' }

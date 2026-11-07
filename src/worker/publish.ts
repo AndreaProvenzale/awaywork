@@ -47,12 +47,6 @@ export type Outcome =
     }
   | { kind: 'none'; reason: string; unpublished?: true }
 
-/** A chain's own repo, kept across its slices, and the tip the slice before pushed in place of the clone's `start`. */
-export interface Stack {
-  repo: string
-  onto?: string
-}
-
 // No hooks, and history as it is, not as replace refs say.
 const safely = ['--no-replace-objects', '-c', 'core.hooksPath=/dev/null']
 const git = async (dir: string, ...args: string[]) =>
@@ -68,7 +62,6 @@ const git = async (dir: string, ...args: string[]) =>
  * The unit's commits are those after `start`, the commit its clone held before any worker ran.
  * Git reads the clone only to fetch its HEAD into a repo of awaywork's own, so the clone's
  * config, attributes, hooks and refs, which the model can write, neither run nor count here.
- * A chain's later slice publishes from the chain's `stack` repo, onto the tip the slice before pushed.
  */
 export async function publish(
   unit: Unit,
@@ -76,7 +69,6 @@ export async function publish(
   forge: Forge,
   runId: string,
   start: string,
-  stack?: Stack,
   closes = false,
   notReady?: string,
   held?: Held,
@@ -88,27 +80,15 @@ export async function publish(
   if (unit.deliver === 'report')
     return text ? { kind: 'report', text } : { kind: 'none', reason: 'no report written' }
 
-  const repo = stack?.repo ?? (await mkdtemp(join(tmpdir(), 'awaywork-publish-')))
+  const repo = await mkdtemp(join(tmpdir(), 'awaywork-publish-'))
   try {
     await execa(bin('git'), ['init', '-q', '--bare', repo])
     // From the clone's own `.git` only, like `inClone`.
     const strict = '--upload-pack=git-upload-pack --strict'
     await git(repo, 'fetch', '-q', '--no-tags', strict, join(dir, '.git'), '+HEAD:refs/heads/work')
-    return await deliver(
-      unit,
-      repo,
-      forge,
-      runId,
-      start,
-      file,
-      text,
-      stack?.onto,
-      closes,
-      notReady,
-      held,
-    )
+    return await deliver(unit, repo, forge, runId, start, file, text, closes, notReady, held)
   } finally {
-    if (!stack) await rm(repo, { recursive: true, force: true })
+    await rm(repo, { recursive: true, force: true })
   }
 }
 
@@ -120,7 +100,6 @@ async function deliver(
   start: string,
   file: string,
   text: string,
-  onto?: string,
   closes = false,
   notReady?: string,
   held?: Held,
@@ -189,14 +168,7 @@ async function deliver(
       unpublished: true,
     }
 
-  const head = oldest
-    ? await withTrailer(
-        repo,
-        commits,
-        `${trailerKey}: ${runId}`,
-        new Map(onto ? [[start, onto]] : []),
-      )
-    : start
+  const head = oldest ? await withTrailer(repo, commits, `${trailerKey}: ${runId}`) : start
   await git(repo, 'update-ref', 'HEAD', head)
   await writeOutput(
     join(dirname(file), 'diff.patch'),
@@ -222,7 +194,7 @@ async function deliver(
   } else await forge.push(repo, unit.branch, { repo: unit.repo })
   // The items' link lines let their trackers link the PR, whatever its branch is called.
   const notes = [...new Set(unit.items.flatMap((i) => i.link ?? []))]
-  // GitHub closes an issue when the last slice merges into the default branch, after the retarget.
+  // GitHub closes an issue when the PR merges into the default branch, after the retarget.
   if (closes)
     for (const i of unit.items)
       if (i.source === 'github' && i.type === 'issue') notes.push(`Closes ${i.key}`)
@@ -230,7 +202,7 @@ async function deliver(
   if (notes.length) await writeOutput(file, `\n\n${notes.join('\n\n')}\n`, true)
   const ready = unit.deliver === 'pr' && !notReady
   // A later run goes on from the head this one leaves; gates and verify read the draft's commits from `from` on.
-  const left = held && { ...held, head, from: resume?.from ?? onto ?? start }
+  const left = held && { ...held, head, from: resume?.from ?? start }
   const opened = {
     ...(ready ? { ready } : unit.deliver === 'pr' && { draft: notReady }),
     ...(held && { held: held.status }),
@@ -254,16 +226,9 @@ async function deliver(
   return { kind: 'pr', url, commits: commits.length, head, ...opened }
 }
 
-/**
- * Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept, onto the
- * parents `fresh` already maps, such as the slice before's tip to its pushed one; returns the new tip.
- */
-async function withTrailer(
-  repo: string,
-  commits: string[],
-  trailer: string,
-  fresh: Map<string, string>,
-): Promise<string> {
+/** Rewrites `commits`, oldest first, each with `trailer` and its author and committer kept; returns the new tip. */
+async function withTrailer(repo: string, commits: string[], trailer: string): Promise<string> {
+  const fresh = new Map<string, string>()
   for (const sha of commits) {
     const format = '--format=%T%n%P%n%an%n%ae%n%ad%n%cn%n%ce%n%cd'
     const meta = await git(repo, 'log', '-1', format, '--date=raw', sha)

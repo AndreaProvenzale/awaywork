@@ -25,7 +25,7 @@ export const itemFields: Record<string, z.ZodType> = {
   type: z.enum(['pr', 'issue', 'task']),
   title: z.string(),
   description: z.string(),
-  approved: z.boolean(),
+  approved: z.string(),
   state: z.enum(itemStates),
   closed: z.iso.datetime({ offset: true }),
   /** A task of an approved plan, which only a rule naming it takes. */

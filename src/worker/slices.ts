@@ -1,4 +1,4 @@
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { MAX_ATTEMPTS } from '../core/attempts.js'
 import { footerItems, hasTrailer, type Left } from '../core/footer.js'
@@ -9,11 +9,10 @@ import {
   checkDetails,
   checkLog,
   commitsSince,
-  git,
   type RanCheck,
 } from './checks.js'
 import { describeFired, gatesSection, runGates, runJudges } from './gates.js'
-import { type Outcome, publish, type Stack } from './publish.js'
+import { type Outcome, publish } from './publish.js'
 import { leaveReview } from './review.js'
 import {
   outputFile,
@@ -49,19 +48,17 @@ export type StepReport = { id: string; skill: string; text: string; out: string 
  * whose PR, open or closed unmerged, awaywork opened for one of the unit's items means it tried
  * already (a merged one landed, so the next pickup is a new round and takes a suffix), and
  * one with no PR whose tip has awaywork's trailer is a push whose PR failed: either way the unit
- * is skipped until that branch is deleted, even where no attempts are kept. A branch the chain
- * `published` in this run is only taken; the first one anything else holds comes back as `taken`.
+ * is skipped until that branch is deleted, even where no attempts are kept. The first name
+ * anything else holds comes back as `taken`.
  */
 export async function freeBranch(
   forge: Forge,
   unit: Unit,
-  published: Set<string>,
 ): Promise<{ branch: string; taken?: string } | { skip: string }> {
   const items = unit.items.map((i) => `${i.source}:${i.key}`)
   let taken: string | undefined
   for (let n = 1; n <= MAX_SUFFIX; n++) {
     const branch = n === 1 ? unit.branch : `${unit.branch}-${n}`
-    if (published.has(branch)) continue
     if (!(await forge.branchExists(unit.repo, branch))) return { branch, taken }
     const prs = await forge.prsOn(unit.repo, branch)
     if (prs.length === 0 && hasTrailer(await forge.tipMessage(unit.repo, branch)))
@@ -77,18 +74,6 @@ export async function freeBranch(
     taken ??= branch
   }
   return { skip: `${unit.branch} to ${unit.branch}-${MAX_SUFFIX} already exist on ${unit.repo}` }
-}
-
-/**
- * Puts the clone on a new `branch` at its HEAD. Git writes only the branch, HEAD and the index there,
- * each through a lock file it renames, so with the symlinks a worker may plant refused (the index's by
- * restoreGitConfig) and no reflog left to append to, nothing outside the clone is written; no hook or
- * fsmonitor runs.
- */
-export async function cutBranch(dir: string, branch: string): Promise<void> {
-  await refuseSymlinks(dir, ['.git/HEAD', `.git/refs/heads/${branch}`])
-  await rm(join(dir, '.git', 'logs'), { recursive: true, force: true })
-  await git(dir, '-c', 'core.logAllRefUpdates=false', 'checkout', '-q', '-b', branch)
 }
 
 export interface Publisher {
@@ -128,7 +113,6 @@ export async function publishSlice(
   start: string,
   reports: StepReport[],
   loops: Record<number, OpenLoop>,
-  stack?: Stack,
   closes = false,
   failedStep?: string,
   held?: Held,
@@ -178,17 +162,7 @@ export async function publishSlice(
   const gated = describeFired(fired)
   const said = held && (held.status === 'ask' ? 'asked questions' : 'the agent will continue')
   const notReady = failedStep ?? said ?? failed ?? why ?? gated
-  const outcome = await publish(
-    unit,
-    dir,
-    deps.forge,
-    deps.runId,
-    from,
-    stack,
-    closes,
-    notReady,
-    held,
-  )
+  const outcome = await publish(unit, dir, deps.forge, deps.runId, from, closes, notReady, held)
   return outcome.kind === 'pushed' && gated ? { ...outcome, gated } : outcome
 }
 

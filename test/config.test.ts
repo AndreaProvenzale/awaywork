@@ -494,33 +494,15 @@ describe('config', () => {
     ])
   })
 
-  it('takes stack on a step or a loop of a draft_pr or pr chain only, never inside a loop', () => {
+  it('refuses stack, which was removed, with what to do instead', () => {
     const chain = (rule: string) => problems(`${minimal}queue: [{ skill: implement, ${rule} }]`)
+    const hint = 'stack was removed: split work into tasks with a deliver: plan rule'
+    expect(chain('then: [review, { skill: fix, stack: true }]')).toEqual([
+      `queue[0].then[1]: ${hint}`,
+    ])
     expect(
-      chain(
-        'then: [review, { skill: fix, stack: true }, { loop: [plan], until: { verdict: approve }, max: 1, stack: true }]',
-      ),
-    ).toEqual([])
-    expect(chain('deliver: pr, then: [{ skill: fix, stack: true }]')).toEqual([])
-    expect(chain('deliver: push, then: [{ skill: fix, stack: true }]')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not push: a stacked slice opens a PR',
-    ])
-    expect(chain('deliver: report, then: { skill: plan, stack: true }')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not report: a stacked slice opens a PR',
-    ])
-    expect(chain('deliver: pending_review, then: { skill: review, stack: true }')).toEqual([
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not pending_review: a stacked slice opens a PR',
-    ])
-    expect(chain('deliver: plan, then: { skill: review, stack: true }')).toContain(
-      'queue[0].then[0].stack: stack needs deliver: draft_pr or pr, not plan: a stacked slice opens a PR',
-    )
-    expect(
-      chain(
-        'then: { loop: [review, { skill: fix, stack: true }], until: { verdict: approve }, max: 2 }',
-      ),
-    ).toEqual([
-      'queue[0].then[0].loop[1].stack: a loop sits inside one slice: set stack on the loop',
-    ])
+      chain('then: { loop: [review], until: { verdict: approve }, max: 1, stack: true }'),
+    ).toEqual([`queue[0].then: ${hint}`])
   })
 
   it('takes a custom source with a command and matches rules on its declared fields', () => {
