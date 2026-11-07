@@ -24,7 +24,14 @@ import {
   waitingTasks,
 } from '../src/core/footer.js'
 import { needsYou, planRun } from '../src/core/foreman.js'
-import { checkPlan, planContract, planState, taskPrUrls } from '../src/core/plan.js'
+import {
+  checkPlan,
+  doneTasks,
+  planContract,
+  planState,
+  planThread,
+  taskPrUrls,
+} from '../src/core/plan.js'
 import { rank, ruleFor } from '../src/core/queue.js'
 import { builtinSkills } from '../src/core/skills.js'
 import type { Item, Provider, Source, TaskPr, Unit, Write } from '../src/core/types.js'
@@ -307,6 +314,42 @@ describe('reading a fanned-out plan back', () => {
       problem:
         'task id "web" is retired: its PR https://github.com/acme/api/pull/web was closed without merging',
     })
+  })
+})
+
+describe('a plan that went ahead', () => {
+  const went = (taskPrs: Record<string, TaskPr> = {}) =>
+    card(
+      [
+        {
+          ...planned(),
+          body: markComment(planComment('Two tasks.', yaml), { went: true, gates: ['product'] }),
+        },
+      ],
+      taskPrs,
+    )
+  const wentQueue = configOf(`  - { skill: plan, deliver: plan, wait: false }
+  - { skill: implement, where: { planned: true } }
+`)
+
+  it('is its own answer: it fans out with no notes, and the tasks after it read results from it on', () => {
+    expect(units(plan([went()], wentQueue))).toEqual([['acme-api-1-api', 'away/acme-api-1-api']])
+    expect(planThread(went())?.went).toBe(true)
+    const done = { ...posted(resultComment('Done.', 'done', 'implement', 'api'), 3) }
+    expect(doneTasks({ comments: [...went().comments, done] })).toEqual(['api'])
+  })
+
+  it('plans again once a task PR closed, though the card is unchanged, and the re-plan waits', () => {
+    const closed = { api: pr('api', 'closed', at(3)) }
+    const attempts: Attempts = {
+      'github:acme/api#1': { runId: 'r1', skill: 'plan', updated: at(5) },
+    }
+    const p = plan([went(closed)], wentQueue, attempts)
+    expect(p.units.map((u) => [u.unit.id, u.unit.waits])).toEqual([['acme-api-1', true]])
+    expect(
+      plan([card([planned(), yours('Split web.')])], wentQueue).units.map((u) => u.unit.waits),
+    ).toEqual([true])
+    expect(plan([card([])], wentQueue).units.map((u) => u.unit.waits)).toEqual([false])
   })
 })
 
