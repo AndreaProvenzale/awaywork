@@ -1358,6 +1358,14 @@
               "additionalProperties": false
             }
           },
+          "post": {
+            "description": "deliver: plan or report: summary posts the step's .away/out/summary.md, awaywork's facts and a pinned link per file it put in the store; full posts the report inline, plan and contract included; default summary with a store, else full",
+            "type": "string",
+            "enum": [
+              "summary",
+              "full"
+            ]
+          },
           "branch": {
             "description": "Branch name template for this rule",
             "type": "string"
@@ -2710,6 +2718,58 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false
+    },
+    "store": {
+      "description": "Where awaywork puts the files a post pins, plan.yml, reports and whatever else a step leaves in .away/out/, so a unit on any machine reads them back",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Shell command run like a custom source's, once per file: it reads {\"op\":\"put\",\"item\",\"unit\",\"path\",\"kind\"} on stdin and prints {\"url\":\"…\"}, or reads {\"op\":\"get\",\"url\"} and prints the file's bytes"
+        },
+        "secrets": {
+          "default": [],
+          "description": "Env vars the command reads; withheld from workers, listed in Actions",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$"
+          }
+        },
+        "get": {
+          "default": true,
+          "description": "false: the command only puts, and awaywork reads a file back with a plain HTTP GET of its URL",
+          "type": "boolean"
+        },
+        "read": {
+          "description": "What comes back into a unit's context when it reads its item's thread",
+          "default": {},
+          "type": "object",
+          "properties": {
+            "max_mb": {
+              "default": 10,
+              "description": "At most this many MB of a unit's files come back; the rest stay links",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "files": {
+              "default": [],
+              "description": "Globs of the file names that come back, e.g. [\"*.md\", \"*.yml\"]; default every file",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

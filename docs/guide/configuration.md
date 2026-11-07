@@ -557,6 +557,7 @@ queue:
 | `on_done` | `{ comment: result, move: <where> }`, either or both: posts the unit's result on its items that are yours, then moves them, once its chain published, or its plan was posted; a report that waits holds the move until you approve it; see [`on_done`](#on-done) |
 | `wait` | `deliver: plan` or `report` only: the post waits for your reply on the item, `true` by default for a plan, `false` for a report; see [Posts that wait](./how-it-works.md#posts-that-wait) |
 | `gates` | `deliver: plan` or `report` only: gates of the rule's own, on what its step left; see [Gates of a rule's own](#gates-of-a-rules-own) |
+| `post` | `deliver: plan` or `report` only: `summary`, the step's `summary.md` with a link per file it left, put in the [store](#store), or `full`, the report inline as without a store; default `summary` with a store; see [Files that come back](./how-it-works.md#files-that-come-back) |
 | `run` | `window` (default) or `soon`: start its units within minutes of them coming due, not only in the windows; see [`run: soon`](#run-soon) |
 
 ### `where`
@@ -787,6 +788,47 @@ notify:
 `gh pr edit "$AWAYWORK_PR_URL" --base develop` moves the base too; leave it out on a plan's [stacked tasks](./how-it-works.md#the-feature-block), whose PRs sit on each other, and on a rule that takes up an awaywork PR, whose new PR sits on that one's branch.
 
 That's your command with your token, not a worker: workers never comment or ping anyone. A requested reviewer gets a notification, and so can the CODEOWNERS a ready PR asks, so treat those two like a comment you'd post.
+
+## Store
+
+A post on the card is a fine place for a decision and a bad one for a 400-line plan, a contract or three screenshots: the team reads that thread at standup, and on a fresh runner whatever stayed in the run dir is gone. `store` is one command awaywork hands each file a post pins; it puts the file wherever you like, Notion, a bucket, a folder, and prints a link. The post gets a short summary and those links, and the next unit that reads the thread gets the files back, on any machine.
+
+```yaml
+store:
+  command: node store.mjs # runs in the config file's folder, like a custom source's command
+  secrets: [STORE_TOKEN] # withheld from workers, listed in Actions
+  read: { max_mb: 10, files: ["*.md", "*.yml", "*.png"] } # what comes back; default 10 MB of everything
+```
+
+The command gets one JSON op on stdin per call, and runs with your environment like a [custom source](./custom-sources.md)'s:
+
+- `{"op": "put", "item": "ENG-2101", "unit": "eng-2101", "path": "/…/units/eng-2101/out/plan.yml", "kind": "plan"}` prints `{"url": "…"}`. `path` is a copy awaywork made out of the clone, readable while the put runs. `kind` is `plan`, `contract`, `report`, or the file's name under `.away/out/` for anything else the step left, so one script can send recordings to a bucket and plans to Notion.
+- `{"op": "get", "url": "…"}` prints the file's bytes. A store that only puts sets `get: false`, and awaywork reads the file back with a plain HTTP GET of its URL.
+
+The model never sees a URL before awaywork writes it, and never picks where a file goes. A tiny one that keeps the files in a folder next to it, at `file://` URLs, which is enough for one machine:
+
+```js
+// store.mjs: keeps each file awaywork puts in a folder next to it, at a file:// URL.
+import { randomUUID } from 'node:crypto'
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const op = JSON.parse(readFileSync(0, 'utf8'))
+if (op.op === 'put') {
+  const to = join(dirname(fileURLToPath(import.meta.url)), 'files', randomUUID(), basename(op.path))
+  mkdirSync(dirname(to), { recursive: true })
+  copyFileSync(op.path, to)
+  console.log(JSON.stringify({ url: pathToFileURL(to).href }))
+} else process.stdout.write(readFileSync(fileURLToPath(op.url)))
+```
+
+Two things are the script's job, not awaywork's:
+
+- **A URL that lasts.** The link is read back days later, from the post. An S3 presigned link expires within a week, so sign it again in `get` from a key you put in the URL, or pick a host whose links don't expire.
+- **Secrets in what leaves.** A log or a recording can hold a token the agent saw on screen. Redact before the file leaves the machine, or keep those kinds out of the store.
+
+A put that fails leaves the file in the run dir, pins nothing for it and gets a line in the morning report (`fail.bin not stored: Command failed with exit code 1: …`); the post and the PR still go out. A get that fails skips the unit with why, as `fix store`, and counts no attempt. What comes back and when is in [Files that come back](./how-it-works.md#files-that-come-back).
 
 ## MCP servers
 
