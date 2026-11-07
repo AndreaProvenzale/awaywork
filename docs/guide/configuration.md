@@ -173,7 +173,7 @@ ok    claude login: <email>, max, in ~/.claude-work, pinned by providers[0].clau
 FAIL  codex login: ~/.codex-work doesn't exist; log in there with CODEX_HOME=~/.codex-work codex login
 ```
 
-It warns when a token in the environment belongs to someone else, `gh login: octocat from GH_TOKEN, not sources.github.user octocat-acme: a token in the environment wins; make it octocat-acme's, or unset it`, and every other command stops before touching anything when a pin can't be made:
+It warns when a token in the environment belongs to someone else, `gh login: octocat from GH_TOKEN, not sources.github.user octocat-acme: a token in the environment wins; make it octocat-acme's, or unset it`. When a pin can't be made, `run`, `plan`, `approve`, `replay`, `sources` and `schedule install` stop before touching anything, and `watch` starts nothing new until it can; the pins that still work apply to the runs already going:
 
 ```text
 $ awaywork plan --rules

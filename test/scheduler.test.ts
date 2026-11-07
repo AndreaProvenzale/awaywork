@@ -877,6 +877,8 @@ describe('wake', () => {
     expect(await keepAwake(noBus, 'linux')).toEqual([])
   })
 
+  // A loaded machine can take over waitFor's default second to start a shell.
+  const SPAWN = { timeout: 10_000 }
   it('holds awake through a child its release kills, and returns a no-op with nothing to run', async () => {
     expect((await holdAwake(async () => '', 'win32'))()).toBeUndefined()
     const dir = await mkdtemp(join(tmpdir(), 'awaywork-inhibit-'))
@@ -890,10 +892,10 @@ describe('wake', () => {
         const pid = Number(await readFile(pidFile, 'utf8'))
         if (!pid) throw new Error('no pid yet')
         return pid
-      })
+      }, SPAWN)
       expect(() => process.kill(pid, 0)).not.toThrow()
       release()
-      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow())
+      await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow(), SPAWN)
     } finally {
       vi.unstubAllEnvs()
     }

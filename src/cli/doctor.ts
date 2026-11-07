@@ -23,7 +23,7 @@ import {
 import { counted } from '../core/report.js'
 import type { Ctx, Provider } from '../core/types.js'
 import { bitbucketRemote, bitbucketWorkspaces, twg } from '../forge/bitbucket.js'
-import { type Exec, exec } from '../forge/gh.js'
+import { type Exec, exec, onHost } from '../forge/gh.js'
 import { codexLogin } from '../providers/codex.js'
 import { commandBinary, isCommandProvider } from '../providers/command.js'
 import { providerFor, providers } from '../providers/index.js'
@@ -72,8 +72,10 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
   const loaded = await loadConfig(path, { pin: false }).catch((e: Error) => e)
   const pins = loaded instanceof Error ? [] : await pinLogins(loaded)
   const ghPin = pins.find((p) => p.what === 'gh')
-  const githubUser =
-    loaded instanceof Error ? undefined : (loaded.sources.github as { user?: string })?.user
+  const github =
+    loaded instanceof Error
+      ? undefined
+      : (loaded.sources.github as { user?: string; host?: string } | undefined)
   const workspaces = loaded instanceof Error ? [] : bitbucketWorkspaces(loaded)
   for (const bin of ['git', workspaces.length ? 'twg' : 'gh']) {
     const version = await exec(bin, ['--version']).catch(() => undefined)
@@ -83,9 +85,15 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
     for (const c of await bitbucketChecks(loaded)) report(c.status, c.what, c.detail)
   else if (ghPin?.problem) report('FAIL', 'gh login', ghPin.problem)
   else
-    await exec('gh', ['api', 'user', '--jq', '.login']).then(
-      (login) => report(...ghLogin(login.trim(), githubUser, ghPin, process.env)),
-      () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
+    await onHost(exec, github?.host)('gh', ['api', 'user', '--jq', '.login']).then(
+      (login) => report(...ghLogin(login.trim(), github?.user, ghPin, process.env)),
+      () =>
+        ghPin?.value
+          ? report('FAIL', 'gh login', ghRejected(github?.user as string, github?.host))
+          : exec('gh', ['auth', 'status']).then(
+              () => report('ok', 'gh login'),
+              () => report(process.env.GH_TOKEN ? 'ok' : 'FAIL', 'gh login', secret('GH_TOKEN')),
+            ),
     )
   if (existsSync(envFile)) {
     const mode = statSync(envFile).mode & 0o777
@@ -211,6 +219,9 @@ export async function runChecks(path: string, onCheck: (check: Check) => void): 
 const GH_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']
 
 /** The gh login a run uses and where it comes from; a warning when the environment's wins over another `user`. */
+export const ghRejected = (user: string, host?: string) =>
+  `gh rejects ${user}'s token${host ? ` on ${host}` : ''}; log in again with gh auth login${host ? ` --hostname ${host}` : ''}, as ${user}`
+
 export function ghLogin(
   login: string,
   user: string | undefined,

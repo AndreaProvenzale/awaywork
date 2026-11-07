@@ -39,7 +39,7 @@ export function skipCommand(program: Command): void {
 }
 
 export async function configuredSources(program: Command): Promise<string[]> {
-  return Object.keys((await loadConfig(configPath(program.opts().config))).sources)
+  return Object.keys((await loadConfig(configPath(program.opts().config), { pin: false })).sources)
 }
 
 export async function printOutcome(command: () => Promise<string>): Promise<void> {
