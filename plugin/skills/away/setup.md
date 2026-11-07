@@ -38,7 +38,11 @@ Pin the logins in the draft (step 5): the gh account as `sources.github.user` wh
 
 ## 4. What to take off their plate
 
-- **Rules,** multi-select, from the default queue (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#the-queue), only what their sources can feed: fix my PRs' red checks; fix review threads on my PRs, awaywork's drafts too (both threads rules); review requests; tracker cards (QA notes fixed, in-progress implemented, the sprint planned). Each description says what the default rule leaves: a fix is a draft PR stacked on their PR, a review or a plan a report, an implementation a draft PR. A review left as their pending review, which only they see, is `deliver: pending_review`, a widening: its own option, saying so.
+The rules come from the default queue (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#the-queue), only what their sources can feed. Each description says what the rule leaves: a fix is a draft PR stacked on their PR, a review or a plan a report, an implementation a draft PR. A widening is its own option, and its description says so.
+
+- **On my PRs,** multi-select: fix red checks; fix review threads, awaywork's drafts too (both threads rules); keep them up to date with their base, the built-in `sync` with `deliver: push`, a widening: it pushes merge commits onto their PR, and when the merge conflicts a model resolves it and the push waits for their review (https://andreaprovenzale.github.io/awaywork/guide/chains.md#sync).
+- **Review requests,** one pick: a report only they read; their pending GitHub review, which only they see until they submit it (`deliver: pending_review`, a widening); leave them.
+- **Tracker cards,** multi-select: QA notes fixed, in-progress cards implemented, the current sprint's cards planned. How the sprint's are taken is asked in step 5, with the tracker's real names.
 - **Learn from my sessions:** yes or no, default no. The yes carries the scope as [`suggest.md`](suggest.md)'s step 1 asks it, numbers included, summed from `folders.sh` over the chosen repos' folders only: "84 Claude Code sessions (31.4 MB) in 3 folders, 12 memory files, your global `CLAUDE.md`; it goes to Anthropic". Never say it stays on this machine. No sessions there: say so in the lead-in and don't ask. Their yes is suggest's consent for this run: it won't ask again.
 
 ## 5. Draft
@@ -63,9 +67,17 @@ sources:
 
 **A custom tracker:** a script in the control folder, as https://andreaprovenzale.github.io/awaywork/guide/custom-sources.md says, read-only, its token from the env var it declares under `secrets`. A source is a script, not an MCP client, so it needs the API behind the server: the MCP server's host is a start, not the endpoint. Ask them where its API docs are, or to let you read the skill that uses it, before writing a line. Keep it to what the rules need: the items assigned to them, the fields a rule matches on, the repo each item belongs to. Check it with `sources <id> --json` and show three real items.
 
+**Sprint cards,** when they picked them: one question in the round with the tracker's names (a custom tracker: on its own, once it reads), one pick:
+
+1. Plan, then implement across repos, waiting for them only when the judge finds a product decision the card leaves open: `deliver: plan` with `approve: gates` and the built-in `plan-judge`; the tasks fan out to an `implement` rule on `planned: true`, a repo's tasks stacked on each other, and they review the plan and the drafts in the morning.
+2. The same, waiting for their `approve` on every plan.
+3. A plan report, no code.
+
+1 and 2 are widening: the plan is posted on the card, or, when the source can't write there (a custom source without `write`, a token scoped to read, like Jira's `read:jira-work`), on an issue awaywork opens in the card's repo, assigned to them (`thread: github`). Their descriptions say which (https://andreaprovenzale.github.io/awaywork/guide/how-it-works.md#plans).
+
 ## 6. First queue
 
-A yes to suggestions: follow [`suggest.md`](suggest.md) from its step 2, with the scope they gave and the Claude folders you found, on the draft; it comes back here with their picks in the draft. Otherwise, or for a family suggest proposed nothing for, write the families they picked from the default queue, in that table's order, each section or status replaced by the real one from `sources` that means the same (`QA` may be `In QA`); none does: leave the rule out and say so.
+A yes to suggestions: follow [`suggest.md`](suggest.md) from its step 2, with the scope they gave and the Claude folders you found, on the draft; it comes back here with their picks in the draft. Otherwise, or for a family suggest proposed nothing for, write the families they picked from the default queue, in that table's order, each section or status replaced by the real one from `sources` that means the same (`QA` may be `In QA`); none does: leave the rule out and say so. `sync` goes after the rules that fix their PRs, so a merge that turns CI red is the `fix` rule's next run. A sprint that implements is its `deliver: plan` rule where the table has the sprint's `plan`, and the `implement` rule on `planned: true` right after it.
 
 `awaywork --config <draft> plan --rules --json` reads the sources and probes no provider; its output is in [`queue.md`](queue.md)'s step 5. Show in the chat what each rule takes now, a line or two per rule (the 3-line limit is for lead-ins): its items (key and title), the ones an earlier rule takes first, and the unmatched ones that sound like work they'd hand over, with the reason. Nothing taken today isn't proof the rule is right: show the closest misses. A config error, or a pin that can't be made, goes to stderr: fix the draft and rerun. Then one question: write it, change a rule (free text), or start over.
 
